@@ -25,9 +25,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Explore,
         order = 19,
-        // 4.41.0: one loader, the status stays on screen, every dropped anchor
-        // is visible (#3832).
-        updatedIn = "4.41.0",
+        addedIn = "4.35.0",
         tags = setOf("ar", "geospatial", "terrain", "rooftop", "anchor", "vps", "earth"),
         status = DemoStatus.KnownIssue,
     )

@@ -17,6 +17,8 @@ object DoublePendulumFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Gesture,
         order = 31,
+        addedIn = "4.4.0",
+        updatedIn = "4.48.0",
         tags = setOf("physics", "pendulum", "chaos", "simulation", "kmp"),
     )
 

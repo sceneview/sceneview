@@ -5,9 +5,10 @@ import SceneViewSwift
 //
 // The SceneViewSwift SDK carries no telemetry; everything here lives in the demo app
 // target and nowhere else. Call sites talk to `DemoAnalytics.shared` only, never to
-// Firebase: the backend is swapped at launch (`FirebaseTelemetry.start()`) and stays a
-// no-op when Firebase is not configured (no `GoogleService-Info.plist` in the bundle),
-// when the user turned "Share usage statistics" off, and in unit tests.
+// Firebase: the backend is swapped by `FirebaseTelemetry.start()` and stays a no-op when
+// Firebase is not configured (no `GoogleService-Info.plist` in the bundle; in the EEA, UK
+// and Switzerland, before the consent), when the user refused or turned "Share usage
+// statistics" off, and in unit tests.
 //
 // The event taxonomy is shared byte-for-byte with the Android demo. Do not rename an
 // event or a parameter here without renaming it there: the two apps report into the
@@ -154,6 +155,8 @@ protocol AnalyticsBackend: Sendable {
     func setCollectionEnabled(_ enabled: Bool)
     /// Clears the analytics app-instance ID and the data stored on the device.
     func resetAnalyticsData()
+    /// Deletes the crash reports cached on the device and not sent yet.
+    func deleteUnsentReports()
 }
 
 /// Used when Firebase is not configured, and in tests.
@@ -162,56 +165,74 @@ struct NoopAnalyticsBackend: AnalyticsBackend {
     func setUserProperty(_ value: String?, for property: AnalyticsUserProperty) {}
     func setCollectionEnabled(_ enabled: Bool) {}
     func resetAnalyticsData() {}
+    func deleteUnsentReports() {}
 }
 
 /// The single analytics entry point of the demo app.
 final class DemoAnalytics: @unchecked Sendable {
-    static let shared = DemoAnalytics()
+    static let shared = DemoAnalytics(consent: .shared)
 
-    /// `UserDefaults` key of the "Share usage statistics" switch. Default ON.
-    static let usageStatsKey = "telemetry.usageStatsEnabled"
+    /// The pre-consent key of the "Share usage statistics" switch. Only the migration
+    /// reads it now (an explicit OFF becomes a refusal): the answer lives in `ConsentStore`.
+    static let usageStatsKey = ConsentStore.legacyUsageStatsKey
 
     private let lock = NSLock()
     private var backend: any AnalyticsBackend
-    private let defaults: UserDefaults
+    private let consent: ConsentStore
     /// Open samples, keyed by id, with their start time (for `sample_close.duration_s`).
     private var openSamples: [String: Date] = [:]
     private let now: @Sendable () -> Date
 
+    /// Without `consent`, a store on `defaults` outside the consent zone: collection on
+    /// until the switch goes off.
     init(backend: any AnalyticsBackend = NoopAnalyticsBackend(),
          defaults: UserDefaults = .standard,
+         consent: ConsentStore? = nil,
          now: @escaping @Sendable () -> Date = { Date() }) {
         self.backend = backend
-        self.defaults = defaults
+        self.consent = consent ?? ConsentStore(defaults: defaults, requiresConsent: false, now: now)
         self.now = now
     }
 
-    /// Whether the user allows usage statistics (Analytics + Crashlytics).
+    /// Whether usage statistics (Analytics + Crashlytics) may be collected: the consent in
+    /// the EEA, the UK and Switzerland, the opt-out switch elsewhere (`ConsentStore`).
     var usageStatsEnabled: Bool {
-        defaults.object(forKey: Self.usageStatsKey) as? Bool ?? true
+        consent.collectionAllowed
     }
 
-    /// Swaps the backend (called once at launch by `FirebaseTelemetry`).
+    /// Swaps the backend (called once, by `FirebaseTelemetry.start()`). Collection follows
+    /// the consent; the Info.plist defaults keep it off until this line.
     func install(_ backend: any AnalyticsBackend) {
         lock.lock(); self.backend = backend; lock.unlock()
         backend.setCollectionEnabled(usageStatsEnabled)
     }
 
-    /// Settings switch ("Share usage statistics"). Turning it off stops
-    /// Analytics and Crashlytics collection and resets the analytics ID. As on Android,
-    /// the opt-out is logged while collection is still on (`settings_changed
-    /// analytics=false`), so it is the last event this install reports.
-    func setUsageStatsEnabled(_ enabled: Bool) {
-        let backend = currentBackend
-        if !enabled {
-            log(.settingsChanged(key: "analytics", value: "false"))
-        }
-        defaults.set(enabled, forKey: Self.usageStatsKey)
-        backend.setCollectionEnabled(enabled)
+    /// The consent answer, from the sheet or About's "Share usage statistics" switch.
+    ///
+    /// Yes: `startBackend` configures Firebase if it was not yet (strict mode, collection
+    /// still off), crash reports cached before the yes are deleted, the consent is recorded
+    /// with its time, then collection goes on and `settings_changed analytics=true` is
+    /// logged.
+    ///
+    /// No: as on Android, the opt-out is logged while collection is still on
+    /// (`settings_changed analytics=false`, the last event this install reports — nothing
+    /// is logged when nothing was allowed), then collection goes off, the analytics ID is
+    /// reset and the unsent crash reports are deleted.
+    func setUsageStatsEnabled(_ enabled: Bool, startBackend: () -> Void = {}) {
         if enabled {
+            startBackend()
+            let backend = currentBackend
+            backend.deleteUnsentReports()
+            consent.record(.granted)
+            backend.setCollectionEnabled(true)
             log(.settingsChanged(key: "analytics", value: "true"))
         } else {
+            log(.settingsChanged(key: "analytics", value: "false"))
+            consent.record(.denied)
+            let backend = currentBackend
+            backend.setCollectionEnabled(false)
             backend.resetAnalyticsData()
+            backend.deleteUnsentReports()
         }
     }
 

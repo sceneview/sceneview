@@ -17,6 +17,7 @@ object ArRawDepthPointCloudFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.ScatterPlot,
         order = 46,
+        addedIn = "4.11.1",
         tags = setOf("ar", "depth", "raw-depth", "point-cloud", "confidence"),
     )
 

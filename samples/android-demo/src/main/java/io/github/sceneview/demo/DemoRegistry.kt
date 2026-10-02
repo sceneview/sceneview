@@ -77,16 +77,20 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    by the home search field alongside title, subtitle and
  *                    category. Never shown; never empty.
  * @param status      See [DemoStatus]. Defaults to [DemoStatus.Working].
- * @param sinceVersion  Release this demo **first shipped in**, e.g. `"4.35.0"`.
- *                      Drives the "New" marker — see [DemoFreshness]. `null`
- *                      means "has been here long enough that nobody needs
- *                      telling"; it is never back-filled for old demos.
- * @param updatedIn     Release in which this demo's **user-visible behaviour**
- *                      last changed — a rebuild, a new control, a fixed render.
- *                      Drives the "Updated" marker. Not "any commit that touched
- *                      the file": a refactor, a lint fix or a dependency bump
- *                      does not move it, or the marker would be on half the grid
- *                      permanently and would mean nothing.
+ * @param addedIn     Release this demo **first shipped in**, e.g. `"4.35.0"`.
+ *                    Required on every demo and drives the "New" marker — see
+ *                    [DemoFreshness]. Back-filled from git history (the first
+ *                    release tag containing the demo's first commit). Work
+ *                    merged between two releases declares the current
+ *                    `VERSION_NAME`: [io.github.sceneview.demo.DemoFreshnessTest]
+ *                    fails on a version newer than the build.
+ * @param updatedIn   Release in which this demo's **user-visible behaviour**
+ *                    last changed — a rebuild, a new control, a fixed render.
+ *                    Drives the "Updated" marker. Not "any commit that touched
+ *                    the file": a refactor, a lint fix or a dependency bump
+ *                    does not move it, or the marker would be on half the grid
+ *                    permanently and would mean nothing. `null` when the demo
+ *                    has not changed visibly since [addedIn].
  */
 data class DemoEntry(
     val id: String,
@@ -96,8 +100,8 @@ data class DemoEntry(
     val icon: ImageVector,
     val order: Int,
     val tags: Set<String>,
+    val addedIn: String,
     val status: DemoStatus = DemoStatus.Working,
-    val sinceVersion: String? = null,
     val updatedIn: String? = null,
 )
 

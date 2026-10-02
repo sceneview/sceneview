@@ -81,6 +81,25 @@ class HomeFilterTest {
         assertTrue(filterDemos(all, null, "zzz-nothing").isEmpty())
     }
 
+    @Test
+    fun `what's new keeps the fresh entries across categories, in editorial order`() {
+        val marked = listOf(fog.copy(fresh = true), placement, viewer.copy(fresh = true), lighting)
+        assertEquals(listOf("model-viewer", "fog"), ids(filterDemos(marked, WHATS_NEW_FILTER, "")))
+    }
+
+    @Test
+    fun `what's new combines with the query`() {
+        val marked = listOf(fog.copy(fresh = true), placement, viewer.copy(fresh = true), lighting)
+        assertEquals(listOf("fog"), ids(filterDemos(marked, WHATS_NEW_FILTER, "height")))
+        // "plane" only matches the placement demo, which is not fresh.
+        assertTrue(filterDemos(marked, WHATS_NEW_FILTER, "plane").isEmpty())
+    }
+
+    @Test
+    fun `what's new with nothing fresh is empty`() {
+        assertTrue(filterDemos(all, WHATS_NEW_FILTER, "").isEmpty())
+    }
+
     private fun ids(entries: List<HomeSearchEntry>) = entries.map { it.id }
 
     private fun entry(

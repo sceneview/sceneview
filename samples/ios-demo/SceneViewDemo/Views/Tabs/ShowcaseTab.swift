@@ -32,6 +32,9 @@ struct ShowcaseTab: View {
     /// Gates the hero's live 3D stage: a RealityKit view still rendering behind
     /// a demo would be a second scene competing with the one the user opened.
     var isActive: Bool = true
+    /// Something this tab presented covers Home (a demo, a "coming soon" sheet,
+    /// the online gallery). The consent sheet waits for it to close.
+    var onPresentingChange: (Bool) -> Void = { _ in }
 
     @State private var scenes: [DemoItem] = []
     @State private var selectedSection: DemoSection?
@@ -95,10 +98,12 @@ struct ShowcaseTab: View {
     private var heroLive: Bool {
         isActive
             && scenePhase == .active
-            && fullScreenScene == nil
-            && comingSoonScene == nil
-            && whatsNewSheet != .open
-            && !showExplore
+            && !presenting
+    }
+    /// A demo, a "coming soon" sheet, the What's new sheet or the online gallery
+    /// is over Home.
+    private var presenting: Bool {
+        fullScreenScene != nil || comingSoonScene != nil || whatsNewSheet == .open || showExplore
     }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -292,6 +297,7 @@ struct ShowcaseTab: View {
             .navigationDestination(isPresented: $showExplore) {
                 ExploreTab(embedded: true)
             }
+            .onChange(of: presenting, initial: true) { _, covered in onPresentingChange(covered) }
             .onAppear {
                 if scenes.isEmpty { scenes = GeneratedScenes.all() }
             }

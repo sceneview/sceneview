@@ -42,10 +42,12 @@ final class SceneViewDemoUITests: XCTestCase {
     /// `.keepAlways` is required — a passing test discards its attachments by
     /// default, which would leave the screenshot job with an empty artifact.
     /// Every launch turns the push pre-prompt off: a sheet that may appear after the
-    /// second sample closed must not cover the screen a test is about to tap.
+    /// second sample closed must not cover the screen a test is about to tap. The
+    /// usage-statistics consent is pre-answered for the same reason: in the EEA, UK and
+    /// Switzerland its sheet comes up over Home on first launch.
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-push_preprompt", "off"]
+        app.launchArguments = ["-push_preprompt", "off", "-telemetry_consent", "denied"]
         return app
     }
 

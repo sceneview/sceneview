@@ -21,9 +21,10 @@ object ArSplatRoomFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.House,
         order = 16,
+        addedIn = "4.45.0",
+        // #4105, #4137.
+        updatedIn = "4.49.0",
         tags = setOf("ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
-        sinceVersion = "4.45.0",
-        updatedIn = "4.46.0",
     )
 
     @Composable

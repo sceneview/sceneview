@@ -17,6 +17,7 @@ object ArPeopleOcclusionFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Portrait,
         order = 35,
+        addedIn = "4.14.0",
         tags = setOf("ar", "occlusion", "people", "segmentation", "depth"),
     )
 

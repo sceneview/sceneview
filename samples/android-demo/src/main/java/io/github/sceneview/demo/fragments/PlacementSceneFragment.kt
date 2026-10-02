@@ -17,6 +17,7 @@ object PlacementSceneFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.AddLocationAlt,
         order = 23,
+        addedIn = "4.13.0",
         tags = setOf("ar", "plane", "tap-to-place", "sceneform", "anchor"),
     )
 

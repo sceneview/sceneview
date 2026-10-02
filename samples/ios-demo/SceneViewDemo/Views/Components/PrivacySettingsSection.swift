@@ -2,11 +2,15 @@ import SwiftUI
 
 /// About → "Privacy & notifications": the two switches of the Android About group.
 ///
-/// Only in a build that carries a Firebase config (`FirebaseTelemetry.isConfigured`):
+/// Only in a build that carries a Firebase config (`FirebaseTelemetry.hasBundledConfig`):
 /// without one nothing is collected and no push can arrive, so a switch would promise
 /// something false.
+///
+/// "Share usage statistics" is the consent's withdrawal point: OFF while it is unknown or
+/// refused, ON grants it (timestamped), OFF again stops collection, resets the analytics
+/// ID and deletes unsent crash reports (`TelemetryConsent.setUsageStats`).
 struct PrivacySettingsSection: View {
-    @State private var usageStats = DemoAnalytics.shared.usageStatsEnabled
+    @ObservedObject private var consent = TelemetryConsent.shared
     #if os(iOS)
     @ObservedObject private var push = PushCenter.shared
     @Environment(\.openURL) private var openURL
@@ -25,13 +29,10 @@ struct PrivacySettingsSection: View {
                 SettingsToggleRow(
                     icon: "chart.bar.fill",
                     title: "Share usage statistics",
-                    subtitle: "Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off also resets the ID.",
+                    subtitle: "Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off resets the ID and deletes unsent crash reports.",
                     isOn: Binding(
-                        get: { usageStats },
-                        set: { value in
-                            usageStats = value
-                            DemoAnalytics.shared.setUsageStatsEnabled(value)
-                        }
+                        get: { consent.collectionAllowed },
+                        set: { consent.setUsageStats($0) }
                     ),
                     identifier: "settings-usage-stats"
                 )

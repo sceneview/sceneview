@@ -96,33 +96,33 @@ class DeepLinkRouterTest {
     // looks at the id. We pass arbitrary R.string.* values to satisfy the
     // post-#1099 resource-ID typed fields without resolving them.
     private val knownRegistry = listOf(
-        DemoEntry("ar-rerun", R.string.demo_ar_rerun_title, R.string.demo_ar_rerun_subtitle, "Augmented Reality", Icons.Filled.ViewInAr, order = 1, tags = setOf("test")),
-        DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, "3D Basics", Icons.Filled.ViewInAr, order = 2, tags = setOf("test")),
+        DemoEntry("ar-rerun", R.string.demo_ar_rerun_title, R.string.demo_ar_rerun_subtitle, "Augmented Reality", Icons.Filled.ViewInAr, order = 1, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("model-viewer", R.string.demo_model_viewer, R.string.demo_model_viewer_subtitle, "3D Basics", Icons.Filled.ViewInAr, order = 2, tags = setOf("test"), addedIn = "4.0.0"),
     )
 
     // Registry holding the three #2239 Batch 1 consolidated demos that the
     // retired ids redirect to. The router only inspects `id`, so the title /
     // subtitle resources are arbitrary (see the note above).
     private val consolidatedRegistry = listOf(
-        DemoEntry("custom-geometry", R.string.demo_custom_geometry_title, R.string.demo_custom_geometry_subtitle, "Advanced", Icons.Filled.ViewInAr, order = 3, tags = setOf("test")),
-        DemoEntry("picking-collision", R.string.demo_picking_collision_title, R.string.demo_picking_collision_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 4, tags = setOf("test")),
-        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 5, tags = setOf("test")),
+        DemoEntry("custom-geometry", R.string.demo_custom_geometry_title, R.string.demo_custom_geometry_subtitle, "Advanced", Icons.Filled.ViewInAr, order = 3, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("picking-collision", R.string.demo_picking_collision_title, R.string.demo_picking_collision_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 4, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 5, tags = setOf("test"), addedIn = "4.0.0"),
     )
 
     // Registry holding the three consolidated demos the #2239 catalogue-regroup
     // slice redirects onto. The router only inspects `id`, so the title /
     // subtitle resources are arbitrary (see the note above).
     private val regroupRegistry = listOf(
-        DemoEntry("lighting-lab", R.string.demo_lighting_lab_title, R.string.demo_lighting_lab_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test")),
-        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 7, tags = setOf("test")),
-        DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test")),
+        DemoEntry("lighting-lab", R.string.demo_lighting_lab_title, R.string.demo_lighting_lab_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 7, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test"), addedIn = "4.0.0"),
     )
 
     // Registry holding the Scene Geometry card the #3463 merge redirects onto. Unlike the
     // other regroup merges this one kept the absorbing demo's own id (`ar-scene-mesh`) —
     // iOS ships a screen under it — so the registry is a single entry.
     private val sceneGeometryRegistry = listOf(
-        DemoEntry("ar-scene-mesh", R.string.demo_ar_scene_mesh_title, R.string.demo_ar_scene_mesh_subtitle, "AR Understanding", Icons.Filled.ViewInAr, order = 9, tags = setOf("test")),
+        DemoEntry("ar-scene-mesh", R.string.demo_ar_scene_mesh_title, R.string.demo_ar_scene_mesh_subtitle, "AR Understanding", Icons.Filled.ViewInAr, order = 9, tags = setOf("test"), addedIn = "4.0.0"),
     )
 
     // ── Custom scheme: sceneview://demo/<id> ──────────────────────────────
@@ -327,6 +327,7 @@ class DeepLinkRouterTest {
                 Icons.Filled.ViewInAr,
                 order = 1,
                 tags = setOf("test"),
+                addedIn = "4.0.0",
             ),
         )
         assertEquals("lighting", DeepLinkRouter.validate("movable-light", registry))
@@ -712,6 +713,7 @@ class DeepLinkRouterTest {
                 Icons.Filled.ViewInAr,
                 order = 6,
                 tags = setOf("test"),
+                addedIn = "4.0.0",
             ),
         )
         assertEquals(

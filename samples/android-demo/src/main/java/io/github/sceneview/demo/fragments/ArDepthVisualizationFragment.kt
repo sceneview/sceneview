@@ -17,6 +17,7 @@ object ArDepthVisualizationFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Gradient,
         order = 40,
+        addedIn = "4.11.1",
         tags = setOf("ar", "depth", "visualization", "false-color", "depth-map"),
     )
 

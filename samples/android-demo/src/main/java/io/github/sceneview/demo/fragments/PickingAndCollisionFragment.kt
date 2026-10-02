@@ -22,6 +22,7 @@ object PickingAndCollisionFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.TouchApp,
         order = 32,
+        addedIn = "4.17.0",
         tags = setOf("picking", "hit-test", "collision", "ray", "viewnode", "overlay"),
     )
 

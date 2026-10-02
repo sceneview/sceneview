@@ -151,7 +151,7 @@ class HomeScreenSnapshotTest {
          * **Why this.** Rendering at the newest declared version pins the grid
          * exactly as it looks in the release that last touched a demo — badges on
          * that release's demos and on the one before it, nothing else. It is a
-         * pure function of the `sinceVersion` / `updatedIn` fields, so the only
+         * pure function of the `addedIn` / `updatedIn` fields, so the only
          * PR that can move these goldens is a PR that edits a demo fragment,
          * which is a PR whose author is already looking at the Showcase. A
          * release commit moves `VERSION_NAME` and nothing here.
@@ -161,7 +161,7 @@ class HomeScreenSnapshotTest {
          * needed here and saves the test its own semver parser.
          */
         val PINNED_BUILD_VERSION: String =
-            ALL_DEMOS.flatMap { listOfNotNull(it.sinceVersion, it.updatedIn) }
+            ALL_DEMOS.flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
                 .reduceOrNull { newest, candidate ->
                     if (isRecentVersion(candidate, newest, window = 0)) candidate else newest
                 }
