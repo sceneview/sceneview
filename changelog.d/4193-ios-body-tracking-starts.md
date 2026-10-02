@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: Body Tracking starts on a supported iPhone ([#4193](https://github.com/sceneview/sceneview/pull/4193)).** On an iPhone SE 3 the screen said body tracking needs an iPhone XS / XR and never turned the camera on: support was written to a SwiftUI binding and read back in the same pass, which still held `false`. The session now runs on every A12+ device and the banner only shows on devices without body tracking.
