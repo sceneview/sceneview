@@ -44,12 +44,14 @@ def _version(vid, vs, state):
 
 
 class SubmitScriptTest(unittest.TestCase):
-    def run_submit(self, editable, holders, version="v4.47.0"):
+    def run_submit(self, editable, holders, version="v4.47.0", platform=None, bodies=None):
         """Run app_store_submit.py; return (exit code, [(method, url)], step summary).
 
         `holders` answers the slot-holder probe. A tuple of lists answers
         successive probes in order (the last one repeats), which is how a case
         makes the slot fill between the look-before-create and the POST.
+        `platform` sets ASC_PLATFORM (unset by default, which means IOS), and
+        `bodies`, when given, collects the JSON of every POST.
         """
         calls = []
         probes = list(holders) if isinstance(holders, tuple) else [holders]
@@ -64,7 +66,8 @@ class SubmitScriptTest(unittest.TestCase):
                               "relationships": {"preReleaseVersion": {
                                   "data": {"type": "preReleaseVersions", "id": "P1"}}}}],
                     "included": [{"type": "preReleaseVersions", "id": "P1",
-                                  "attributes": {"platform": "IOS", "version": "4.47.0"}}],
+                                  "attributes": {"platform": platform or "IOS",
+                                                 "version": "4.47.0"}}],
                 })
             if "/appStoreVersions?" in url and "include=appStoreVersionSubmission" in url:
                 return _Response(200, {"data": editable})
@@ -74,6 +77,8 @@ class SubmitScriptTest(unittest.TestCase):
 
         def post(url, headers=None, json=None, **_):
             calls.append(("POST", url))
+            if bodies is not None:
+                bodies.append(json)
             if url.endswith("/appStoreVersions"):
                 return _Response(409, {"errors": [{"status": "409"}]})
             raise AssertionError(f"unexpected POST {url}")
@@ -92,6 +97,8 @@ class SubmitScriptTest(unittest.TestCase):
             env = {"HOME": home, "ASC_KEY_ID": "KEY", "ASC_ISSUER_ID": "ISSUER",
                    "ASC_VERSION_STRING": version, "ASC_EXPECTED_BUILD": BUILD,
                    "ASC_SUPERSEDE": "false", "GITHUB_STEP_SUMMARY": str(summary)}
+            if platform:
+                env["ASC_PLATFORM"] = platform
             with mock.patch.dict(os.environ, env), \
                     mock.patch.dict(sys.modules, {"requests": fake_requests, "jwt": fake_jwt}), \
                     mock.patch("time.sleep"), \
@@ -151,6 +158,27 @@ class SubmitScriptTest(unittest.TestCase):
         self.assertIn(("POST", "https://api.appstoreconnect.apple.com/v1/appStoreVersions"),
                       calls)
 
+
+    def test_mac_run_reads_and_creates_mac_records_only(self):
+        # The macOS job sets ASC_PLATFORM=MAC_OS: the build, the version
+        # records it probes and the record it creates are all the Mac ones,
+        # never the iOS record of the same version.
+        bodies = []
+        code, calls, _ = self.run_submit(editable=[], holders=[], platform="MAC_OS",
+                                         bodies=bodies)
+        self.assertEqual(code, 1)
+        probes = [u for m, u in calls if m == "GET" and "/appStoreVersions?" in u]
+        self.assertTrue(probes, calls)
+        for url in probes:
+            self.assertIn("filter[platform]=MAC_OS", url)
+        self.assertFalse([u for _, u in calls if "IOS" in u], calls)
+        created = [b for b in bodies if b and b["data"]["type"] == "appStoreVersions"]
+        self.assertEqual([b["data"]["attributes"]["platform"] for b in created], ["MAC_OS"])
+
+    def test_unknown_platform_fails_before_any_call(self):
+        code, calls, _ = self.run_submit(editable=[], holders=[], platform="TV_OS")
+        self.assertEqual(code, 1)
+        self.assertEqual(calls, [])
 
 API = "https://api.appstoreconnect.apple.com/v1"
 

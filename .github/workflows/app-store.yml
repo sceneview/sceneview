@@ -657,6 +657,40 @@ jobs:
             -authenticationKeyID $APP_STORE_CONNECT_API_KEY_ID \
             -authenticationKeyIssuerID $APP_STORE_CONNECT_API_ISSUER_ID
 
+      - name: Submit macOS build for App Store review
+        # The macOS leg used to stop at the upload: every release from 4.19.0
+        # to 4.51.0 reached TestFlight and none reached App Review, so the Mac
+        # App Store stayed on 4.18.0. Same gate and same program as the iOS
+        # submit step; ASC_PLATFORM=MAC_OS scopes every lookup to the macOS
+        # records and limits the listing write to whatsNew (the description and
+        # screenshots in the repo are the iPhone/iPad ones).
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.submit_for_review == 'true') ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_VERSION_STRING: ${{ startsWith(github.ref, 'refs/tags/v') && format('{0}', github.ref_name) || '' }}
+          ASC_EXPECTED_BUILD: ${{ needs.check.outputs.build_number }}
+          ASC_PLATFORM: MAC_OS
+          ASC_SUPERSEDE: ${{ inputs.supersede }}
+        run: |
+          python3 -m venv $RUNNER_TEMP/asc-venv
+          $RUNNER_TEMP/asc-venv/bin/pip install -r "$GITHUB_WORKSPACE/.github/workflows/requirements/app-store.txt" --quiet
+          echo "Waiting 120s for Apple to process the build..."
+          sleep 120
+          # Exit 75 = DEFERRED behind an identified macOS version holding the
+          # non-live slot: green with a notice, as on the iOS leg.
+          set +e
+          $RUNNER_TEMP/asc-venv/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/app_store_submit.py"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 75 ]; then
+            echo "::notice::macOS submission deferred — a macOS version already holds App Store Connect's non-live slot."
+            exit 0
+          fi
+          exit "$rc"
+
       - name: Clean up keychain and keys
         if: always()
         run: |
