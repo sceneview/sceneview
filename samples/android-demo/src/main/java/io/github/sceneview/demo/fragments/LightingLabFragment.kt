@@ -25,12 +25,13 @@ object LightingLabFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.WbSunny,
         order = 2,
+        addedIn = "4.17.0",
+        updatedIn = "4.49.0",
         tags = setOf(
             "light", "hdr", "ibl", "skybox", "environment",
             "reflection", "exposure", "ssao", "fog", "post-fx",
         ),
         // #3496 replaced the five tabs with one all-live frame.
-        updatedIn = "4.35.0",
     )
 
     @Composable

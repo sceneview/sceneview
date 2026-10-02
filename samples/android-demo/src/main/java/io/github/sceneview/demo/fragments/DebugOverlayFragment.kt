@@ -17,6 +17,8 @@ object DebugOverlayFragment : DemoFragment {
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Speed,
         order = 15,
+        addedIn = "4.0.1",
+        updatedIn = "4.48.0",
         tags = setOf("debug", "fps", "stats", "performance", "overlay"),
     )
 

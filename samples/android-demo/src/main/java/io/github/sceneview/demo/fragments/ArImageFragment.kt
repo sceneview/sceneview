@@ -17,6 +17,7 @@ object ArImageFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Image,
         order = 41,
+        addedIn = "4.0.0",
         tags = setOf("ar", "image", "tracking", "augmented-image", "marker"),
     )
 

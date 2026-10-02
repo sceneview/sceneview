@@ -94,6 +94,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -118,16 +120,19 @@ import io.github.sceneview.demo.categoryDisplayNameRes
 import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
 import io.github.sceneview.demo.freshnessHeadlineVersion
+import io.github.sceneview.demo.freshnessWindowStart
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.whatsnew.WhatsNewRelease
 import io.github.sceneview.demo.whatsnew.WhatsNewSheet
+import io.github.sceneview.demo.whatsnew.rememberReturningSheetState
 import io.github.sceneview.demo.whatsnew.loadWhatsNew
 import io.github.sceneview.demo.ui.cascadeIn
 import io.github.sceneview.demo.ui.pressScale
 import io.github.sceneview.demo.ui.rememberCascade
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Test tags for the home screen. */
@@ -140,6 +145,9 @@ object HomeTestTags {
     /** Test tag of the full-span header drawn above [category]'s first card (#2239). */
     fun sectionHeader(category: String): String =
         "home-section-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
+
+    /** Test tag of the "What's new" row, right under the hero. */
+    const val WHATS_NEW_ROW = "home-whats-new-row"
 
     /** Test tag of the "Featured" group header, right under the hero. */
     const val FEATURED_SECTION = "home-section-featured"
@@ -227,11 +235,16 @@ fun HomeScreen(
             categoryLabel = stringResource(categoryDisplayNameRes(demo.category)),
             tags = demo.tags,
             order = demo.order,
+            fresh = demo.freshness(buildVersion) != DemoFreshness.None,
         )
     }
     val byId = remember(demos) { demos.associateBy { it.id } }
-    val visible = remember(searchEntries, selectedCategory, query) {
-        filterDemos(searchEntries, selectedCategory, query).mapNotNull { byId[it.id] }
+    val anyFresh = searchEntries.any { it.fresh }
+    // A "What's new" selection saved by an older build, where something was fresh, falls
+    // back to All rather than to an empty grid: the chip is gone, nothing could clear it.
+    val activeCategory = selectedCategory.takeUnless { it == WHATS_NEW_FILTER && !anyFresh }
+    val visible = remember(searchEntries, activeCategory, query) {
+        filterDemos(searchEntries, activeCategory, query).mapNotNull { byId[it.id] }
     }
     val searching = query.isNotBlank()
     // A header earns its row only when it separates something. With one category
@@ -241,7 +254,7 @@ fun HomeScreen(
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
     // featured page they feed (#3566). Derived from the demo's own declared
-    // `sinceVersion` / `updatedIn` against `buildVersion`, so it expires on
+    // `addedIn` / `updatedIn` against `buildVersion`, so it expires on
     // its own and nothing here is hand-maintained. See `DemoFreshness.kt`.
     // `buildVersion` is a parameter, defaulting to `BuildConfig.VERSION_NAME`:
     // see its KDoc for why the snapshot tests must be able to pin it (#3666).
@@ -276,6 +289,15 @@ fun HomeScreen(
     // The "Featured" group under the hero: the demos we push, in priority order.
     val featuredShelf = remember(byId) { FEATURED_SECTION_IDS.mapNotNull { byId[it] } }
 
+    // Where the "What's new" row scrolls to: the chip row's index while the row itself is
+    // on screen (no query, something fresh) — header spacer, hero, the row, the Featured
+    // header and banners, "Browse online", then the chips.
+    val scope = rememberCoroutineScope()
+    val chipsIndex = 3 + (if (featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) + 1
+    val chipsScrollOffsetPx = with(LocalDensity.current) {
+        (SceneViewTokens.Home.headerHeight + SceneViewTokens.Space.sm).roundToPx()
+    }
+
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
     val context = LocalContext.current
     val whatsNew by produceState(initialValue = emptyList<WhatsNewRelease>()) {
@@ -289,16 +311,17 @@ fun HomeScreen(
     val inReviewDemos = remember(demos, fresh) {
         fresh + demos.filter { it.status == DemoStatus.InReview && it !in fresh }
     }
-    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
-    if (showWhatsNew) {
+    // Back from a sample opened in the sheet lands on the sheet again, not on a bare Home.
+    val whatsNewSheet = rememberReturningSheetState()
+    if (whatsNewSheet.isShown) {
         WhatsNewSheet(
             releases = whatsNew,
             inReviewDemos = inReviewDemos,
             onDemoClick = { id ->
-                showWhatsNew = false
+                whatsNewSheet.leaveForSample()
                 onDemoClick(id)
             },
-            onDismiss = { showWhatsNew = false },
+            onDismiss = { whatsNewSheet.dismiss() },
         )
     }
 
@@ -401,10 +424,38 @@ fun HomeScreen(
                         pages = featuredPages,
                         height = heroHeight,
                         onDemoClick = onDemoClick,
-                        onWhatsNewClick = { showWhatsNew = true },
+                        onWhatsNewClick = { whatsNewSheet.open() },
                         pagerState = featuredPagerState,
                         modifier = Modifier.testTag(HomeTestTags.HERO),
                     )
+                }
+                // "What's new": the one row that answers "what changed?" without a scroll
+                // through the catalogue. It counts the New / Updated cards and opens the
+                // chip that keeps only them; it is absent when nothing is fresh (#3927).
+                if (!searching && fresh.isNotEmpty()) {
+                    item(key = WHATS_NEW_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                        WhatsNewRow(
+                            subtitle = pluralStringResource(
+                                R.plurals.home_whats_new_subtitle,
+                                fresh.size,
+                                fresh.size,
+                                freshnessWindowStart(buildVersion),
+                            ),
+                            onClick = {
+                                onCategoryChange(WHATS_NEW_FILTER)
+                                // The chips land just under the pinned header, the
+                                // selected one in view, the filtered cards below it.
+                                scope.launch {
+                                    gridState.animateScrollToItem(chipsIndex, -chipsScrollOffsetPx)
+                                }
+                            },
+                            modifier = Modifier
+                                .testTag(HomeTestTags.WHATS_NEW_ROW)
+                                .animateItem()
+                                .cascadeIn(cascade.delayFor(cascadeIndex++))
+                                .padding(top = home.groupGap - home.rowGap),
+                        )
+                    }
                 }
                 // The "Featured" group: what we want seen first, right under the hero and
                 // above the catalogue, so the flagship samples never wait for a scroll to
@@ -448,8 +499,9 @@ fun HomeScreen(
                 }
                 item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
                     CategoryChipRow(
-                        selected = selectedCategory,
+                        selected = activeCategory,
                         onSelect = onCategoryChange,
+                        showWhatsNew = anyFresh,
                         modifier = Modifier.padding(
                             top = home.chipRowTopGap - home.rowGap,
                             bottom = home.gridTopGap - home.rowGap,
@@ -532,7 +584,7 @@ fun HomeScreen(
             showWhatsNew = hasUnseenWhatsNew || whatsNew.isNotEmpty(),
             whatsNewBadged = hasUnseenWhatsNew,
             onWhatsNewClick = {
-                if (hasUnseenWhatsNew) onWhatsNewSinceClick() else showWhatsNew = true
+                if (hasUnseenWhatsNew) onWhatsNewSinceClick() else whatsNewSheet.open()
             },
             modifier = Modifier.align(Alignment.TopCenter),
         )
@@ -581,6 +633,9 @@ private fun SectionHeader(
  * parks Filament once it has left.
  */
 private const val HERO_ITEM_KEY = "hero"
+
+/** Grid key of the "What's new" row under the hero. */
+private const val WHATS_NEW_ITEM_KEY = "whats-new"
 
 /**
  * The layer under the grid that carries the sky and the live flight (#3948).
@@ -982,7 +1037,17 @@ private fun CategoryChipRow(
     selected: String?,
     onSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    /** Offer the [WHATS_NEW_FILTER] chip, right after "All" — only while something is fresh. */
+    showWhatsNew: Boolean = false,
 ) {
+    val chips = remember(showWhatsNew) {
+        if (showWhatsNew) {
+            listOf(CHIP_CATEGORIES.first(), WHATS_NEW_FILTER to R.string.category_short_whats_new) +
+                CHIP_CATEGORIES.drop(1)
+        } else {
+            CHIP_CATEGORIES
+        }
+    }
     val home = SceneViewTokens.Home
     // The row bleeds out of the grid's side inset and carries it as content
     // padding instead, so chips scroll to the screen edge and the last one keeps
@@ -992,7 +1057,7 @@ private fun CategoryChipRow(
         contentPadding = PaddingValues(horizontal = home.contentPadding),
         horizontalArrangement = Arrangement.spacedBy(home.chipGap),
     ) {
-        rowItems(CHIP_CATEGORIES, key = { it.first ?: "all" }) { (category, labelRes) ->
+        rowItems(chips, key = { it.first ?: "all" }) { (category, labelRes) ->
             CategoryChip(
                 label = stringResource(labelRes),
                 selected = category == selected,

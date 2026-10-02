@@ -17,8 +17,9 @@ object ArRerunFragment : DemoFragment {
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Polyline,
         order = 12,
+        addedIn = "4.0.1",
+        updatedIn = "4.49.0",
         tags = setOf("ar", "rerun", "replay", "3d", "streaming", "pose", "plane", "point cloud", "debug"),
-        updatedIn = "4.46.0",
     )
 
     @Composable

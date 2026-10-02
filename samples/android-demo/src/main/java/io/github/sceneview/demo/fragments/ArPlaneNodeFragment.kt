@@ -17,6 +17,7 @@ object ArPlaneNodeFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.AutoMirrored.Filled.ViewQuilt,
         order = 25,
+        addedIn = "4.13.0",
         tags = setOf("ar", "plane", "planenode", "lifecycle", "callback"),
     )
 

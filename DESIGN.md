@@ -149,7 +149,7 @@ Two shapes, one recipe:
   `home-row-text-start`, where the picture is down to a tenth of its opacity.
 
 The title is `type-card` (17, semibold, `on-surface`), the subtitle `type-caption` regular
-(`on-surface-variant`), the "New" / "Updated" / status chips on the title line. Each card is
+(`on-surface-variant`), the "New" / "Updated" / status chips on their own line above the title (`home-badge`: 3dp vertical padding, 12dp icon, accent text on `surface-container` at 92%, measured 6.3:1 light / 7.3:1 dark; the line collapses to zero height when no chip draws, so plain rows keep their rhythm). "New" covers a demo whose `addedIn` is within the last two minors of the build, "Updated" one whose `updatedIn` is, and both expire on their own; a "What's new" row under the hero and a "What's new" filter chip appear only while at least one demo carries a marker. Each card is
 its own `home-row-radius` tile, `home-row-gap` from the next. No shadow, no outline, in
 either theme — the ambient tone carries it. A demo without a capture shows its glyph at
 `home-row-glyph` in the category accent, over the accent's own ambient tint washed with

@@ -18,6 +18,7 @@ object ArHandTrackingFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.BackHand,
         order = 50,
+        addedIn = "4.13.0",
         tags = setOf("ar", "xr", "hand", "tracking", "skeleton", "headset"),
         // Live hand tracking needs an Android XR device — none in the audit
         // matrix and no public emulator yet (#1902). The demo renders a static

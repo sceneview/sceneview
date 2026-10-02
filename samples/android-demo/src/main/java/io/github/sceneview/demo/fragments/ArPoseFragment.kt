@@ -17,6 +17,7 @@ object ArPoseFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.OpenWith,
         order = 22,
+        addedIn = "4.0.1",
         tags = setOf("ar", "pose", "transform", "gesture", "anchor"),
     )
 

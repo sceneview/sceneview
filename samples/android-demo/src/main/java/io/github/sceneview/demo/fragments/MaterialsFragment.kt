@@ -18,6 +18,7 @@ object MaterialsFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Palette,
         order = 3,
+        addedIn = "4.3.2",
         tags = setOf(
             "pbr", "material", "metallic", "roughness", "clearcoat",
             "sheen", "transmission", "emissive", "occlusion",
@@ -27,7 +28,6 @@ object MaterialsFragment : DemoFragment {
         // fail. The #2088 known-issue chip stays removed.
         status = DemoStatus.Working,
         // #3495 / #3538 rebuilt the section as a lit PBR studio.
-        updatedIn = "4.35.0",
     )
 
     @Composable

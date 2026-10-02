@@ -23,7 +23,8 @@ object RollingBallsFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Workspaces,
         order = 30,
-        sinceVersion = "4.48.0",
+        addedIn = "4.48.0",
+        updatedIn = "4.51.0",
         tags = setOf("physics", "rigid-body", "collision", "simulation", "tilt", "balls"),
     )
 

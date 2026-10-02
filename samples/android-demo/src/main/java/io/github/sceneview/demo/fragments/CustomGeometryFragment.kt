@@ -25,6 +25,7 @@ object CustomGeometryFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Hexagon,
         order = 5,
+        addedIn = "4.0.1",
         tags = setOf("geometry", "mesh", "procedural", "vertices", "wireframe", "knot"),
     )
 

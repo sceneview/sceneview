@@ -17,6 +17,7 @@ object ArImageStabilizationFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.VideoStable,
         order = 48,
+        addedIn = "4.0.8",
         tags = setOf("ar", "camera", "stabilization", "eis"),
     )
 

@@ -17,6 +17,7 @@ object ArFogFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Cloud,
         order = 43,
+        addedIn = "4.12.0",
         tags = setOf("ar", "fog", "depth", "atmosphere"),
     )
 

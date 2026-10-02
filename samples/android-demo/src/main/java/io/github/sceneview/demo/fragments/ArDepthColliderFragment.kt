@@ -17,6 +17,7 @@ object ArDepthColliderFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.SportsBasketball,
         order = 42,
+        addedIn = "4.11.1",
         tags = setOf("ar", "depth", "physics", "collision", "rigid-body"),
         status = io.github.sceneview.demo.DemoStatus.KnownIssue,
     )

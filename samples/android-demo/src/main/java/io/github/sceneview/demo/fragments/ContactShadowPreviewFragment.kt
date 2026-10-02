@@ -21,6 +21,7 @@ object ContactShadowPreviewFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Contrast,
         order = 10,
+        addedIn = "4.25.0",
         tags = setOf("shadow", "contact-shadow", "procedural", "grounding", "no-camera"),
         status = DemoStatus.InReview,
     )

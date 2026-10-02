@@ -17,9 +17,9 @@ object ArPlacementFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.ViewInAr,
         order = 17,
+        addedIn = "4.0.0",
         // 4.39.0: the cursor and the tap are gone — the model lands on the first
         // usable surface by itself (#3766, #3771).
-        updatedIn = "4.39.0",
         tags = setOf("ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
     )
 

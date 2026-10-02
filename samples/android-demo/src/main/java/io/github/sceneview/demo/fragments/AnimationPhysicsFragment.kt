@@ -23,8 +23,9 @@ object AnimationPhysicsFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.AutoMirrored.Filled.DirectionsRun,
         order = 28,
-        // 4.48.0: the Physics tab left for its own `rolling-balls` demo (#4083).
+        addedIn = "4.0.0",
         updatedIn = "4.48.0",
+        // 4.48.0: the Physics tab left for its own `rolling-balls` demo (#4083).
         tags = setOf("animation", "skeletal", "camera", "gltf"),
     )
 

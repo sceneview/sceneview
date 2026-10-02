@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -143,6 +146,29 @@ fun BrowseOnlineRow(
 }
 
 /**
+ * The row under the hero that opens the "What's new" filter: one more
+ * [HomeRowStyle.Fused] row, the badges' own sparkle on a `primary`-tinted panel, so the
+ * entry point to the New / Updated cards reads as the same family as their pills.
+ */
+@Composable
+fun WhatsNewRow(
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val tint = glyphTint(accent, isSystemInDarkTheme())
+    FusedRow(
+        title = stringResource(R.string.home_whats_new_title),
+        subtitle = subtitle,
+        tint = tint,
+        onClick = onClick,
+        media = { GlyphPanel(icon = Icons.Filled.AutoAwesome, accent = accent, tint = tint, modifier = it) },
+        modifier = modifier,
+    )
+}
+
+/**
  * `home-row`: the picture fills the leading [SceneViewTokens.Home.rowMediaFraction] of the
  * row, top to bottom, and dissolves into [tint] from `home-row-dissolve` on; the text
  * starts where the picture has all but gone.
@@ -236,7 +262,11 @@ private fun BannerRow(
     }
 }
 
-/** Title in `type-card`, the chips on its line, the subtitle in `type-caption` regular. */
+/**
+ * The chips on their own line above the title, the title in `type-card`, the subtitle in
+ * `type-caption` regular. The chips used to share the title's line, where a two-chip row
+ * squeezed a long title into three lines and a pill sat in the middle of a wrapped one.
+ */
 @Composable
 private fun RowCaption(
     title: String,
@@ -244,28 +274,46 @@ private fun RowCaption(
     badges: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Home.rowTextGap),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-        ) {
-            Text(
-                text = title,
-                style = SceneViewTokens.Type.card,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            badges()
-        }
+    Column(modifier = modifier) {
+        BadgeLine(badges)
+        Text(
+            text = title,
+            style = SceneViewTokens.Type.card,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(SceneViewTokens.Home.rowTextGap))
         Text(
             text = subtitle,
             style = SceneViewTokens.Type.caption,
             fontWeight = FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * The row's chips, then `home-row-text-gap` down to the title — or nothing at all when no
+ * chip draws, so a caption without chips keeps the exact height it had before (a
+ * `spacedBy` column would still spend the gap on an empty line).
+ */
+@Composable
+private fun BadgeLine(badges: @Composable RowScope.() -> Unit) {
+    val gap = SceneViewTokens.Home.rowTextGap
+    Layout(
+        content = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+                content = badges,
+            )
+        },
+    ) { measurables, constraints ->
+        val row = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        if (row.width == 0 || row.height == 0) {
+            layout(0, 0) {}
+        } else {
+            layout(row.width, row.height + gap.roundToPx()) { row.place(0, 0) }
+        }
     }
 }
 

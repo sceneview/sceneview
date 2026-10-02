@@ -17,9 +17,10 @@ object ModelViewerFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled._3dRotation,
         order = 29,
+        addedIn = "4.0.0",
+        updatedIn = "4.49.0",
         tags = setOf("gltf", "glb", "hdr", "ibl", "orbit", "ar", "viewer"),
         // #3543 frames an opened model at any scale; #3482 opens .3mf.
-        updatedIn = "4.35.0",
     )
 
     @Composable

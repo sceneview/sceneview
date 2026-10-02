@@ -17,6 +17,7 @@ object ArOrbitalFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Public,
         order = 18,
+        addedIn = "4.1.0",
         tags = setOf("ar", "orbit", "animation", "model", "anchor"),
     )
 
