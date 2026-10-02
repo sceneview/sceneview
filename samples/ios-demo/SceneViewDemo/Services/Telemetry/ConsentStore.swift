@@ -6,9 +6,10 @@ import os
 /// "improve the app"). Same keys and rules as the Android demo's `TelemetryPrefs`.
 ///
 /// - In the zone (`ConsentRegion`): nothing is collected until `granted`, and Firebase is
-///   not even configured before it (`shouldStartFirebaseAtLaunch`):
-///   `FirebaseApp.configure()` reaches firebaseinstallations.googleapis.com with every
-///   collection flag off (firebase-ios-sdk #15513).
+///   not even configured before it (`shouldStartFirebaseAtLaunch`), except for push the
+///   user already turned on: `FirebaseApp.configure()` reaches
+///   firebaseinstallations.googleapis.com with every collection flag off
+///   (firebase-ios-sdk #15513).
 /// - Outside the zone: collection stays on by default; About's switch is the opt-out.
 ///
 /// Bumping `currentVersion` asks again in the zone: an answer recorded under an older
@@ -29,17 +30,6 @@ final class ConsentStore: @unchecked Sendable {
     static let pushNeedsFirebaseKey = "telemetry.firebaseForPush"
     /// `PushCenter.subscribedKey`, read by the migration (PushCenter is iOS only).
     static let legacyPushSubscribedKey = "push.topicsSubscribed"
-    /// Firebase's own storage may hold collection ON: the last value this app handed to
-    /// `setAnalyticsCollectionEnabled` / `setCrashlyticsCollectionEnabled` was true, or a
-    /// build from before the consent ran (it persisted both as true). Crashlytics keeps that
-    /// value in its own store, where it beats the Info.plist NO, and it can only be changed
-    /// through the API, after `configure()`.
-    static let collectionMayBeOnKey = "telemetry.firebaseCollectionLastOn"
-    /// Keys only a build from before the consent wrote: their presence means it ran here.
-    static let legacyRunKeys = [
-        legacyUsageStatsKey, legacyPushSubscribedKey, "push.notificationsEnabled",
-        "push.prePrompt.homeReturns", "push.prePrompt.timesShown", "sceneview.update.lastCheckAt",
-    ]
 
     static let shared: ConsentStore = {
         let override = LaunchOverride.parse(CommandLine.arguments, defaults: .standard)
@@ -70,20 +60,14 @@ final class ConsentStore: @unchecked Sendable {
     /// Tester installs from before the consent: an explicit "Share usage statistics" OFF
     /// is a refusal; every other install is `unknown` (asked once, in the zone). An
     /// install already subscribed to push keeps Firebase at launch so its pushes still
-    /// arrive whatever the answer — but not before the answer when a build from before
-    /// the consent ran here (`collectionMayBeOn`).
+    /// arrive whatever the answer, with collection off until a yes: the collection
+    /// settings that build saved in Firebase's storage are cleared before `configure()`
+    /// (`FirebaseLeftovers`).
     private func migrate() {
         guard defaults.object(forKey: Self.stateKey) == nil else { return }
         if defaults.object(forKey: Self.pushNeedsFirebaseKey) == nil,
            defaults.bool(forKey: Self.legacyPushSubscribedKey) {
             defaults.set(true, forKey: Self.pushNeedsFirebaseKey)
-        }
-        // Builds from before the consent persisted collection as ON in Firebase's storage,
-        // unless the user had switched it off (that build then persisted OFF).
-        if defaults.object(forKey: Self.collectionMayBeOnKey) == nil,
-           defaults.object(forKey: Self.legacyUsageStatsKey) as? Bool != false,
-           Self.legacyRunKeys.contains(where: { defaults.object(forKey: $0) != nil }) {
-            defaults.set(true, forKey: Self.collectionMayBeOnKey)
         }
         if defaults.object(forKey: Self.legacyUsageStatsKey) as? Bool == false {
             record(.denied)
@@ -120,29 +104,13 @@ final class ConsentStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Self.pushNeedsFirebaseKey) }
     }
 
-    /// See `collectionMayBeOnKey`. Set by the Firebase backend each time it applies the
-    /// collection setting, so it always mirrors what Firebase's storage holds.
-    var collectionMayBeOn: Bool {
-        get { defaults.bool(forKey: Self.collectionMayBeOnKey) }
-        set { defaults.set(newValue, forKey: Self.collectionMayBeOnKey) }
-    }
-
-    /// Strict mode: in the zone, `FirebaseApp.configure()` waits for a yes — to the usage
-    /// statistics, or to push. Outside the zone Firebase starts at launch, as before.
-    ///
-    /// The push exception does not apply while Firebase's storage may still say collection
-    /// ON (`collectionMayBeOn`): configuring then would let Crashlytics upload cached
-    /// reports and Analytics log `app_update` / `session_start` before collection can be
-    /// switched off. Such an install waits for the answer; its pushes still arrive, since
-    /// the APNs registration and the topic subscriptions live on the server.
+    /// `FirebaseApp.configure()` runs at launch only when something allows it, as on
+    /// Android: collection (a yes in the zone, no opt-out outside it), or push the user
+    /// turned on (FCM needs Firebase; the push permission is a consent of its own). A start
+    /// for push alone has collection off, with the settings Firebase saved earlier cleared
+    /// first (`FirebaseTelemetry.start`, `FirebaseLeftovers`).
     var shouldStartFirebaseAtLaunch: Bool {
-        !requiresConsent || state == .granted || (pushNeedsFirebase && !collectionMayBeOn)
-    }
-
-    /// Configuring Firebase now would collect against the consent: in the zone, no yes,
-    /// and Firebase's storage may still say ON. Only a "Share" lifts it.
-    var configureWouldLeak: Bool {
-        requiresConsent && state != .granted && collectionMayBeOn
+        collectionAllowed || pushNeedsFirebase
     }
 
     /// Records an answer with its time and the current version. `unknown` forgets it.

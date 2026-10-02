@@ -13,8 +13,7 @@ enum ConsentRegion {
     /// EU 27, then Iceland, Liechtenstein and Norway (EEA), the United Kingdom and
     /// Switzerland. Plus the region codes given to territories that are not countries of
     /// their own, and the grouping codes the locale database can report. Kept identical to
-    /// the Android demo's `ConsentRegion` (#4257), plus `IC`, `EA`, `EU` and `150`, which
-    /// only Apple's locale database reports.
+    /// the Android demo's `ConsentRegion` (#4257).
     static let countries: Set<String> = [
         // EU 27
         "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE",

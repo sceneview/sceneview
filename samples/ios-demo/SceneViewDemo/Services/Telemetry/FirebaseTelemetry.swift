@@ -21,14 +21,16 @@ import FirebaseCrashlytics
 /// no-op backend. `FirebaseApp.configure()` raises an Objective-C exception without a
 /// plist, so the presence check is what guarantees such a build cannot crash.
 ///
-/// Strict consent mode (`ConsentStore`): in the zone, `startAtLaunch()` does nothing until
-/// the usage-statistics consent is granted, or push was accepted. `configure()` alone
+/// Strict consent mode (`ConsentStore`): `startAtLaunch()` does nothing until collection
+/// is allowed (a yes in the zone, no opt-out outside it), or push was accepted. `configure()` alone
 /// reaches firebaseinstallations.googleapis.com with every collection flag off
 /// (firebase-ios-sdk #15513), so not calling it is the only way nothing leaves the device
 /// before the answer. Collection itself is off by default (Info.plist
 /// `FIREBASE_ANALYTICS_COLLECTION_ENABLED`, `FirebaseCrashlyticsCollectionEnabled` and
-/// `GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE`, all NO); `DemoAnalytics.install`
-/// turns it on only with the consent.
+/// `GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE`, all NO), and a start that must not
+/// collect first clears what the SDKs saved earlier (`FirebaseLeftovers`), since a value
+/// set through their API beats those defaults; `DemoAnalytics.install` turns collection on
+/// only with the consent.
 enum FirebaseTelemetry {
     private static let log = Logger(subsystem: "io.github.sceneview.demo", category: "telemetry")
 
@@ -62,15 +64,15 @@ enum FirebaseTelemetry {
         let zone = TimeZone.current.identifier
         log.notice("consent zone \(consent.requiresConsent, privacy: .public) (region \(region, privacy: .public), time zone \(zone, privacy: .public)), consent \(consent.state.rawValue, privacy: .public)")
         guard consent.shouldStartFirebaseAtLaunch else {
-            log.notice("Firebase not configured at launch: consent \(consent.state.rawValue, privacy: .public), consent zone, push \(consent.pushNeedsFirebase, privacy: .public), stored collection may be on \(consent.collectionMayBeOn, privacy: .public)")
+            log.notice("Firebase not configured at launch: consent \(consent.state.rawValue, privacy: .public), collection off, push off")
             return
         }
-        start()
+        start(consent: consent)
     }
 
     /// Configures Firebase and installs the Firebase analytics backend. Idempotent.
     /// Collection follows the consent (`DemoAnalytics.install`).
-    static func start() {
+    static func start(consent: ConsentStore = .shared) {
         guard !isConfigured else { return }
         #if canImport(FirebaseCore) && canImport(FirebaseAnalytics)
         guard !isRunningUnitTests else { return }
@@ -80,7 +82,7 @@ enum FirebaseTelemetry {
             log.notice("Firebase disabled: no GoogleService-Info.plist in this build")
             return
         }
-        FirebaseApp.configure(options: options)
+        configure(collecting: consent.collectionAllowed) { FirebaseApp.configure(options: options) }
         isConfigured = true
 
         // Consent mode, basic. The app links FirebaseAnalyticsCore (no IDFA, no
@@ -92,6 +94,17 @@ enum FirebaseTelemetry {
         #else
         log.notice("Firebase SDK not linked in this build")
         #endif
+    }
+
+    /// Runs `configure`, first clearing the collection settings Firebase saved earlier
+    /// (`FirebaseLeftovers`) whenever this start must not collect: push turned on without
+    /// the consent. Not only after an upgrade: an install that collected outside the zone
+    /// and later counts as inside it holds the same saved ON.
+    static func configure(collecting: Bool,
+                          clearLeftovers: () -> Void = { FirebaseLeftovers.clear() },
+                          _ configure: () -> Void) {
+        if !collecting { clearLeftovers() }
+        configure()
     }
 }
 
@@ -117,8 +130,6 @@ struct FirebaseAnalyticsBackend: AnalyticsBackend {
         #if canImport(FirebaseCrashlytics)
         Crashlytics.crashlytics().setCrashlyticsCollectionEnabled(enabled)
         #endif
-        // Both SDKs persisted `enabled`: the next launch knows what their storage says.
-        ConsentStore.shared.collectionMayBeOn = enabled
     }
 
     func resetAnalyticsData() {

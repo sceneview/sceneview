@@ -429,8 +429,7 @@ struct PushSystem {
 /// What push needs from the usage-statistics consent and from Firebase's start-up, behind
 /// a seam so the consent guard is unit tested.
 struct PushTelemetryGate {
-    /// The build can configure Firebase (config bundled), even if it has not yet, and
-    /// configuring it now would not collect (`ConsentStore.configureWouldLeak`).
+    /// The build can configure Firebase (config bundled), even if it has not yet.
     var firebaseCanStart: @MainActor () -> Bool
     /// Configures Firebase now, collection as the usage consent says.
     var startFirebase: @MainActor () -> Void
@@ -440,7 +439,7 @@ struct PushTelemetryGate {
     var setPushNeedsFirebase: @MainActor (Bool) -> Void
 
     static let live = PushTelemetryGate(
-        firebaseCanStart: { FirebaseTelemetry.hasBundledConfig && !ConsentStore.shared.configureWouldLeak },
+        firebaseCanStart: { FirebaseTelemetry.hasBundledConfig },
         startFirebase: { FirebaseTelemetry.start() },
         consentSettled: { TelemetryConsent.shared.settledBeforeThisSession },
         setPushNeedsFirebase: { ConsentStore.shared.pushNeedsFirebase = $0 }

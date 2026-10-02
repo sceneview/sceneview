@@ -1,7 +1,7 @@
 // ConsentTests.swift
 //
 // Unit tests for the usage-statistics consent (`SceneViewDemo/Services/Telemetry/`
-// `ConsentRegion.swift` and `ConsentStore.swift`): who is asked, the migration of tester
+// `ConsentRegion.swift`, `ConsentStore.swift`, `FirebaseLeftovers.swift`): who is asked, the migration of tester
 // installs from before the consent, `consent_version`, strict mode at launch and the
 // `-telemetry_consent` launch argument. Same cases as the Android demo's tests.
 
@@ -141,7 +141,7 @@ final class ConsentStoreTests: XCTestCase {
         let store = makeStore(requiresConsent: false)
         store.record(.denied)
         XCTAssertFalse(store.collectionAllowed)
-        XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "outside the zone Firebase starts as before")
+        XCTAssertFalse(store.shouldStartFirebaseAtLaunch, "nothing allows it: no collection, no push")
     }
 
     // MARK: Answers
@@ -200,73 +200,32 @@ final class ConsentStoreTests: XCTestCase {
         XCTAssertTrue(store.needsPrompt)
     }
 
-    /// An upgrade from a build without the consent: Firebase's storage still says
-    /// collection ON (Crashlytics' own store beats the Info.plist NO), so configuring
-    /// before the answer would upload cached crashes and log `app_update` /
-    /// `session_start`. The push exception waits for the answer.
-    func testLegacyPushSubscriberWaitsForTheAnswerWhileCollectionMayBeOn() {
+    /// An upgrade from a build without the consent, push on: Firebase starts at launch for
+    /// push, with collection off (`FirebaseTelemetry.configure` clears what that build saved
+    /// first), and the usage statistics are still asked.
+    func testLegacyPushSubscriberStartsFirebaseForPushBeforeTheAnswer() {
         defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
         let store = makeStore()
         XCTAssertTrue(store.pushNeedsFirebase)
-        XCTAssertTrue(store.collectionMayBeOn)
-        XCTAssertTrue(store.configureWouldLeak)
-        XCTAssertFalse(store.shouldStartFirebaseAtLaunch)
+        XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "push the user already turned on")
+        XCTAssertFalse(store.collectionAllowed, "collection off until the answer")
         XCTAssertTrue(store.needsPrompt, "still asked for the usage statistics")
     }
 
-    func testLegacyPushSubscriberStartsFirebaseOnceCollectionIsOff() {
-        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
-        let store = makeStore()
-        // The backend applied OFF (Firebase was configured by a "Share" then a withdrawal).
-        store.collectionMayBeOn = false
-        store.record(.denied)
-        XCTAssertFalse(store.configureWouldLeak)
-        XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "push keeps Firebase at launch")
-    }
-
-    func testAShareLiftsTheUpgradeGate() {
-        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
-        let store = makeStore()
-        store.record(.granted)
-        XCTAssertFalse(store.configureWouldLeak)
-        XCTAssertTrue(store.shouldStartFirebaseAtLaunch)
-    }
-
-    func testARefusalKeepsTheUpgradeGate() {
-        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
-        let store = makeStore()
-        store.record(.denied)
-        XCTAssertTrue(store.configureWouldLeak, "Firebase was never configured to switch it off")
-        XCTAssertFalse(store.shouldStartFirebaseAtLaunch)
-    }
-
-    func testAnyLegacyRunKeyMeansCollectionMayBeOn() {
-        for key in ConsentStore.legacyRunKeys {
-            defaults.removePersistentDomain(forName: suiteName)
-            defaults.set(1, forKey: key)
-            XCTAssertTrue(makeStore().collectionMayBeOn, key)
-        }
-    }
-
-    func testLegacyExplicitOffDoesNotMarkCollectionOn() {
+    func testLegacyExplicitOffKeepsPushAndRefuses() {
         defaults.set(false, forKey: ConsentStore.legacyUsageStatsKey)
         defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
         let store = makeStore()
-        XCTAssertFalse(store.collectionMayBeOn, "that build persisted OFF")
         XCTAssertEqual(store.state, .denied)
+        XCTAssertFalse(store.collectionAllowed)
         XCTAssertTrue(store.shouldStartFirebaseAtLaunch, "push keeps Firebase at launch")
     }
 
-    func testFreshInstallDoesNotMarkCollectionOn() {
-        let store = makeStore()
-        XCTAssertFalse(store.collectionMayBeOn)
-        XCTAssertFalse(store.configureWouldLeak)
-    }
-
-    func testOutsideTheZoneNothingWaits() {
-        defaults.set(true, forKey: ConsentStore.legacyPushSubscribedKey)
+    func testOutsideTheZonePushAloneStartsFirebase() {
         let store = makeStore(requiresConsent: false)
-        XCTAssertFalse(store.configureWouldLeak)
+        store.record(.denied)
+        store.pushNeedsFirebase = true
+        XCTAssertFalse(store.collectionAllowed)
         XCTAssertTrue(store.shouldStartFirebaseAtLaunch)
     }
 
@@ -303,5 +262,95 @@ final class ConsentStoreTests: XCTestCase {
         XCTAssertFalse(ConsentStore.requiresConsent(override: .denied, inRegion: false))
         XCTAssertFalse(ConsentStore.requiresConsent(override: nil, inRegion: false))
         XCTAssertTrue(ConsentStore.requiresConsent(override: .granted, inRegion: true))
+    }
+}
+
+/// `FirebaseTelemetry.configure` and `FirebaseLeftovers`: a start that must not collect
+/// first clears the collection settings Firebase saved earlier, as on Android (#4257).
+final class FirebaseLeftoversTests: XCTestCase {
+    private var root: URL!
+    private var suiteName: String!
+    private var analytics: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FirebaseLeftoversTests-\(UUID().uuidString)")
+        suiteName = "FirebaseLeftoversTests.\(UUID().uuidString)"
+        analytics = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: root)
+        analytics.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    private func writePlist(_ dictionary: [String: Any], at path: String) throws {
+        let url = root.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try PropertyListSerialization.data(fromPropertyList: dictionary, format: .binary, options: 0)
+        try data.write(to: url)
+    }
+
+    private func readPlist(at path: String) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent(path)) else { return nil }
+        return try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any]
+    }
+
+    private func clear() -> Int {
+        FirebaseLeftovers.clear(applicationSupport: root, bundleIdentifier: "io.github.sceneview.demo",
+                                analyticsDefaults: analytics)
+    }
+
+    /// What a build that collected leaves, as read on a simulator install.
+    func testClearsWhatACollectingBuildSaved() throws {
+        try writePlist([FirebaseLeftovers.crashlyticsKey: 1, "com.crashlytics.iuuid": "kept"],
+                       at: FirebaseLeftovers.crashlyticsFile)
+        try writePlist([FirebaseLeftovers.measurementKey: 1, "/google/measurement/app_instance_id": "kept"],
+                       at: FirebaseLeftovers.measurementFile)
+        analytics.set(["analytics_storage": "granted"], forKey: "consent_settings_3p")
+        analytics.set(10, forKey: "consent_source")
+        analytics.set(0, forKey: "deferred_analytics_collection")
+
+        XCTAssertEqual(clear(), 4)
+
+        let crashlytics = try XCTUnwrap(readPlist(at: FirebaseLeftovers.crashlyticsFile))
+        XCTAssertNil(crashlytics[FirebaseLeftovers.crashlyticsKey])
+        XCTAssertEqual(crashlytics["com.crashlytics.iuuid"] as? String, "kept")
+        let measurement = try XCTUnwrap(readPlist(at: FirebaseLeftovers.measurementFile))
+        XCTAssertNil(measurement[FirebaseLeftovers.measurementKey])
+        XCTAssertEqual(measurement["/google/measurement/app_instance_id"] as? String, "kept")
+        XCTAssertNil(analytics.object(forKey: "consent_settings_3p"))
+        XCTAssertNil(analytics.object(forKey: "consent_source"))
+        XCTAssertEqual(analytics.object(forKey: "deferred_analytics_collection") as? Int, 0, "not a collection setting")
+    }
+
+    func testMacStoreUnderTheBundleIdentifierIsClearedToo() throws {
+        let path = "io.github.sceneview.demo/" + FirebaseLeftovers.crashlyticsFile
+        try writePlist([FirebaseLeftovers.crashlyticsKey: 1], at: path)
+        XCTAssertEqual(clear(), 1)
+        XCTAssertNil(readPlist(at: path)?[FirebaseLeftovers.crashlyticsKey])
+    }
+
+    func testNothingSavedIsANoOp() {
+        XCTAssertEqual(clear(), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path), "creates nothing")
+    }
+
+    func testAStartWithoutCollectionClearsBeforeConfigure() {
+        var calls: [String] = []
+        FirebaseTelemetry.configure(collecting: false, clearLeftovers: { calls.append("clear") }) {
+            calls.append("configure")
+        }
+        XCTAssertEqual(calls, ["clear", "configure"])
+    }
+
+    func testAStartThatCollectsKeepsTheSettings() {
+        var calls: [String] = []
+        FirebaseTelemetry.configure(collecting: true, clearLeftovers: { calls.append("clear") }) {
+            calls.append("configure")
+        }
+        XCTAssertEqual(calls, ["configure"])
     }
 }

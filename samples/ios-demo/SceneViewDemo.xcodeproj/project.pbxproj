@@ -263,6 +263,7 @@
 		FB100000000000000000000C /* PushCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000C /* PushCenterTests.swift */; };
 		FB100000000000000000000D /* ConsentRegion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000D /* ConsentRegion.swift */; };
 		FB100000000000000000000E /* ConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000E /* ConsentStore.swift */; };
+		FB1000000000000000000011 /* FirebaseLeftovers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000011 /* FirebaseLeftovers.swift */; };
 		FB100000000000000000000F /* ConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000F /* ConsentSheet.swift */; };
 		FB1000000000000000000010 /* ConsentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000010 /* ConsentTests.swift */; };
 		FB3000000000000000000002 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB2000000000000000000002 /* FirebaseAnalyticsCore */; };
@@ -552,6 +553,7 @@
 		FB000000000000000000000C /* PushCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushCenterTests.swift; path = SceneViewDemoTests/PushCenterTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000D /* ConsentRegion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentRegion.swift; path = SceneViewDemo/Services/Telemetry/ConsentRegion.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000E /* ConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentStore.swift; path = SceneViewDemo/Services/Telemetry/ConsentStore.swift; sourceTree = SOURCE_ROOT; };
+		FB0000000000000000000011 /* FirebaseLeftovers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirebaseLeftovers.swift; path = SceneViewDemo/Services/Telemetry/FirebaseLeftovers.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000F /* ConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentSheet.swift; path = SceneViewDemo/Views/Components/ConsentSheet.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000010 /* ConsentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentTests.swift; path = SceneViewDemoTests/ConsentTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -947,6 +949,7 @@
 				FB0000000000000000000005 /* PushCenter.swift */,
 				FB000000000000000000000D /* ConsentRegion.swift */,
 				FB000000000000000000000E /* ConsentStore.swift */,
+				FB0000000000000000000011 /* FirebaseLeftovers.swift */,
 			);
 			name = Telemetry;
 			sourceTree = "<group>";
@@ -1361,6 +1364,7 @@
 				FB1000000000000000000007 /* PrivacySettingsSection.swift in Sources */,
 				FB100000000000000000000D /* ConsentRegion.swift in Sources */,
 				FB100000000000000000000E /* ConsentStore.swift in Sources */,
+				FB1000000000000000000011 /* FirebaseLeftovers.swift in Sources */,
 				FB100000000000000000000F /* ConsentSheet.swift in Sources */,
 				C10000000000000000000061 /* UpdateToast.swift in Sources */,
 				A10000000000000000002961 /* AssetSourcePill.swift in Sources */,
