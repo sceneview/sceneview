@@ -10,19 +10,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.13.3"
+    "hono": "^4.13.12"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250327.0",
     "typescript": "^5.7.0",
-    "vitest": "^4.1.0",
+    "vitest": "^4.1.11",
     "wrangler": "^4.0.0"
   },
   "overrides": {
-    "undici": "^7.29.0",
+    "undici": "^7.29.1",
     "esbuild": "^0.28.1",
     "ws": "^8.21.0",
     "postcss": "^8.5.26",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   }
 }
