@@ -406,7 +406,7 @@ class AutoPlacementState {
  * What "a usable surface" means, as pure predicates the session unpacks ARCore objects into.
  *
  *  - a **tracked, supported plane** — never a ceiling, never
- *    a feature point or a depth guess;
+ *    a feature point or a depth guess (walls excepted, see below);
  *  - the pose lies **inside the plane's polygon**;
  *  - between [MIN_DISTANCE_M] and [MAX_DISTANCE_M] from the camera — closer is a hand or a
  *    table edge, farther is a guess the user cannot see the error of;
@@ -415,10 +415,64 @@ class AutoPlacementState {
  *
  * Ordering: the ray through the viewport centre first; failing that, the visible plane
  * centres by proximity ([rankFallback]). No dwell: the first frame that has one places.
+ *
+ * A **wall** is looser, because ARCore grows wall polygons slowly and finds no features at all
+ * on a plain painted wall (#4070) — see [wallHit]: a vertical plane hit up to
+ * [WALL_POLYGON_TOLERANCE_M] outside its polygon, or a depth hit whose surface normal is
+ * horizontal. That is the Android side of ARKit's `.existingPlaneInfinite` / `.estimatedPlane`.
  */
 object UsableSurfacePolicy {
     const val MIN_DISTANCE_M = 0.25f
     const val MAX_DISTANCE_M = 3.0f
+
+    /**
+     * A depth hit whose surface normal has a world-Y component within ±this is a vertical
+     * surface. 0.25 is about 14° off vertical: a wall, a door or a cupboard front, never a
+     * floor or a table top.
+     */
+    internal const val WALL_DEPTH_NORMAL_MAX_Y = 0.25f
+
+    /**
+     * How far outside a tracked wall's polygon a hit on that wall still counts, in metres.
+     * The polygon only covers the textured patch ARCore has seen so far; the wall goes on.
+     */
+    internal const val WALL_POLYGON_TOLERANCE_M = 1.0f
+
+    /**
+     * The wall acceptance rule, as the facts the session unpacks one ARCore hit into. Returns
+     * how the hit holds a wall, or `null` when it does not:
+     *
+     *  - [WallHitKind.PLANE]: a tracked vertical plane, pose inside its polygon (the only rule
+     *    before #4070);
+     *  - [WallHitKind.EXTENDED_PLANE]: the same plane, at most [WALL_POLYGON_TOLERANCE_M]
+     *    outside its polygon;
+     *  - [WallHitKind.DEPTH_POINT]: an ARCore `DepthPoint` (depth API on) whose normal is
+     *    horizontal within [WALL_DEPTH_NORMAL_MAX_Y].
+     *
+     * Every kind needs a tracking trackable within [minDistance]..[maxDistance] of the camera.
+     */
+    internal fun wallHit(
+        isVerticalPlane: Boolean,
+        isDepthPoint: Boolean,
+        isTrackableTracking: Boolean,
+        isPoseInPolygon: Boolean,
+        outsidePolygonMeters: Float,
+        normalY: Float,
+        distanceMeters: Float,
+        minDistance: Float = MIN_DISTANCE_M,
+        maxDistance: Float = MAX_DISTANCE_M,
+    ): WallHitKind? {
+        if (!isTrackableTracking || !distanceMeters.isFinite()) return null
+        if (distanceMeters < minDistance || distanceMeters > maxDistance) return null
+        return when {
+            isVerticalPlane && isPoseInPolygon -> WallHitKind.PLANE
+            isVerticalPlane && outsidePolygonMeters.isFinite() && outsidePolygonMeters >= 0f &&
+                outsidePolygonMeters <= WALL_POLYGON_TOLERANCE_M -> WallHitKind.EXTENDED_PLANE
+            isDepthPoint && normalY.isFinite() &&
+                kotlin.math.abs(normalY) < WALL_DEPTH_NORMAL_MAX_Y -> WallHitKind.DEPTH_POINT
+            else -> null
+        }
+    }
 
     fun accept(
         isUpwardHorizontalPlane: Boolean,
@@ -460,6 +514,13 @@ object UsableSurfacePolicy {
             .sortedBy { it.ndc!!.x * it.ndc.x + it.ndc.y * it.ndc.y }
             .map { it.payload }
 }
+
+/**
+ * How a candidate holds a wall, most trusted first — the order the centre ray's hits are
+ * ranked in. [FLOOR_SEAM] is not a ray hit on the wall: the ray met the tracked floor where it
+ * ends against the wall, and the wall is inferred from there ([seamWallCandidate]).
+ */
+internal enum class WallHitKind { PLANE, EXTENDED_PLANE, DEPTH_POINT, FLOOR_SEAM }
 
 /** A plane centre projected for [UsableSurfacePolicy.rankFallback]. `ndc == null` ⇒ behind the camera. */
 data class FallbackCandidate<T>(
