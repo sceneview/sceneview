@@ -81,8 +81,8 @@ plane grid fading after first placement, and a per-model contact shadow — all 
 val bottomBarHeight = 96.dp
 
 PlacementScene(
-    coaching = true,        // animated onboarding guide while searching for a surface
-    // The coaching pill sits 16 dp above the bottom edge by default — a gutter sized for a
+    coaching = true,        // ARCoachingOverlay card while searching for a surface
+    // The coaching card sits 16 dp above the bottom edge by default — a gutter sized for a
     // screen whose bottom is empty. Under a dock, a nav bar or a product sheet it lands
     // behind that chrome; name the band it must clear instead (#3735). Omit on a bare screen.
     coachingBottomClearance = bottomBarHeight + 8.dp,

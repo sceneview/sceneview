@@ -438,7 +438,7 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 One spring and one fade for the chrome; one shared-axis spec for screen changes, one
 fly-in for a 3D subject's arrival, one short handover from the loading cover to the first
 rendered frame, and one breathing ellipsis for a step in flight. In AR,
-the coaching glyph and a placed object's entrance (the `motion-coach-*` and
+the coaching card and a placed object's entrance (the `motion-coach-*` and
 `motion-placement-*` tokens below — shipped by the SDK, so every AR app gets them).
 Nothing else animates.
 
@@ -449,13 +449,13 @@ Nothing else animates.
 | `motion-handover` | `tween(150ms, FastOutSlowIn)` | The loading cover giving way to the first rendered frame — the scene is already there, so the veil leaves fast |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
-| `motion-coach-sweep` | 1600ms per sweep, sine, ±18dp travel and ±10° roll | The phone of the AR coaching glyph sweeping over the surface it is looking for. Half speed while tracking is limited |
-| `motion-coach-resolve` | `tween(450ms, ease-expressive)` | The "surface found" beat — the target fills with `primary` and a cube lands on it, held 150ms, then the glyph leaves |
+| `motion-coach-sweep` | 2800ms per sweep, eased both ways, across 22–78 % of the illustration | The phone of the AR coaching card sweeping over the surface it is looking for, lighting feature points behind it. Half speed and 60 % opacity while tracking is limited |
+| `motion-coach-resolve` | `spring(dampingRatio = 0.6, stiffness = 400)`, scale 0.6 → 1 | The "surface found" beat — the card leaves and a pill with a `primary` check springs in below centre, held 1s |
 | `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
 | `motion-narration` | `1200ms` linear loop, opacity only (0.25 → 1) | The trailing ellipsis of a loading line (`NarrationText`): the light runs across the three dots. The line names the step the code is really in — "Searching Sketchfab…", "Downloading *name* (3.2 MB)…", "Decoding the model…" — never a timed script. One loader per screen — the M3 Expressive `LoadingIndicator`, or a `CircularWavyProgressIndicator` ring once the byte count is known. Static `…` under reduced motion |
 
 **Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
-(iOS), the coaching glyph is drawn as its settled frame — no sweep, no spin — and only the
+(iOS), the coaching card's illustration is drawn as its settled frame — no sweep, no spin — and only the
 fades remain, as on the web (`prefers-reduced-motion`).
 
 ---
@@ -762,32 +762,52 @@ The one instruction surface shown over a live camera feed (`DemoStatusBanner` on
 - Motion: enters with fade + 8px rise (`duration-medium`, `ease-expressive`), leaves
   with fade + fall (`duration-short`). Nothing to say → nothing on screen.
 
-### AR Coaching Glyph
+### AR Coaching Card
 
-The animated onboarding shown **centred** over the camera while an AR session starts,
-searches or loses tracking — Apple's `ARCoachingOverlayView` on iOS, its visual twin
-`ARCoachingOverlay` in `arsceneview` on Android. It shows the gesture instead of
-describing it.
+The animated onboarding shown over the camera while an AR session starts, searches or
+loses tracking — Apple's `ARCoachingOverlayView` on iOS, `ARCoachingOverlay` in
+`arsceneview` on Android (#4038). It shows the gesture **and** says what to do: an
+illustration over a two-line instruction, in one card.
 
-- Ground: a 96dp `ar-scrim` disc with the `ar-scrim-border` hairline and `shadow-lg`; an
-  optional one-word caption pill underneath in the same ground (`on-ar-scrim`,
-  `type-caption`), 8dp gap. The full sentence is the accessible name, announced politely.
-- One glyph per cue, strokes in `on-ar-scrim`, accents in the dark-scheme `primary` and
-  `warning`, like the pill:
+- Ground: an `ar-scrim` card, `ar-scrim-border` hairline, `radius-lg`, 20dp padding,
+  max width 320dp (480dp in the landscape row layout). It sits at **45 %** of the safe
+  band (bias −0.1), above centre, so the thumb zone and the bottom chrome stay clear.
+  The band is the `safeDrawing` area, minus the host's `contentPadding` (the demo passes
+  its dock), minus a 16dp gutter.
+- Illustration, 200 × 120dp (160 × 96dp from `fontScale` 1.5): strokes in `on-ar-scrim`,
+  accents in the dark-scheme `primary` and `warning`.
+- Text: headline 18sp semibold `on-ar-scrim`, max 2 lines; detail 15sp `on-ar-scrim-dim`,
+  max 2 lines. The block reserves two lines of each, so the card never jumps.
+- Layout: column; a row (illustration left, text right) when the band is under 420dp tall.
 
-| Cue | Glyph | Caption |
+| Cue | Illustration | Headline · detail |
 |---|---|---|
-| Initializing (after 500ms) | Phone with an orbiting `primary` dot | — |
-| Scan (floor) | Phone sweeping over a dashed diamond (`motion-coach-sweep`) | Scan |
-| Scan (wall) | Phone sweeping in front of a dashed upright rectangle | Scan |
-| Surface found | Target fills with `primary`, a cube lands on it (`motion-coach-resolve`) | — |
-| Tracking limited | The scan glyph at 60%, half speed, a `warning` pause badge | Paused |
-| Relocalizing | The scan glyph with a rotating `warning` circular arrow | Look back |
+| Initializing (after 500ms) | The phone rises into view, lens up | Getting ready · Hold your phone up and look around |
+| Scan (floor) | Phone sweeping over a perspective floor; feature points light up behind it | Move your phone slowly · Point it at the floor or a table |
+| Scan (wall) | The same sweep over an upright wall | Point at a wall · Move your phone slowly across it |
+| Scan, 8s without a surface | unchanged | detail becomes *Try a brighter spot with more texture* |
+| Surface found | Card leaves; a pill with a `primary` check springs in below centre for 1s | Surface found / Wall found |
+| Tracking limited | The scan at 60 %, half speed | Keep looking around · Move slowly, in a well-lit spot |
+| Relocalizing | Phone with chevrons pointing back | Point back at your object · Look where you placed it |
 
+- **Reason chip.** When ARCore names a reason during start-up or a loss, a `warning` chip
+  (near-black #101014 text, 13sp semibold; 8.8:1) straddles the card's top edge, clear of the phone — *Too dark*, *Too
+  fast*, *Low detail* — and the headline becomes its fix (*Move to a brighter spot*,
+  *Move your phone more slowly*, *Aim at something with more texture*). It waits for a
+  reason held 700ms and stays at least 1.5s. Never during a plain scan.
+- **Motion.** Card in: fade + 8dp rise + scale from 0.96 (`duration-medium`,
+  `ease-expressive`); out: fade + scale to 0.96 (`duration-short`). Text changes
+  fade through (90ms out, 210ms in, 4dp rise). The sweep loops every 2.8s. A cue holds at
+  least 1.5s; a loss must last 600ms before the card comes back, a recovery 500ms before it
+  leaves. With animations off (any of the three system scales at 0) only fades remain and
+  the illustration rests mid-sweep.
+- **Accessibility.** The card is one node: headline and detail as its description,
+  announced politely (not while initializing). The found pill is announced the same way.
 - **Hide the chrome while it shows** (Apple HIG): status pills and hints step aside while
-  the glyph is up and come back when it leaves. Action cards never do — the glyph is
-  silent whenever a card explains the state.
-- Copy never says "ARKit", "ARCore", "tracking" or "plane": *Scan*, *Paused*, *Look back*.
+  the card is up (`ArGuidanceState.isCoaching`) — the card names the reason itself, so no
+  exception for low light. Action cards never step aside: the card is silent whenever one
+  explains the state.
+- Copy never says "ARKit", "ARCore", "tracking" or "plane".
 
 ### AR Overlay Card
 

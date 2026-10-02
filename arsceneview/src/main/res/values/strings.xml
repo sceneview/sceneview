@@ -41,16 +41,25 @@
     <string name="sceneview_plane_discovery_got_it">Got it</string>
     <string name="sceneview_plane_discovery_hand_animation">Hand moving a phone from side to side</string>
 
-    <!-- ARCoachingOverlay — one word on screen at most; the sentence is the accessible name.
-         Never say "tracking", "plane" or "ARCore" to the user. -->
-    <string name="sceneview_coaching_word_scan">Scan</string>
-    <string name="sceneview_coaching_word_paused">Paused</string>
-    <string name="sceneview_coaching_word_look_back">Look back</string>
-    <string name="sceneview_coaching_initializing">Getting ready. Hold your phone up and look around.</string>
-    <string name="sceneview_coaching_scan_surface">Move your phone slowly to find a surface.</string>
-    <string name="sceneview_coaching_scan_wall">Point your phone at a wall and move it slowly.</string>
-    <string name="sceneview_coaching_found_surface">Surface found.</string>
-    <string name="sceneview_coaching_found_wall">Wall found.</string>
-    <string name="sceneview_coaching_limited">Paused. Try moving your phone more slowly, in a brighter spot.</string>
-    <string name="sceneview_coaching_relocalizing">Point your phone back at where the object was.</string>
+    <!-- ARCoachingOverlay — a headline the user can act on, an optional second line, and a
+         one- or two-word reason chip. Never say "tracking", "plane" or "ARCore" to the user. -->
+    <string name="sceneview_coaching_initializing">Getting ready</string>
+    <string name="sceneview_coaching_initializing_detail">Hold your phone up and look around</string>
+    <string name="sceneview_coaching_scan_surface">Move your phone slowly</string>
+    <string name="sceneview_coaching_scan_surface_detail">Point it at the floor or a table</string>
+    <string name="sceneview_coaching_scan_wall">Point at a wall</string>
+    <string name="sceneview_coaching_scan_wall_detail">Move your phone slowly across it</string>
+    <string name="sceneview_coaching_scan_lingering_detail">Try a brighter spot with more texture</string>
+    <string name="sceneview_coaching_found_surface">Surface found</string>
+    <string name="sceneview_coaching_found_wall">Wall found</string>
+    <string name="sceneview_coaching_limited">Keep looking around</string>
+    <string name="sceneview_coaching_limited_detail">Move slowly, in a well-lit spot</string>
+    <string name="sceneview_coaching_relocalizing">Point back at your object</string>
+    <string name="sceneview_coaching_relocalizing_detail">Look where you placed it</string>
+    <string name="sceneview_coaching_hint_too_dark">Too dark</string>
+    <string name="sceneview_coaching_hint_too_dark_action">Move to a brighter spot</string>
+    <string name="sceneview_coaching_hint_too_fast">Too fast</string>
+    <string name="sceneview_coaching_hint_too_fast_action">Move your phone more slowly</string>
+    <string name="sceneview_coaching_hint_low_detail">Low detail</string>
+    <string name="sceneview_coaching_hint_low_detail_action">Aim at something with more texture</string>
 </resources>

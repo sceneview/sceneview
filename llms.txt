@@ -1266,28 +1266,58 @@ AutoPlacementScene(
 ```
 
 **Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
-`ARCoachingOverlay` centred over the camera — the Android twin of Apple's
-`ARCoachingOverlayView`: a phone sweeping over a floor diamond (or a wall for
-`PlacementSurface.WALL`) while scanning, a short "surface found" beat (a cube lands on the
-filled target) when the object is placed, a pause glyph when tracking is limited, a "look
-back" arrow while a placed anchor relocalizes. It is silent when a card is due
-(`NO_SURFACE`, `RECOVERY_FAILED`, `CAMERA_ERROR`). Hide your own status pills while it
-shows:
+`ARCoachingOverlay` — the Android twin of Apple's `ARCoachingOverlayView`: a card just above
+the centre with a phone sweeping over a surface drawn in perspective (a wall for
+`PlacementSurface.WALL`), a two-line instruction under it ("Move your phone slowly" / "Point it
+at the floor or a table"), and a reason chip when ARCore says why tracking struggles ("Too
+dark", "Too fast", "Low detail"). When the object is placed the card steps aside for a small
+"Surface found" pill under the centre, so the landing object is never hidden. Limited tracking
+reads "Keep looking around"; a placed anchor that relocalizes reads "Point back at your
+object". It is silent when a card of yours is due (`NO_SURFACE`, `RECOVERY_FAILED`,
+`CAMERA_ERROR`). Hide your own status pills while it shows, and pass the height of your own
+bottom chrome so the card and the pill stay above it:
 
 ```kotlin
 val placement = rememberAutoPlacementState()
-val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE)
+val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE, trackingFailureReason = failure)
 Box(Modifier.fillMaxSize()) {
-    AutoPlacementScene(assetReady = model != null, state = placement /* coaching = true */) { … }
+    AutoPlacementScene(
+        assetReady = model != null,
+        state = placement,
+        coachingContentPadding = PaddingValues(bottom = dockHeight), // coaching = true by default
+    ) { … }
     if (!guidance.isCoaching) MyStatusPill(placement.phase)   // one voice at a time
 }
 ```
 
 `guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
-`SCAN`, `SURFACE_FOUND` (600 ms after a new placement), `TRACKING_LIMITED`,
-`RELOCALIZING`. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
-render `ARCoachingOverlay(guidance)` yourself in any `Box`. The placed model grows in from
-55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials cannot fade).
+`SCAN`, `SURFACE_FOUND` (held 1 000 ms after a new placement), `TRACKING_LIMITED`,
+`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip and
+`guidance.scanLingering` turns the second line into "Try a brighter spot with more texture"
+after a long scan. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
+render `ARCoachingOverlay(guidance, contentPadding = …)` yourself in any `Box`. Next to your own
+`ARSceneView`, feed it from the frame — name the arguments, three booleans in a row swap
+without a compiler error:
+
+```kotlin
+var cameraReady by remember { mutableStateOf(false) }
+var isTracking by remember { mutableStateOf(false) }
+var planeFound by remember { mutableStateOf(false) }
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+// Set from ARSceneView(onSessionUpdated = { _, frame -> … }, onTrackingFailureChanged = { failure = it }).
+val guidance = rememberArGuidanceState(
+    cameraReady = cameraReady,
+    isTracking = isTracking,
+    surfaceFound = planeFound,
+    trackingFailureReason = failure,
+)
+// Then, in the Box that holds the ARSceneView: ARCoachingOverlay(guidance)
+```
+
+The stateless overload, for previews and screenshot tests, is
+`ARCoachingOverlay(cue, surface, modifier, hint, scanLingering, contentPadding)`. The placed
+model grows in from 55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials
+cannot fade).
 `placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
 "starting camera" cover on it, not on `INITIALIZING`.
 
@@ -1419,14 +1449,14 @@ Signature:
     reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
-    coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
+    coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
-    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching pill — raise it by the
-                                             // height of your own bottom bar so the pill is not
+    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching card — raise it by the
+                                             // height of your own bottom bar so the card is not
                                              // hidden behind it (#3735)
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
@@ -1445,10 +1475,11 @@ placement fires a `LongPress` haptic, so a tap that lands feels different from a
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
 
-**If your screen has a bottom bar, tell the coaching guide about it (#3735).** With
-`coaching = true` the onboarding pill sits above the bottom edge with a 16 dp gutter — a gap sized
-for a screen whose bottom is empty. Host it under a dock, a nav bar or a product sheet and the pill
-lands *behind* that chrome, half-legible, exactly when the user most needs it. `PlacementScene` has
+**If your screen has a bottom bar, tell the coaching card about it (#3735).** With
+`coaching = true` the `ARCoachingOverlay` card and its "Surface found" pill keep a 16 dp gutter
+off the bottom edge — a gap sized for a screen whose bottom is empty. Host them under a dock, a
+nav bar or a product sheet and they land *behind* that chrome, half-legible, exactly when the
+user most needs them. `PlacementScene` has
 no way to see a bar drawn by its caller, so pass the height yourself:
 `coachingBottomClearance = barHeight + 8.dp` (a spacing token, not a magic number). The parameter is
 purely additive — leave it out and nothing moves.

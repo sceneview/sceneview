@@ -335,13 +335,11 @@ class PlacementInteractionTest {
     ) = placementCoaching(phase, gestureHintVisible = hint, dragOffSurface = dragOffSurface, lowLight = lowLight)
 
     @Test
-    fun `the pill steps aside while the coaching overlay speaks, except for low light`() {
+    fun `the pill steps aside while the coaching overlay speaks, low light included`() {
         PlacementPhase.entries.forEach { phase ->
-            val expected = PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
-                .takeIf { phase == PlacementPhase.TRACKING_LOST }
-            assertEquals(
+            // The coaching card names the reason itself ("Too dark"): one voice, no exception.
+            assertNull(
                 phase.name,
-                expected,
                 placementCoaching(phase, gestureHintVisible = true, lowLight = true, coachingActive = true),
             )
             assertNull(placementCoaching(phase, gestureHintVisible = true, coachingActive = true))

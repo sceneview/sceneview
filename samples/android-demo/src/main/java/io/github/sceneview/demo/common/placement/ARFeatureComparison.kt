@@ -48,7 +48,6 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
     val materialLoader = rememberMaterialLoader(engine)
     val stream = rememberARCameraStream(materialLoader)
     val state = rememberAutoPlacementState()
-    val guidance = rememberArGuidanceState(state)
     val control = remember { FeatureComparisonControl(feature != PlacementFeature.STABILIZATION) }
     val haptic = rememberHapticFeedback()
     val playback = rememberArPlaybackDataset()
@@ -67,6 +66,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
     var showHint by remember { mutableStateOf(false) }
     var hadPlacement by remember { mutableStateOf(false) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    val guidance = rememberArGuidanceState(state, trackingFailureReason = trackingFailure)
 
     LaunchedEffect(retry) {
         val ticket = state.selectModel()
@@ -178,9 +178,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     effectFailed -> stringResource(R.string.ar_comparison_failed)
                     card != null -> null
                     // The animated coaching speaks; the pill only adds what it cannot say.
-                    guidance.isCoaching &&
-                        !(state.phase == PlacementPhase.TRACKING_LOST &&
-                            trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
+                    guidance.isCoaching -> null
                     invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                     state.phase == PlacementPhase.SCANNING -> stringResource(R.string.ar_place_move_slowly)
                     state.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
@@ -277,6 +275,8 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             ARCoachingOverlay(
                 cue = if (availability == null && !startupTimedOut) guidance.cue else ArGuidanceCue.NONE,
                 surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
             )
             ARCameraInitScrim(!cameraReady && !cameraFailed, availability)
             if (startupTimedOut && availability == null) {
