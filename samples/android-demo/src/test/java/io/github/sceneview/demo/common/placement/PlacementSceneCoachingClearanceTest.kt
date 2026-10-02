@@ -40,7 +40,8 @@ import org.robolectric.annotation.GraphicsMode
  *
  * ## Why this composes the guide and not the screen
  *
- * `PlacementSceneDemo` is one `PlacementScene` call, and `PlacementScene` builds an
+ * A `PlacementScene` host is one `PlacementScene` call (the `PlacementSceneDemo` card showed
+ * one until samples step 0 folded it into `ar-placement`), and `PlacementScene` builds an
  * `ARSceneView` — Filament plus an ARCore session, neither of which exists on the JVM. That
  * screen is therefore **not** covered here; it is the device pass that checks it. What is
  * pinned instead is the contract the new parameter rides on — the value reaches the pill,
@@ -132,7 +133,7 @@ class PlacementSceneCoachingClearanceTest {
         composeRule.waitForIdle()
         val withoutDock = pillTop()
 
-        // What PlacementSceneDemo now passes: the scaffold's measured chrome inset plus one
+        // What a PlacementScene host passes: the scaffold's measured chrome inset plus one
         // gutter — the same source and the same arithmetic as the app's other AR host
         // (#3712, TapToPlaceArSession).
         clearance = DOCK_BAND + SceneViewTokens.Space.md

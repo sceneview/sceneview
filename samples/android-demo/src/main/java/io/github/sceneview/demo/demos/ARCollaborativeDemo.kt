@@ -12,11 +12,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.SceneView
 import io.github.sceneview.ar.collaborative.CollaborativeSession
 import io.github.sceneview.ar.collaborative.LoopbackCollaborativeTransport
+import io.github.sceneview.demo.DemoModePill
+import io.github.sceneview.demo.LocalDemoModeSwitch
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -54,6 +57,22 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
                     }
                 },
             )
+        },
+        // The Collaborative mode of the `ar-cloud-anchor` card (samples step 0): the shared
+        // mode pill leads back to Cloud anchors. This screen has no scene, so it hosts the
+        // pill itself instead of a DemoScaffold bottom band.
+        bottomBar = {
+            LocalDemoModeSwitch.current?.let { switch ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(vertical = SceneViewTokens.Space.sm),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    DemoModePill(switch)
+                }
+            }
         },
     ) { padding ->
         Column(

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `ar-record-playback` demo (registered by
-     `ArRecordPlaybackFragment.kt`). Android's resource merger
+     `ArRerunFragment.kt`, Session MP4 mode since samples step 0). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_ar_record_playback_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->

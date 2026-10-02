@@ -5,10 +5,19 @@ import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.runtime.Composable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
+import io.github.sceneview.demo.DemoMode
+import io.github.sceneview.demo.DemoModeHost
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.ARPlacementDemo
+import io.github.sceneview.demo.demos.ARPoseDemo
 
-/** Append-only fragment for the `ar-placement` demo. See [DemoFragment]. */
+/**
+ * Append-only fragment for the `ar-placement` demo. See [DemoFragment].
+ *
+ * Samples step 0 folded two cards in: `ar-pose` is the Free pose mode (`?tab=free-pose`,
+ * launch tab 2), and `placement-scene` opens this card on Place. Launch tabs 0 and 1 stay
+ * with [ARPlacementDemo], which reads 1 as the wall (`wall-placement`).
+ */
 object ArPlacementFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
         id = "ar-placement",
@@ -18,11 +27,30 @@ object ArPlacementFragment : DemoFragment {
         icon = Icons.Filled.ViewInAr,
         order = 17,
         addedIn = "4.0.0",
-        tags = setOf("ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv"),
+        updatedIn = "4.51.0",
+        tags = setOf(
+            "ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv",
+            "pose", "transform", "gesture", "tap-to-place", "sceneform",
+        ),
     )
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        ARPlacementDemo(onBack)
+        DemoModeHost(
+            modes = listOf(
+                DemoMode("place", R.string.demo_mode_place),
+                DemoMode("free-pose", R.string.demo_mode_free_pose),
+            ),
+            tabToMode = mapOf(FREE_POSE_TAB to 1),
+            defaultModeReadsTab = true,
+        ) { mode ->
+            when (mode) {
+                1 -> ARPoseDemo(onBack)
+                else -> ARPlacementDemo(onBack)
+            }
+        }
     }
 }
+
+/** Launch tab of the Free pose mode; 0 and 1 are the floor and the wall of Place. */
+private const val FREE_POSE_TAB = 2

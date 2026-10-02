@@ -101,7 +101,7 @@ the wiring.
 ## Rules
 
 - **One fragment per file.** The object is named `<DemoId>Fragment` in
-  CamelCase (e.g. `ar-record-playback` → `ArRecordPlaybackFragment`).
+  CamelCase (e.g. `ar-cloud-anchor` → `ArCloudAnchorFragment`).
 - **No shared anchors.** Never edit `GeneratedDemos.kt` by hand — it is
   regenerated. Never add a one-off `when` branch in `MainActivity.kt` — the
   generated `GeneratedDemos.Screen()` is the only routing table.

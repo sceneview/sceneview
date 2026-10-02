@@ -284,6 +284,17 @@ class MainActivity : ComponentActivity() {
         val launch = DeepLinkRouter.resolveLaunch(pendingDemoId.value, rawId, tabParam)
         pendingDemoId.value = launch.demoId
         DemoSettings.initialTab = launch.initialTab
+        DemoSettings.openRecordAction = launch.openRecord
+        // A removed demo's link lands on the home screen, and says why rather than nothing.
+        if (launch.demoId == null) {
+            DeepLinkRouter.removedTitle(rawId)?.let { title ->
+                android.widget.Toast.makeText(
+                    this,
+                    getString(R.string.deep_link_removed_demo, title),
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
     }
 
     /**

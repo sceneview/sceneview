@@ -171,7 +171,11 @@ class ARReplayHarnessTest {
         // mid-shard, the recovered summary still enumerates the whole shard, so
         // `ar-replay-qa.sh` can mark the demos never reached as `skipped`
         // (environmental) rather than losing them silently (#2643).
-        val plannedDemos = arDemos.map { it.id }
+        // Samples step 0 folded `ar-record-playback` into `ar-rerun` as its Session MP4
+        // mode. The card is listed once, but the sweep launches both modes: the plain id
+        // opens the Rerun mode, and the retired id (still a live deep-link alias) opens
+        // the Session MP4 mode, the one that consumes the recording.
+        val plannedDemos = arDemos.flatMap { REPLAY_MODE_LAUNCHES[it.id] ?: listOf(it.id) }
 
         // Persist the verdict INCREMENTALLY, not just once after the loop. Every
         // AR demo is deep-linked into MainActivity's process — which is ALSO the
@@ -190,9 +194,9 @@ class ARReplayHarnessTest {
         // and the summary is identical to the old behaviour.
         val results = ArrayList<DemoResult>(arDemos.size)
         try {
-            for (demo in arDemos) {
-                writeSummary(results, inProgress = demo.id, plannedDemos = plannedDemos)
-                results += replayDemo(demo.id, deployed)
+            for (demoId in plannedDemos) {
+                writeSummary(results, inProgress = demoId, plannedDemos = plannedDemos)
+                results += replayDemo(demoId, deployed)
                 // Land on the demo list between demos so onNewIntent fires cleanly
                 // for the next deep-link.
                 device.pressHome()
@@ -506,11 +510,20 @@ class ARReplayHarnessTest {
 
         /**
          * The one demo that mounts `ARSceneView(playbackDataset = …)` and so
-         * MUST advance the recorded ARCore frame counter. Matches the slug in
-         * `DemoRegistry.kt`. Live-only AR demos never consume the playback
+         * MUST advance the recorded ARCore frame counter. Since samples step 0 it is
+         * the Session MP4 mode of `ar-rerun`, and this retired slug is the deep-link
+         * alias that opens that mode ([REPLAY_MODE_LAUNCHES]). Live-only AR demos never consume the playback
          * dataset and are graded `alive`, not `skipped`.
          */
         const val REPLAY_DEMO_ID = "ar-record-playback"
+
+        /**
+         * Cards whose modes are swept separately, by the launch id of each mode. Since
+         * samples step 0 [REPLAY_DEMO_ID] is the Session MP4 mode of `ar-rerun`, reached
+         * through its deep-link alias.
+         */
+        val REPLAY_MODE_LAUNCHES: Map<String, List<String>> =
+            mapOf("ar-rerun" to listOf("ar-rerun", REPLAY_DEMO_ID))
 
         /**
          * Reason surfaced for a [VERDICT_SKIPPED] replay demo: the recorded

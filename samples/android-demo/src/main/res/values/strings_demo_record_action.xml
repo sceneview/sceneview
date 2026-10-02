@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The shared Record action of `DemoScaffold` (samples step 0). It replaced the
+     `video-recording` card: a demo that hands the scaffold a `SceneRecorderState` gets a
+     "Record video" row in its settings sheet and a Record / Stop pill in its bottom band. -->
+<resources>
+    <string name="demo_record_action">Record video</string>
+    <string name="demo_record_stop_action">Stop recording</string>
+    <string name="demo_record_pill">Record</string>
+    <string name="demo_record_pill_stop">Stop · %1$s</string>
+    <string name="demo_record_saved">Video saved on this device</string>
+    <string name="demo_record_play">Play</string>
+    <string name="demo_record_failed">Could not record or open the video on this device</string>
+</resources>

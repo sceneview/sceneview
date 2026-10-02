@@ -194,6 +194,23 @@ object DemoSettings {
         initialTab = null
         return value
     }
+
+    /**
+     * One-shot launch flag (samples step 0): the demo was opened through a retired id whose
+     * card became the shared Record action (`video-recording` → `cosmos`), so the
+     * [DemoScaffold] shows its Record control in the bottom band on arrival instead of
+     * leaving it in the settings sheet. Set by [MainActivity] from
+     * [DeepLinkRouter.Launch.openRecord], cleared by [consumeOpenRecordAction].
+     */
+    @JvmField
+    var openRecordAction: Boolean = false
+
+    /** Returns the pending [openRecordAction] and clears it. */
+    fun consumeOpenRecordAction(): Boolean {
+        val value = openRecordAction
+        openRecordAction = false
+        return value
+    }
 }
 
 /**

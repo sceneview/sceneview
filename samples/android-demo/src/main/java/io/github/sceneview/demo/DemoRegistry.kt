@@ -179,18 +179,18 @@ val AR_CATEGORIES: Set<String> = setOf(
 /**
  * AR demos that are deliberately filed outside [AR_CATEGORIES].
  *
- * `ar-record-playback` and `ar-rerun` sit under [DemoCategory.DEV_TOOLS] because
- * their subject is capture and replay tooling — the plumbing around the session,
- * not what the session sees. They still open an ARCore session, so anything that
- * enumerates AR demos (the AR View tab's list, the replay harness) has to include
- * them or it silently drops two demos that need the AR device path.
+ * `ar-rerun` sits under [DemoCategory.DEV_TOOLS] because its subject is capture and
+ * replay tooling — the plumbing around the session, not what the session sees (since
+ * samples step 0 it also holds the former `ar-record-playback` as its Session MP4
+ * mode). It still opens an ARCore session, so anything that enumerates AR demos (the
+ * AR View tab's list, the replay harness) has to include it or it silently drops a
+ * demo that needs the AR device path.
  *
  * Keep this list empty if you can. It exists because a demo's *section* answers
  * "where does a user look for this" and that is not always the same question as
  * "does this need ARCore".
  */
 private val AR_DEMOS_OUTSIDE_AR_SECTIONS: Set<String> = setOf(
-    "ar-record-playback",
     "ar-rerun",
 )
 
