@@ -71,9 +71,9 @@ shared anonymous endpoint cannot hold them. The skills link to Apache-2.0 source
 
 | # | Prompt | Expected behaviour | Result shape |
 |---|---|---|---|
-| P1 | "Load `models/helmet.glb` in a Compose screen with SceneView" | Skill `sceneview` triggers; code uses `SceneView { }`, `rememberEngine`, `rememberModelLoader`, `rememberModelInstance`; dependency `io.github.sceneview:sceneview:4.34.0` | Kotlin snippet that compiles against 4.34.0 |
+| P1 | "Load `models/helmet.glb` in a Compose screen with SceneView" | Skill `sceneview` triggers; code uses `SceneView { }`, `rememberEngine`, `rememberModelLoader`, `rememberModelInstance`; dependency `io.github.sceneview:sceneview:4.51.0` | Kotlin snippet that compiles against 4.51.0 |
 | P2 | "Place that model on a detected plane when I tap" | `ARSceneView { }` with plane detection and a hit-test on tap; dependency `arsceneview` | Kotlin snippet |
-| P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM tag `4.34.0` | Swift snippet |
+| P3 | "Same thing on iOS with SwiftUI" | Skill `sceneview-ios`; `SceneView { }` / `ARSceneView { }` from SceneViewSwift, SPM tag `4.51.0` | Swift snippet |
 | P4 | "Show me `https://…/DamagedHelmet.glb` in 3D" (MCP shape only) | Tool `view_3d_model` is called; the widget renders the model inline; text names the URL | `structuredContent.modelUrl` + widget |
 | P5 | "Which SceneView sample fits an AR anchor demo?" (MCP shape only) | `list_samples` then `get_sample` | Sample id + Kotlin source |
 | P6 | "Open this `.3mf` in Compose and place it in AR at its real size" | Skill `sceneview` triggers; the answer uses the ordinary `rememberModelInstance(modelLoader, uri)` path and invents no `loadThreeMf` API; the millimetre → metre scaling is named | Kotlin snippet |

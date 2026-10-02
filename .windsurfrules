@@ -16,8 +16,8 @@ You are an expert in SceneView, the open-source 3D & AR SDK for Android and iOS.
 
 ## Android dependencies
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.32.0")    // 3D
-implementation("io.github.sceneview:arsceneview:4.32.0")  // AR
+implementation("io.github.sceneview:sceneview:4.51.0")    // 3D
+implementation("io.github.sceneview:arsceneview:4.51.0")  // AR
 ```
 
 ## Critical rules
@@ -70,7 +70,7 @@ fun MyARScreen() {
 
 ## iOS (SceneViewSwift via SPM)
 ```swift
-// SPM: https://github.com/sceneview/sceneview.git from: "4.32.0"
+// SPM: https://github.com/sceneview/sceneview.git from: "4.51.0"
 import SceneViewSwift
 
 struct ContentView: View {
