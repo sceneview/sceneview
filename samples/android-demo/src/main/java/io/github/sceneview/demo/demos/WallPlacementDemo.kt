@@ -18,6 +18,7 @@ import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.placement.PLACEMENT_GESTURE_HINT_MS
 import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.common.placement.PlacementPreviewSheet
@@ -72,7 +73,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
         hadPlacement = state.hasPlacement
     }
     LaunchedEffect(showHint) {
-        if (showHint) { delay(5_000); showHint = false }
+        if (showHint) { delay(PLACEMENT_GESTURE_HINT_MS); showHint = false }
     }
     LaunchedEffect(state.phase) {
         if (state.phase == PlacementPhase.ADJUSTING) showHint = false

@@ -16,9 +16,9 @@ import org.robolectric.annotation.Config
 /**
  * #3823: a plain, textureless wall gives ARCore's vertical-plane search too few feature
  * points to converge, so the "No surface found" card fires after the same 10 s timeout as
- * the floor flow — but "Try a brighter, textured area." says nothing a wall session can
- * act on. The card must show the wall-specific tip when it is raised from the wall flow,
- * and keep the original one everywhere else. Pure JVM — no ARCore session, no emulator.
+ * the floor flow — but "Try a brighter area with a rug or visible floor detail." says
+ * nothing a wall session can act on. The card must show the wall-specific tip when it is
+ * raised from the wall flow, and keep the original one everywhere else. Pure JVM — no ARCore session, no emulator.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])

@@ -367,7 +367,7 @@ fun BoxScope.TapToPlaceStatusOverlays(
     onRestartSession: (() -> Unit)? = null,
     onResetScale: () -> Unit = { state.controller.scaleTo(1f) },
 ) {
-    // The one-shot "Drag to move. Pinch or twist to adjust." window opened by the
+    // The one-shot "Drag to move. Pinch to resize. Twist to turn." window opened by the
     // placement. Keyed on the placement timestamp, so a re-placement restarts it rather
     // than inheriting the remains of the first one's window.
     var gestureHintVisible by remember { mutableStateOf(false) }
@@ -379,6 +379,11 @@ fun BoxScope.TapToPlaceStatusOverlays(
         gestureHintVisible = true
         delay(PLACEMENT_GESTURE_HINT_MS)
         gestureHintVisible = false
+    }
+    // The first drag, pinch or twist proves the hint was read: it leaves right away, as in
+    // the 3D AR Model Viewer app, instead of talking over the gesture it described.
+    LaunchedEffect(state.activeGesture) {
+        if (state.activeGesture != null) gestureHintVisible = false
     }
 
     // The resize read-out's own lifetime past the end of the live pinch (#3830): a window
