@@ -45,20 +45,84 @@ class RerunRrdTest {
         assertArrayEquals(data.copyOf(12), RerunRrdWriter.streamHeader())
     }
 
-    @Test
-    fun `messages tile the file, the first one the store info`() {
-        val data = rrd()
+    /** Each message: its kind and its protobuf payload. */
+    private fun messages(data: ByteArray): List<Pair<Long, RrdProto>> {
         val bytes = RrdBytes(data)
         var position = 12
-        var messages = 0
+        val messages = ArrayList<Pair<Long, RrdProto>>()
         while (position < data.size) {
-            val kind = bytes.u64(position)
-            if (messages == 0) assertEquals(1L, kind) else assertEquals(2L, kind)
-            position += 16 + bytes.u64(position + 8).toInt()
-            messages++
+            val length = bytes.u64(position + 8).toInt()
+            messages += bytes.u64(position) to RrdProto(bytes.slice(position + 16, length))
+            position += 16 + length
         }
         assertEquals(data.size, position)
-        assertTrue(messages > 5)
+        return messages
+    }
+
+    private fun RrdBytes.text() = String(copy(0, count))
+
+    @Test
+    fun `messages tile the file, the default layout before the recording`() {
+        val messages = messages(rrd())
+        val layout = RerunRrdBlueprint.chunks(recordingId, hasPhotos = true).size
+        val kinds = messages.map { it.first }
+        // Blueprint store info, its chunks, its activation; then the recording's store info and chunks.
+        assertEquals(listOf(1L) + List(layout) { 2L } + listOf(3L, 1L), kinds.take(layout + 3))
+        assertTrue(kinds.drop(layout + 3).all { it == 2L })
+        assertTrue(kinds.size - layout - 3 > 5)
+
+        val blueprintStore = messages[0].second.message(2)!!.message(2)!!
+        assertEquals(2L, blueprintStore.varint(1))
+        assertEquals(RerunRrdBlueprint.storeId(recordingId), blueprintStore.bytes(2)!!.text())
+        val recordingStore = messages[layout + 2].second.message(2)!!.message(2)!!
+        assertEquals(1L, recordingStore.varint(1))
+        assertEquals(recordingId.toString(), recordingStore.bytes(2)!!.text())
+        // Every blueprint chunk in the blueprint store, every recording chunk in the recording's.
+        messages.forEachIndexed { index, (kind, message) ->
+            if (kind == 2L) assertEquals(if (index <= layout) 2L else 1L, message.message(1)!!.varint(1))
+        }
+        // The layout becomes the default, not forced over one the user saved.
+        val activation = messages[layout + 1].second
+        assertEquals(RerunRrdBlueprint.storeId(recordingId), activation.message(1)!!.bytes(2)!!.text())
+        assertEquals(1L, activation.varint(3))
+        assertEquals(null, activation.varint(2))
+    }
+
+    @Test
+    fun `the default layout shows the room, and the photos when there are some`() {
+        fun layout(hasPhotos: Boolean) = RerunRrdBlueprint.chunks(recordingId, hasPhotos)
+        val withPhotos = layout(hasPhotos = true)
+        val views = withPhotos.filter { it.entityPath.startsWith("/view/") && !it.entityPath.endsWith("/ViewContents") }
+        assertEquals(2, views.size)
+        assertEquals(views.size, withPhotos.count { it.entityPath.endsWith("/ViewContents") })
+        assertTrue(withPhotos.any { it.entityPath.startsWith("/container/") })
+        assertEquals(
+            setOf("/viewport", "/blueprint_panel", "/selection_panel"),
+            withPhotos.map { it.entityPath }.filter { !it.startsWith("/view/") && !it.startsWith("/container/") }.toSet(),
+        )
+        for (chunk in withPhotos) {
+            assertEquals(listOf(0L), chunk.times)
+            assertEquals(RerunTimeline.BLUEPRINT, chunk.timeline)
+        }
+        assertEquals(
+            listOf("ViewBlueprint:class_identifier", "ViewBlueprint:display_name", "ViewBlueprint:space_origin"),
+            views.first().components.map { it.fieldName },
+        )
+        assertEquals(
+            "rerun.blueprint.archetypes.ViewBlueprint",
+            views.first().components.first().field.metadata["rerun:archetype"],
+        )
+        // No photos: the room alone, no empty camera view.
+        assertEquals(1, layout(hasPhotos = false).count { it.entityPath.endsWith("/ViewContents") })
+        // Deterministic: the same recording id gives the same entity paths.
+        assertEquals(withPhotos.map { it.entityPath }, layout(hasPhotos = true).map { it.entityPath })
+    }
+
+    @Test
+    fun `the reader skips the layout and replays the recording alone`() {
+        val chunks = RrdStream.chunks(rrd())
+        assertTrue(chunks.isNotEmpty())
+        assertTrue(chunks.none { it.entityPath.startsWith("view") || it.entityPath == "viewport" })
     }
 
     @Test
