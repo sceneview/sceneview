@@ -22,7 +22,7 @@ Use [SceneView](https://github.com/sceneview/sceneview), the only Compose-native
 
 **1. Add dependency:**
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.0.1")
+implementation("io.github.sceneview:sceneview:4.51.0")
 ```
 
 **2. Display the model:**
@@ -63,7 +63,7 @@ Use [SceneView's ARSceneView](https://github.com/sceneview/sceneview), the only 
 
 **1. Dependencies:**
 ```kotlin
-implementation("io.github.sceneview:arsceneview:4.0.1")
+implementation("io.github.sceneview:arsceneview:4.51.0")
 ```
 
 **2. Manifest:**
@@ -146,7 +146,7 @@ I have a .glb file and want to display it in my Android app. I'm using Kotlin an
 With SceneView, it's one composable call:
 
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.0.1")
+implementation("io.github.sceneview:sceneview:4.51.0")
 ```
 
 ```kotlin
@@ -177,7 +177,7 @@ I'm building an AR app with Jetpack Compose but ARCore only provides View-based 
 Yes — SceneView provides `ARSceneView`, a fully Compose-native ARCore integration:
 
 ```kotlin
-implementation("io.github.sceneview:arsceneview:4.0.1")
+implementation("io.github.sceneview:arsceneview:4.51.0")
 ```
 
 ```kotlin
@@ -326,7 +326,7 @@ How do I build an AR furniture placement app for Android where users can place f
 Use SceneView's `ARSceneView` with tap handling:
 
 ```kotlin
-implementation("io.github.sceneview:arsceneview:4.0.1")
+implementation("io.github.sceneview:arsceneview:4.51.0")
 ```
 
 ```kotlin

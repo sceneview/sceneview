@@ -995,7 +995,7 @@ fi
 # `docs/docs/llms.txt` is omitted — it is build-generated from root `llms.txt`
 # (swept here) and `.gitignore`d (issue #899 hardening).
 KOTLIN_TOML=$(grep -m1 '^kotlin = ' "$REPO_ROOT/gradle/libs.versions.toml" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
-KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt"
+KOTLIN_PROSE_FILES="llms.txt docs/docs/llms-full.txt gpt/system-prompt.md"
 if [ -n "$KOTLIN_TOML" ]; then
     for kfile in $KOTLIN_PROSE_FILES; do
         F="$REPO_ROOT/$kfile"
@@ -1190,6 +1190,20 @@ if [ -f "$AGENT_WEB_SKILL" ]; then
     V=$(grep -m1 -E 'sceneview-web. \(currently `[0-9]+\.[0-9]+\.[0-9]+' "$AGENT_WEB_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
     if [ "$V" != "NOT FOUND" ]; then
         add_check "agents/sceneview-web/SKILL.md (npm prose)" "$V"
+    fi
+fi
+
+# gpt/system-prompt.md — hand-maintained current-version prose and Maven
+# coordinates used by the custom GPT.
+GPT_SYSTEM_PROMPT="$REPO_ROOT/gpt/system-prompt.md"
+if [ -f "$GPT_SYSTEM_PROMPT" ]; then
+    V=$(grep -m1 'Current version: \*\*' "$GPT_SYSTEM_PROMPT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "gpt/system-prompt.md (Current version)" "$V"
+    fi
+    V=$(grep -m1 'io\.github\.sceneview:sceneview:' "$GPT_SYSTEM_PROMPT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "NOT FOUND")
+    if [ "$V" != "NOT FOUND" ]; then
+        add_check "gpt/system-prompt.md (Maven coordinate)" "$V"
     fi
 fi
 
@@ -1851,6 +1865,21 @@ if changed:
         if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
             _sed_inplace "s/(currently \`$CURRENT\`)/(currently \`$SOURCE_VERSION\`)/" "$AGENT_WEB_SKILL"
             echo -e "  Fixed: agents/sceneview-web/SKILL.md (npm prose $CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
+
+    # gpt/system-prompt.md — current-version prose + Android Maven coordinates.
+    if [ -f "$GPT_SYSTEM_PROMPT" ]; then
+        CURRENT=$(grep -m1 'Current version: \*\*' "$GPT_SYSTEM_PROMPT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "s/^\(- Current version: \*\*\)$CURRENT\(\*\*\)$/\1$SOURCE_VERSION\2/" "$GPT_SYSTEM_PROMPT"
+            echo -e "  Fixed: gpt/system-prompt.md (Current version $CURRENT -> $SOURCE_VERSION)"
+        fi
+        CURRENT=$(grep -m1 'io\.github\.sceneview:sceneview:' "$GPT_SYSTEM_PROMPT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' | head -1 || echo "")
+        if [ -n "$CURRENT" ] && [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            _sed_inplace "/^- Android: .*io\.github\.sceneview:sceneview:/s/io\.github\.sceneview:sceneview:$CURRENT/io.github.sceneview:sceneview:$SOURCE_VERSION/g" "$GPT_SYSTEM_PROMPT"
+            _sed_inplace "/^- Android: .*io\.github\.sceneview:arsceneview:/s/io\.github\.sceneview:arsceneview:$CURRENT/io.github.sceneview:arsceneview:$SOURCE_VERSION/g" "$GPT_SYSTEM_PROMPT"
+            echo -e "  Fixed: gpt/system-prompt.md (Maven coordinates $CURRENT -> $SOURCE_VERSION)"
         fi
     fi
 

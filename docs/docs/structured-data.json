@@ -335,7 +335,7 @@
         "name": "What is the minimum Android version required for SceneView?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "SceneView requires Android 7.0 (API level 24) or higher. For AR features using ARCore, you also need a device that supports Google Play Services for AR. The SDK targets Android 15 (API 35) and supports all CPU architectures (arm64-v8a, armeabi-v7a, x86, x86_64)."
+          "text": "SceneView requires Android 7.0 (API level 24) or higher. For AR features using ARCore, you also need a device that supports Google Play Services for AR. The SDK targets Android 16 (API 36) and supports all CPU architectures (arm64-v8a, armeabi-v7a, x86, x86_64)."
         }
       }
     ]
