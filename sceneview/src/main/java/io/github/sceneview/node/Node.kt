@@ -301,9 +301,10 @@ open class Node protected constructor(
         val world = transformManager.getWorldTransform(transformInstance)
         _worldTransform = world
         _worldPosition = world.position
-        // `Mat4.quaternion` normalises the basis columns first. The kotlin-math `toQuaternion()`
-        // member runs the trace method on the raw basis, which folds any scale — uniform
-        // included — into the extracted rotation (#3738).
+        // `Mat4.quaternion` normalises the basis columns first and uses the orthogonal polar
+        // factor only when they reveal shear. The kotlin-math `toQuaternion()` member runs the
+        // trace method on the raw basis, which folds any scale — uniform included — into the
+        // extracted rotation (#3738, #3744).
         _worldQuaternion = world.quaternion
         _worldScale = world.scale
         // Extract Euler directly from the matrix (not via the quaternion) to stay
@@ -436,14 +437,9 @@ open class Node protected constructor(
      *    it was not: the extraction folded the scale into the rotation, so a node under a
      *    parent scaled 2 reported a 106° rotation where 90° was set.)
      *  - **Non-uniform scale on an *ancestor*, with a rotation below it** — the world basis is
-     *    sheared: it is no longer a rotation times a per-axis scale, so normalising its columns
-     *    cannot give back the rotation you set. That normalisation rescales the basis without
-     *    re-orthogonalising it, so the value you read is *a* unit rotation, not the nearest one
-     *    to the pose, and it carries **no useful error bound** — 29.13° off under a parent
-     *    scaled `(3, 1, 1)`, up to ~180° in the worst pose under `(0.25, 2, 10)`.
-     *    Setter round trips are off by the same amount. An exact
-     *    answer does exist for this case and is tracked in #3744; until then, keep an ancestor's
-     *    scale uniform if you need an exact world orientation below it.
+     *    sheared. Its polar decomposition recovers the exact composed rotation for one
+     *    non-uniformly scaled ancestor. With nested non-uniform scales it returns the closest
+     *    orthonormal frame, which is not necessarily the composition of the nodes' quaternions.
      *  - **Negative scale (mirror)** — an *odd* number of negative axes leaves a left-handed
      *    basis, which is not a rotation at all: the value is finite and unit but otherwise
      *    meaningless. An *even* number is a real rotation and comes back exact. Nothing can tell
@@ -498,10 +494,10 @@ open class Node protected constructor(
      * The world rotation of this component (i.e. relative to the scene root).
      * This is the composition of this component's local rotation with its parent's world rotation.
      *
-     * The getter decomposes Euler angles straight from the world matrix, which normalises the
-     * basis itself and so never had the scale defect fixed in [worldQuaternion] (#3738). The
-     * setter goes through [worldQuaternion] and therefore inherits the shear, mirror and
-     * collapse caveats documented there.
+     * The getter decomposes Euler angles straight from the world matrix. Unlike [worldQuaternion],
+     * it does not run a polar decomposition, so a sheared basis can still produce approximate
+     * Euler angles. The setter goes through [worldQuaternion] and inherits its documented mirror
+     * and collapse caveats.
      *
      * **Euler convention (#3745):** the getter and the setter do not use the same one.
      * - The getter is kotlin-math's `Mat4.rotation`: degrees, **YXZ order with the Y (yaw) sign
@@ -1036,9 +1032,8 @@ open class Node protected constructor(
      * opposite: `toQuaternion()` mis-extracts any scaled basis, so that branch was the *wrong*
      * one, and a `worldQuaternion` set/get round trip under a parent scaled 2 came back
      * `|dot| = 0.98` instead of 1. With [worldQuaternion] itself now scale-correct the two
-     * branches agree exactly for a uniform scale, and the quaternion path is the more faithful
-     * one under a non-uniform scale (composition of rotations is what the setter means),
-     * so there is a single path again.
+     * branches agree exactly for a uniform scale. The quaternion path also recovers the exact
+     * composed rotation with one non-uniformly scaled ancestor, so there is a single path again.
      *
      * This conversion is the parent-side of the world-space setters
      * ([worldQuaternion] / [worldRotation] on a child), so it MUST reflect this node's
