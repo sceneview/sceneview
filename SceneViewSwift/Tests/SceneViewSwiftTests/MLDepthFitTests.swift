@@ -181,7 +181,7 @@ final class MLDepthFitTests: XCTestCase {
     }
 
     func testExtrapolationWindowFollowsAnchors() {
-        let estimate = MonocularDepthEstimate(width: 2, height: 1, values: [1 / 0.4, 1 / 0.6])
+        let estimate = MonocularDepthEstimate(width: 2, height: 1, values: [Float(1 / 0.4), Float(1 / 0.6)])
         let out = MonocularDepthConversion.convert(estimate, kind: .affineInverse, scale: 1, shift: 0,
                                                    anchorDepthRange: 1.0...2.0, relativeRMSError: 0)
         XCTAssertEqual(out.millimetres[0], 0, "0.4 m is below half the nearest anchor")
