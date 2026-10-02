@@ -74,11 +74,21 @@ final class PushCenterTests: XCTestCase {
         fcm = FakeMessaging()
         status = .authorized
         registerCount = 0
+        consentSettled = true
+        firebaseCanStart = true
+        firebaseStarts = 0
+        pushNeedsFirebase = nil
     }
 
     override func tearDown() async throws {
         defaults.removePersistentDomain(forName: suiteName)
     }
+
+    /// The usage consent and Firebase's start-up, as the push code sees them.
+    private var consentSettled = true
+    private var firebaseCanStart = true
+    private var firebaseStarts = 0
+    private var pushNeedsFirebase: Bool?
 
     private func makeCenter() -> PushCenter {
         PushCenter(
@@ -88,8 +98,72 @@ final class PushCenterTests: XCTestCase {
                 authorizationStatus: { [unowned self] in self.status },
                 requestAuthorization: { true },
                 registerForRemoteNotifications: { [unowned self] in self.registerCount += 1 }
+            ),
+            gate: PushTelemetryGate(
+                firebaseCanStart: { [unowned self] in self.firebaseCanStart },
+                startFirebase: { [unowned self] in
+                    self.firebaseStarts += 1
+                    self.fcm.isAvailable = true
+                },
+                consentSettled: { [unowned self] in self.consentSettled },
+                setPushNeedsFirebase: { [unowned self] in self.pushNeedsFirebase = $0 }
             )
         )
+    }
+
+    // MARK: Consent guard
+
+    /// The usage consent is still pending (or was answered in this session): no push
+    /// pre-prompt, whatever else holds.
+    func testPrePromptNotEligibleWhileConsentUnknown() async {
+        status = .notDetermined
+        consentSettled = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+
+        XCTAssertFalse(center.prePromptEligible)
+
+        consentSettled = true
+        XCTAssertTrue(center.prePromptEligible, "eligible once the consent is settled, in a later session")
+    }
+
+    /// Consent zone, refused: Firebase is not configured, but the pre-prompt can still be
+    /// shown (a config is bundled), and "Notify me" configures Firebase first.
+    func testNotifyMeConfiguresFirebaseWhenTheConsentZoneLeftItOff() async {
+        status = .notDetermined
+        fcm.isAvailable = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+        XCTAssertTrue(center.prePromptEligible)
+
+        status = .authorized
+        center.prePromptAccepted()
+        XCTAssertEqual(firebaseStarts, 1)
+        XCTAssertTrue(fcm.isAvailable)
+    }
+
+    /// No config bundled: no pre-prompt, and Firebase is never started for push.
+    func testNoPrePromptWithoutABundledConfig() async {
+        status = .notDetermined
+        fcm.isAvailable = false
+        firebaseCanStart = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+
+        XCTAssertFalse(center.prePromptEligible)
+        center.prePromptAccepted()
+        XCTAssertEqual(firebaseStarts, 0)
+    }
+
+    /// Push allowed: Firebase must start at the next launch even without the usage consent.
+    func testAllowedPushIsRememberedForTheNextLaunch() async {
+        let center = makeCenter()
+        await center.refreshAuthorization()
+        center.syncTopics()
+        XCTAssertEqual(pushNeedsFirebase, true)
+
+        await center.applyNotificationsSwitch(false)
+        XCTAssertEqual(pushNeedsFirebase, false)
     }
 
     /// Granted, token present: the topics are subscribed.
@@ -178,6 +252,7 @@ final class PushCenterTests: XCTestCase {
     /// A build without `GoogleService-Info.plist` never touches FCM.
     func testUnconfiguredFirebaseTouchesNothing() async {
         fcm.isAvailable = false
+        firebaseCanStart = false
         let center = makeCenter()
 
         await center.applyNotificationsSwitch(true)

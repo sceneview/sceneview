@@ -41,7 +41,17 @@
 		screens reported manually (screen_view). The APNs token is handed to FCM by
 		DemoAppDelegate, so the method-swizzling proxy is off. FCM auto-init is off: no
 		FCM token exists until the user grants the notification permission (PushCenter).
+
+		Collection is off until the user's answer (ConsentStore): Analytics, Crashlytics
+		and analytics storage all default to NO, and DemoAnalytics turns them on only
+		with the consent (in the EEA, UK and Switzerland) or without an opt-out
+		(elsewhere). FIREBASE_ANALYTICS_COLLECTION_ENABLED, never _DEACTIVATED: the
+		latter cannot be undone at runtime.
 	-->
+	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+	<false/>
+	<key>FirebaseCrashlyticsCollectionEnabled</key>
+	<false/>
 	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_PERSONALIZATION_SIGNALS</key>
 	<false/>
 	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE</key>
@@ -49,7 +59,7 @@
 	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_USER_DATA</key>
 	<false/>
 	<key>GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE</key>
-	<true/>
+	<false/>
 	<key>FirebaseAutomaticScreenReportingEnabled</key>
 	<false/>
 	<key>FirebaseAppDelegateProxyEnabled</key>
