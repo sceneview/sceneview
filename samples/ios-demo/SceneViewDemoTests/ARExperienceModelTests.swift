@@ -45,28 +45,6 @@ final class ARExperienceModelTests: XCTestCase {
         XCTAssertFalse(asked)
     }
 
-    /// The placement reticle preview is filed under AR but draws a plain 3D stage: it opens on
-    /// every device, asks for no camera and never waits on "Starting camera…" for a frame that
-    /// no session will deliver.
-    func testReticlePreviewOpensWithoutACamera() {
-        let requirement = ARExperienceRequirement.forScene(id: "placement-reticle-preview")
-        XCTAssertEqual(requirement, .noCamera)
-        XCTAssertFalse(requirement.reportsSession)
-        #if os(iOS)
-        XCTAssertTrue(requirement.isSupported)
-        #endif
-        var asked = false
-        let model = ARExperienceModel(
-            requirement: requirement,
-            isSupported: true,
-            authorizationStatus: { .notDetermined },
-            requestAccess: { _ in asked = true }
-        )
-        model.resolve()
-        XCTAssertEqual(model.phase, .live)
-        XCTAssertFalse(asked)
-    }
-
     // MARK: - Session events
 
     func testInterruptionEndedWhileStartingKeepsStartingUntilTheNextFirstFrame() {
@@ -128,8 +106,7 @@ final class ARExperienceModelTests: XCTestCase {
     func testPlacementFeatureRoutesRejectUnsupportedDevicesBeforeCameraPermission() {
         let routes: [(String, ARExperienceRequirement)] = [
             ("ar-depth-occlusion", .lidar),
-            ("ar-people-occlusion", .peopleOcclusion),
-            ("ar-record-playback", .recording)
+            ("ar-people-occlusion", .peopleOcclusion)
         ]
         for (id, requirement) in routes {
             XCTAssertEqual(ARExperienceRequirement.forScene(id: id), requirement)

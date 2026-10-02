@@ -641,18 +641,18 @@ via deep-link as well as the Samples tab.
 
 | Demo | Deep-link id | iOS file | Status |
 |---|---|---|---|
-| Animation (5-model carousel) | `animation` | `AnimationDemo.swift` | Ported (cinematic camera shots + IBL slider are Android-only) |
+| Animation (5-model carousel) | `animation-physics` (`animation` aliases here) | `AnimationDemo.swift` | Ported (cinematic camera shots + IBL slider are Android-only) |
 | Model Viewer (Surprise me) | `model-viewer` | `ModelViewerDemo.swift` | Ported |
-| Multi-Model Park | `multi-model` | `MultiModelDemo.swift` | Ported |
+| Multi-Model Park | `model-viewer`, Park mode (`multi-model` aliases here) | `MultiModelDemo.swift` | Ported |
 | AR Placement | `ar-placement` | `ARPlacementDemo.swift` | Single automatic-placement entry; 0.3 m preview, surface-constrained drag, pinch and twist |
 | Depth Occlusion | `ar-depth-occlusion` | `ARDepthOcclusionDemo.swift` | Shared automatic placement of the bundled helmet; LiDAR mesh rendering toggle retains pose and scale |
 | People Occlusion | `ar-people-occlusion` | `ARPeopleOcclusionDemo.swift` | Same subject and placement flow; person-segmentation rendering toggle retains pose and scale |
-| AR Recording | `ar-record-playback` | `ARRecorderDemo.swift` | Shared automatic placement; explicit Record/Stop; screen video only, without deterministic AR-session playback |
+| Record action | every demo's sheet (`ar-record-playback` opens `ar-rerun`) | `DemoScreenRecording.swift` | Explicit Record/Stop; screen video only, without deterministic AR-session playback |
 | Rolling Balls | `rolling-balls` (`physics` aliases here) | `RollingBallsDemo.swift` | Ported (Swift port of the Android tray simulation: rubber, steel and foam balls, tilt, fixed 120 Hz step) |
 
 The pre-1194 placeholder shape — `model-viewer` / `multi-model` routing
-to `SceneGalleryDemo` — is gone. Both deep-links now land on dedicated
-SwiftUI demos.
+to `SceneGalleryDemo` — is gone. Since the samples audit (step 0) both
+deep-links open the Models card, on its Models and Park modes.
 
 ---
 

@@ -210,7 +210,7 @@ struct ModelViewerDemo: View {
     private static let framingMargin: Float = 0.91
     /// Under `qa_mode` the pose is frozen, so the store capture fills the frame.
     ///
-    /// Tighter than `DynamicSkyDemo`'s 0.75 because the subjects differ in
+    /// Tighter than the former `DynamicSkyDemo`'s 0.75 because the subjects differ in
     /// aspect, not in preference: the auto-fit pass inscribes the *space
     /// diagonal* of the union bounds in a sphere and fits that sphere to the
     /// narrower of the two FOV axes — width, in a portrait store frame. A
@@ -511,6 +511,7 @@ struct ModelViewerDemo: View {
         }
         .sheet(isPresented: $showExplore) {
             ExploreTab()
+                .environment(\.demoModePicker, nil)
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showAR) {
@@ -522,6 +523,8 @@ struct ModelViewerDemo: View {
                     .navigationBarTitleInline()
             }
             .environment(\.demoTitle, "AR Placement")
+            // A screen of its own, not a mode of the Models card.
+            .environment(\.demoModePicker, nil)
         }
         #endif
         .task {

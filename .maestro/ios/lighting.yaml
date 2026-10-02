@@ -6,6 +6,10 @@
 # Each demo is exercised by the reusable flows/demo.yaml subflow. Demo ids are
 # the subset of Android `DemoRegistry.kt` ALL_DEMOS that
 # `DemoDeepLinkRegistry.allowedIds` exposes for `sceneview://demo/<id>` on iOS.
+#
+# Samples step 0 (2026-10-02): `movable-light`, `dynamic-sky` and `environment`
+# are aliases of `lighting` now (its Studio, Sun and Image rigs), so the one
+# `lighting` run covers them.
 appId: io.github.sceneview.demo
 ---
 - runFlow:
@@ -14,24 +18,6 @@ appId: io.github.sceneview.demo
       DEMO_ID: lighting
       DEMO_NAME: Light Types
       ASSERT_TEXT: "Directional"
-- runFlow:
-    file: flows/demo-settings.yaml
-    env:
-      DEMO_ID: movable-light
-      DEMO_NAME: Movable Light
-      ASSERT_TEXT: "Show light source"
-- runFlow:
-    file: flows/demo-settings.yaml
-    env:
-      DEMO_ID: dynamic-sky
-      DEMO_NAME: Dynamic Sky
-      ASSERT_TEXT: "12:00"
-- runFlow:
-    file: flows/demo-settings.yaml
-    env:
-      DEMO_ID: environment
-      DEMO_NAME: HDR Environment
-      ASSERT_TEXT: "Environment"
 - runFlow:
     file: flows/demo-settings.yaml
     env:

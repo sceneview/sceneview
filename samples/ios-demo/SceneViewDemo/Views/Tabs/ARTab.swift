@@ -106,30 +106,26 @@ struct FeaturedARDemo: Identifiable {
     /// The headline AR demos shown on the launcher grid. Picked to mirror
     /// Android's launcher card set as closely as the iOS port allows — all of
     /// these have a real, shipping iOS destination.
+    ///
+    /// Samples audit, step 0: `ar-lighting` is now the Light mode of AR
+    /// Placement and `ar-record-playback` the shared Record action of every
+    /// screen, so neither is a card any more. Face accessories takes the slot,
+    /// Android's second featured card.
     static let all: [FeaturedARDemo] = [
         FeaturedARDemo(
             id: "ar-placement",
             title: "AR Placement",
             subtitle: "One object on the first usable surface",
             icon: "arkit",
-            destination: AnyView(ARPlacementDemo())
+            // The whole card, with its Place / Wall / Free pose / Light modes.
+            destination: ArPlacementScene.destination
         ),
         FeaturedARDemo(
-            id: "ar-lighting",
-            title: "AR Lighting",
-            subtitle: "Key and fill light presets on one model",
-            icon: "lightbulb.max.fill",
-            destination: AnyView(ARLightingDemo())
-        ),
-        FeaturedARDemo(
-            // Canonicalized to match Android's DemoRegistry id (#2799); the
-            // deep-link registry still accepts the old "ar-recording" id as
-            // a legacy alias (see `DemoDeepLinkRegistry.allowedIds`).
-            id: "ar-record-playback",
-            title: "AR Recording",
-            subtitle: "Capture the AR session as a screen video",
-            icon: "record.circle",
-            destination: AnyView(ARRecorderDemo())
+            id: "ar-face",
+            title: "Face Accessories",
+            subtitle: "Pin accessories to a tracked face anchor",
+            icon: "face.smiling.inverse",
+            destination: ArAugmentedFacesScene.destination
         ),
         FeaturedARDemo(
             id: "ar-orbital",
@@ -151,7 +147,7 @@ struct FeaturedARDemo: Identifiable {
 /// Static launcher shown when the AR tab is opened, before the user explicitly
 /// starts the camera session. Mirrors Android's `ArLauncherScreen` on
 /// `ArViewTab.kt` (#1211 item 3): hero icon + tagline + "Start AR Camera" CTA,
-/// followed by a 2×3 grid of headline AR demo cards so the launcher doubles
+/// followed by a 2×2 grid of headline AR demo cards so the launcher doubles
 /// as a discovery surface (issue #1253 item 1) — every card routes to a real
 /// demo screen presented full-screen above the AR tab.
 private struct ARLauncherScreen: View {
@@ -313,7 +309,7 @@ private struct ARLauncherScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
 
-                // Discovery grid — mirrors Android's `FEATURED_AR_DEMOS` 2×3
+                // Discovery grid — mirrors Android's `FEATURED_AR_DEMOS`
                 // card grid on `ArLauncherScreen`. Gives the user something
                 // to explore even before (or instead of) starting the live
                 // camera session. Each card opens a real AR demo full-screen.

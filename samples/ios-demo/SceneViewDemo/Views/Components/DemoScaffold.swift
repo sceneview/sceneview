@@ -75,6 +75,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     @Namespace private var glassSpace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.demoTitle) private var presenterTitle
+    /// The mode pill of the umbrella card this screen is a mode of (``DemoModeHost``).
+    @Environment(\.demoModePicker) private var modePicker
     @Environment(\.analyticsSampleId) private var analyticsSampleId
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Read here, outside the chrome's pinned dark scheme, so the AR ground
@@ -140,7 +142,11 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         .hideNavigationBar()
         .onAppear {
             withAnimation(SceneViewTokens.Spring.fade) { entered = true }
+            DemoScreenRecording.shared.screenAppeared()
         }
+        .onDisappear { DemoScreenRecording.shared.screenDisappeared() }
+        // This screen draws the pill; nothing it presents or nests draws a second one.
+        .environment(\.demoModePicker, nil)
     }
 
     // MARK: Scrims
@@ -185,6 +191,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             // One glass group: the accessory and the dock sample the same
             // backdrop and morph into each other when the accessory changes.
             VStack(spacing: Metrics.clusterGap) {
+                if let modePicker {
+                    DemoModePicker(model: modePicker)
+                        .padding(.horizontal, Metrics.margin)
+                }
                 accessory
                     .padding(.horizontal, Metrics.margin)
                 dockView
@@ -272,6 +282,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                     }
                 }
             }
+
+            DemoRecordingStopButton()
         }
     }
 
@@ -661,6 +673,9 @@ struct DemoControlsSheet<Controls: View>: View {
                 .sensoryFeedback(.success, trigger: resets)
                 .accessibilityIdentifier("demo-reset")
             }
+            // The shared Record action (samples audit, step 0): every demo can
+            // be filmed, which is what the `ar-record-playback` card used to show.
+            DemoRecordRows()
             row(icon: "exclamationmark.bubble", title: "Send feedback") {
                 if let url = URL(string: "https://github.com/SceneView/sceneview/issues/new/choose") {
                     openURL(url)
@@ -668,7 +683,7 @@ struct DemoControlsSheet<Controls: View>: View {
             }
             Toggle(isOn: $qaMode) {
                 Label("QA mode", systemImage: "flask")
-                    .labelStyle(RowLabelStyle())
+                    .labelStyle(DemoSheetRowLabelStyle())
                     .font(.body)
                     .foregroundStyle(Palette.onSurface)
             }
@@ -679,11 +694,22 @@ struct DemoControlsSheet<Controls: View>: View {
     }
 
     private func row(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        DemoSheetRow(icon: icon, title: title, action: action)
+    }
+}
+
+/// One full-width action row of the settings sheet: icon column, title.
+struct DemoSheetRow: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .labelStyle(RowLabelStyle())
+                .labelStyle(DemoSheetRowLabelStyle())
                 .font(.body)
-                .foregroundStyle(Palette.onSurface)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                 .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget, alignment: .leading)
                 .contentShape(Rectangle())
         }
@@ -693,7 +719,7 @@ struct DemoControlsSheet<Controls: View>: View {
 
 /// One icon column for every row: SF Symbols have their own widths, and the
 /// titles would otherwise start at a different x on each line.
-private struct RowLabelStyle: LabelStyle {
+struct DemoSheetRowLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: SceneViewTokens.Space.md) {
             configuration.icon.frame(width: SceneViewTokens.Space.lg)

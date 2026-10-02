@@ -650,7 +650,7 @@ struct ExploreTab: View {
     /// The demos of the "Try a demo" row, in Android's order — built once, on
     /// first use.
     private static let tryDemos: [DemoItem] = {
-        let ids = ["model-viewer", "geometry", "lighting", "ar-placement", "materials", "animation"]
+        let ids = ["model-viewer", "geometry", "lighting", "ar-placement", "materials", "animation-physics"]
         let byId = Dictionary(GeneratedScenes.all().map { ($0.sceneId, $0) },
                               uniquingKeysWith: { first, _ in first })
         return ids.compactMap { byId[$0] }
