@@ -7,6 +7,7 @@
 // @icon        point.topleft.down.to.point.bottomright.curvepath
 // @order       9
 // @tags        line,polyline,path,helix,grid,circle
+// @addedIn     4.0.0
 import SwiftUI
 
 enum LinesPathsScene: DemoScene {

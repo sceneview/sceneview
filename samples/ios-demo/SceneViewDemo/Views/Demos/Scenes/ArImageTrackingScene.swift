@@ -8,6 +8,7 @@
 // @iosOnly     true
 // @order       45
 // @tags        ar,image,tracking,augmented-image,marker
+// @addedIn     4.15.2
 import SwiftUI
 
 enum ArImageTrackingScene: DemoScene {

@@ -9,6 +9,8 @@
 // @status      working
 // @order       30
 // @tags        ar,reticle,placement,shadow,preview,no-camera
+// @addedIn     4.15.2
+// @updatedIn   4.46.0
 import SwiftUI
 import RealityKit
 import SceneViewSwift

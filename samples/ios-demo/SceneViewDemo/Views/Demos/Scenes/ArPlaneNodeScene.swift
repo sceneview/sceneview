@@ -8,6 +8,8 @@
 // @iosOnly     true
 // @order       29
 // @tags        ar,plane,planenode,lifecycle,callback
+// @addedIn     4.15.2
+// @updatedIn   4.15.3
 import SwiftUI
 
 enum ArPlaneNodeScene: DemoScene {

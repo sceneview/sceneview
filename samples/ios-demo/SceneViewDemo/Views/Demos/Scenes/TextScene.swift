@@ -7,6 +7,8 @@
 // @icon        textformat
 // @order       15
 // @tags        2d,text,image,video,billboard,quad,viewnode
+// @addedIn     4.0.0
+// @updatedIn   4.38.0
 import SwiftUI
 
 enum TextScene: DemoScene {

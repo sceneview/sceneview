@@ -7,7 +7,7 @@
 // @icon        sun.max.fill
 // @order       2
 // @tags        light,hdr,ibl,skybox,environment,reflection
-// @updatedIn   4.35.0
+// @addedIn     4.51.0
 import SwiftUI
 
 enum LightingLabScene: DemoScene {

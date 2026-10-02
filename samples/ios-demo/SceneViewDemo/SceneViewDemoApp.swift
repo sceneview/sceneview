@@ -249,7 +249,7 @@ struct ContentView: View {
             // Not on the AR View tab: the bottom of an AR screen holds its live
             // controls — the Android snackbar steps aside there too.
         }
-        .tabBarMinimizesOnScrollDown()
+        .tabBarStaysOpen()
         .tint(SceneViewTheme.primary)
         .task {
             // One-shot: route to the launch-argument demo on first frame so
@@ -338,13 +338,17 @@ struct ContentView: View {
 }
 
 private extension View {
-    /// iOS 26+: the Liquid Glass tab bar shrinks to its selected item while the
-    /// user scrolls down a tab's content and comes back on scroll up.
+    /// iOS 26+: the tab bar stays whole, as Android's bottom bar does. It used
+    /// to shrink to its selected item on scroll down (`.onScrollDown`): the
+    /// first swipe from the hero into "Featured" folded "AR View" and "About"
+    /// away, and they stayed gone after a demo was opened and closed until the
+    /// user happened to scroll back up — read as "the tab closes when you go
+    /// into Featured" (02/10).
     @ViewBuilder
-    func tabBarMinimizesOnScrollDown() -> some View {
+    func tabBarStaysOpen() -> some View {
         #if os(iOS)
         if #available(iOS 26, *) {
-            self.tabBarMinimizeBehavior(.onScrollDown)
+            self.tabBarMinimizeBehavior(.never)
         } else {
             self
         }

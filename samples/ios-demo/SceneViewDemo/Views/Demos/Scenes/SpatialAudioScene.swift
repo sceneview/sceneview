@@ -7,6 +7,8 @@
 // @icon        speaker.wave.3.fill
 // @order       12
 // @tags        audio,sound,spatial,3d-audio,orbit
+// @addedIn     4.12.0
+// @updatedIn   4.51.0
 import SwiftUI
 
 enum SpatialAudioScene: DemoScene {

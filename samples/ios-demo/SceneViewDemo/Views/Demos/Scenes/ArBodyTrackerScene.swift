@@ -8,6 +8,7 @@
 // @iosOnly     true
 // @order       44
 // @tags        ar,body,pose,anchor,skeleton
+// @addedIn     4.15.2
 import SwiftUI
 
 enum ArBodyTrackerScene: DemoScene {

@@ -8,6 +8,8 @@
 // @iosOnly     true
 // @order       24
 // @tags        ar,orbit,animation,model,anchor
+// @addedIn     4.1.0
+// @updatedIn   4.15.1
 import SwiftUI
 
 enum ArOrbitalScene: DemoScene {

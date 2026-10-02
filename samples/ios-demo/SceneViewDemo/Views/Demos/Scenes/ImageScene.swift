@@ -6,6 +6,8 @@
 // @available   true
 // @icon        photo.fill
 // @order       13
+// @addedIn     4.0.0
+// @updatedIn   4.49.0
 import SwiftUI
 
 enum ImageScene: DemoScene {

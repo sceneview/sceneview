@@ -9,6 +9,8 @@
 // @iosOnly     true
 // @order       26
 // @tags        ar,pose,transform,gesture,anchor
+// @addedIn     4.15.2
+// @updatedIn   4.46.0
 import SwiftUI
 
 /// Free pose placement — mirrors Android's `ARPoseDemo`

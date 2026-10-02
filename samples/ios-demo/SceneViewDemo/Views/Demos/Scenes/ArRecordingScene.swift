@@ -8,6 +8,8 @@
 // @iosOnly     true
 // @order       21
 // @tags        ar,recording,playback,session,mp4,replay
+// @addedIn     4.3.0
+// @updatedIn   4.40.0
 import SwiftUI
 
 enum ArRecordingScene: DemoScene {

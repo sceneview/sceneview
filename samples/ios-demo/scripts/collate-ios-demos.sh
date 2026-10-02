@@ -18,12 +18,17 @@
 #                                  Showcase home grid — mirrors Android `DemoEntry.order`
 #   // @tags        a,b,c          (optional) comma-separated search keywords — mirrors
 #                                  Android `DemoEntry.tags`
-#   // @sinceVersion <x.y.z>     (optional) version the demo first shipped in — mirrors
-#                                  Android `DemoEntry.sinceVersion`; drives the "New" chip
-#   // @updatedIn    <x.y.z>     (optional) version of the demo's last notable rework —
-#                                  mirrors Android `DemoEntry.updatedIn`; drives "Updated"
-#                                  Both are checked against the Android fragments through
-#                                  parity-manifest.yml (step 1b); a mismatch fails the build.
+#   // @addedIn   <x.y.z>       (REQUIRED) release the demo first shipped in on iOS — the
+#                                  first v4.x.y tag containing the demo's first commit.
+#                                  Mirrors Android `DemoEntry.addedIn`; drives the "New" chip.
+#                                  Work merged between two releases declares the current
+#                                  MARKETING_VERSION, never a guessed next one
+#                                  (HomeFilterTests fails on a version newer than the build).
+#   // @updatedIn <x.y.z>       (optional) release of the demo's last notable rework in its
+#                                  own files (not a sweep, refactor or lint commit) — mirrors
+#                                  Android `DemoEntry.updatedIn`; drives "Updated".
+#                                  Both come from each platform's own git history, so an
+#                                  iOS port that landed later than Android says so.
 #   // @androidOnlyReason <text>   (optional, #2804) one-line reason this is PERMANENTLY
 #                                  Android-only (no ARKit/RealityKit equivalent) — only valid
 #                                  with @available false. Swaps the card's "Coming soon" for an
@@ -112,18 +117,22 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     # Comma-separated search tags (mirrors Android's `DemoEntry.tags`); may be empty.
     tags=$(grep -m1 '// @tags' "$f" 2>/dev/null | sed -E 's|.*// @tags[[:space:]]+||; s/[[:space:]]+$//; s/[[:space:]]*,[[:space:]]*/,/g' || echo "")
     [ -z "$tags" ] && tags="-"
-    # Freshness versions (mirror Android's `DemoEntry.sinceVersion` / `updatedIn`);
-    # `-` is the "absent" sentinel, for the same IFS reason as androidOnlyReason.
-    since_version=$(grep -m1 '// @sinceVersion' "$f" 2>/dev/null | sed -E 's|.*// @sinceVersion[[:space:]]+||; s/[[:space:]]+$//' || echo "")
+    # Freshness versions (mirror Android's `DemoEntry.addedIn` / `updatedIn`).
+    # `@addedIn` is required; `-` is the "absent" sentinel for `@updatedIn`, for
+    # the same IFS reason as androidOnlyReason.
+    added_in=$(grep -m1 '// @addedIn' "$f" 2>/dev/null | sed -E 's|.*// @addedIn[[:space:]]+||; s/[[:space:]]+$//' || echo "")
     updated_in=$(grep -m1 '// @updatedIn' "$f" 2>/dev/null | sed -E 's|.*// @updatedIn[[:space:]]+||; s/[[:space:]]+$//' || echo "")
-    for version_field in since_version updated_in; do
+    if [ -z "$added_in" ]; then
+        echo "Error: $base is missing // @addedIn (the release the demo first shipped in, e.g. 4.48.0)." >&2
+        exit 1
+    fi
+    for version_field in added_in updated_in; do
         version_value="${!version_field}"
         if [ -n "$version_value" ] && ! printf '%s' "$version_value" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
             echo "Error: $base @$version_field must look like 4.48.0, got '$version_value'." >&2
             exit 1
         fi
     done
-    [ -z "$since_version" ] && since_version="-"
     [ -z "$updated_in" ] && updated_in="-"
 
     for field in scene_id title subtitle icon category section available; do
@@ -215,7 +224,7 @@ for f in "$SCENES_DIR"/*Scene.swift; do
     android_only_reason_field="$android_only_reason"
     [ -z "$android_only_reason_field" ] && android_only_reason_field="-"
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" "$section" "$since_version" "$updated_in" >> "$TMP_META"
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason_field" "$order" "$tags" "$section" "$added_in" "$updated_in" >> "$TMP_META"
     scene_count=$((scene_count + 1))
 done
 
@@ -232,70 +241,13 @@ if [ -n "$DUPES" ]; then
     exit 1
 fi
 
-# ─── 1b. Freshness declarations must match Android ──────────────────────
-# `@sinceVersion` / `@updatedIn` drive the "New" / "Updated" chips, and the
-# two platforms must flag the same demos. The source of truth is the Android
-# fragment (`DemoEntry.sinceVersion` / `updatedIn`); `parity-manifest.yml`
-# maps each Android id to its iOS scenes, and the FIRST iOS id of a row is the
-# counterpart that carries the Android declaration. Any other iOS scene
-# declares nothing. A mismatch fails the build, with the fix spelled out.
-# Skipped (with a warning) when the Android tree is not checked out, e.g. an
-# iOS-only sparse checkout.
-REPO_ROOT="$(cd "$IOS_ROOT/../.." && pwd)"
-MANIFEST="$REPO_ROOT/parity-manifest.yml"
-FRAGMENTS_DIR="$REPO_ROOT/samples/android-demo/src/main/java/io/github/sceneview/demo/fragments"
-if [ -f "$MANIFEST" ] && [ -d "$FRAGMENTS_DIR" ]; then
-    # android id <TAB> first iOS id, for every row with an iOS counterpart.
-    COUNTERPARTS="$(awk '
-        /^  - id: / { id = $3; next }
-        /^    ios: \[/ {
-            line = $0
-            sub(/^    ios: \[/, "", line); sub(/\].*$/, "", line)
-            n = split(line, ids, /,[[:space:]]*/)
-            if (id != "" && n > 0 && ids[1] != "") print id "\t" ids[1]
-        }' "$MANIFEST")"
-    # iOS id <TAB> expected since <TAB> expected updated, from the fragments.
-    EXPECTED=""
-    for kt in "$FRAGMENTS_DIR"/*Fragment.kt; do
-        a_id=$(grep -m1 -E '^[[:space:]]*id = "' "$kt" | sed -E 's/.*id = "([^"]+)".*/\1/' || true)
-        [ -n "$a_id" ] || continue
-        a_since=$(grep -m1 -E '^[[:space:]]*sinceVersion = "' "$kt" | sed -E 's/.*sinceVersion = "([^"]+)".*/\1/' || true)
-        a_updated=$(grep -m1 -E '^[[:space:]]*updatedIn = "' "$kt" | sed -E 's/.*updatedIn = "([^"]+)".*/\1/' || true)
-        [ -n "$a_since$a_updated" ] || continue
-        ios_id=$(printf '%s\n' "$COUNTERPARTS" | awk -F'\t' -v a="$a_id" '$1 == a { print $2; exit }')
-        [ -n "$ios_id" ] || continue
-        EXPECTED="$EXPECTED$ios_id	${a_since:--}	${a_updated:--}	$a_id
-"
-    done
-    MISMATCHES=""
-    while IFS=$'\t' read -r scene_id _ _ _ _ _ _ _ _ _ _ _ since_version updated_in; do
-        row=$(printf '%s' "$EXPECTED" | awk -F'\t' -v s="$scene_id" '$1 == s { print; exit }')
-        want_since=$(printf '%s' "$row" | cut -f2)
-        want_updated=$(printf '%s' "$row" | cut -f3)
-        from=$(printf '%s' "$row" | cut -f4)
-        [ -n "$row" ] || { want_since="-"; want_updated="-"; from="(no Android declaration)"; }
-        if [ "$since_version" != "$want_since" ] || [ "$updated_in" != "$want_updated" ]; then
-            MISMATCHES="$MISMATCHES  $scene_id: iOS @sinceVersion $since_version @updatedIn $updated_in, Android $from wants @sinceVersion $want_since @updatedIn $want_updated
-"
-        fi
-    done < "$TMP_META"
-    # A declared Android demo whose iOS counterpart has no scene file at all.
-    while IFS=$'\t' read -r ios_id _ _ a_id; do
-        [ -n "$ios_id" ] || continue
-        cut -f1 "$TMP_META" | grep -qx "$ios_id" || \
-            MISMATCHES="$MISMATCHES  $ios_id: parity-manifest.yml names it for Android $a_id, but no iOS scene declares @sceneId $ios_id
-"
-    done <<< "$EXPECTED"
-    if [ -n "$MISMATCHES" ]; then
-        echo "Error: iOS freshness declarations differ from Android (\"-\" = none)." >&2
-        echo "Copy the Android fragment's sinceVersion / updatedIn into the iOS scene's" >&2
-        echo "// @sinceVersion / // @updatedIn (\"-\" means remove the line):" >&2
-        printf '%s' "$MISMATCHES" >&2
-        exit 1
-    fi
-else
-    echo "warning: parity-manifest.yml or the Android fragments are missing — iOS freshness declarations not checked against Android." >&2
-fi
+# ─── 1b. (removed) Freshness no longer copied from Android ───────────────
+# `@addedIn` / `@updatedIn` used to be copied from the Android fragment and
+# checked here for equality. They now come from each platform's own git
+# history (the first release that shipped the demo on THIS platform), so an
+# iOS port that landed releases after Android is not announced as "New" on a
+# release where nothing changed on iOS, and the reverse. The thresholds and
+# the window (`DemoFreshness.windowMinors`) are what the two platforms share.
 
 # Sort by sceneId for a stable diff.
 SORTED_META="$(mktemp)"
@@ -332,7 +284,7 @@ status_enum() {
 TMP_FULL="$(mktemp)"
 trap 'rm -f "$TMP_META" "$SORTED_META" "$TMP_FULL"' EXIT
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section added_in updated_in; do
     # Find the *Scene.swift file whose @sceneId matches.
     type_name=""
     for f in "$SCENES_DIR"/*Scene.swift; do
@@ -346,9 +298,9 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         echo "Error: no 'enum <Name>Scene: DemoScene' declaration found for sceneId='$scene_id'." >&2
         exit 1
     fi
-    # 15 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags section sinceVersion updatedIn typeName
+    # 15 columns: sceneId title subtitle icon category available iosOnly status androidOnlyReason order tags section addedIn updatedIn typeName
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$section" "$since_version" "$updated_in" "$type_name" >> "$TMP_FULL"
+        "$scene_id" "$title" "$subtitle" "$icon" "$category" "$available" "$ios_only" "$status" "$android_only_reason" "$order" "$tags" "$section" "$added_in" "$updated_in" "$type_name" >> "$TMP_FULL"
 done < "$SORTED_META"
 
 # ─── 4. Emit GeneratedScenes.swift ───────────────────────────────────────
@@ -387,7 +339,7 @@ enum GeneratedScenes {
         var items: [DemoItem] = []
 HEADER
 
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section added_in updated_in type_name; do
     # Decode the `-` "absent" sentinel back to a real empty string (see the
     # TMP_META write in step 1 for why this round-trip is necessary).
     [ "$android_only_reason" = "-" ] && android_only_reason=""
@@ -420,7 +372,7 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            status: %s,\n' "$status_enum_val"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s]' "$swift_tags"
-        [ "$since_version" != "-" ] && printf ',\n            sinceVersion: "%s"' "$since_version"
+        printf ',\n            addedIn: "%s"' "$added_in"
         [ "$updated_in" != "-" ] && printf ',\n            updatedIn: "%s"' "$updated_in"
         printf '\n'
         if [ "$category" = "ar" ]; then
@@ -440,7 +392,7 @@ while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only
         printf '            subtitle: "%s",\n' "$swift_subtitle"
         printf '            order: %s,\n' "$order"
         printf '            tags: [%s],\n' "$swift_tags"
-        [ "$since_version" != "-" ] && printf '            sinceVersion: "%s",\n' "$since_version"
+        printf '            addedIn: "%s",\n' "$added_in"
         [ "$updated_in" != "-" ] && printf '            updatedIn: "%s",\n' "$updated_in"
         printf '            section: .%s,\n' "$section"
         if [ -n "$android_only_reason" ]; then
@@ -474,7 +426,7 @@ ALL_END
 
 # `allowedIds`: every scene id (available true AND false), sorted by id so
 # the diff stays stable and two parallel PRs never collide.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section added_in updated_in type_name; do
     printf '        "%s",\n' "$scene_id"
 done < "$TMP_FULL"
 
@@ -496,7 +448,7 @@ IDS_END
 # scenes fall through to `default: return nil` (→ placeholder), never their
 # own `EmptyView`. iOS-only scenes are guarded so a non-iOS build returns
 # `nil` (→ placeholder) rather than a blank view.
-while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section since_version updated_in type_name; do
+while IFS=$'\t' read -r scene_id title subtitle icon category available ios_only status android_only_reason order tags section added_in updated_in type_name; do
     [ "$available" = "true" ] || continue
     if [ "$category" = "ar" ]; then
         # Same wrapper as the DemoItem above, so a deep link never bypasses it.

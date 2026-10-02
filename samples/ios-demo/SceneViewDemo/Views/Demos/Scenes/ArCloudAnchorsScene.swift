@@ -9,6 +9,8 @@
 // @iosOnly     true
 // @order       27
 // @tags        ar,cloud-anchor,multi-user,persistence,arcore
+// @addedIn     4.15.2
+// @updatedIn   4.46.0
 import SwiftUI
 
 /// Cloud Anchor persistence — mirrors Android's `ARCloudAnchorDemo`
