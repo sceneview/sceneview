@@ -3191,6 +3191,8 @@ Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal bu
 
 Pass `types = setOf(StreetscapeGeometry.Type.BUILDING)` to drop the (often noisy) ground terrain in dense urban scenes. Pass `minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2` to render only the higher-LOD buildings and save a frame-rate cliff on low-end devices. The filter is a no-op early-return on the composable side, so unmatched geometries never allocate Filament buffers.
 
+`StreetscapeGeometryNode.meshNode` is `MeshNode?`: it is `null` while ARCore reports an empty mesh, and it is replaced when the geometry's vertex or index count changes. Use `meshNode?.` and style the mesh through `meshMaterialInstance` (re-applied on every rebuild), not by mutating `meshNode` (#4260).
+
 ```kotlin
 onSessionUpdated = { _, frame ->
     geometries = frame.getUpdatedTrackables(StreetscapeGeometry::class.java).toList()

@@ -55,6 +55,8 @@ internal class StreetscapeMeshRenderable(
         builtVertexCount = vertexCount
         builtIndexCount = indexCount
         meshNode?.destroy()
+        // Clear before building: a build that throws must not leave a destroyed node referenced.
+        meshNode = null
         meshNode = build(vertexCount, indexCount, vertexList, indexList)
         return true
     }
