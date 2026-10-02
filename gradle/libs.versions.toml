@@ -128,6 +128,13 @@ mlkitGenaiPrompt = "1.0.0-beta4"
 # experimentalProperties "16k" anchor in build.gradle is a belt-and-suspenders
 # fallback for any remaining transitive 4 KB .so not covered by this bump.
 mediapipeTasksVision = "0.10.26"
+# LiteRT (ex-TensorFlow Lite) — runtime of the optional `arsceneview-depth-ml` module
+# (monocular depth, Depth Anything V2 Small). Never a dependency of `arsceneview` itself.
+# Pinned to 2.1.5, the last single-AAR release: 2.2.0 splits into `litert` + `litert-api`,
+# two AARs declaring the same namespace, which fails AGP 9's app manifest merge unless
+# `android.uniquePackageNames=false` is set for the whole build. Bump only once Google gives
+# the two halves distinct namespaces (`:samples:android-demo:processDebugMainManifest` is the proof).
+litert = "2.1.5"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
@@ -264,6 +271,7 @@ mlkit-object-detection = { group = "com.google.mlkit", name = "object-detection"
 # dependency for PointAndAskDemo (#2648).
 mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipeTasksVision" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 
 # Testing
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }

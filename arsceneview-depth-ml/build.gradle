@@ -1,0 +1,55 @@
+// Optional monocular depth for ARSceneView: LiteRT + Depth Anything V2 Small (Apache-2.0).
+//
+// Kept out of `arsceneview` on purpose: LiteRT adds ~8.6 MB of native code per ABI, which an
+// app that never uses ML depth must not pay. The model itself (27.7 MB, INT8 weights) is not
+// bundled either — `ModelSource.DepthAnythingV2Small` downloads it on first use and checks its
+// SHA-256, so an APK carries 0 model bytes.
+//
+// Not published to Maven Central yet: the vanniktech publish plugin is deliberately not applied
+// until the Pixel 4a measurement (p50 ≤ 250 ms, ≥ 3 Hz, 5 min thermal, ≤ 15 % error vs ARCore
+// depth) passes the decision gate in the ML depth plan.
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+}
+
+android {
+    namespace = 'io.github.sceneview.ar.depth.ml'
+
+    experimentalProperties["android.nativeLibraryAlignmentPageSize"] = "16k"
+
+    compileSdk 37
+
+    defaultConfig {
+        minSdk 24
+        targetSdk 36
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    lint {
+        warningsAsErrors = false
+        abortOnError = false
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
+dependencies {
+    api project(":arsceneview")
+    implementation libs.litert
+
+    testImplementation 'junit:junit:4.13.2'
+}

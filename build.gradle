@@ -49,6 +49,9 @@ apiValidation {
         // Doc-snippet compile guard (#2759) — generated sources, never
         // published, no API contract of its own.
         "snippets-check",
+        // Optional ML depth module — not published until the Pixel 4a gate of
+        // the ML depth plan passes; it gets its own .api dump when it is.
+        "arsceneview-depth-ml",
     ]
 
     // Klib (Kotlin/Native + JS) ABI validation stays DISABLED (the default).

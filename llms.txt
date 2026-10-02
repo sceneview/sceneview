@@ -2014,6 +2014,108 @@ bounding box, a custom overlay). It does **not** apply when you unproject depth 
 with `camera.imageIntrinsics` — `DepthMeshNode` and the raw-depth point cloud are
 orientation-independent for that reason.
 
+### ML depth — metric depth without ARCore's Depth API (`MlDepthSession`)
+
+On a phone where `Session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)` is `false`,
+`MlDepthSession` (package `io.github.sceneview.ar.depth`, in `arsceneview`) produces metric
+depth from a monocular network: it runs a `MonocularDepthEstimator` on the CPU camera image,
+off the render thread, and scales the network's relative inverse depth to metres with a
+robust fit `1/z = s·d + t` on ARCore's own plane samples and feature points. The runtime
+lives in a separate module, `arsceneview-depth-ml` (LiteRT 2.1.5, in the repo, not yet on
+Maven Central): `DepthAnythingV2Estimator` runs Depth Anything V2 **Small** (Apache-2.0;
+Base/Large/Giant are CC-BY-NC — never ship them). `arsceneview` itself never depends on
+LiteRT. iOS has the same pipeline (`ARDepthFrame.Source.ml`, see the SceneViewSwift section).
+
+```kotlin notest needs the unpublished arsceneview-depth-ml module, absent from the snippets-check classpath
+val context = LocalContext.current
+val mlDepth = remember { MlDepthSession(DepthAnythingV2Estimator(context), context = context) }
+DisposableEffect(mlDepth) { onDispose { mlDepth.close() } }
+ARSceneView(
+    // Nothing reads ARCore's own depth here: keep it off (the ML fit uses planes + points).
+    depthMode = Config.DepthMode.DISABLED,
+    onSessionUpdated = { session, frame -> mlDepth.onSessionUpdated(session, frame) },
+)
+val depth by mlDepth.depthFrames.collectAsState()   // ArDepthFrame?, Source.Ml
+val state by mlDepth.state.collectAsState()          // MlDepthState
+depth?.depthMetersAt(x, y)                            // metres, NaN where none
+```
+
+Public API (exact signatures):
+
+```kotlin notest signature listing; the depth-ml types are not on the snippets-check classpath
+// arsceneview — io.github.sceneview.ar.depth
+class MlDepthSession(
+    estimator: MonocularDepthEstimator,  // owned: closed by close(), on the worker
+    targetHz: Float = 5f,                // max maps per second
+    context: Context? = null,            // thermal status only (API 29+)
+) : Closeable {
+    val depthFrames: StateFlow<ArDepthFrame?>  // null while no valid map; buffers pooled
+    val state: StateFlow<MlDepthState>
+    fun onSessionUpdated(session: Session, frame: Frame)  // render thread, every frame
+    override fun close()
+}
+sealed interface MlDepthState {
+    data object Preparing                                   // download + compile
+    data class WaitingForAnchors(val anchors: Int)          // nothing published
+    data class Running(val stats: MlDepthStats)
+    data object Throttled                                   // thermal SEVERE
+    data class Failed(val error: Throwable)                 // load error, or 3 failed runs in a row
+}
+data class MlDepthStats(val lastInferenceMs: Float, val medianInferenceMs: Float,
+    val publishedHz: Float, val anchors: Int, val inliers: Int,
+    val rmsRelativeError: Float, val holding: Boolean)
+class ArDepthFrame(val timestampNs: Long, val width: Int, val height: Int,
+    val millimetres: ShortBuffer, val confidence: ByteBuffer?, val intrinsics: DepthIntrinsics,
+    val cameraPose: Pose, val source: ArDepthFrame.Source) {
+    enum class Source { Native, Ml }      // iOS: ARDepthFrame.Source.native / .ml
+    fun depthMetersAt(x: Int, y: Int): Float
+    fun confidenceAt(x: Int, y: Int): Float
+}
+data class DepthIntrinsics(val fx: Float, val fy: Float, val cx: Float, val cy: Float)
+interface MonocularDepthEstimator : Closeable {
+    enum class OutputKind { AffineInverse, Metric }
+    val inputWidth: Int; val inputHeight: Int; val outputWidth: Int; val outputHeight: Int
+    val outputKind: OutputKind
+    fun warmUp()                                   // blocking; called on the worker
+    fun estimate(rgb: ByteArray, out: FloatArray)  // RGB interleaved in, row-major floats out
+}
+
+// arsceneview-depth-ml — io.github.sceneview.ar.depth.ml
+class DepthAnythingV2Estimator(
+    context: Context,
+    model: ModelSource = ModelSource.DepthAnythingV2Small,
+    backend: Backend = Backend.Cpu,         // enum class Backend { Cpu, Gpu } — GPU runs FP32
+    numThreads: Int = 4,
+    onDownloadProgress: (Float) -> Unit = {},
+) : MonocularDepthEstimator
+sealed interface ModelSource {
+    data class Asset(val path: String)
+    data class LocalFile(val file: File)
+    data class Url(val url: String, val sha256: String, val sizeBytes: Long,
+        val fileName: String = url.substringAfterLast('/'))
+    companion object { val DepthAnythingV2Small: Url }   // pinned HF revision 178427e
+}
+object ModelDownloader {
+    fun ensure(source: ModelSource.Url, directory: File, onProgress: (Float) -> Unit = {}): File
+    fun sha256(file: File): String
+}
+```
+
+Prerequisites: an ARCore session that tracks planes and feature points (the default
+`planeFindingMode` is fine); the fit refuses until it has **≥ 12 consistent anchors spanning
+≥ ×1.5 in depth**, then holds the last scale for up to 5 maps — no depth is ever published
+without metric support. `INTERNET` (merged from the module manifest) for the first download.
+`ArDepthFrame` is in the camera **sensor** orientation and tagged with the pose of the image
+it came from: unproject with `frame.cameraPose`, never the current pose.
+
+Cost: a one-time **27.7 MB** download into `noBackupFilesDir/sceneview-depth-ml/`, checked
+against its SHA-256 (concurrent loads share one download). LiteRT native code per ABI:
+arm64-v8a ≈ 8 MB, x86_64 ≈ 10.7 MB, armeabi-v7a 3.5 MB (CPU only); an AAB serves one ABI.
+The network input is **518×686** (H×W, the whole CPU image stretched), output 518×686
+inverse depth. Inference runs at ≤ 5 Hz on one worker thread, halves at thermal MODERATE,
+pauses at SEVERE and skips frames while the camera holds still; expect each map to be
+100–300 ms old. Read `MlDepthStats.medianInferenceMs` for the device's real figure.
+
 ### Raw depth point cloud — accumulated depth visualization
 
 `Config.DepthMode.RAW_DEPTH_ONLY` gives access to raw per-pixel depth **plus** a companion
