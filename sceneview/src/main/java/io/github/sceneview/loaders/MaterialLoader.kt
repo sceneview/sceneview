@@ -578,18 +578,33 @@ class MaterialLoader(
         }
     }
 
+    /**
+     * Destroys [materialInstance] if this loader created it, and stops tracking it.
+     *
+     * Any wrapper of a tracked instance is accepted, not only the object [createInstance]
+     * returned. Filament builds a new Java wrapper each time an instance is read back, for example
+     * through `RenderableComponent.materialInstance`, and those wrappers do not override `equals`.
+     * Matching on identity alone made this call a silent no-op for them: the instance stayed
+     * alive, and once its texture was freed the next frame aborted with `Invalid texture still
+     * bound to MaterialInstance` (sceneview/sceneview#4285).
+     *
+     * A wrapper of an instance this loader does not track, or of one already destroyed, is
+     * ignored.
+     */
     fun destroyMaterialInstance(materialInstance: MaterialInstance) {
-        // `List.remove` on the `synchronizedList` is atomic: the contains-check and the removal
-        // happen under a single lock, so only ONE caller ever observes `true`. A non-atomic
-        // `if (mi in materialInstances) { ...; materialInstances -= mi }` would let two threads
-        // (e.g. a VideoNode `materialInstance` setter on the main thread + a `destroy()` sweep)
-        // both pass the guard and call `Engine.destroyMaterialInstance` twice → native abort.
-        if (materialInstances.remove(materialInstance)) {
-            // Same tolerance as destroyMaterial — a MaterialInstance can be orphaned by a
-            // prior Material.destroy (which cascades to its defaultInstance and, during
-            // Engine teardown, effectively to all instances tied to destroyed materials).
-            runCatching { engine.safeDestroyMaterialInstance(materialInstance) }
-        }
+        // The lookup and the removal happen under the list's lock, so only ONE caller ever gets
+        // the instance back. A non-atomic `if (mi in materialInstances) { ...; materialInstances
+        // -= mi }` would let two threads (e.g. a VideoNode `materialInstance` setter on the main
+        // thread + a `destroy()` sweep) both pass the guard and call
+        // `Engine.destroyMaterialInstance` twice → native abort.
+        val tracked = materialInstances.removeTracked(materialInstance) { it.nativeObject }
+            ?: return
+        // Destroy the tracked wrapper, not the caller's: Filament clears the native pointer of
+        // the wrapper it is given, and the tracked one is the wrapper this loader hands out.
+        // Same tolerance as destroyMaterial — a MaterialInstance can be orphaned by a prior
+        // Material.destroy (which cascades to its defaultInstance and, during Engine teardown,
+        // effectively to all instances tied to destroyed materials).
+        runCatching { engine.safeDestroyMaterialInstance(tracked) }
     }
 
     /**
@@ -609,5 +624,34 @@ class MaterialLoader(
 
         ubershaderProvider.destroyMaterials()
         ubershaderProvider.destroy()
+    }
+}
+
+/**
+ * Removes and returns the entry of this list that stands for the same native object as [target],
+ * or returns `null` when there is none.
+ *
+ * Filament's Java wrappers (`MaterialInstance`, `Material`, …) do not override `equals`, and a
+ * read-back such as `RenderableManager.getMaterialInstanceAt` builds a new wrapper on every call.
+ * So the match is on identity first, then on the native handle that [nativeHandle] reads. It
+ * returns `null` for a wrapper whose native object is already gone; Filament's getters throw in
+ * that case, and the throw counts as no handle.
+ *
+ * Runs under the list's own lock, which is the lock of a `Collections.synchronizedList`. The
+ * lookup and the removal are therefore one step: two concurrent callers can never both receive
+ * the same entry.
+ *
+ * Filament-free so a JVM test can pin it; Filament wrappers cannot be built without the native
+ * library.
+ */
+internal fun <T : Any> MutableList<T>.removeTracked(target: T, nativeHandle: (T) -> Long): T? {
+    fun handleOf(item: T): Long? = runCatching { nativeHandle(item) }.getOrNull()?.takeIf { it != 0L }
+    synchronized(this) {
+        var index = indexOfFirst { it === target }
+        if (index < 0) {
+            val handle = handleOf(target) ?: return null
+            index = indexOfFirst { handleOf(it) == handle }
+        }
+        return if (index < 0) null else removeAt(index)
     }
 }
