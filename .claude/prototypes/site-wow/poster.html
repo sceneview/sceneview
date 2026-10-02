@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poster renderer</title>
+<!-- Prototype tool: renders one model on a transparent canvas so a headless browser can
+     save the still that the page shows before the live 3D starts (the LCP).
+     poster.html?model=khronos_toy_car.glb&elev=0.38&angle=0.75&fill=0.94&top=0.7&anim=1&t=1.2
+     The framing is assets/fit.js, the same fit the page applies to the live render. -->
+<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}canvas{display:block;width:100vw;height:100vh}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="vendor/filament/filament.js"></script>
+<script src="vendor/sceneview.js"></script>
+<script src="assets/fit.js"></script>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var num = function (k, d) { var v = parseFloat(q.get(k)); return isNaN(v) ? d : v; };
+  SceneView.create(document.getElementById('c'), {
+    transparent: true, iblUrl: 'env/neutral_ibl.ktx',
+    iblIntensity: num('ibl', 32000), lightIntensity: num('light', 90000),
+    fov: 32, autoRotate: false, initTimeoutMs: 30000
+  }).then(function (sv) {
+    window.__svp = sv;
+    return sv.loadModel('models/' + (q.get('model') || 'khronos_toy_car.glb')).then(function () {
+      var bb = sv._asset.getBoundingBox();
+      var f = SVFit.fit({ min: bb.min, max: bb.max }, {
+        aspect: innerWidth / innerHeight, elev: num('elev', 0.25), angle: num('angle', 0),
+        fill: num('fill', 0.9), top: num('top', 0.7), hull: q.get('hull') || 'box'
+      });
+      sv._orbitTarget = f.target; sv._orbitRadius = f.radius; sv._orbitHeight = f.height; sv._angle = f.angle;
+      sv._minRadius = 0; sv._maxRadius = 1e9;
+      window.__fit = { shadow: f.shadow, extent: f.extent };
+      if (q.has('anim')) sv.playAnimation(parseInt(q.get('anim'), 10), true);
+      setTimeout(function () { window.__ready = true; }, num('t', 1.5) * 1000);
+    });
+  }).catch(function (e) { window.__error = String(e && e.message || e); });
+})();
+</script>
+</body>
+</html>

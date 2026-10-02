@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Quickstart · SceneView docs</title>
+  <meta name="description" content="From an empty Android Studio project to a 3D model you can orbit with touch, in about ten minutes.">
+  <meta name="theme-color" content="#07090D">
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,18 7,13 7,22 16,27' fill='%23003A7D'/%3E%3Cpolygon points='16,18 25,13 25,22 16,27' fill='%23005BC1'/%3E%3Cpolygon points='16,9 25,14 16,19 7,14' fill='%238AB4FF'/%3E%3C/svg%3E">
+  <!-- Prototype only: production self-hosts Geist + JetBrains Mono (both OFL) from /assets/fonts. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    (function () {
+      var d = document.documentElement; d.classList.add('js');
+      try {
+        var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('sv-theme');
+        if (t === 'light' || t === 'dark') d.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/docs.css">
+</head>
+<body class="docs-page">
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 32 32">
+    <polygon points="16,18 7,13 7,22 16,27" fill="#0B4FA8"/>
+    <polygon points="16,18 25,13 25,22 16,27" fill="#2F7BEA"/>
+    <polygon points="16,9 25,14 16,19 7,14" fill="#8AB4FF"/>
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+      <polyline points="4,8 4,4 8,4"/><polyline points="28,8 28,4 24,4"/><polyline points="4,24 4,28 8,28"/><polyline points="28,24 28,28 24,28"/>
+    </g>
+  </symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.7 5.38-5.27 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></g></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 8h16M4 16h16"/></symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></g></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></g></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M19 12H5m5-5-5 5 5 5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-md" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M6 15V9l2.5 3L11 9v6M15.5 9v6m-2-2 2 2 2-2"/></g></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.1"/></g></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 21 19.5H3z"/><path d="M12 10v4.5M12 17.2v.1"/></g></symbol>
+</svg>
+
+<header class="nav nav--solid">
+  <div class="container container--wide nav__inner">
+    <a class="brand" href="index.html" aria-label="SceneView home"><svg class="brand__mark"><use href="#i-logo"/></svg>SceneView</a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="https://sceneview.github.io/docs/samples/">Samples</a>
+      <a href="https://sceneview.github.io/showcase.html">Showcase</a>
+      <a href="https://sceneview.github.io/playground.html">Playground</a>
+    </nav>
+    <div class="nav__end">
+      <button class="search" type="button" aria-label="Search the docs" title="Prototype: search is not wired">
+        <svg><use href="#i-search"/></svg><span class="search__label">Search docs</span><kbd>⌘K</kbd>
+      </button>
+      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub, 1.3K stars"><svg><use href="#i-gh"/></svg><span>1.3K</span></a>
+      <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
+      <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open site menu"><svg><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="sheet" id="menu" aria-hidden="true">
+  <div class="sheet__scrim" data-close-sheet></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-label="Menu">
+    <div class="sheet__grip"></div>
+    <ul class="sheet__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html">Docs <span>quickstarts, API</span></a></li>
+      <li><a href="https://sceneview.github.io/docs/samples/">Samples <span>Android, Apple, web</span></a></li>
+      <li><a href="https://sceneview.github.io/playground.html">Playground <span>in the browser</span></a></li>
+      <li><a href="https://github.com/sceneview/sceneview">GitHub <span>★ 1.3K</span></a></li>
+    </ul>
+    <div class="sheet__row">
+      <button class="btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg>Theme</button>
+    </div>
+  </div>
+</div>
+
+<!-- Phone / tablet: the docs tree lives in a drawer opened from this sticky bar. -->
+<div class="subbar">
+  <button class="subbar__btn" type="button" aria-controls="docs-nav" aria-expanded="false"><svg><use href="#i-sidebar"/></svg>Docs</button>
+  <ol class="crumbs crumbs--bar" aria-label="Breadcrumb">
+    <li>Get started</li>
+    <li aria-current="page">Quickstart</li>
+  </ol>
+</div>
+
+<div class="docs">
+  <aside class="sidenav" id="docs-nav" aria-label="Documentation">
+    <div class="sidenav__scrim" data-close-drawer></div>
+    <div class="sidenav__panel">
+      <div class="sidenav__head">
+        <span class="version" title="Docs follow the latest release">v4.51 · latest</span>
+        <button class="icon-btn sidenav__close" type="button" data-close-drawer aria-label="Close the docs menu"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <nav>
+        <p class="sidenav__group">Get started</p>
+        <ul>
+          <li><a href="docs.html" aria-current="page">Quickstart</a></li>
+          <li><a href="https://sceneview.github.io/docs/quickstart-ios/">Quickstart · Apple</a></li>
+          <li><a href="https://sceneview.github.io/docs/quickstart-web/">Quickstart · Web</a></li>
+          <li><a href="https://sceneview.github.io/docs/quickstart-flutter/">Quickstart · Flutter</a></li>
+          <li><a href="https://sceneview.github.io/docs/quickstart-react-native/">Quickstart · React Native</a></li>
+          <li><a href="https://sceneview.github.io/docs/quickstart-tv/">Quickstart · TV</a></li>
+          <li><a href="https://sceneview.github.io/docs/try/">Try the demo</a></li>
+        </ul>
+        <p class="sidenav__group">Build</p>
+        <ul>
+          <li><a href="https://sceneview.github.io/docs/nodes/">Nodes</a></li>
+          <li><a href="https://sceneview.github.io/docs/formats/">Model formats</a></li>
+          <li><a href="https://sceneview.github.io/docs/cheatsheet/">API cheatsheet</a></li>
+          <li><a href="https://sceneview.github.io/docs/cheatsheet-ios/">API cheatsheet · Apple</a></li>
+          <li><a href="https://sceneview.github.io/docs/recipes/">Recipes</a></li>
+        </ul>
+        <p class="sidenav__group">Guides</p>
+        <ul>
+          <li><a href="https://sceneview.github.io/docs/architecture/">Architecture</a></li>
+          <li><a href="https://sceneview.github.io/docs/compose-multiplatform/">Compose Multiplatform</a></li>
+          <li><a href="https://sceneview.github.io/docs/android-xr/">Android XR</a></li>
+          <li><a href="https://sceneview.github.io/docs/visionos-spatial/">visionOS</a></li>
+          <li><a href="https://sceneview.github.io/docs/ar-recording/">AR recording and playback</a></li>
+          <li><a href="https://sceneview.github.io/docs/performance/">Performance</a></li>
+          <li><a href="https://sceneview.github.io/docs/testing/">Testing</a></li>
+          <li><a href="https://sceneview.github.io/docs/ai-context/">Use with AI assistants</a></li>
+        </ul>
+        <p class="sidenav__group">Codelabs</p>
+        <ul>
+          <li><a href="https://sceneview.github.io/docs/codelabs/codelab-3d-compose/">3D with Compose</a></li>
+          <li><a href="https://sceneview.github.io/docs/codelabs/codelab-ar-compose/">AR with Compose</a></li>
+          <li><a href="https://sceneview.github.io/docs/codelabs/codelab-3d-swiftui/">3D with SwiftUI</a></li>
+          <li><a href="https://sceneview.github.io/docs/codelabs/codelab-ar-swiftui/">AR with SwiftUI</a></li>
+        </ul>
+        <p class="sidenav__group">Reference</p>
+        <ul>
+          <li><a href="https://sceneview.github.io/api/sceneview/">API reference <span class="ext">Dokka</span></a></li>
+          <li><a href="https://sceneview.github.io/llms.txt">llms.txt</a></li>
+          <li><a href="https://sceneview.github.io/docs/platforms/">Platform status</a></li>
+          <li><a href="https://sceneview.github.io/docs/changelog/">Changelog</a></li>
+          <li><a href="https://sceneview.github.io/docs/migration/">Migration guide</a></li>
+          <li><a href="https://sceneview.github.io/docs/faq/">FAQ</a></li>
+          <li><a href="https://sceneview.github.io/docs/troubleshooting/">Troubleshooting</a></li>
+        </ul>
+        <p class="sidenav__group">Project</p>
+        <ul>
+          <li><a href="https://sceneview.github.io/docs/samples/">Samples</a></li>
+          <li><a href="https://sceneview.github.io/docs/community/">Community</a></li>
+          <li><a href="https://sceneview.github.io/docs/contributing/">Contributing</a></li>
+        </ul>
+      </nav>
+    </div>
+  </aside>
+
+  <main id="main" class="doc">
+    <ol class="crumbs" aria-label="Breadcrumb">
+      <li><a href="docs.html">Docs</a></li>
+      <li>Get started</li>
+      <li aria-current="page">Quickstart</li>
+    </ol>
+
+    <header class="doc__head">
+      <h1 class="doc__title">Quickstart</h1>
+      <p class="doc__lead">From an empty Android Studio project to a 3D model you can orbit with touch, in about ten minutes.</p>
+      <div class="doc__meta">
+        <nav class="platforms" aria-label="Quickstart for another platform">
+          <a href="docs.html" aria-current="page">Android</a>
+          <a href="https://sceneview.github.io/docs/quickstart-ios/">Apple</a>
+          <a href="https://sceneview.github.io/docs/quickstart-web/">Web</a>
+          <a href="https://sceneview.github.io/docs/quickstart-flutter/">Flutter</a>
+          <a href="https://sceneview.github.io/docs/quickstart-react-native/">React Native</a>
+        </nav>
+        <div class="doc__actions">
+          <button class="pill" type="button" data-copy-page><svg class="i-copy"><use href="#i-md"/></svg><svg class="i-check"><use href="#i-check"/></svg><span>Copy as Markdown</span></button>
+          <a class="pill" href="https://sceneview.github.io/llms.txt">llms.txt</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- What you'll build: the real renderer, same budget as the home (visible on desktop, tap on phones). -->
+    <figure class="result">
+      <div class="viewport viewport--doc">
+        <div class="stage" id="doc-stage" data-stage data-src="models/khronos_sheen_chair.glb"
+             data-autoload="visible" data-mobile="tap" data-elev="0.26" data-zoom="1.4" data-angle="0.6">
+          <div class="stage__shadow" aria-hidden="true"></div>
+          <img class="stage__poster" src="media/poster-sheen-chair.webp" width="1000" height="850" loading="lazy"
+               alt="The finished quickstart: a velvet armchair rendered by SceneView, ready to orbit.">
+          <canvas class="stage__canvas" aria-label="Interactive preview of the quickstart result. Drag to orbit."></canvas>
+          <button class="stage__load" type="button" hidden><svg><use href="#i-play"/></svg>Run it live <small>≈ 8&nbsp;MB</small></button>
+        </div>
+        <div class="viewport__top">
+          <span class="badge"><span class="dot"></span><span class="when-poster">Still</span><b class="when-live">Live</b><span class="badge__more"> · what you will build</span></span>
+        </div>
+        <div class="viewport__bottom">
+          <span class="credit">Sheen Chair · © 2020 Wayfair LLC · CC0</span>
+        </div>
+      </div>
+      <figcaption>Drag to orbit, pinch to zoom, two fingers to pan: the same gestures your app gets for free.</figcaption>
+    </figure>
+
+    <details class="toc-inline">
+      <summary>On this page</summary>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#dependency">Add the dependency</a></li>
+        <li><a href="#model">Add a model</a></li>
+        <li><a href="#scene">Write the scene</a></li>
+        <li><a href="#run">Run it</a></li>
+        <li><a href="#next">Next steps</a></li>
+      </ul>
+    </details>
+
+    <article class="prose">
+      <h2 id="prerequisites">Prerequisites</h2>
+      <ul>
+        <li>Android Studio Ladybug (2024.2.1) or newer</li>
+        <li>A device or emulator on API 24 or higher</li>
+        <li>Some Kotlin and Jetpack Compose</li>
+      </ul>
+
+      <ol class="steps">
+        <li class="step">
+          <h2 id="dependency">Add the dependency</h2>
+          <p>In your app module, add SceneView. One artifact covers 3D; AR lives in <code>arsceneview</code>.</p>
+          <div class="codeblock">
+            <div class="codeblock__bar">
+              <div class="codeblock__tabs" role="tablist" aria-label="Build file" data-sync="gradle">
+                <button role="tab" id="t-kts" aria-controls="p-kts" aria-selected="true" data-key="kts">build.gradle.kts</button>
+                <button role="tab" id="t-toml" aria-controls="p-toml" aria-selected="false" tabindex="-1" data-key="toml">libs.versions.toml</button>
+              </div>
+              <button class="copy" type="button" aria-label="Copy to clipboard" data-copy-panel><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button>
+            </div>
+<div role="tabpanel" id="p-kts" aria-labelledby="t-kts"><pre><code>dependencies {
+    <span class="f">implementation</span>(<span class="s">"io.github.sceneview:sceneview:4.51.0"</span>)
+}</code></pre></div>
+<div role="tabpanel" id="p-toml" aria-labelledby="t-toml" hidden><pre><code><span class="c"># gradle/libs.versions.toml</span>
+[versions]
+sceneview = <span class="s">"4.51.0"</span>
+
+[libraries]
+sceneview = { module = <span class="s">"io.github.sceneview:sceneview"</span>, version.ref = <span class="s">"sceneview"</span> }
+
+<span class="c"># app/build.gradle.kts</span>
+<span class="f">implementation</span>(libs.sceneview)</code></pre></div>
+          </div>
+        </li>
+
+        <li class="step">
+          <h2 id="model">Add a model</h2>
+          <p>Any glTF or GLB file works. This page uses the Sheen Chair from the Khronos sample assets (CC0): save <a href="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/SheenChair/glTF-Binary/SheenChair.glb">SheenChair.glb</a> as <code>app/src/main/assets/models/sheen_chair.glb</code>.</p>
+          <aside class="callout callout--tip">
+            <svg aria-hidden="true"><use href="#i-info"/></svg>
+            <div><p class="callout__title">Bringing your own file?</p><p>USDZ, STL, OBJ, PLY and 3MF are converted on load. <a href="https://sceneview.github.io/docs/formats/">Model formats</a> lists what each one keeps.</p></div>
+          </aside>
+        </li>
+
+        <li class="step">
+          <h2 id="scene">Write the scene</h2>
+          <p>Replace <code>MainActivity.kt</code>. The scene is a composable; the model is a node inside it.</p>
+          <div class="codeblock">
+            <div class="codeblock__bar">
+              <span class="codeblock__file">MainActivity.kt</span>
+              <button class="copy" type="button" aria-label="Copy to clipboard" data-copy-panel><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button>
+            </div>
+<div class="codeblock__panel"><pre><code><span class="ln"><span class="k">class</span> <span class="f">MainActivity</span> : ComponentActivity() {</span>
+<span class="ln">    <span class="k">override fun</span> <span class="f">onCreate</span>(savedInstanceState: Bundle?) {</span>
+<span class="ln">        <span class="k">super</span>.<span class="f">onCreate</span>(savedInstanceState)</span>
+<span class="ln">        <span class="f">setContent</span> {</span>
+<span class="ln">            <span class="k">val</span> engine = <span class="f">rememberEngine</span>()</span>
+<span class="ln">            <span class="k">val</span> modelLoader = <span class="f">rememberModelLoader</span>(engine)</span>
+<span class="ln"></span>
+<span class="ln">            <span class="f">SceneView</span>(</span>
+<span class="ln">                modifier = Modifier.<span class="f">fillMaxSize</span>(),</span>
+<span class="ln">                engine = engine,</span>
+<span class="ln">                modelLoader = modelLoader,</span>
+<span class="ln">                cameraManipulator = <span class="f">rememberCameraManipulator</span>(),</span>
+<span class="ln">            ) {</span>
+<span class="ln hl">                <span class="f">rememberModelInstance</span>(modelLoader, <span class="s">"models/sheen_chair.glb"</span>)</span>
+<span class="ln hl">                    ?.<span class="f">let</span> { instance <span class="k">-&gt;</span></span>
+<span class="ln hl">                        <span class="f">ModelNode</span>(modelInstance = instance, scaleToUnits = <span class="n">1.0f</span>)</span>
+<span class="ln hl">                    }</span>
+<span class="ln">            }</span>
+<span class="ln">        }</span>
+<span class="ln">    }</span>
+<span class="ln">}</span></code></pre></div>
+            <p class="codeblock__note">Imports omitted. The full file, with imports, is in <a href="https://sceneview.github.io/docs/samples/">the samples</a>.</p>
+          </div>
+
+          <h3>What each call does</h3>
+          <table class="calls">
+            <thead><tr><th scope="col">Call</th><th scope="col">Role</th></tr></thead>
+            <tbody>
+              <tr><td><code>rememberEngine()</code></td><td>The Filament engine, one per screen.</td></tr>
+              <tr><td><code>rememberModelLoader(engine)</code></td><td>Loads glTF and GLB models from assets.</td></tr>
+              <tr><td><code>rememberCameraManipulator()</code></td><td>Orbit, pan and zoom gestures.</td></tr>
+              <tr><td><code>SceneView { }</code></td><td>The 3D viewport. Nodes go in the trailing lambda.</td></tr>
+              <tr><td><code>rememberModelInstance(…)</code></td><td>Loads the model asynchronously; <code>null</code> until it is ready.</td></tr>
+              <tr><td><code>ModelNode(…)</code></td><td>Places the model in the scene, scaled to one unit.</td></tr>
+            </tbody>
+          </table>
+
+          <aside class="callout callout--warn">
+            <svg aria-hidden="true"><use href="#i-warn"/></svg>
+            <div><p class="callout__title">Handle the loading state</p><p><code>rememberModelInstance</code> returns <code>null</code> while the file loads. Keep the <code>?.let</code>; never force it with <code>!!</code>.</p></div>
+          </aside>
+        </li>
+
+        <li class="step">
+          <h2 id="run">Run it</h2>
+          <p>Press Run. After a short load, the chair appears: drag to orbit, pinch to zoom, two fingers to pan. That is a physically based viewer in about twenty lines.</p>
+        </li>
+      </ol>
+
+      <h2 id="next">Next steps</h2>
+      <div class="nextcards">
+        <a class="nextcard" href="https://sceneview.github.io/docs/codelabs/codelab-ar-compose/"><span class="nextcard__k">Codelab</span><strong>Place it in AR</strong><span>ARSceneView, planes and anchors.</span></a>
+        <a class="nextcard" href="https://sceneview.github.io/docs/nodes/"><span class="nextcard__k">Reference</span><strong>Every node</strong><span>Models, lights, cameras, views, shapes.</span></a>
+        <a class="nextcard" href="https://sceneview.github.io/docs/samples/"><span class="nextcard__k">Samples</span><strong>Working sample apps</strong><span>Animation, cameras, cloud anchors.</span></a>
+        <a class="nextcard" href="https://sceneview.github.io/docs/ai-context/"><span class="nextcard__k">AI</span><strong>Use your assistant</strong><span>MCP server and llms.txt.</span></a>
+      </div>
+    </article>
+
+    <div class="doc__end">
+      <div class="feedback" role="group" aria-labelledby="fb-q">
+        <span id="fb-q">Was this page helpful?</span>
+        <button class="pill" type="button">Yes</button>
+        <button class="pill" type="button">No</button>
+      </div>
+      <a class="doc__edit" href="https://github.com/sceneview/sceneview/edit/main/docs/docs/quickstart.md"><svg><use href="#i-edit"/></svg>Edit this page on GitHub</a>
+    </div>
+
+    <nav class="pager" aria-label="Previous and next page">
+      <a class="pager__prev" href="https://sceneview.github.io/docs/try/"><span><svg><use href="#i-back"/></svg>Previous</span><strong>Try the demo</strong></a>
+      <a class="pager__next" href="https://sceneview.github.io/docs/quickstart-ios/"><span>Next<svg><use href="#i-arrow"/></svg></span><strong>Quickstart · Apple</strong></a>
+    </nav>
+
+    <footer class="docfoot">
+      <span>© 2026 SceneView contributors · Apache 2.0</span>
+      <span><a href="https://sceneview.github.io/privacy.html">Privacy</a> · <a href="https://sceneview.github.io/credits.html">Credits</a> · <a href="https://opencollective.com/sceneview">Donate</a></span>
+    </footer>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <p class="toc__title">On this page</p>
+    <ul>
+      <li><a href="#prerequisites">Prerequisites</a></li>
+      <li><a href="#dependency">Add the dependency</a></li>
+      <li><a href="#model">Add a model</a></li>
+      <li><a href="#scene">Write the scene</a></li>
+      <li><a href="#run">Run it</a></li>
+      <li><a href="#next">Next steps</a></li>
+    </ul>
+  </aside>
+</div>
+
+<script src="assets/site.js" defer></script>
+</body>
+</html>
