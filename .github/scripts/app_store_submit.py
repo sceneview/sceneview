@@ -1,4 +1,4 @@
-"""Submit the uploaded iOS build for App Store review (#2893).
+"""Submit the uploaded iOS or macOS build for App Store review (#2893).
 
 Called by `.github/workflows/app-store.yml` → `Submit build for App Store
 review`, under that job's pinned venv:
@@ -30,6 +30,8 @@ file it works. That branch now has a test; see the suite's dispatch-path case.
                                 the TestFlight build app-store-catch-up.yml reuses
     ASC_SUPERSEDE               "true" = withdraw an OLDER version from review to
                                 make room for this one (opt-in, human decision)
+    ASC_PLATFORM                IOS (default) or MAC_OS — the platform whose
+                                build, version and review this run handles
     GITHUB_WORKSPACE            repo root — the job runs with
                                 `working-directory: samples/ios-demo`
 
@@ -51,6 +53,23 @@ EXIT_DEFERRED = 75
 KEY_ID = os.environ["ASC_KEY_ID"]
 ISSUER_ID = os.environ["ASC_ISSUER_ID"]
 BUNDLE_ID = "io.github.sceneview.demo"
+
+# The App Store platform this run submits. The iOS leg of app-store.yml leaves
+# it unset; the macOS leg passes MAC_OS. Every build, version and
+# reviewSubmission lookup below filters on it, so a run only ever sees,
+# creates and submits records of its own platform (the #2731 hijack, in both
+# directions). Until the macOS leg called this program, Mac builds were
+# uploaded on every release and never submitted: 4.18.0 stayed on sale while
+# 4.19.0 to 4.51.0 sat on TestFlight.
+PLATFORM = (os.environ.get("ASC_PLATFORM") or "IOS").strip().upper()
+if PLATFORM not in ("IOS", "MAC_OS"):
+    print(f"::error::ASC_PLATFORM={PLATFORM!r} is not a platform this program submits (IOS, MAC_OS)")
+    raise SystemExit(1)
+# The listing files (distribution/app-store/en-US) and the screenshots
+# (appstore-screenshots/) describe the iPhone/iPad app. The Mac listing keeps
+# its own description, keywords and desktop screenshots, so a Mac run only
+# writes whatsNew — the field Apple requires on every new version.
+IOS_LISTING = PLATFORM == "IOS"
 
 key_path = os.path.expanduser(f"~/.private_keys/AuthKey_{KEY_ID}.p8")
 with open(key_path) as f:
@@ -205,7 +224,7 @@ for attempt in range(1, POLL_ATTEMPTS + 1):
         platform = (inc or {}).get("attributes", {}).get("platform")
         if platform is not None:
             platform_seen = True
-        if platform == "IOS":
+        if platform == PLATFORM:
             ios_builds.append(b)
     chosen = None
     if expected_build:
@@ -255,13 +274,13 @@ for attempt in range(1, POLL_ATTEMPTS + 1):
             build_id = newest_valid["id"]
             build_version = newest_valid["attributes"]["version"]
             break
-    waiting_for = f"build {expected_build}" if expected_build else "a VALID iOS build"
+    waiting_for = f"build {expected_build}" if expected_build else f"a VALID {PLATFORM} build"
     print(f"No {waiting_for} yet (attempt {attempt}/{POLL_ATTEMPTS}) — Apple still processing, retrying in 60s...")
     time.sleep(60)
 if not build_id:
     detail = (
         f"build {expected_build} (uploaded by this run) never turned VALID"
-        if expected_build else "no VALID iOS build appeared"
+        if expected_build else f"no VALID {PLATFORM} build appeared"
     )
     print(f"::error::After ~{2 + POLL_ATTEMPTS} minutes, {detail} — Apple processing overran or the "
           "upload failed. The release was NOT submitted for review. RECOVERY: dispatch a FRESH run — "
@@ -269,7 +288,7 @@ if not build_id:
           "re-archives the same CFBundleVersion and Apple rejects the duplicate upload before the "
           "submit step is reached (#3081).")
     raise SystemExit(1)
-print(f"Selected iOS build: {build_version} (ID: {build_id})")
+print(f"Selected {PLATFORM} build: {build_version} (ID: {build_id})")
 
 # Re-mint the token: the poll above may have burned most of its
 # 20-minute life, and everything that follows (version record, build
@@ -368,7 +387,7 @@ def claim_editable_version():
     r = requests.get(
         f"{BASE}/apps/{app_id}/appStoreVersions"
         f"?filter[appStoreState]={','.join(EDITABLE_STATES + ['READY_FOR_REVIEW'])}"
-        f"&filter[platform]=IOS&include=appStoreVersionSubmission",
+        f"&filter[platform]={PLATFORM}&include=appStoreVersionSubmission",
         headers=headers,
     )
     versions = r.json().get("data", [])
@@ -405,7 +424,7 @@ def claim_editable_version():
     # Never rename a record DOWN: a newer version's record (a later release a
     # human is handling, or one Apple rejected) must not become an older one.
     if _vtuple(stale_vs) > _vtuple(version_string):
-        print(f"::error::The editable iOS record is {stale_vs} ({stale_state}, {stale_id}), newer "
+        print(f"::error::The editable {PLATFORM} record is {stale_vs} ({stale_state}, {stale_id}), newer "
               f"than {version_string}. Renaming it would downgrade it, so nothing was changed. "
               "Resolve it in App Store Connect.")
         raise SystemExit(1)
@@ -438,7 +457,7 @@ def find_slot_holder():
     try:
         probe = requests.get(
             f"{BASE}/apps/{app_id}/appStoreVersions"
-            f"?filter[appStoreState]={OCCUPYING_STATES}&filter[platform]=IOS&limit=5",
+            f"?filter[appStoreState]={OCCUPYING_STATES}&filter[platform]={PLATFORM}&limit=5",
             headers=headers,
         )
         if probe.status_code == 200:
@@ -462,7 +481,7 @@ def supersede(holder_vs, holder_state):
     """
     r = requests.get(
         f"{BASE}/apps/{app_id}/reviewSubmissions"
-        f"?filter[platform]=IOS&filter[state]=WAITING_FOR_REVIEW,IN_REVIEW&limit=10",
+        f"?filter[platform]={PLATFORM}&filter[state]=WAITING_FOR_REVIEW,IN_REVIEW&limit=10",
         headers=headers,
     )
     if r.status_code != 200:
@@ -543,7 +562,7 @@ def defer_or_supersede(slot, apple_409=None):
         if SUPERSEDE:
             why += " (supersede was requested but only applies to an OLDER version "\
                    "that is WAITING_FOR_REVIEW or IN_REVIEW)"
-    print(f"::notice::iOS submission for {version_string} DEFERRED: {why}. Nothing was "
+    print(f"::notice::{PLATFORM} submission for {version_string} DEFERRED: {why}. Nothing was "
           "cancelled and no review was touched.")
     if apple_409 is not None:
         print(f"POST /v1/appStoreVersions → 409: {apple_409[:400]}")
@@ -575,7 +594,7 @@ if not version_id:
     payload = {
         "data": {
             "type": "appStoreVersions",
-            "attributes": {"platform": "IOS", "versionString": version_string},
+            "attributes": {"platform": PLATFORM, "versionString": version_string},
             "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}
         }
     }
@@ -724,14 +743,16 @@ try:
 
     # promotionalText syncs on every release (Apple allows
     # updating without a new review).
-    v = _read("promotionalText", "promotional_text.txt", 170)
+    v = _read("promotionalText", "promotional_text.txt", 170) if IOS_LISTING else None
     if v is not None:
         attrs["promotionalText"] = v
 
     # Description / keywords / urls = per minor bump.
     # `version_string` is already stripped of the leading `v`.
     is_minor_bump = bool(re.fullmatch(r"\d+\.\d+\.0", version_string))
-    if is_minor_bump:
+    if not IOS_LISTING:
+        print(f"{PLATFORM}: whatsNew only — the iOS listing files are not this platform's")
+    elif is_minor_bump:
         print(f"Tag {version_string} is a minor/major bump — syncing description/keywords/urls")
         for field, fname, cap in [
             ("description", "description.txt", 4000),
@@ -806,7 +827,8 @@ except Exception as e:
 # proceeds.
 try:
     import re, pathlib
-    if re.fullmatch(r"\d+\.\d+\.0", version_string):
+    # The app info is shared by every platform: the iOS leg owns it.
+    if IOS_LISTING and re.fullmatch(r"\d+\.\d+\.0", version_string):
         meta_dir = pathlib.Path("distribution/app-store/en-US")
         info_attrs = {}
         for field, fname in [("name", "name.txt"), ("subtitle", "subtitle.txt")]:
@@ -897,8 +919,15 @@ try:
     # with two minutes left would 401 halfway through a
     # delete-then-upload, which is the one way this can leave the
     # listing worse than it found it.
-    changed, skipped = apply_screenshots(asc_headers(), BUNDLE_ID, shots_dir)
-    if skipped:
+    # apply_screenshots() writes to the editable IOS version, whichever run
+    # calls it: a Mac run would race the iOS leg on the iPhone listing.
+    if not IOS_LISTING:
+        changed, skipped = {}, f"{PLATFORM} keeps its own screenshots; the repo holds iPhone/iPad sets"
+    else:
+        changed, skipped = apply_screenshots(asc_headers(), BUNDLE_ID, shots_dir)
+    if skipped and not IOS_LISTING:
+        print(f"Screenshot sync not run — {skipped}")
+    elif skipped:
         print(f"::warning::Screenshot sync SKIPPED — {skipped}")
     elif changed:
         print(f"Screenshots synced for {len(changed)} display type(s): {changed}")
@@ -1066,7 +1095,7 @@ try:
     OPEN_STATES = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES"
     ls = requests.get(
         f"{BASE}/apps/{app_id}/reviewSubmissions"
-        f"?filter[platform]=IOS&filter[state]={OPEN_STATES}&limit=10",
+        f"?filter[platform]={PLATFORM}&filter[state]={OPEN_STATES}&limit=10",
         headers=headers,
     )
     print(f"Open reviewSubmissions probe → {ls.status_code}")
@@ -1139,7 +1168,7 @@ try:
         rs_payload = {
             "data": {
                 "type": "reviewSubmissions",
-                "attributes": {"platform": "IOS"},
+                "attributes": {"platform": PLATFORM},
                 "relationships": {"app": {"data": {"type": "apps", "id": app_id}}}
             }
         }
@@ -1302,7 +1331,7 @@ try:
                     print(f"reviewSubmission {rs_id} by-id read → {probe.status_code}; "
                           "falling back to the app→reviewSubmissions list")
                     listing = requests.get(
-                        f"{BASE}/apps/{app_id}/reviewSubmissions?filter[platform]=IOS&limit=50",
+                        f"{BASE}/apps/{app_id}/reviewSubmissions?filter[platform]={PLATFORM}&limit=50",
                         headers=headers,
                     )
                     probe_state = next(
