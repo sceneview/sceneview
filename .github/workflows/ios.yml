@@ -125,7 +125,7 @@ jobs:
           # tolerated (xcodebuild OK → 0 → step green). See #1515.
           set -o pipefail
           xcodebuild build \
-            -scheme SceneViewSwift \
+            -scheme SceneViewSwift-Package \
             -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
@@ -156,7 +156,7 @@ jobs:
           # slipped past a "green" run.
           set -o pipefail
           xcodebuild test \
-            -scheme SceneViewSwift \
+            -scheme SceneViewSwift-Package \
             -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
@@ -217,7 +217,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -scheme SceneViewSwift \
+            -scheme SceneViewSwift-Package \
             -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}
@@ -237,7 +237,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -scheme SceneViewSwift \
+            -scheme SceneViewSwift-Package \
             -destination "$IOS_DEST" \
             -skipMacroValidation \
             | xcpretty --color 2>/dev/null || exit ${PIPESTATUS[0]}

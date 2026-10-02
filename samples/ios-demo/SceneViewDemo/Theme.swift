@@ -795,6 +795,15 @@ enum SceneViewTokens {
         /// Unlit track of a meter on the scrim, and "present but empty" over
         /// media — white at 8 %, Android's `ArOverlay.meterTrack`.
         static let meterTrack = Color.white.opacity(0x14 / 255)
+        /// `accent-progress` — a determinate meter's lit segments on the
+        /// scrim (#A4C1FF in both themes). Android's `ArOverlay.accentProgress`.
+        static let accentProgress = Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
+        /// Height of one segment of a meter on the scrim.
+        static let meterHeight: CGFloat = 4
+        /// Vertical padding of a caption pill on the scrim (the depth legend).
+        static let captionPillVerticalPadding: CGFloat = 6
+        /// An AR overlay card never grows wider than this (iPad, landscape).
+        static let cardMaxWidth: CGFloat = 480
     }
 
     /// `DESIGN.md` — the over-media **mode pill** (`mode-pill-*`): Cosmos's "Starlight |
@@ -823,6 +832,8 @@ enum SceneViewTokens {
         /// A segment's height. With `Space.xs` round it the capsule is `Layout.touchTarget`
         /// high — 48, as Android's toggle row — and each segment's hit area fills it.
         static let segmentHeight: CGFloat = 40
+        /// A segment's minimum width, so a short label ("ML") keeps a target as wide as tall.
+        static let segmentMinWidth: CGFloat = 72
 
         /// The sRGB components, 0…1.
         static func rgb(_ value: UInt32) -> SIMD3<Double> {

@@ -6611,7 +6611,13 @@ public struct ARSceneView: UIViewRepresentable {
     public func onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+
     public func onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+
     public func onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+
+    public func depthSource(_ source: DepthSource?) -> ARSceneView                          // .native (LiDAR) | .ml(estimator, targetHz: 10) | .auto(ml:targetHz:)
+    public func onDepthFrame(_ handler: @escaping (ARDepthFrame?) -> Void) -> ARSceneView   // metric depth, main thread; frame.source == .lidar or .ml; nil = no depth
+    public func onDepthSourceState(_ handler: @escaping (DepthSourceState) -> Void) -> ARSceneView // .native | .preparing | .ml(hz:) | .throttled(.thermal | .tracking | .waitingForAnchors(anchors:)) | .unavailable(reason)
 }
+// SceneViewDepthML (separate SPM product, Core ML): Depth Anything V2 Small, Apache-2.0, never bundled.
+// let estimator = try await DepthModelStore.shared.estimator(from: .pinnedDownload())  // 25.4 MB once, SHA-256 checked, cached
+// ARSceneView(configuration: .init(planeDetection: .both)).depthSource(.auto(ml: estimator)).onDepthFrame { frame in }
 
 // v4.39.0+ — what the session runs, as one Equatable value
 public struct ARSessionConfiguration: Equatable {

@@ -35,9 +35,9 @@ import SceneViewDepthML
 ///   fetches the model once (pinned revision, SHA-256 checked) — the same behaviour as
 ///   Android, where picking ML starts the download.
 ///
-/// The ML card mirrors Android's `MlDepthCard` text for text. Two known gaps: the waiting
-/// line carries no anchor count (`DepthSourceState.waitingForAnchors` has no payload), and
-/// the model is 49.8 MB here (Core ML F16) against 27.7 MB on Android (LiteRT).
+/// The ML card mirrors Android's `MlDepthCard` text for text, anchor count included. Known
+/// gaps: the model is 25.4 MB here (Core ML, 8-bit weights) against 27.7 MB on Android (LiteRT
+/// int8), and it takes a 518×392 image against 686×518 on Android.
 ///
 /// `@status knownIssue`: the simulator has no camera, so neither path has run on hardware
 /// from this PR; the iPhone SE (3rd gen) measurement is the merge gate.
@@ -224,18 +224,21 @@ private struct DepthSourcePill: View {
                         .lineLimit(1)
                         .foregroundStyle(selected ? Pill.onSelected : Pill.onContainer)
                         .padding(.horizontal, SceneViewTokens.Space.md)
-                        .frame(minWidth: 72, minHeight: Pill.segmentHeight)
+                        .frame(minWidth: Pill.segmentMinWidth, minHeight: Pill.segmentHeight)
                         .background {
                             if selected { Capsule().fill(Pill.selectedContainer) }
                         }
-                        .contentShape(Capsule())
+                        // The ring round the segment belongs to its hit area: 40 + 2 × 4 =
+                        // 48 pt high (`Layout.touchTarget`), not just the 40 pt capsule.
+                        .padding(.vertical, SceneViewTokens.Space.xs)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityIdentifier("depth-source-\(option.rawValue)")
             }
         }
-        .padding(SceneViewTokens.Space.xs)
+        .padding(.horizontal, SceneViewTokens.Space.xs)
         .background(Capsule().fill(Pill.container))
         .overlay(Capsule().strokeBorder(Pill.outline, lineWidth: Pill.outlineWidth))
         .sensoryFeedback(.selection, trigger: selection)
@@ -253,7 +256,7 @@ private struct DepthLegendPill: View {
             .font(SceneViewTokens.TypeScale.chromeCaption)
             .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             .padding(.horizontal, SceneViewTokens.Space.md)
-            .padding(.vertical, 6)
+            .padding(.vertical, SceneViewTokens.ARChrome.captionPillVerticalPadding)
             .background(Capsule().fill(SceneViewTokens.ARChrome.scrim(scheme)))
             .overlay(Capsule().strokeBorder(SceneViewTokens.ARChrome.border(scheme),
                                             lineWidth: SceneViewTokens.ARChrome.borderWidth))
@@ -266,14 +269,14 @@ private struct DepthLegendPill: View {
 enum MLCardStatus: Equatable {
     case downloading(Double)
     case preparing
-    case waiting
+    case waiting(anchors: Int)
     case running(medianMs: Int, hz: Double, anchors: Int, fitErrorPercent: Int)
     case holding
     case throttled
     case failed(String)
 
     static let modelSize: String = {
-        let bytes = Double(PinnedRemoteModel.depthAnythingV2SmallF16.totalBytes)
+        let bytes = Double(PinnedRemoteModel.depthAnythingV2SmallF16INT8.totalBytes)
         return String(format: "%.1f MB", bytes / 1_000_000)
     }()
 
@@ -283,8 +286,8 @@ enum MLCardStatus: Equatable {
             return "Downloading the model (\(Self.modelSize), once) — \(Int((fraction * 100).rounded(.down))) %"
         case .preparing:
             return "Preparing the model…"
-        case .waiting:
-            return "Scaling to metres needs surfaces — move slowly over the floor and a table"
+        case .waiting(let anchors):
+            return "Scaling to metres needs surfaces — move slowly over the floor and a table (\(anchors) anchors)"
         case .running(let ms, let hz, let anchors, let error):
             return "\(ms) ms per estimate · \(String(format: "%.1f", hz)) Hz · \(anchors) anchors · \(error) % fit error"
         case .holding:
@@ -304,8 +307,6 @@ private struct MLDepthCard: View {
 
     @Environment(\.colorScheme) private var scheme
     private typealias Chrome = SceneViewTokens.ARChrome
-    /// `accent-progress` — Android `ArOverlay.accentProgress` (#A4C1FF).
-    private static let accentProgress = Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
     private static let segments = 10
 
     var body: some View {
@@ -324,8 +325,8 @@ private struct MLDepthCard: View {
                 HStack(spacing: SceneViewTokens.Space.xs) {
                     ForEach(0..<Self.segments, id: \.self) { index in
                         Capsule()
-                            .fill(index < filled ? Self.accentProgress : Chrome.meterTrack)
-                            .frame(height: 4)
+                            .fill(index < filled ? Chrome.accentProgress : Chrome.meterTrack)
+                            .frame(height: Chrome.meterHeight)
                     }
                 }
                 .accessibilityElement()
@@ -337,7 +338,7 @@ private struct MLDepthCard: View {
                 .foregroundStyle(Chrome.onScrimDim)
         }
         .padding(SceneViewTokens.Space.md)
-        .frame(maxWidth: 480, alignment: .leading)
+        .frame(maxWidth: Chrome.cardMaxWidth, alignment: .leading)
         .background(Chrome.scrim(scheme))
         .overlay(
             RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
@@ -391,8 +392,8 @@ final class DepthVizModel: ObservableObject {
         switch depthState {
         case .none, .preparing?, .native?:
             return .preparing
-        case .throttled(.waitingForAnchors)?:
-            return .waiting
+        case .throttled(.waitingForAnchors(let anchors))?:
+            return .waiting(anchors: anchors)
         case .throttled(.thermal)?:
             return .throttled
         case .throttled(.tracking)?:
@@ -422,16 +423,11 @@ final class DepthVizModel: ObservableObject {
         loadTask = Task { [weak self] in
             do {
                 let store = DepthModelStore.shared
-                let url: URL
-                if let cached = store.cachedCompiledModel() {
-                    url = cached
-                } else {
-                    self?.modelPhase = .downloading(0)
-                    url = try await store.compiledModel(from: .pinnedDownload(), progress: progress)
-                }
-                self?.modelPhase = .preparing
+                self?.modelPhase = store.cachedCompiledModel() == nil ? .downloading(0) : .preparing
+                // Off the main actor: fetch if needed, compile, load. A cached model that no
+                // longer loads is purged and fetched again once.
                 let estimator = try await Task.detached(priority: .userInitiated) {
-                    try DepthAnythingV2Estimator(compiledModelURL: url)
+                    try await store.estimator(from: .pinnedDownload(), progress: progress)
                 }.value
                 self?.estimator = estimator
                 self?.modelPhase = .ready
@@ -537,8 +533,8 @@ enum DepthFalseColor {
 // MARK: - Preview override (DEBUG, simulator)
 
 /// `-depth-ml-preview <state>` renders one chrome state on the Simulator, where there is no
-/// camera and the model is never fetched. Pair it with `-ar-state-preview starting` so the
-/// AR container mounts the screen. A capture made this way is a render of the state, never
+/// camera and the model is never fetched. Pair it with `-ar-state-preview live` so the AR
+/// container mounts the screen without its "Starting camera…" pill over the card. A capture made this way is a render of the state, never
 /// a proof that depth ran. Compiled out of release builds.
 struct DepthVizPreview {
     let source: DepthVizSource
@@ -556,7 +552,7 @@ struct DepthVizPreview {
         switch args[index + 1] {
         case "downloading": return ml(.downloading(0.42))
         case "preparing": return ml(.preparing)
-        case "waiting": return ml(.waiting)
+        case "waiting": return ml(.waiting(anchors: 3))
         case "running": return ml(.running(medianMs: 31, hz: 9.6, anchors: 214, fitErrorPercent: 4))
         case "holding": return ml(.holding)
         case "throttled": return ml(.throttled)

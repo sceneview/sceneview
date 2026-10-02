@@ -6,8 +6,9 @@ import SceneViewSwift
 /// Depth Anything V2 **Small** on Core ML — the default
 /// ``SceneViewSwift/MonocularDepthEstimator`` for ``SceneViewSwift/DepthSource``.
 ///
-/// Runs Apple's F16 Core ML build (`apple/coreml-depth-anything-v2-small`,
-/// Apache-2.0, ~50 MB, 518×392 input) with `.cpuAndNeuralEngine`. The model
+/// Runs Apple's Core ML build (`apple/coreml-depth-anything-v2-small`,
+/// Apache-2.0, 518×392 input; 8-bit weights by default, 25.4 MB) with
+/// `.cpuAndNeuralEngine`. The model
 /// returns relative inverse depth; the SDK scales it to metres against
 /// ARKit's anchors on every frame.
 ///
@@ -16,8 +17,7 @@ import SceneViewSwift
 /// resource, or an On-Demand Resources tag), then:
 ///
 /// ```swift
-/// let url = try await DepthModelStore.shared.compiledModel(from: .pinnedDownload())
-/// let estimator = try DepthAnythingV2Estimator(compiledModelURL: url)
+/// let estimator = try await DepthModelStore.shared.estimator(from: .pinnedDownload())
 /// ARSceneView(configuration: .init(planeDetection: .both))
 ///     .depthSource(.auto(ml: estimator))
 ///     .onDepthFrame { frame in /* frame?.source == .ml */ }
@@ -62,7 +62,11 @@ public final class DepthAnythingV2Estimator: MonocularDepthEstimator, @unchecked
         self.inputSize = (constraint.pixelsWide, constraint.pixelsHigh)
         self.inputPixelFormat = constraint.pixelFormatType == 0
             ? kCVPixelFormatType_32BGRA : constraint.pixelFormatType
-        self.identifier = "depth-anything-v2-small-f16@\(constraint.pixelsWide)x\(constraint.pixelsHigh)"
+        // The compiled folder's name tells the F16 and 8-bit builds apart, so
+        // each keeps its own first-launch benchmark.
+        let variant = compiledModelURL.deletingPathExtension().lastPathComponent
+            .components(separatedBy: "@").first ?? "model"
+        self.identifier = "depth-anything-v2-small:\(variant)@\(constraint.pixelsWide)x\(constraint.pixelsHigh)"
     }
 
     /// The first prediction specialises the model for the Neural Engine

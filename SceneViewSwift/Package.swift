@@ -19,7 +19,7 @@ let package = Package(
             targets: ["SceneViewSwift"]
         ),
         // Monocular depth on Core ML (Depth Anything V2 Small). Separate so
-        // the base package stays model-free: the ~50 MB weights are fetched at
+        // the base package stays model-free: the 25.4 MB weights are fetched at
         // runtime by `DepthModelStore`, never bundled.
         .library(
             name: "SceneViewDepthML",

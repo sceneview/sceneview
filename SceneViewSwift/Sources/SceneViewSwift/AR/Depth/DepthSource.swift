@@ -109,20 +109,26 @@ public enum DepthSourceState: Sendable, Hashable {
     /// No depth will come; consumers fall back to their no-depth behaviour.
     case unavailable(UnavailableReason)
 
-    public enum ThrottleReason: String, Sendable, Hashable {
-        /// `ProcessInfo.thermalState` is `.serious` (rate halved) or `.critical` (paused).
+    public enum ThrottleReason: Sendable, Hashable {
+        /// `ProcessInfo.thermalState` is `.critical`: inference is paused.
+        /// At `.serious` the rate is halved and the state stays ``ml(hz:)``
+        /// (Android: `MlDepthState.Throttled` at SEVERE and above only).
         case thermal
         /// Tracking is not `.normal`: there is nothing to scale the depth against.
         case tracking
-        /// Not enough feature points or planes yet to put the depth in metres.
-        case waitingForAnchors
+        /// The model runs but the depth cannot be put in metres yet: too few
+        /// feature points or plane hits (`anchors` of them in the last frame),
+        /// or they span too little depth. Android: `MlDepthState.WaitingForAnchors(anchors)`.
+        case waitingForAnchors(anchors: Int)
     }
 
     public enum UnavailableReason: String, Sendable, Hashable {
         /// No depth source requested, or `.native` on a device/configuration
         /// without sensor depth and no estimator to fall back to.
         case noSource
-        /// The estimator failed to load or to run.
+        /// The estimator failed to load, or kept throwing while running
+        /// (three inferences in a row). Nothing more is published.
+        /// Android: `MlDepthState.Failed`.
         case modelFailed
         /// The first-launch benchmark was slower than the floor (p50 > 400 ms).
         case tooSlow

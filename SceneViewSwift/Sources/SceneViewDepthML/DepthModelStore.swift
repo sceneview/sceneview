@@ -19,16 +19,19 @@ public struct PinnedModelFile: Sendable, Hashable {
 /// A Core ML package fetched file by file from an immutable revision, every
 /// file checked against its SHA-256 before the model is compiled.
 public struct PinnedRemoteModel: Sendable, Hashable {
-    /// Package name without extension; also the cache folder name.
+    /// Package name without extension.
     public let name: String
-    /// URL of the `.mlpackage` folder at a fixed revision (never a branch).
+    /// The immutable revision the files are pinned to (a commit, never a branch).
+    public let revision: String
+    /// URL of the `.mlpackage` folder at ``revision``.
     public let packageURL: URL
     public let files: [PinnedModelFile]
     /// Where the model comes from and under which licence, for credits screens.
     public let attribution: String
 
-    public init(name: String, packageURL: URL, files: [PinnedModelFile], attribution: String) {
+    public init(name: String, revision: String, packageURL: URL, files: [PinnedModelFile], attribution: String) {
         self.name = name
+        self.revision = revision
         self.packageURL = packageURL
         self.files = files
         self.attribution = attribution
@@ -36,13 +39,44 @@ public struct PinnedRemoteModel: Sendable, Hashable {
 
     public var totalBytes: Int64 { files.reduce(0) { $0 + $1.size } }
 
-    /// Apple's Core ML build of Depth Anything V2 **Small**, F16, 518×392,
-    /// Apache-2.0 (Base and Large are CC-BY-NC-4.0 and not supported).
-    /// Pinned to revision `cfef6f6f2a70783dedc0bfae40cecbc2052285d3` of
+    /// The cache folder name: model name **and** revision, so a new pin never
+    /// reuses a model compiled from an older one.
+    public var cacheKey: String { "\(name)@\(revision.prefix(12))" }
+
+    static let appleRevision = "cfef6f6f2a70783dedc0bfae40cecbc2052285d3"
+    static let appleAttribution = "Depth Anything V2 Small (Yang et al., 2024), Core ML conversion by Apple, Apache-2.0. "
+        + "huggingface.co/apple/coreml-depth-anything-v2-small"
+
+    /// The default: Apple's Core ML build of Depth Anything V2 **Small** with
+    /// 8-bit palettised weights and F16 activations, 518×392, 25.4 MB,
+    /// Apache-2.0 (Base and Large are CC-BY-NC-4.0 and not supported). The
+    /// counterpart of Android's int8 LiteRT model (27.7 MB). Pinned to
+    /// revision `cfef6f6f2a70783dedc0bfae40cecbc2052285d3` of
     /// `huggingface.co/apple/coreml-depth-anything-v2-small`.
+    public static let depthAnythingV2SmallF16INT8 = PinnedRemoteModel(
+        name: "DepthAnythingV2SmallF16INT8",
+        revision: appleRevision,
+        packageURL: URL(string: "https://huggingface.co/apple/coreml-depth-anything-v2-small/resolve/\(appleRevision)/DepthAnythingV2SmallF16INT8.mlpackage/")!,
+        files: [
+            PinnedModelFile(path: "Manifest.json",
+                            sha256: "4b0fe646aab84e5a50d0f75e4ec7c68f0a0552c917856eaeb9b56376f43adcbb",
+                            size: 617),
+            PinnedModelFile(path: "Data/com.apple.CoreML/model.mlmodel",
+                            sha256: "9fa7a0f68615638a8f2d25ba79d323cf3ac70b8fe1f69a3a9c7b43b022a3cacd",
+                            size: 427_587),
+            PinnedModelFile(path: "Data/com.apple.CoreML/weights/weight.bin",
+                            sha256: "a8b775b4f0f1f843d6d7252eb4487ad2ebbcbcf7e35f3ddab3d98f030b9cbeb5",
+                            size: 24_967_424)
+        ],
+        attribution: appleAttribution
+    )
+
+    /// The same model with full F16 weights, 49.8 MB, from the same revision —
+    /// for comparing quality against the default.
     public static let depthAnythingV2SmallF16 = PinnedRemoteModel(
         name: "DepthAnythingV2SmallF16",
-        packageURL: URL(string: "https://huggingface.co/apple/coreml-depth-anything-v2-small/resolve/cfef6f6f2a70783dedc0bfae40cecbc2052285d3/DepthAnythingV2SmallF16.mlpackage/")!,
+        revision: appleRevision,
+        packageURL: URL(string: "https://huggingface.co/apple/coreml-depth-anything-v2-small/resolve/\(appleRevision)/DepthAnythingV2SmallF16.mlpackage/")!,
         files: [
             PinnedModelFile(path: "Manifest.json",
                             sha256: "2883ae290c48fe916dc5ececac03a7d847fa277165a49ef5652fa1d2b9cb55f7",
@@ -54,8 +88,7 @@ public struct PinnedRemoteModel: Sendable, Hashable {
                             sha256: "fa60d9b6a155734f59029ebb882fd54e549bfaee3539c1a9cbd2cbbab64a0fed",
                             size: 49_419_072)
         ],
-        attribution: "Depth Anything V2 Small (Yang et al., 2024), Core ML conversion by Apple, Apache-2.0. "
-            + "huggingface.co/apple/coreml-depth-anything-v2-small"
+        attribution: appleAttribution
     )
 }
 
@@ -67,10 +100,21 @@ public enum DepthModelSource: Sendable {
     /// A `.mlpackage` or `.mlmodel` compiled on the device on first use.
     case modelPackage(URL)
     /// Downloaded once from a pinned revision, checksummed, then cached.
-    case pinnedDownload(PinnedRemoteModel = .depthAnythingV2SmallF16)
+    case pinnedDownload(PinnedRemoteModel = .depthAnythingV2SmallF16INT8)
     /// An On-Demand Resources tag declared by the app, holding
     /// `<resourceName>.mlpackage` (or `.mlmodelc`).
-    case onDemandResource(tag: String, resourceName: String = "DepthAnythingV2SmallF16")
+    case onDemandResource(tag: String, resourceName: String = "DepthAnythingV2SmallF16INT8")
+
+    /// The cache folder this source compiles into, or nil when the model is
+    /// used in place.
+    var cacheKey: String? {
+        switch self {
+        case .compiledModel: return nil
+        case .modelPackage(let url): return url.deletingPathExtension().lastPathComponent
+        case .pinnedDownload(let remote): return remote.cacheKey
+        case .onDemandResource(_, let resourceName): return resourceName
+        }
+    }
 }
 
 /// Fetches, verifies, compiles and caches depth models in
@@ -88,16 +132,38 @@ public final class DepthModelStore: @unchecked Sendable {
             .appendingPathComponent("SceneViewDepthML", isDirectory: true)
     }
 
-    /// The compiled model cached for `name`, if it is already on disk.
-    public func cachedCompiledModel(named name: String = PinnedRemoteModel.depthAnythingV2SmallF16.name) -> URL? {
-        let url = compiledURL(named: name)
+    /// The compiled model cached for `key` (a ``PinnedRemoteModel/cacheKey``,
+    /// an On-Demand Resources name or a package name), if it is on disk.
+    public func cachedCompiledModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) -> URL? {
+        let url = compiledURL(named: key)
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
 
     /// Deletes the cached compiled model (and any interrupted download).
-    public func removeCachedModel(named name: String = PinnedRemoteModel.depthAnythingV2SmallF16.name) throws {
-        for url in [compiledURL(named: name), stagingURL(named: name)] where fileManager.fileExists(atPath: url.path) {
+    public func removeCachedModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) throws {
+        for url in [compiledURL(named: key), stagingURL(named: key)] where fileManager.fileExists(atPath: url.path) {
             try fileManager.removeItem(at: url)
+        }
+    }
+
+    /// Fetches the model if needed and loads it. When a cached model fails to
+    /// load (a damaged cache, an interrupted OS update), the cache is purged
+    /// and the model fetched again, once.
+    ///
+    /// - Parameter progress: download fraction 0…1, called on an arbitrary queue.
+    public func estimator(
+        from source: DepthModelSource = .pinnedDownload(),
+        computeUnits: MLComputeUnits = .cpuAndNeuralEngine,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> DepthAnythingV2Estimator {
+        let url = try await compiledModel(from: source, progress: progress)
+        do {
+            return try DepthAnythingV2Estimator(compiledModelURL: url, computeUnits: computeUnits)
+        } catch {
+            guard let key = source.cacheKey else { throw error }
+            try? removeCachedModel(named: key)
+            let fresh = try await compiledModel(from: source, progress: progress)
+            return try DepthAnythingV2Estimator(compiledModelURL: fresh, computeUnits: computeUnits)
         }
     }
 
@@ -115,10 +181,10 @@ public final class DepthModelStore: @unchecked Sendable {
         case .modelPackage(let url):
             return try await compileAndCache(url, name: url.deletingPathExtension().lastPathComponent)
         case .pinnedDownload(let remote):
-            if let cached = cachedCompiledModel(named: remote.name) { return cached }
+            if let cached = cachedCompiledModel(named: remote.cacheKey) { return cached }
             let package = try await download(remote, progress: progress)
-            defer { try? fileManager.removeItem(at: stagingURL(named: remote.name)) }
-            return try await compileAndCache(package, name: remote.name)
+            defer { try? fileManager.removeItem(at: stagingURL(named: remote.cacheKey)) }
+            return try await compileAndCache(package, name: remote.cacheKey)
         case .onDemandResource(let tag, let resourceName):
             if let cached = cachedCompiledModel(named: resourceName) { return cached }
             #if os(iOS) || os(visionOS) || os(tvOS)
@@ -169,17 +235,30 @@ public final class DepthModelStore: @unchecked Sendable {
         return try copyIntoCache(compiled, name: name)
     }
 
+    /// Copies next to the cache first, then swaps it in with one rename: a
+    /// crash or a full disk mid-copy leaves the previous model (or nothing),
+    /// never half a model under the final name.
     private func copyIntoCache(_ compiled: URL, name: String) throws -> URL {
         try prepareDirectory()
         let destination = compiledURL(named: name)
-        if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
-        try fileManager.copyItem(at: compiled, to: destination)
+        let temporary = directory.appendingPathComponent(".incoming-\(UUID().uuidString).mlmodelc", isDirectory: true)
+        try fileManager.copyItem(at: compiled, to: temporary)
+        do {
+            if fileManager.fileExists(atPath: destination.path) {
+                _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try fileManager.moveItem(at: temporary, to: destination)
+            }
+        } catch {
+            try? fileManager.removeItem(at: temporary)
+            throw error
+        }
         return destination
     }
 
     private func download(_ remote: PinnedRemoteModel, progress: (@Sendable (Double) -> Void)?) async throws -> URL {
         try prepareDirectory()
-        let staging = stagingURL(named: remote.name)
+        let staging = stagingURL(named: remote.cacheKey)
         let total = Double(max(1, remote.totalBytes))
         var done: Int64 = 0
         for file in remote.files {

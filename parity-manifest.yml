@@ -444,9 +444,9 @@ demos:
     parity: diverges
     evidence: >-
       LiDAR replaces the ARCore Depth API; ML is Depth Anything V2 Small on
-      Core ML (49.8 MB vs 27.7 MB LiteRT). The waiting line has no anchor
-      count (DepthSourceState.waitingForAnchors has no payload). Not yet run
-      on hardware: iPhone SE (3rd gen) measurement pending.
+      Core ML, 8-bit weights (25.4 MB vs 27.7 MB LiteRT int8), 518x392 input
+      vs 686x518 on Android. Not yet run on hardware: iPhone SE (3rd gen)
+      measurement pending.
   - id: ar-face
     androidStatus: Working
     iosStatus: working

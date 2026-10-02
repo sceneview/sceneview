@@ -73,7 +73,8 @@ Depth Anything V2 Small  —  model weights (SceneViewDepthML, iOS)
     Xu, Jiashi Feng, Hengshuang Zhao
     https://github.com/DepthAnything/Depth-Anything-V2
 
-    Core ML conversion (DepthAnythingV2SmallF16.mlpackage) by Apple
+    Core ML conversion (DepthAnythingV2SmallF16INT8.mlpackage, default, and
+    DepthAnythingV2SmallF16.mlpackage) by Apple
     https://huggingface.co/apple/coreml-depth-anything-v2-small
     revision cfef6f6f2a70783dedc0bfae40cecbc2052285d3
 
