@@ -433,6 +433,8 @@ enum ARExperiencePreview {
         case "denied": return .denied
         case "unsupported": return .unsupported(.lidar)
         case "starting": return .starting
+        // The screen's own overlays without the starting pill over them.
+        case "live": return .live
         case "error": return .error("Camera couldn’t start.")
         default: return nil
         }

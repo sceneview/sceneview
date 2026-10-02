@@ -276,7 +276,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (33) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (34) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -428,6 +428,25 @@ demos:
       ARPlacementExperience.swift:134-143 same helmet and toggle in
       DemoScaffold(.ar); no top state card or sheet explainer
       (ARFeatureComparison.kt:142,167-171); LiDAR gate is platform-forced
+  - id: ar-depth-visualization
+    androidStatus: Working
+    iosStatus: working
+    category: UNDERSTAND
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARDepthVisualizationDemo.kt
+    ios: [ar-depth-visualization]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift
+    contract: >-
+      A false-colour environment-depth overlay on the camera feed with a
+      Camera-to-Depth blend slider; unsupported and warming-up banners, never
+      a black screen. A sensor / ML source pill; the ML card reports download,
+      preparing, waiting for anchors, cost, holding, thermal pause and failure.
+    parity: diverges
+    evidence: >-
+      LiDAR replaces the ARCore Depth API; ML is Depth Anything V2 Small on
+      Core ML, 8-bit weights (25.4 MB vs 27.7 MB LiteRT int8), 518x392 input
+      vs 686x518 on Android. Not yet run on hardware: iPhone SE (3rd gen)
+      measurement pending.
   - id: ar-face
     androidStatus: Working
     iosStatus: working
@@ -1007,7 +1026,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (18) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (17) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1070,26 +1089,6 @@ demos:
     evidence: >-
       No iOS scene; ARDepthOfFieldDemo.kt:181-203,279. LiDAR sceneDepth plus
       ARView postProcess can do it (#3652)
-  - id: ar-depth-visualization
-    androidStatus: Working
-    iosStatus: android-only
-    reason: >-
-      No iOS screen — depth visualization and the SDK depth API it needs are
-      not ported (Phase 2 Wave B, #2798). Its coming-soon Scene stub was
-      deleted in #3231.
-    category: UNDERSTAND
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARDepthVisualizationDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      A false-colour environment-depth overlay on the camera feed with a
-      Camera-to-Depth blend slider; unsupported and warming-up banners, never
-      a black screen.
-    parity: missing
-    evidence: >-
-      No iOS scene; ARDepthVisualizationDemo.kt:185. SceneViewSwift already
-      exposes .sceneDepth (ARSessionConfiguration.swift:132,169) and onFrame
-      (ARSceneView.swift:383)
   - id: ar-fog
     androidStatus: Working
     iosStatus: android-only

@@ -120,6 +120,9 @@ public struct ARSceneView: UIViewRepresentable {
     private var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
     private var onFrame: ((ARFrame, ARView) -> Void)?
     private var placementController: ARPlacementController?
+    private var depthSource: DepthSource?
+    private var onDepthFrame: ((ARDepthFrame?) -> Void)?
+    private var onDepthSourceState: ((DepthSourceState) -> Void)?
 
     private var planeDetection: PlaneDetectionMode { configuration.planeDetection }
     private var faceTracking: Bool { configuration.mode == .faceTracking }
@@ -400,6 +403,48 @@ public struct ARSceneView: UIViewRepresentable {
         return copy
     }
 
+    /// Where environment depth comes from. Android: `ARSceneView(depthMode = …)`
+    /// for ARCore depth, `MlDepthSession` for the ML path.
+    ///
+    /// - ``DepthSource/native``: LiDAR `sceneDepth` only — add `.sceneDepth`
+    ///   to ``ARSessionConfiguration/frameSemantics``.
+    /// - ``DepthSource/ml(_:targetHz:)``: a monocular estimator, scaled to
+    ///   metres against ARKit's feature points and planes, up to 5 Hz by
+    ///   default (Android's `MlDepthSession` cadence), on a background queue.
+    ///   Leave `.sceneDepth` out of `frameSemantics` in this mode.
+    ///   `DepthAnythingV2Estimator` lives in the separate `SceneViewDepthML`
+    ///   product so the base package carries no model.
+    /// - ``DepthSource/auto(ml:targetHz:)``: LiDAR when the frame has it,
+    ///   otherwise the estimator if its first-launch benchmark passes.
+    ///
+    /// Without this modifier no depth is produced and nothing is computed.
+    /// Frames arrive through ``onDepthFrame(_:)``, status through
+    /// ``onDepthSourceState(_:)``.
+    public func depthSource(_ source: DepthSource?) -> ARSceneView {
+        var copy = self
+        copy.depthSource = source
+        return copy
+    }
+
+    /// Receives every depth map on the main thread, or `nil` when depth stops
+    /// (no anchors to scale against, tracking lost, source removed).
+    /// Requires ``depthSource(_:)``.
+    public func onDepthFrame(_ handler: @escaping (ARDepthFrame?) -> Void) -> ARSceneView {
+        var copy = self
+        copy.onDepthFrame = handler
+        return copy
+    }
+
+    /// Receives the depth layer's status on the main thread, only when it
+    /// changes. While ML depth runs, ``DepthSourceState/running(_:)`` carries
+    /// fresh ``MLDepthStats`` with every published map (Android:
+    /// `MlDepthSession.state`).
+    public func onDepthSourceState(_ handler: @escaping (DepthSourceState) -> Void) -> ARSceneView {
+        var copy = self
+        copy.onDepthSourceState = handler
+        return copy
+    }
+
     /// Configures the main / key directional light slot for the AR scene.
     ///
     /// Mirrors SceneView Android's `ARSceneView(mainLightNode = ...)`
@@ -631,6 +676,14 @@ public struct ARSceneView: UIViewRepresentable {
         coordinator.onSessionStateChange = onSessionStateChange
         coordinator.onTrackingStateChange = onTrackingStateChange
         coordinator.sessionObserver = environment.arSessionObserver
+        coordinator.faceTrackingSession = faceTracking
+        if depthSource != nil || coordinator.depthPipeline != nil {
+            let pipeline = coordinator.depthPipeline ?? ARDepthPipeline()
+            coordinator.depthPipeline = pipeline
+            pipeline.onDepthFrame = onDepthFrame
+            pipeline.onStateChange = onDepthSourceState
+            pipeline.setSource(depthSource)
+        }
     }
 
     public func updateUIView(_ arView: ARView, context: Context) {
@@ -902,6 +955,9 @@ public struct ARSceneView: UIViewRepresentable {
         var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
         var onImageDetected: ((String, AnchorNode, ARView) -> Void)?
         var onFrame: ((ARFrame, ARView) -> Void)?
+        /// Depth maps for ``ARSceneView/depthSource(_:)``; created on first use.
+        var depthPipeline: ARDepthPipeline?
+        var faceTrackingSession = false
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?
         var onSessionEvent: ((ARSessionEvent, ARView) -> Void)?
@@ -1346,6 +1402,10 @@ public struct ARSceneView: UIViewRepresentable {
         func tearDownScene(in arView: ARView) {
             placementController?.dismiss()
             placementController = nil
+            MainActor.assumeIsolated {
+                depthPipeline?.tearDown()
+                depthPipeline = nil
+            }
             // Plane overlays (#2407) — remove each translucent fill anchor from
             // the scene, then drop the strong dictionary references.
             for visualizer in planeOverlays.values {
@@ -1688,6 +1748,7 @@ public struct ARSceneView: UIViewRepresentable {
             MainActor.assumeIsolated {
                 noteFrame(trackingState: frame.camera.trackingState, in: arView)
                 placementController?.update(frame: frame, in: arView)
+                depthPipeline?.process(frame, faceTracking: faceTrackingSession)
             }
             updatePlacementReticle(in: arView)
             onFrame?(frame, arView)
