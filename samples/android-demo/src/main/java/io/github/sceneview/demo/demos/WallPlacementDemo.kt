@@ -14,6 +14,7 @@ import io.github.sceneview.ar.*
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -57,7 +58,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     // The scene draws the wall coaching card itself, and the card now says why no wall has
     // come up (a plain wall, too dark, too fast, or a long search: #4070). The pill only has to
     // know when to step aside, so it reads the same state with the same tracking reason.
-    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL, trackingFailure)
+    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL, trackingFailureReason = trackingFailure)
     var invalidMove by remember { mutableStateOf(false) }
     var show3D by remember { mutableStateOf(false) }
     var hintShown by remember { mutableStateOf(false) }
@@ -159,6 +160,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             materialLoader = materialLoader,
             // No synthetic wall shadow. See the documented renderer parity limitation.
             groundShadows = false,
+            coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             playbackDataset = playbackDataset,
             onARCoreAvailability = { availability = it },
             onTrackingFailureChanged = { trackingFailure = it },

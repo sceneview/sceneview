@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -99,9 +98,9 @@ fun BoxScope.ARCoachingOverlay(
     ARCoachingOverlay(
         cue = guidance.cue,
         surface = guidance.surface,
+        modifier = modifier,
         hint = guidance.hint,
         scanLingering = guidance.scanLingering,
-        modifier = modifier,
         contentPadding = contentPadding,
     )
 }
@@ -120,9 +119,9 @@ fun BoxScope.ARCoachingOverlay(
 fun BoxScope.ARCoachingOverlay(
     cue: ArGuidanceCue,
     surface: PlacementSurface = PlacementSurface.SURFACE,
+    modifier: Modifier = Modifier,
     hint: ArTrackingHint = ArTrackingHint.NONE,
     scanLingering: Boolean = false,
-    modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val motion = rememberCoachMotionEnabled()
@@ -155,11 +154,19 @@ fun BoxScope.ARCoachingOverlay(
         ) {
             CoachCard(shown, surface, layout, motion)
         }
+        // Under the centre, where the object lands — but never out of the band: in a short
+        // landscape band the full offset would push the pill into the host's bottom chrome.
+        val bandHeight = constraints.maxHeight
         AnimatedVisibility(
             visible = cue == ArGuidanceCue.SURFACE_FOUND,
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = CoachSpec.FOUND_OFFSET),
+                .layout { measurable, pillConstraints ->
+                    val pill = measurable.measure(pillConstraints)
+                    val room = ((bandHeight - pill.height) / 2).coerceAtLeast(0)
+                    val dy = minOf(CoachSpec.FOUND_OFFSET.roundToPx(), room)
+                    layout(pill.width, pill.height) { pill.place(0, dy) }
+                },
             enter = if (motion) {
                 fadeIn(tween(CoachSpec.ENTER_MS, easing = CoachSpec.Expressive)) +
                     scaleIn(tween(CoachSpec.ENTER_MS, easing = CoachSpec.Expressive), initialScale = 0.9f)
@@ -194,7 +201,7 @@ fun BoxScope.ARCoachingOverlay(
     cue: ArGuidanceCue,
     surface: PlacementSurface = PlacementSurface.SURFACE,
     modifier: Modifier = Modifier,
-) = ARCoachingOverlay(cue = cue, surface = surface, hint = ArTrackingHint.NONE, modifier = modifier)
+) = ARCoachingOverlay(cue = cue, surface = surface, modifier = modifier, hint = ArTrackingHint.NONE)
 
 private fun ArGuidanceCue.takesHint() =
     this == ArGuidanceCue.INITIALIZING || this == ArGuidanceCue.TRACKING_LIMITED

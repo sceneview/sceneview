@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +62,7 @@ import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
@@ -391,6 +393,7 @@ internal fun RoomDollhouseScreen(
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
+                    coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
                     playbackDataset = arPlaybackDataset,
                     onARCoreAvailability = { availability = it },
                     onTrackingFailureChanged = { trackingFailure = it },

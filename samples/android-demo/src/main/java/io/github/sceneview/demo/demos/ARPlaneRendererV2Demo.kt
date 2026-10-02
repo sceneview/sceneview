@@ -80,7 +80,12 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     // The SDK coaching card: getting ready, the phone sweep until a surface comes up, "Surface
     // found", and the reason with its fix when tracking struggles. While it speaks the
     // banner steps aside — one voice at a time.
-    val guidance = rememberArGuidanceState(cameraReady, isTracking, planeDetected, trackingFailureReason)
+    val guidance = rememberArGuidanceState(
+        cameraReady = cameraReady,
+        isTracking = isTracking,
+        surfaceFound = planeDetected,
+        trackingFailureReason = trackingFailureReason,
+    )
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,

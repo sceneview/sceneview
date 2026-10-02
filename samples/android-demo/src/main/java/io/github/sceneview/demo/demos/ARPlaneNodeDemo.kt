@@ -95,7 +95,12 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     // The SDK coaching card, driven by tracking and the first plane; the QA menu's forced
     // reason goes through it too. While it speaks the scanning banner steps aside.
     val failure = ForcedTrackingFailure.override ?: trackingFailureReason
-    val guidance = rememberArGuidanceState(cameraReady, isTracking && failure == null, totalDetected > 0, failure)
+    val guidance = rememberArGuidanceState(
+        cameraReady = cameraReady,
+        isTracking = isTracking && failure == null,
+        surfaceFound = totalDetected > 0,
+        trackingFailureReason = failure,
+    )
 
     // Marker cube material — allocated once so toggling recompositions never leak a fresh
     // MaterialInstance. Semi-opaque amber so it reads against most real-world surfaces.

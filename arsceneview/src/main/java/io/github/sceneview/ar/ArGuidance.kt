@@ -438,7 +438,7 @@ fun rememberArGuidanceState(
 fun rememberArGuidanceState(
     placement: AutoPlacementState,
     surface: PlacementSurface = PlacementSurface.SURFACE,
-): ArGuidanceState = rememberArGuidanceState(placement, surface, null)
+): ArGuidanceState = rememberArGuidanceState(placement, surface, trackingFailureReason = null)
 
 /**
  * Coaching state for any AR screen that is not an [AutoPlacementScene]: feed it the camera
@@ -461,13 +461,19 @@ fun rememberArGuidanceState(
  *         },
  *         onTrackingFailureChanged = { failure = it },
  *     )
- *     val guidance = rememberArGuidanceState(cameraReady, isTracking, planeFound, failure)
+ *     val guidance = rememberArGuidanceState(
+ *         cameraReady = cameraReady,
+ *         isTracking = isTracking,
+ *         surfaceFound = planeFound,
+ *         trackingFailureReason = failure,
+ *     )
  *     ARCoachingOverlay(guidance)
  * }
  * ```
  *
  * A screen that needs no surface (point clouds, depth, meshes) passes `surfaceFound = true`:
- * the card then only covers the start-up and tracking problems.
+ * the card then only covers the start-up and tracking problems. Name the arguments, as above:
+ * three booleans in a row swap without a compiler error.
  *
  * @param cameraReady true once ARCore delivered its first frame.
  * @param isTracking `frame.camera.trackingState == TrackingState.TRACKING`.

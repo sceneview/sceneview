@@ -6,11 +6,13 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
@@ -152,6 +154,10 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
  *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
  *   status chrome while [ArGuidanceState.isCoaching] is true either way.
+ * @param coachingContentPadding the room your own chrome takes over the scene — a dock, a
+ *   toolbar, a sheet peek — forwarded to [ARCoachingOverlay] as its `contentPadding`. The card
+ *   and its "Surface found" pill already keep clear of the system bars and a 16 dp gutter; this
+ *   is what they cannot measure, because you draw it. Only read while [coaching] is `true`.
  */
 @Composable
 fun AutoPlacementScene(
@@ -164,6 +170,7 @@ fun AutoPlacementScene(
     materialLoader: MaterialLoader = rememberMaterialLoader(engine),
     groundShadows: Boolean = true,
     coaching: Boolean = true,
+    coachingContentPadding: PaddingValues = PaddingValues(0.dp),
     playbackDataset: File? = null,
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
     onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
@@ -245,16 +252,62 @@ fun AutoPlacementScene(
             }
         }
         if (coaching) {
-            val guidance = rememberArGuidanceState(state, surface, trackingFailure)
+            val guidance = rememberArGuidanceState(state, surface, trackingFailureReason = trackingFailure)
             ARCoachingOverlay(
                 cue = if (availability == null) guidance.cue else ArGuidanceCue.NONE,
                 surface = guidance.surface,
                 hint = guidance.hint,
                 scanLingering = guidance.scanLingering,
+                contentPadding = coachingContentPadding,
             )
         }
     }
 }
+
+/**
+ * Binary-compatibility shim for the pre-`coachingContentPadding` descriptor of
+ * [AutoPlacementScene] (v4.51). Code compiled against it gets no extra coaching padding, which
+ * is what it had.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the AutoPlacementScene overload that takes `coachingContentPadding`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun AutoPlacementScene(
+    assetReady: Boolean,
+    modifier: Modifier = Modifier,
+    state: AutoPlacementState = rememberAutoPlacementState(),
+    surface: PlacementSurface = PlacementSurface.SURFACE,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    groundShadows: Boolean = true,
+    coaching: Boolean = true,
+    playbackDataset: File? = null,
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    onTrackingFailureChanged: ((TrackingFailureReason?) -> Unit)? = null,
+    onSessionFailed: ((Exception) -> Unit)? = null,
+    onPlaced: ((AutoPlacementResult) -> Unit)? = null,
+    content: @Composable ARSceneScope.(AutoPlacementResult) -> Unit,
+) = AutoPlacementScene(
+    assetReady = assetReady,
+    modifier = modifier,
+    state = state,
+    surface = surface,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    groundShadows = groundShadows,
+    coaching = coaching,
+    coachingContentPadding = PaddingValues(0.dp),
+    playbackDataset = playbackDataset,
+    onARCoreAvailability = onARCoreAvailability,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    onSessionFailed = onSessionFailed,
+    onPlaced = onPlaced,
+    content = content,
+)
 
 /**
  * Binary-compatibility shim for the pre-`coaching` descriptor of [AutoPlacementScene]. The

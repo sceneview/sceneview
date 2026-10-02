@@ -333,7 +333,12 @@ fun PlacementScene(
             // chrome, drawn outside this composable (#3712 / #3735). Its own 16 dp gutter is
             // the default clearance, so only the excess is passed on.
             ARCoachingOverlay(
-                guidance = rememberArGuidanceState(cameraReady, isTracking, anyPlaneTracked, trackingFailure),
+                guidance = rememberArGuidanceState(
+                    cameraReady = cameraReady,
+                    isTracking = isTracking,
+                    surfaceFound = anyPlaneTracked,
+                    trackingFailureReason = trackingFailure,
+                ),
                 contentPadding = PaddingValues(
                     bottom = (coachingBottomClearance - GUIDE_BOTTOM_CLEARANCE).coerceAtLeast(0.dp),
                 ),

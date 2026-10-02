@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import android.os.SystemClock
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,6 +22,7 @@ import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
@@ -75,6 +77,8 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             state = state,
             engine = engine,
             modelLoader = modelLoader,
+            // The card and its "Surface found" pill stay above the dock.
+            coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             playbackDataset = playback,
             onTrackingFailureChanged = { trackingFailure = it },
         ) { placement ->
