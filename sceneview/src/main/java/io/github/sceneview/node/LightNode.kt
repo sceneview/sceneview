@@ -111,6 +111,9 @@ open class LightNode(
     ) : this(engine, entity, LightManager.Builder(type).apply(apply))
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // Not `lightManager.destroy(entity)` directly: this removal compacts LightManager's
         // packed array and reindexes another live light's handle, so it must bump the engine's
         // light generation or every other LightNode keeps a cache that now points elsewhere
