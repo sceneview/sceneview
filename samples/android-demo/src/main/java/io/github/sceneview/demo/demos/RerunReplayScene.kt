@@ -272,6 +272,11 @@ internal class ReplayLayers(
     @ColorInt private val measureInk: Int = FALLBACK_POINT_COLOR,
     /** The halo around the dimensions' figures, ARGB: the stage's ground, so they stay legible. */
     @ColorInt private val measureHalo: Int = android.graphics.Color.TRANSPARENT,
+    /**
+     * The dense cloud drawn here: the scan's own, or a cut of it — the dollhouse's, without its
+     * ceiling ([io.github.sceneview.demo.demos.internal.RoomDollhouse.cropDense]) — drawn whole.
+     */
+    private val dense: ReplayDenseLayer? = media.dense,
 ) {
     private val textures = ArrayList<Texture>()
     private val materials = ArrayList<MaterialInstance>()
@@ -322,7 +327,7 @@ internal class ReplayLayers(
      * once here and revealed as the timeline reaches them ([syncDense]). Writes depth, so the
      * surfels hide what is behind them, like a surface.
      */
-    private val denseAtlas: Texture? = if (media.dense == null && media.liveDense == null) null else {
+    private val denseAtlas: Texture? = if (dense == null && media.liveDense == null) null else {
         Texture.Builder()
             .width(DenseSurfels.ATLAS_SIZE)
             .height(DenseSurfels.ATLAS_SIZE)
@@ -334,7 +339,7 @@ internal class ReplayLayers(
     }
     private val denseNode: DebugLayerNode? = denseAtlas?.let { atlas ->
         DebugLayerNode(engine, material(atlas, nearest), POINTS_PRIORITY, textured = true)
-            .also { node -> media.dense?.let { uploadDense(atlas, node, it) } }
+            .also { node -> dense?.let { uploadDense(atlas, node, it) } }
     }
 
     /** The live snapshot [denseNode] holds; a newer one from [RerunReplayMedia.liveDense] replaces it. */
@@ -528,7 +533,7 @@ internal class ReplayLayers(
             node.isVisible = shown && liveDenseShown != null
             return
         }
-        val count = media.pointCountAt(frame.time)
+        val count = if (dense === media.dense) media.pointCountAt(frame.time) else dense?.cloud?.count ?: 0
         node.isVisible = shown && count > 0
         if (node.isVisible) node.showIndices(minOf(count, DenseSurfels.MAX_SURFELS) * INDICES_PER_SURFEL)
     }

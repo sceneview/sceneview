@@ -31,6 +31,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DollhouseRoom
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
@@ -50,9 +51,10 @@ import io.github.sceneview.utils.readBuffer
 
 /*
  * The dollhouse of #4075, drawn: the room a Rerun recording kept, through the replay's own
- * layers ([ReplayLayers] — the planes' photos) and its geometry ([ArDebugGeometry] — the planes
- * that have no photo, the points, the path walked), plus a plinth, all under one node scaled
- * down to a miniature.
+ * layers ([ReplayLayers] — the scan's dense coloured cloud when it kept one; else the planes'
+ * photos and the points in the colours the camera saw) and its geometry ([ArDebugGeometry] — the
+ * planes that have no photo, the path walked on request), plus a plinth, all under one node
+ * scaled down to a miniature.
  *
  * Why the replay's layers and not the session's .glb export (#4088): the export writes points as
  * glTF POINTS and the path as LINES, which Filament draws one pixel wide whatever the distance —
@@ -60,6 +62,33 @@ import io.github.sceneview.utils.readBuffer
  * here for the table ([RoomDollhouse.styleFor]), and the room looks exactly as it does in the
  * replay a tap away. Nothing is written to disk and nothing is re-read.
  */
+
+/**
+ * A recording made ready to stand, off the main thread: its [room] ([RoomDollhouse.room]), `null`
+ * when it holds nothing, and the room's dense cloud cut open ([RoomDollhouse.cropDense]) and
+ * built for drawing — the scan's own layer when the cut kept all of it.
+ */
+internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRoom?, val dense: ReplayDenseLayer?) {
+    companion object {
+        /** Reads [media]'s last frame and cuts its room open. Seconds for a dense scan: off the main thread. */
+        fun of(media: RerunReplayMedia): DollhouseBuild {
+            val source = media.dense
+            val room = RoomDollhouse.room(media.trace.frameAt(media.trace.duration), source?.cloud)
+            val cut = room?.dense
+            val dense = when {
+                source == null || cut == null -> null
+                cut.count == source.cloud.count -> source
+                else -> ReplayDenseLayer(
+                    cloud = cut,
+                    voxelM = source.voxelM,
+                    mesh = DenseSurfels.mesh(cut, source.voxelM),
+                    atlas = DenseSurfels.atlas(cut, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+                )
+            }
+            return DollhouseBuild(media, room, dense)
+        }
+    }
+}
 
 /**
  * The dollhouse's Filament side: every layer node, and the materials and textures they draw
@@ -71,10 +100,13 @@ internal class DollhouseLayers(
     private val materialLoader: MaterialLoader,
     media: RerunReplayMedia,
     private val room: DollhouseRoom,
+    dense: ReplayDenseLayer?,
     palette: DebugPalette,
     base: Color,
 ) {
-    private val replay = ReplayLayers(engine, materialLoader, media)
+    /** The scan's dense cloud, cut open, is the room itself, in the colours the camera saw. */
+    private val hasDense = dense != null
+    private val replay = ReplayLayers(engine, materialLoader, media, dense = dense)
     private val materials = ArrayList<MaterialInstance>()
 
     private fun node(color: Color, priority: Int, twoSided: Boolean = color.alpha >= 1f): DebugLayerNode {
@@ -111,53 +143,57 @@ internal class DollhouseLayers(
      */
     private val shadow = node(Color.Black.copy(alpha = SHADOW_ALPHA), SHADOW_PRIORITY, twoSided = true)
 
-    /**
-     * The points, in the palette's point colour, like the live 3D view draws them. Not the
-     * replay's photo-coloured layer, which drew nothing when this was written — its colour atlas
-     * was sampled upside down (#4095, since fixed).
-     */
-    private val points = node(palette.mapPoint, POINTS_PRIORITY)
-
     /** Every node, none of them pickable: a touch lands on [DollhouseModel]'s box instead. */
     val nodes: List<DebugLayerNode> =
-        (replay.nodes + flat.values + points + trail + plinth + plinthEdge + shadow).onEach {
+        (replay.nodes + flat.values + trail + plinth + plinthEdge + shadow).onEach {
             // Each layer is bounded by a 500 m box for cheap culling: as a collider it would take
             // every touch in the room.
             it.isHittable = false
         }
 
-    private var styleScale = Float.NaN
+    private var synced: Triple<Float, Boolean, Boolean>? = null
 
     /**
      * Builds the meshes for points and paths sized as if drawn at [scale]: the miniature's own
-     * scale in AR and in the 3D view alike, so both look the same; 1 at real size.
+     * scale in AR and in the 3D view alike, so both look the same; 1 at real size. The path the
+     * phone walked shows only on request ([showPath]): the room first, not the route through it.
+     * Without [plinth] — at real size, on the real floor — the room stands bare.
      */
-    fun sync(scale: Float) {
-        if (scale == styleScale) return
-        styleScale = scale
+    fun sync(scale: Float, showPath: Boolean, plinth: Boolean) {
+        val key = Triple(scale, showPath, plinth)
+        if (key == synced) return
+        synced = key
         val style = RoomDollhouse.styleFor(scale)
         val frame = room.frame
+        // The dense cloud is the room, surfaces and all: the planes and their photos would only
+        // cut through it. Without one, the planes' photos and the points in the colours the
+        // camera saw them in — the replay's, not the live view's one-colour markers.
         replay.sync(
             frame, style, room.fit.floorY,
-            ReplayVisibility(planes = true, points = false, anchors = false, trail = false),
+            ReplayVisibility(planes = !hasDense, points = true, anchors = false, trail = false),
         )
         val meshes = flat.keys.associateWith { DebugMesh() }
-        // The flat fills are opaque, like the photos: each at its own depth, or they z-fight.
-        ArDebugGeometry.buildPlanes(
-            frame.planes, style, { meshes.getValue(it) },
-            layering = PlaneLayering.of(frame, room.fit.floorY),
-        ) { replay.isTextured(it) }
+        if (!hasDense) {
+            // The flat fills are opaque, like the photos: each at its own depth, or they z-fight.
+            ArDebugGeometry.buildPlanes(
+                frame.planes, style, { meshes.getValue(it) },
+                layering = PlaneLayering.of(frame, room.fit.floorY),
+            ) { replay.isTextured(it) }
+        }
         flat.forEach { (layer, node) -> node.upload(meshes.getValue(layer)) }
-        points.upload(DebugMesh().also { ArDebugGeometry.buildMapPoints(frame.mapPoints, style, it) })
         // Every step of the replay's gradient into one mesh, in one colour: at this size a
         // gradient reads as noise.
         val path = DebugMesh()
-        ArDebugGeometry.buildTrail(frame.trail, style) { path }
+        if (showPath) ArDebugGeometry.buildTrail(frame.trail, style) { path }
         trail.upload(path)
-        val top = RoomDollhouse.basePolygon(frame, room.fit)
+        this.plinth.isVisible = plinth
+        plinthEdge.isVisible = plinth
+        shadow.isVisible = plinth
+        // A dense room's plinth covers the whole cloud, not only the planes ARCore found.
+        val top = if (hasDense) RoomDollhouse.basePolygon(room.fit) else RoomDollhouse.basePolygon(frame, room.fit)
         val topY = room.fit.floorY - RoomDollhouse.BASE_DROP_M
         val bottomY = topY - RoomDollhouse.plinthThickness(scale)
-        plinth.upload(DebugMesh().also { ArDebugGeometry.addFan(it, top) })
+        this.plinth.upload(DebugMesh().also { ArDebugGeometry.addFan(it, top) })
         plinthEdge.upload(DebugMesh().also { addSkirt(it, top, bottomY) })
         // The shadow's rings are sized on the table, like the points: the same few millimetres
         // round a bedroom at 1:12 and a hall at 1:50.
@@ -198,7 +234,6 @@ internal class DollhouseLayers(
         const val BASE_PRIORITY = 1
         const val FILL_PRIORITY = 2
         const val OUTLINE_PRIORITY = 3
-        const val POINTS_PRIORITY = 4
         const val TRAIL_PRIORITY = 5
 
         /** How much darker the plinth's edge is than its top. */
@@ -223,7 +258,9 @@ internal class DollhouseLayers(
 
 /**
  * The room as a miniature, standing with the middle of its floor at this node's origin: drawn at
- * [scale] (the fit's, or 1 at real size), its points and path sized for [styleScale].
+ * [scale] (the fit's, or 1 at real size), its points and path sized for [styleScale]. On its
+ * [plinth] the plinth's foot stands at the origin; without, at real size, the room's own floor
+ * does — exactly, so the room lies on the real floor rather than a plinth's height above it.
  *
  * With [pickable], a box around the room takes the touches — the layers are unbounded meshes —
  * and the node is editable with every edit off, as `AutoPlacementNode` asks, so a drag, a twist
@@ -231,7 +268,7 @@ internal class DollhouseLayers(
  */
 @Composable
 internal fun SceneScope.DollhouseModel(
-    media: RerunReplayMedia,
+    build: DollhouseBuild,
     room: DollhouseRoom,
     engine: Engine,
     materialLoader: MaterialLoader,
@@ -240,16 +277,22 @@ internal fun SceneScope.DollhouseModel(
     scale: Float,
     styleScale: Float,
     pickable: Boolean,
+    showPath: Boolean,
+    plinth: Boolean = true,
 ) {
     // Remembered before the node, so Compose releases it after the node destroyed the layers.
-    val layers = remember(engine, materialLoader, media, room, palette, base) {
-        DollhouseLayers(engine, materialLoader, media, room, palette, base)
+    val layers = remember(engine, materialLoader, build, room, palette, base) {
+        DollhouseLayers(engine, materialLoader, build.media, room, build.dense, palette, base)
     }
     DisposableEffect(layers) { onDispose { layers.destroy() } }
-    SideEffect { layers.sync(styleScale) }
+    SideEffect { layers.sync(styleScale, showPath, plinth) }
     val fit = room.fit
-    // The plinth's foot, not the room's floor, stands on the table.
-    val floor = fit.floorY - RoomDollhouse.BASE_DROP_M - RoomDollhouse.plinthThickness(styleScale)
+    // On the table the plinth's foot stands on it; at real size the room's floor is the floor.
+    val floor = if (plinth) {
+        fit.floorY - RoomDollhouse.BASE_DROP_M - RoomDollhouse.plinthThickness(styleScale)
+    } else {
+        fit.floorY
+    }
     key(layers) {
         Node(
             position = Position(-fit.centerX * scale, -floor * scale, -fit.centerZ * scale),
@@ -278,8 +321,9 @@ internal fun SceneScope.DollhouseModel(
  */
 @Composable
 internal fun DollhousePreview(
-    media: RerunReplayMedia,
+    build: DollhouseBuild,
     room: DollhouseRoom,
+    showPath: Boolean,
     orbit: ArDebugOrbitCamera,
     engine: Engine,
     modelLoader: ModelLoader,
@@ -344,7 +388,7 @@ internal fun DollhousePreview(
             },
         ) {
             DollhouseModel(
-                media = media,
+                build = build,
                 room = room,
                 engine = engine,
                 materialLoader = materialLoader,
@@ -353,6 +397,7 @@ internal fun DollhousePreview(
                 scale = 1f,
                 styleScale = fit.scale,
                 pickable = false,
+                showPath = showPath,
             )
         }
     }

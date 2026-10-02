@@ -543,6 +543,108 @@ class RoomDollhouseTest {
         }
     }
 
+    // ─── The scan's dense cloud (P1, 2026-09-30) ──────────────────────────────────────────────
+
+    /**
+     * A dense scan of the 4 × 3 m room, its floor at [floorY]: the floor, a table 75 cm up, a wall
+     * up to a ceiling 2.5 m up, the ceiling itself, noise under the floor and four surfels far
+     * outside, through a doorway.
+     */
+    private fun denseRoom(floorY: Float = -1.3f): DenseCloud {
+        val p = ArrayList<Float>()
+        val n = ArrayList<Float>()
+        fun add(x: Float, y: Float, z: Float, ny: Float, nz: Float = 0f) {
+            p += listOf(x, y, z)
+            n += listOf(0f, ny, nz)
+        }
+        for (i in 0..40) for (k in 0..30) add(-2f + i * 0.1f, floorY, -1.5f + k * 0.1f, ny = 1f) // floor
+        for (i in 0..10) for (k in 0..6) add(i * 0.1f, floorY + 0.75f, k * 0.1f, ny = 1f) // table top
+        for (i in 0..40) for (j in 0..25) add(-2f + i * 0.1f, floorY + j * 0.1f, -1.5f, ny = 0f, nz = 1f) // wall
+        for (i in 0..40) for (k in 0..30) add(-2f + i * 0.1f, floorY + 2.5f, -1.5f + k * 0.1f, ny = -1f) // ceiling
+        for (i in 0..20) add(i * 0.1f - 1f, floorY - 0.4f - i * 0.01f, 0f, ny = 1f) // under the floor
+        for (i in 0..3) add(9f, floorY + 1f, i * 0.1f, ny = 0f, nz = 1f) // through a doorway
+        return DenseCloud(p.toFloatArray(), IntArray(p.size / 3) { 0xFF808080.toInt() }, n.toFloatArray())
+    }
+
+    /** [room] as ARCore saw it without its floor: only the wall and the points. */
+    private fun roomWithoutFloorPlane(): ArDebugFrame {
+        val whole = room()
+        return ArDebugFrame(
+            time = whole.time,
+            trail = whole.trail,
+            camera = whole.camera,
+            mapPoints = whole.mapPoints,
+            livePoints = whole.livePoints,
+            planes = whole.planes.filter { it.kind == DebugPlaneKind.Wall },
+            anchors = whole.anchors,
+            keyframes = whole.keyframes,
+            mapPointColors = whole.mapPointColors,
+        )
+    }
+
+    @Test
+    fun `the floor of a dense scan is its lowest large surface, not a table nor the noise under it`() {
+        assertEquals(-1.3f, requireNotNull(RoomDollhouse.floorOf(denseRoom())), 1e-3f)
+        assertEquals(-0.2f, requireNotNull(RoomDollhouse.floorOf(denseRoom(floorY = -0.2f))), 1e-3f)
+    }
+
+    @Test
+    fun `a cloud with too few surfaces facing up tells no floor`() {
+        val wallOnly = DenseCloud(
+            positions = floatArrayOf(0f, 0f, 0f, 1f, 1f, 0f),
+            colors = intArrayOf(0, 0),
+            normals = floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f),
+        )
+        assertNull(RoomDollhouse.floorOf(wallOnly))
+    }
+
+    @Test
+    fun `without a floor plane the dense floor sets the room on the real floor, not a guess from the path`() {
+        // The path is at 0: the guess would put the floor at -1.3, 20 cm under the real one.
+        val room = requireNotNull(RoomDollhouse.room(roomWithoutFloorPlane(), denseRoom(floorY = -1.1f)))
+        assertEquals(-1.1f, room.fit.floorY, 1e-3f)
+    }
+
+    @Test
+    fun `a floor plane ARCore found still wins over the dense cloud`() {
+        assertEquals(-1.3f, RoomDollhouse.floorY(room(), denseRoom(floorY = -1.1f)), 1e-4f)
+    }
+
+    @Test
+    fun `the dense cloud is cut open like the room - ceiling, under-floor noise and the doorway go, the walls stay`() {
+        val cut = RoomDollhouse.cropDense(denseRoom(), floorY = -1.3f)
+        val ys = (0 until cut.count).map { cut.positions[it * 3 + 1] }
+        val xs = (0 until cut.count).map { cut.positions[it * 3] }
+        assertTrue("no ceiling", ys.all { it <= -1.3f + RoomDollhouse.CUTAWAY_HEIGHT_M })
+        assertTrue("nothing under the floor", ys.all { it >= -1.3f - RoomDollhouse.UNDER_FLOOR_M })
+        assertTrue("nothing through the doorway", xs.all { it < 3f })
+        // The wall stays up to the cut, and the table with it.
+        assertTrue(
+            (0 until cut.count).any { cut.positions[it * 3 + 2] == -1.5f && cut.positions[it * 3 + 1] > 0.5f },
+        )
+        assertTrue(ys.any { kotlin.math.abs(it - -0.55f) < 1e-4f })
+        assertEquals(cut.count * 3, cut.normals?.size)
+    }
+
+    @Test
+    fun `the room's box takes in the dense cloud, and a dense cloud alone stands a room`() {
+        val bare = ArDebugFrame(
+            time = 1f,
+            trail = FloatArray(0),
+            camera = null,
+            mapPoints = FloatArray(0),
+            livePoints = FloatArray(0),
+            planes = emptyList(),
+            anchors = emptyList(),
+        )
+        assertNull(RoomDollhouse.room(bare))
+        val room = requireNotNull(RoomDollhouse.room(bare, denseRoom()))
+        assertTrue(RoomDollhouse.hasSurfaces(room))
+        assertFalse(RoomDollhouse.hasSurfaces(room.frame))
+        assertEquals(4f, room.fit.width, 0.01f)
+        assertEquals(3f, room.fit.depth, 0.01f)
+    }
+
     private fun stage(
         sessionsKnown: Boolean = true,
         hasSession: Boolean = true,

@@ -47,8 +47,12 @@ data class DollhouseFit(
     )
 }
 
-/** A room ready to stand: what of it is drawn ([RoomDollhouse.crop]) and how ([RoomDollhouse.fit]). */
-class DollhouseRoom(val frame: ArDebugFrame, val fit: DollhouseFit)
+/**
+ * A room ready to stand: what of it is drawn ([RoomDollhouse.crop]) and how ([RoomDollhouse.fit]),
+ * with the scan's dense coloured cloud cut the same way ([RoomDollhouse.cropDense]) when it kept
+ * one — the room itself, which then stands in for the planes and the points.
+ */
+class DollhouseRoom(val frame: ArDebugFrame, val fit: DollhouseFit, val dense: DenseCloud? = null)
 
 object RoomDollhouse {
     /**
@@ -95,6 +99,28 @@ object RoomDollhouse {
     /** Fewer points than this, with no plane, do not draw a room: they are ARCore's noise. */
     const val MIN_ROOM_POINTS = 30
 
+    /** The height of one step of the floor search in a dense cloud ([floorOf]): a surfel's size. */
+    const val FLOOR_BIN_M = 0.02f
+
+    /**
+     * The floor is the lowest height holding at least this share of the busiest one: a table or
+     * a bed holds fewer up-facing surfels than the floor, the noise under the floor far fewer.
+     */
+    const val FLOOR_MIN_SHARE = 0.25f
+
+    /** A surfel whose normal is at least this close to straight up lies on a floor or a table top. */
+    const val UP_FACING = 0.8f
+
+    /**
+     * The share of a dense cloud's surfels, on each side, left out of the room's footprint
+     * ([cropDense]): the far wall seen through a doorway or a window, not a wall of the room —
+     * a wall holds far more of the cloud than this.
+     */
+    const val DENSE_OUTLIER_SHARE = 0.01f
+
+    /** How far past that footprint a surfel is still the room's: a wall's thickness and its noise. */
+    const val DENSE_MARGIN_M = 0.15f
+
     /**
      * The session to open: [requestedId] when it is still kept, else the newest room recorded on
      * this phone that kept a surface, else the newest session of any kind — preferring, again, one
@@ -129,13 +155,91 @@ object RoomDollhouse {
     fun hasSurfaces(frame: ArDebugFrame): Boolean =
         frame.planes.any { it.vertexCount >= 3 } || frame.mapPointCount >= MIN_ROOM_POINTS
 
+    /** Whether a [room] stands as one: [hasSurfaces] of its frame, or a dense cloud of its own. */
+    fun hasSurfaces(room: DollhouseRoom): Boolean =
+        hasSurfaces(room.frame) || (room.dense?.count ?: 0) >= MIN_ROOM_POINTS
+
+    /**
+     * The height of the room's floor: ARCore's floor plane when it found one; else the floor the
+     * scan's dense cloud shows ([floorOf]); else the replay's guess, a little over a metre under
+     * where the phone started. The guess put the whole room a hand too high or too low whenever
+     * ARCore missed the floor, and the room then floated over, or sank into, the real one.
+     */
+    fun floorY(frame: ArDebugFrame, dense: DenseCloud? = null): Float {
+        val hasFloorPlane = frame.planes.any { it.kind == DebugPlaneKind.Floor && it.vertexCount >= 3 }
+        if (!hasFloorPlane) dense?.let(::floorOf)?.let { return it }
+        return ArDebugGeometry.floorHeight(frame)
+    }
+
+    /**
+     * The floor a dense [cloud] shows, `null` when too few of its surfels face up to tell: the
+     * lowest [FLOOR_BIN_M] step of height holding at least [FLOOR_MIN_SHARE] of the busiest step's
+     * up-facing surfels, averaged with its two neighbours. The floor is the largest horizontal
+     * surface of a room, and the lowest: a table top is smaller, the noise under the floor sparse.
+     */
+    fun floorOf(cloud: DenseCloud): Float? {
+        val normals = cloud.normals
+        val heights = FloatArray(cloud.count)
+        var n = 0
+        for (i in 0 until cloud.count) {
+            val y = cloud.positions[i * 3 + 1]
+            val up = normals == null || normals[i * 3 + 1] >= UP_FACING
+            if (y.isFinite() && up) heights[n++] = y
+        }
+        if (n < MIN_ROOM_POINTS) return null
+        val sorted = heights.copyOf(n).also { it.sort() }
+        // Between the first and the last percent: a stray surfel metres away never widens the search.
+        val low = sorted[(n * DENSE_OUTLIER_SHARE).toInt()]
+        val high = sorted[((n - 1) * (1f - DENSE_OUTLIER_SHARE)).toInt()]
+        val bins = ((high - low) / FLOOR_BIN_M).toInt() + 1
+        val counts = IntArray(bins)
+        for (y in sorted) {
+            if (y in low..high) counts[((y - low) / FLOOR_BIN_M).toInt().coerceIn(0, bins - 1)]++
+        }
+        val busiest = counts.max()
+        val floorBin = counts.indexOfFirst { it >= busiest * FLOOR_MIN_SHARE }
+        val from = low + (floorBin - 1) * FLOOR_BIN_M
+        val to = low + (floorBin + 2) * FLOOR_BIN_M
+        val near = sorted.filter { it >= from && it < to }
+        return near.average().toFloat().takeIf { near.isNotEmpty() }
+    }
+
+    /**
+     * The dense [cloud] cut open like the room ([crop]): its ceiling goes — everything higher than
+     * [CUTAWAY_HEIGHT_M] over [floorY] — and so does what lies under the floor, or outside the
+     * room's footprint: the cloud's own, from its first to its last percent ([DENSE_OUTLIER_SHARE])
+     * along each axis, [DENSE_MARGIN_M] wider. A room seen from above, not its lid.
+     */
+    fun cropDense(cloud: DenseCloud, floorY: Float): DenseCloud {
+        val top = floorY + CUTAWAY_HEIGHT_M
+        val p = cloud.positions
+        val band = (0 until cloud.count).filter { p[it * 3 + 1] in (floorY - UNDER_FLOOR_M)..top }
+        if (band.isEmpty()) return DenseCloud.Empty
+        val n = band.size
+        val xs = FloatArray(n) { p[band[it] * 3] }.also { it.sort() }
+        val zs = FloatArray(n) { p[band[it] * 3 + 2] }.also { it.sort() }
+        val lo = (n * DENSE_OUTLIER_SHARE).toInt()
+        val hi = ((n - 1) * (1f - DENSE_OUTLIER_SHARE)).toInt()
+        val xRange = (xs[lo] - DENSE_MARGIN_M)..(xs[hi] + DENSE_MARGIN_M)
+        val zRange = (zs[lo] - DENSE_MARGIN_M)..(zs[hi] + DENSE_MARGIN_M)
+        val kept = band.filter { p[it * 3] in xRange && p[it * 3 + 2] in zRange }
+        fun triples(all: FloatArray) = FloatArray(kept.size * 3).also { out ->
+            kept.forEachIndexed { k, i -> all.copyInto(out, k * 3, i * 3, i * 3 + 3) }
+        }
+        return DenseCloud(
+            positions = triples(p),
+            colors = IntArray(kept.size) { cloud.colors[kept[it]] },
+            normals = cloud.normals?.let(::triples),
+            confidences = cloud.confidences?.let { all -> ByteArray(kept.size) { all[kept[it]] } },
+        )
+    }
+
     /**
      * The room cut open: the ceilings go, and so do the points above [CUTAWAY_HEIGHT_M], under the
      * floor, or more than [POINT_MARGIN_M] outside the room's planes and path (the far wall seen
      * through a doorway, a reflection). The photo frustums go too — a miniature has no camera.
      */
-    fun crop(frame: ArDebugFrame): ArDebugFrame {
-        val floorY = ArDebugGeometry.floorHeight(frame)
+    fun crop(frame: ArDebugFrame, floorY: Float = ArDebugGeometry.floorHeight(frame)): ArDebugFrame {
         val top = floorY + CUTAWAY_HEIGHT_M
         val planes = frame.planes.filter { plane ->
             plane.kind != DebugPlaneKind.Ceiling && plane.vertexCount >= 3 && lowestY(plane) <= top
@@ -169,12 +273,17 @@ object RoomDollhouse {
             z in (box[2] - POINT_MARGIN_M)..(box[5] + POINT_MARGIN_M)
 
     /**
-     * How the [crop]ped [frame] stands as a miniature, `null` when it holds nothing to stand — no
-     * path, plane or point.
+     * How the [crop]ped [frame] — and its [cropDense]d cloud, when it kept one — stands as a
+     * miniature, its floor at [floorY]; `null` when it holds nothing to stand — no path, plane,
+     * point or surfel.
      */
-    fun fit(frame: ArDebugFrame): DollhouseFit? {
-        val floorY = ArDebugGeometry.floorHeight(frame)
-        val bounds = ArDebugGeometry.contentBounds(frame) ?: pointBounds(frame) ?: return null
+    fun fit(
+        frame: ArDebugFrame,
+        floorY: Float = ArDebugGeometry.floorHeight(frame),
+        dense: DenseCloud? = null,
+    ): DollhouseFit? {
+        val denseBounds = dense?.takeIf { it.count > 0 }?.bounds()
+        val bounds = union(ArDebugGeometry.contentBounds(frame), denseBounds) ?: pointBounds(frame) ?: return null
         val pointTop = pointBounds(frame)?.get(4) ?: bounds[4]
         val width = bounds[3] - bounds[0]
         val depth = bounds[5] - bounds[2]
@@ -189,10 +298,22 @@ object RoomDollhouse {
         )
     }
 
-    /** The room of [whole] (a session's last frame) [crop]ped and [fit], `null` when it is empty. */
-    fun room(whole: ArDebugFrame): DollhouseRoom? {
-        val cropped = crop(whole)
-        return fit(cropped)?.let { DollhouseRoom(cropped, it) }
+    /**
+     * The room of [whole] (a session's last frame) and of its [dense] cloud, when the scan kept
+     * one, [crop]ped and [fit] on one floor ([floorY]); `null` when it is empty.
+     */
+    fun room(whole: ArDebugFrame, dense: DenseCloud? = null): DollhouseRoom? {
+        val floorY = floorY(whole, dense)
+        val cropped = crop(whole, floorY)
+        val keptDense = dense?.let { cropDense(it, floorY) }?.takeIf { it.count > 0 }
+        return fit(cropped, floorY, keptDense)?.let { DollhouseRoom(cropped, it, keptDense) }
+    }
+
+    /** The box around [a] and [b] (`[minX, minY, minZ, maxX, maxY, maxZ]`); either may be missing. */
+    private fun union(a: FloatArray?, b: FloatArray?): FloatArray? = when {
+        a == null -> b
+        b == null -> a
+        else -> FloatArray(6) { if (it < 3) minOf(a[it], b[it]) else maxOf(a[it], b[it]) }
     }
 
     /** The smallest of [SCALES] that brings a room [longestSide] metres long under [MAX_SIDE_M]. */
@@ -493,8 +614,11 @@ object DollhouseCopy {
     const val GESTURE_HINT = "Drag to move · twist to turn · pinch to resize"
 
     const val INTRO = "Your own room, recorded with the Rerun demo, cut open and stood on a table " +
-        "as a miniature: the surfaces with their photos, the points and the path you walked. " +
+        "as a miniature, in the colours your phone saw. " +
         "Drag it, twist it, pinch it — or switch to Real size and stand inside it."
+
+    /** The settings switch that draws the path the phone walked; off, so the room shows first. */
+    const val SHOW_PATH = "Show the path you walked"
 
     /** `Room · Sep 28, 2:32 PM · 1:20`. */
     fun peek(title: String, fit: DollhouseFit, realSize: Boolean): String =

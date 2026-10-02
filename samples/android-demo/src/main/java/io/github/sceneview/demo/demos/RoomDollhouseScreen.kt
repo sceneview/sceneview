@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,7 +89,9 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -131,9 +134,16 @@ internal fun RoomDollhouseScreen(
     arPlaybackDataset: File?,
     startIn3d: Boolean = false,
 ) {
-    // The whole room, cut open: read once per recording.
-    val room = remember(media) { media?.let { RoomDollhouse.room(it.trace.frameAt(it.trace.duration)) } }
-    val hasSurfaces = room != null && RoomDollhouse.hasSurfaces(room.frame)
+    // The whole room, cut open: read once per recording, off the main thread — a dense cloud
+    // takes its floor, its cut and its surfels rebuilt.
+    val built by produceState<DollhouseBuild?>(null, media) {
+        value = media?.let { withContext(Dispatchers.Default) { DollhouseBuild.of(it) } }
+    }
+    val build = built?.takeIf { it.media === media }
+    val room = build?.room
+    val hasSurfaces = room != null && RoomDollhouse.hasSurfaces(room)
+    // The path the phone walked: off, so the room shows first; a switch in the settings.
+    var showPath by rememberSaveable { mutableStateOf(false) }
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     val arAvailable = availability != ARCoreAvailability.Unsupported &&
         availability != ARCoreAvailability.SessionFailed
@@ -142,7 +152,7 @@ internal fun RoomDollhouseScreen(
         sessionsKnown = sessionsKnown,
         hasSession = hasSession,
         // Read: a recording with nothing at all in it is one without surfaces, not a failure.
-        opened = media != null,
+        opened = build != null,
         openFailed = openFailed,
         arAvailable = arAvailable,
         previewChosen = previewChosen,
@@ -268,6 +278,9 @@ internal fun RoomDollhouseScreen(
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(top = Space.sm),
                 )
+                Box(Modifier.padding(top = Space.sm)) {
+                    SwitchRow(DollhouseCopy.SHOW_PATH, showPath) { showPath = it }
+                }
             }
         },
         dock = when (stage) {
@@ -367,10 +380,11 @@ internal fun RoomDollhouseScreen(
                     onPick = pickSession,
                 )
             }
-            DollhouseStage.Preview -> if (media != null && room != null) {
+            DollhouseStage.Preview -> if (build != null && room != null) {
                 DollhousePreview(
-                    media = media,
+                    build = build,
                     room = room,
+                    showPath = showPath,
                     orbit = orbit,
                     engine = engine,
                     modelLoader = modelLoader,
@@ -379,7 +393,7 @@ internal fun RoomDollhouseScreen(
                     onShown = { previewShown = true },
                 )
             }
-            DollhouseStage.InRoom -> if (media != null && room != null) key(ar.sceneKey) {
+            DollhouseStage.InRoom -> if (build != null && room != null) key(ar.sceneKey) {
                 // Leaving AR (3D view, another recording) retires this placement state: its
                 // AutoPlacementScene dismisses it on the way out, and a dismissed state never
                 // places again — coming back to AR opened on a camera that never placed the room.
@@ -407,7 +421,7 @@ internal fun RoomDollhouseScreen(
                             rotation = Rotation(y = orientation.yawDegrees),
                         ) {
                             DollhouseModel(
-                                media = media,
+                                build = build,
                                 room = room,
                                 engine = engine,
                                 materialLoader = materialLoader,
@@ -417,6 +431,9 @@ internal fun RoomDollhouseScreen(
                                 scale = scale,
                                 styleScale = scale,
                                 pickable = true,
+                                showPath = showPath,
+                                // At real size the room's floor goes on the real one, no plinth.
+                                plinth = !realSize,
                             )
                         }
                     }
