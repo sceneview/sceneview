@@ -85,7 +85,10 @@ enum SampleAssets {
             tags: ["insect", "swarm"]
         ),
 
-        // ── Gallery (SceneGalleryDemo) ─────────────────────────────────────
+        // ── Gallery (the former SceneGalleryDemo) ──────────────────────────
+        // No screen loads these since the samples audit (step 0) folded the
+        // gallery into Models; kept so the credits and the Android registry
+        // stay in step until the step-1 asset pass.
         SketchfabSlug(
             uid: "42e02439c61049d681c897441d40aaa1",
             displayName: "Nile (Classical Statue)",

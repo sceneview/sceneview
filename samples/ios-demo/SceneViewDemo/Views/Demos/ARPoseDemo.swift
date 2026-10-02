@@ -1,42 +1,11 @@
-// @sceneId     ar-pose
-// @title       Pose Placement
-// @subtitle    Free pose positioning
-// @category    ar
-// @section     placeAR
-// @available   true
-// @status      working
-// @icon        move.3d
-// @iosOnly     true
-// @order       27
-// @tags        ar,pose,transform,gesture,anchor
-// @addedIn     4.15.2
-// @updatedIn   4.46.0
 import SwiftUI
 
-/// Free pose placement — mirrors Android's `ARPoseDemo`
-/// (`samples/android-demo/.../demos/ARPoseDemo.kt`, issue #2837).
-///
-/// ### Single-file structure (deliberate)
-///
-/// Every other working demo in this catalog splits into a thin
-/// `Scenes/<Name>Scene.swift` wrapper plus a `Views/Demos/<Name>Demo.swift`
-/// implementation. This port keeps the whole implementation in the Scene file
-/// instead: `SceneViewDemo.xcodeproj` still registers Swift sources as
-/// hand-written `PBXFileReference`/`PBXBuildFile` entries rather than a
-/// file-system-synchronized group, so a brand-new file needs a
-/// `project.pbxproj` edit to even compile. This port is scoped to touching
-/// only the Scene file + `parity-manifest.yml` + a changelog fragment, and
-/// `ArPoseScene.swift` already has its own pbxproj entry — so the demo body
-/// lives here rather than adding a file the build wouldn't pick up.
-enum ArPoseScene: DemoScene {
-    @MainActor static var destination: AnyView {
-        #if os(iOS)
-        return AnyView(ARPoseDemo())
-        #else
-        return AnyView(EmptyView())
-        #endif
-    }
-}
+// Free pose placement — mirrors Android's `ARPoseDemo`
+// (`samples/android-demo/.../demos/ARPoseDemo.kt`, issue #2837).
+//
+// Since the samples audit (step 0) this is the Free pose mode of the
+// `ar-placement` card, no longer a card of its own (`ar-pose` is a legacy
+// alias). Its body used to live in `Scenes/ArPoseScene.swift`.
 
 #if os(iOS)
 import RealityKit
@@ -80,7 +49,7 @@ import SceneViewSwift
 ///   reimplements that overlay — ARKit's own `showCoachingOverlay` already
 ///   covers the view with system guidance until tracking is usable, so it is
 ///   enabled here instead of inventing a bespoke overlay.
-private struct ARPoseDemo: View {
+struct ARPoseDemo: View {
     // MARK: - AR state
 
     /// `true` once ARKit reports `.normal` tracking — the closest iOS
@@ -108,7 +77,7 @@ private struct ARPoseDemo: View {
 
     /// Live handle to the lantern's entity so slider drags mutate its
     /// position directly instead of forcing a view rebuild — same direct-
-    /// mutation pattern as `MovableLightDemo`/`GestureEditingDemo`.
+    /// mutation pattern as `GestureEditingDemo`.
     @State private var lanternEntity: Entity?
 
     // MARK: - Slider offsets — same ranges as Android's ARPoseDemo.kt

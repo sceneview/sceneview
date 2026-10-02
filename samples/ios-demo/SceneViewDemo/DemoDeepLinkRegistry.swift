@@ -80,28 +80,17 @@ enum DemoDeepLinkRegistry {
         // land on `DeepLinkPlaceholder` through the unregistered-id path
         // below, so no QR code 404s; they simply no longer claim a catalogue
         // entry that does not exist.
-        "ar-recording": "ar-record-playback",
         "ar-cloud-anchors": "ar-cloud-anchor",
 
-        // Umbrella aliases (L0.6, #2804 Job A / #2769) — a live Android
-        // #2239-regrouped id routed to the single most-representative
-        // pre-regroup granular iOS scene. The target is Android's own
-        // default/first tab for that umbrella (`initialDemoMode`'s `default`
-        // parameter in `DemoSettings.kt`), not an arbitrary pick:
+        // Umbrella aliases (L0.6, #2804) — an Android umbrella id routed to
+        // the iOS scene that carries its default tab. Android's own ids for
+        // `camera-gestures` and `animation-physics` are iOS scene ids since the
+        // samples audit (step 0), so only these two remain until step 1:
         //   - custom-geometry   → custom-mesh   (default tab: CustomMesh)
-        //   - camera-gestures   → camera-controls (default tab: CameraModes)
         //   - picking-collision → collision     (default tab: RayHitTest)
-        //   - animation-physics → animation     (default tab: Animation)
         //   - two-d-in-three-d  → text          (default tab: Text)
-        // (`lighting-lab` left this list when it got its own scene: the
-        // Lighting Lab is a real iOS screen now, not an alias to `dynamic-sky`.)
-        // A full "regrouped umbrella UI" (Android's exact combined-tab
-        // layout) is explicitly out of scope for this lot — see the doc
-        // comment above.
         "custom-geometry": "custom-mesh",
-        "camera-gestures": "camera-controls",
         "picking-collision": "collision",
-        "animation-physics": "animation",
         "two-d-in-three-d": "text",
 
         // Retired scene ids (#4083) — a scene replaced by a new one keeps its
@@ -111,7 +100,72 @@ enum DemoDeepLinkRegistry {
         // `reflection-probes` became the Lighting Lab, like Android's
         // `DeepLinkRouter` alias (#3496).
         "reflection-probes": "lighting-lab",
+
+        // Samples audit, step 0 (48 → 34 cards): every absorbed iOS card
+        // keeps its link and opens the card that absorbed it, on the mode
+        // that carries it (`aliasModes`). One hop only, like Android's
+        // `DeepLinkRouter.validate`: each value is a live scene id.
+        //
+        // Android's own absorbed ids (`placement-scene`, `video-recording`,
+        // `ar-collaborative`) are still Android cards until its step 0 lands;
+        // `parity-manifest.yml` keeps them `android-only` here, so they join
+        // this table with the rows that retire them. `secondary-camera` is a
+        // live iOS card since #4250, not an alias.
+        //
+        // The shared Record action replaced the `ar-record-playback` card;
+        // what it recorded is replayed in Rerun.
+        "ar-record-playback": "ar-rerun",
+        "ar-recording": "ar-rerun",
+        // Placement, with its Wall / Free pose / Light modes.
+        "wall-placement": "ar-placement",
+        "ar-pose": "ar-placement",
+        "ar-lighting": "ar-placement",
+        // Camera & Gestures, Android's card and id.
+        "camera-controls": "camera-gestures",
+        "gesture-editing": "camera-gestures",
+        "animation": "animation-physics",
+        "double-pendulum": "rolling-balls",
+        // Lighting's three rigs already were these three screens.
+        "dynamic-sky": "lighting",
+        "environment": "lighting",
+        "movable-light": "lighting",
+        "texture-streaming": "materials",
+        "occlusion-material": "materials",
+        "multi-model": "model-viewer",
+        "scene-gallery": "model-viewer",
     ]
+
+    /// The mode an alias opens inside its card (samples audit, step 0) —
+    /// Android's `ALIAS_INITIAL_TAB`, by name. The token is one the target
+    /// card's ``DemoModeHost`` (or `LightingDemo`'s rig picker) recognises;
+    /// an alias missing here opens its card on the default mode.
+    static let aliasModes: [String: String] = [
+        "wall-placement": "wall",
+        "ar-pose": "free-pose",
+        "ar-lighting": "light",
+        "camera-controls": "camera",
+        "gesture-editing": "gestures",
+        "double-pendulum": "pendulum",
+        "dynamic-sky": "sun",
+        "environment": "image",
+        "movable-light": "studio",
+        "occlusion-material": "occlusion",
+        "multi-model": "park",
+    ]
+
+    /// Hands a tab asked for under an alias to the card the alias opens.
+    ///
+    /// `DeepLinkRouter` stores a link's `?tab=` under the id the link named —
+    /// for `sceneview://demo/wall-placement`, under `wall-placement` — but the
+    /// screen that reads it is `ar-placement`'s. Call once per incoming link,
+    /// after the tab was stored: an explicit `?tab=` wins, else the alias's
+    /// own mode (`aliasModes`). A canonical id is left untouched.
+    static func routeTab(for id: String) {
+        guard !GeneratedScenes.allowedIds.contains(id), let canonical = legacyAliases[id] else { return }
+        let explicit = DeepLinkRouter.consumeTab(for: id)
+        guard let tab = explicit ?? aliasModes[id] else { return }
+        DeepLinkRouter.setTab(tab, for: canonical)
+    }
 
     /// Deep-linkable ids with no `*Scene.swift` file — accepted by the gate,
     /// resolved to `DeepLinkPlaceholder`. Remove an id from here the moment a
@@ -128,8 +182,8 @@ enum DemoDeepLinkRegistry {
     /// `Set` (not deleted) — it is still the documented landing spot for an
     /// id that must be *accepted* without having a screen, and
     /// `DemoRegistryGuardTests` asserts the `[]` case directly (no residual id
-    /// may shadow a live generated scene id). The `check-demo-id-parity.sh`
-    /// script (#2801) that also covered this was deleted by #3244.
+    /// may shadow a live generated scene id). `.claude/scripts/check-demo-id-parity.sh`
+    /// (#2801) checks the cross-platform side of the id set in CI.
     ///
     /// Internal (not `private`) for the same reason as `legacyAliases` above —
     /// `DemoRegistryGuardTests` (#2801) asserts this list never collides with a
@@ -142,8 +196,19 @@ enum DemoDeepLinkRegistry {
     /// - `fog`: RealityKit exposes no depth-based fog, so the iOS screen was a
     ///   translucent volume standing in for it. Removed rather than simulated.
     ///   Android keeps its Filament fog demo; the removal is iOS-only.
+    /// - `placement-reticle-preview`: a camera-less preview of the placement
+    ///   reticle. Android removed its twin in #3275; iOS followed in the
+    ///   samples audit (step 0). The reticle itself is in AR Placement.
     static let removedIds: [String: String] = [
         "fog": "Fog",
+        "placement-reticle-preview": "AR Placement Reticle Preview",
+    ]
+
+    /// Why each ``removedIds`` entry is gone, in one sentence for the
+    /// placeholder.
+    static let removedReasons: [String: String] = [
+        "fog": "Fog needs depth-based fog, which RealityKit does not offer, so the iOS screen was removed. The Android app still has it.",
+        "placement-reticle-preview": "The reticle preview was removed from both apps. The reticle itself is in AR Placement, on a real camera.",
     ]
 
     static let residualIds: Set<String> = []
@@ -182,7 +247,7 @@ enum DemoDeepLinkRegistry {
         if let title = removedIds[id] {
             return AnyView(DeepLinkPlaceholder(
                 headline: "This demo isn\u{2019}t in the iOS app.",
-                detail: "\(title) needs depth-based fog, which RealityKit does not offer, so the iOS screen was removed. The Android app still has it."
+                detail: removedReasons[id] ?? "\(title) was removed from the iOS app."
             ))
         }
         return AnyView(DeepLinkPlaceholder(

@@ -42,6 +42,14 @@
 #                                 secondary-camera, view-node)
 #     Total ................ 62 deep-link runs
 #
+# Samples step 0 (2026-10-02, 48 -> 34 iOS cards) dropped the runs whose screen
+# was deleted — movable-light, dynamic-sky, environment, scene-gallery,
+# texture-streaming, ar-lighting, ar-record-playback, ar-pose: their ids are
+# aliases of a card already run — renamed `animation` to `animation-physics`
+# and smokes `placement-reticle-preview` as a placeholder. Per-flow counts now:
+# 3D Basics 4, Lighting 2, Content 5, Interaction 3, Advanced 9, AR 28,
+# placeholders 4 — 55 deep-link runs.
+#
 # Why deep-link ingress, not Samples-tab navigation:
 #   The iOS Samples-tab presents demos in a `.fullScreenCover` with NO Close
 #   affordance — a real iOS-demo UX gap (filed as a slice #1563 follow-up).

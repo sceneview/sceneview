@@ -94,6 +94,8 @@ struct SceneViewDemoApp: App {
         // `-tab <id>` opens a view inside the demo — mirrors the `?tab=` deep-link param.
         let tIdx = args.firstIndex(of: "-tab")
         DeepLinkRouter.setTab(tIdx.flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }, for: id)
+        // A retired id opens the card that absorbed it, on its mode (samples audit, step 0).
+        DemoDeepLinkRegistry.routeTab(for: id)
         return DemoDeepLinkRegistry.allowedIds.contains(id) ? id : nil
     }()
 
@@ -164,6 +166,8 @@ struct SceneViewDemoApp: App {
                     if url.isFileURL {
                         open(url)
                     } else if let id = DeepLinkRouter.parse(url, allowedDemos: DemoDeepLinkRegistry.allowedIds) {
+                        // `wall-placement` → `ar-placement` on its Wall mode.
+                        DemoDeepLinkRegistry.routeTab(for: id)
                         pendingDeepLinkDemo = id
                     } else if let candidate = DeepLinkRouter.extractCandidate(url) {
                         // A well-formed `sceneview://demo/<id>` (or the

@@ -25,7 +25,7 @@ import SwiftUI
 /// This port is scoped to the Scene file + `parity-manifest.yml` + a changelog
 /// fragment, and `ArCloudAnchorsScene.swift` already has its own pbxproj entry
 /// — so the demo body lives here rather than in a `Views/Demos/*Demo.swift`
-/// file the build would silently ignore. Same call as `ArPoseScene` (#2837).
+/// file the build would silently ignore. Same call as the former `ArPoseScene` (#2837).
 ///
 /// The file name stays plural for historical reasons; the canonical
 /// `@sceneId` is the singular `ar-cloud-anchor` (#2799), with
