@@ -8,6 +8,7 @@
 // @iosOnly     true
 // @order       20
 // @tags        ar,rerun,replay,record,export,point cloud,plane,pose,usdz,glb,ply
+// @addedIn     4.15.2
 // @updatedIn   4.46.0
 import SwiftUI
 

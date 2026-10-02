@@ -6,6 +6,7 @@
 // @available   true
 // @icon        swatchpalette.fill
 // @order       7
+// @addedIn     4.15.2
 import SwiftUI
 
 enum TextureStreamingScene: DemoScene {

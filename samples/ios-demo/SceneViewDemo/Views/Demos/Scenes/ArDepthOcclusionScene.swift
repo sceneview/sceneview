@@ -8,6 +8,8 @@
 // @iosOnly     true
 // @order       43
 // @tags        ar,depth,occlusion,arcore
+// @addedIn     4.15.2
+// @updatedIn   4.40.0
 import SwiftUI
 
 enum ArDepthOcclusionScene: DemoScene {

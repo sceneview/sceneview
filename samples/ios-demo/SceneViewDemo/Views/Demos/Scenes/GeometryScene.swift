@@ -7,6 +7,8 @@
 // @icon        cube.fill
 // @order       19
 // @tags        geometry,cube,sphere,cylinder,plane,primitive
+// @addedIn     4.0.0
+// @updatedIn   4.40.0
 import SwiftUI
 
 enum GeometryScene: DemoScene {

@@ -7,7 +7,8 @@
 // @icon        paintpalette.fill
 // @order       4
 // @tags        pbr,material,metallic,roughness,clearcoat,sheen,emissive
-// @updatedIn   4.35.0
+// @addedIn     4.0.0
+// @updatedIn   4.32.0
 import SwiftUI
 
 enum MaterialsScene: DemoScene {

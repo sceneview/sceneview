@@ -35,6 +35,8 @@ struct ShowcaseTab: View {
 
     @State private var scenes: [DemoItem] = []
     @State private var selectedSection: DemoSection?
+    /// The "What's new" chip: only the demos marked "New" or "Updated".
+    @State private var whatsNew = false
     @State private var query = ""
     @State private var searchOpen = false
     @State private var scrolled = false
@@ -72,6 +74,9 @@ struct ShowcaseTab: View {
     @State private var topInset: CGFloat = 0
     /// Width of the list between the page's side insets, for its column count.
     @State private var listWidth: CGFloat = 0
+    /// Top of the chip row in the scrolled content, for the What's new row's jump.
+    @State private var chipRowTop: CGFloat = 0
+    @State private var scrollPosition = ScrollPosition(edge: .top)
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -97,8 +102,15 @@ struct ShowcaseTab: View {
 
     private var visible: [DemoItem] {
         let byId = Dictionary(uniqueKeysWithValues: scenes.map { ($0.sceneId, $0) })
-        return filterDemos(homeScenes.map(HomeSearchEntry.init), section: selectedSection, query: query)
+        return filterDemos(homeScenes.map { HomeSearchEntry($0) }, section: selectedSection, query: query,
+                           whatsNew: whatsNew)
             .compactMap { byId[$0.id] }
+    }
+
+    /// How many home demos carry a "New" or "Updated" chip — the "What's new"
+    /// chip shows only when there is at least one.
+    private var freshCount: Int {
+        homeScenes.filter { DemoFreshness.of($0) != .none }.count
     }
 
     /// The "Featured" group, in priority order. Hidden while searching and shown
@@ -161,12 +173,27 @@ struct ShowcaseTab: View {
                         }
                     }
 
+                    // "What's new", right under the hero: the one row that
+                    // answers "what changed?" without a scroll through the
+                    // catalogue — Android's `WhatsNewRow`. It counts the cards
+                    // carrying "New" / "Updated" and opens the chip that keeps
+                    // only them; absent while searching and when nothing is fresh.
+                    if showWhatsNew {
+                        WhatsNewRow(count: freshCount,
+                                    since: DemoFreshness.windowStart(buildVersion: DemoFreshness.appVersion)) {
+                            openWhatsNew()
+                        }
+                        .padding(.top, SceneViewTokens.Home.groupGap)
+                        .accessibilityIdentifier("home-whats-new-row")
+                        .staggeredReveal(position: 1, revealed: catalogueRevealed)
+                    }
+
                     if showFeatured {
                         HomeSectionHeader(title: "Featured")
                             .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
                             .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
                             .accessibilityIdentifier("home-section-featured")
-                            .staggeredReveal(position: 1, revealed: catalogueRevealed)
+                            .staggeredReveal(position: 1 + whatsNewSlot, revealed: catalogueRevealed)
                         featuredGroup
                     }
 
@@ -180,7 +207,10 @@ struct ShowcaseTab: View {
                             .staggeredReveal(position: chipRevealPosition - 1, revealed: catalogueRevealed)
                     }
 
-                    CategoryChipRow(selected: $selectedSection)
+                    CategoryChipRow(selected: $selectedSection, whatsNew: $whatsNew, freshCount: freshCount)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.frame(in: .named(Self.contentSpace)).minY
+                        } action: { chipRowTop = $0 }
                         .padding(.top, searching ? 0 : SceneViewTokens.Home.chipRowTopGap)
                         .padding(.bottom, searching ? SceneViewTokens.Space.sm : SceneViewTokens.Home.gridTopGap)
                         .staggeredReveal(position: chipRevealPosition, revealed: catalogueRevealed)
@@ -209,10 +239,12 @@ struct ShowcaseTab: View {
                         .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
                 }
                 .animation(SceneViewTokens.Spring.fade, value: searching)
+                .coordinateSpace(name: Self.contentSpace)
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listWidth = $0 }
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                 .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
             }
+            .scrollPosition($scrollPosition)
             .background(SceneViewTokens.HomeColor.surface)
             .scrollDismissesKeyboard(.immediately)
             // "Scrolled" once the header band has gone under the header, as on
@@ -346,7 +378,7 @@ struct ShowcaseTab: View {
                 .matchedTransitionSource(id: sourceId, in: cardNamespace)
                 #endif
                 .accessibilityIdentifier("home-featured-\(demo.sceneId)")
-                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
+                .staggeredReveal(position: index + 2 + whatsNewSlot, revealed: catalogueRevealed)
             }
         }
     }
@@ -387,10 +419,38 @@ struct ShowcaseTab: View {
         }
     }
 
-    /// Reveal slot of the chip row: after the hero (0), when shown the Featured
-    /// header and its rows, and the "Browse online models" row.
+    /// Reveal slot of the chip row: after the hero (0), when shown the What's
+    /// new row, the Featured header and its rows, and the "Browse online
+    /// models" row.
     private var chipRevealPosition: Int {
-        (showFeatured ? featured.count + 2 : 1) + (searching ? 0 : 1)
+        (showFeatured ? featured.count + 2 : 1) + (searching ? 0 : 1) + whatsNewSlot
+    }
+
+    private var showWhatsNew: Bool { !searching && freshCount > 0 }
+
+    /// Reveal slots the What's new row takes ahead of Featured.
+    private var whatsNewSlot: Int { showWhatsNew ? 1 : 0 }
+
+    /// Coordinate space of the scrolled content, to know where the chip row sits.
+    private static let contentSpace = "home-content"
+
+    /// The What's new row's tap: the What's new chip selected, and the page
+    /// scrolled so the chip row lands just under the pinned header, the
+    /// filtered cards below it — Android's `animateScrollToItem(chipsIndex)`.
+    private func openWhatsNew() {
+        #if os(iOS)
+        SceneViewHaptic.shared.light()
+        #endif
+        selectedSection = nil
+        whatsNew = true
+        // After the filter has laid the shorter list out, so the scroll is
+        // clamped against the page it ends on, not the one it left.
+        DispatchQueue.main.async {
+            withAnimation(SceneViewTokens.Spring.animation) {
+                scrollPosition.scrollTo(y: max(0, chipRowTop - SceneViewTokens.Home.headerHeight
+                                                     - SceneViewTokens.Space.sm))
+            }
+        }
     }
 
     private func open(sceneId: String) {
@@ -719,6 +779,8 @@ private let chipSections: [DemoSection?] = [nil] + DemoSection.allCases.map { Op
 
 private struct CategoryChipRow: View {
     @Binding var selected: DemoSection?
+    @Binding var whatsNew: Bool
+    let freshCount: Int
 
     var body: some View {
         // Bleeds to the screen edges (cancelling the page inset) and carries the
@@ -727,11 +789,25 @@ private struct CategoryChipRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: SceneViewTokens.Home.chipGap) {
                 ForEach(chipSections, id: \.self) { section in
-                    CategoryChip(label: section?.chipLabel ?? "All", selected: section == selected) {
+                    CategoryChip(label: section?.chipLabel ?? "All",
+                                 selected: !whatsNew && section == selected) {
                         #if os(iOS)
                         SceneViewHaptic.shared.selection()
                         #endif
+                        whatsNew = false
                         selected = section
+                    }
+                    // Right after "All", label only as on Android: the demos
+                    // carrying "New" / "Updated" (the What's new row says how many).
+                    if section == nil && freshCount > 0 {
+                        CategoryChip(label: "What's new", selected: whatsNew) {
+                            #if os(iOS)
+                            SceneViewHaptic.shared.selection()
+                            #endif
+                            selected = nil
+                            whatsNew.toggle()
+                        }
+                        .accessibilityIdentifier("home-chip-whats-new")
                     }
                 }
             }

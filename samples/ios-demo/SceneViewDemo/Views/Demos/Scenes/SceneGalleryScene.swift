@@ -6,6 +6,8 @@
 // @available   true
 // @icon        square.grid.3x3.fill
 // @order       35
+// @addedIn     4.0.0
+// @updatedIn   4.32.0
 import SwiftUI
 
 enum SceneGalleryScene: DemoScene {

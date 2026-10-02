@@ -7,7 +7,8 @@
 // @icon        camera.fill
 // @order       40
 // @tags        camera,orbit,gesture,pan,zoom,manipulator,edit
-// @updatedIn   4.35.0
+// @addedIn     4.0.0
+// @updatedIn   4.31.0
 import SwiftUI
 
 enum CameraControlsScene: DemoScene {

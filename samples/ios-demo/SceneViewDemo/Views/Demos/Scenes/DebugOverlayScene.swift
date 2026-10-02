@@ -7,6 +7,8 @@
 // @icon        gauge.with.needle.fill
 // @order       22
 // @tags        debug,fps,stats,performance,overlay
+// @addedIn     4.15.2
+// @updatedIn   4.50.0
 import SwiftUI
 
 enum DebugOverlayScene: DemoScene {

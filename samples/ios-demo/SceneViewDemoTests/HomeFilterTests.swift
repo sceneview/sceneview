@@ -50,6 +50,21 @@ final class HomeFilterTests: XCTestCase {
         XCTAssertEqual(filterDemos(entries, section: .view3d, query: "model").map(\.id), ["model-viewer"])
     }
 
+    func testWhatsNewKeepsOnlyNewAndUpdatedDemos() {
+        let marked = [
+            HomeSearchEntry(id: "fog", title: "Fog", subtitle: "", section: .create, category: .lighting,
+                            order: 13, freshness: .updated),
+            HomeSearchEntry(id: "cosmos", title: "Cosmos", subtitle: "", section: .view3d, category: .advanced,
+                            order: 2, freshness: .new),
+            HomeSearchEntry(id: "physics", title: "Physics", subtitle: "", section: .view3d,
+                            category: .interaction, order: 5),
+        ]
+        XCTAssertEqual(filterDemos(marked, section: nil, query: "", whatsNew: true).map(\.id), ["cosmos", "fog"])
+        XCTAssertEqual(filterDemos(marked, section: .view3d, query: "", whatsNew: true).map(\.id), ["cosmos"])
+        XCTAssertEqual(filterDemos(marked, section: nil, query: "fog", whatsNew: true).map(\.id), ["fog"])
+        XCTAssertEqual(filterDemos(marked, section: nil, query: "").count, 3)
+    }
+
     func testEntriesWithoutOrderSortLast() {
         let ids = filterDemos(entries, section: nil, query: "").map(\.id)
         XCTAssertEqual(ids.last, "physics")
@@ -64,11 +79,13 @@ final class DemoFreshnessTests: XCTestCase {
         DemoFreshness.isRecent(version, buildVersion: build, window: window)
     }
 
-    func testWindowCoversTheBuildAndThePreviousMinorOnly() {
+    func testWindowCoversTheBuildAndTheTwoPreviousMinors() {
+        XCTAssertEqual(DemoFreshness.windowMinors, 2, "keep equal to Android's FRESHNESS_WINDOW_MINORS")
         XCTAssertTrue(recent("4.35.0", "4.35.0"))
         XCTAssertTrue(recent("4.34.0", "4.35.0"))
-        XCTAssertFalse(recent("4.33.0", "4.35.0"))
-        XCTAssertFalse(recent("4.33.9", "4.35.2"))
+        XCTAssertTrue(recent("4.33.0", "4.35.0"))
+        XCTAssertFalse(recent("4.32.0", "4.35.0"))
+        XCTAssertFalse(recent("4.32.9", "4.35.2"))
     }
 
     func testAheadOfTheBuildIsFreshAndAnOlderMajorIsNot() {
@@ -87,33 +104,80 @@ final class DemoFreshnessTests: XCTestCase {
     }
 
     func testAWiderWindowCanBeAskedFor() {
-        XCTAssertFalse(recent("4.32.0", "4.35.0"))
-        XCTAssertTrue(recent("4.32.0", "4.35.0", window: 3))
+        XCTAssertFalse(recent("4.31.0", "4.35.0"))
+        XCTAssertTrue(recent("4.31.0", "4.35.0", window: 4))
+    }
+
+    func testAComingSoonDemoNeverEarnsAChip() {
+        let soon = DemoItem(sceneId: "soon", comingSoonTitle: "Soon", icon: "clock", subtitle: "",
+                            order: 1, tags: [], addedIn: "4.35.0", section: .create, category: .advanced)
+        XCTAssertEqual(DemoFreshness.of(soon, buildVersion: "4.35.0"), .none)
+    }
+
+    func testADeclarationMayNotBeAheadOfTheBuild() {
+        XCTAssertTrue(DemoFreshness.isDeclarable("4.51.0", buildVersion: "4.51.0"))
+        XCTAssertTrue(DemoFreshness.isDeclarable("4.9.3", buildVersion: "4.51.0"))
+        XCTAssertTrue(DemoFreshness.isDeclarable("4.51", buildVersion: "4.51.2"))
+        XCTAssertFalse(DemoFreshness.isDeclarable("4.51.1", buildVersion: "4.51.0"))
+        XCTAssertFalse(DemoFreshness.isDeclarable("4.52.0", buildVersion: "4.51.0"))
+        XCTAssertFalse(DemoFreshness.isDeclarable("5.0.0", buildVersion: "4.51.0"))
+        for bad in [nil, "", "v4.35.0", "4", "main"] as [String?] {
+            XCTAssertFalse(DemoFreshness.isDeclarable(bad, buildVersion: "4.51.0"), "\(bad ?? "nil")")
+        }
+    }
+
+    /// The registry rule, on the real scenes: every demo declares the release it
+    /// first shipped in (`// @addedIn`), and neither version is ahead of the
+    /// build — work merged between two releases declares the version the build
+    /// reports, never a guessed next one.
+    func testEverySceneDeclaresAnAddedInThatIsNotAheadOfTheBuild() {
+        let scenes = GeneratedScenes.all()
+        XCTAssertFalse(scenes.isEmpty)
+        let build = DemoFreshness.appVersion
+        for item in scenes {
+            XCTAssertNotNil(item.addedIn, "\(item.sceneId) has no // @addedIn")
+            XCTAssertTrue(DemoFreshness.isDeclarable(item.addedIn, buildVersion: build),
+                          "\(item.sceneId) @addedIn \(item.addedIn ?? "nil") is missing or newer than \(build)")
+            if let updated = item.updatedIn {
+                XCTAssertTrue(DemoFreshness.isDeclarable(updated, buildVersion: build),
+                              "\(item.sceneId) @updatedIn \(updated) is newer than \(build)")
+                XCTAssertTrue(DemoFreshness.isDeclarable(item.addedIn, buildVersion: updated),
+                              "\(item.sceneId) @updatedIn \(updated) predates @addedIn")
+            }
+        }
     }
 
     func testNewWinsOverUpdated() {
-        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: nil, buildVersion: "4.35.0"), .none)
-        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: nil, buildVersion: "4.35.0"), .new)
-        XCTAssertEqual(DemoFreshness.of(sinceVersion: nil, updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
-        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.35.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .new)
-        XCTAssertEqual(DemoFreshness.of(sinceVersion: "4.20.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+        XCTAssertEqual(DemoFreshness.of(addedIn: nil, updatedIn: nil, buildVersion: "4.35.0"), .none)
+        XCTAssertEqual(DemoFreshness.of(addedIn: "4.35.0", updatedIn: nil, buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(addedIn: nil, updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
+        XCTAssertEqual(DemoFreshness.of(addedIn: "4.35.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .new)
+        XCTAssertEqual(DemoFreshness.of(addedIn: "4.20.0", updatedIn: "4.35.0", buildVersion: "4.35.0"), .updated)
     }
 
-    /// Every scene declaration earns its chip in the build it names. The values
-    /// themselves are checked against the Android fragments, through
-    /// `parity-manifest.yml`, by `collate-ios-demos.sh` on every build: a
-    /// declaration that drifts from Android fails the build, not this test.
+    /// Every available scene earns its chip in the build its declaration names.
     func testEverySceneDeclarationEarnsItsChipInItsOwnVersion() {
-        let declared = GeneratedScenes.all().filter { $0.sinceVersion != nil || $0.updatedIn != nil }
+        let declared = GeneratedScenes.all().filter { $0.status.isAvailable }
         XCTAssertFalse(declared.isEmpty)
         for item in declared {
-            if let since = item.sinceVersion {
+            if let since = item.addedIn {
                 XCTAssertEqual(DemoFreshness.of(item, buildVersion: since), .new, item.sceneId)
             }
-            if let updated = item.updatedIn, item.sinceVersion == nil {
-                XCTAssertEqual(DemoFreshness.of(item, buildVersion: updated), .updated, item.sceneId)
+            // "Updated" in its own version — or still "New", when the rework
+            // landed inside the window that also covers its first release.
+            if let updated = item.updatedIn {
+                XCTAssertNotEqual(DemoFreshness.of(item, buildVersion: updated), .none, item.sceneId)
             }
         }
+    }
+
+    /// The What's new row's "since": the oldest release still in the window —
+    /// Android's `freshnessWindowStart`.
+    func testTheWindowStartsTwoMinorsBeforeTheBuild() {
+        XCTAssertEqual(DemoFreshness.windowStart(buildVersion: "4.51.0"), "4.49")
+        XCTAssertEqual(DemoFreshness.windowStart(buildVersion: "4.51.2-rc1"), "4.49")
+        XCTAssertEqual(DemoFreshness.windowStart(buildVersion: "5.1.0"), "5.0")
+        XCTAssertEqual(DemoFreshness.windowStart(buildVersion: "dev"), "dev")
     }
 
     /// Materials is a procedural sphere wall, as on Android: it needs no

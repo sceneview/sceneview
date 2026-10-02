@@ -11,6 +11,8 @@ struct HomeSearchEntry: Equatable {
     let category: DemoCategory
     let tags: [String]
     let order: Int
+    /// "New" / "Updated" verdict — what the "What's new" chip keeps.
+    let freshness: DemoFreshness
 
     init(
         id: String,
@@ -19,7 +21,8 @@ struct HomeSearchEntry: Equatable {
         section: DemoSection,
         category: DemoCategory,
         tags: [String] = [],
-        order: Int = 999
+        order: Int = 999,
+        freshness: DemoFreshness = .none
     ) {
         self.id = id
         self.title = title
@@ -28,29 +31,35 @@ struct HomeSearchEntry: Equatable {
         self.category = category
         self.tags = tags
         self.order = order
+        self.freshness = freshness
     }
 
-    init(_ item: DemoItem) {
+    init(_ item: DemoItem, buildVersion: String = DemoFreshness.appVersion) {
         self.init(id: item.sceneId, title: item.title, subtitle: item.subtitle,
-                  section: item.section, category: item.category, tags: item.tags, order: item.order)
+                  section: item.section, category: item.category, tags: item.tags, order: item.order,
+                  freshness: DemoFreshness.of(item, buildVersion: buildVersion))
     }
 }
 
 /// Pure filter behind the home screen's section chips and search field.
 ///
 /// - `section` `nil` means "All"; otherwise only entries of that section survive.
+/// - `whatsNew` keeps only the entries marked "New" or "Updated" — the home's
+///   "What's new" chip.
 /// - `query` is trimmed and split on whitespace; every word must match
 ///   (case-insensitively) somewhere in title, subtitle, section or category
 ///   label, or tags. A blank query matches everything.
 /// - The result is in editorial `order` (ties broken by title) — the same
 ///   sequence Android's `filterDemos` returns. `@order` is section-contiguous,
 ///   so the result also reads section by section.
-func filterDemos(_ entries: [HomeSearchEntry], section: DemoSection?, query: String) -> [HomeSearchEntry] {
+func filterDemos(_ entries: [HomeSearchEntry], section: DemoSection?, query: String,
+                 whatsNew: Bool = false) -> [HomeSearchEntry] {
     let words = query.lowercased()
         .split(whereSeparator: { $0.isWhitespace })
         .map(String.init)
     return entries
         .filter { section == nil || $0.section == section }
+        .filter { !whatsNew || $0.freshness != .none }
         .filter { entry in words.allSatisfy { entry.matches($0) } }
         .sorted { ($0.order, $0.title) < ($1.order, $1.title) }
 }
@@ -121,18 +130,22 @@ enum HomeCatalogue {
 
 /// "New" / "Updated" verdict of a demo card — the iOS port of Android's
 /// `DemoFreshness.kt`, same rule and same inputs: each scene declares the
-/// version it shipped in (`// @sinceVersion`) and its last notable rework
-/// (`// @updatedIn`), mirrored from the Android fragment of the same demo,
+/// release it first shipped in on iOS (`// @addedIn`, required) and its last
+/// notable rework (`// @updatedIn`), both read from this platform's history,
 /// and the verdict is computed against the running build's version. Nothing
-/// is hardcoded as "new": a declaration ages out on its own two minors later.
+/// is hardcoded as "new": a declaration ages out on its own three minors
+/// later. A demo that is not available on iOS ("Coming soon") is never
+/// marked: there is nothing new to try.
 enum DemoFreshness: Equatable {
     case new
     case updated
     case none
 
     /// Minors a declaration stays fresh for — Android's `FRESHNESS_WINDOW_MINORS`.
-    /// `1`: a 4.48 build flags what landed in 4.47 or 4.48.
-    static let windowMinors = 1
+    /// `2`: a 4.51 build flags what landed in 4.49, 4.50 or 4.51. At `1`, with
+    /// several minors a week, almost nothing still carried a chip by the time
+    /// anyone opened the app (02/10).
+    static let windowMinors = 2
 
     /// Chip text, verbatim from Android's `samples_chip_new` / `_updated`.
     var label: String? {
@@ -143,17 +156,36 @@ enum DemoFreshness: Equatable {
         }
     }
 
-    /// `sinceVersion` wins over `updatedIn`: a demo that is new is not also
+    /// `addedIn` wins over `updatedIn`: a demo that is new is not also
     /// "updated".
-    static func of(sinceVersion: String?, updatedIn: String?,
+    static func of(addedIn: String?, updatedIn: String?,
                    buildVersion: String, window: Int = windowMinors) -> DemoFreshness {
-        if isRecent(sinceVersion, buildVersion: buildVersion, window: window) { return .new }
+        if isRecent(addedIn, buildVersion: buildVersion, window: window) { return .new }
         if isRecent(updatedIn, buildVersion: buildVersion, window: window) { return .updated }
         return .none
     }
 
     static func of(_ item: DemoItem, buildVersion: String = appVersion) -> DemoFreshness {
-        of(sinceVersion: item.sinceVersion, updatedIn: item.updatedIn, buildVersion: buildVersion)
+        guard item.status.isAvailable else { return .none }
+        return of(addedIn: item.addedIn, updatedIn: item.updatedIn, buildVersion: buildVersion)
+    }
+
+    /// `true` when `version` parses and is not ahead of `buildVersion` — the
+    /// registry rule: work merged between two releases declares the version the
+    /// build already reports, never a guessed next one (a typo such as `4.15.0`
+    /// for `4.51.0`, or `5.0.0`, would pin a chip on a card for good).
+    static func isDeclarable(_ version: String?, buildVersion: String) -> Bool {
+        guard let declared = semVer(version), let build = semVer(buildVersion) else { return false }
+        return declared.lexicographicallyPrecedes(build) || declared == build
+    }
+
+    private static func semVer(_ version: String?) -> [Int]? {
+        guard let version else { return nil }
+        let base = version.prefix { $0 != "-" && $0 != "+" }.trimmingCharacters(in: .whitespaces)
+        let parts = base.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+        guard (2...3).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return nil }
+        let numbers = parts.compactMap { $0 }
+        return numbers + Array(repeating: 0, count: 3 - numbers.count)
     }
 
     /// `true` when `version` is within `window` minors of `buildVersion`, or
@@ -164,6 +196,14 @@ enum DemoFreshness: Equatable {
         guard let declared = majorMinor(version), let build = majorMinor(buildVersion) else { return false }
         if declared.major != build.major { return declared.major > build.major }
         return declared.minor >= build.minor - window
+    }
+
+    /// The oldest release still inside the window, as `major.minor` — "4.49"
+    /// for a 4.51 build. Android's `freshnessWindowStart`; the What's new row
+    /// says "since" it. An unparseable build version comes back as is.
+    static func windowStart(buildVersion: String, window: Int = windowMinors) -> String {
+        guard let build = majorMinor(buildVersion) else { return buildVersion }
+        return "\(build.major).\(max(build.minor - window, 0))"
     }
 
     private static func majorMinor(_ version: String?) -> (major: Int, minor: Int)? {

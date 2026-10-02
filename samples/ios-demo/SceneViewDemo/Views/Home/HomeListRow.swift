@@ -92,6 +92,38 @@ struct BrowseOnlineRow: View {
     }
 }
 
+/// The "What's new" row under the hero (`home-whats-new-row`) — Android's
+/// `WhatsNewRow`: a ``HomeRowStyle/fused`` row, a sparkle on a
+/// `primary`-tinted panel, that says how many demos carry a "New" or "Updated"
+/// chip and opens the What's new filter. The Home hides it while searching
+/// and when nothing is fresh.
+struct WhatsNewRow: View {
+    /// Demos with a freshness chip in this build.
+    let count: Int
+    /// First release of the freshness window, e.g. "4.49" for a 4.51 build.
+    let since: String
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let accent = SceneViewTokens.HomeColor.primary
+        let tint = HomeAmbient.tint(accent: accent, dark: colorScheme == .dark)
+        let subtitle = "\(count) \(count == 1 ? "sample" : "samples") new or updated since \(since)"
+        HomeListRow(title: "What's new",
+                    subtitle: subtitle,
+                    tint: tint,
+                    style: .fused,
+                    onTap: onTap) {
+            HomeGlyphPanel(systemName: "sparkles", accent: accent, tint: tint)
+        } badges: {
+            EmptyView()
+        }
+        .accessibilityLabel("What's new")
+        .accessibilityHint(subtitle)
+    }
+}
+
 /// Columns of the Home list for a content area `width` wide (the page's side
 /// insets already taken off) — Android's `homeListColumns`: one on a phone,
 /// then as many `home-row-min-width` columns as fit.
@@ -109,7 +141,7 @@ private struct HomeListRow<Media: View, Badges: View>: View {
     let style: HomeRowStyle
     let onTap: () -> Void
     @ViewBuilder let media: () -> Media
-    /// Chips drawn after the title, on its line.
+    /// Chips drawn on their own line above the title (`home-badge`).
     @ViewBuilder let badges: () -> Badges
 
     var body: some View {
@@ -175,9 +207,12 @@ private struct HomeListRow<Media: View, Badges: View>: View {
     }
 }
 
-/// Title in `type-card` semibold with the chips on its line, the subtitle in
-/// `type-caption` regular. The text follows Dynamic Type, as Android's follows
-/// the font scale: the row grows with it; nothing truncates.
+/// The chips on their own line above the title (`home-badge`), then the title
+/// in `type-card` semibold and the subtitle in `type-caption` regular —
+/// Android's `HomeRowCaption`. The badge line takes no height at all when no
+/// chip draws, so a plain row keeps its title where it always was. The text
+/// follows Dynamic Type, as Android's follows the font scale: the row grows
+/// with it; nothing truncates.
 private struct HomeRowCaption<Badges: View>: View {
     let title: String
     let subtitle: String
@@ -187,21 +222,49 @@ private struct HomeRowCaption<Badges: View>: View {
     @ScaledMetric(relativeTo: .footnote) private var subtitleSize = SceneViewTokens.TypeScale.captionSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SceneViewTokens.Home.rowTextGap) {
-            HStack(spacing: SceneViewTokens.Space.sm) {
-                Text(title)
-                    .font(.system(size: titleSize, weight: .semibold))
-                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                    .fixedSize(horizontal: false, vertical: true)
+        let gap = SceneViewTokens.Home.rowTextGap
+        VStack(alignment: .leading, spacing: 0) {
+            HomeBadgeLine(spacing: SceneViewTokens.Space.sm, gapBelow: gap) {
                 badges()
-                    .fixedSize()
             }
+            Text(title)
+                .font(.system(size: titleSize, weight: .semibold))
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, gap)
             Text(subtitle)
                 .font(.system(size: subtitleSize, weight: .regular))
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The `home-badge` line: its chips side by side at their ideal size, then
+/// `gapBelow` to the title. With no chip to draw (a `nil` branch is not a
+/// subview) it measures zero, gap included — a `VStack` spacing would not.
+private struct HomeBadgeLine: Layout {
+    let spacing: CGFloat
+    let gapBelow: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        guard !sizes.isEmpty else { return .zero }
+        let width = sizes.reduce(0) { $0 + $1.width } + spacing * CGFloat(sizes.count - 1)
+        let height = sizes.map(\.height).max() ?? 0
+        return CGSize(width: min(width, proposal.width ?? width), height: height + gapBelow)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        let height = bounds.height - gapBelow
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            subview.place(at: CGPoint(x: x, y: bounds.minY + (height - size.height) / 2),
+                          anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+        }
     }
 }
 

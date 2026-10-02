@@ -9,6 +9,8 @@
 // @status      inReview
 // @order       28
 // @tags        ar,wall,vertical-plane,placement,tv
+// @addedIn     4.25.0
+// @updatedIn   4.40.0
 import SwiftUI
 
 /// Uses the shared automatic-placement experience with vertical-only detection.
