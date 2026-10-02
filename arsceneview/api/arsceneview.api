@@ -18,8 +18,10 @@ public final class io/github/sceneview/ar/ARCameraPermissionState {
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Lio/github/sceneview/ar/ArTrackingHint;ZLandroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
 public abstract class io/github/sceneview/ar/ARConfigDowngrade {
@@ -603,26 +605,53 @@ public final class io/github/sceneview/ar/ArGuidanceCue : java/lang/Enum {
 }
 
 public final class io/github/sceneview/ar/ArGuidanceKt {
-	public static final fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final synthetic fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/ar/core/TrackingFailureReason;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final fun rememberArGuidanceState (ZZZLcom/google/ar/core/TrackingFailureReason;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
 }
 
 public final class io/github/sceneview/ar/ArGuidanceState {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/ArGuidanceState$Companion;
 	public static final field FOUND_HOLD_MS J
+	public static final field HINT_MIN_SHOWN_MS J
+	public static final field HINT_STABLE_MS J
 	public static final field INITIALIZING_DELAY_MS J
 	public static final field MIN_DELAY_MS J
+	public static final field MIN_SHOWN_MS J
+	public static final field RECOVER_STABLE_MS J
+	public static final field REENTER_STABLE_MS J
+	public static final field SCAN_LINGER_MS J
 	public fun <init> ()V
 	public fun <init> (Lio/github/sceneview/ar/PlacementSurface;)V
 	public synthetic fun <init> (Lio/github/sceneview/ar/PlacementSurface;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCue ()Lio/github/sceneview/ar/ArGuidanceCue;
+	public final fun getHint ()Lio/github/sceneview/ar/ArTrackingHint;
+	public final fun getScanLingering ()Z
 	public final fun getSurface ()Lio/github/sceneview/ar/PlacementSurface;
 	public final fun isCoaching ()Z
 	public final fun nextTransitionDelayMillis (J)Ljava/lang/Long;
 	public final fun update (Lio/github/sceneview/ar/PlacementPhase;JJ)V
+	public final fun update (Lio/github/sceneview/ar/PlacementPhase;JLcom/google/ar/core/TrackingFailureReason;J)V
+	public final fun update (Lio/github/sceneview/ar/PlaneDiscoveryPhase;Lcom/google/ar/core/TrackingFailureReason;J)V
 }
 
 public final class io/github/sceneview/ar/ArGuidanceState$Companion {
+}
+
+public final class io/github/sceneview/ar/ArTrackingHint : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/ar/ArTrackingHint$Companion;
+	public static final field LOW_DETAIL Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field NONE Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field TOO_DARK Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field TOO_FAST Lio/github/sceneview/ar/ArTrackingHint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ArTrackingHint;
+	public static fun values ()[Lio/github/sceneview/ar/ArTrackingHint;
+}
+
+public final class io/github/sceneview/ar/ArTrackingHint$Companion {
+	public final fun from (Lcom/google/ar/core/TrackingFailureReason;)Lio/github/sceneview/ar/ArTrackingHint;
 }
 
 public final class io/github/sceneview/ar/AssetTicket {

@@ -5,8 +5,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARHapticFeedback
 import io.github.sceneview.ar.AutoPlacementModel
 import io.github.sceneview.ar.AutoPlacementScene
@@ -29,9 +34,10 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val instance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
     val state = rememberAutoPlacementState()
-    // AutoPlacementScene draws the animated coaching itself (coaching = true, the default);
-    // this only tells the demo when to keep its own pill quiet.
-    val guidance = rememberArGuidanceState(state)
+    // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
+    // only tells the demo when to keep its own pill quiet, from the same tracking reason.
+    var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    val guidance = rememberArGuidanceState(state, trackingFailureReason = trackingFailure)
     val playback = rememberArPlaybackDataset()
     ARHapticFeedback(state)
     DemoScaffold(
@@ -70,6 +76,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             engine = engine,
             modelLoader = modelLoader,
             playbackDataset = playback,
+            onTrackingFailureChanged = { trackingFailure = it },
         ) { placement ->
             instance?.let { AutoPlacementModel(placement, state, it) }
         }

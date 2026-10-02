@@ -149,7 +149,7 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
  * [AutoPlacementModel] supplies grounded, surface-constrained manipulation.
  *
  * @param coaching show the animated [ARCoachingOverlay] (phone sweep while scanning, a
- *   "surface found" beat on placement, pause/look-back glyphs when tracking degrades). On by
+ *   "surface found" pill on placement, the reason and its fix when tracking degrades). On by
  *   default. Pass `false` to draw your own from [rememberArGuidanceState], and hide your own
  *   status chrome while [ArGuidanceState.isCoaching] is true either way.
  */
@@ -184,10 +184,12 @@ fun AutoPlacementScene(
     // [rememberUpdatedState] is what makes `detach()` actually run when the host navigates away
     // after a placement, including when the content composes no AnchorNode of its own.
     val currentPlacement by rememberUpdatedState(placement)
-    // The coaching glyph is centred, exactly where ARSceneView draws its "Couldn't start AR"
-    // card — and it kept sweeping over that card's copy and its Try again button (#3986).
-    // DESIGN.md: the glyph is silent whenever a card explains the state.
+    // The coaching card sits where ARSceneView draws its "Couldn't start AR" card, and the
+    // old glyph kept sweeping over that card's copy and its Try again button (#3986).
+    // DESIGN.md: the coaching is silent whenever a card explains the state.
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
+    var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
         onDispose {
             currentPlacement?.anchor?.detach()
@@ -211,7 +213,10 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
-            onTrackingFailureChanged = onTrackingFailureChanged,
+            onTrackingFailureChanged = {
+                trackingFailure = it
+                onTrackingFailureChanged?.invoke(it)
+            },
             onSessionFailed = { state.cameraFailed(); onSessionFailed?.invoke(it) },
             onSessionUpdated = { session, frame ->
                 if (!state.hasPlacement && placement != null) {
@@ -240,10 +245,12 @@ fun AutoPlacementScene(
             }
         }
         if (coaching) {
-            val guidance = rememberArGuidanceState(state, surface)
+            val guidance = rememberArGuidanceState(state, surface, trackingFailure)
             ARCoachingOverlay(
                 cue = if (availability == null) guidance.cue else ArGuidanceCue.NONE,
                 surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
             )
         }
     }

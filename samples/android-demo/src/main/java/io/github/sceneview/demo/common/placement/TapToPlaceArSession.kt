@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -399,15 +400,22 @@ fun BoxScope.TapToPlaceStatusOverlays(
         state.phase = state.controller.phase
     }
 
-    val lowLight = (ForcedTrackingFailure.override ?: state.trackingFailureReason) ==
-        TrackingFailureReason.INSUFFICIENT_LIGHT
-    // The SDK's animated coaching (phone sweep, "surface found", paused / look back). While
-    // it is up the pill steps aside, the cards never do (the overlay is silent on them).
-    // Silent while the SDK's "Couldn't start AR" card is up: both are centred, and the glyph
-    // used to sit on that card's copy and its Try again button (#3986).
-    val guidance = rememberArGuidanceState(state.controller)
+    val trackingFailure = ForcedTrackingFailure.override ?: state.trackingFailureReason
+    val lowLight = trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT
+    // The SDK's coaching card (phone sweep, "Surface found", the reason and its fix when
+    // tracking struggles). While it is up the pill steps aside, the cards never do (the
+    // overlay is silent on them). Silent while the SDK's "Couldn't start AR" card is up:
+    // both are centred, and the coaching used to sit on that card's Try again button (#3986).
+    val guidance = rememberArGuidanceState(state.controller, trackingFailureReason = trackingFailure)
     val coachingCue = if (state.arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE
-    ARCoachingOverlay(cue = coachingCue, surface = guidance.surface)
+    ARCoachingOverlay(
+        cue = coachingCue,
+        surface = guidance.surface,
+        hint = guidance.hint,
+        scanLingering = guidance.scanLingering,
+        // The overlay keeps its own 16 dp gutter off the safe area; the dock is ours to declare.
+        contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
+    )
     val coaching = placementCoaching(
         phase = state.phase,
         gestureHintVisible = gestureHintVisible,

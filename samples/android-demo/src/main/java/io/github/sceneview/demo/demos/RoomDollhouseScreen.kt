@@ -160,8 +160,8 @@ internal fun RoomDollhouseScreen(
         value = true
     }
     val realSize = ar.realSize
-    val guidance = rememberArGuidanceState(state)
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    val guidance = rememberArGuidanceState(state, trackingFailureReason = trackingFailure)
     var invalidMove by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(false) }
     var hintShown by remember { mutableStateOf(false) }
