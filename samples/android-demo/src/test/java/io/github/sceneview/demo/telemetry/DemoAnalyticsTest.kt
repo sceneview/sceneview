@@ -102,6 +102,9 @@ class DemoAnalyticsTest {
                 ("sample_interaction" to mapOf("sample_id" to "cosmos", "control" to "burst")),
             AnalyticsEvent.ModelLoadFailed("model-viewer", ModelLoadFailure.NoBounds) to
                 ("model_load_failed" to mapOf("sample_id" to "model-viewer", "reason" to "no_bounds")),
+            AnalyticsEvent.ArTrackingReady("ar_view") to ("ar_tracking_ready" to mapOf("sample_id" to "ar_view")),
+            AnalyticsEvent.ArSessionFailed("ar-placement", "camera_not_available") to
+                ("ar_session_failed" to mapOf("sample_id" to "ar-placement", "reason" to "camera_not_available")),
             AnalyticsEvent.OutboundLink(LinkTarget.GitHub) to ("outbound_link" to mapOf("target" to "github")),
             AnalyticsEvent.PushPromptShown to ("push_prompt_shown" to emptyMap()),
             AnalyticsEvent.PushPromptResult(PromptResult.NotNow) to
