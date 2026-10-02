@@ -588,7 +588,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 | Token | Value |
 |---|---|
-| `dock-height` | 64dp |
+| `dock-height` | 64dp minimum; grows with the system font scale so labels are never clipped |
 | `dock-radius` | `radius-full` |
 | `dock-item` | 48dp minimum touch target; icon over caption |
 | `dock-icon` | 22dp |

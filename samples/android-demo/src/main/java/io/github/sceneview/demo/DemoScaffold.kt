@@ -1012,7 +1012,10 @@ private fun BoxScope.DemoDock(
             expanded = true,
             modifier = Modifier
                 .overMediaEdge(dockShape, chrome.edgeRing, chrome.edgeHalo)
-                .height(SceneViewTokens.Layout.dockHeight)
+                // 64 dp is the baseline, not a clipping boundary. At large font scales the
+                // icon + caption column needs more room; the measured dock band already moves
+                // overlays and scene framing above whatever height results.
+                .heightIn(min = SceneViewTokens.Layout.dockHeight)
                 .testTag(DemoScaffoldTestTags.DOCK),
             colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
                 toolbarContainerColor = chrome.glass,
