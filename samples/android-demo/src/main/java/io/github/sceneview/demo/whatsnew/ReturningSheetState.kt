@@ -60,12 +60,20 @@ internal class ReturningSheetState(initial: Phase = Phase.Closed) {
 /**
  * A [ReturningSheetState] saved with the host's state, so it outlives the host leaving
  * composition while a sample is on top (and a process death in between).
+ *
+ * [contentReady] holds the reopen back until the sheet has something to draw. The host is
+ * composed fresh on the way back, so whatever it loads asynchronously starts empty again: a
+ * sheet reopened at once would show a blank frame and then pop its list in.
  */
 @Composable
-internal fun rememberReturningSheetState(): ReturningSheetState {
+internal fun rememberReturningSheetState(contentReady: Boolean = true): ReturningSheetState {
     val state = rememberSaveable(saver = ReturningSheetState.Saver) { ReturningSheetState() }
-    // Runs once per composition of the host: a fresh one is exactly the return from a sample.
-    // While the host stays composed (the outgoing half of the navigation), the sheet stays shut.
-    LaunchedEffect(state) { state.onHostReturned() }
+    // Runs once per composition of the host (a fresh one is exactly the return from a sample),
+    // and again when its content arrives. While the host stays composed through the outgoing
+    // half of the navigation, the content is already in and the key does not change, so the
+    // sheet stays shut.
+    LaunchedEffect(state, contentReady) {
+        if (contentReady) state.onHostReturned()
+    }
     return state
 }

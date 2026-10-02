@@ -22,7 +22,6 @@ object SplatPreviewFragment : DemoFragment {
         order = 27,
         addedIn = "4.23.0",
         tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),
-        // #3620 replaced the procedural sphere with a real phone capture.
     )
 
     @Composable

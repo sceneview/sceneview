@@ -45,8 +45,8 @@
          samples marked New or Updated, %2$s the oldest release still marked ("4.49"). -->
     <string name="home_whats_new_title">What\'s new</string>
     <plurals name="home_whats_new_subtitle">
-        <item quantity="one">%1$d sample new or updated since %2$s</item>
-        <item quantity="other">%1$d samples new or updated since %2$s</item>
+        <item quantity="one">%1$d new or updated since %2$s</item>
+        <item quantity="other">%1$d new or updated since %2$s</item>
     </plurals>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>

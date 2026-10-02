@@ -170,7 +170,7 @@ fun RootScreen(
     // Updates are available from the home action without interrupting app launch.
     val whatsNewSince = rememberWhatsNewSince()
     // Back from a sample opened in the sheet lands on the sheet again, not on a bare Home.
-    val whatsNewSinceSheet = rememberReturningSheetState()
+    val whatsNewSinceSheet = rememberReturningSheetState(contentReady = whatsNewSince.isLoaded)
     if (whatsNewSinceSheet.isShown) {
         WhatsNewSinceSheet(
             sections = whatsNewSince.unseen,

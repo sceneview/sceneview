@@ -147,23 +147,39 @@ fun BrowseOnlineRow(
 
 /**
  * The row under the hero that opens the "What's new" filter: one more
- * [HomeRowStyle.Fused] row, the badges' own sparkle on a `primary`-tinted panel, so the
- * entry point to the New / Updated cards reads as the same family as their pills.
+ * [HomeRowStyle.Fused] row, led by the picture of the freshest demo ([leadDemoId]) so the
+ * entry point shows what is new rather than a symbol for it. A demo without a picture
+ * falls back to the badges' own sparkle on a `primary`-tinted panel.
  */
 @Composable
 fun WhatsNewRow(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    leadDemoId: String? = null,
 ) {
+    val dark = isSystemInDarkTheme()
     val accent = MaterialTheme.colorScheme.primary
-    val tint = glyphTint(accent, isSystemInDarkTheme())
+    val resources = LocalContext.current.resources
+    val res = leadDemoId?.let { DemoPreviews.resourceFor(it, dark) }
+    val tint = if (res != null) {
+        remember(res, dark) { HomeAmbient.tint(resources, res, dark) }
+    } else {
+        glyphTint(accent, dark)
+    }
+    val alignment = leadDemoId?.let { FEATURED_MEDIA_ALIGNMENT[it] } ?: Alignment.Center
     FusedRow(
         title = stringResource(R.string.home_whats_new_title),
         subtitle = subtitle,
         tint = tint,
         onClick = onClick,
-        media = { GlyphPanel(icon = Icons.Filled.AutoAwesome, accent = accent, tint = tint, modifier = it) },
+        media = { mediaModifier ->
+            if (res != null) {
+                RowPicture(painterResource(res), alignment, mediaModifier)
+            } else {
+                GlyphPanel(icon = Icons.Filled.AutoAwesome, accent = accent, tint = tint, modifier = mediaModifier)
+            }
+        },
         modifier = modifier,
     )
 }

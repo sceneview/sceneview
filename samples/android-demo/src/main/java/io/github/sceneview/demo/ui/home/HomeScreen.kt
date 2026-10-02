@@ -300,9 +300,13 @@ fun HomeScreen(
 
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
     val context = LocalContext.current
-    val whatsNew by produceState(initialValue = emptyList<WhatsNewRelease>()) {
-        if (!inspectionMode) {
-            value = withContext(Dispatchers.IO) { loadWhatsNew(context.assets) }
+    // Null until read: the sheet reopening after a sample waits for it rather than
+    // opening blank and filling a frame later.
+    val whatsNew by produceState<List<WhatsNewRelease>?>(initialValue = null) {
+        value = if (inspectionMode) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.IO) { loadWhatsNew(context.assets) }
         }
     }
     // The sheet's "try these" list is the freshness list first — that is what the
@@ -312,10 +316,10 @@ fun HomeScreen(
         fresh + demos.filter { it.status == DemoStatus.InReview && it !in fresh }
     }
     // Back from a sample opened in the sheet lands on the sheet again, not on a bare Home.
-    val whatsNewSheet = rememberReturningSheetState()
+    val whatsNewSheet = rememberReturningSheetState(contentReady = whatsNew != null)
     if (whatsNewSheet.isShown) {
         WhatsNewSheet(
-            releases = whatsNew,
+            releases = whatsNew.orEmpty(),
             inReviewDemos = inReviewDemos,
             onDemoClick = { id ->
                 whatsNewSheet.leaveForSample()
@@ -441,6 +445,11 @@ fun HomeScreen(
                                 fresh.size,
                                 freshnessWindowStart(buildVersion),
                             ),
+                            // A new demo leads over an updated one.
+                            leadDemoId = (
+                                fresh.firstOrNull { freshnessById[it.id] == DemoFreshness.New }
+                                    ?: fresh.firstOrNull()
+                                )?.id,
                             onClick = {
                                 onCategoryChange(WHATS_NEW_FILTER)
                                 // The chips land just under the pinned header, the
@@ -581,7 +590,7 @@ fun HomeScreen(
             // acknowledging retreats to a dot on this action and takes the
             // tap until it is marked seen; afterwards the action falls back
             // to the release-notes sheet.
-            showWhatsNew = hasUnseenWhatsNew || whatsNew.isNotEmpty(),
+            showWhatsNew = hasUnseenWhatsNew || !whatsNew.isNullOrEmpty(),
             whatsNewBadged = hasUnseenWhatsNew,
             onWhatsNewClick = {
                 if (hasUnseenWhatsNew) onWhatsNewSinceClick() else whatsNewSheet.open()
