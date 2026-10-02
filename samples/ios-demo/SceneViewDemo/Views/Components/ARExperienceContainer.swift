@@ -150,6 +150,11 @@ final class ARExperienceModel: ObservableObject {
 
     let requirement: ARExperienceRequirement
     private let isSupported: Bool
+    /// `sample_id` of the AR funnel events (set by the container from the environment).
+    var analyticsSampleId = "ar_view"
+    /// Funnel state for the current `generation`: each event once per session run.
+    private var loggedGeneration = -1
+    private var trackingReady = false
     private let authorizationStatus: () -> AVAuthorizationStatus
     private let requestAccess: (@escaping (Bool) -> Void) -> Void
     private let forcedPhase: ARExperiencePhase?
@@ -236,6 +241,7 @@ final class ARExperienceModel: ObservableObject {
 #if os(iOS)
 extension ARExperienceModel: ARSceneSessionObserver {
     func arSession(didEmit event: ARSessionEvent, in arView: ARView) {
+        logFunnel(event)
         switch event {
         case .firstFrame:
             // The camera is on screen. Model loading is the screen's own
@@ -249,6 +255,55 @@ extension ARExperienceModel: ARSceneSessionObserver {
             // next `.firstFrame` says the camera is back on screen. A screen
             // still starting stays on "Starting camera…" until then.
             break
+        }
+    }
+
+    /// The AR funnel: `ar_session_created` → `ar_tracking_ready`, then
+    /// `ar_tracking_lost` / `ar_session_failed`. Reasons are enum names or
+    /// `domain:code`, never free text.
+    private func logFunnel(_ event: ARSessionEvent) {
+        let analytics = DemoAnalytics.shared
+        let id = analyticsSampleId
+        switch event {
+        case .started:
+            guard loggedGeneration != generation else { return }
+            loggedGeneration = generation
+            trackingReady = false
+            analytics.log(.arSessionCreated(sampleId: id))
+        case .trackingStateChanged(let status):
+            switch status {
+            case .normal:
+                if !trackingReady {
+                    trackingReady = true
+                    analytics.log(.arTrackingReady(sampleId: id))
+                }
+            case .limited(let reason):
+                guard trackingReady, reason != .initializing else { return }
+                trackingReady = false
+                analytics.log(.arTrackingLost(sampleId: id, reason: Self.trackingReason(reason)))
+            case .notAvailable:
+                guard trackingReady else { return }
+                trackingReady = false
+                analytics.log(.arTrackingLost(sampleId: id, reason: "not_available"))
+            }
+        case .interrupted:
+            guard trackingReady else { return }
+            trackingReady = false
+            analytics.log(.arTrackingLost(sampleId: id, reason: "interrupted"))
+        case .failed(let error):
+            analytics.log(.arSessionFailed(sampleId: id, reason: DemoAnalytics.reason(for: error)))
+        case .firstFrame, .interruptionEnded:
+            break
+        }
+    }
+
+    static func trackingReason(_ reason: ARTrackingStatus.LimitedReason) -> String {
+        switch reason {
+        case .initializing: return "initializing"
+        case .excessiveMotion: return "excessive_motion"
+        case .insufficientFeatures: return "insufficient_features"
+        case .relocalizing: return "relocalizing"
+        case .other: return "other"
         }
     }
 
@@ -289,6 +344,7 @@ struct ARExperienceContainer<Content: View>: View {
 
     @StateObject private var model: ARExperienceModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
     @Environment(\.scenePhase) private var scenePhase
 
     init(
@@ -366,7 +422,10 @@ struct ARExperienceContainer<Content: View>: View {
         // bar background, hence the three modifiers together. A screen that
         // hides the bar (`.demoChrome`) is unaffected.
         .darkHostNavigationBar()
-        .onAppear(perform: model.resolve)
+        .onAppear {
+            model.analyticsSampleId = analyticsSampleId ?? "ar_view"
+            model.resolve()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.sceneBecameActive() }
         }
