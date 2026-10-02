@@ -1,5 +1,8 @@
 package io.github.sceneview.web
 
+import kotlin.math.PI
+import kotlin.math.tan
+
 /**
  * Pure, renderer-agnostic bounding-box math for the library-level
  * `autoCenterContent` feature (issue #1052 — web port of iOS #1026).
@@ -8,6 +11,31 @@ package io.github.sceneview.web
  * on the JVM-free `jsTest` Karma target without a WebGL context.
  */
 internal object ContentCentering {
+
+    data class Projection(
+        val fovDegrees: Double,
+        val nearPlane: Double,
+        val farPlane: Double,
+    )
+
+    /**
+     * Resolve explicit camera DSL values against the current automatic clip
+     * planes. Invalid explicit values are ignored independently; an explicit
+     * far plane is valid only when it is finite and beyond the effective near
+     * plane (explicit when valid, otherwise automatic).
+     */
+    fun resolveProjection(
+        explicitFov: Double?,
+        explicitNear: Double?,
+        explicitFar: Double?,
+        autoNear: Double,
+        autoFar: Double,
+    ): Projection {
+        val fov = explicitFov?.takeIf { it.isFinite() && it > 0.0 && it < 180.0 } ?: 45.0
+        val near = explicitNear?.takeIf { it.isFinite() && it > 0.0 } ?: autoNear
+        val far = explicitFar?.takeIf { it.isFinite() && it > near } ?: autoFar
+        return Projection(fov, near, far)
+    }
 
     /** Smallest mesh extent (in metres) the auto-centre pass accepts as
      * "content has loaded enough to be centred". Below this the bounds are
@@ -161,6 +189,18 @@ internal object ContentCentering {
         if (!(radius > 0.0)) return 0.0
         val m = if (margin.isFinite()) margin.coerceIn(MIN_FIT_MARGIN, MAX_FIT_MARGIN) else 1.0
         return radius * FIT_DISTANCE_RADII * m
+    }
+
+    /**
+     * The fitted orbit distance adjusted for a vertical [fovDegrees], keeping
+     * content at the same fraction of the viewport as the historical 45° fit.
+     */
+    fun fitDistance(radius: Double, margin: Double, fovDegrees: Double): Double {
+        val distance = fitDistance(radius, margin)
+        if (fovDegrees == 45.0 || !(fovDegrees > 0.0 && fovDegrees < 180.0) || !fovDegrees.isFinite()) {
+            return distance
+        }
+        return distance * tan(22.5 * PI / 180.0) / tan(fovDegrees / 2.0 * PI / 180.0)
     }
 
     /** Near clip plane of a scene the fit never ran on (metre-scale content). */

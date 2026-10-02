@@ -1,5 +1,7 @@
 package io.github.sceneview.web
 
+import kotlin.math.PI
+import kotlin.math.tan
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,5 +46,25 @@ class FitDistanceTest {
         assertEquals(0.0, ContentCentering.fitDistance(0.0), 0.0)
         assertEquals(0.0, ContentCentering.fitDistance(-1.0), 0.0)
         assertEquals(0.0, ContentCentering.fitDistance(Double.NaN), 0.0)
+    }
+
+    @Test
+    fun fortyFiveDegreeFovKeepsHistoricalFitExactly() {
+        val historical = ContentCentering.fitDistance(2.0, 1.15)
+        assertEquals(historical, ContentCentering.fitDistance(2.0, 1.15, 45.0), 0.0)
+    }
+
+    @Test
+    fun narrowerFovMovesTheCameraBack() {
+        val historical = ContentCentering.fitDistance(2.0, 1.0)
+        val ratio = tan(22.5 * PI / 180.0) / tan(11.25 * PI / 180.0)
+        assertEquals(historical * ratio, ContentCentering.fitDistance(2.0, 1.0, 22.5), 1e-9)
+    }
+
+    @Test
+    fun widerFovMovesTheCameraCloser() {
+        val historical = ContentCentering.fitDistance(2.0, 1.0)
+        val ratio = tan(22.5 * PI / 180.0) / tan(45.0 * PI / 180.0)
+        assertEquals(historical * ratio, ContentCentering.fitDistance(2.0, 1.0, 90.0), 1e-9)
     }
 }
