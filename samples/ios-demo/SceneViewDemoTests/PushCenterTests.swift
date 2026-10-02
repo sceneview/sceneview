@@ -53,9 +53,9 @@ private final class FakeMessaging: PushMessaging {
         }
     }
 
-    func finishDelete() {
-        hasToken = false
-        pendingDelete?(true)
+    func finishDelete(success: Bool = true) {
+        if success { hasToken = false }
+        pendingDelete?(success)
         pendingDelete = nil
     }
 }
@@ -67,6 +67,9 @@ final class PushCenterTests: XCTestCase {
     private var fcm: FakeMessaging!
     private var status: UNAuthorizationStatus = .authorized
     private var registerCount = 0
+    private var authorizationGranted = true
+    /// `firebaseStarts` when the system prompt went up (nil: never asked).
+    private var firebaseStartsAtPrompt: Int?
 
     override func setUp() async throws {
         suiteName = "PushCenterTests.\(UUID().uuidString)"
@@ -74,6 +77,8 @@ final class PushCenterTests: XCTestCase {
         fcm = FakeMessaging()
         status = .authorized
         registerCount = 0
+        authorizationGranted = true
+        firebaseStartsAtPrompt = nil
         consentSettled = true
         firebaseCanStart = true
         firebaseStarts = 0
@@ -96,7 +101,11 @@ final class PushCenterTests: XCTestCase {
             messaging: fcm,
             system: PushSystem(
                 authorizationStatus: { [unowned self] in self.status },
-                requestAuthorization: { true },
+                requestAuthorization: { [unowned self] in
+                    self.firebaseStartsAtPrompt = self.firebaseStarts
+                    self.status = self.authorizationGranted ? .authorized : .denied
+                    return self.authorizationGranted
+                },
                 registerForRemoteNotifications: { [unowned self] in self.registerCount += 1 }
             ),
             gate: PushTelemetryGate(
@@ -127,19 +136,52 @@ final class PushCenterTests: XCTestCase {
         XCTAssertTrue(center.prePromptEligible, "eligible once the consent is settled, in a later session")
     }
 
-    /// Consent zone, refused: Firebase is not configured, but the pre-prompt can still be
-    /// shown (a config is bundled), and "Notify me" configures Firebase first.
-    func testNotifyMeConfiguresFirebaseWhenTheConsentZoneLeftItOff() async {
+    /// Consent zone, refused: "Notify me" configures Firebase only once the system prompt
+    /// said yes, never while it is up (#4268).
+    func testNotifyMeConfiguresFirebaseAfterPermissionIsGranted() async {
         status = .notDetermined
         fcm.isAvailable = false
         let center = makeCenter()
         await center.refreshAuthorization()
         XCTAssertTrue(center.prePromptEligible)
 
-        status = .authorized
-        center.prePromptAccepted()
+        await center.acceptPrePrompt()
+
+        XCTAssertEqual(firebaseStartsAtPrompt, 0, "nothing configured before the system prompt")
         XCTAssertEqual(firebaseStarts, 1)
         XCTAssertTrue(fcm.isAvailable)
+        XCTAssertEqual(pushNeedsFirebase, true)
+    }
+
+    /// "Notify me", then "Don't Allow": Firebase is never configured, nothing is kept for
+    /// the next launch.
+    func testNotifyMeDenialNeverConfiguresFirebase() async {
+        status = .notDetermined
+        authorizationGranted = false
+        fcm.isAvailable = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+
+        await center.acceptPrePrompt()
+
+        XCTAssertEqual(firebaseStartsAtPrompt, 0)
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertFalse(fcm.isAvailable)
+        XCTAssertNotEqual(pushNeedsFirebase, true)
+    }
+
+    /// The switch turned ON before iOS asked, then "Don't Allow": same as the pre-prompt.
+    func testSwitchOnThenDenialNeverConfiguresFirebase() async {
+        status = .notDetermined
+        authorizationGranted = false
+        fcm.isAvailable = false
+        let center = makeCenter()
+
+        await center.applyNotificationsSwitch(true)
+
+        XCTAssertEqual(firebaseStartsAtPrompt, 0)
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertNotEqual(pushNeedsFirebase, true)
     }
 
     /// No config bundled: no pre-prompt, and Firebase is never started for push.
@@ -151,7 +193,7 @@ final class PushCenterTests: XCTestCase {
         await center.refreshAuthorization()
 
         XCTAssertFalse(center.prePromptEligible)
-        center.prePromptAccepted()
+        await center.acceptPrePrompt()
         XCTAssertEqual(firebaseStarts, 0)
     }
 
@@ -188,6 +230,45 @@ final class PushCenterTests: XCTestCase {
         XCTAssertFalse(fcm.autoInit)
         XCTAssertFalse(fcm.hasToken)
         XCTAssertFalse(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, false)
+    }
+
+    func testFailedTokenDeletionIsRetriedOnNextLaunch() async {
+        let center = await makeSubscribedCenter()
+        fcm.completeDeleteImmediately = false
+
+        await center.applyNotificationsSwitch(false)
+        XCTAssertTrue(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, true)
+
+        fcm.finishDelete(success: false)
+        XCTAssertTrue(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, true)
+
+        fcm.completeDeleteImmediately = true
+        let relaunchedCenter = makeCenter()
+        await relaunchedCenter.refreshAuthorization()
+        relaunchedCenter.syncTopics()
+
+        XCTAssertEqual(fcm.deleteCount, 2)
+        XCTAssertFalse(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, false)
+    }
+
+    /// Allowed but never subscribed (no FCM token yet), then OFF: nothing to undo, so
+    /// Firebase is not kept for the next launch.
+    func testSwitchOffBeforeAnySubscriptionForgetsFirebase() async {
+        fcm.hasAPNsToken = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+        center.syncTopics()
+        XCTAssertEqual(pushNeedsFirebase, true)
+        XCTAssertFalse(defaults.bool(forKey: PushCenter.subscribedKey))
+
+        await center.applyNotificationsSwitch(false)
+
+        XCTAssertEqual(fcm.deleteCount, 0)
+        XCTAssertEqual(pushNeedsFirebase, false)
     }
 
     /// The bug: OFF → ON with the permission already granted did not resubscribe.
