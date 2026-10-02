@@ -6612,7 +6612,7 @@ public struct ARSceneView: UIViewRepresentable {
     public func onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+
     public func onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+
     public func depthSource(_ source: DepthSource?) -> ARSceneView                          // .native (LiDAR) | .ml(estimator, targetHz: 10) | .auto(ml:targetHz:)
-    public func onDepthFrame(_ handler: @escaping (ARDepthFrame?) -> Void) -> ARSceneView   // metric depth, main thread; frame.source == .lidar or .ml; nil = no depth
+    public func onDepthFrame(_ handler: @escaping (ARDepthFrame?) -> Void) -> ARSceneView   // metric depth, main thread; frame.source == .native or .ml; nil = no depth
     public func onDepthSourceState(_ handler: @escaping (DepthSourceState) -> Void) -> ARSceneView // .native | .preparing | .ml(hz:) | .throttled(.thermal | .tracking | .waitingForAnchors(anchors:)) | .unavailable(reason)
 }
 // SceneViewDepthML (separate SPM product, Core ML): Depth Anything V2 Small, Apache-2.0, never bundled.

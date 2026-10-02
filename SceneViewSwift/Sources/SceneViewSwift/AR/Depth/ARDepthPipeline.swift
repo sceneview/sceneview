@@ -132,7 +132,7 @@ final class ARDepthPipeline {
             timestamp: frame.timestamp, width: w, height: h, millimetres: mm, confidence: confidence,
             intrinsics: scaledIntrinsics(frame.camera.intrinsics, from: frame.camera.imageResolution,
                                          to: (w, h)),
-            cameraTransform: frame.camera.transform, source: .lidar)
+            cameraTransform: frame.camera.transform, source: .native)
     }
 
     nonisolated static func scaledIntrinsics(_ k: simd_float3x3, from resolution: CGSize, to size: (Int, Int)) -> simd_float3x3 {
@@ -277,7 +277,7 @@ final class MLDepthWorker: @unchecked Sendable {
     static let signposter = OSSignposter(subsystem: "io.github.sceneview", category: "mlDepth")
     static let benchmarkFloorMilliseconds: Double = 400
     static let maxFeaturePoints = 600
-    /// Consecutive `estimate(_:)` errors that end the ML path (Android fails on the first).
+    /// Consecutive `estimate(_:)` errors that end the ML path (same on Android).
     static let maxConsecutiveErrors = 3
 
     let estimator: any MonocularDepthEstimator

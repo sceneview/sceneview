@@ -50,8 +50,9 @@ public protocol MonocularDepthEstimator: AnyObject, Sendable {
     func estimate(_ pixelBuffer: CVPixelBuffer) throws -> MonocularDepthEstimate
 }
 
-/// Where an ``ARSceneView`` takes its environment depth from. Android:
-/// `DepthSource.Native | Ml | Auto`.
+/// Where an ``ARSceneView`` takes its environment depth from. Android has no
+/// such switch: ARCore's Depth API is `ARSceneView(depthMode = …)`, and the ML
+/// path is an `MlDepthSession` fed from `onSessionUpdated`.
 ///
 /// - ``native``: the device's depth sensor only (LiDAR `sceneDepth`; add
 ///   `.sceneDepth` to the configuration's `frameSemantics`).
@@ -95,7 +96,7 @@ public enum DepthSource: Sendable {
     }
 }
 
-/// What the depth layer is doing right now. Android: `DepthSourceState`.
+/// What the depth layer is doing right now. Android: `MlDepthState` (ML path only).
 public enum DepthSourceState: Sendable, Hashable {
     /// Sensor depth (LiDAR) is flowing.
     case native

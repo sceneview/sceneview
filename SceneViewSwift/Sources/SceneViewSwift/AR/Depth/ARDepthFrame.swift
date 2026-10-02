@@ -8,7 +8,7 @@ import simd
 /// The type is the Swift side of the shared depth contract; Android's
 /// `ArDepthFrame` carries the same fields. Two producers fill it:
 ///
-/// - ``Source-swift.enum/lidar`` — ARKit `sceneDepth` (LiDAR), 256×192.
+/// - ``Source-swift.enum/native`` — ARKit `sceneDepth` (LiDAR), 256×192.
 /// - ``Source-swift.enum/ml`` — a monocular estimator (Depth Anything V2
 ///   Small through the `SceneViewDepthML` product), scaled to metres against
 ///   ARKit's feature points and planes. Lower resolution, ~10 Hz, and 100 to
@@ -27,11 +27,12 @@ import simd
 ///     }
 /// ```
 public struct ARDepthFrame: Sendable {
-    /// Where the depth comes from. Android: `ArDepthFrame.source`
-    /// (`ARCORE` / `ML`).
+    /// Where the depth comes from. Same cases on Android:
+    /// `ArDepthFrame.Source.Native` / `.Ml`.
     public enum Source: String, Sendable, Hashable {
-        /// The device's own depth sensor (ARKit `sceneDepth`, LiDAR).
-        case lidar
+        /// The device's own depth sensor (ARKit `sceneDepth`, LiDAR). On
+        /// Android, ARCore's Depth API.
+        case native
         /// A monocular ML estimate scaled to metres.
         case ml
     }

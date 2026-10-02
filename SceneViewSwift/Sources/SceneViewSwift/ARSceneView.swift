@@ -403,7 +403,8 @@ public struct ARSceneView: UIViewRepresentable {
         return copy
     }
 
-    /// Where environment depth comes from. Android: `ARSceneView(depthSource = …)`.
+    /// Where environment depth comes from. Android: `ARSceneView(depthMode = …)`
+    /// for ARCore depth, `MlDepthSession` for the ML path.
     ///
     /// - ``DepthSource/native``: LiDAR `sceneDepth` only — add `.sceneDepth`
     ///   to ``ARSessionConfiguration/frameSemantics``.
