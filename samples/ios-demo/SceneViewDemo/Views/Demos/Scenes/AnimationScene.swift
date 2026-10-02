@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        figure.run
-// @order       32
+// @order       33
 // @tags        animation,skeletal,physics,rigid-body,collision,gltf
 // @addedIn     4.4.0
 // @updatedIn   4.51.0

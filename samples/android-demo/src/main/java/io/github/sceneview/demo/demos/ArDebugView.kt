@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -87,6 +88,10 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
+import io.github.sceneview.demo.demos.internal.CameraRig
+import io.github.sceneview.demo.demos.internal.PlaneLayering
+import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
 import io.github.sceneview.demo.theme.DebugPalette
@@ -517,7 +522,11 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
             part.layers.forEach { meshes.getValue(it).clear() }
             when (part) {
                 Part.Stage -> ArDebugGeometry.buildStage(stageBounds, floorY, style, out)
-                Part.Planes -> ArDebugGeometry.buildPlanes(frame.planes, style, out) { replay?.isTextured(it) == true }
+                // Beside the replay's photos, at their depths: see [PlaneLayering].
+                Part.Planes -> ArDebugGeometry.buildPlanes(
+                    frame.planes, style, out,
+                    layering = replay?.let { PlaneLayering.of(frame, floorY) },
+                ) { replay?.isTextured(it) == true }
                 Part.Map -> ArDebugGeometry.buildMapPoints(frame.mapPoints, style, out(DebugLayer.MapPoints))
                 Part.Live -> ArDebugGeometry.buildLivePoints(frame.livePoints, style, out(DebugLayer.LivePoints))
                 Part.Trail -> ArDebugGeometry.buildTrail(frame.trail, style, out)
@@ -550,7 +559,7 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
     ): Any =
         when (part) {
             Part.Stage -> listOf(stageBounds.toList(), floorY, style)
-            Part.Planes -> listOf(frame.planes.map { System.identityHashCode(it) }, style)
+            Part.Planes -> listOf(frame.planes.map { System.identityHashCode(it) }, style, floorY)
             Part.Map -> listOf(frame.mapPointCount, style)
             Part.Live -> listOf(frame.liveKey, frame.livePoints.size, style)
             Part.Trail -> listOf(frame.trailLength, style)
@@ -626,8 +635,14 @@ internal fun ArDebugSceneView(
 
     val layers = remember(engine, materials) { ArDebugLayers(engine, materials) }
     // The replay's textured layers: created before the SceneView, released after its nodes.
-    val replayLayers = remember(engine, materialLoader, replay) {
-        replay?.let { ReplayLayers(engine, materialLoader, it) }
+    val replayLayers = remember(engine, materialLoader, replay, palette, chrome.ground) {
+        replay?.let {
+            ReplayLayers(
+                engine, materialLoader, it,
+                measureInk = palette.floorOutline.toArgb(),
+                measureHalo = chrome.ground.toArgb(),
+            )
+        }
     }
     DisposableEffect(replayLayers) { onDispose { replayLayers?.destroy() } }
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
@@ -714,7 +729,9 @@ internal fun ArDebugSceneView(
                         points = session.isVisible(DebugGroup.Points),
                         anchors = session.isVisible(DebugGroup.Anchors),
                         trail = session.isVisible(DebugGroup.Trail),
+                        measure = !compact,
                     ),
+                    eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
                 )
 
                 if (frame.anchors != anchors) anchors = frame.anchors
@@ -722,7 +739,10 @@ internal fun ArDebugSceneView(
                     clock.statsAtNanos = frameTimeNanos
                     // A replay with a dense cloud counts its surfels, as the sessions list does.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
-                    session.stats = ArDebugStats.of(frame, trace.duration, points)
+                    session.stats = ArDebugStats.of(frame, trace.duration, points).let { stats ->
+                        // A replay names the room it found, as a floor plan would.
+                        if (replay == null) stats else stats.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
+                    }
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.

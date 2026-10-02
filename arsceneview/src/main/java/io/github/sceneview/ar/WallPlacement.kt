@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
+import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
 import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
@@ -291,9 +292,11 @@ fun nextWallPlacementPhase(
 internal const val MAX_WALL_PLACEMENT_DISTANCE = 4.0f
 
 /**
- * Pure-logic wall-hit selector — picks the first acceptable **vertical-plane** [HitResult] for
- * wall placement. The [PlacementScene] counterpart ([placementHit]) accepts horizontal planes and
- * instant-placement points; this one accepts a vertical plane hit inside its polygon only.
+ * Pure-logic wall-hit selector — picks the first acceptable wall [HitResult] for wall placement.
+ * The [PlacementScene] counterpart ([placementHit]) accepts horizontal planes and
+ * instant-placement points; this one accepts what [UsableSurfacePolicy.wallHit] calls a wall: a
+ * vertical plane hit inside its polygon or up to a metre outside it, or a depth hit whose normal
+ * is horizontal (#4070).
  *
  * @param frame the live ARCore [Frame] the hit-test came from (its camera must be `TRACKING`).
  * @param hits  the hit-test results (already near-to-far sorted by ARCore).
@@ -306,18 +309,51 @@ fun wallPlacementHit(frame: Frame, hits: List<HitResult>): HitResult? {
 
 /**
  * Per-[HitResult] acceptance predicate for [wallPlacementHit] — reads the JNI-bound trackable once,
- * then delegates to the pure-JVM overload the unit tests exercise.
+ * then delegates to the pure-JVM rule the unit tests exercise.
  */
-internal fun isWallPlacementHit(hit: HitResult): Boolean {
+internal fun isWallPlacementHit(hit: HitResult): Boolean =
+    wallHitKind(hit, minDistance = 0f, maxDistance = MAX_WALL_PLACEMENT_DISTANCE) != null
+
+/**
+ * Unpacks one ARCore [HitResult] into [UsableSurfacePolicy.wallHit]: how it holds a wall, or
+ * `null`. The polygon distance is only computed for a vertical plane hit outside its polygon.
+ */
+internal fun wallHitKind(
+    hit: HitResult,
+    minDistance: Float = UsableSurfacePolicy.MIN_DISTANCE_M,
+    maxDistance: Float = UsableSurfacePolicy.MAX_DISTANCE_M,
+): WallHitKind? {
     val trackable = hit.trackable
-    val verticalInPolygon = trackable is Plane &&
-        trackable.type.isVertical() &&
-        trackable.isPoseInPolygon(hit.hitPose)
-    return isWallPlacementHit(
-        verticalPlaneInPolygon = verticalInPolygon,
-        trackableTracking = trackable.trackingState == TrackingState.TRACKING,
-        distance = hit.distance,
+    val plane = trackable as? Plane
+    if (plane != null && plane.subsumedBy != null) return null
+    val vertical = plane != null && plane.type.isVertical()
+    val inPolygon = plane != null && vertical && plane.isPoseInPolygon(hit.hitPose)
+    return UsableSurfacePolicy.wallHit(
+        isVerticalPlane = vertical,
+        isDepthPoint = trackable is DepthPoint,
+        isTrackableTracking = trackable.trackingState == TrackingState.TRACKING,
+        isPoseInPolygon = inPolygon,
+        outsidePolygonMeters = if (plane != null && vertical && !inPolygon) {
+            plane.outsidePolygonDistance(hit.hitPose)
+        } else 0f,
+        normalY = hit.hitPose.getTransformedAxis(1, 1f)[1],
+        distanceMeters = hit.distance,
+        minDistance = minDistance,
+        maxDistance = maxDistance,
     )
+}
+
+/**
+ * The wall normal a hit carries, either sign: a vertical plane's centre-pose +Y, or — for a depth
+ * hit — the hit pose's +Y, which ARCore points along the estimated surface normal.
+ */
+internal fun wallNormalOf(hit: HitResult): FloatArray {
+    val plane = hit.trackable as? Plane
+    return if (plane != null && plane.type.isVertical()) {
+        plane.centerPose.getTransformedAxis(1, 1f)
+    } else {
+        hit.hitPose.getTransformedAxis(1, 1f)
+    }
 }
 
 /** Whether an ARCore [Plane.Type] is a vertical (wall) surface. */
@@ -336,16 +372,45 @@ internal fun isWallPlacementHit(
     verticalPlaneInPolygon: Boolean,
     trackableTracking: Boolean,
     distance: Float,
-): Boolean {
-    if (!trackableTracking) return false
-    if (distance > MAX_WALL_PLACEMENT_DISTANCE) return false
-    return verticalPlaneInPolygon
-}
+): Boolean = isWallPlacementHit(
+    isVerticalPlane = verticalPlaneInPolygon,
+    isPoseInPolygon = verticalPlaneInPolygon,
+    trackableTracking = trackableTracking,
+    distance = distance,
+)
+
+/**
+ * Pure-JVM acceptance rule for one wall-placement hit, with the two ways past a missing polygon
+ * (#4070): a vertical plane hit [outsidePolygonDistance] metres outside its polygon (up to
+ * [UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M]), and a depth hit ([isDepthPoint]) whose
+ * normal's world-Y ([normalY]) is horizontal enough to be a wall.
+ */
+@Suppress("LongParameterList")
+internal fun isWallPlacementHit(
+    isVerticalPlane: Boolean,
+    isPoseInPolygon: Boolean,
+    trackableTracking: Boolean,
+    distance: Float,
+    isDepthPoint: Boolean = false,
+    normalY: Float = 0f,
+    outsidePolygonDistance: Float = Float.POSITIVE_INFINITY,
+): Boolean = UsableSurfacePolicy.wallHit(
+    isVerticalPlane = isVerticalPlane,
+    isDepthPoint = isDepthPoint,
+    isTrackableTracking = trackableTracking,
+    isPoseInPolygon = isPoseInPolygon,
+    outsidePolygonMeters = outsidePolygonDistance,
+    normalY = normalY,
+    distanceMeters = distance,
+    minDistance = 0f,
+    maxDistance = MAX_WALL_PLACEMENT_DISTANCE,
+) != null
 
 /**
  * One-call **wall placement** AR scene — the vertical-surface sibling of [PlacementScene].
  *
- * Enables horizontal+vertical plane finding, tracks the floor height and the current wall, exposes
+ * Enables horizontal+vertical plane finding and, where supported, the depth API (a plain wall
+ * yields depth hits but no plane, #4070), tracks the floor height and the current wall, exposes
  * the live [FloorWallSeam] (so an app can draw the "align to the edge" guide), and on a tap against
  * a wall anchors the caller's content **flush, upright, and at a floor-relative height** via
  * [wallAnchorPose]:
@@ -423,6 +488,9 @@ fun WallPlacementScene(
             playbackDataset = playbackDataset,
             planeRenderer = planeRenderer,
             planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+            // Depth hits are the only hits ARCore returns on a plain wall (#4070). Unsupported
+            // devices are downgraded to DISABLED inside the session; the callback still wins.
+            depthMode = Config.DepthMode.AUTOMATIC,
             sessionConfiguration = sessionConfiguration,
             onSessionUpdated = { updatedSession, frame ->
                 latestFrame = frame
@@ -479,12 +547,12 @@ fun WallPlacementScene(
                     val frame = latestFrame ?: return@rememberOnGestureListener
                     val hit = wallPlacementHit(frame, frame.hitTest(event))
                         ?: return@rememberOnGestureListener
-                    val plane = hit.trackable as? Plane ?: return@rememberOnGestureListener
                     val hitPos = hit.hitPose.let { Position(it.tx(), it.ty(), it.tz()) }
                     val cam = frame.camera.pose
-                    // Flip the plane normal toward the camera so the front face points into the room.
+                    // Flip the wall normal (plane or depth hit) toward the camera so the front
+                    // face points into the room.
                     val normal = roomFacingNormal(
-                        wallNormal = plane.centerPose.yAxis.let { Direction(it[0], it[1], it[2]) },
+                        wallNormal = wallNormalOf(hit).let { Direction(it[0], it[1], it[2]) },
                         towardViewer = Direction(
                             cam.tx() - hitPos.x,
                             cam.ty() - hitPos.y,
@@ -495,7 +563,7 @@ fun WallPlacementScene(
                     // height so placement still works before the floor converges.
                     val resolvedFloorY = floorY ?: (hitPos.y - mountHeight)
                     val anchorPose = wallAnchorPose(hitPos, normal, resolvedFloorY, mountHeight)
-                    plane.createAnchorOrNull(anchorPose.toPose())?.let { controller.add(it) }
+                    hit.trackable.createAnchorOrNull(anchorPose.toPose())?.let { controller.add(it) }
                 }
             ),
         ) {

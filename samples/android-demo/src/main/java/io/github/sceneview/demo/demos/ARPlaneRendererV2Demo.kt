@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -18,11 +19,15 @@ import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARCoreAvailability
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.scene.PlaneRendererBase
+import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -62,6 +67,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var planeDetected by remember { mutableStateOf(false) }
+    var cameraReady by remember { mutableStateOf(false) }
+    var isTracking by remember { mutableStateOf(false) }
     var placedAnchor by remember { mutableStateOf<Anchor?>(null) }
     // Read by the tap handler only: a plain holder, so a new frame never recomposes.
     val latestFrame = remember { FrameHolder() }
@@ -70,6 +77,15 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     // banner waits on never flips then, so that banner has to read the verdict or
     // it promises a scan under the SDK's "AR unavailable" card, forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    // The SDK coaching card: getting ready, the phone sweep until a surface comes up, "Surface
+    // found", and the reason with its fix when tracking struggles. While it speaks the
+    // banner steps aside — one voice at a time.
+    val guidance = rememberArGuidanceState(
+        cameraReady = cameraReady,
+        isTracking = isTracking,
+        surfaceFound = planeDetected,
+        trackingFailureReason = trackingFailureReason,
+    )
 
     DemoScaffold(
         arSessionFailed = arSessionFailed,
@@ -82,6 +98,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 // #3341: on a device ARCore has ruled out, the SDK card carries the reason.
                 text = when {
                     arCoreAvailability != null -> null
+                    guidance.isCoaching -> null
                     trackingLost -> stringResource(R.string.ar_plane_v2_status_move)
                     placedAnchor != null -> stringResource(R.string.ar_plane_v2_status_placed)
                     planeDetected -> stringResource(R.string.ar_plane_v2_status_found)
@@ -109,6 +126,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                 onSessionUpdated = { _, frame ->
                     latestFrame.frame = frame
+                    cameraReady = true
+                    isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     if (!planeDetected) {
                         planeDetected = frame.getUpdatedTrackables(Plane::class.java)
                             .any { it.trackingState == TrackingState.TRACKING }
@@ -136,6 +155,14 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     }
                 }
             }
+            // #3341: silent while the SDK's "AR unavailable" card carries the reason.
+            ARCoachingOverlay(
+                cue = if (arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE,
+                surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
+                contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
+            )
         }
     }
 }

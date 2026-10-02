@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
@@ -162,6 +165,38 @@ class DemoScaffoldBottomBandTest {
         composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB)
             .assertIsDisplayed()
             .assertContentDescriptionEquals("Demo settings")
+    }
+
+    @Test
+    fun dock_labels_fitInsideTheGrowingBar_atMaximumFontScale() {
+        composeRule.setContent {
+            ScaledDensity(2.0f) {
+                SceneViewDemoTheme(darkTheme = false) {
+                    DemoScaffold(
+                        title = "Viewer",
+                        onBack = {},
+                        dock = listOf(DockItem(Icons.Outlined.WbSunny, "Lighting", {})),
+                    ) {}
+                }
+            }
+        }
+        composeRule.waitForIdle()
+
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK)
+            .getUnclippedBoundsInRoot()
+        listOf("Lighting", "Settings").forEach { label ->
+            val text = composeRule.onNodeWithText(label, useUnmergedTree = true)
+                .assertIsDisplayed()
+                .getUnclippedBoundsInRoot()
+            assertTrue(
+                "$label is clipped at fontScale 2.0: its bounds $text must fit in dock $dock",
+                text.top >= dock.top && text.bottom <= dock.bottom,
+            )
+        }
+        assertTrue(
+            "the 64 dp dock token is a minimum at large font scale, but measured $dock",
+            dock.bottom - dock.top > 64.dp,
+        )
     }
 
     private fun assertOverlayClearsDock(fontScale: Float) {

@@ -8,6 +8,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import android.graphics.Typeface
+import androidx.annotation.ColorInt
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
@@ -23,16 +25,20 @@ import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
-import io.github.sceneview.demo.demos.internal.DebugPlaneKind
+import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseSurfels
+import io.github.sceneview.demo.demos.internal.MeasureDrawing
+import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
+import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.SvpcCodec
+import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
@@ -72,6 +78,12 @@ internal class RerunReplayMedia(
     val growing: Boolean = false,
     /** A `.svscan` v2's dense cloud, ready to draw; `null` for a v1 or sparse-tier scan. */
     val dense: ReplayDenseLayer? = null,
+    /**
+     * A scan still recording with raw depth: its dense map's latest snapshot, `null` until the
+     * first ([ScanCapture.liveDense]). Read on the main thread each frame; a new instance is a
+     * new snapshot to upload.
+     */
+    val liveDense: (() -> ReplayDenseLayer?)? = null,
 ) {
     /** The thumbnail of the camera image in force at [time], `null` before the first one. */
     fun thumbnailAt(time: Float): Bitmap? {
@@ -113,13 +125,16 @@ internal class ReplayDenseLayer(val cloud: DenseCloud, val voxelM: Float, val me
             val span = manifest.media[dense.path] ?: return null
             if (span.offset + span.length > archive.size) return null
             val cloud = SvpcCodec.decode(archive, span.offset, span.length)?.takeIf { it.count > 0 } ?: return null
-            return ReplayDenseLayer(
-                cloud = cloud,
-                voxelM = dense.voxelM,
-                mesh = DenseSurfels.mesh(cloud, dense.voxelM),
-                atlas = DenseSurfels.atlas(cloud, fallback = DENSE_FALLBACK_COLOR),
-            )
+            return of(cloud, dense.voxelM)
         }
+
+        /** [cloud] of [voxelM] surfels, meshed and coloured for drawing. Off the main thread. */
+        fun of(cloud: DenseCloud, voxelM: Float) = ReplayDenseLayer(
+            cloud = cloud,
+            voxelM = voxelM,
+            mesh = DenseSurfels.mesh(cloud, voxelM),
+            atlas = DenseSurfels.atlas(cloud, fallback = DENSE_FALLBACK_COLOR),
+        )
 
         /** A surfel the camera never coloured: the sparse points' own neutral. */
         const val DENSE_FALLBACK_COLOR = 0xFFB8C2D6.toInt()
@@ -253,6 +268,10 @@ internal class ReplayLayers(
     private val engine: Engine,
     private val materialLoader: MaterialLoader,
     private val media: RerunReplayMedia,
+    /** The dimensions' ink, ARGB: the floor outline's colour, so they read as part of the plan. */
+    @ColorInt private val measureInk: Int = FALLBACK_POINT_COLOR,
+    /** The halo around the dimensions' figures, ARGB: the stage's ground, so they stay legible. */
+    @ColorInt private val measureHalo: Int = android.graphics.Color.TRANSPARENT,
 ) {
     private val textures = ArrayList<Texture>()
     private val materials = ArrayList<MaterialInstance>()
@@ -303,8 +322,8 @@ internal class ReplayLayers(
      * once here and revealed as the timeline reaches them ([syncDense]). Writes depth, so the
      * surfels hide what is behind them, like a surface.
      */
-    private val denseNode: DebugLayerNode? = media.dense?.let { dense ->
-        val atlas = Texture.Builder()
+    private val denseAtlas: Texture? = if (media.dense == null && media.liveDense == null) null else {
+        Texture.Builder()
             .width(DenseSurfels.ATLAS_SIZE)
             .height(DenseSurfels.ATLAS_SIZE)
             .levels(1)
@@ -312,13 +331,14 @@ internal class ReplayLayers(
             .format(Texture.InternalFormat.SRGB8_A8)
             .build(engine)
             .also(textures::add)
-        atlas.setImage(
-            engine, 0,
-            Texture.PixelBufferDescriptor(ByteBuffer.wrap(dense.atlas), Texture.Format.RGBA, Texture.Type.UBYTE),
-        )
-        DebugLayerNode(engine, material(atlas, nearest), POINTS_PRIORITY, textured = true)
-            .also { it.upload(dense.mesh) }
     }
+    private val denseNode: DebugLayerNode? = denseAtlas?.let { atlas ->
+        DebugLayerNode(engine, material(atlas, nearest), POINTS_PRIORITY, textured = true)
+            .also { node -> media.dense?.let { uploadDense(atlas, node, it) } }
+    }
+
+    /** The live snapshot [denseNode] holds; a newer one from [RerunReplayMedia.liveDense] replaces it. */
+    private var liveDenseShown: ReplayDenseLayer? = null
 
     /** The photos in the frustums, at the archive's full size; bounded, see [evictFrames]. */
     private val frameTextures = HashMap<String, Texture>()
@@ -337,8 +357,18 @@ internal class ReplayLayers(
         }
     }
 
+    /** The room's dimensions: lines and figures in one mesh over one small atlas ([MeasureDrawing]). */
+    private var measureTexture: Texture = atlas
+    private val measureMaterial = material(atlas, solid = false)
+    private val measureNode = DebugLayerNode(engine, measureMaterial, MEASURE_PRIORITY, textured = true)
+    private var measurePlanes: List<DebugPlane>? = null
+    private var measure: RoomMeasure? = null
+    private var measureLabels: Pair<String, String>? = null
+    private var measureLabelWidths = FloatArray(2)
+
     val nodes: List<DebugLayerNode> =
-        planeNodes.values + pointsNode + listOfNotNull(denseNode) + shadowNode + photoSlots.map { it.node }
+        planeNodes.values + pointsNode + listOfNotNull(denseNode) + shadowNode + photoSlots.map { it.node } +
+            measureNode
 
     private val mesh = DebugMesh()
     private val keys = HashMap<Any, Any?>()
@@ -349,25 +379,120 @@ internal class ReplayLayers(
     /** Whether plane [id] is drawn as a photo here, so the flat layers draw its outline only. */
     fun isTextured(id: Int): Boolean = id in planeNodes
 
-    fun sync(frame: ArDebugFrame, pointStyle: ArDebugStyle, floorY: Float, show: ReplayVisibility) {
+    /**
+     * Brings the layers to [frame]. [eye] is where the view looks from, which picks the two sides
+     * of the room its dimensions are drawn on; `null` draws them on the first two.
+     */
+    fun sync(
+        frame: ArDebugFrame,
+        pointStyle: ArDebugStyle,
+        floorY: Float,
+        show: ReplayVisibility,
+        eye: Vec3? = null,
+    ) {
         syncPlanes(frame, floorY, show.planes)
-        // A dense cloud stands in for the sparse one, under the same toggle.
-        syncPoints(frame, pointStyle, show.points && denseNode == null)
+        syncMeasure(frame, pointStyle, floorY, show.measure && show.planes, eye)
+        // A dense cloud stands in for the sparse one, under the same toggle — a scan still
+        // recording shows its feature points until the first dense snapshot.
         syncDense(frame, show.points)
+        val denseDrawn = denseNode != null && (media.liveDense == null || liveDenseShown != null)
+        syncPoints(frame, pointStyle, show.points && !denseDrawn)
         syncShadows(frame, show.anchors)
         syncPhotos(frame, show.trail)
     }
 
+    /**
+     * Each photo at its own depth ([PlaneLayering]): a floor patch laid flat under the grid, a
+     * table top at its own height, overlapping patches a step apart — they z-fought, and the
+     * photos shimmered as the camera orbited.
+     */
     private fun syncPlanes(frame: ArDebugFrame, floorY: Float, shown: Boolean) {
+        val layering = if (shown) PlaneLayering.of(frame, floorY) else null
         for ((id, node) in planeNodes) {
             val plane = frame.planes.firstOrNull { it.id == id }?.takeIf { shown }
             node.isVisible = plane != null
-            if (plane == null || !changed(node, listOf(System.identityHashCode(plane), floorY))) continue
-            mesh.clear()
-            val flatten = if (plane.kind == DebugPlaneKind.Floor) floorY - ReplayGeometry.FLOOR_UNDER_GRID_M else null
-            ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, flatten)
-            node.upload(mesh)
+            if (plane == null || layering == null) continue
+            val placed = layering.fill(plane)
+            if (changed(node, listOf(System.identityHashCode(plane), placed.contentHashCode()))) {
+                mesh.clear()
+                ReplayGeometry.addTexturedPlane(mesh, plane.polygon, media.manifest.textureFor(id)!!, placed)
+                node.upload(mesh)
+            }
         }
+    }
+
+    /**
+     * The room's width and depth drawn on the floor as a plan draws them, on the two sides facing
+     * [eye], sized in screen pixels like the other lines. The room is the one [frame] has found so
+     * far, so the dimensions grow as the scan plays.
+     */
+    private fun syncMeasure(frame: ArDebugFrame, style: ArDebugStyle, floorY: Float, shown: Boolean, eye: Vec3?) {
+        if (frame.planes !== measurePlanes) {
+            measurePlanes = frame.planes
+            measure = RoomMeasure.of(frame.planes, floorY)
+        }
+        val room = measure
+        measureNode.isVisible = shown && room != null
+        if (!measureNode.isVisible || room == null) return
+        val labels = RoomMeasure.metres(room.width) to RoomMeasure.metres(room.depth)
+        if (labels != measureLabels) {
+            measureLabels = labels
+            drawMeasureLabels(labels)
+        }
+        val sides = if (eye == null) intArrayOf(0, 1) else MeasureDrawing.sidesFacing(room, eye.x, eye.z)
+        // Sized in pixels, and rebuilt only past a 5 % zoom step, not on every frame of a pinch.
+        val step = kotlin.math.round(kotlin.math.ln(style.metresPerPixel.coerceAtLeast(1e-6f)) / MEASURE_ZOOM_STEP)
+        if (!changed(measureNode, listOf(room.summary, room.yaw, floorY, sides.toList(), step, labels))) return
+        val mpp = kotlin.math.exp(step * MEASURE_ZOOM_STEP)
+        val textHeight = (MEASURE_TEXT_PX * mpp).coerceIn(MEASURE_TEXT_MIN_M, MEASURE_TEXT_MAX_M)
+        val offset = (MEASURE_OFFSET_PX * mpp).coerceIn(MEASURE_OFFSET_MIN_M, MEASURE_OFFSET_MAX_M)
+        mesh.clear()
+        for (side in sides) {
+            val row = side % 2
+            val textWidth = textHeight * measureLabelWidths[row] / MeasureDrawing.ROW_HEIGHT
+            MeasureDrawing.addDimension(
+                mesh, room, side, floorY + MEASURE_LIFT_M, offset, style.outlineHalfWidth, textHeight, textWidth,
+            )
+        }
+        measureNode.upload(mesh)
+    }
+
+    /**
+     * The dimensions' atlas: [labels]' width on row 0 and depth on row 1, in the ink with a halo
+     * of the ground, and the solid strip the lines sample.
+     */
+    private fun drawMeasureLabels(labels: Pair<String, String>) {
+        val width = MeasureDrawing.ATLAS_WIDTH
+        val height = MeasureDrawing.ATLAS_HEIGHT
+        val row = MeasureDrawing.ROW_HEIGHT
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = measureInk
+            textSize = MEASURE_FONT_PX
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val halo = Paint(ink).apply {
+            color = measureHalo
+            style = Paint.Style.STROKE
+            strokeWidth = MEASURE_HALO_PX
+            strokeJoin = Paint.Join.ROUND
+        }
+        listOf(labels.first, labels.second).forEachIndexed { index, text ->
+            val baseline = index * row + (row - ink.ascent() - ink.descent()) / 2f
+            canvas.drawText(text, MEASURE_PAD_PX, baseline, halo)
+            canvas.drawText(text, MEASURE_PAD_PX, baseline, ink)
+            measureLabelWidths[index] = (ink.measureText(text) + 2 * MEASURE_PAD_PX).coerceAtMost(width.toFloat())
+        }
+        val solid = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
+        canvas.drawRect(0f, solid.toFloat(), width.toFloat(), height.toFloat(), Paint().apply { color = measureInk })
+        val texture = texture(bitmap)
+        measureMaterial.setTexture(texture, clamp)
+        if (measureTexture !== atlas) {
+            textures -= measureTexture
+            engine.safeDestroyTexture(measureTexture)
+        }
+        measureTexture = texture
     }
 
     private fun syncPoints(frame: ArDebugFrame, style: ArDebugStyle, shown: Boolean) {
@@ -391,9 +516,29 @@ internal class ReplayLayers(
      */
     private fun syncDense(frame: ArDebugFrame, shown: Boolean) {
         val node = denseNode ?: return
+        val atlas = denseAtlas ?: return
+        val live = media.liveDense
+        if (live != null) {
+            // Recording: the latest snapshot, drawn whole. One upload a snapshot, about a second.
+            val snapshot = live()
+            if (snapshot != null && snapshot !== liveDenseShown) {
+                liveDenseShown = snapshot
+                uploadDense(atlas, node, snapshot)
+            }
+            node.isVisible = shown && liveDenseShown != null
+            return
+        }
         val count = media.pointCountAt(frame.time)
         node.isVisible = shown && count > 0
         if (node.isVisible) node.showIndices(minOf(count, DenseSurfels.MAX_SURFELS) * INDICES_PER_SURFEL)
+    }
+
+    private fun uploadDense(atlas: Texture, node: DebugLayerNode, dense: ReplayDenseLayer) {
+        atlas.setImage(
+            engine, 0,
+            Texture.PixelBufferDescriptor(ByteBuffer.wrap(dense.atlas), Texture.Format.RGBA, Texture.Type.UBYTE),
+        )
+        node.upload(dense.mesh)
     }
 
     private fun syncShadows(frame: ArDebugFrame, shown: Boolean) {
@@ -486,6 +631,30 @@ internal class ReplayLayers(
         const val POINTS_PRIORITY = 3
         const val PHOTO_FRUSTUM_PRIORITY = 5
 
+        /** Over the grid and the outlines, under the frustums' photos. */
+        const val MEASURE_PRIORITY = 4
+
+        /** A millimetre over the grid: the dimensions are drawn on the floor, not in it. */
+        const val MEASURE_LIFT_M = 0.003f
+        /**
+         * The label's box, in pixels: its figures' capitals are ~40 % of it, and the floor seen
+         * at a slant shortens it further.
+         */
+        const val MEASURE_TEXT_PX = 72f
+        const val MEASURE_TEXT_MIN_M = 0.04f
+        const val MEASURE_TEXT_MAX_M = 0.9f
+        const val MEASURE_OFFSET_PX = 28f
+        const val MEASURE_OFFSET_MIN_M = 0.06f
+        const val MEASURE_OFFSET_MAX_M = 0.9f
+
+        /** The dimensions are rebuilt at every 5 % of zoom. */
+        const val MEASURE_ZOOM_STEP = 0.05f
+
+        /** The atlas's figures: 76 px bold in a 128 px row, a 14 px halo, 10 px of margin. */
+        const val MEASURE_FONT_PX = 76f
+        const val MEASURE_HALO_PX = 14f
+        const val MEASURE_PAD_PX = 10f
+
         /** Two triangles per surfel ([DenseSurfels.mesh]). */
         const val INDICES_PER_SURFEL = 6
 
@@ -528,4 +697,6 @@ internal data class ReplayVisibility(
     val points: Boolean,
     val anchors: Boolean,
     val trail: Boolean,
+    /** The room's floor-plan dimensions ([RoomMeasure]), drawn with the planes. */
+    val measure: Boolean = false,
 )

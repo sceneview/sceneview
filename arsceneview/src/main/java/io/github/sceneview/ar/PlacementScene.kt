@@ -2,6 +2,7 @@ package io.github.sceneview.ar
 
 import android.view.MotionEvent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -18,6 +19,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -71,10 +73,10 @@ import java.io.File
  *    plane — so the user gets an unambiguous "you can place now" signal without any text, and
  *    the cursor stays achromatic until it has a real surface ([ReticlePhase], #3570). Themed via
  *    [reticleColor], switch geometry with [reticleStyle], hide it with `showReticle = false`.
- *  - Optional **onboarding coaching** ([coaching], off by default): the [PlaneDiscoveryGuide]
- *    overlay — an animated hand hint + "move your phone to find a surface" pill after 3 s, a
- *    "Need help?" tip card after 8 s, faded out the instant a surface is found — the same UX
- *    Google's ARCore Elements ships. Enable it and the one-liner gains full first-run guidance.
+ *  - Optional **onboarding coaching** ([coaching], off by default): the
+ *    [ARCoachingOverlay] card — a phone sweeping over a surface with "Move your phone slowly",
+ *    the reason and its fix when tracking struggles ("Too dark"), then a "Surface found" pill
+ *    the instant a plane is tracked. Enable it and the one-liner gains full first-run guidance.
  *  - **Tap-to-place**: each tap on a tracked surface resolves an ARCore [HitResult], creates an
  *    [Anchor], and invokes [onPlaced] inside the [ARSceneScope] so the caller declares whatever
  *    content should ride that anchor. Taps that fall on existing scene nodes are ignored, so a
@@ -116,9 +118,9 @@ import java.io.File
  *                              shadows are then served by the grid's own built-in receiver and
  *                              no [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane] is
  *                              spawned (never two coplanar receivers on one plane, #2657).
- * @param coaching              Overlay the [PlaneDiscoveryGuide] onboarding UX (animated hand
- *                              hint + guidance pill + help tips) while the user is finding a
- *                              surface. Default `false` — opt in for a guided first run.
+ * @param coaching              Overlay the [ARCoachingOverlay] onboarding card (animated
+ *                              scan, tracking reasons, "Surface found") while the user is
+ *                              finding a surface. Default `false` — opt in for a guided first run.
  * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
  *                              to every detected plane so placed models cast a **contact shadow**
  *                              on the real floor instead of floating. Default `false`. Needs a
@@ -136,14 +138,14 @@ import java.io.File
  *                              (live camera).
  * @param sessionConfiguration  Escape-hatch ARCore [Config] callback, forwarded verbatim to
  *                              [ARSceneView]. Runs after the typed params above.
- * @param coachingBottomClearance Room to leave between the coaching pill and the bottom of the
- *                              safe area, forwarded to [PlaneDiscoveryGuide]. The pill already
+ * @param coachingBottomClearance Room to leave between the coaching card and the bottom of the
+ *                              safe area, forwarded to [ARCoachingOverlay]. The card already
  *                              clears the system bars on its own; this is what **your** own
  *                              bottom chrome takes — a dock, a toolbar, a call-to-action —
- *                              which neither this composable nor the guide can measure, because
+ *                              which neither this composable nor the card can measure, because
  *                              it is drawn by you, outside them. Default 16 dp: a plain gutter
  *                              for a host with nothing down there, which is exactly what the
- *                              guide already used, so a caller that does not pass it sees no
+ *                              card already uses, so a caller that does not pass it sees no
  *                              change. Only read while [coaching] is `true`.
  * @param onPlaced              Invoked inside the [ARSceneScope] once per created [Anchor]. Declare
  *                              the content (typically an `AnchorNode { ModelNode(...) }`) to ride
@@ -327,16 +329,19 @@ fun PlacementScene(
         // Opt-in onboarding overlay — a sibling of ARSceneView in the same Box, as its KDoc
         // requires. It self-hides the moment a surface is found and never re-onboards.
         if (coaching) {
-            PlaneDiscoveryGuide(
-                cameraReady = cameraReady,
-                isTracking = isTracking,
-                anyPlaneTracked = anyPlaneTracked,
-                trackingFailureReason = trackingFailure,
-                // The guide measures the safe area itself but cannot see the host's own
-                // bottom chrome, which is drawn outside this composable. Left unset, the
-                // pill lands one 16 dp gutter off the safe area — under any dock or
-                // call-to-action the host parks there (#3712 / #3735).
-                bottomClearance = coachingBottomClearance,
+            // The card measures the safe area itself but cannot see the host's own bottom
+            // chrome, drawn outside this composable (#3712 / #3735). Its own 16 dp gutter is
+            // the default clearance, so only the excess is passed on.
+            ARCoachingOverlay(
+                guidance = rememberArGuidanceState(
+                    cameraReady = cameraReady,
+                    isTracking = isTracking,
+                    surfaceFound = anyPlaneTracked,
+                    trackingFailureReason = trackingFailure,
+                ),
+                contentPadding = PaddingValues(
+                    bottom = (coachingBottomClearance - GUIDE_BOTTOM_CLEARANCE).coerceAtLeast(0.dp),
+                ),
             )
         }
     }

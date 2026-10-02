@@ -7,7 +7,7 @@
 // @status      knownIssue
 // @icon        icloud.fill
 // @iosOnly     true
-// @order       27
+// @order       28
 // @tags        ar,cloud-anchor,multi-user,persistence,arcore
 // @addedIn     4.15.2
 // @updatedIn   4.46.0

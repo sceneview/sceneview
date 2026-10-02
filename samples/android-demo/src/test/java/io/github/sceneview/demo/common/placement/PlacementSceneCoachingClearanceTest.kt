@@ -1,23 +1,27 @@
 package io.github.sceneview.demo.common.placement
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
-import com.google.ar.core.TrackingFailureReason
-import io.github.sceneview.ar.PlaneDiscoveryGuide
+import io.github.sceneview.ar.ARCoachingOverlay
+import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import org.junit.Assert.assertEquals
-import org.junit.Before
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,33 +31,28 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * `PlacementScene(coachingBottomClearance = …)` — the parameter that lets a host tell the
- * built-in coaching pill about chrome the SDK cannot see
- * ([#3735](https://github.com/sceneview/sceneview/issues/3735)).
+ * built-in coaching about chrome the SDK cannot see
+ * ([#3735](https://github.com/sceneview/sceneview/issues/3735)) — now that the coaching is the
+ * [ARCoachingOverlay] card (#4038) rather than the plane-discovery pill.
  *
- * ## The defect
+ * ## What is pinned
  *
- * `PlacementScene(coaching = true)` called [PlaneDiscoveryGuide] without `bottomClearance`,
- * so the pill sat one 16 dp gutter off the safe area — underneath whatever the host had
- * parked down there. In this app that is a dock band, so the pill was inside the dock on
- * every device. The app's other AR host already measures that band and hands it to the
- * guide (#3712); `PlacementScene` simply had no way to be told.
+ * `PlacementScene` cannot be composed on the JVM (it builds an `ARSceneView`: Filament plus
+ * an ARCore session), so this composes what it hands the clearance to, with the same
+ * arithmetic: the card keeps its own 16 dp gutter off the safe area, so `PlacementScene`
+ * passes only the excess, `coachingBottomClearance - 16 dp`, as the card's bottom
+ * `contentPadding` ([placementSceneCoaching]). The claims:
  *
- * ## Why this composes the guide and not the screen
+ *  - the default clearance is the card's own gutter, so a host that passes nothing lands
+ *    exactly where a bare card does;
+ *  - the card and its "Surface found" pill never reach into the band the host names — in
+ *    portrait and in a short landscape window, where the pill's 120 dp drop under the centre
+ *    used to overshoot the band and land on the dock;
+ *  - the clearance is paid once: in that short window the pill rests exactly on the band's
+ *    bottom edge, not a second clearance above it.
  *
- * `PlacementSceneDemo` is one `PlacementScene` call, and `PlacementScene` builds an
- * `ARSceneView` — Filament plus an ARCore session, neither of which exists on the JVM. That
- * screen is therefore **not** covered here; it is the device pass that checks it. What is
- * pinned instead is the contract the new parameter rides on — the value reaches the pill,
- * is honoured **once**, and its default is the gutter the guide already used, so a host
- * that does not pass it does not move. `PlacementScene` forwards the value verbatim, in one
- * argument, with no arithmetic of its own.
- *
- * (The test lives in this module rather than in `arsceneview` because the Compose test
- * artifact is a dependency of this module only; `arsceneview`'s own `PlacementScene*Test`
- * files all exercise extracted pure functions, for the same reason.)
- *
- * The second assertion is **differential**: it assumes neither the pill's own height nor
- * the window inset, which Robolectric reports as zero in both readings.
+ * Robolectric reports no window inset, so `safeDrawing` contributes 0 dp throughout. The card
+ * renders in inspection mode, its resting pose, as in `ARCoachingOverlaySnapshotTest`.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
@@ -63,123 +62,127 @@ class PlacementSceneCoachingClearanceTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    /**
-     * Driven from the test body. `null` omits the argument entirely, which is the only way
-     * to read the parameter's *default* rather than a value this test chose.
-     */
+    /** `null` composes a bare card: no `contentPadding` argument at all. */
     private var clearance by mutableStateOf<Dp?>(null)
+    private var cue by mutableStateOf(ArGuidanceCue.SCAN)
 
-    @Before
-    fun setUp() {
+    private fun show() {
         composeRule.setContent {
-            SceneViewDemoTheme(darkTheme = true) {
-                Box(Modifier.fillMaxSize()) {
-                    // Camera up, tracking lost with an actionable reason: LOST is the one
-                    // phase where exactly ONE element carries the guide's modifier — the
-                    // message pill. Same setup as PlacementBottomAnchorTest, for the same
-                    // reason.
-                    val tagged = Modifier.testTag(GUIDE_TAG)
-                    val current = clearance
-                    if (current == null) {
-                        PlaneDiscoveryGuide(
-                            cameraReady = true,
-                            isTracking = false,
-                            anyPlaneTracked = false,
-                            trackingFailureReason = TrackingFailureReason.INSUFFICIENT_LIGHT,
-                            modifier = tagged,
-                        )
-                    } else {
-                        PlaneDiscoveryGuide(
-                            cameraReady = true,
-                            isTracking = false,
-                            anyPlaneTracked = false,
-                            trackingFailureReason = TrackingFailureReason.INSUFFICIENT_LIGHT,
-                            modifier = tagged,
-                            bottomClearance = current,
-                        )
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                SceneViewDemoTheme(darkTheme = true) {
+                    Box(Modifier.fillMaxSize()) {
+                        val current = clearance
+                        if (current == null) {
+                            ARCoachingOverlay(cue = cue)
+                        } else {
+                            ARCoachingOverlay(cue = cue, contentPadding = placementSceneCoaching(current))
+                        }
                     }
                 }
             }
         }
-        composeRule.waitForIdle()
+        settle()
     }
 
     @Test
-    fun defaultClearance_isTheGutterTheGuideAlreadyUsed_soExistingHostsDoNotMove() {
-        // `coachingBottomClearance` is additive, and its default is this same symbol. A
-        // caller that does not pass it must land exactly where it landed before the
-        // parameter existed — that is the whole claim that makes the change non-breaking.
-        clearance = null
-        composeRule.waitForIdle()
-        val byDefault = pillTop()
+    fun defaultClearance_isTheCardsOwnGutter_soExistingHostsDoNotMove() {
+        show()
+        val bare = cardBounds()
 
-        clearance = LEGACY_GUTTER
-        composeRule.waitForIdle()
-        val explicit = pillTop()
+        clearance = DEFAULT_CLEARANCE
+        settle()
+        val byDefault = cardBounds()
 
         assertDp(
-            "omitting the clearance must place the pill exactly where passing the guide's " +
-                "own 16 dp gutter does. It differs by ${byDefault - explicit}, so the " +
-                "default drifted and every existing host of PlacementScene moved with it.",
+            "PlacementScene's default clearance must place the card exactly where a bare card " +
+                "sits. It differs by ${byDefault.top - bare.top}: the default and the card's own " +
+                "gutter drifted apart, and every host that passes nothing moved.",
             expected = 0.dp,
-            actual = byDefault - explicit,
+            actual = byDefault.top - bare.top,
         )
     }
 
     @Test
-    fun hostClearance_liftsThePill_byExactlyTheBandItNames() {
-        clearance = LEGACY_GUTTER
-        composeRule.waitForIdle()
-        val withoutDock = pillTop()
+    fun hostClearance_keepsTheCardAndThePill_outOfTheBandItNames() {
+        clearance = DOCK_CLEARANCE
+        show()
+        assertAboveBand("card", cardBounds(), DOCK_CLEARANCE)
 
-        // What PlacementSceneDemo now passes: the scaffold's measured chrome inset plus one
-        // gutter — the same source and the same arithmetic as the app's other AR host
-        // (#3712, TapToPlaceArSession).
-        clearance = DOCK_BAND + SceneViewTokens.Space.md
-        composeRule.waitForIdle()
-        val withDock = pillTop()
+        cue = ArGuidanceCue.SURFACE_FOUND
+        settle()
+        assertAboveBand("\"Surface found\" pill", pillBounds(), DOCK_CLEARANCE)
+    }
 
+    @Test
+    @Config(qualifiers = "w800dp-h360dp-xhdpi")
+    fun shortLandscapeWindow_thePillRestsOnTheBand_insteadOfDroppingOntoTheDock() {
+        clearance = DOCK_CLEARANCE
+        cue = ArGuidanceCue.SURFACE_FOUND
+        show()
+        val pill = pillBounds()
+        val bandBottom = windowHeight() - DOCK_CLEARANCE
+
+        // 360 dp - 16 dp gutter - 96 dp clearance leaves a 248 dp band: the full 120 dp drop
+        // would put the pill's bottom 16 dp past it, on the dock. Clamped, it rests on the edge.
         assertDp(
-            "naming a ${DOCK_BAND.value.toInt()} dp dock must lift the pill by exactly the " +
-                "difference between the two clearances. It moved by " +
-                "${withoutDock - withDock}: twice the expected value means the term is " +
-                "being paid on both sides of the hand-off, zero means the parameter never " +
-                "reaches the pill.",
-            expected = DOCK_BAND + SceneViewTokens.Space.md - LEGACY_GUTTER,
-            actual = withoutDock - withDock,
+            "in a short band the pill must rest exactly on the band's bottom edge. It is " +
+                "${bandBottom - pill.bottom} above it: negative means it reached into the dock, " +
+                "a full clearance means the clearance was paid twice.",
+            expected = 0.dp,
+            actual = bandBottom - pill.bottom,
         )
     }
 
-    /**
-     * Top edge of the guide's message pill.
-     *
-     * The tag sits outermost in the guide's modifier chain, so this node's bounds include
-     * its window inset and its `bottomClearance`; the node is aligned to the bottom of the
-     * window, so a larger clearance moves this edge **up**. A difference between two
-     * readings is therefore free of the pill's own height.
-     */
-    private fun pillTop(): Dp = composeRule
-        .onNodeWithTag(GUIDE_TAG)
+    private fun settle() {
+        composeRule.waitForIdle()
+        // Past every enter transition.
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.waitForIdle()
+    }
+
+    private fun assertAboveBand(what: String, bounds: DpRect, clearance: Dp) {
+        val bandTop = windowHeight() - clearance
+        assertTrue(
+            "the $what must end above the ${clearance.value.toInt()} dp the host names; its " +
+                "bottom is ${bounds.bottom - bandTop} into that band.",
+            bounds.bottom <= bandTop + TOLERANCE,
+        )
+    }
+
+    private fun cardBounds(): DpRect = composeRule
+        .onNodeWithContentDescription(CARD_WORDS, substring = true)
         .getUnclippedBoundsInRoot()
-        .top
+        .let { DpRect(it.left, it.top, it.right, it.bottom) }
+
+    private fun pillBounds(): DpRect = composeRule
+        .onNodeWithContentDescription(FOUND_WORDS)
+        .getUnclippedBoundsInRoot()
+        .let { DpRect(it.left, it.top, it.right, it.bottom) }
+
+    private fun windowHeight(): Dp = composeRule.onRoot().getUnclippedBoundsInRoot().bottom
 
     private fun assertDp(message: String, expected: Dp, actual: Dp) {
-        // Sub-pixel tolerance: these are dp rounded through px at xhdpi, and a real defect
-        // here is never smaller than a dock band.
-        assertEquals(message, expected.value.toDouble(), actual.value.toDouble(), 0.75)
+        // Sub-pixel tolerance: dp rounded through px at xhdpi; a real defect is a gutter or more.
+        assertEquals(message, expected.value.toDouble(), actual.value.toDouble(), TOLERANCE.value.toDouble())
     }
 
     private companion object {
-        const val GUIDE_TAG = "placement-scene-discovery-guide"
+        /** `PlacementScene`'s default `coachingBottomClearance`, spelled out: the SDK symbol is internal. */
+        val DEFAULT_CLEARANCE = 16.dp
 
-        /**
-         * `PlaneDiscoveryGuide`'s own default gutter, and now `PlacementScene`'s. Spelled
-         * out because the SDK constant is `internal` — which is the point: this test is
-         * what notices if that value changes underneath the new parameter's KDoc.
-         */
-        val LEGACY_GUTTER = 16.dp
+        /** What a host with this app's dock passes: the dock band plus one gutter. */
+        val DOCK_CLEARANCE = 80.dp + SceneViewTokens.Space.md
 
-        /** A stand-in for the demo scaffold's measured bottom chrome. */
-        val DOCK_BAND = 80.dp
+        val TOLERANCE = 0.75.dp
+
+        /** `sceneview_coaching_scan_surface`, the headline of the scan card. */
+        const val CARD_WORDS = "Move your phone slowly"
+
+        /** `sceneview_coaching_found_surface`. */
+        const val FOUND_WORDS = "Surface found"
+
+        /** What `PlacementScene` hands the card for its `coachingBottomClearance`. */
+        fun placementSceneCoaching(clearance: Dp) =
+            PaddingValues(bottom = (clearance - DEFAULT_CLEARANCE).coerceAtLeast(0.dp))
     }
 }

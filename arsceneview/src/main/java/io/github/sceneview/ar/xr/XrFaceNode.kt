@@ -166,6 +166,9 @@ open class XrFaceNode(
     }
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // Region child nodes are owned by this node — destroy them before the
         // parent chain tears down so their entities leave the Filament scene
         // first (same ordering rationale as AugmentedFaceNode.destroy()).

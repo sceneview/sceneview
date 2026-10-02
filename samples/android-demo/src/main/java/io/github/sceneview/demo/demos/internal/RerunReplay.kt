@@ -352,9 +352,6 @@ object ReplayGeometry {
     /** Keyframe spacing along the replay's path: close enough for a strip of photos. */
     const val KEYFRAME_SPACING_M = 0.38f
 
-    /** How far the photo floor sits under the grid, so the grid lines stay on top of it. */
-    const val FLOOR_UNDER_GRID_M = 0.004f
-
     /**
      * The photo a camera at [pose] took, on its frustum's image plane at [depth]: the quad the
      * frustum edges frame, texture top row along its top edge.
@@ -369,25 +366,36 @@ object ReplayGeometry {
     }
 
     /**
-     * A plane's polygon filled with its photo [texture]. A floor ([flattenToY] non-null) is laid
-     * flat at that height — under the grid — so its photo and the grid never z-fight.
+     * A plane's polygon filled with its photo [texture], drawn at [placed] — the same polygon
+     * moved to its layer (see [PlaneLayering]: a floor laid flat under the grid, the others a
+     * hair off their neighbours), still textured where the photo was taken, at [polygon].
      */
-    fun addTexturedPlane(mesh: DebugMesh, polygon: FloatArray, texture: ReplayPlaneTexture, flattenToY: Float?) {
+    fun addTexturedPlane(
+        mesh: DebugMesh,
+        polygon: FloatArray,
+        texture: ReplayPlaneTexture,
+        placed: FloatArray = polygon,
+    ) {
         val n = polygon.size / 3
-        if (n < 3) return
+        if (n < 3 || placed.size != polygon.size) return
         var cx = 0f
         var cy = 0f
         var cz = 0f
+        var px = 0f
+        var py = 0f
+        var pz = 0f
         for (i in 0 until n) {
             cx += polygon[i * 3]; cy += polygon[i * 3 + 1]; cz += polygon[i * 3 + 2]
+            px += placed[i * 3]; py += placed[i * 3 + 1]; pz += placed[i * 3 + 2]
         }
-        fun put(x: Float, y: Float, z: Float): Int {
+        fun put(x: Float, y: Float, z: Float, at: Int): Int {
             val (u, v) = texture.uvOf(x, y, z)
-            return mesh.vertex(x, flattenToY ?: y, z, u, v)
+            return if (at < 0) mesh.vertex(px / n, py / n, pz / n, u, v)
+            else mesh.vertex(placed[at * 3], placed[at * 3 + 1], placed[at * 3 + 2], u, v)
         }
-        val centre = put(cx / n, cy / n, cz / n)
+        val centre = put(cx / n, cy / n, cz / n, -1)
         val first = mesh.vertexCount
-        for (i in 0 until n) put(polygon[i * 3], polygon[i * 3 + 1], polygon[i * 3 + 2])
+        for (i in 0 until n) put(polygon[i * 3], polygon[i * 3 + 1], polygon[i * 3 + 2], i)
         for (i in 0 until n) mesh.triangle(centre, first + i, first + (i + 1) % n)
     }
 

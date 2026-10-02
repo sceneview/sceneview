@@ -61,6 +61,51 @@ internal object ScaleSnap {
     fun isAtLimit(scale: Float): Boolean = scale <= MIN + EPSILON || scale >= MAX - EPSILON
 
     /**
+     * The raw (pre-snap) scale of a pinch, **relative to the gesture's start**: the scale the
+     * object had when two fingers landed, times the ratio of the current finger span to the
+     * span at that moment. 1:1 with the fingers — spreading them twice as far doubles the
+     * object — which is what Scene Viewer and AR Quick Look do (`UIPinchGestureRecognizer.scale`
+     * on iOS is exactly this ratio), and it is path-independent: bringing the fingers back to
+     * where they started returns the object to exactly the size it started at, however much
+     * the span jittered on the way.
+     *
+     * Returns [startScale] unchanged for a degenerate span (zero, negative, non-finite).
+     */
+    fun pinchRaw(startScale: Float, startSpan: Float, currentSpan: Float): Float {
+        val ratio = currentSpan / startSpan
+        // NaN, ±∞, zero and negative spans all fail this one test.
+        return if (startSpan > 0f && ratio > 0f && ratio.isFinite()) startScale * ratio else startScale
+    }
+
+    /**
+     * Where a double-tap on the placed object takes it, or `null` for "nowhere — acknowledge".
+     *
+     * Resized away from 100 % ⇒ back to exactly 100 % (the AR Quick Look reset). Already at
+     * 100 % ⇒ back to the size the user had pinched to before the last reset, so a double-tap
+     * is a toggle between real-world size and *their* size rather than a one-way door. Never
+     * resized ⇒ `null`: the caller plays the rebound so the tap is felt, but nothing changes.
+     */
+    fun doubleTapTarget(current: Float, remembered: Float?): Float? = when {
+        abs(current - 1f) > EPSILON -> 1f
+        remembered != null && abs(remembered - 1f) > EPSILON -> remembered.coerceIn(MIN, MAX)
+        else -> null
+    }
+
+    /** Duration of the animated double-tap resize, milliseconds. */
+    const val DOUBLE_TAP_MS: Long = 260L
+
+    /**
+     * Visual scale [elapsedMs] into the animated double-tap resize from [from] to [to]:
+     * cubic ease-out, the same curve as the placement entrance, landing exactly on [to].
+     */
+    fun doubleTapProgress(from: Float, to: Float, elapsedMs: Float): Float {
+        if (elapsedMs >= DOUBLE_TAP_MS) return to
+        val t = (elapsedMs / DOUBLE_TAP_MS).coerceIn(0f, 1f)
+        val eased = 1f - (1f - t) * (1f - t) * (1f - t)
+        return from + (to - from) * eased
+    }
+
+    /**
      * The visual scale [elapsedMs] after entering the detent: a damped sine around 1 that
      * first continues the pinch's direction (below 1 when shrinking into it, [fromAbove]),
      * then settles. Exactly 1 from [REBOUND_MS] on.

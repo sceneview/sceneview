@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -261,9 +262,10 @@ fun TapToPlaceArSession(
                 state.trackingFailureReason = reason
             },
             onGestureListener = rememberOnGestureListener(
-                // A tap on the object selects it (§2.4) — felt, not drawn: the demo has no
-                // selection chrome to show. A tap on empty space creates nothing; the
-                // controller documents that as a no-op rather than leaving it implicit.
+                // A tap on the object selects it (§2.4): the SDK draws Scene Viewer's white
+                // footprint ring around it while it stays selected. A tap on empty space
+                // deselects and creates nothing; the controller documents that as a no-op
+                // rather than leaving it implicit.
                 onSingleTapConfirmed = { _, node ->
                     if (node != null) {
                         state.controller.selectPlacement()
@@ -271,6 +273,11 @@ fun TapToPlaceArSession(
                         state.controller.deselectPlacement()
                         state.controller.onBackgroundTap()
                     }
+                },
+                // Double-tap on the object: back to real-world size, or — already there —
+                // back to the size the user had pinched to (AR Quick Look's toggle).
+                onDoubleTap = { _, node ->
+                    if (node != null) state.controller.toggleBaseScale()
                 },
                 // Surface which gesture is active so the read-out can tell drag-to-move
                 // from twist-to-rotate from pinch-to-scale. `node == null` ⇒ the touch
@@ -399,15 +406,22 @@ fun BoxScope.TapToPlaceStatusOverlays(
         state.phase = state.controller.phase
     }
 
-    val lowLight = (ForcedTrackingFailure.override ?: state.trackingFailureReason) ==
-        TrackingFailureReason.INSUFFICIENT_LIGHT
-    // The SDK's animated coaching (phone sweep, "surface found", paused / look back). While
-    // it is up the pill steps aside, the cards never do (the overlay is silent on them).
-    // Silent while the SDK's "Couldn't start AR" card is up: both are centred, and the glyph
-    // used to sit on that card's copy and its Try again button (#3986).
-    val guidance = rememberArGuidanceState(state.controller)
+    val trackingFailure = ForcedTrackingFailure.override ?: state.trackingFailureReason
+    val lowLight = trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT
+    // The SDK's coaching card (phone sweep, "Surface found", the reason and its fix when
+    // tracking struggles). While it is up the pill steps aside, the cards never do (the
+    // overlay is silent on them). Silent while the SDK's "Couldn't start AR" card is up:
+    // both are centred, and the coaching used to sit on that card's Try again button (#3986).
+    val guidance = rememberArGuidanceState(state.controller, trackingFailureReason = trackingFailure)
     val coachingCue = if (state.arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE
-    ARCoachingOverlay(cue = coachingCue, surface = guidance.surface)
+    ARCoachingOverlay(
+        cue = coachingCue,
+        surface = guidance.surface,
+        hint = guidance.hint,
+        scanLingering = guidance.scanLingering,
+        // The overlay keeps its own 16 dp gutter off the safe area; the dock is ours to declare.
+        contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
+    )
     val coaching = placementCoaching(
         phase = state.phase,
         gestureHintVisible = gestureHintVisible,

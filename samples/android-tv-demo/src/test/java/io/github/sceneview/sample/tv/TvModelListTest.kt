@@ -64,11 +64,17 @@ class TvModelListTest {
     }
 
     @Test
-    fun `every model entry has a positive scale`() {
-        val bad = models.filter { it.scale <= 0f }
+    fun `every model entry credits its author and licence`() {
+        // The credit line is on screen under the model name: CC BY 4.0 requires the author
+        // wherever the work is shown, so an entry without one must not ship.
+        val bad = models.filter { entry ->
+            val parts = entry.credit.split(" · ")
+            parts.size != 2 || parts[0].isBlank() || parts[1] !in KNOWN_LICENCES
+        }
         assertTrue(
-            "TvModelViewerActivity.models entries must have a positive scale (> 0). " +
-                "Offenders: ${bad.joinToString { "${it.label}=${it.scale}" }}",
+            "TvModelViewerActivity.models entries must read \"<author> · <licence>\" with a " +
+                "licence in $KNOWN_LICENCES (see assets/CREDITS.md). " +
+                "Offenders: ${bad.joinToString { "${it.label}=\"${it.credit}\"" }}",
             bad.isEmpty(),
         )
     }
@@ -93,5 +99,9 @@ class TvModelListTest {
             "TvModelViewerActivity.models has duplicate asset paths: $duplicates",
             duplicates.isNotEmpty(),
         )
+    }
+
+    private companion object {
+        val KNOWN_LICENCES = setOf("CC BY 4.0", "CC0")
     }
 }

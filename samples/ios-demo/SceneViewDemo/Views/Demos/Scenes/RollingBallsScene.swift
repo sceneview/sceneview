@@ -5,7 +5,7 @@
 // @section     view3d
 // @available   true
 // @icon        circle.hexagongrid.fill
-// @order       36
+// @order       37
 // @tags        physics,rigid-body,collision,simulation,tilt,balls
 // @addedIn     4.48.0
 // @updatedIn   4.51.0

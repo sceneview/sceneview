@@ -47,11 +47,10 @@ class ScanInRoomTest {
     }
 
     @Test
-    fun `darkness is still worth saying over the coaching`() {
-        assertEquals(
-            ScanRoomStatus.TrackingPausedLowLight,
-            status(PlacementPhase.TRACKING_LOST, coaching = true, lowLight = true),
-        )
+    fun `darkness is the coaching card's to say, not the pill's`() {
+        // The SDK card shows a "Too dark" chip and its fix: one voice at a time.
+        assertNull(status(PlacementPhase.TRACKING_LOST, coaching = true, lowLight = true))
+        assertEquals(ScanRoomStatus.TrackingPausedLowLight, status(PlacementPhase.TRACKING_LOST, lowLight = true))
     }
 
     @Test
