@@ -59,12 +59,16 @@ enum FirebaseTelemetry {
 
     /// At launch (`DemoAppDelegate` on iOS, `SceneViewDemoApp.init` on macOS): starts
     /// Firebase unless the consent is still due (strict mode, see the type comment).
-    static func startAtLaunch(consent: ConsentStore = .shared) {
+    static func startAtLaunch(consent: ConsentStore = .shared, waitingForPushPermission: Bool = false) {
         let region = Locale.current.region?.identifier ?? "none"
         let zone = TimeZone.current.identifier
         log.notice("consent zone \(consent.requiresConsent, privacy: .public) (region \(region, privacy: .public), time zone \(zone, privacy: .public)), consent \(consent.state.rawValue, privacy: .public)")
         guard consent.shouldStartFirebaseAtLaunch else {
             log.notice("Firebase not configured at launch: consent \(consent.state.rawValue, privacy: .public), collection off, push off")
+            return
+        }
+        guard !waitingForPushPermission else {
+            log.notice("Firebase not configured at launch: push only, waiting for the notification permission")
             return
         }
         start(consent: consent)

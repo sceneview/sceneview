@@ -179,6 +179,10 @@ struct SceneViewDemoApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await updater.checkForUpdate() }
+                        #if os(iOS)
+                        // Permission changed in iOS Settings, or an opt-out to finish.
+                        Task { await PushCenter.shared.appBecameActive() }
+                        #endif
                     }
                 }
         }
