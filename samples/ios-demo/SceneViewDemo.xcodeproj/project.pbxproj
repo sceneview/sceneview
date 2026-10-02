@@ -249,6 +249,7 @@
 		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
 		FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */; };
 		1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */; };
+		C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000D701 /* ArDepthVisualizationScene.swift */; };
 		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 		FB1000000000000000000001 /* DemoAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000001 /* DemoAnalytics.swift */; };
 		FB1000000000000000000002 /* FirebaseTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000002 /* FirebaseTelemetry.swift */; };
@@ -534,6 +535,7 @@
 		082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementReticlePreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WallPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthColliderScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift; sourceTree = SOURCE_ROOT; };
+		C2000000000000000000D701 /* ArDepthVisualizationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthVisualizationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000001 /* DemoAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalytics.swift; path = SceneViewDemo/Services/Telemetry/DemoAnalytics.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000002 /* FirebaseTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirebaseTelemetry.swift; path = SceneViewDemo/Services/Telemetry/FirebaseTelemetry.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000003 /* PushPrePromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicy.swift; path = SceneViewDemo/Services/Telemetry/PushPrePromptPolicy.swift; sourceTree = SOURCE_ROOT; };
@@ -962,6 +964,7 @@
 			name = SceneViewDemo;
 			packageProductDependencies = (
 				A80000010000000000000001 /* SceneViewSwift */,
+				A80000010000000000000003 /* SceneViewDepthML */,
 				FB2000000000000000000002 /* FirebaseAnalyticsCore */,
 				FB2000000000000000000003 /* FirebaseCrashlytics */,
 				FB2000000000000000000004 /* FirebaseMessaging */,
@@ -1399,6 +1402,7 @@
 				491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */,
 				FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */,
 				1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */,
+				C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1801,6 +1805,10 @@
 		A80000010000000000000001 /* SceneViewSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SceneViewSwift;
+		};
+		A80000010000000000000003 /* SceneViewDepthML */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SceneViewDepthML;
 		};
 		FB2000000000000000000002 /* FirebaseAnalyticsCore */ = {
 			isa = XCSwiftPackageProductDependency;

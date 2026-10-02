@@ -36,6 +36,13 @@ let package = Package(
         .library(
             name: "SceneViewSwift",
             targets: ["SceneViewSwift"]
+        ),
+        // Monocular depth on Core ML (Depth Anything V2 Small). Separate so
+        // the base package stays model-free: the ~50 MB weights are fetched at
+        // runtime by `DepthModelStore`, never bundled.
+        .library(
+            name: "SceneViewDepthML",
+            targets: ["SceneViewDepthML"]
         )
     ],
     dependencies: [],
@@ -48,10 +55,17 @@ let package = Package(
             // surfaces it at the monorepo root for SPM consumers.
             path: "SceneViewSwift/Sources/SceneViewSwift"
         ),
+        .target(
+            name: "SceneViewDepthML",
+            dependencies: ["SceneViewSwift"],
+            path: "SceneViewSwift/Sources/SceneViewDepthML",
+            exclude: ["NOTICE.md"]
+        ),
         .testTarget(
             name: "SceneViewSwiftTests",
             dependencies: ["SceneViewSwift"],
-            path: "SceneViewSwift/Tests/SceneViewSwiftTests"
+            path: "SceneViewSwift/Tests/SceneViewSwiftTests",
+            resources: [.copy("Resources/ml-depth-fit-vectors.json")]
         )
     ]
 )

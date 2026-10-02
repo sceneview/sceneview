@@ -65,6 +65,27 @@ sample of the ARCore SDK for Android (Copyright 2023 Google LLC, Apache License
 2.0).
 
 --------------------------------------------------------------------------------
+Depth Anything V2 Small  —  model weights (SceneViewDepthML, iOS)
+--------------------------------------------------------------------------------
+
+    Depth Anything V2 (Small)
+    Copyright 2024 Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiaogang
+    Xu, Jiashi Feng, Hengshuang Zhao
+    https://github.com/DepthAnything/Depth-Anything-V2
+
+    Core ML conversion (DepthAnythingV2SmallF16.mlpackage) by Apple
+    https://huggingface.co/apple/coreml-depth-anything-v2-small
+    revision cfef6f6f2a70783dedc0bfae40cecbc2052285d3
+
+    Licensed under the Apache License, Version 2.0.
+
+The weights are NOT vendored in this repository nor in the SceneViewDepthML
+Swift package. DepthModelStore downloads them at runtime, only when the app
+asks for it, from the pinned revision above and checks every file against its
+SHA-256. Only the Small variant is supported: the Base and Large checkpoints of
+Depth Anything V2 are licensed CC-BY-NC-4.0 and must not be used.
+
+--------------------------------------------------------------------------------
 Earcut and Delaunator  —  triangulation (sceneview-core)
 --------------------------------------------------------------------------------
 
