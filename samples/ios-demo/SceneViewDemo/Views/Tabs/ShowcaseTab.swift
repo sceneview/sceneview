@@ -443,12 +443,15 @@ struct ShowcaseTab: View {
         #endif
         selectedSection = nil
         whatsNew = true
-        // After the filter has laid the shorter list out, so the scroll is
-        // clamped against the page it ends on, not the one it left.
+        // After the filter has laid its list out, so the scroll is clamped
+        // against the page it ends on. `scrollTo(y:)` is the raw content
+        // offset, which rests at minus the top inset: the chips land a header
+        // (plus a breath) under the status bar, just under the pinned header.
         DispatchQueue.main.async {
             withAnimation(SceneViewTokens.Spring.animation) {
-                scrollPosition.scrollTo(y: max(0, chipRowTop - SceneViewTokens.Home.headerHeight
-                                                     - SceneViewTokens.Space.sm))
+                scrollPosition.scrollTo(y: max(-topInset, chipRowTop - topInset
+                                                   - SceneViewTokens.Home.headerHeight
+                                                   - SceneViewTokens.Space.sm))
             }
         }
     }

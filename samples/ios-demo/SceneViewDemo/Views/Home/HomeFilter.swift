@@ -133,8 +133,8 @@ enum HomeCatalogue {
 /// release it first shipped in on iOS (`// @addedIn`, required) and its last
 /// notable rework (`// @updatedIn`), both read from this platform's history,
 /// and the verdict is computed against the running build's version. Nothing
-/// is hardcoded as "new": a declaration ages out on its own three minors
-/// later. A demo that is not available on iOS ("Coming soon") is never
+/// is hardcoded as "new": a declaration ages out on its own two minors
+/// later (`windowMinors`). A demo that is not available on iOS ("Coming soon") is never
 /// marked: there is nothing new to try.
 enum DemoFreshness: Equatable {
     case new
