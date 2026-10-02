@@ -32,6 +32,11 @@ enum CosmosWorldLook {
     /// are rolled off on the CPU and tone-mapped again, which greys them. They are lifted to
     /// the same on-screen brightness, as the flow's strokes are (`CosmosSceneLayers.flowGain`).
     static let ringGain: Float = 1.45
+    /// The top-down Spacetime pose loses more of the translucent rings to RealityKit's second
+    /// tone map than Starlight's grazing view. Measured on the QA frame (#4256): ring peak
+    /// luma 130 here, 120 at `ringGain`, 188 on Android; the filmic roll-off and the 0.62
+    /// opacity cap the rest, so the gap is declared in `parity-manifest.yml`.
+    static let spacetimeRingGain: Float = 1.8
     /// The orbit trail at its brightest, just behind the planet.
     static let trailColor = SIMD3<Float>(0.3, 0.55, 1.1)
 }
@@ -42,6 +47,7 @@ struct CosmosWorldLight: Sendable, Equatable {
     var sun: SIMD3<Float>
     var eye: SIMD3<Float>
     var spin: Float
+    var spacetime: Bool
 
     init(system: CosmosSystem, time: Float, eye: SIMD3<Float>) {
         let center = system.planetPosition(time)
@@ -49,6 +55,7 @@ struct CosmosWorldLight: Sendable, Equatable {
         sun = inverse.act(-center)
         self.eye = inverse.act(eye - center)
         spin = CosmosSystem.spinAngle(time)
+        spacetime = false
     }
 
     /// The light of a world placed off its orbit (`CosmosWorldPlacement`).
@@ -57,6 +64,7 @@ struct CosmosWorldLight: Sendable, Equatable {
         sun = inverse.act(placement.sun - placement.center)
         self.eye = inverse.act(eye - placement.center)
         spin = CosmosSystem.spinAngle(time)
+        spacetime = true
     }
 
     /// Whether a bake for `other` would show something this one does not: the star, the
@@ -219,7 +227,8 @@ enum CosmosWorldBake {
         let radius = CosmosSystem.planetRadius
         let inner = CosmosSystem.ringInner
         let span = CosmosSystem.ringOuter - CosmosSystem.ringInner
-        let lit = CosmosWorldLook.ringColor * CosmosWorldLook.sunColor * CosmosWorldLook.ringGain
+        let gain = light.spacetime ? CosmosWorldLook.spacetimeRingGain : CosmosWorldLook.ringGain
+        let lit = CosmosWorldLook.ringColor * CosmosWorldLook.sunColor * gain
         let rows = RowPointer(out)
         DispatchQueue.concurrentPerform(iterations: height) { y in
             let angle = (Float(y) + 0.5) / Float(height) * 2 * .pi

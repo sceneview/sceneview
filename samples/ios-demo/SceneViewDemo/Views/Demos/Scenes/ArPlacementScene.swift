@@ -6,7 +6,7 @@
 // @available   true
 // @icon        arkit
 // @iosOnly     true
-// @order       23
+// @order       24
 // @tags        ar,plane,automatic-placement,anchor,gltf,model
 // @addedIn     4.4.0
 // @updatedIn   4.35.0

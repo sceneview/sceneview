@@ -379,7 +379,8 @@ const val PLACEMENT_SCALE_CONFIRM_MS = 900L
  *
  * While the SDK's animated coaching overlay is up ([coachingActive], i.e.
  * `ArGuidanceState.isCoaching`) the pill steps aside — one voice at a time, Apple's HIG rule
- * for coaching. The one exception is low light: the glyph can say "paused", not *why*.
+ * for coaching. The coaching card names the reason itself ("Too dark" and its fix), so low
+ * light has no exception any more.
  */
 fun placementCoaching(
     phase: PlacementPhase,
@@ -388,8 +389,7 @@ fun placementCoaching(
     lowLight: Boolean = false,
     coachingActive: Boolean = false,
 ): PlacementCoachingMessage? = if (coachingActive) {
-    PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT
-        .takeIf { phase == PlacementPhase.TRACKING_LOST && lowLight }
+    null
 } else when (phase) {
     PlacementPhase.INITIALIZING,
     PlacementPhase.NO_SURFACE,

@@ -143,6 +143,38 @@ enum SceneViewTokens {
                  : UIColor(red: 0xE9 / 255, green: 0xEC / 255, blue: 0xEF / 255, alpha: 1)
         }
 
+        /// The Secondary Camera (PiP) stage floor, DESIGN.md `stage-pip-floor`:
+        /// #E2E6EB light — a step under `surface-container-highest`, so the ground
+        /// reads against ``pipBackdrop(dark:)`` — and #161B22 dark, Android's
+        /// `StageSky.floor`.
+        static func pipFloor(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x16 / 255, green: 0x1B / 255, blue: 0x22 / 255, alpha: 1)
+                 : UIColor(red: 0xE2 / 255, green: 0xE6 / 255, blue: 0xEB / 255, alpha: 1)
+        }
+
+        /// The Secondary Camera (PiP) backdrop, DESIGN.md `stage-pip-backdrop`, flat:
+        /// `surface-container-high`
+        /// (#F1F3F5) light, `stage-background` (#0B0F16) dark. The floor fades
+        /// into exactly this colour at its rim, so the stage has no edge from any
+        /// angle; a sky gradient behind it would show the rim wherever the two
+        /// tones part. ``pipBackdropColor`` is the same pair for SwiftUI.
+        static func pipBackdrop(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255, alpha: 1)
+                 : UIColor(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255, alpha: 1)
+        }
+        static let pipBackdropColor = Color(light: Color(uiColor: pipBackdrop(dark: false)),
+                                            dark: Color(uiColor: pipBackdrop(dark: true)))
+
+        /// The Secondary Camera (PiP) floor grid, DESIGN.md `stage-pip-grid`: 3.0:1 on
+        /// ``pipFloor(dark:)`` in both
+        /// themes (#7A8494 on #E2E6EB light, #5C6780 on #161B22 dark). Android's
+        /// `outline` / `outline-subtle` (#D6DAE0 / #46516A) measured 1.18:1 and 2.18:1,
+        /// and in light the grid vanished into the floor.
+        static func pipGrid(dark: Bool) -> UIColor {
+            dark ? UIColor(red: 0x5C / 255, green: 0x67 / 255, blue: 0x80 / 255, alpha: 1)
+                 : UIColor(red: 0x7A / 255, green: 0x84 / 255, blue: 0x94 / 255, alpha: 1)
+        }
+
         /// The Rolling Balls tray rails — `accent-deep` (#5A32A3), Android's
         /// `SceneViewColors.AccentDeep`.
         static let trayRail = UIColor(red: 0x5A / 255, green: 0x32 / 255, blue: 0xA3 / 255, alpha: 1)
@@ -809,6 +841,17 @@ enum SceneViewTokens {
         /// Unlit track of a meter on the scrim, and "present but empty" over
         /// media — white at 8 %, Android's `ArOverlay.meterTrack`.
         static let meterTrack = Color.white.opacity(0x14 / 255)
+        /// `accent-progress` — a determinate meter's lit segments on the
+        /// scrim (#A4C1FF in both themes). Android's `ArOverlay.accentProgress`.
+        static let accentProgress = Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
+        /// `meter-height` — one segment of a meter on the scrim: `space-sm`, as
+        /// Android's `ArOverlayMeter`.
+        static let meterHeight: CGFloat = Space.sm
+        /// Vertical padding of a caption pill on the scrim (the depth legend).
+        static let captionPillVerticalPadding: CGFloat = 6
+        /// `card-max-width` — an AR overlay card never grows wider than this (iPad,
+        /// landscape). Android's `ArOverlay.maxWidth`.
+        static let cardMaxWidth: CGFloat = 480
     }
 
     /// `DESIGN.md` — the over-media **mode pill** (`mode-pill-*`): Cosmos's "Starlight |
@@ -837,6 +880,8 @@ enum SceneViewTokens {
         /// A segment's height. With `Space.xs` round it the capsule is `Layout.touchTarget`
         /// high — 48, as Android's toggle row — and each segment's hit area fills it.
         static let segmentHeight: CGFloat = 40
+        /// A segment's minimum width, so a short label ("ML") keeps a target as wide as tall.
+        static let segmentMinWidth: CGFloat = 72
 
         /// The sRGB components, 0…1.
         static func rgb(_ value: UInt32) -> SIMD3<Double> {

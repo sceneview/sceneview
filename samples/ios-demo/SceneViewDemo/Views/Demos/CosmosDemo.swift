@@ -49,7 +49,7 @@ struct CosmosDemo: View {
                 .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                     engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
                 })
-                if !engine.ready {
+                if !engine.ready || (engine.spacetime && !engine.spacetimeReady && !engine.spacetimeFailed) {
                     VStack(spacing: SceneViewTokens.Space.md) {
                         ProgressView().tint(.white)
                         Text("Lighting up the cosmos")
@@ -174,6 +174,9 @@ final class CosmosEngine {
     /// The Star scene's Spacetime mode: the star and its planets resting in the wells they dig
     /// into a sheet (`CosmosSpacetime`). Set with `setSpacetime(_:)`.
     private(set) var spacetime = false
+    /// The sheet is ready to draw, or exhausted its bounded build attempts.
+    private(set) var spacetimeReady = false
+    private(set) var spacetimeFailed = false
     /// How far the bloom has moved to the Spacetime mode's, 0…1, in 1/50 steps: the view
     /// updates its bloom pass only when this changes.
     private(set) var bloomMix: Float = 0
@@ -185,6 +188,7 @@ final class CosmosEngine {
 
     var caption: String {
         if scene != .star { return scene.caption }
+        if spacetime && spacetimeFailed { return "Spacetime couldn't light up" }
         return spacetime ? "Spacetime: every mass bends the fabric" : focus.caption
     }
 
@@ -425,6 +429,11 @@ final class CosmosEngine {
         if !ready { ready = true }
 
         let progress = current == .star ? advanceSpacetime(dt) : 0
+        if current == .star {
+            let state = entities.spacetimeBuildState
+            if spacetimeReady != (state == .ready) { spacetimeReady = state == .ready }
+            if spacetimeFailed != (state == .failed) { spacetimeFailed = state == .failed }
+        }
         let time = frozen ? (progress > 0 ? CosmosSpacetime.qaTime : Self.qaTime[current.rawValue]) : sceneTime
         let reveal = frozen ? 1 : CosmosFraming.reveal(sceneTime, duration: Self.revealSeconds)
         if abs(system.aspect - aspect) > 1e-4 { system = CosmosSystem(aspect: aspect) }
@@ -469,6 +478,8 @@ final class CosmosEngine {
         typealias T = CosmosSpacetime.Timeline
         let before = spacetimeProgress
         let target = spacetime ? T.duration : 0
+        let held = built[.star]?.spacetimeReady != true
+        if held { spacetimeFrom = nil }
         if frozen {
             spacetimeProgress = target
         } else {
@@ -476,7 +487,6 @@ final class CosmosEngine {
             // The way in waits for the sheet: until it is built, Starlight holds, so the camera
             // never flies over nothing and the sheet never pops in at the end — Android lifts
             // its cover on the first frame that draws the sheet.
-            let held = built[.star]?.spacetimeReady != true
             spacetimeProgress = spacetime ? (held ? before : min(before + step, target))
                 : max(before - step * T.duration / T.exitSeconds, 0)
         }
@@ -684,6 +694,12 @@ struct CosmosPrograms {
     let alpha: UnlitMaterial.Program
 }
 
+/// Where the Star scene's Spacetime sheet is: building, drawn, or given up on after
+/// `maxSpacetimeBuildAttempts` failures.
+enum CosmosSpacetimeBuildState {
+    case building, ready, failed
+}
+
 /// The entities of one scene and how each frame drives them.
 @MainActor
 final class CosmosSceneEntities {
@@ -718,7 +734,9 @@ final class CosmosSceneEntities {
     /// asked for.
     private var spacetimeScene: CosmosSpacetimeScene?
     /// The sheet and the small planets are built: the way into Spacetime may start.
-    var spacetimeReady: Bool { spacetimeScene != nil }
+    var spacetimeReady: Bool { spacetimeBuildState == .ready }
+    private(set) var spacetimeBuildState: CosmosSpacetimeBuildState = .building
+    private var spacetimeBuildAttempts = 0
     private var spacetimeTask: Task<Void, Never>?
     /// The eye, as the turned star sees it, and the lens the loops were last laid for; see
     /// `relayLoops`.
@@ -921,7 +939,8 @@ final class CosmosSceneEntities {
 
     /// Builds the sheet and the small planets once, in the background, hidden until the mode shows.
     private func buildSpacetimeScene() {
-        guard spacetimeScene == nil, spacetimeTask == nil else { return }
+        guard spacetimeScene == nil, spacetimeTask == nil, spacetimeBuildState == .building else { return }
+        spacetimeBuildAttempts += 1
         spacetimeTask = Task { @MainActor [weak self] in
             let started = Date()
             let scene: CosmosSpacetimeScene
@@ -929,10 +948,16 @@ final class CosmosSceneEntities {
                 scene = try await CosmosSpacetimeScene.make()
             } catch {
                 NSLog("[Cosmos] spacetime build failed: %@", String(describing: error))
-                // Free the slot a second later, so a frame that wants the sheet tries again —
-                // without a build per frame while it keeps failing.
+                guard let self else { return }
+                if self.spacetimeBuildAttempts >= Self.maxSpacetimeBuildAttempts {
+                    self.spacetimeBuildState = .failed
+                    self.spacetimeTask = nil
+                    return
+                }
+                // Free the slot a second later, so a frame that wants the sheet retries —
+                // without a build per frame or an infinite failure loop.
                 try? await Task.sleep(for: .seconds(1))
-                self?.spacetimeTask = nil
+                self.spacetimeTask = nil
                 return
             }
             guard let self else { return }
@@ -940,8 +965,11 @@ final class CosmosSceneEntities {
             scene.root.isEnabled = false
             self.root.addChild(scene.root)
             self.spacetimeScene = scene
+            self.spacetimeBuildState = .ready
         }
     }
+
+    private static let maxSpacetimeBuildAttempts = 3
 
     /// The star's surface keeps boiling, as Android's shader does with `time · flow`: the
     /// surface is re-baked every `churnStep` seconds in the background, and the ball

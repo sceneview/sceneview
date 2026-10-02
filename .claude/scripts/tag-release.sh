@@ -21,6 +21,7 @@
 #
 # USAGE
 #   tag-release.sh [<commit-ish>]     # default: HEAD
+# Before tagging, update samples/ios-demo/distribution/app-store/en-US/release_notes.txt and release_notes_macos.txt.
 #
 # Requires: git (full history / the commit fetched), `gh` authenticated with a
 # token carrying `contents: write` and `actions: write`.

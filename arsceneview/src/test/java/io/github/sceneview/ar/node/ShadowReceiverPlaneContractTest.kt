@@ -210,7 +210,11 @@ class ShadowReceiverPlaneContractTest {
         // the mesh renderable is still registered is the SIGABRT class fixed in #851/#852.
         val destroyIdx = nodeSource.indexOf("override fun destroy()")
         assertTrue("ShadowReceiverPlaneNode must override destroy()", destroyIdx >= 0)
-        val body = nodeSource.substring(destroyIdx, minOf(destroyIdx + 400, nodeSource.length))
+        // The whole method, up to its closing brace at member indentation — not a fixed-length
+        // window, which a comment or a guard (the #4259 `isDestroyed` early return) overflows.
+        val endIdx = nodeSource.indexOf("\n    }", destroyIdx)
+        assertTrue("Could not find the end of ShadowReceiverPlaneNode.destroy()", endIdx > destroyIdx)
+        val body = nodeSource.substring(destroyIdx, endIdx)
         val superIdx = body.indexOf("super.destroy()")
         val materialIdx = body.indexOf("destroyMaterial(")
         assertTrue("destroy() must call super.destroy()", superIdx >= 0)

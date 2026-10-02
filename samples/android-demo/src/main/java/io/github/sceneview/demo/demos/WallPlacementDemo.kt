@@ -14,16 +14,13 @@ import io.github.sceneview.ar.*
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.placement.PlacementActionCard
 import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.common.placement.PlacementPreviewSheet
-import io.github.sceneview.demo.demos.internal.WALL_COACHING_LINGER_MS
-import io.github.sceneview.demo.demos.internal.WallCoachingHint
-import io.github.sceneview.demo.demos.internal.isSearchingForWall
-import io.github.sceneview.demo.demos.internal.wallCoachingHint
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.ar.ARHapticFeedback
@@ -56,24 +53,17 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val state = rememberAutoPlacementState()
-    // The scene draws the animated wall coaching itself; the pill only adds what the glyph
-    // cannot say — why no wall has come up yet (#4070, see `wallCoachingHint`).
-    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL)
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    // The scene draws the wall coaching card itself, and the card now says why no wall has
+    // come up (a plain wall, too dark, too fast, or a long search: #4070). The pill only has to
+    // know when to step aside, so it reads the same state with the same tracking reason.
+    val guidance = rememberArGuidanceState(state, PlacementSurface.WALL, trackingFailureReason = trackingFailure)
     var invalidMove by remember { mutableStateOf(false) }
     var show3D by remember { mutableStateOf(false) }
     var hintShown by remember { mutableStateOf(false) }
     var showHint by remember { mutableStateOf(false) }
     var hadPlacement by remember { mutableStateOf(false) }
-    // #4070: the glyph alone never said why no wall came up. The clock keys on "still
-    // searching", not on the phase, so INITIALIZING -> SCANNING does not restart it.
-    val searching = isSearchingForWall(state.phase, state.hasCameraFrame)
-    var searchLingered by remember { mutableStateOf(false) }
-    LaunchedEffect(searching) {
-        searchLingered = false
-        if (searching) { delay(WALL_COACHING_LINGER_MS); searchLingered = true }
-    }
 
     // Placement, selection, snap, limits, invalid moves and tracking: the SDK's opt-in haptics.
     ARHapticFeedback(state)
@@ -134,22 +124,10 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             }
         },
         bottomOverlay = {
-            val coaching = wallCoachingHint(state.phase, state.hasCameraFrame, trackingFailure, searchLingered)
             val text = when {
                 card != null -> null
-                // Said under the glyph, not instead of it: the glyph shows where to aim, this
-                // says what to change when nothing is found (#4070).
-                coaching != WallCoachingHint.NONE -> stringResource(
-                    when (coaching) {
-                        WallCoachingHint.PLAIN_WALL -> R.string.wall_coach_plain_wall
-                        WallCoachingHint.TOO_DARK -> R.string.ar_place_try_brighter_area
-                        WallCoachingHint.SLOW_DOWN -> R.string.tracking_failure_excessive_motion
-                        else -> R.string.wall_coach_move_sideways
-                    },
-                )
-                guidance.isCoaching &&
-                    !(state.phase == PlacementPhase.TRACKING_LOST &&
-                        trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) -> null
+                // One voice at a time: the coaching card names the reason and its fix itself.
+                guidance.isCoaching -> null
                 invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                 else -> when (state.phase) {
                     PlacementPhase.SCANNING -> stringResource(R.string.wall_phase_scanning)
@@ -182,6 +160,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             materialLoader = materialLoader,
             // No synthetic wall shadow. See the documented renderer parity limitation.
             groundShadows = false,
+            coachingContentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
             playbackDataset = playbackDataset,
             onARCoreAvailability = { availability = it },
             onTrackingFailureChanged = { trackingFailure = it },

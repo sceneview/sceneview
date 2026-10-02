@@ -68,4 +68,72 @@ class ScaleSnapTest {
         val late = abs(ScaleSnap.rebound(ScaleSnap.REBOUND_MS - 1f, fromAbove = false) - 1f)
         assertTrue("settled before the cut, was $late", late < 0.003f)
     }
+
+    @Test
+    fun pinch_isOneToOneWithTheFingers_relativeToTheStart() {
+        assertEquals(2f, ScaleSnap.pinchRaw(startScale = 1f, startSpan = 200f, currentSpan = 400f), 1e-6f)
+        assertEquals(0.75f, ScaleSnap.pinchRaw(startScale = 1.5f, startSpan = 300f, currentSpan = 150f), 1e-6f)
+    }
+
+    @Test
+    fun pinch_isPathIndependent_noCompounding() {
+        // A jittery pinch that ends where it started lands exactly on the start size — the
+        // old per-event multiplication of a cumulative factor compounded here.
+        var last = 0f
+        for (span in listOf(200f, 230f, 190f, 260f, 240f, 205f, 200f)) {
+            last = ScaleSnap.pinchRaw(startScale = 1.3f, startSpan = 200f, currentSpan = span)
+        }
+        assertEquals(1.3f, last, 1e-6f)
+    }
+
+    @Test
+    fun pinch_degenerateSpans_keepTheStartScale() {
+        val spans = listOf(0f to 100f, 100f to 0f, -1f to 100f, Float.NaN to 100f, 100f to Float.POSITIVE_INFINITY)
+        for ((a, b) in spans) {
+            assertEquals("$a→$b", 1.2f, ScaleSnap.pinchRaw(1.2f, a, b))
+        }
+    }
+
+    @Test
+    fun doubleTap_resetsAResizedObject_thenTogglesBack() {
+        assertEquals(1f, ScaleSnap.doubleTapTarget(current = 2.4f, remembered = null))
+        assertEquals(1f, ScaleSnap.doubleTapTarget(current = 0.5f, remembered = 2.4f))
+        assertEquals(2.4f, ScaleSnap.doubleTapTarget(current = 1f, remembered = 2.4f))
+        assertEquals("clamped", ScaleSnap.MAX, ScaleSnap.doubleTapTarget(current = 1f, remembered = 9f))
+        assertEquals("never resized: acknowledge only", null, ScaleSnap.doubleTapTarget(1f, remembered = null))
+        assertEquals(null, ScaleSnap.doubleTapTarget(current = 1f, remembered = 1f))
+    }
+
+    @Test
+    fun doubleTap_animation_easesOutAndLandsExactly() {
+        assertEquals(1f, ScaleSnap.doubleTapProgress(1f, 2f, 0f), 1e-6f)
+        val half = ScaleSnap.doubleTapProgress(1f, 2f, ScaleSnap.DOUBLE_TAP_MS / 2f)
+        assertTrue("ease-out: past halfway at half time, was $half", half > 1.5f && half < 2f)
+        assertEquals(2f, ScaleSnap.doubleTapProgress(1f, 2f, ScaleSnap.DOUBLE_TAP_MS.toFloat()))
+        var previous = 1f
+        var t = 0f
+        while (t <= ScaleSnap.DOUBLE_TAP_MS) {
+            val v = ScaleSnap.doubleTapProgress(1f, 2f, t)
+            assertTrue("monotonic at $t", v >= previous)
+            previous = v
+            t += 5f
+        }
+    }
+
+    @Test
+    fun selectionRing_enclosesTheFootprintWithAMargin() {
+        val corners = listOf(
+            io.github.sceneview.math.Position(-0.3f, 0f, -0.1f),
+            io.github.sceneview.math.Position(0.5f, 0f, -0.1f),
+            io.github.sceneview.math.Position(-0.3f, 0.8f, 0.5f),
+            io.github.sceneview.math.Position(0.5f, 0.8f, 0.5f),
+        )
+        val ring = SelectionRing.footprint(corners)
+        assertEquals(0.1f, ring.centerX, 1e-6f)
+        assertEquals(0.2f, ring.centerZ, 1e-6f)
+        assertEquals(0.5f * (1f + SelectionRing.MARGIN), ring.radius, 1e-5f)
+        assertEquals(0f, SelectionRing.footprint(emptyList()).radius)
+        assertEquals(0.0018f, SelectionRing.tubeRadius(0.05f), 1e-7f)
+        assertEquals(0.006f, SelectionRing.tubeRadius(3f), 1e-7f)
+    }
 }

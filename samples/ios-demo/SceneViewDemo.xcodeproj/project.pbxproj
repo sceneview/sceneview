@@ -142,6 +142,9 @@
 		C5D0000000000000000C5D12 /* ContactShadowPreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0000000000000000C5D02 /* ContactShadowPreviewScene.swift */; };
 		C5D0000000000000000C5D13 /* ContactShadowMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */; };
 		C0500000000000000000C054 /* CosmosScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0600000000000000000C064 /* CosmosScene.swift */; };
+		5CA00000000000000000A001 /* SecondaryCameraDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA00000000000000000B001 /* SecondaryCameraDemo.swift */; };
+		5CA00000000000000000A002 /* SecondaryCameraScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA00000000000000000B002 /* SecondaryCameraScene.swift */; };
+		5CA00000000000000000A003 /* SecondaryCameraMathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA00000000000000000B003 /* SecondaryCameraMathTests.swift */; };
 		C10000000000000000000018 /* CameraControlsDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000018 /* CameraControlsDemo.swift */; };
 		C100000000000000000000C1 /* CollisionHitTestDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000C1 /* CollisionHitTestDemo.swift */; };
 		C100000000000000000000CE /* GestureEditingDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000CE /* GestureEditingDemo.swift */; };
@@ -252,6 +255,7 @@
 		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
 		FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */; };
 		1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */; };
+		C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000D701 /* ArDepthVisualizationScene.swift */; };
 		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 		FB1000000000000000000001 /* DemoAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000001 /* DemoAnalytics.swift */; };
 		FB1000000000000000000002 /* FirebaseTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000002 /* FirebaseTelemetry.swift */; };
@@ -404,6 +408,9 @@
 		C5D0000000000000000C5D02 /* ContactShadowPreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContactShadowPreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ContactShadowPreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContactShadowMathTests.swift; path = SceneViewDemoTests/ContactShadowMathTests.swift; sourceTree = SOURCE_ROOT; };
 		C0600000000000000000C064 /* CosmosScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CosmosScene.swift; path = SceneViewDemo/Views/Demos/Scenes/CosmosScene.swift; sourceTree = SOURCE_ROOT; };
+		5CA00000000000000000B001 /* SecondaryCameraDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondaryCameraDemo.swift; sourceTree = "<group>"; };
+		5CA00000000000000000B002 /* SecondaryCameraScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SecondaryCameraScene.swift; path = SceneViewDemo/Views/Demos/Scenes/SecondaryCameraScene.swift; sourceTree = SOURCE_ROOT; };
+		5CA00000000000000000B003 /* SecondaryCameraMathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SecondaryCameraMathTests.swift; path = SceneViewDemoTests/SecondaryCameraMathTests.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000018 /* CameraControlsDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraControlsDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000C1 /* CollisionHitTestDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollisionHitTestDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000CE /* GestureEditingDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureEditingDemo.swift; sourceTree = "<group>"; };
@@ -545,6 +552,7 @@
 		082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementReticlePreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WallPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthColliderScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift; sourceTree = SOURCE_ROOT; };
+		C2000000000000000000D701 /* ArDepthVisualizationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthVisualizationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000001 /* DemoAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalytics.swift; path = SceneViewDemo/Services/Telemetry/DemoAnalytics.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000002 /* FirebaseTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirebaseTelemetry.swift; path = SceneViewDemo/Services/Telemetry/FirebaseTelemetry.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000003 /* PushPrePromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicy.swift; path = SceneViewDemo/Services/Telemetry/PushPrePromptPolicy.swift; sourceTree = SOURCE_ROOT; };
@@ -707,6 +715,7 @@
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
 				F00000000000000000000072 /* DemoRegistryGuardTests.swift */,
+				5CA00000000000000000B003 /* SecondaryCameraMathTests.swift */,
 				F000000000000000000000A0 /* ARExperienceModelTests.swift */,
 				A20000000000000000002962 /* AssetSourceProbeTests.swift */,
 				A20000000000000000004D04 /* HDPackTests.swift */,
@@ -818,6 +827,7 @@
 				5A1A71000000000000000005 /* raccoon_family.spz */,
 				C20000000000000000000062 /* DoublePendulumDemo.swift */,
 				C0600000000000000000C061 /* CosmosDemo.swift */,
+				5CA00000000000000000B001 /* SecondaryCameraDemo.swift */,
 				C0600000000000000000C062 /* CosmosMeshes.swift */,
 				C0600000000000000000C063 /* CosmosGlow.swift */,
 				C0600000000000000000C065 /* CosmosSystem.swift */,
@@ -987,6 +997,7 @@
 			name = SceneViewDemo;
 			packageProductDependencies = (
 				A80000010000000000000001 /* SceneViewSwift */,
+				A80000010000000000000003 /* SceneViewDepthML */,
 				FB2000000000000000000002 /* FirebaseAnalyticsCore */,
 				FB2000000000000000000003 /* FirebaseCrashlytics */,
 				FB2000000000000000000004 /* FirebaseMessaging */,
@@ -1327,6 +1338,7 @@
 				C10000000000000000000062 /* DoublePendulumDemo.swift in Sources */,
 				C0500000000000000000C051 /* CosmosDemo.swift in Sources */,
 				C5D0000000000000000C5D11 /* ContactShadowPreviewDemo.swift in Sources */,
+				5CA00000000000000000A001 /* SecondaryCameraDemo.swift in Sources */,
 				C0500000000000000000C052 /* CosmosMeshes.swift in Sources */,
 				C0500000000000000000C053 /* CosmosGlow.swift in Sources */,
 				C0500000000000000000C055 /* CosmosSystem.swift in Sources */,
@@ -1428,6 +1440,7 @@
 				BD016517EAC148510B51E258 /* DoublePendulumScene.swift in Sources */,
 				C0500000000000000000C054 /* CosmosScene.swift in Sources */,
 				C5D0000000000000000C5D12 /* ContactShadowPreviewScene.swift in Sources */,
+				5CA00000000000000000A002 /* SecondaryCameraScene.swift in Sources */,
 				CDDC40367454570BA7AF147F /* DynamicSkyScene.swift in Sources */,
 				595BE7B36EE44F0893381277 /* EnvironmentScene.swift in Sources */,
 				A8F7A49A69BCF88DD6C97314 /* GeometryScene.swift in Sources */,
@@ -1451,6 +1464,7 @@
 				491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */,
 				FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */,
 				1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */,
+				C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1485,6 +1499,7 @@
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
 				F00000000000000000000073 /* DemoRegistryGuardTests.swift in Sources */,
+				5CA00000000000000000A003 /* SecondaryCameraMathTests.swift in Sources */,
 				F000000000000000000000A1 /* ARExperienceModelTests.swift in Sources */,
 				A10000000000000000002962 /* AssetSourceProbeTests.swift in Sources */,
 				A10000000000000000004D04 /* HDPackTests.swift in Sources */,
@@ -1855,6 +1870,10 @@
 		A80000010000000000000001 /* SceneViewSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SceneViewSwift;
+		};
+		A80000010000000000000003 /* SceneViewDepthML */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SceneViewDepthML;
 		};
 		FB2000000000000000000002 /* FirebaseAnalyticsCore */ = {
 			isa = XCSwiftPackageProductDependency;

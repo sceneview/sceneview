@@ -102,6 +102,15 @@ android {
             includeAndroidResources = true
         }
     }
+
+    sourceSets {
+        test {
+            // The ML depth scale fit is checked against the same JSON vectors on both
+            // platforms: one file, owned by the Swift test target, read here as a JVM
+            // test resource (DepthScaleFitSharedVectorsTest).
+            resources.srcDir rootProject.file('SceneViewSwift/Tests/SceneViewSwiftTests/Resources')
+        }
+    }
 }
 
 // AGP 9 ships built-in Kotlin support, so `org.jetbrains.kotlin.android` is gone
@@ -161,6 +170,8 @@ dependencies {
     // CollaborativeSessionTest drive the session's I/O scope deterministically
     // instead of racing Dispatchers.Default against a wall-clock timeout (#2091).
     testImplementation libs.kotlin.coroutines.test
+    // Parses the cross-platform ML depth vectors (no serialization plugin needed).
+    testImplementation libs.kotlinx.serialization.json
     // The Xr*Node JVM tests exercise pure-Kotlin mesh/joint math on SceneView's
     // own `Position` type and never load `androidx.xr.arcore`, so the XR artifact
     // is intentionally NOT a test dependency — keeping the test classpath identical

@@ -24,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -484,10 +485,6 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // consume the pending id so a config change doesn't replay it.
     val pendingId by (activity?.pendingDemoIdFlow?.collectAsState()
         ?: remember { MutableStateFlow<String?>(null) }.collectAsState())
-    // Capture the launch-time deep-link id ONCE, so NavHost picks the right
-    // start destination on first composition. The LaunchedEffect below still
-    // handles subsequent intents (onNewIntent → pendingDemoIdFlow updates).
-    val initialDemo = remember { activity?.pendingDemoIdFlow?.value }
     // "Open with SceneView" (#3482). Staging is async, so this always arrives after the first
     // composition — never as a NavHost start destination. The Model Viewer is the target because
     // it is the app's flagship viewer: framing, lighting, animation and the View-in-AR handoff are
@@ -530,18 +527,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         activity?.consumePendingPushDemo()
     }
 
-    LaunchedEffect(pendingId) {
-        val id = pendingId ?: return@LaunchedEffect
-        // If the cold-start `initialDemo` already matches `pendingId`, NavHost picked the
-        // demo as its start destination — navigating here would push a SECOND instance,
-        // destroying the first one's remember{} state (and any one-shot flags like
-        // `DemoSettings.arPendingPlaybackFile` that were already consumed). Just clear
-        // the pending id so config changes don't replay it.
-        if (id != initialDemo) {
-            navController.navigate("demo/$id")
-        }
-        activity?.consumePendingDemo()
-    }
+    PendingDemoNavigation(navController, pendingId) { activity?.consumePendingDemo() }
 
     // The NavHost and the bug-report sheet share one Box. The Play update
     // snackbar is RootScreen's own — its Scaffold places it above the bottom
@@ -550,7 +536,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-            startDestination = if (initialDemo != null) "demo/$initialDemo" else "list",
+            startDestination = "list",
             // Material shared-axis X (#3406): both screens move a short distance in the
             // same direction while they cross-fade, on `duration-medium` /
             // `ease-expressive` from DESIGN.md. The full-window slide this replaced was
@@ -701,6 +687,20 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
         }
     }
+    }
+}
+
+/** Pushes a deep-linked demo above Home so leaving it disposes all destination-scoped work. */
+@Composable
+internal fun PendingDemoNavigation(
+    navController: NavHostController,
+    pendingId: String?,
+    onConsumed: () -> Unit,
+) {
+    LaunchedEffect(pendingId) {
+        val id = pendingId ?: return@LaunchedEffect
+        navController.navigate("demo/$id")
+        onConsumed()
     }
 }
 

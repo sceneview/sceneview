@@ -18,8 +18,10 @@ public final class io/github/sceneview/ar/ARCameraPermissionState {
 }
 
 public final class io/github/sceneview/ar/ARCoachingOverlayKt {
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
-	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceCue;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/ui/Modifier;Lio/github/sceneview/ar/ArTrackingHint;ZLandroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/foundation/layout/PaddingValues;Landroidx/compose/runtime/Composer;II)V
+	public static final synthetic fun ARCoachingOverlay (Landroidx/compose/foundation/layout/BoxScope;Lio/github/sceneview/ar/ArGuidanceState;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
 }
 
 public abstract class io/github/sceneview/ar/ARConfigDowngrade {
@@ -603,26 +605,53 @@ public final class io/github/sceneview/ar/ArGuidanceCue : java/lang/Enum {
 }
 
 public final class io/github/sceneview/ar/ArGuidanceKt {
-	public static final fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final synthetic fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final fun rememberArGuidanceState (Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/ar/core/TrackingFailureReason;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
+	public static final fun rememberArGuidanceState (ZZZLcom/google/ar/core/TrackingFailureReason;Lio/github/sceneview/ar/PlacementSurface;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/ArGuidanceState;
 }
 
 public final class io/github/sceneview/ar/ArGuidanceState {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/ArGuidanceState$Companion;
 	public static final field FOUND_HOLD_MS J
+	public static final field HINT_MIN_SHOWN_MS J
+	public static final field HINT_STABLE_MS J
 	public static final field INITIALIZING_DELAY_MS J
 	public static final field MIN_DELAY_MS J
+	public static final field MIN_SHOWN_MS J
+	public static final field RECOVER_STABLE_MS J
+	public static final field REENTER_STABLE_MS J
+	public static final field SCAN_LINGER_MS J
 	public fun <init> ()V
 	public fun <init> (Lio/github/sceneview/ar/PlacementSurface;)V
 	public synthetic fun <init> (Lio/github/sceneview/ar/PlacementSurface;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getCue ()Lio/github/sceneview/ar/ArGuidanceCue;
+	public final fun getHint ()Lio/github/sceneview/ar/ArTrackingHint;
+	public final fun getScanLingering ()Z
 	public final fun getSurface ()Lio/github/sceneview/ar/PlacementSurface;
 	public final fun isCoaching ()Z
 	public final fun nextTransitionDelayMillis (J)Ljava/lang/Long;
 	public final fun update (Lio/github/sceneview/ar/PlacementPhase;JJ)V
+	public final fun update (Lio/github/sceneview/ar/PlacementPhase;JLcom/google/ar/core/TrackingFailureReason;J)V
+	public final fun update (Lio/github/sceneview/ar/PlaneDiscoveryPhase;Lcom/google/ar/core/TrackingFailureReason;J)V
 }
 
 public final class io/github/sceneview/ar/ArGuidanceState$Companion {
+}
+
+public final class io/github/sceneview/ar/ArTrackingHint : java/lang/Enum {
+	public static final field Companion Lio/github/sceneview/ar/ArTrackingHint$Companion;
+	public static final field LOW_DETAIL Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field NONE Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field TOO_DARK Lio/github/sceneview/ar/ArTrackingHint;
+	public static final field TOO_FAST Lio/github/sceneview/ar/ArTrackingHint;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/ArTrackingHint;
+	public static fun values ()[Lio/github/sceneview/ar/ArTrackingHint;
+}
+
+public final class io/github/sceneview/ar/ArTrackingHint$Companion {
+	public final fun from (Lcom/google/ar/core/TrackingFailureReason;)Lio/github/sceneview/ar/ArTrackingHint;
 }
 
 public final class io/github/sceneview/ar/AssetTicket {
@@ -643,6 +672,7 @@ public final class io/github/sceneview/ar/AutoPlacementCandidate {
 	public static final field $stable I
 	public final fun createAnchor ()Lio/github/sceneview/ar/AutoPlacementResult;
 	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPlaneOrNull ()Lcom/google/ar/core/Plane;
 	public final fun getPose ()Lcom/google/ar/core/Pose;
 }
 
@@ -650,6 +680,7 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 	public static final field $stable I
 	public final fun getAnchor ()Lcom/google/ar/core/Anchor;
 	public final fun getPlane ()Lcom/google/ar/core/Plane;
+	public final fun getPlaneOrNull ()Lcom/google/ar/core/Plane;
 	public final fun getPose ()Lcom/google/ar/core/Pose;
 }
 
@@ -657,7 +688,8 @@ public final class io/github/sceneview/ar/AutoPlacementSceneKt {
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
-	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLandroidx/compose/foundation/layout/PaddingValues;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
+	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
 	public static final fun findAutoPlacementSurface (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;)Lio/github/sceneview/ar/AutoPlacementCandidate;
 	public static synthetic fun findAutoPlacementSurface$default (Lcom/google/ar/core/Frame;Ljava/util/Collection;IILio/github/sceneview/ar/PlacementSurface;ILjava/lang/Object;)Lio/github/sceneview/ar/AutoPlacementCandidate;
 	public static final fun rememberAutoPlacementState (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/ar/AutoPlacementState;
@@ -684,6 +716,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getScaleFactor ()F
 	public final fun getSelectionGeneration ()I
 	public final fun getSessionGeneration ()I
+	public final fun getShowsSelectionRing ()Z
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun getWantsSurface ()Z
 	public final fun isAdjusting ()Z
@@ -699,6 +732,8 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun scaleTo (F)V
 	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun selectPlacement ()V
+	public final fun setShowsSelectionRing (Z)V
+	public final fun toggleBaseScale ()V
 	public final fun withdrawRequest ()V
 }
 
@@ -1797,6 +1832,169 @@ public final class io/github/sceneview/ar/collaborative/PlacedNode {
 
 public final class io/github/sceneview/ar/collaborative/RememberCollaborativeSessionKt {
 	public static final fun rememberCollaborativeSession (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;IZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/collaborative/CollaborativeSession;
+}
+
+public final class io/github/sceneview/ar/depth/ArDepthFrame {
+	public static final field $stable I
+	public static final field MAX_U16 I
+	public static final field MAX_U8 I
+	public static final field MM_PER_METER F
+	public fun <init> (JIILjava/nio/ShortBuffer;Ljava/nio/ByteBuffer;Lio/github/sceneview/ar/depth/DepthIntrinsics;Lcom/google/ar/core/Pose;Lio/github/sceneview/ar/depth/ArDepthFrame$Source;)V
+	public final fun confidenceAt (II)F
+	public final fun depthMetersAt (II)F
+	public final fun getCameraPose ()Lcom/google/ar/core/Pose;
+	public final fun getConfidence ()Ljava/nio/ByteBuffer;
+	public final fun getHeight ()I
+	public final fun getIntrinsics ()Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public final fun getMillimetres ()Ljava/nio/ShortBuffer;
+	public final fun getSource ()Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public final fun getTimestampNs ()J
+	public final fun getWidth ()I
+}
+
+public final class io/github/sceneview/ar/depth/ArDepthFrame$Source : java/lang/Enum {
+	public static final field Ml Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public static final field Native Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+	public static fun values ()[Lio/github/sceneview/ar/depth/ArDepthFrame$Source;
+}
+
+public final class io/github/sceneview/ar/depth/DepthIntrinsics {
+	public static final field $stable I
+	public fun <init> (FFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/DepthIntrinsics;FFFFILjava/lang/Object;)Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCx ()F
+	public final fun getCy ()F
+	public final fun getFx ()F
+	public final fun getFy ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthSession : java/io/Closeable {
+	public static final field $stable I
+	public static final field CAPTURE_POOL I
+	public static final field MAX_ANCHORS I
+	public static final field MAX_CONSECUTIVE_ERRORS I
+	public static final field MAX_PLANES I
+	public static final field MS_PER_SECOND F
+	public static final field NANOS_PER_MS F
+	public static final field NANOS_PER_SECOND F
+	public static final field OUTPUT_POOL I
+	public static final field STATS_WINDOW I
+	public static final field STILL_ROTATION_RAD F
+	public static final field STILL_TRANSLATION_M F
+	public static final field TAG Ljava/lang/String;
+	public fun <init> (Lio/github/sceneview/ar/depth/MonocularDepthEstimator;FLandroid/content/Context;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/depth/MonocularDepthEstimator;FLandroid/content/Context;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public final fun getDepthFrames ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun onSessionUpdated (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public abstract interface class io/github/sceneview/ar/depth/MlDepthState {
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Failed : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Throwable;)V
+	public final fun component1 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/Throwable;)Lio/github/sceneview/ar/depth/MlDepthState$Failed;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$Failed;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ljava/lang/Throwable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Preparing : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/depth/MlDepthState$Preparing;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Running : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/depth/MlDepthStats;)V
+	public final fun component1 ()Lio/github/sceneview/ar/depth/MlDepthStats;
+	public final fun copy (Lio/github/sceneview/ar/depth/MlDepthStats;)Lio/github/sceneview/ar/depth/MlDepthState$Running;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$Running;Lio/github/sceneview/ar/depth/MlDepthStats;ILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$Running;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStats ()Lio/github/sceneview/ar/depth/MlDepthStats;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Throttled : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/depth/MlDepthState$Throttled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;IILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchors ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthStats {
+	public static final field $stable I
+	public fun <init> (FFFIIFZ)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()F
+	public final fun component7 ()Z
+	public final fun copy (FFFIIFZ)Lio/github/sceneview/ar/depth/MlDepthStats;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthStats;FFFIIFZILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchors ()I
+	public final fun getHolding ()Z
+	public final fun getInliers ()I
+	public final fun getLastInferenceMs ()F
+	public final fun getMedianInferenceMs ()F
+	public final fun getPublishedHz ()F
+	public final fun getRmsRelativeError ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class io/github/sceneview/ar/depth/MonocularDepthEstimator : java/io/Closeable {
+	public abstract fun estimate ([B[F)V
+	public abstract fun getInputHeight ()I
+	public abstract fun getInputWidth ()I
+	public abstract fun getOutputHeight ()I
+	public abstract fun getOutputKind ()Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public abstract fun getOutputWidth ()I
+	public abstract fun warmUp ()V
+}
+
+public final class io/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind : java/lang/Enum {
+	public static final field AffineInverse Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static final field Metric Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static fun values ()[Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
 }
 
 public final class io/github/sceneview/ar/light/LightEstimator {

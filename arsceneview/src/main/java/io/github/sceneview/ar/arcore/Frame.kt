@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.arcore
 
 import android.media.Image
+import android.util.Log
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.Config
@@ -12,8 +13,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.DeadlineExceededException
 import com.google.ar.core.exceptions.FatalException
 import com.google.ar.core.exceptions.NotYetAvailableException
+import com.google.ar.core.exceptions.ResourceExhaustedException
 import dev.romainguy.kotlin.math.Ray
 import io.github.sceneview.utils.fps
 import io.github.sceneview.utils.intervalSeconds
@@ -117,13 +120,20 @@ fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
  * configs should pair this accessor with the `cameraConfigFilter { … }` DSL on `ARSceneView`
  * (or pass a custom `sessionCameraConfig`).
  *
- * Returns `null` if the image is not yet available — typically only for the first frame after
- * session resume, or while the session is paused (`NotYetAvailableException` from ARCore).
+ * Returns `null`, never throws, when ARCore has no image to give for this frame:
+ * - `NotYetAvailableException` — the first frames after session resume, or a paused session.
+ * - `DeadlineExceededException` — this [Frame] is no longer ARCore's current frame. A frame
+ *   stored in a field and read later (a button tap, a coroutine) is always stale by then, so
+ *   **acquire inside `onSessionUpdated`, on the frame you were just handed**. The acquired
+ *   [Image] stays valid after the frame moves on: hand it to a background thread and convert
+ *   it there.
+ * - `ResourceExhaustedException` — every slot of ARCore's CPU image pool is still held by
+ *   images that were not closed yet. Close the previous image and try on a later frame.
  *
  * **The returned [Image] is caller-owned** — close it via `use { }` or an explicit
- * `image.close()` in a `finally` block. Failing to close leaks a native handle and ARCore will
- * eventually throw `ResourceExhaustedException` after a couple of frames (the CPU image pool
- * is typically only 2–3 slots deep).
+ * `image.close()` in a `finally` block. Failing to close leaks a native handle and every later
+ * call returns `null` once the CPU image pool is exhausted (it is typically only 2–3 slots
+ * deep).
  *
  * ```kotlin
  * onSessionUpdated = { _, frame ->
@@ -137,11 +147,32 @@ fun Frame.fps(other: Frame?): Double = timestamp.fps(other?.timestamp)
  *
  * @see Frame.acquireCameraImage
  */
-fun Frame.cameraImage(): Image? = try {
-    acquireCameraImage()
+fun Frame.cameraImage(): Image? = acquireCpuImageOrNull { acquireCameraImage() }
+
+/**
+ * Runs [acquire] and maps ARCore's three "no image for this frame" exceptions to `null`:
+ * `NotYetAvailableException` (warm-up), `DeadlineExceededException` (stale frame) and
+ * `ResourceExhaustedException` (image pool full). Any other exception propagates.
+ *
+ * Shared by the CPU image accessors so a caller on the render thread never crashes on a
+ * transient condition it cannot act on (Play vitals, 4.47.0: `DeadlineExceededException` from
+ * `acquireCameraImage` on a stored frame).
+ */
+internal inline fun <T : Any> acquireCpuImageOrNull(acquire: () -> T): T? = try {
+    acquire()
 } catch (_: NotYetAvailableException) {
     null
+} catch (_: DeadlineExceededException) {
+    null
+} catch (e: ResourceExhaustedException) {
+    // Unlike the two cases above, a full pool usually means the caller leaks images (every
+    // acquired Image must be closed). Returning null keeps the render thread alive; the warning
+    // keeps the leak visible.
+    Log.w(CPU_IMAGE_LOG_TAG, "CPU image pool exhausted: close every acquired Image", e)
+    null
 }
+
+internal const val CPU_IMAGE_LOG_TAG = "SceneView.CpuImage"
 
 /**
  * Acquires the smoothed full-resolution **depth** image (16-bit per pixel, ARGB_8888-packed

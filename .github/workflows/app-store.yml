@@ -680,13 +680,14 @@ jobs:
           echo "Waiting 120s for Apple to process the build..."
           sleep 120
           # Exit 75 = DEFERRED behind an identified macOS version holding the
-          # non-live slot: green with a notice, as on the iOS leg.
+          # non-live slot: green with a notice. Unlike iOS, no catch-up workflow
+          # retries macOS; the program's notice gives the manual follow-up.
           set +e
           $RUNNER_TEMP/asc-venv/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/app_store_submit.py"
           rc=$?
           set -e
           if [ "$rc" -eq 75 ]; then
-            echo "::notice::macOS submission deferred — a macOS version already holds App Store Connect's non-live slot."
+            echo "::notice::macOS submission deferred — see the preceding notice for the manual follow-up; app-store-catch-up.yml covers iOS only."
             exit 0
           fi
           exit "$rc"

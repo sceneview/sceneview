@@ -497,4 +497,26 @@ class AutoPlacementStateTest {
         assertEquals(PlacementPhase.PLACED, state.phase)
         assertEquals(1, state.placementsCreated)
     }
+
+    @Test fun `double-tap toggles only a standing placement and selects it`() {
+        val state = AutoPlacementState()
+        var toggles = 0
+        state.scaleToggleAction = { toggles++ }
+        state.toggleBaseScale()
+        assertEquals("nothing placed yet", 0, toggles)
+        state.requestPlacement()
+        state.onFrame(FrameInput(0, true, true)) { true }
+        state.deselectPlacement()
+        assertFalse(state.isSelected)
+        state.toggleBaseScale()
+        assertEquals(1, toggles)
+        assertTrue("a double-tap on the object selects it too", state.isSelected)
+        state.onFrame(FrameInput(16, false, true, false))
+        state.toggleBaseScale()
+        assertEquals("never during tracking loss", 1, toggles)
+    }
+
+    @Test fun `the selection ring is on by default`() {
+        assertTrue(AutoPlacementState().showsSelectionRing)
+    }
 }

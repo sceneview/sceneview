@@ -7,7 +7,7 @@
 // @status      working
 // @icon        move.3d
 // @iosOnly     true
-// @order       26
+// @order       27
 // @tags        ar,pose,transform,gesture,anchor
 // @addedIn     4.15.2
 // @updatedIn   4.46.0

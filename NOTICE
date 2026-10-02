@@ -65,6 +65,28 @@ sample of the ARCore SDK for Android (Copyright 2023 Google LLC, Apache License
 2.0).
 
 --------------------------------------------------------------------------------
+Depth Anything V2 Small  —  model weights (SceneViewDepthML, iOS)
+--------------------------------------------------------------------------------
+
+    Depth Anything V2 (Small)
+    Copyright 2024 Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiaogang
+    Xu, Jiashi Feng, Hengshuang Zhao
+    https://github.com/DepthAnything/Depth-Anything-V2
+
+    Core ML conversion (DepthAnythingV2SmallF16INT8.mlpackage, default, and
+    DepthAnythingV2SmallF16.mlpackage) by Apple
+    https://huggingface.co/apple/coreml-depth-anything-v2-small
+    revision cfef6f6f2a70783dedc0bfae40cecbc2052285d3
+
+    Licensed under the Apache License, Version 2.0.
+
+The weights are NOT vendored in this repository nor in the SceneViewDepthML
+Swift package. DepthModelStore downloads them at runtime, only when the app
+asks for it, from the pinned revision above and checks every file against its
+SHA-256. Only the Small variant is supported: the Base and Large checkpoints of
+Depth Anything V2 are licensed CC-BY-NC-4.0 and must not be used.
+
+--------------------------------------------------------------------------------
 Earcut and Delaunator  —  triangulation (sceneview-core)
 --------------------------------------------------------------------------------
 
@@ -90,6 +112,27 @@ License.
 
 The full MIT and ISC license texts are reproduced in the header of each file
 listed in the two sections above.
+
+--------------------------------------------------------------------------------
+Depth Anything V2 Small  —  depth model (arsceneview-depth-ml)
+--------------------------------------------------------------------------------
+
+    Depth Anything V2 (Small)
+    Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiaogang Xu, Jiashi Feng,
+    Hengshuang Zhao — "Depth Anything V2" (NeurIPS 2024)
+    https://github.com/DepthAnything/Depth-Anything-V2
+    https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf
+
+    Licensed under the Apache License, Version 2.0.
+
+The arsceneview-depth-ml module runs the LiteRT conversion published at
+https://huggingface.co/litert-community/depth-anything-v2-small (revision
+178427e448dbf4da93b1e7b1b2abc103ad329bd6, file
+tflite/depth_anything_v2_small_wi8_afp32.tflite, Apache License 2.0). The model
+file is NOT included in this repository or in any SceneView artifact: the app
+downloads it on first use and checks its SHA-256. Only the Small variant is
+Apache-2.0; the Base, Large and Giant variants are CC-BY-NC-4.0 and must not be
+used with SceneView.
 
 ================================================================================
 

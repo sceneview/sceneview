@@ -353,4 +353,34 @@ class DepthVisualizationTest {
         assertTrue(DepthVisualization.FAR_MM_DEFAULT > DepthVisualization.NEAR_MM_DEFAULT)
         assertTrue(DepthVisualization.NEAR_MM_DEFAULT > 0)
     }
+
+    // ── millimetresToArgb (ML depth, packed ShortBuffer) ───────────────────
+
+    @Test
+    fun `millimetresToArgb matches the byte-buffer pass at every rotation`() {
+        // An ML map is packed (stride = width) and holds the same unsigned millimetres; it
+        // must colour and turn exactly like the ARCore image it stands in for.
+        val packed = java.nio.ShortBuffer.wrap(ShortArray(gridDepths.size) { gridDepths[it].toShort() })
+        for (degrees in intArrayOf(0, 90, 180, 270)) {
+            assertArrayEquals(
+                "rotation $degrees",
+                rotate(degrees),
+                DepthVisualization.millimetresToArgb(packed, gridWidth, gridHeight, rotationDegrees = degrees),
+            )
+        }
+    }
+
+    @Test
+    fun `millimetresToArgb keeps zero transparent and reads past 32767 mm unsigned`() {
+        val packed = java.nio.ShortBuffer.wrap(shortArrayOf(0, 40_000.toShort()))
+        val out = DepthVisualization.millimetresToArgb(packed, 2, 1)
+        assertEquals(0, out[0])
+        // 40 m clamps to the far end of the ramp rather than wrapping negative.
+        assertEquals(DepthVisualization.falseColorArgb(1f), out[1])
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `millimetresToArgb rejects a map smaller than its dimensions`() {
+        DepthVisualization.millimetresToArgb(java.nio.ShortBuffer.allocate(5), gridWidth, gridHeight)
+    }
 }

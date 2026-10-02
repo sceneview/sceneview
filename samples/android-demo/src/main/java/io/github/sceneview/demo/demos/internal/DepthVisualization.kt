@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.ShortBuffer
 import kotlin.math.max
 import kotlin.math.min
 
@@ -210,13 +211,7 @@ internal object DepthVisualization {
                     // Where this sample lands once the image is turned clockwise. A
                     // quarter turn maps source (x, y) across the swapped axes, so the
                     // destination row is derived from x, not from y.
-                    val outIndex = when (rotation) {
-                        90 -> (x * outWidth) + (height - 1 - y)
-                        180 -> ((height - 1 - y) * outWidth) + (width - 1 - x)
-                        270 -> ((width - 1 - x) * outWidth) + y
-                        else -> (y * outWidth) + x
-                    }
-                    out[outIndex] = argb
+                    out[rotatedIndex(x, y, width, height, outWidth, rotation)] = argb
                 }
             }
         } finally {
@@ -224,6 +219,47 @@ internal object DepthVisualization {
         }
         return out
     }
+
+    /**
+     * Same false-colour pass as [depthBufferToArgb], for a packed `width × height` map of
+     * unsigned millimetres — the layout of `ArDepthFrame.millimetres`, which an ML depth
+     * estimate fills in the same landscape sensor frame as ARCore's depth image, so the same
+     * [rotationDegrees] makes it upright. `0` stays transparent.
+     */
+    fun millimetresToArgb(
+        millimetres: ShortBuffer,
+        width: Int,
+        height: Int,
+        nearMm: Int = NEAR_MM_DEFAULT,
+        farMm: Int = FAR_MM_DEFAULT,
+        rotationDegrees: Int = 0,
+    ): IntArray {
+        require(width > 0 && height > 0) { "depth map must be non-empty (got $width x $height)" }
+        require(millimetres.limit() >= width * height) {
+            "map holds ${millimetres.limit()} samples, needs ${width * height}"
+        }
+        val rotation = normalizeRotation(rotationDegrees)
+        val outWidth = rotatedWidth(width, height, rotation)
+        val out = IntArray(width * height)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val mm = millimetres.get(y * width + x).toInt() and 0xFFFF
+                val normalized = normalize(mm, nearMm, farMm)
+                out[rotatedIndex(x, y, width, height, outWidth, rotation)] =
+                    if (normalized == null) ARGB_UNKNOWN else falseColorArgb(normalized)
+            }
+        }
+        return out
+    }
+
+    /** Destination index of source sample `(x, y)` once the image is turned [rotation]° clockwise. */
+    private fun rotatedIndex(x: Int, y: Int, width: Int, height: Int, outWidth: Int, rotation: Int): Int =
+        when (rotation) {
+            90 -> (x * outWidth) + (height - 1 - y)
+            180 -> ((height - 1 - y) * outWidth) + (width - 1 - x)
+            270 -> ((width - 1 - x) * outWidth) + y
+            else -> (y * outWidth) + x
+        }
 
     /**
      * Clamp a UI slider value to the `[0, 1]` Compose contract. Hoisted here so the
