@@ -7,4 +7,18 @@
 <resources>
     <string name="demo_ar_depth_visualization_title">Depth Visualization</string>
     <string name="demo_ar_depth_visualization_subtitle">False-color depth map blended with camera</string>
+    <!-- Depth source pill: ARCore's Depth API or the on-device ML estimate. -->
+    <string name="demo_ar_depth_source_arcore">ARCore</string>
+    <string name="demo_ar_depth_source_ml">ML</string>
+    <!-- ML depth status card. -->
+    <string name="demo_ar_depth_ml_title">ML depth · Depth Anything V2 Small</string>
+    <string name="demo_ar_depth_ml_downloading">Downloading the model (27.7 MB, once) — %1$d %%</string>
+    <string name="demo_ar_depth_ml_preparing">Preparing the model…</string>
+    <string name="demo_ar_depth_ml_waiting">Scaling to metres needs surfaces — move slowly over the floor and a table (%1$d anchors)</string>
+    <string name="demo_ar_depth_ml_running">%1$d ms per estimate · %2$.1f Hz · %3$d anchors · %4$d %% fit error</string>
+    <string name="demo_ar_depth_ml_holding">Holding the last scale — find a surface again</string>
+    <string name="demo_ar_depth_ml_throttled">Paused: the phone is too hot</string>
+    <string name="demo_ar_depth_ml_failed">Could not load the depth model: %1$s</string>
+    <string name="demo_ar_depth_ml_credit">Apache-2.0 · runs on this device · near 0.3 m to far 5 m</string>
+    <string name="demo_ar_depth_ml_download_meter">Model download progress</string>
 </resources>

@@ -1799,6 +1799,168 @@ public final class io/github/sceneview/ar/collaborative/RememberCollaborativeSes
 	public static final fun rememberCollaborativeSession (Lio/github/sceneview/ar/collaborative/CollaborativeTransport;Ljava/lang/String;IZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/collaborative/CollaborativeSession;
 }
 
+public final class io/github/sceneview/ar/depth/ArDepthFrame {
+	public static final field $stable I
+	public static final field MAX_U16 I
+	public static final field MAX_U8 I
+	public static final field MM_PER_METER F
+	public fun <init> (JIILjava/nio/ShortBuffer;Ljava/nio/ByteBuffer;Lio/github/sceneview/ar/depth/DepthIntrinsics;Lcom/google/ar/core/Pose;Lio/github/sceneview/ar/depth/DepthFrameSource;)V
+	public final fun confidenceAt (II)F
+	public final fun depthMetersAt (II)F
+	public final fun getCameraPose ()Lcom/google/ar/core/Pose;
+	public final fun getConfidence ()Ljava/nio/ByteBuffer;
+	public final fun getHeight ()I
+	public final fun getIntrinsics ()Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public final fun getMillimetres ()Ljava/nio/ShortBuffer;
+	public final fun getSource ()Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public final fun getTimestampNs ()J
+	public final fun getWidth ()I
+}
+
+public final class io/github/sceneview/ar/depth/DepthFrameSource : java/lang/Enum {
+	public static final field ARCORE Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public static final field ML Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/DepthFrameSource;
+	public static fun values ()[Lio/github/sceneview/ar/depth/DepthFrameSource;
+}
+
+public final class io/github/sceneview/ar/depth/DepthIntrinsics {
+	public static final field $stable I
+	public fun <init> (FFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/DepthIntrinsics;FFFFILjava/lang/Object;)Lio/github/sceneview/ar/depth/DepthIntrinsics;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCx ()F
+	public final fun getCy ()F
+	public final fun getFx ()F
+	public final fun getFy ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthSession : java/io/Closeable {
+	public static final field $stable I
+	public static final field CAPTURE_POOL I
+	public static final field MAX_ANCHORS I
+	public static final field MAX_PLANES I
+	public static final field MS_PER_SECOND F
+	public static final field NANOS_PER_MS F
+	public static final field NANOS_PER_SECOND F
+	public static final field OUTPUT_POOL I
+	public static final field STATS_WINDOW I
+	public static final field STILL_ROTATION_RAD F
+	public static final field STILL_TRANSLATION_M F
+	public static final field TAG Ljava/lang/String;
+	public fun <init> (Lio/github/sceneview/ar/depth/MonocularDepthEstimator;FLandroid/content/Context;)V
+	public synthetic fun <init> (Lio/github/sceneview/ar/depth/MonocularDepthEstimator;FLandroid/content/Context;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public final fun getDepthFrames ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getState ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun onSessionUpdated (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+}
+
+public abstract interface class io/github/sceneview/ar/depth/MlDepthState {
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Failed : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Throwable;)V
+	public final fun component1 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/Throwable;)Lio/github/sceneview/ar/depth/MlDepthState$Failed;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$Failed;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ljava/lang/Throwable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Preparing : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/depth/MlDepthState$Preparing;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Running : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/depth/MlDepthStats;)V
+	public final fun component1 ()Lio/github/sceneview/ar/depth/MlDepthStats;
+	public final fun copy (Lio/github/sceneview/ar/depth/MlDepthStats;)Lio/github/sceneview/ar/depth/MlDepthState$Running;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$Running;Lio/github/sceneview/ar/depth/MlDepthStats;ILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$Running;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getStats ()Lio/github/sceneview/ar/depth/MlDepthStats;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$Throttled : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/depth/MlDepthState$Throttled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors : io/github/sceneview/ar/depth/MlDepthState {
+	public static final field $stable I
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;IILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthState$WaitingForAnchors;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchors ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/depth/MlDepthStats {
+	public static final field $stable I
+	public fun <init> (FFFIIFZ)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun component6 ()F
+	public final fun component7 ()Z
+	public final fun copy (FFFIIFZ)Lio/github/sceneview/ar/depth/MlDepthStats;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/depth/MlDepthStats;FFFIIFZILjava/lang/Object;)Lio/github/sceneview/ar/depth/MlDepthStats;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAnchors ()I
+	public final fun getHolding ()Z
+	public final fun getInliers ()I
+	public final fun getLastInferenceMs ()F
+	public final fun getMedianInferenceMs ()F
+	public final fun getPublishedHz ()F
+	public final fun getRmsRelativeError ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class io/github/sceneview/ar/depth/MonocularDepthEstimator : java/io/Closeable {
+	public abstract fun estimate ([B[F)V
+	public abstract fun getInputHeight ()I
+	public abstract fun getInputWidth ()I
+	public abstract fun getOutputHeight ()I
+	public abstract fun getOutputKind ()Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public abstract fun getOutputWidth ()I
+	public abstract fun warmUp ()V
+}
+
+public final class io/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind : java/lang/Enum {
+	public static final field AffineInverse Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static final field Metric Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+	public static fun values ()[Lio/github/sceneview/ar/depth/MonocularDepthEstimator$OutputKind;
+}
+
 public final class io/github/sceneview/ar/light/LightEstimator {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/light/LightEstimator$Companion;

@@ -8,6 +8,27 @@ import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ToggleButtonDefaults
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableFloatStateOf
+import io.github.sceneview.ar.depth.ArDepthFrame
+import io.github.sceneview.ar.depth.MlDepthSession
+import io.github.sceneview.ar.depth.MlDepthState
+import io.github.sceneview.ar.depth.ml.DepthAnythingV2Estimator
+import io.github.sceneview.demo.DemoBottomOverlayScope
+import io.github.sceneview.demo.common.ArOverlayMeter
+import io.github.sceneview.demo.common.CardShell
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +105,12 @@ import io.github.sceneview.rememberModelLoader
  * frame to colorize) is acceptable for a demo and keeps the pure colorize logic
  * in JVM-testable Kotlin.
  *
+ * **ML mode.** The pill over the camera switches the source to an on-device estimate —
+ * Depth Anything V2 Small on LiteRT, from `arsceneview-depth-ml` — scaled to metres on
+ * ARCore's planes and feature points by [MlDepthSession]. It works where ARCore's Depth API
+ * does not, so it stays available when the device reports no depth support. The model
+ * (27.7 MB) is downloaded on first use and checked against its SHA-256.
+ *
  * Closes [#1714](https://github.com/sceneview/sceneview/issues/1714).
  */
 @Composable
@@ -124,6 +151,68 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
     // recomposes the Image even though the Bitmap reference is unchanged.
     var depthFrameVersion by remember { mutableStateOf(0) }
 
+    // Which depth feeds the overlay. ML is built only once picked: it downloads a model.
+    var source by remember { mutableStateOf(DepthSource.ARCore) }
+    var downloadProgress by remember { mutableFloatStateOf(0f) }
+    val mlDepth = remember(source) {
+        if (source == DepthSource.Ml) {
+            MlDepthSession(
+                estimator = DepthAnythingV2Estimator(
+                    context = context,
+                    onDownloadProgress = { downloadProgress = it },
+                ),
+                context = context,
+            )
+        } else {
+            null
+        }
+    }
+    DisposableEffect(mlDepth) {
+        onDispose { mlDepth?.close() }
+    }
+    val mlState = mlDepth?.state?.collectAsState()?.value
+
+    /** Uploads one colourised map into the recycled overlay bitmap. */
+    fun upload(pixels: IntArray, outW: Int, outH: Int) {
+        if (depthBitmap == null || outW != bitmapWidth || outH != bitmapHeight) {
+            depthBitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+            bitmapWidth = outW
+            bitmapHeight = outH
+        }
+        depthBitmap?.setPixels(pixels, 0, outW, 0, 0, outW, outH)
+        depthFrameVersion++
+        depthEverReceived = true
+    }
+
+    // Switching source clears the overlay: an ARCore map must never pass for an ML one.
+    LaunchedEffect(source) {
+        depthBitmap = null
+        depthEverReceived = false
+        downloadProgress = 0f
+    }
+
+    // ML maps arrive at up to 5 Hz from the estimator thread; colourise off the main thread.
+    LaunchedEffect(mlDepth) {
+        mlDepth?.depthFrames?.filterNotNull()?.collect { frame: ArDepthFrame ->
+            val rotation = DepthVisualization.displayRotationToDegrees(
+                display?.rotation ?: Surface.ROTATION_0
+            )
+            val pixels = withContext(Dispatchers.Default) {
+                DepthVisualization.millimetresToArgb(
+                    millimetres = frame.millimetres,
+                    width = frame.width,
+                    height = frame.height,
+                    rotationDegrees = rotation,
+                )
+            }
+            upload(
+                pixels,
+                DepthVisualization.rotatedWidth(frame.width, frame.height, rotation),
+                DepthVisualization.rotatedHeight(frame.width, frame.height, rotation),
+            )
+        }
+    }
+
     DemoScaffold(
         title = stringResource(R.string.demo_ar_depth_visualization_title),
         onBack = onBack,
@@ -149,7 +238,7 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                 }
             }
 
-            if (depthSupported == false) {
+            if (depthSupported == false && source == DepthSource.ARCore) {
                 Spacer(Modifier.height(8.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -185,7 +274,7 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
             Slider(
                 value = blend,
                 onValueChange = { blend = DepthVisualization.clampUnit(it) },
-                enabled = depthSupported != false,
+                enabled = depthSupported != false || source == DepthSource.Ml,
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
@@ -203,7 +292,7 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
         // (see #1617) if depth takes a moment to warm up.
         topOverlay = {
             AnimatedVisibility(
-                visible = depthSupported == true && !depthEverReceived,
+                visible = source == DepthSource.ARCore && depthSupported == true && !depthEverReceived,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -224,8 +313,12 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
         // `bottomOverlay` slot, a bottom-aligned Column: they stack instead of sharing
         // the same band, and the banner is laid out against the Settings FAB (#2779).
         bottomOverlay = {
+            DepthSourcePill(source = source, onSelect = { source = it })
+            if (mlState != null) {
+                MlDepthCard(state = mlState, downloadProgress = downloadProgress)
+            }
             // Bottom legend pill — only relevant once we're actually showing depth.
-            if (depthEverReceived && blend > 0.05f) {
+            if (source == DepthSource.ARCore && depthEverReceived && blend > 0.05f) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.6f),
                     contentColor = Color.White,
@@ -288,9 +381,10 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                         Config.DepthMode.DISABLED
                     }
                 },
-                onSessionUpdated = { _, frame: Frame ->
+                onSessionUpdated = { session: Session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
-                    if (depthSupported == true && isTracking) {
+                    mlDepth?.onSessionUpdated(session, frame)
+                    if (source == DepthSource.ARCore && depthSupported == true && isTracking) {
                         val depthImage = runCatching { frame.acquireDepthImage16Bits() }.getOrNull()
                         if (depthImage != null) {
                             try {
@@ -315,20 +409,9 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                                 // is the portrait case (#3184).
                                 val outW = DepthVisualization.rotatedWidth(w, h, rotation)
                                 val outH = DepthVisualization.rotatedHeight(w, h, rotation)
-                                // Reallocate the bitmap if the depth resolution — or the
+                                // Reallocates the bitmap if the depth resolution — or the
                                 // orientation it is displayed at — changed.
-                                if (depthBitmap == null ||
-                                    outW != bitmapWidth ||
-                                    outH != bitmapHeight
-                                ) {
-                                    depthBitmap =
-                                        Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-                                    bitmapWidth = outW
-                                    bitmapHeight = outH
-                                }
-                                depthBitmap?.setPixels(pixels, 0, outW, 0, 0, outW, outH)
-                                depthFrameVersion++
-                                depthEverReceived = true
+                                upload(pixels, outW, outH)
                             } finally {
                                 runCatching { depthImage.close() }
                             }
@@ -353,5 +436,106 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+/** Where the overlay's depth comes from. */
+private enum class DepthSource { ARCore, Ml }
+
+/**
+ * ARCore / ML: the segmented over-media pill of `DESIGN.md` (`mode-pill-*`), the same one
+ * Cosmos uses for its two views — opaque, so it reads on any camera frame in both themes.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun DepthSourcePill(source: DepthSource, onSelect: (DepthSource) -> Unit) {
+    val pill = SceneViewTokens.ModePill
+    val arcore = stringResource(R.string.demo_ar_depth_source_arcore)
+    val ml = stringResource(R.string.demo_ar_depth_source_ml)
+    Surface(
+        shape = CircleShape,
+        color = pill.container,
+        contentColor = pill.onContainer,
+        border = BorderStroke(pill.outlineWidth, pill.outline),
+    ) {
+        ConnectedChoiceRow(
+            options = DepthSource.entries,
+            selected = source,
+            onSelect = onSelect,
+            label = { if (it == DepthSource.Ml) ml else arcore },
+            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.xs),
+            optionTestTag = { if (it == DepthSource.Ml) "depth_source_ml" else "depth_source_arcore" },
+            colors = ToggleButtonDefaults.colors(
+                containerColor = pill.container,
+                contentColor = pill.onContainer,
+                checkedContainerColor = pill.selectedContainer,
+                checkedContentColor = pill.onSelected,
+            ),
+            fillWidth = false,
+        )
+    }
+}
+
+/** Model download meter resolution: one segment per 10 %. */
+private const val DOWNLOAD_SEGMENTS = 10
+
+private const val ML_DEPTH_CARD_TAG = "ml_depth_card"
+
+/**
+ * What the ML estimate is doing, as a `DESIGN.md` AR Overlay Card: the state in plain words,
+ * the measured cost once it runs (median ms, published Hz, anchors kept, fit error), and the
+ * model credit — Depth Anything V2 Small is Apache-2.0, the larger variants are not.
+ */
+@Composable
+private fun DemoBottomOverlayScope.MlDepthCard(state: MlDepthState, downloadProgress: Float) {
+    CardShell(Modifier, ML_DEPTH_CARD_TAG) {
+        Text(
+            text = stringResource(R.string.demo_ar_depth_ml_title),
+            style = SceneViewTokens.Type.card,
+            color = SceneViewTokens.ArOverlay.onScrim,
+        )
+        val downloading = state is MlDepthState.Preparing && downloadProgress > 0f && downloadProgress < 1f
+        val body = when (state) {
+            MlDepthState.Preparing -> if (downloading) {
+                stringResource(R.string.demo_ar_depth_ml_downloading, (downloadProgress * 100).roundToInt())
+            } else {
+                stringResource(R.string.demo_ar_depth_ml_preparing)
+            }
+            is MlDepthState.WaitingForAnchors -> stringResource(R.string.demo_ar_depth_ml_waiting, state.anchors)
+            is MlDepthState.Running -> if (state.stats.holding) {
+                stringResource(R.string.demo_ar_depth_ml_holding)
+            } else {
+                stringResource(
+                    R.string.demo_ar_depth_ml_running,
+                    state.stats.medianInferenceMs.roundToInt(),
+                    state.stats.publishedHz,
+                    state.stats.inliers,
+                    (state.stats.rmsRelativeError * 100).roundToInt(),
+                )
+            }
+            MlDepthState.Throttled -> stringResource(R.string.demo_ar_depth_ml_throttled)
+            is MlDepthState.Failed -> stringResource(
+                R.string.demo_ar_depth_ml_failed,
+                state.error.message ?: state.error.javaClass.simpleName,
+            )
+        }
+        Text(
+            text = body,
+            style = SceneViewTokens.Type.body,
+            color = SceneViewTokens.ArOverlay.onScrimMuted,
+        )
+        if (downloading) {
+            ArOverlayMeter(
+                filled = (downloadProgress * DOWNLOAD_SEGMENTS).toInt(),
+                segments = DOWNLOAD_SEGMENTS,
+                accent = SceneViewTokens.ArOverlay.accentProgress,
+                description = stringResource(R.string.demo_ar_depth_ml_download_meter),
+            )
+        }
+        Text(
+            text = stringResource(R.string.demo_ar_depth_ml_credit),
+            style = SceneViewTokens.Type.caption,
+            color = SceneViewTokens.ArOverlay.onScrimMuted,
+        )
     }
 }

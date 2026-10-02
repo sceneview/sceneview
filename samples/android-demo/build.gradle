@@ -365,6 +365,10 @@ dependencies {
     // SceneView — 3D + AR
     implementation project(":sceneview")
     implementation project(":arsceneview")
+    // ML depth (Depth Anything V2 Small on LiteRT) for the Depth Visualization demo's ML
+    // mode. The model is downloaded on first use and SHA-256 checked: 0 model bytes in the
+    // APK, ~8.6 MB of LiteRT native code per ABI.
+    implementation project(":arsceneview-depth-ml")
 
     // Google Play In-App Updates — Play Core deps come via :samples:common
     // (`api libs.play.app.update*`). Manager + banner live in
