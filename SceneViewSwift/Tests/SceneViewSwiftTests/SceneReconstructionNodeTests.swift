@@ -62,6 +62,9 @@ final class SceneReconstructionNodeTests: XCTestCase {
         let image = try XCTUnwrap(Self.referenceImage())
         let current = ARWorldTrackingConfiguration()
         current.detectionImages = [image]
+        // The iOS Simulator does not store detection images at all (the
+        // getter returns nil right after the setter) — nothing to compare.
+        try XCTSkipIf(current.detectionImages == nil, "detection images not stored on this runtime")
 
         let amended = try XCTUnwrap(
             SceneReconstructionNode.amend(current, with: .mesh)
