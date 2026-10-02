@@ -325,7 +325,7 @@ enum class PlacementCoachingMessage {
     /** Camera back, anchor not yet: "Finding your placement…" */
     FINDING_PLACEMENT,
 
-    /** Just placed: "Drag to move. Pinch or twist to adjust." — once. */
+    /** Just placed: "Drag to move. Pinch to resize. Twist to turn." — once. */
     GESTURE_HINT,
 
     /** A drag left every usable surface: "Keep the object on a surface." */
@@ -351,16 +351,19 @@ enum class PlacementCard {
  */
 const val PLACEMENT_STARTUP_STALL_MS = AR_CAMERA_INIT_SCRIM_TIMEOUT_MS + 1_000L
 
-/** How long the post-placement gesture hint stays on screen, milliseconds. */
-const val PLACEMENT_GESTURE_HINT_MS = 3_500L
+/**
+ * How long the post-placement gesture hint stays on screen, milliseconds — unless the user
+ * starts a gesture first, which dismisses it. Six seconds, as the 3D AR Model Viewer app
+ * holds its "Drag to move" line: three short sentences need the time to be read.
+ */
+const val PLACEMENT_GESTURE_HINT_MS = 6_000L
 
 /**
  * How long the resize read-out lingers after a pinch ends while the model is **not** at
  * real-world size — a window to tap it back to 100 % instead of pinching back through the
  * detent by hand ([#3830](https://github.com/sceneview/sceneview/issues/3830), matching AR
- * Quick Look's persistent "100 %" affordance). Same order of magnitude as
- * [PLACEMENT_GESTURE_HINT_MS] on purpose — both are "the window closes, try the gesture
- * again if you missed it" timings.
+ * Quick Look's persistent "100 %" affordance) — a "the window closes, try the gesture
+ * again if you missed it" timing.
  */
 const val PLACEMENT_SCALE_RESET_WINDOW_MS = 3_500L
 

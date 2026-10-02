@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -39,9 +41,13 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
+import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARCoachingOverlay
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.ArGuidanceCue
+import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
@@ -51,6 +57,8 @@ import io.github.sceneview.ar.arcore.hitTestDepth
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoChromeBottomInset
+import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.demos.internal.MeasureCandidateControl
@@ -194,6 +202,23 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         onDispose { points.forEach { it.anchor.detach() } }
     }
 
+    // The SDK coaching card of the placement flows (and of the 3D AR Model Viewer app) until
+    // the centre ray first lands on a surface. Latched: aiming off a table for a moment later
+    // is measuring, not searching, and must not bring the card back. The QA menu's forced
+    // tracking reason goes through it too.
+    var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    var surfaceSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(candidateReady) { if (candidateReady) surfaceSeen = true }
+    val failure = ForcedTrackingFailure.override ?: trackingFailureReason
+    val guidance = rememberArGuidanceState(
+        cameraReady = cameraReady,
+        isTracking = isTracking && failure == null,
+        surfaceFound = surfaceSeen || worldPoints.isNotEmpty(),
+        trackingFailureReason = failure,
+    )
+    // #3341: silent while the SDK's "AR unavailable" card carries the reason.
+    val coaching = arCoreAvailability == null && !arSessionFailed && guidance.isCoaching
+
     val markerMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Accent)
     val lineMaterial = rememberUnlitMaterialInstance(materialLoader, SceneViewColors.Primary)
 
@@ -212,6 +237,8 @@ fun ARMeasureDemo(onBack: () -> Unit) {
         chromeToggleOnTap = false,
         onBack = onBack,
         peekHeader = when {
+            // One instruction at a time: while the coaching card speaks, the hint steps aside.
+            worldPoints.isEmpty() && coaching -> null
             worldPoints.isEmpty() -> stringResource(R.string.demo_ar_measure_hint_first)
             worldPoints.size == 1 -> stringResource(R.string.demo_ar_measure_hint_second)
             closedLoop -> stringResource(
@@ -413,6 +440,7 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                 },
                 onSessionCreated = { created: Session -> session = created },
                 onARCoreAvailability = { arCoreAvailability = it },
+                onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                 onSessionUpdated = { _: Session, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -491,6 +519,14 @@ fun ARMeasureDemo(onBack: () -> Unit) {
                         radius = SceneViewTokens.Glass.edgeWidth.toPx() * 3)
                 }
             }
+
+            ARCoachingOverlay(
+                cue = if (arCoreAvailability == null && !arSessionFailed) guidance.cue else ArGuidanceCue.NONE,
+                surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
+                contentPadding = PaddingValues(bottom = LocalDemoChromeBottomInset.current),
+            )
 
             // Cover the still-black AR viewport until the first camera frame (#2484).
             ARCameraInitScrim(

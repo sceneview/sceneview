@@ -88,7 +88,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
         if (state.hasPlacement && !hadPlacement && !hintShown) { hintShown = true; showHint = true }
         hadPlacement = state.hasPlacement
     }
-    LaunchedEffect(showHint) { if (showHint) { delay(5_000); showHint = false } }
+    LaunchedEffect(showHint) { if (showHint) { delay(PLACEMENT_GESTURE_HINT_MS); showHint = false } }
     LaunchedEffect(state.phase) {
         if (state.phase == PlacementPhase.ADJUSTING) showHint = false
         if (state.phase != PlacementPhase.PLACED && state.phase != PlacementPhase.ADJUSTING) invalidMove = false
