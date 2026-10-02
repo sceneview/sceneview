@@ -21,11 +21,11 @@
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
   <title>Privacy Policy — SceneView</title>
-  <meta name="description" content="Privacy policy for SceneView. The SDK collects nothing. The SceneView Demo app uses Firebase for usage analytics, crash reports and optional notifications: no ads, no advertising ID, opt-out in Settings.">
+  <meta name="description" content="Privacy policy for SceneView. The SDK collects nothing. The SceneView Demo app uses Firebase for usage analytics, crash reports and optional notifications: no ads, no advertising ID, asked first in the EEA, UK and Switzerland, off anytime in the app.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://sceneview.github.io/privacy.html">
   <meta property="og:title" content="Privacy Policy — SceneView">
-  <meta property="og:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID and an opt-out in Settings.">
+  <meta property="og:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID, a first-launch question in the EEA, UK and Switzerland, and an off switch in the app.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://sceneview.github.io/privacy.html">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
@@ -33,7 +33,7 @@
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Privacy Policy — SceneView">
-  <meta name="twitter:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID and an opt-out in Settings.">
+  <meta name="twitter:description" content="The SceneView SDK collects nothing. The SceneView Demo app uses Firebase analytics, crash reports and optional notifications, with no ads, no advertising ID, a first-launch question in the EEA, UK and Switzerland, and an off switch in the app.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="theme-color" content="#005bc1">
   <meta property="og:site_name" content="SceneView">
@@ -288,7 +288,7 @@
     <div class="privacy-content">
 
       <div class="privacy-content__summary reveal">
-        The <strong>SceneView SDK</strong> collects nothing: the open-source library has no analytics, no crash reporter and no server of its own. The <strong>SceneView Demo app</strong> (Android and iOS) uses Google Firebase to count which demos are used, to report crashes, and to deliver notifications you allow. It has no accounts and no ads, never asks for your name or email, never reads an advertising identifier, and does not track you across other apps or websites. You can turn analytics and crash reporting off in the app&rsquo;s Settings.
+        The <strong>SceneView SDK</strong> collects nothing: the open-source library has no analytics, no crash reporter and no server of its own. The <strong>SceneView Demo app</strong> (Android and iOS) uses Google Firebase to count which demos are used, to report crashes, and to deliver notifications you allow. It has no accounts and no ads, never asks for your name or email, never reads an advertising identifier, and does not track you across other apps or websites. In the EEA, the UK and Switzerland the Android app asks before it collects anything (the iOS app will ask the same way from its next update); everywhere, you can turn analytics and crash reporting off in the app.
       </div>
 
       <h2 id="scope">What This Policy Covers</h2>
@@ -308,6 +308,7 @@
 
       <h2 id="demo-app">The SceneView Demo App</h2>
       <p>SceneView Demo is the free showcase app for the SDK. Everything below applies to it on both Android and iOS.</p>
+      <p><strong>When it starts (Android; the iOS app will ask the same way from its next update):</strong> in the European Economic Area, the United Kingdom and Switzerland, the app asks at first launch whether to share usage statistics and crash reports, and Firebase does not start until you answer, unless you already turned notifications on (they need Firebase to reach you): before you answer, no usage statistics or crash reports are collected or sent, and the only thing sent is what delivering the notifications you allowed requires. If you choose <strong>Don&rsquo;t share</strong>, or close the question without answering, nothing is collected and you are not asked again. The app tells whether to ask from the device&rsquo;s country, language and time zone settings, read on the device and sent nowhere. Elsewhere, usage statistics and crash reports are on by default and can be turned off at any time.</p>
 
       <h3>Usage analytics (Google Analytics for Firebase)</h3>
       <ul>
@@ -346,6 +347,9 @@
         <li>The Android app runs on Google Play Services for AR (ARCore), which is provided by Google and governed by the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>. While AR is in use, ARCore itself sends Google usage, performance and diagnostic data with its own identifiers, to measure and improve ARCore.</li>
       </ul>
 
+      <h3>On-device machine learning (Android)</h3>
+      <p>The Android machine-learning demos (object detection, and the on-device prompt demos) run on Google ML Kit and, where the phone supports it, on Android AICore with Gemini Nano. Images and text are processed <strong>on your device</strong> and are not sent to us. When one of these demos is used, ML Kit and AICore themselves send Google usage and performance metrics (such as which feature ran, how long it took, and errors), with their own identifiers, to measure and improve those services. This is Google&rsquo;s collection, governed by the <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>; it does not go through the app&rsquo;s analytics, so the <strong>Share usage statistics</strong> answer does not control it, and the app has no switch of its own to stop it. You avoid it by not opening those demos. <a href="https://developers.google.com/ml-kit/terms" target="_blank" rel="noopener">ML Kit terms and data use</a>.</p>
+
       <h3>Google ARCore cloud features (Android)</h3>
       <p>A few Android demos &mdash; Cloud Anchors and the Geospatial demos (Rooftop, Terrain, Streetscape) &mdash; rely on Google&rsquo;s ARCore cloud services. <strong>To power these sessions, Google processes sensor data (e.g., camera and location).</strong> When you host or resolve a Cloud Anchor, visual data from the camera is sent to Google to map the anchor; the Geospatial demos also send your precise location, after you grant the location permission. Google uses this data only to provide the feature, and marks the camera data for automatic deletion. None of it is sent to us. <a href="https://support.google.com/ar?p=how-google-play-services-for-ar-handles-your-data" target="_blank" rel="noopener">Learn more about how Google Play Services for AR handles your data</a>. The iOS app does not use these services.</p>
 
@@ -380,12 +384,13 @@
 
       <h2 id="your-choices">Your Choices</h2>
       <ul>
-        <li><strong>Turn off analytics and crash reporting:</strong> in the app, open <strong>Settings</strong> and switch off usage and crash reporting. From then on, that device sends no analytics events and no crash reports. Switching it off also clears the analytics data waiting on the device and resets its app instance ID, so if you turn it back on, the app starts with a new one.</li>
-        <li><strong>Turn off notifications:</strong> use the notification switch in the app&rsquo;s Settings, or your phone&rsquo;s notification settings for SceneView Demo. You can also decline the permission when the app asks.</li>
+        <li><strong>Answer the first-launch question:</strong> in the EEA, the UK and Switzerland, the Android app asks once, at first launch, whether to share usage statistics and crash reports. <strong>Share</strong> and <strong>Don&rsquo;t share</strong> are equal choices, and closing the question counts as Don&rsquo;t share.</li>
+        <li><strong>Turn off analytics and crash reporting:</strong> in the app, open <strong>About &rsaquo; Privacy &amp; notifications</strong> (Android) or the app&rsquo;s settings (iOS) and switch off <strong>Share usage statistics</strong>. The same switch gives your consent later if you declined. From then on, that device sends no analytics events and no crash reports. Switching it off also clears the analytics data waiting on the device, deletes crash reports not yet sent, and resets its app instance ID, so if you turn it back on, the app starts with a new one.</li>
+        <li><strong>Turn off notifications:</strong> use the <strong>Notifications</strong> switch under <strong>About &rsaquo; Privacy &amp; notifications</strong> (Android) or in the app&rsquo;s settings (iOS), or your phone&rsquo;s notification settings for SceneView Demo. You can also decline the permission when the app asks.</li>
         <li><strong>Start over:</strong> uninstalling the app removes its identifiers from your device; a new installation gets new ones.</li>
         <li><strong>Ask for deletion or access:</strong> email <a href="mailto:thomas.gorisse@gmail.com?subject=SceneView%20Demo%20privacy%20request">thomas.gorisse@gmail.com</a>. Because the app has no accounts, we can only find data through an identifier from your device; we will tell you what we can find and delete it. Anything we cannot single out expires on the schedule above.</li>
       </ul>
-      <p><strong>Legal basis (EEA, UK and Switzerland):</strong> analytics and crash reports rely on our legitimate interest in keeping a free app working and improving it, and you can object at any time with the Settings switch; notifications rely on your consent, given through the system permission prompt and withdrawable at any time. You have the right to access, correct, delete, restrict or port your data, and to lodge a complaint with your data protection authority (in France, the CNIL).</p>
+      <p><strong>Legal basis:</strong> in the EEA, the UK and Switzerland, analytics and crash reports rely on your consent, asked at first launch before anything is collected (on Android now, on iOS from its next update) and withdrawable at any time with the same switch. Elsewhere, they rely on our legitimate interest in keeping a free app working and improving it, and you can object at any time with that switch. Notifications rely on your consent, given through the system permission prompt and withdrawable at any time. You have the right to access, correct, delete, restrict or port your data, and to lodge a complaint with your data protection authority (in France, the CNIL).</p>
 
       <h2 id="website">This Website (sceneview.github.io)</h2>
       <p>The documentation and showcase website uses Google Analytics 4 (measurement ID <code>G-HX1JWGSMTH</code>) to count page views and which links visitors follow, so we know which docs and platforms are worth maintaining. Google Analytics does not store IP addresses, no advertising features are enabled, and the tag is not loaded at all when your browser sends Do Not Track or Global Privacy Control. The site works fully without it, including with content blockers. Website and app analytics use different identifiers and are never combined to identify a person.</p>

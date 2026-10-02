@@ -16,12 +16,12 @@ internal class FirebaseDemoAnalytics(context: Context) : DemoAnalytics {
     private val analytics = FirebaseAnalytics.getInstance(context.applicationContext)
 
     init {
-        // Consent mode: analytics only. Also the manifest defaults — re-applied here so a
-        // stale value persisted by an older build can never re-enable an ad signal.
+        // Consent mode: never an ad signal. Also the manifest defaults — re-applied here so a
+        // stale value persisted by an older build can never re-enable one. analytics_storage
+        // is not set here: it follows the user's consent, in setCollectionEnabled.
         runCatching {
             analytics.setConsent(
                 mapOf(
-                    FirebaseAnalytics.ConsentType.ANALYTICS_STORAGE to FirebaseAnalytics.ConsentStatus.GRANTED,
                     FirebaseAnalytics.ConsentType.AD_STORAGE to FirebaseAnalytics.ConsentStatus.DENIED,
                     FirebaseAnalytics.ConsentType.AD_USER_DATA to FirebaseAnalytics.ConsentStatus.DENIED,
                     FirebaseAnalytics.ConsentType.AD_PERSONALIZATION to FirebaseAnalytics.ConsentStatus.DENIED,
@@ -54,7 +54,14 @@ internal class FirebaseDemoAnalytics(context: Context) : DemoAnalytics {
     override fun setCollectionEnabled(enabled: Boolean) {
         if (BuildConfig.DEBUG) Log.d(TAG, "collection enabled=$enabled")
         analytics.setAnalyticsCollectionEnabled(enabled)
-        runCatching { FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(enabled) }
+        val storage = if (enabled) FirebaseAnalytics.ConsentStatus.GRANTED else FirebaseAnalytics.ConsentStatus.DENIED
+        runCatching { analytics.setConsent(mapOf(FirebaseAnalytics.ConsentType.ANALYTICS_STORAGE to storage)) }
+        runCatching {
+            val crashlytics = FirebaseCrashlytics.getInstance()
+            crashlytics.setCrashlyticsCollectionEnabled(enabled)
+            // Reports cached while collection was off (or before an opt-out) never leave.
+            if (!enabled) crashlytics.deleteUnsentReports()
+        }
     }
 
     /** The privacy policy's promise for the opt-out: pending data cleared, app-instance id reset. */

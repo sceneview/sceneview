@@ -266,7 +266,13 @@
     <!-- Usage statistics + push (telemetry/). -->
     <string name="about_group_privacy">Privacy &amp; notifications</string>
     <string name="settings_usage_statistics_title">Share usage statistics</string>
-    <string name="settings_usage_statistics_supporting">Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off also resets the ID.</string>
+    <string name="settings_usage_statistics_supporting">Which samples are opened, and crash reports. No ads, no advertising ID. Turning it off resets the ID and deletes unsent crash reports.</string>
+    <!-- Consent sheet, shown before any collection in the EEA, the UK and Switzerland. -->
+    <string name="consent_title">Help improve SceneView Demo</string>
+    <string name="consent_body">Share usage statistics and crash reports? They show which samples get opened and what breaks, so we can fix it. No ads, no advertising ID, never sold. You can change this anytime in About › Privacy &amp; notifications.</string>
+    <string name="consent_privacy_policy">Privacy policy</string>
+    <string name="consent_share">Share</string>
+    <string name="consent_dont_share">Don\'t share</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_supporting">New samples and releases, a few times a month at most.</string>
     <string name="push_prompt_title">Get notified when new samples land</string>

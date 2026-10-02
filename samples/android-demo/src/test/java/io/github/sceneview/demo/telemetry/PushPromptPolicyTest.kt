@@ -84,4 +84,47 @@ class PushPromptPolicyTest {
         policy.onAnswered()
         repeat(10) { assertFalse(policy.onReturnedHome(eligible = true)) }
     }
+
+    @Test
+    fun `never while the usage-statistics consent is unknown in the zone`() {
+        val settled = TelemetryConsent.pushPromptAllowed(
+            state = ConsentState.Unknown,
+            inZone = true,
+            answeredThisSession = false,
+        )
+        repeat(5) { assertFalse(policy.onReturnedHome(eligible = true, consentSettled = settled)) }
+    }
+
+    @Test
+    fun `returns counted while the consent was owed show it in the next session`() {
+        repeat(2) { assertFalse(policy.onReturnedHome(eligible = true, consentSettled = false)) }
+        // Next launch, consent answered in an earlier session: the first return is enough.
+        val settled = TelemetryConsent.pushPromptAllowed(
+            state = ConsentState.Denied,
+            inZone = true,
+            answeredThisSession = false,
+        )
+        assertTrue(policy.onReturnedHome(eligible = true, consentSettled = settled))
+    }
+
+    @Test
+    fun `never in the session that answered the consent`() {
+        val settled = TelemetryConsent.pushPromptAllowed(
+            state = ConsentState.Granted,
+            inZone = true,
+            answeredThisSession = true,
+        )
+        repeat(5) { assertFalse(policy.onReturnedHome(eligible = true, consentSettled = settled)) }
+    }
+
+    @Test
+    fun `outside the zone an unanswered consent does not hold it back`() {
+        val settled = TelemetryConsent.pushPromptAllowed(
+            state = ConsentState.Unknown,
+            inZone = false,
+            answeredThisSession = false,
+        )
+        assertFalse(policy.onReturnedHome(eligible = true, consentSettled = settled))
+        assertTrue(policy.onReturnedHome(eligible = true, consentSettled = settled))
+    }
 }
