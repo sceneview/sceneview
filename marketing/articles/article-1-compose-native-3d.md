@@ -18,7 +18,7 @@ There's a gap. **Android has no built-in 3D composable.** Until now.
 [SceneView](https://github.com/sceneview/sceneview) treats 3D the same way Compose treats UI: declaratively. `SceneView { }` is a composable like `Column { }` or `LazyList { }`. Nodes are composables. State is Kotlin state.
 
 ```kotlin
-implementation("io.github.sceneview:sceneview:4.0.0")
+implementation("io.github.sceneview:sceneview:4.51.0")
 ```
 
 ### Display a 3D model in 15 lines
@@ -46,7 +46,7 @@ Place `sneaker.glb` in `src/main/assets/models/`. The model loads asynchronously
 
 ### What you get out of the box
 
-SceneView includes 46+ composable node types:
+SceneView includes 48+ composable node types:
 
 - **ModelNode** — GLB/glTF models with animation
 - **CubeNode, SphereNode, CylinderNode** — primitive geometry
@@ -61,7 +61,7 @@ All powered by Google Filament — the same PBR engine used in Google Maps and A
 ## AR in Compose: One More Import
 
 ```kotlin
-implementation("io.github.sceneview:arsceneview:4.0.0")
+implementation("io.github.sceneview:arsceneview:4.51.0")
 ```
 
 ```kotlin
@@ -109,7 +109,7 @@ Supported AR features: plane detection, image tracking, face mesh, cloud anchors
 | AR built-in | Yes (ARCore) | Plugin | No | Yes |
 | Active | v4.0.0 (2026) | Yes | Yes | Deprecated (2021) |
 | Learning curve | Low | High | Very high | Low |
-| Scene graph | 46+ node types | Full engine | None | 5 node types |
+| Scene graph | 48+ node types | Full engine | None | 5 node types |
 | Cross-platform | Android, iOS, Web | All | Android only | Android only |
 
 SceneView wraps Filament internally — same rendering quality, 100x less code.
@@ -144,8 +144,8 @@ Industry-specific MCP servers are also available:
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.0.0")    // 3D only
-implementation("io.github.sceneview:arsceneview:4.0.0")   // 3D + AR
+implementation("io.github.sceneview:sceneview:4.51.0")    // 3D only
+implementation("io.github.sceneview:arsceneview:4.51.0")   // 3D + AR
 ```
 
 - [GitHub](https://github.com/sceneview/sceneview) (1.2k+ stars)

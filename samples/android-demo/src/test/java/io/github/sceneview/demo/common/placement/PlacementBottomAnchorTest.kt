@@ -196,7 +196,7 @@ class PlacementBottomAnchorTest {
         val DOCK_BAND = 80.dp
         val GUTTER = SceneViewTokens.Space.sm
 
-        /** Past every fade, and two of them still inside the 3.5 s gesture-hint window. */
+        /** Past every fade, and two of them still inside the 6 s gesture-hint window. */
         const val HINT_SAFE_MS = 1_000L
     }
 }

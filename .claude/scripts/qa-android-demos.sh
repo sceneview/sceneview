@@ -3,7 +3,7 @@
 #
 # As of slice #1562 (umbrella #1560) the slow tap-and-wait / screenshot-by-
 # screenshot logic that used to live here has been replaced by Maestro YAML
-# flows under `.maestro/android/`. Maestro drives every one of the 42 demos
+# flows under `.maestro/android/`. Maestro drives every one of the 51 demos
 # like a real user (deep-link launch, camera-orbit drag, viewport tap, ONE
 # screenshot per demo, navigate back) and asserts each demo's Activity stays
 # alive. See `.maestro/README.md`. AR demos launch with `qa_backdrop: true` so the
@@ -23,7 +23,7 @@
 #   --install        Build :samples:android-demo:assembleDebug and install it.
 #   --flow <name>    Run a single category flow instead of the full catalog,
 #                    e.g. `--flow lighting` → .maestro/android/lighting.yaml.
-#                    Defaults to `catalog` (all 42 demos).
+#                    Defaults to `catalog` (all 51 demos).
 #   -h | --help      Show this help.
 #
 # Pool-aware (#1654): with the RAM-budgeted adaptive emulator pool, several
@@ -279,7 +279,7 @@ fi
 # "Unable to launch app" — proven 2026-07-14: the whole catalog leg died in
 # 34 s and was graded a genuine FAIL. Probe the actual launch component; if
 # unresolvable, do ONE clean uninstall + reinstall (needs the APK), re-probe,
-# and otherwise fail fast with a clear diagnostic instead of letting 49 demos
+# and otherwise fail fast with a clear diagnostic instead of letting 51 demos
 # fail one by one.
 qa_launchable() {
   adb shell cmd package resolve-activity --brief "${PACKAGE}/${ACTIVITY}" 2>/dev/null \

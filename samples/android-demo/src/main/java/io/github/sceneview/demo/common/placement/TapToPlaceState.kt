@@ -102,7 +102,7 @@ class TapToPlaceState internal constructor() {
 
     /**
      * `SystemClock.uptimeMillis` of the placement, `0` when nothing is placed. Opens the
-     * one-shot "Drag to move. Pinch or twist to adjust." window.
+     * one-shot "Drag to move. Pinch to resize. Twist to turn." window.
      */
     var lastPlacedAtMillis: Long by mutableStateOf(0L)
         internal set

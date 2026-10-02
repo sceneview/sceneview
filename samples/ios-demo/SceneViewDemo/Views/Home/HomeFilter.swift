@@ -78,31 +78,27 @@ private extension HomeSearchEntry {
 /// Editorial choices of the Showcase home that are not a property of any one
 /// scene (#3907): the "Featured" group and the demos kept off the home list.
 enum HomeCatalogue {
-    /// The "Featured" group under the hero, in priority order — Android's
-    /// `FEATURED_SECTION_IDS` (`HomeScreen.kt`) reduced to the demos that have
-    /// an iOS screen. Android features `ar-splat-room` too; it does not exist on
-    /// iOS yet (#4075), so the group skips it rather than showing a placeholder.
-    /// `splat-preview` opens the same capture drawn as a point cloud (no splat
-    /// renderer on iOS yet, #2646). Most striking first: the galaxy, then the
-    /// scanned room rebuilt in 3D.
+    /// The "Featured" group under the hero, in priority order — the one list
+    /// both platforms share since the samples audit (step 0, § 5): only cards
+    /// present and current on Android and iOS. Cosmos is the hero, Placement
+    /// the single AR entry, then Models, Rerun and Materials.
     static let featuredIds: [String] = [
         "cosmos",
-        "ar-rerun",
         "ar-placement",
-        "splat-preview",
-        "ar-record-playback",
+        "model-viewer",
+        "ar-rerun",
+        "materials",
     ]
 
     /// Demos kept off the home grid until they work, with the reason. The
     /// scene files and the deep links (`sceneview://demo/<id>`) are untouched — only
     /// the home stops advertising a demo that is broken on first open.
     /// Remove an entry in the PR that fixes the demo.
-    static let hiddenFromHome: [String: String] = [
-        "double-pendulum": "Pivot jumps around, untextured arms, camera too close (#3907)",
-        "movable-light": "Moving the light barely changes the scene (#3907)",
-        "scene-gallery": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
-        "multi-model": "Shows the \"Offline placeholder\" in keyless builds (#3907)",
-    ]
+    ///
+    /// Empty since the samples audit (step 0): the four cards it held
+    /// (`double-pendulum`, `movable-light`, `scene-gallery`, `multi-model`, #3907)
+    /// are modes of Rolling Balls, Lighting and Models now, or gone.
+    static let hiddenFromHome: [String: String] = [:]
 
     /// Demos that stream their subject from Sketchfab and have nothing but the
     /// "Offline placeholder" to show without an API key. They open the Create

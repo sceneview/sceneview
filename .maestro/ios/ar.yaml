@@ -20,6 +20,10 @@
 #     the single place every AR deep-link id is smoked.
 #
 # Demo ids mirror Android `DemoRegistry.kt` ALL_DEMOS.
+#
+# Samples step 0 (2026-10-02): `ar-lighting` and `ar-pose` are modes of
+# `ar-placement`, `ar-record-playback` opens `ar-rerun` (its screen video is
+# the Record action of every demo's sheet).
 appId: io.github.sceneview.demo
 ---
 # ── Ported AR demos (simulator placeholder text is the crash gate) ──────────
@@ -35,18 +39,6 @@ appId: io.github.sceneview.demo
       DEMO_ID: ar-orbital
       DEMO_NAME: AR Orbital
       ASSERT_TEXT: "AR requires a physical device"
-- runFlow:
-    file: flows/ar-demo.yaml
-    env:
-      DEMO_ID: ar-lighting
-      DEMO_NAME: AR Lighting
-      ASSERT_TEXT: "AR requires a physical device"
-- runFlow:
-    file: flows/ar-demo.yaml
-    env:
-      DEMO_ID: ar-record-playback
-      DEMO_NAME: AR Recording
-      ASSERT_TEXT: "Requires an iPhone with ARKit and screen recording availability."
 - runFlow:
     file: flows/ar-demo.yaml
     env:
@@ -127,10 +119,6 @@ appId: io.github.sceneview.demo
     env:
       DEMO_ID: ar-terrain
 # ── Newer Android AR ids (added after the 42-id widening, → placeholder) ────
-- runFlow:
-    file: flows/placeholder.yaml
-    env:
-      DEMO_ID: ar-pose
 - runFlow:
     file: flows/placeholder.yaml
     env:

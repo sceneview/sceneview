@@ -32,4 +32,8 @@ appId: io.github.sceneview.demo
     file: flows/placeholder.yaml
     env:
       DEMO_ID: view-node
-# texture-streaming — live in content.yaml (iOS destination added in #2164)
+# ── Removed on iOS by samples step 0 (deep link → DeepLinkPlaceholder) ─────
+- runFlow:
+    file: flows/placeholder.yaml
+    env:
+      DEMO_ID: placement-reticle-preview

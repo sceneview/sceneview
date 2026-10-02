@@ -67,10 +67,19 @@ struct LightingDemo: View {
 
     /// The three rigs, in the order Android lists them. `Image` opens because it
     /// is the rig most apps actually ship.
-    private enum Rig: Int, CaseIterable, Identifiable {
+    enum Rig: Int, CaseIterable, Identifiable {
         case image, studio, sun
 
         var id: Int { rawValue }
+
+        /// The rig a deep-link token names, `.image` for none or an unknown one.
+        static func initial(_ token: String?) -> Rig {
+            switch token {
+            case "studio", "1", "movable-light": return .studio
+            case "sun", "2", "dynamic-sky": return .sun
+            default: return .image
+            }
+        }
 
         var title: String {
             switch self {
@@ -101,7 +110,13 @@ struct LightingDemo: View {
         }
     }
 
-    @State private var rig: Rig = .image
+    /// Opens on Image unless a link asked for a rig: `?tab=` (`studio`, `1`…)
+    /// or one of the cards this screen absorbed in the samples audit, step 0
+    /// — `environment` (Image), `movable-light` (Studio), `dynamic-sky` (Sun),
+    /// re-keyed to `lighting` by `DemoDeepLinkRegistry.routeTab(for:)`. Same
+    /// indices as Android's `ALIAS_INITIAL_TAB`.
+    /// Peeked here, taken in `onAppear` (see `DeepLinkRouter.peekTab(for:)`).
+    @State private var rig: Rig = Rig.initial(DeepLinkRouter.peekTab(for: "lighting"))
     /// Index into ``imageEnvironments``. Held as an index, not a
     /// `SceneEnvironment`, because `SceneEnvironment` is not `Equatable` and
     /// `.contentID(_:)` needs a `Hashable` key.
@@ -194,7 +209,7 @@ struct LightingDemo: View {
             // with no HDR renders its subject against pure black — which is
             // what the first pass of this screen did at every hour. The HDR
             // swapped by the clock is what makes 15:00 look like afternoon and
-            // 02:00 look like night. Same mapping as `DynamicSkyDemo`
+            // 02:00 look like night. Same mapping as the former `DynamicSkyDemo`
             // (`skyEnvironment`) and as Android's
             // `LightingStage.skyEnvironmentFor(hour)`.
             var sky = Self.skyEnvironment(forHour: hour)
@@ -244,6 +259,8 @@ struct LightingDemo: View {
             }
             .onAppear {
                 viewport = proxy.size
+                // A link that landed after `init` took its tab (see `rig`).
+                if let token = DeepLinkRouter.consumeTab(for: "lighting") { rig = Rig.initial(token) }
                 if qaMode { orbiting = false }
                 heldPose = framingPose(yawDegrees: Self.staticYawDegrees)
             }

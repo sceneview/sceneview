@@ -92,6 +92,8 @@ internal class ScanCapture private constructor(
     private val fusion = if (rawDepth) DenseFusion() else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
+    // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
+    private val model = if (rawDepth) RerunLiveModel() else null
     private var lastDepthNanos: Long? = null
     private var loggedSizes = false
     private val logGate = IntervalGate(LOG_INTERVAL_NS)
@@ -248,6 +250,7 @@ internal class ScanCapture private constructor(
     fun fuseDepth(depth: ScanDepth, image: ScanImage) {
         val fusion = fusion ?: return
         val frame = depth.copy(textureIntrinsics, intrinsics, image.yuv) ?: return
+        model?.offer(frame, scope)
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
@@ -291,6 +294,7 @@ internal class ScanCapture private constructor(
     suspend fun finish(): RerunCapturePack? {
         // The fusion under way finishes first, and its last growth goes on the timeline.
         fuseJob?.join()
+        model?.join()
         trace.journal?.lastOrNull()?.let { recordDepthStats(it.nanos) }
         val events = trace.journal?.toList().orEmpty()
         trace.journal = null
@@ -314,6 +318,7 @@ internal class ScanCapture private constructor(
             depthSource = if (dense != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
         return RerunCaptureBuilder.build(events, lens, photos, device, dense, DenseFusion.VOXEL_M, denseMs)
+            .also { model?.keepFor(it) }
     }
 
     private fun manifest(spans: Map<String, MediaSpan>) = ReplayManifest(

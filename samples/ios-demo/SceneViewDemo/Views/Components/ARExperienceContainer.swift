@@ -19,7 +19,6 @@ import AVFoundation
 #if os(iOS)
 import ARKit
 import RealityKit
-import ReplayKit
 import SceneViewSwift
 #endif
 
@@ -38,23 +37,16 @@ enum ARExperienceRequirement: Equatable {
     case bodyTracking
     /// People occlusion frame semantics (A12 and later).
     case peopleOcclusion
-    /// ARKit camera with ReplayKit screen capture.
-    case recording
     /// Replay first: the screen opens on a recorded session and starts the camera itself, only
     /// when the user asks for it (the Rerun replay's Live AR tab). Every device runs it, the
     /// Simulator included, and no camera permission is asked on entry.
     case replay
-    /// Filed under AR but renders no camera at all: the placement reticle preview is a plain
-    /// 3D stage. It opens on every device, asks for no camera permission and never waits for
-    /// a camera frame, which it would never get ("Starting camera…" stayed up for good).
-    case noCamera
 
     /// The second line of the Unsupported card — plan §2.2: "Requires LiDAR."
     var requirementCopy: String {
         switch self {
-        case .replay, .noCamera: return ""
+        case .replay: return ""
         case .worldTracking: return "Requires an iPhone with ARKit."
-        case .recording: return "Requires an iPhone with ARKit and screen recording availability."
         case .faceTracking: return "Requires a TrueDepth camera."
         case .lidar: return "Requires LiDAR."
         case .bodyTracking: return "Requires an A12 chip or later."
@@ -66,7 +58,7 @@ enum ARExperienceRequirement: Equatable {
     /// The body tracker runs a raw `ARView` of its own, so the container
     /// cannot know when its first frame lands — it shows the screen directly
     /// rather than a "Starting camera…" it could never clear.
-    var reportsSession: Bool { self != .bodyTracking && self != .replay && self != .noCamera }
+    var reportsSession: Bool { self != .bodyTracking && self != .replay }
 
     /// The requirement of a catalog scene, by id. Everything not listed is a
     /// rear-camera world-tracking screen.
@@ -76,9 +68,7 @@ enum ARExperienceRequirement: Equatable {
         case "ar-body-tracker": return .bodyTracking
         case "ar-depth-collider", "ar-depth-occlusion", "ar-scene-mesh": return .lidar
         case "ar-people-occlusion": return .peopleOcclusion
-        case "ar-record-playback", "ar-recording": return .recording
         case "ar-rerun": return .replay
-        case "placement-reticle-preview": return .noCamera
         default: return .worldTracking
         }
     }
@@ -88,14 +78,12 @@ enum ARExperienceRequirement: Equatable {
     /// into the model so the Simulator (nothing supported) and a forced
     /// preview can both be exercised.
     var isSupported: Bool {
-        if self == .replay || self == .noCamera { return true }
+        if self == .replay { return true }
         #if targetEnvironment(simulator)
         return false
         #else
         let capabilities = ARSessionConfiguration.Capabilities.current
         switch self {
-        case .recording:
-            return ARWorldTrackingConfiguration.isSupported && RPScreenRecorder.shared().isAvailable
         case .worldTracking:
             return ARSessionConfiguration().unmetRequirement(capabilities: capabilities) == nil
         case .faceTracking:
@@ -109,7 +97,7 @@ enum ARExperienceRequirement: Equatable {
                 .unmetRequirement(capabilities: capabilities) == nil
         case .bodyTracking:
             return ARBodyTrackingConfiguration.isSupported
-        case .replay, .noCamera:
+        case .replay:
             return true
         }
         #endif
@@ -189,9 +177,8 @@ final class ARExperienceModel: ObservableObject {
             phase = .unsupported(requirement)
             return
         }
-        // A replay-first screen asks for the camera itself, when the user starts a recording;
-        // a no-camera screen never does.
-        if requirement == .replay || requirement == .noCamera {
+        // A replay-first screen asks for the camera itself, when the user starts a recording.
+        if requirement == .replay {
             phase = .live
             return
         }

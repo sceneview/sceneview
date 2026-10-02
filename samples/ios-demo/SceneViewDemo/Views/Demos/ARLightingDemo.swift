@@ -79,22 +79,29 @@ struct ARLightingDemo: View {
     @State private var loadFailed = false
 
     var body: some View {
-        ZStack {
-            #if !targetEnvironment(simulator)
-            arSceneView
-                .ignoresSafeArea()
-            #else
-            simulatorPlaceholder
-            #endif
+        // Since the samples audit (step 0) this screen is the Light mode of the
+        // `ar-placement` card, so it wears the shared scaffold: the card's
+        // title and mode pill on top of the presets, the same glass as every
+        // other AR screen. The presets and the model are unchanged.
+        stage
+            .demoChrome(
+                chromeMode: .ar,
+                accessory: {
+                    VStack(spacing: SceneViewTokens.Space.sm) {
+                        DemoHint(statusLabel)
+                        DemoOptionStrip(LightingMode.allCases, selection: $mode) { $0.rawValue }
+                    }
+                }
+            )
+    }
 
-            VStack {
-                statusPill
-                Spacer()
-                modeChips
-            }
-        }
-        .navigationTitle("AR Lighting")
-        .navigationBarTitleInline()
+    @ViewBuilder
+    private var stage: some View {
+        #if !targetEnvironment(simulator)
+        arSceneView
+        #else
+        simulatorPlaceholder
+        #endif
     }
 
     // MARK: - AR Scene
@@ -148,55 +155,16 @@ struct ARLightingDemo: View {
 
     // MARK: - UI
 
-    private var statusPill: some View {
-        let label: String = {
-            if loadFailed { return "Couldn't load the model" }
-            if !modelLoaded { return "Loading model — keep the camera steady" }
-            return "\(mode.rawValue) — \(mode.subtitle)"
-        }()
-        return Text(label)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .padding(.top, 8)
-    }
-
-    private var modeChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(LightingMode.allCases) { option in
-                    Button {
-                        mode = option
-                        SceneViewHaptic.shared.selection()
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text(option.rawValue)
-                                .font(.subheadline.weight(.semibold))
-                            Text(option.subtitle)
-                                .font(.caption2)
-                                .opacity(0.85)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            mode == option
-                                ? AnyShapeStyle(.tint)
-                                : AnyShapeStyle(.regularMaterial),
-                            in: Capsule()
-                        )
-                        .foregroundStyle(mode == option ? Color.white : Color.primary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(option.rawValue) lighting: \(option.subtitle)")
-                    .accessibilityAddTraits(mode == option ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-        .scrollClipDisabled()
-        .padding(.bottom, 24)
+    /// What the hint above the presets says: the load state, then the
+    /// selected preset's two lights.
+    private var statusLabel: String {
+        #if targetEnvironment(simulator)
+        return mode.subtitle
+        #else
+        if loadFailed { return "Couldn\u{2019}t load the model" }
+        if !modelLoaded { return "Loading model \u{2014} keep the camera steady" }
+        return mode.subtitle
+        #endif
     }
 
     // MARK: - Simulator placeholder
