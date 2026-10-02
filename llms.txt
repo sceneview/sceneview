@@ -2274,7 +2274,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
@@ -2376,7 +2376,7 @@ Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity cu
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
-**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -6635,6 +6635,22 @@ public enum ARTrackingStatus: Equatable { case notAvailable, limited(LimitedReas
 public enum ARSessionEvent { case started(ARSessionConfiguration), firstFrame, trackingStateChanged(ARTrackingStatus), interrupted, interruptionEnded, failed(Error) }
 @MainActor public protocol ARSceneSessionObserver: AnyObject { func arSession(didEmit event: ARSessionEvent, in arView: ARView) }
 extension View { public func arSessionObserver(_ observer: ARSceneSessionObserver?) -> some View }  // environment hook, no per-view wiring
+
+// LiDAR mesh on a bare ARView. Inside ARSceneView prefer ARSessionConfiguration(sceneReconstruction:):
+// the view's own re-runs replace an amendment made here.
+public enum SceneReconstructionNode {
+    public static var isSupported: Bool { get }                 // LiDAR present
+    public static var isClassificationSupported: Bool { get }
+    @MainActor @discardableResult
+    public static func enableReconstruction(                    // amends the running session: no reset, anchors kept
+        in arView: ARView,
+        classification: Bool = false,
+        showDebugMeshOverlay: Bool = false                      // the debug wireframe is never turned on implicitly
+    ) -> Bool                                                   // false = no LiDAR, or a face/body session left untouched
+    public static func hideMeshVisualization(in arView: ARView)
+    public static func enableOcclusion(in arView: ARView)
+    public static func enablePhysics(in arView: ARView)
+}
 ```
 
 ### iOS: ModelNode

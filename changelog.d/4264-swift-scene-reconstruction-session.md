@@ -1,0 +1,6 @@
+<!-- category: Fixed -->
+- **iOS: `SceneReconstructionNode.enableReconstruction` no longer replaces the AR session ([#4264](https://github.com/sceneview/sceneview/pull/4264)).** It used to run a brand-new `ARWorldTrackingConfiguration`, which dropped the host's frame semantics (people occlusion, person segmentation), detection images and plane settings. It now amends the running configuration with no `.resetTracking` and no `.removeExistingAnchors`, leaves face- and body-tracking sessions untouched, and returns whether the mesh is on. The iOS Scene Mesh and Depth Collider demos now ask `ARSceneView` for the mesh through `ARSessionConfiguration(sceneReconstruction:)`, so the depth collider's balls finally have a LiDAR mesh to bounce off.
+
+<!-- category: Changed -->
+<!-- breaking -->
+- **iOS: `SceneReconstructionNode.enableReconstruction` no longer draws RealityKit's `.showSceneUnderstanding` debug wireframe ([#4264](https://github.com/sceneview/sceneview/pull/4264)).** Pass `showDebugMeshOverlay: true` to keep it. The function is now `@MainActor`: a Swift 6 caller outside the main actor needs an `await MainActor.run { … }`. A host that relied on the implicit overlay sees no wireframe after upgrading.
