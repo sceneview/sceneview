@@ -149,6 +149,7 @@ fun LightingDemo(onBack: () -> Unit) {
     var rig by remember {
         mutableStateOf(initialDemoMode(LightingRig.entries, LightingRig.Image))
     }
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
 
     // ── Rig state ────────────────────────────────────────────────────────────────────────────
     var environmentOption by remember { mutableStateOf(LightingStage.defaultEnvironment) }
@@ -442,7 +443,12 @@ fun LightingDemo(onBack: () -> Unit) {
             ),
         ),
         controls = {
-            RigSelector(rig) { rig = it }
+            RigSelector(rig) { next ->
+                if (next != rig) {
+                    io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
+                    rig = next
+                }
+            }
             Text(
                 text = stringResource(rig.explainerRes),
                 style = MaterialTheme.typography.bodyMedium,
@@ -712,10 +718,11 @@ fun LightingDemo(onBack: () -> Unit) {
 private enum class LightingRig(
     @StringRes val labelRes: Int,
     @StringRes val explainerRes: Int,
+    val analyticsMode: String,
 ) {
-    Image(R.string.demo_lighting_rig_image, R.string.demo_lighting_rig_image_explainer),
-    Studio(R.string.demo_lighting_rig_studio, R.string.demo_lighting_rig_studio_explainer),
-    Sun(R.string.demo_lighting_rig_sun, R.string.demo_lighting_rig_sun_explainer),
+    Image(R.string.demo_lighting_rig_image, R.string.demo_lighting_rig_image_explainer, "image"),
+    Studio(R.string.demo_lighting_rig_studio, R.string.demo_lighting_rig_studio_explainer, "studio"),
+    Sun(R.string.demo_lighting_rig_sun, R.string.demo_lighting_rig_sun_explainer, "sun"),
 }
 
 @Composable

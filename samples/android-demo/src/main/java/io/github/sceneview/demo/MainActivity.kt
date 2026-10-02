@@ -304,6 +304,7 @@ class MainActivity : ComponentActivity() {
                 ).show()
             }
         }
+        if (launch.demoId != null) Telemetry.nextEntryId = rawId ?: launch.demoId
     }
 
     /**
@@ -405,6 +406,7 @@ class MainActivity : ComponentActivity() {
             val launch = DeepLinkRouter.resolveLaunch(sample, tap.sample, tabParam = null)
             pushLaunch = launch
             Telemetry.nextOpenSource = OpenSource.Push
+            Telemetry.nextEntryId = tap.sample ?: sample
             pendingPushDemo.value = launch.demoId
         } else {
             pendingHome.value = true
@@ -520,6 +522,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     LaunchedEffect(openedModel) {
         val opened = openedModel ?: return@LaunchedEffect
         DemoSettings.openedModel = opened
+        Telemetry.nextEntryId = "model-viewer"
         navController.navigate("demo/model-viewer") {
             // One viewer on the stack however many files are opened in a row.
             popUpTo("demo/model-viewer") { inclusive = true }

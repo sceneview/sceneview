@@ -107,6 +107,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Composable
 fun ARPlacementDemo(onBack: () -> Unit) {
     val context = LocalContext.current
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
 
     // Phase holder. Saveable, so a rotation in the camera does not dump the user back onto
     // the chooser.
@@ -307,7 +308,15 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             title = stringResource(R.string.demo_ar_placement_title),
             teaches = stringResource(R.string.ar_placement_teaches),
             wallMode = wallMode,
-            onWallModeChange = { wallMode = it },
+            onWallModeChange = { next ->
+                if (next != wallMode) {
+                    io.github.sceneview.demo.telemetry.logSampleModeChange(
+                        sampleId,
+                        if (next) "wall" else "floor",
+                    )
+                    wallMode = next
+                }
+            },
         )
         return
     }

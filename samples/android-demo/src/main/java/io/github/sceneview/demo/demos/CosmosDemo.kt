@@ -4,6 +4,7 @@ import io.github.sceneview.demo.recording.rememberSceneRecorderState
 import io.github.sceneview.rememberSurfaceMirrorer
 import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
+import io.github.sceneview.demo.telemetry.logSampleModeChange
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
@@ -390,6 +391,7 @@ fun CosmosDemo(onBack: () -> Unit) {
     val showSpacetime: (Boolean) -> Unit = { on ->
         if (on != spacetime) {
             spacetime = on
+            logSampleModeChange(telemetrySampleId, if (on) "spacetime" else "starlight")
             // The camera's turn is kept on the way back, so the return flight leaves from the
             // pose on screen; it is reset once the sequence is back at Starlight (onFrame).
             if (on) {
@@ -401,7 +403,6 @@ fun CosmosDemo(onBack: () -> Unit) {
                 voyage.resetDrag()
                 flight.start()
                 focus = CosmosFocus.System
-                logSampleInteraction(telemetrySampleId, "spacetime")
             }
         }
     }

@@ -285,7 +285,11 @@ enum DemoDeepLinkRegistry {
         let section = canonical.flatMap { c in GeneratedScenes.all().first { $0.sceneId == c }?.section }
         return DemoCover(title: title(for: id), destination: destination(for: id),
                          sampleId: canonical, category: DemoAnalytics.category(for: section),
-                         source: source, onClose: onClose)
+                         entryId: id, source: source,
+                         mode: canonical.flatMap {
+                             DemoAnalytics.initialMode(for: $0, tab: DeepLinkRouter.pendingTab(for: $0))
+                         },
+                         onClose: onClose)
     }
 
     /// Whether `id` opens a real screen (a live id or a legacy alias of one).

@@ -90,6 +90,9 @@ object Telemetry {
     /** How the next sample was reached; read (and reset) by the demo route when it opens. */
     var nextOpenSource: OpenSource = OpenSource.Other
 
+    /** Received id for the next sample, before a legacy alias is resolved. */
+    var nextEntryId: String? = null
+
     /** Compose-observable mirror of the two About -> Privacy & notifications switches. */
     var analyticsEnabled by mutableStateOf(false)
         private set

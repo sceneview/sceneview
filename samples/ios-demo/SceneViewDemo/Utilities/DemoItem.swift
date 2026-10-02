@@ -218,6 +218,17 @@ enum DemoSection: String, CaseIterable {
     case view3d
     case understand
 
+    /// Stable `sample_open.category` value, independent of the displayed section title.
+    var analyticsSlug: String {
+        switch self {
+        case .create: return "create"
+        case .devTools: return "dev_tools"
+        case .placeAR: return "place_ar"
+        case .view3d: return "view_3d"
+        case .understand: return "understand"
+        }
+    }
+
     var title: String {
         switch self {
         case .view3d: return "View in 3D"

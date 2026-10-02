@@ -163,12 +163,14 @@ final class DemoAnalyticsTests: XCTestCase {
 
     func testSampleOpenAndCloseWithDuration() {
         analytics.install(backend)
-        analytics.sampleOpened("cosmos", category: "View 3D", source: .push)
+        analytics.sampleOpened("cosmos", category: "view_3d", source: .push)
         clock.date.addTimeInterval(42.7)
         analytics.sampleClosed("cosmos")
         XCTAssertEqual(backend.calls.dropFirst().map { $0 }, [
             .log("screen_view", ["screen_name": "cosmos", "screen_class": "Sample"]),
-            .log("sample_open", ["sample_id": "cosmos", "category": "View 3D", "source": "push"]),
+            .log("sample_open", [
+                "sample_id": "cosmos", "entry_id": "cosmos", "category": "view_3d", "source": "push",
+            ]),
             .log("sample_close", ["sample_id": "cosmos", "duration_s": .int(42)]),
         ])
     }
@@ -208,13 +210,36 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(OutboundTarget.classify(URL(string: "https://sketchfab.com/3d-models/x")!), .other)
     }
 
-    func testCategoriesMatchAndroidKeys() {
-        XCTAssertEqual(DemoAnalytics.category(for: .view3d), "View 3D")
-        XCTAssertEqual(DemoAnalytics.category(for: .create), "Create & Record")
-        XCTAssertEqual(DemoAnalytics.category(for: .placeAR), "Place in AR")
-        XCTAssertEqual(DemoAnalytics.category(for: .understand), "Understand the World")
-        XCTAssertEqual(DemoAnalytics.category(for: .devTools), "Developer Tools")
+    func testCategoriesMatchAndroidSlugs() {
+        XCTAssertEqual(DemoAnalytics.category(for: .view3d), "view_3d")
+        XCTAssertEqual(DemoAnalytics.category(for: .create), "create")
+        XCTAssertEqual(DemoAnalytics.category(for: .placeAR), "place_ar")
+        XCTAssertEqual(DemoAnalytics.category(for: .understand), "understand")
+        XCTAssertEqual(DemoAnalytics.category(for: .devTools), "dev_tools")
         XCTAssertEqual(DemoAnalytics.category(for: nil), "unknown")
+    }
+
+    func testSampleOpenEntryIdAndOptionalModeMatchAndroid() {
+        XCTAssertEqual(
+            AnalyticsEvent.sampleOpen(sampleId: "cosmos", entryId: "cosmos-old", category: "create",
+                                      source: .deeplink, mode: "spacetime").params,
+            ["sample_id": "cosmos", "entry_id": "cosmos-old", "category": "create",
+             "source": "deeplink", "mode": "spacetime"]
+        )
+        let withoutMode = AnalyticsEvent.sampleOpen(sampleId: "geometry", category: "create", source: .home).params
+        XCTAssertEqual(withoutMode["entry_id"], "geometry")
+        XCTAssertNil(withoutMode["mode"])
+    }
+
+    func testUmbrellaModesAndModeInteractionUseSharedValues() {
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos"), "starlight")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos", tab: "1"), "spacetime")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos", tab: "spacetime"), "spacetime")
+        XCTAssertNil(DemoAnalytics.initialMode(for: "geometry"))
+        XCTAssertEqual(
+            AnalyticsEvent.sampleInteraction(sampleId: "cosmos", control: "mode_spacetime").params["control"],
+            "mode_spacetime"
+        )
     }
 
     func testErrorReasonCarriesNoMessage() {

@@ -9,6 +9,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.demo.ALL_DEMOS
+import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.DemoSettings
 
 /**
  * The sample on screen, for events logged deep inside shared components (the settings sheet,
@@ -25,12 +27,18 @@ val LocalSampleId = staticCompositionLocalOf<String?> { null }
 @Composable
 fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val initialMode = initialSampleMode(sampleId, DemoSettings.initialTab)
     DisposableEffect(sampleId) {
         val source = Telemetry.nextOpenSource
         Telemetry.nextOpenSource = OpenSource.Other
-        val category = ALL_DEMOS.firstOrNull { it.id == sampleId }?.category ?: "unknown"
+        val entryId = Telemetry.nextEntryId ?: sampleId
+        Telemetry.nextEntryId = null
+        val category = ALL_DEMOS.firstOrNull { it.id == sampleId }
+            ?.category
+            ?.let { DemoCategory.slug(it) }
+            ?: "unknown"
         Telemetry.analytics.log(AnalyticsEvent.ScreenView(screenName = sampleId, screenClass = SCREEN_CLASS_SAMPLE))
-        Telemetry.analytics.log(AnalyticsEvent.SampleOpen(sampleId, category, source))
+        Telemetry.analytics.log(AnalyticsEvent.SampleOpen(sampleId, category, source, entryId, initialMode))
         val clock = ActiveClock(SystemClock::elapsedRealtime)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -73,6 +81,28 @@ class ActiveClock(private val now: () -> Long) {
 fun logSampleInteraction(sampleId: String?, control: String) {
     sampleId ?: return
     Telemetry.analytics.log(AnalyticsEvent.SampleInteraction(sampleId, control))
+}
+
+/** A user-selected umbrella mode, using the same value as `sample_open.mode`. */
+fun logSampleModeChange(sampleId: String?, mode: String) {
+    logSampleInteraction(sampleId, modeControl(mode))
+}
+
+internal fun modeControl(mode: String): String = "mode_$mode"
+
+/** Initial mode of a catalogue umbrella. The pending tab is only peeked; the demo consumes it. */
+internal fun initialSampleMode(sampleId: String, initialTab: Int?): String? {
+    val modes = when (sampleId) {
+        "materials" -> listOf("gallery", "inspect", "occlusion")
+        "model-viewer" -> listOf("single_model", "multi_model")
+        "lighting" -> listOf("image", "studio", "sun")
+        "ar-placement" -> listOf("floor", "wall")
+        "ar-geospatial-anchors" -> listOf("terrain", "rooftop")
+        "ar-scene-mesh" -> listOf("mesh", "streetscape")
+        "cosmos" -> listOf("starlight", "spacetime")
+        else -> return null
+    }
+    return modes.getOrNull(initialTab ?: 0) ?: modes.first()
 }
 
 /** `model_load_failed`, with one of the [ModelLoadFailure] codes shared with iOS. */

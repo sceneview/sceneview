@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.telemetry
 
+import io.github.sceneview.demo.DemoCategory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -95,7 +96,12 @@ class DemoAnalyticsTest {
             AnalyticsEvent.ScreenView("cosmos", "Sample") to
                 ("screen_view" to mapOf("screen_name" to "cosmos", "screen_class" to "Sample")),
             AnalyticsEvent.SampleOpen("cosmos", "showcase", OpenSource.Push) to
-                ("sample_open" to mapOf("sample_id" to "cosmos", "category" to "showcase", "source" to "push")),
+                ("sample_open" to mapOf(
+                    "sample_id" to "cosmos",
+                    "entry_id" to "cosmos",
+                    "category" to "showcase",
+                    "source" to "push",
+                )),
             AnalyticsEvent.SampleClose("cosmos", 42) to
                 ("sample_close" to mapOf("sample_id" to "cosmos", "duration_s" to 42L)),
             AnalyticsEvent.SampleInteraction("cosmos", "burst") to
@@ -131,5 +137,62 @@ class DemoAnalyticsTest {
         assertEquals(LinkTarget.Store, LinkTarget.of("https://play.google.com/store/apps/details?id=x"))
         assertEquals(LinkTarget.Other, LinkTarget.of("https://opencollective.com/sceneview"))
         assertEquals(LinkTarget.Other, LinkTarget.of("https://github.com.evil.example/"))
+    }
+
+    @Test
+    fun `sample open includes received entry id and optional umbrella mode`() {
+        assertEquals(
+            mapOf(
+                "sample_id" to "materials",
+                "entry_id" to "texture-streaming",
+                "category" to "create",
+                "source" to "deeplink",
+                "mode" to "inspect",
+            ),
+            AnalyticsEvent.SampleOpen(
+                sampleId = "materials",
+                category = "create",
+                source = OpenSource.DeepLink,
+                entryId = "texture-streaming",
+                mode = "inspect",
+            ).params(),
+        )
+        val withoutMode = AnalyticsEvent.SampleOpen("geometry", "create", OpenSource.Home).params()
+        assertEquals("geometry", withoutMode["entry_id"])
+        assertTrue("mode" !in withoutMode)
+    }
+
+    @Test
+    fun `every demo category has the shared stable slug`() {
+        assertEquals("create", DemoCategory.slug(DemoCategory.CREATE))
+        assertEquals("dev_tools", DemoCategory.slug(DemoCategory.DEV_TOOLS))
+        assertEquals("place_ar", DemoCategory.slug(DemoCategory.PLACE_AR))
+        assertEquals("view_3d", DemoCategory.slug(DemoCategory.VIEW_3D))
+        assertEquals("understand", DemoCategory.slug(DemoCategory.UNDERSTAND))
+    }
+
+    @Test
+    fun `umbrella initial modes and mode interaction use the shared values`() {
+        assertEquals("gallery", initialSampleMode("materials", null))
+        assertEquals("inspect", initialSampleMode("materials", 1))
+        assertEquals("single_model", initialSampleMode("model-viewer", null))
+        assertEquals("multi_model", initialSampleMode("model-viewer", 1))
+        assertEquals("image", initialSampleMode("lighting", null))
+        assertEquals("studio", initialSampleMode("lighting", 1))
+        assertEquals("sun", initialSampleMode("lighting", 2))
+        assertEquals("floor", initialSampleMode("ar-placement", null))
+        assertEquals("wall", initialSampleMode("ar-placement", 1))
+        assertEquals("terrain", initialSampleMode("ar-geospatial-anchors", null))
+        assertEquals("rooftop", initialSampleMode("ar-geospatial-anchors", 1))
+        assertEquals("mesh", initialSampleMode("ar-scene-mesh", null))
+        assertEquals("streetscape", initialSampleMode("ar-scene-mesh", 1))
+        assertEquals("starlight", initialSampleMode("cosmos", 99))
+        assertEquals(null, initialSampleMode("geometry", null))
+
+        assertEquals("mode_occlusion", modeControl("occlusion"))
+        assertEquals(
+            "mode_occlusion",
+            AnalyticsEvent.SampleInteraction("materials", modeControl("occlusion")).params()["control"],
+        )
     }
 }

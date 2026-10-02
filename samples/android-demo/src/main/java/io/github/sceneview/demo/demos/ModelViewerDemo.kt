@@ -207,6 +207,7 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(ModelViewerMode.entries, ModelViewerMode.Single))
     }
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     // Switching section drops any camera-distance override (#2913). The Single-Model slider writes
     // to the process-global `DemoSettings.cameraDistance` — that is how it drives the live camera,
     // since `rememberHeroOrbitCameraManipulator` reads the override itself (#1571) — and the
@@ -215,8 +216,11 @@ fun ModelViewerDemo(onBack: () -> Unit) {
     // exposes no slider to undo it. A cold launch never passes through here, so the `--ef
     // camera_distance` / `?cameraDistance=` deep link keeps working for either section.
     val onModeChange: (ModelViewerMode) -> Unit = { next ->
-        if (next != mode) DemoSettings.cameraDistance = null
-        mode = next
+        if (next != mode) {
+            DemoSettings.cameraDistance = null
+            io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
+            mode = next
+        }
     }
     // The model on the single-model stage lives here, above the sections, so the Models
     // sheet opened from the Park can open a model directly (#3828) — it used to
@@ -441,9 +445,9 @@ private class EasedFraming {
     }
 }
 
-private enum class ModelViewerMode(val label: String) {
-    Single("Single Model"),
-    Multi("Multi-Model"),
+private enum class ModelViewerMode(val label: String, val analyticsMode: String) {
+    Single("Single Model", "single_model"),
+    Multi("Multi-Model", "multi_model"),
 }
 
 @Composable

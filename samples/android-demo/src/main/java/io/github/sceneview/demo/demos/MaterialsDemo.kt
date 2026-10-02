@@ -165,17 +165,24 @@ fun MaterialsDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(MaterialsMode.entries, MaterialsMode.Gallery))
     }
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
+    val onModeChange: (MaterialsMode) -> Unit = { next ->
+        if (next != mode) {
+            io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
+            mode = next
+        }
+    }
     when (mode) {
         // One call site for both: Gallery and Inspect are two framings of the same scene, and
         // sharing the composable means the engine, the environment and the nine material
         // instances survive the toggle. Switching modes is then a camera change, not a
         // teardown — no reload, no black frame, and a slider tweak is still there when the
         // user comes back to the wall.
-        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(onBack, mode) { mode = it }
+        MaterialsMode.Gallery, MaterialsMode.Inspect -> StudioSection(onBack, mode, onModeChange)
         // Occlusion gets its own engine on purpose: it is a different scene with a different
         // camera and a loaded GLB, and giving it a separate `rememberEngine()` means leaving
         // the tab tears its resources down completely.
-        MaterialsMode.Occlusion -> OcclusionSection(onBack, mode) { mode = it }
+        MaterialsMode.Occlusion -> OcclusionSection(onBack, mode, onModeChange)
     }
 }
 
@@ -189,10 +196,10 @@ fun MaterialsDemo(onBack: () -> Unit) {
  * a `MaterialInstance` that is already bound to a live renderable, which is the thing that
  * demo existed to show, minus the sphere it showed it on.
  */
-private enum class MaterialsMode(@StringRes val labelRes: Int) {
-    Gallery(R.string.demo_materials_mode_gallery),
-    Inspect(R.string.demo_materials_mode_inspect),
-    Occlusion(R.string.demo_materials_mode_occlusion),
+private enum class MaterialsMode(@StringRes val labelRes: Int, val analyticsMode: String) {
+    Gallery(R.string.demo_materials_mode_gallery, "gallery"),
+    Inspect(R.string.demo_materials_mode_inspect, "inspect"),
+    Occlusion(R.string.demo_materials_mode_occlusion, "occlusion"),
 }
 
 @Composable

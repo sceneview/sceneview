@@ -13,6 +13,7 @@ import SceneViewSwift
 // The event taxonomy is shared byte-for-byte with the Android demo. Do not rename an
 // event or a parameter here without renaming it there: the two apps report into the
 // same Firebase project and the dashboards join them on these strings.
+// `sample_open`: sample_id + received entry_id + category slug + source, and mode only for umbrellas.
 
 /// One analytics parameter value. Firebase accepts strings and numbers; the taxonomy
 /// only needs strings and integers.
@@ -72,10 +73,14 @@ extension AnalyticsEvent {
         AnalyticsEvent(name: "screen_view", params: ["screen_name": .string(name), "screen_class": .string(screenClass)])
     }
 
-    static func sampleOpen(sampleId: String, category: String, source: SampleOpenSource) -> AnalyticsEvent {
-        AnalyticsEvent(name: "sample_open", params: [
-            "sample_id": .string(sampleId), "category": .string(category), "source": .string(source.rawValue),
-        ])
+    static func sampleOpen(sampleId: String, entryId: String? = nil, category: String,
+                           source: SampleOpenSource, mode: String? = nil) -> AnalyticsEvent {
+        var params: [String: AnalyticsParam] = [
+            "sample_id": .string(sampleId), "entry_id": .string(entryId ?? sampleId),
+            "category": .string(category), "source": .string(source.rawValue),
+        ]
+        if let mode { params["mode"] = .string(mode) }
+        return AnalyticsEvent(name: "sample_open", params: params)
     }
 
     static func sampleClose(sampleId: String, durationSeconds: Int) -> AnalyticsEvent {
@@ -249,10 +254,11 @@ final class DemoAnalytics: @unchecked Sendable {
     // MARK: Sample lifecycle
 
     /// Logs `screen_view` + `sample_open` and starts the sample's clock.
-    func sampleOpened(_ sampleId: String, category: String, source: SampleOpenSource) {
+    func sampleOpened(_ sampleId: String, entryId: String? = nil, category: String,
+                      source: SampleOpenSource, mode: String? = nil) {
         lock.lock(); openSamples[sampleId] = now(); lock.unlock()
         log(.screenView(name: sampleId, screenClass: "Sample"))
-        log(.sampleOpen(sampleId: sampleId, category: category, source: source))
+        log(.sampleOpen(sampleId: sampleId, entryId: entryId, category: category, source: source, mode: mode))
     }
 
     /// Logs `sample_close` with the whole seconds spent in the sample. Ignored when the
@@ -269,16 +275,15 @@ final class DemoAnalytics: @unchecked Sendable {
         log(.sampleInteraction(sampleId: sampleId, control: control))
     }
 
-    /// The Android category key of a sample (`sample_open.category`).
+    /// The stable category slug of a sample (`sample_open.category`).
     static func category(for section: DemoSection?) -> String {
-        guard let section else { return "unknown" }
-        switch section {
-        case .view3d: return "View 3D"
-        case .create: return "Create & Record"
-        case .placeAR: return "Place in AR"
-        case .understand: return "Understand the World"
-        case .devTools: return "Developer Tools"
-        }
+        section?.analyticsSlug ?? "unknown"
+    }
+
+    /// Initial mode of the iOS catalogue's routable umbrella card.
+    static func initialMode(for sampleId: String, tab: String? = nil) -> String? {
+        guard sampleId == "cosmos" else { return nil }
+        return tab == "spacetime" || tab == "1" ? "spacetime" : "starlight"
     }
 
     /// `model_load_failed.reason`, the Android keys: `asset_missing` (the file could not
