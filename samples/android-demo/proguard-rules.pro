@@ -89,3 +89,13 @@
 # templates) whose protos tasks-vision does not ship. The demo never calls them.
 -dontwarn com.google.mediapipe.proto.CalculatorProfileProto$CalculatorProfile
 -dontwarn com.google.mediapipe.proto.GraphTemplateProto$CalculatorGraphTemplate
+
+# ── Stack traces: file and line attributes ───────────────────────────────────
+# Without these, R8 drops both attributes and every JVM frame in a Crashlytics
+# or Play Console report reads `Unknown Source`. Only the mapping can then put
+# the source back, and when it is missing or does not match the build, the
+# frames stay blank. Keeping the line table means retrace always has real lines
+# to map. The file name is the same `SourceFile` everywhere, so no source path
+# leaks into the dex.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

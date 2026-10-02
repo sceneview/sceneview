@@ -323,6 +323,7 @@ jobs:
       # effort, like the manifest check: a Crashlytics outage must never cost a
       # release. Needs the Firebase config, deleted by the next step.
       - name: Upload native symbols to Crashlytics
+        id: symbols
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -333,6 +334,12 @@ jobs:
           ./gradlew :samples:android-demo:uploadCrashlyticsSymbolFileRelease \
             -PversionCode=${{ steps.version.outputs.code }} \
             -PversionName=${{ steps.version.outputs.name }}
+
+      # continue-on-error hides a failed or timed-out upload behind a green
+      # check: say it out loud so a release never ships unsymbolized unnoticed.
+      - name: Warn if native symbol upload failed
+        if: steps.symbols.outcome == 'failure'
+        run: echo "::warning::Crashlytics native symbol upload failed (error or 15-minute timeout). Native crashes of this build stay unsymbolized until :samples:android-demo:uploadCrashlyticsSymbolFileRelease is re-run for it."
 
       - name: Clean up keystore
         if: always()

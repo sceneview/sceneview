@@ -105,6 +105,14 @@ android {
 
     compileSdk 37
 
+    // The release build strips the native libraries and extracts their debug
+    // symbols (see `ndk { debugSymbolLevel }` below) with this NDK. Pinned
+    // rather than left to AGP's default so a toolchain bump is a visible diff:
+    // when the version is missing, AGP only warns "Unable to strip" and ships no
+    // symbols. 28.2.13676358 is AGP 9.4's default and is installed on GitHub's
+    // ubuntu-24.04 runners next to 27.3 and 29.0.
+    ndkVersion "28.2.13676358"
+
 
     defaultConfig {
         applicationId "io.github.sceneview.demo"
@@ -410,10 +418,12 @@ dependencies {
     // without google-services.json nothing initialises and the façade is a no-op.
     implementation platform(libs.firebase.bom)
     implementation libs.firebase.analytics
-    // The NDK flavour of Crashlytics (it pulls `firebase-crashlytics` in): without
-    // it a native crash (Filament, ARCore, MediaPipe) never reaches Crashlytics,
-    // and that is where most of this app's crashes come from.
-    implementation libs.firebase.crashlytics.ndk
+    implementation libs.firebase.crashlytics
+    // The NDK half of Crashlytics: without it a native crash (Filament, ARCore,
+    // MediaPipe) never reaches Crashlytics, and that is where most of this app's
+    // crashes come from. Release only: it adds `libcrashlytics*.so` for every ABI
+    // (4.7 MB in a universal APK), and the debug APK, shared by CI, has no use for them.
+    releaseImplementation libs.firebase.crashlytics.ndk
     implementation libs.firebase.messaging
 
     // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works
