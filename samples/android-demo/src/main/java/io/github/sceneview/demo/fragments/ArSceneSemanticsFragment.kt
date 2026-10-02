@@ -17,6 +17,7 @@ object ArSceneSemanticsFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Park,
         order = 39,
+        addedIn = "4.11.2",
         tags = setOf("ar", "semantics", "segmentation", "labeling", "outdoor"),
     )
 

@@ -112,7 +112,8 @@ struct SceneViewDemoApp: App {
     init() {
         #if os(macOS)
         // iOS starts Firebase from `DemoAppDelegate`; macOS has no delegate here.
-        FirebaseTelemetry.start()
+        // In the EEA, UK and Switzerland, not before the user's yes (`ConsentStore`).
+        FirebaseTelemetry.startAtLaunch()
         #endif
     }
 
@@ -178,6 +179,10 @@ struct SceneViewDemoApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await updater.checkForUpdate() }
+                        #if os(iOS)
+                        // Permission changed in iOS Settings, or an opt-out to finish.
+                        Task { await PushCenter.shared.appBecameActive() }
+                        #endif
                     }
                 }
         }
@@ -203,11 +208,15 @@ struct ContentView: View {
         var source: SampleOpenSource = .deeplink
     }
     @State private var presentedDemo: DemoLink?
+    /// Home has a demo, a sheet or the online gallery over it (`ShowcaseTab`).
+    @State private var homePresenting = false
 
     @Environment(\.colorScheme) private var colorScheme
     #if os(iOS)
     @ObservedObject private var push = PushCenter.shared
     #endif
+    /// The usage-statistics consent (EEA, UK, Switzerland): its sheet comes up over Home.
+    @ObservedObject private var consent = TelemetryConsent.shared
 
     /// Guards the one-shot launch-argument presentation so a view refresh
     /// doesn't re-present the demo.
@@ -223,7 +232,8 @@ struct ContentView: View {
             Tab("Showcase", systemImage: "square.grid.2x2.fill", value: 0) {
                 // `isActive` gates the home hero's live 3D stage: only the visible
                 // tab, with no demo presented over it, may run a scene.
-                ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil)
+                ShowcaseTab(isActive: selectedTab == 0 && presentedDemo == nil,
+                            onPresentingChange: { homePresenting = $0 })
                     .accessibilityLabel("Showcase")
                     .updateToast()
             }
@@ -243,7 +253,7 @@ struct ContentView: View {
             // Not on the AR View tab: the bottom of an AR screen holds its live
             // controls — the Android snackbar steps aside there too.
         }
-        .tabBarMinimizesOnScrollDown()
+        .tabBarStaysOpen()
         .tint(SceneViewTheme.primary)
         .task {
             // One-shot: route to the launch-argument demo on first frame so
@@ -288,6 +298,18 @@ struct ContentView: View {
         .task {
             DemoAnalytics.shared.setUserProperty(Self.arSupported ? "true" : "false", for: .arSupported)
         }
+        // Home first, then the consent — or once a demo (deep-linked, or opened from
+        // Home) has closed.
+        .task(id: presentedDemo == nil && !homePresenting) {
+            guard presentedDemo == nil, !homePresenting else { return }
+            await consent.presentIfNeeded { presentedDemo == nil && !homePresenting }
+        }
+        .sheet(isPresented: $consent.sheetPresented, onDismiss: { consent.sheetDismissed() }) {
+            ConsentSheet(
+                onShare: { consent.share() },
+                onDecline: { consent.decline() }
+            )
+        }
         #if os(iOS)
         // A tapped "What's new" push: its sample, or Home for an id this build lacks.
         .onChange(of: push.pendingTap, initial: true) { _, tap in
@@ -320,13 +342,17 @@ struct ContentView: View {
 }
 
 private extension View {
-    /// iOS 26+: the Liquid Glass tab bar shrinks to its selected item while the
-    /// user scrolls down a tab's content and comes back on scroll up.
+    /// iOS 26+: the tab bar stays whole, as Android's bottom bar does. It used
+    /// to shrink to its selected item on scroll down (`.onScrollDown`): the
+    /// first swipe from the hero into "Featured" folded "AR View" and "About"
+    /// away, and they stayed gone after a demo was opened and closed until the
+    /// user happened to scroll back up — read as "the tab closes when you go
+    /// into Featured" (02/10).
     @ViewBuilder
-    func tabBarMinimizesOnScrollDown() -> some View {
+    func tabBarStaysOpen() -> some View {
         #if os(iOS)
         if #available(iOS 26, *) {
-            self.tabBarMinimizeBehavior(.onScrollDown)
+            self.tabBarMinimizeBehavior(.never)
         } else {
             self
         }

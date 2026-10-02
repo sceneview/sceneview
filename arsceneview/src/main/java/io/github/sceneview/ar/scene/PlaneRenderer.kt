@@ -240,10 +240,19 @@ class PlaneRenderer(
      * @param plane [Plane]
      */
     private fun renderPlane(plane: Plane, visible: Boolean = true) {
-        // Find the plane visualizer if it already exists.
-        // If not, create a new plane visualizer for this plane.
-        if (plane.trackingState == TrackingState.TRACKING || plane.subsumedBy == null) {
-            val planeVisualizer = visualizers[plane]
+        // Only a plane ARCore still tracks and has not merged into another is drawn. This was an
+        // `||`: a merged plane still tracking got a new visualizer every update, destroyed by
+        // [cleanupOldPlaneVisualizer] the same pass, and its two material instances piled up in
+        // [materialInstances] until the renderer itself was destroyed.
+        if (plane.trackingState == TrackingState.TRACKING && plane.subsumedBy == null) {
+            // Find the plane visualizer if it already exists.
+            // If not, create a new plane visualizer for this plane.
+            val existing = visualizers[plane]
+            // An updated plane takes the visibility of this pass too. It used to keep the one it
+            // was created with, while a plane skipped by the update was set every pass: in
+            // RENDER_CENTER a plane that ARCore updates every other frame blinked on and off.
+            existing?.setVisible(isVisible && visible)
+            val planeVisualizer = existing
                 ?: PlaneVisualizer(engine, scene, plane).apply {
                     setPlaneMaterial(planeMaterial.createInstance().also {
                         materialInstances += it

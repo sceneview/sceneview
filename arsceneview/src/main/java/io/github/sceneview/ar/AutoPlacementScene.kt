@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.ar.node.AnchorNode
@@ -39,37 +41,115 @@ import java.io.File
 /** Supported automatic-placement alignment. Surface accepts tables, never ceilings. */
 enum class PlacementSurface { SURFACE, WALL }
 
-/** A real plane-associated placement. The anchor and plane retain their ARCore identity. */
+private const val NO_PLANE_MESSAGE = "This wall was found through the depth API or inferred from " +
+    "the floor seam: ARCore has no plane for it yet. Read planeOrNull instead."
+
+/**
+ * A placement and the ARCore identity of what it stands on. For a floor, a table or a wall
+ * ARCore has grown a plane on, that is the [plane]. A plain painted wall often has no plane at
+ * all (#4070): the placement then rides a depth hit or the tracked floor it was inferred from,
+ * and [planeOrNull] is `null`.
+ */
 class AutoPlacementResult internal constructor(
     anchor: Anchor,
-    plane: Plane,
+    trackable: Trackable,
     pose: Pose,
+    kind: WallHitKind?,
 ) {
+    internal constructor(anchor: Anchor, plane: Plane, pose: Pose) :
+        this(anchor, plane, pose, plane.wallKindOrNull())
+
     var anchor: Anchor = anchor
-        internal set
-    var plane: Plane = plane
         internal set
     var pose: Pose = pose
         internal set
+
+    /** What the anchor is attached to: a [Plane], a [DepthPoint], or the floor under a seam wall. */
+    internal var trackable: Trackable = trackable
+
+    /** How the wall holds, `null` for a floor or table placement. */
+    internal var kind: WallHitKind? = kind
+
+    internal val isWall: Boolean get() = kind != null
+
+    /**
+     * The ARCore plane the object stands on.
+     *
+     * @throws IllegalStateException for a wall found through the depth API or inferred from the
+     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     */
+    val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
+
+    /**
+     * The ARCore plane the object stands on, or `null` for a wall found through the depth API
+     * or inferred from the floor↔wall seam (#4070).
+     */
+    val planeOrNull: Plane? get() = planeOf(trackable, kind)
 }
 
 /** A validated, oriented surface candidate. Creating its anchor can still fail. */
-class AutoPlacementCandidate internal constructor(val plane: Plane, val pose: Pose) {
+class AutoPlacementCandidate internal constructor(
+    internal val trackable: Trackable,
+    val pose: Pose,
+    internal val kind: WallHitKind?,
+) {
+    internal constructor(plane: Plane, pose: Pose) : this(plane, pose, plane.wallKindOrNull())
+
+    /**
+     * The ARCore plane the candidate lies on.
+     *
+     * @throws IllegalStateException for a wall found through the depth API or inferred from the
+     *   floor seam, which has no plane yet. Read [planeOrNull] in a wall flow.
+     */
+    val plane: Plane get() = planeOrNull ?: error(NO_PLANE_MESSAGE)
+
+    /** The ARCore plane the candidate lies on, `null` for a wall without one (#4070). */
+    val planeOrNull: Plane? get() = planeOf(trackable, kind)
+
     fun createAnchor(): AutoPlacementResult? = runCatching {
-        if (plane.trackingState != TrackingState.TRACKING || plane.subsumedBy != null || !plane.isPoseInPolygon(pose)) {
-            return@runCatching null
-        }
-        val anchor = plane.createAnchor(pose)
+        if (!accepts(pose)) return@runCatching null
+        val anchor = trackable.createAnchor(pose)
         if (anchor.trackingState != TrackingState.TRACKING) {
             anchor.detach()
             null
-        } else AutoPlacementResult(anchor, plane, pose)
+        } else AutoPlacementResult(anchor, trackable, pose, kind)
     }.getOrNull()
+
+    /**
+     * Whether [target] is still a valid spot on this candidate's surface: inside the polygon for
+     * a floor, up to [UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M] outside it for a wall plane,
+     * anywhere on an inferred wall (which has no polygon).
+     */
+    internal fun accepts(target: Pose): Boolean {
+        if (trackable.trackingState != TrackingState.TRACKING) return false
+        val plane = trackable as? Plane
+        return when (kind) {
+            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
+                (plane.isPoseInPolygon(target) ||
+                    plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
+            WallHitKind.DEPTH_POINT, WallHitKind.FLOOR_SEAM -> true
+        }
+    }
+}
+
+private fun Plane.wallKindOrNull(): WallHitKind? = if (type == Plane.Type.VERTICAL) WallHitKind.PLANE else null
+
+private fun planeOf(trackable: Trackable, kind: WallHitKind?): Plane? = when (kind) {
+    null, WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> trackable as? Plane
+    WallHitKind.DEPTH_POINT, WallHitKind.FLOOR_SEAM -> null
 }
 
 /**
  * Shared center-first policy for automatic placement and app adapters. Fallback centers
  * are ordered by screen-center proximity, and must lie inside the detected polygon.
+ *
+ * A [PlacementSurface.WALL] search also takes what ARKit's `.existingPlaneInfinite` and
+ * `.estimatedPlane` would (#4070): a wall plane hit up to a metre outside its polygon, a depth
+ * hit on a vertical surface (with the depth API on), and last a wall inferred from where the
+ * tracked floor ends under the centre of the screen ([seamWallCandidate]). The last two must
+ * show upright surface [WALL_MIN_RISE_M] above the floor ([wallRisesAboveFurniture]), or the
+ * front of a bed or a cabinet passes for a wall.
  */
 fun findAutoPlacementSurface(
     frame: Frame,
@@ -84,50 +164,181 @@ fun findAutoPlacementSurface(
             PlacementSurface.SURFACE -> Plane.Type.HORIZONTAL_UPWARD_FACING
             PlacementSurface.WALL -> Plane.Type.VERTICAL
         }
-    val hit = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
-        .firstOrNull { hit ->
-            val plane = hit.trackable as? Plane
-            plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
-                surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
-                plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
-                plane.isPoseInPolygon(hit.hitPose), hit.distance,
-            )
-        }
-    if (hit != null) {
-        val hitPlane = hit.trackable as Plane
-        return AutoPlacementCandidate(hitPlane, orientedPlacementPose(hit.hitPose, hitPlane, frame.camera.pose))
-    }
+    val camera = frame.camera.pose
+    val hits = runCatching { frame.hitTest(width / 2f, height / 2f) }.getOrDefault(emptyList())
     val view = FloatArray(16).also { frame.camera.getViewMatrix(it, 0) }
     val projection = FloatArray(16).also { frame.camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
     val viewProjection = ViewportProjection.multiply(projection, view)
-    val camera = frame.camera.pose
+    // Without a tracked floor, the wall must reach the camera's own height: a phone held standing
+    // or seated is above a bed or a cabinet.
+    val floorY = trackedFloorY(planes) ?: (camera.ty() - WALL_MIN_RISE_M)
+    val risesAboveFurniture = { point: Position, normal: Float3 ->
+        val probe = wallRiseProbe(point, floorY)?.let { probeHit(frame, viewProjection, it, width, height) }
+        wallRisesAboveFurniture(point, normal, floorY, probe)
+    }
+    when (surface) {
+        PlacementSurface.WALL -> wallRayCandidate(hits, camera, risesAboveFurniture)?.let { return it }
+        PlacementSurface.SURFACE -> {
+            val hit = hits.firstOrNull { hit ->
+                val plane = hit.trackable as? Plane
+                plane != null && plane.subsumedBy == null && UsableSurfacePolicy.accept(
+                    surface, plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING,
+                    plane.type == Plane.Type.VERTICAL, plane.trackingState == TrackingState.TRACKING,
+                    plane.isPoseInPolygon(hit.hitPose), hit.distance,
+                )
+            }
+            if (hit != null) return AutoPlacementCandidate(hit.trackable as Plane, hit.hitPose)
+        }
+    }
     val candidates = planes.filter { supported(it) && it.isPoseInPolygon(it.centerPose) }.map { plane ->
         val pose = plane.centerPose
         FallbackCandidate(
-            AutoPlacementCandidate(plane, orientedPlacementPose(pose, plane, camera)),
+            AutoPlacementCandidate(plane, orientedPlacementPose(pose, planeWallNormal(plane), camera)),
             ViewportProjection.distance(pose.tx(), pose.ty(), pose.tz(), camera.tx(), camera.ty(), camera.tz()),
             ViewportProjection.project(viewProjection, pose.tx(), pose.ty(), pose.tz()),
         )
     }
     return UsableSurfacePolicy.rankFallback(candidates).firstOrNull()
+        ?: if (surface == PlacementSurface.WALL) seamCandidate(hits, planes, camera, risesAboveFurniture) else null
+}
+
+/** Height of the lowest tracked upward-facing plane, the floor; `null` before one is tracked. */
+private fun trackedFloorY(planes: Collection<Plane>): Float? = planes
+    .filter {
+        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING && it.trackingState == TrackingState.TRACKING &&
+            it.subsumedBy == null
+    }
+    .minOfOrNull { it.centerPose.ty() }
+
+/**
+ * Where the camera ray toward [target] first meets tracked geometry (a depth point, a plane, a
+ * feature point), or `null` when [target] is off screen or the ray meets nothing.
+ */
+private fun probeHit(frame: Frame, viewProjection: FloatArray, target: Position, width: Int, height: Int): Position? {
+    val ndc = ViewportProjection.project(viewProjection, target.x, target.y, target.z)
+        ?.takeIf { it.isInsideViewport } ?: return null
+    val x = (ndc.x + 1f) / 2f * width
+    val y = (1f - ndc.y) / 2f * height
+    val hit = runCatching { frame.hitTest(x, y) }.getOrNull()?.firstOrNull() ?: return null
+    return Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz())
 }
 
 /**
- * The plane finding [AutoPlacementScene] asks ARCore for. Each flow looks only for the planes
- * it can place on: a wall flow that is not asked for vertical planes can never find a wall
- * (#4070), and a surface flow has no use for walls. Pure, so `AutoPlacementPlaneFindingTest`
- * pins the contract on the JVM.
+ * The most trusted wall among the centre ray's hits ([WallHitKind] order), nearest first. A
+ * depth hit is a wall only if [risesAboveFurniture]: a vertical plane is ARCore's own call.
+ */
+private fun wallRayCandidate(
+    hits: List<HitResult>,
+    camera: Pose,
+    risesAboveFurniture: (Position, Float3) -> Boolean,
+): AutoPlacementCandidate? {
+    var best: HitResult? = null
+    var bestKind: WallHitKind? = null
+    for (hit in hits) {
+        val kind = wallHitKind(hit) ?: continue
+        if (bestKind == null || kind < bestKind) {
+            best = hit
+            bestKind = kind
+        }
+    }
+    val hit = best ?: return null
+    val normal = wallNormalOf(hit)
+    if (bestKind == WallHitKind.DEPTH_POINT && !risesAboveFurniture(
+            Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz()), Float3(normal[0], normal[1], normal[2]),
+        )
+    ) return null
+    val pose = orientedPlacementPose(hit.hitPose, normal, camera)
+    return AutoPlacementCandidate(hit.trackable, pose, bestKind)
+}
+
+/** How far past the edge tolerance the "floor ends beyond" probe looks, metres. */
+private const val SEAM_PROBE_MARGIN_M = 0.1f
+
+/**
+ * A wall inferred from the floor seam: the centre ray meets the tracked floor near where its
+ * polygon ends ([seamWallCandidate]), and the wall rises above it ([risesAboveFurniture]): the
+ * floor also ends at the foot of a bed. The anchor rides the floor plane, which is tracked.
+ */
+private fun seamCandidate(
+    hits: List<HitResult>,
+    planes: Collection<Plane>,
+    camera: Pose,
+    risesAboveFurniture: (Position, Float3) -> Boolean,
+): AutoPlacementCandidate? {
+    val floors = planes.filter {
+        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING && it.trackingState == TrackingState.TRACKING &&
+            it.subsumedBy == null
+    }
+    val floorY = floors.minOfOrNull { it.centerPose.ty() } ?: return null
+    val hit = hits.firstOrNull { hit ->
+        val plane = hit.trackable as? Plane
+        plane != null && plane in floors && plane.centerPose.ty() - floorY <= SEAM_FLOOR_TOLERANCE_M &&
+            plane.isPoseInPolygon(hit.hitPose) &&
+            hit.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+    } ?: return null
+    val floor = hit.trackable as Plane
+    val local = floor.localXZ(hit.hitPose)
+    val edge = nearestPolygonEdge(local[0], local[1], floor.polygonArray()) ?: return null
+    val edgeWorld = floor.centerPose.rotateVector(floatArrayOf(edge.dx, 0f, edge.dz))
+    // Probe past the aimed point, away from the camera: the floor must end there.
+    val awayX = hit.hitPose.tx() - camera.tx()
+    val awayZ = hit.hitPose.tz() - camera.tz()
+    val away = kotlin.math.sqrt(awayX * awayX + awayZ * awayZ)
+    val probeStep = (SEAM_EDGE_TOLERANCE_M + SEAM_PROBE_MARGIN_M) / away.coerceAtLeast(1e-3f)
+    val probe = Pose.makeTranslation(
+        hit.hitPose.tx() + awayX * probeStep, hit.hitPose.ty(), hit.hitPose.tz() + awayZ * probeStep,
+    )
+    val floorEndsBeyond = floor.outsidePolygonDistance(probe) > 0f
+    val depthNormal = hits.firstOrNull { it.trackable is DepthPoint }
+        ?.hitPose?.getTransformedAxis(1, 1f)?.let { Float3(it[0], it[1], it[2]) }
+    val wall = seamWallCandidate(
+        floorY = hit.hitPose.ty(),
+        rayHitOnFloor = Position(hit.hitPose.tx(), hit.hitPose.ty(), hit.hitPose.tz()),
+        cameraPosition = Position(camera.tx(), camera.ty(), camera.tz()),
+        floorEdgeDistance = edge.distance,
+        edgeDirection = Float3(edgeWorld[0], edgeWorld[1], edgeWorld[2]),
+        depthNormal = depthNormal,
+        floorEndsBeyond = floorEndsBeyond,
+    )?.takeIf { risesAboveFurniture(it.point, it.normal) } ?: return null
+    val point = Pose.makeTranslation(wall.point.x, wall.point.y, wall.point.z)
+    val normal = floatArrayOf(wall.normal.x, wall.normal.y, wall.normal.z)
+    return AutoPlacementCandidate(floor, orientedPlacementPose(point, normal, camera), WallHitKind.FLOOR_SEAM)
+}
+
+/**
+ * The plane finding [AutoPlacementScene] asks ARCore for. A surface flow looks only for the
+ * planes it can place on. A wall flow needs vertical planes (#4070) **and** the floor: a plain
+ * wall often never grows a plane, and the floor's edge is where it is inferred from
+ * ([seamWallCandidate]). Pure, so `AutoPlacementPlaneFindingTest` pins the contract on the JVM.
  */
 internal fun autoPlacementPlaneFindingMode(surface: PlacementSurface): Config.PlaneFindingMode =
     when (surface) {
         PlacementSurface.SURFACE -> Config.PlaneFindingMode.HORIZONTAL
-        PlacementSurface.WALL -> Config.PlaneFindingMode.VERTICAL
+        PlacementSurface.WALL -> Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
     }
 
-/** ARCore's +Y is the surface normal; -Z is gravity-up for upright wall content. */
-private fun orientedPlacementPose(pose: Pose, plane: Plane, camera: Pose): Pose {
-    if (plane.type != Plane.Type.VERTICAL) return pose
-    val axis = plane.centerPose.getTransformedAxis(1, 1f)
+/**
+ * The depth mode [AutoPlacementScene] asks ARCore for. A wall flow turns the depth API on: a
+ * depth hit is the only hit ARCore returns on a plain painted wall (#4070). The session
+ * downgrades it to `DISABLED` on a device without depth support. A surface flow keeps
+ * [ARSceneView]'s default (`DISABLED`), and so does every other scene.
+ */
+internal fun autoPlacementDepthMode(surface: PlacementSurface): Config.DepthMode =
+    when (surface) {
+        PlacementSurface.SURFACE -> Config.DepthMode.DISABLED
+        PlacementSurface.WALL -> Config.DepthMode.AUTOMATIC
+    }
+
+/** A vertical plane's normal (centre-pose +Y), `null` for a floor or table. */
+private fun planeWallNormal(plane: Plane): FloatArray? =
+    if (plane.type == Plane.Type.VERTICAL) plane.centerPose.getTransformedAxis(1, 1f) else null
+
+/**
+ * ARCore's +Y is the surface normal; -Z is gravity-up for upright wall content. A `null`
+ * [wallNormal] is a floor or table: the pose is kept as is.
+ */
+private fun orientedPlacementPose(pose: Pose, wallNormal: FloatArray?, camera: Pose): Pose {
+    val axis = wallNormal ?: return pose
     val wall = directWallPose(
         Position(pose.tx(), pose.ty(), pose.tz()), Float3(axis[0], axis[1], axis[2]),
         Float3(camera.tx() - pose.tx(), camera.ty() - pose.ty(), camera.tz() - pose.tz()),
@@ -212,10 +423,17 @@ fun AutoPlacementScene(
             playbackDataset = playbackDataset,
             planeRenderer = false,
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
+            depthMode = autoPlacementDepthMode(surface),
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
-            onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { _, node ->
-                if (node == null) state.deselectPlacement() else state.selectPlacement()
-            }),
+            onGestureListener = rememberOnGestureListener(
+                // Tap the object to select it (the selection ring appears), tap empty space
+                // to deselect — Scene Viewer's selection model.
+                onSingleTapConfirmed = { _, node ->
+                    if (node == null) state.deselectPlacement() else state.selectPlacement()
+                },
+                // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
+                onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+            ),
             onARCoreAvailability = {
                 availability = it
                 onARCoreAvailability?.invoke(it)
@@ -355,9 +573,20 @@ fun AutoPlacementScene(
 
 /**
  * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
- * default. Pass null [scaleToUnits] to retain authored units. Pinch is limited to 25–400%
- * of that base and snaps to 100 % within ±4 %, with a short elastic rebound. The model's complete bounding volume is selectable, including nested meshes.
- * [assetRotation] corrects authored axes before the grounded bounds are calculated.
+ * default. Pass null [scaleToUnits] to retain authored units. The model's complete bounding
+ * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
+ * before the grounded bounds are calculated.
+ *
+ * Gestures, as Scene Viewer and AR Quick Look:
+ * - **Pinch** follows the fingers 1:1 relative to where they landed (spreading them twice as
+ *   far doubles the object), limited to 25–400 % of the base, snapping to 100 % within ±4 %
+ *   with a short elastic rebound.
+ * - **Twist** turns the object about its base.
+ * - **Double-tap** ([AutoPlacementState.toggleBaseScale]) animates back to 100 %; at 100 % it
+ *   returns to the size last pinched to.
+ * - **Selection** draws a thin white ring on the surface around the object's footprint while
+ *   [AutoPlacementState.isSelected]; opt out with [AutoPlacementState.showsSelectionRing].
+ *   [AutoPlacementNode]'s free-form content draws no ring — it has no bounds to encircle.
  */
 @Composable
 fun ARSceneScope.AutoPlacementModel(
@@ -374,7 +603,7 @@ fun ARSceneScope.AutoPlacementModel(
         visibleDuringFade = entrance.value > 0f) {
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
-                quaternion = if (placement.plane.type == Plane.Type.VERTICAL) {
+                quaternion = if (placement.isWall) {
                     Rotation(x = -90f).toQuaternion() * assetRotation.toQuaternion()
                 } else assetRotation.toQuaternion()
                 // Transform all eight authored bounds corners after the axis correction.
@@ -385,19 +614,134 @@ fun ARSceneScope.AutoPlacementModel(
                         add(quaternion * (corner * scale))
                     }
                 }
-                position = automaticPlacementOffset(corners, placement.plane.type == Plane.Type.VERTICAL)
+                position = automaticPlacementOffset(corners, placement.isWall)
                 isEditable = true
                 isPositionEditable = false
                 isRotationEditable = false
                 isScaleEditable = false
             }
         }
+        val footprint = remember(model) {
+            // The model's own bounds, already rotated and grounded — the ring hugs the object.
+            val grounded = buildList<Position> {
+                for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
+                    val corner = model.center +
+                        Position(x * model.halfExtent.x, y * model.halfExtent.y, z * model.halfExtent.z)
+                    add(model.quaternion * (corner * model.scale) + model.position)
+                }
+            }
+            SelectionRing.footprint(grounded)
+        }
         // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
             NodeLifecycle(model, null)
+            SelectionRingNode(state, footprint)
         }
     }
+}
+
+/**
+ * Scene Viewer's selection affordance: a thin white ring lying on the surface around the
+ * placed object's footprint, fading in while [AutoPlacementState.isSelected] and out on
+ * deselection. A real node in the anchor's frame — so it sits on the floor in true perspective,
+ * is hidden behind the object where the object stands in front of it, and scales with the pinch
+ * — rather than a screen-space overlay chasing the object one frame late. Never touchable, never
+ * a shadow caster.
+ */
+@Composable
+private fun io.github.sceneview.NodeScope.SelectionRingNode(
+    state: AutoPlacementState,
+    footprint: SelectionRing.Footprint,
+) {
+    if (footprint.radius <= 0f) return
+    val material = remember(materialLoader) {
+        materialLoader.createUnlitColorInstance(
+            io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA),
+        )
+    }
+    // Declared before the ring's own lifecycle below: Compose disposes in reverse order, so
+    // the renderable is gone before its material instance is.
+    DisposableEffect(material) {
+        onDispose { materialLoader.destroyMaterialInstance(material) }
+    }
+    val ring = remember(engine, footprint) {
+        val tube = SelectionRing.tubeRadius(footprint.radius)
+        io.github.sceneview.node.TorusNode(
+            engine = engine,
+            majorRadius = footprint.radius,
+            minorRadius = tube,
+            // Lifted by its own thickness so it lies ON the surface instead of z-fighting the
+            // shadow catcher that shares y = 0.
+            center = Position(footprint.centerX, tube + SelectionRing.LIFT, footprint.centerZ),
+            majorSegments = SelectionRing.MAJOR_SEGMENTS,
+            minorSegments = SelectionRing.MINOR_SEGMENTS,
+            materialInstance = material,
+        ).apply {
+            // Hidden until the fade below has run once: no one-frame flash when unselected.
+            isVisible = false
+            isTouchable = false
+            isShadowCaster = false
+            isShadowReceiver = false
+        }
+    }
+    val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+    val opacity = animateFloatAsState(
+        targetValue = if (state.showsSelectionRing && state.isSelected && placed) 1f else 0f,
+        animationSpec = tween(SelectionRing.FADE_MS),
+        label = "selectionRing",
+    )
+    // Every animation frame goes straight to the material, without recomposing: a read of
+    // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
+    // and a deselected ring would stay drawn.
+    LaunchedEffect(ring, material) {
+        snapshotFlow { opacity.value }.collect { value ->
+            ring.isVisible = value > 0f
+            material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
+            // A material parameter is invisible to the frame gate: ask for the frame that shows
+            // the fade, or a scene with no new camera frame (a finished playback, a paused
+            // session) keeps drawing the old ring.
+            ring.requestRender()
+        }
+    }
+    NodeLifecycle(ring, null)
+}
+
+/** Geometry of the selection ring — pure, pinned in `ScaleSnapTest`. */
+internal object SelectionRing {
+    /** Peak opacity: present on any floor, never a solid white hoop. */
+    const val ALPHA = 0.9f
+
+    /** Fade in/out on (de)selection, milliseconds (`motion-fade` family). */
+    const val FADE_MS = 180
+
+    /** Clearance between the object's footprint and the ring, as a fraction of the radius. */
+    const val MARGIN = 0.12f
+
+    /** Lift above the surface, metres — clears the shadow catcher at y = 0. */
+    const val LIFT = 0.001f
+
+    const val MAJOR_SEGMENTS = 96
+    const val MINOR_SEGMENTS = 8
+
+    /** Ring centre on the surface plane (anchor X/Z) and radius, metres. */
+    data class Footprint(val centerX: Float, val centerZ: Float, val radius: Float)
+
+    /**
+     * The circle on the surface plane (anchor X/Z — the floor, or the wall for a wall
+     * placement, whose normal is the anchor's Y) that encloses every grounded bounds corner,
+     * plus [MARGIN].
+     */
+    fun footprint(corners: List<Position>): Footprint {
+        if (corners.isEmpty()) return Footprint(0f, 0f, 0f)
+        val cx = (corners.minOf { it.x } + corners.maxOf { it.x }) / 2f
+        val cz = (corners.minOf { it.z } + corners.maxOf { it.z }) / 2f
+        val r = corners.maxOf { kotlin.math.hypot(it.x - cx, it.z - cz) }
+        return Footprint(cx, cz, if (r.isFinite()) r * (1f + MARGIN) else 0f)
+    }
+
+    /** Tube radius: a hairline that stays visible on a mug and slim under a sofa. */
+    fun tubeRadius(radius: Float): Float = (radius * 0.012f).coerceIn(0.0018f, 0.006f)
 }
 
 /**
@@ -426,7 +770,7 @@ fun ARSceneScope.AutoPlacementNode(
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = opacity.value > 0f || entrance.value > 0f) {
         Node(
-            rotation = if (placement.plane.type == Plane.Type.VERTICAL) Rotation(x = -90f) else Rotation(),
+            rotation = if (placement.isWall) Rotation(x = -90f) else Rotation(),
             scale = Scale(PlacementEntrance.scaleFraction(entrance.value)),
         ) {
             content(opacity.value)
@@ -462,24 +806,57 @@ private fun ARSceneScope.AutomaticPlacementPivot(
     }
     NodeLifecycle(root) {
         val pivot = remember(engine, placement) { object : io.github.sceneview.node.Node(engine) {
-            /** The logical scale; [scale] only differs from it during the 100 % rebound. */
+            /**
+             * The logical scale; [scale] only differs from it during the 100 % rebound and
+             * the animated double-tap resize.
+             */
             var logicalScale = 1f
             private var rebound: Boolean? = null // fromAbove, while a rebound is pending or running
             private var reboundStartNanos = 0L
 
+            /** The last size the user pinched to away from 100 % — what a double-tap restores. */
+            var rememberedScale: Float? = null
+
+            /** Visual scale the double-tap animation started from, `null` when none runs. */
+            private var tweenFrom: Float? = null
+            private var tweenStartNanos = 0L
+
             fun startRebound(fromAbove: Boolean) {
+                tweenFrom = null
                 rebound = fromAbove
                 reboundStartNanos = 0L
             }
 
             fun cancelRebound() {
                 rebound = null
+                // Any running double-tap tween lands where it was going, so a pinch that
+                // starts mid-animation grabs the object at its logical size.
+                if (tweenFrom != null) {
+                    tweenFrom = null
+                    scale = Scale(logicalScale)
+                }
             }
 
-            override val isFrameActive: Boolean get() = rebound != null || super.isFrameActive
+            /** Animates the visual scale to [target] (already written to [logicalScale]). */
+            fun animateTo(target: Float) {
+                rebound = null
+                tweenFrom = scale.x
+                tweenStartNanos = 0L
+                logicalScale = target
+            }
+
+            override val isFrameActive: Boolean
+                get() = rebound != null || tweenFrom != null || super.isFrameActive
 
             override fun onFrame(frameTimeNanos: Long) {
                 super.onFrame(frameTimeNanos)
+                tweenFrom?.let { from ->
+                    if (tweenStartNanos == 0L) tweenStartNanos = frameTimeNanos
+                    val elapsedMs = (frameTimeNanos - tweenStartNanos) / 1_000_000f
+                    scale = Scale(ScaleSnap.doubleTapProgress(from, logicalScale, elapsedMs))
+                    if (elapsedMs >= ScaleSnap.DOUBLE_TAP_MS) tweenFrom = null
+                    return
+                }
                 val fromAbove = rebound ?: return
                 if (reboundStartNanos == 0L) reboundStartNanos = frameTimeNanos
                 val elapsedMs = (frameTimeNanos - reboundStartNanos) / 1_000_000f
@@ -504,13 +881,23 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             isPositionEditable = false
             editableScaleRange = ScaleSnap.MIN..ScaleSnap.MAX
             onRotateBegin = { _, _ -> state.beginAdjustment() }
-            var rawScale = 1f
-            onScaleBegin = { _, _ -> rawScale = logicalScale; state.beginAdjustment() }
+            // The pinch is measured against the moment two fingers landed — the scale then,
+            // times the span ratio since — never accumulated event by event: 1:1 with the
+            // fingers (Scene Viewer / Quick Look / the iOS controller), path-independent, and
+            // immune to whether the detector's factor is per-event or cumulative.
+            var pinchStartScale = 1f
+            var pinchStartSpan = 0f
+            onScaleBegin = { detector, _ ->
+                cancelRebound()
+                pinchStartScale = logicalScale
+                pinchStartSpan = detector.currentSpan
+                state.beginAdjustment()
+            }
             onRotate = { _, _, _ -> state.isAdjusting }
-            onScale = { _, _, factor ->
+            onScale = { detector, _, _ ->
                 if (state.isAdjusting) {
                     val previous = logicalScale
-                    rawScale = (rawScale * (1f + (factor - 1f) * scaleGestureSensitivity))
+                    val rawScale = ScaleSnap.pinchRaw(pinchStartScale, pinchStartSpan, detector.currentSpan)
                         .coerceIn(ScaleSnap.MIN, ScaleSnap.MAX)
                     val step = ScaleSnap.step(previous, rawScale)
                     logicalScale = step.displayed
@@ -522,6 +909,7 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                         scale = Scale(step.displayed)
                     }
                     if (step.enteredLimit) state.gestureHapticSink?.invoke(ARHapticEvent.LimitReached)
+                    if (!step.snapped) rememberedScale = step.displayed
                     state.scaleFactor = step.displayed
                     scaleChanged((step.displayed * 100).roundToInt(), step.snapped, step.enteredSnap)
                 }
@@ -537,6 +925,10 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             state.scaleAction = {
                 val previous = pivot.logicalScale
                 pivot.cancelRebound()
+                // Keep the double-tap toggle coherent with the read-out's tap-to-100 % and
+                // the accessibility slider: the size left behind is the size a double-tap
+                // brings back.
+                if (it != 1f) pivot.rememberedScale = it else if (previous != 1f) pivot.rememberedScale = previous
                 pivot.logicalScale = it
                 pivot.scale = Scale(it)
                 state.scaleFactor = it
@@ -547,10 +939,25 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                 }
                 scaleChanged((it * 100).roundToInt(), it == 1f, crossed)
             }
+            state.scaleToggleAction = {
+                val previous = pivot.logicalScale
+                val target = ScaleSnap.doubleTapTarget(previous, pivot.rememberedScale)
+                if (target == null) {
+                    // Nothing to toggle: acknowledge the tap with the 100 % rebound.
+                    pivot.startRebound(fromAbove = false)
+                } else {
+                    if (target == 1f) pivot.rememberedScale = previous
+                    pivot.animateTo(target)
+                    state.scaleFactor = target
+                    if (target == 1f) state.gestureHapticSink?.invoke(ARHapticEvent.ScaleSnapped)
+                    scaleChanged((target * 100).roundToInt(), target == 1f, target == 1f)
+                }
+            }
             onDispose {
                 state.moveAction = null
                 state.rotateAction = null
                 state.scaleAction = null
+                state.scaleToggleAction = null
             }
         }
         NodeLifecycle(pivot, content)
@@ -644,14 +1051,14 @@ private class AutomaticAnchorNode(
     fun moveBy(x: Float, y: Float): Boolean {
         val frame = frame ?: return false
         if (!isTracking(frame)) return false
-        val tangent = pose.rotateVector(floatArrayOf(x, 0f,
-            if (placement.plane.type == Plane.Type.VERTICAL) -y else y))
+        val tangent = pose.rotateVector(floatArrayOf(x, 0f, if (placement.isWall) -y else y))
         val target = translated(pose, tangent)
-        if (!placement.plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) {
+        val candidate = AutoPlacementCandidate(placement.trackable, target, placement.kind)
+        if (!candidate.accepts(target) || !visiblePlacementPoint(frame, target)) {
             invalidMove(true)
             return false
         }
-        pending = AutoPlacementCandidate(placement.plane, target)
+        pending = candidate
         val committed = commitMove()
         if (!committed) pending = null
         invalidMove(!committed)
@@ -671,32 +1078,27 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
-        val hit = frame.hitTest(e).firstOrNull {
-            val plane = it.trackable as? Plane
-            plane != null && plane.type == placement.plane.type && plane.subsumedBy == null &&
-                plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
-                it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+        val hits = frame.hitTest(e)
+        val candidate = if (placement.isWall) {
+            // Nearest wall under the finger — plane, extended plane or depth hit — and, on a plain
+            // wall with none of those, the wall the object already stands on (#4070).
+            hits.firstNotNullOfOrNull { hit -> wallHitKind(hit)?.let { hit to it } }
+                ?.let { (hit, kind) -> hitCandidate(frame, hit, kind, wallNormalOf(hit)) }
+                ?: slideAlongWall(e)
+        } else {
+            hits.firstOrNull {
+                val plane = it.trackable as? Plane
+                plane != null && plane.type == Plane.Type.HORIZONTAL_UPWARD_FACING && plane.subsumedBy == null &&
+                    plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
+                    it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
+            }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
         }
-        if (hit == null) { invalidMove(true); return false }
-        val delta = offset ?: floatArrayOf(
-            pose.tx() - hit.hitPose.tx(),
-            pose.ty() - hit.hitPose.ty(),
-            pose.tz() - hit.hitPose.tz(),
-        ).also { offset = it }
-        val plane = hit.trackable as Plane
-        // Project grab offset into the new plane to prevent movement out of its surface.
-        val normal = plane.centerPose.getTransformedAxis(1, 1f)
-        val tangent = wallTangentOffset(
-            Position(delta[0], delta[1], delta[2]),
-            Float3(normal[0], normal[1], normal[2]),
-        )
-        val target = orientedPlacementPose(
-            translated(hit.hitPose, floatArrayOf(tangent.x, tangent.y, tangent.z)),
-            plane, frame.camera.pose,
-        )
-        if (!plane.isPoseInPolygon(target) || !visiblePlacementPoint(frame, target)) { invalidMove(true); return false }
-        pending = AutoPlacementCandidate(plane, target)
-        pose = target
+        if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
+            invalidMove(true)
+            return false
+        }
+        pending = candidate
+        pose = candidate.pose
         invalidMove(false)
         return true
     }
@@ -710,6 +1112,55 @@ private class AutomaticAnchorNode(
         offset = null
         invalidMove(false)
         state.endAdjustment()
+    }
+
+    /**
+     * The drag target on [hit]'s surface: the grab offset projected into the surface (so the
+     * object never leaves it), oriented against the wall when [kind] is one.
+     */
+    private fun hitCandidate(
+        frame: Frame,
+        hit: HitResult,
+        kind: WallHitKind?,
+        normal: FloatArray,
+    ): AutoPlacementCandidate {
+        val delta = offset ?: floatArrayOf(
+            pose.tx() - hit.hitPose.tx(),
+            pose.ty() - hit.hitPose.ty(),
+            pose.tz() - hit.hitPose.tz(),
+        ).also { offset = it }
+        val tangent = wallTangentOffset(
+            Position(delta[0], delta[1], delta[2]),
+            Float3(normal[0], normal[1], normal[2]),
+        )
+        val target = orientedPlacementPose(
+            translated(hit.hitPose, floatArrayOf(tangent.x, tangent.y, tangent.z)),
+            if (kind != null) normal else null, frame.camera.pose,
+        )
+        return AutoPlacementCandidate(hit.trackable, target, kind)
+    }
+
+    /**
+     * The finger's ray against the wall the object stands on, treated as infinite — the only
+     * drag target on a plain wall that yields no plane and no depth hit under the finger.
+     */
+    private fun slideAlongWall(e: MotionEvent): AutoPlacementCandidate? {
+        val ray = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
+        val axis = pose.getTransformedAxis(1, 1f)
+        val normal = Float3(axis[0], axis[1], axis[2])
+        val contact = Position(pose.tx(), pose.ty(), pose.tz())
+        // wallGrabOffset returns contact - rayHit: the ray's hit on the wall is contact - that.
+        val toRay = wallGrabOffset(contact, normal, ray.origin, ray.direction) ?: return null
+        // First drag frame: keep the finger's grab point under the finger, no jump.
+        val grab = offset?.let { Position(it[0], it[1], it[2]) }
+            ?: toRay.also { offset = floatArrayOf(it.x, it.y, it.z) }
+        val tangent = wallTangentOffset(grab, normal)
+        val target = contact - toRay + tangent
+        return AutoPlacementCandidate(
+            placement.trackable,
+            Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
+            placement.kind,
+        )
     }
 
     /** Where the finger grabbed the node against its own contact plane, null when unusable. */
@@ -743,7 +1194,8 @@ private class AutomaticAnchorNode(
         val next = candidate.createAnchor() ?: return false
         anchor = next.anchor
         placement.anchor = next.anchor
-        placement.plane = next.plane
+        placement.trackable = next.trackable
+        placement.kind = next.kind
         placement.pose = next.pose
         pending = null
         return true

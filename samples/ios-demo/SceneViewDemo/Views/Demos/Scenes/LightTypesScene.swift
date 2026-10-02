@@ -7,6 +7,7 @@
 // @icon        lightbulb.fill
 // @order       6
 // @tags        light,ibl,environment,studio,key,fill,rim,sun,shadow,chrome,pbr
+// @addedIn     4.0.0
 // @updatedIn   4.35.0
 import SwiftUI
 

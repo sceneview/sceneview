@@ -14,7 +14,7 @@ one SceneView platform.
 | [`sceneview-web`](sceneview-web/SKILL.md) | Web — Filament.js (WebGL2/WASM) + WebXR | `.claude/scripts/install-sceneview-web-skill.sh` |
 
 All three are Apache-2.0 (see each `SKILL.md` frontmatter `license` field) and
-maintained by the [`sceneview-tools`](https://github.com/sceneview) org.
+maintained in this repository by the [`sceneview`](https://github.com/sceneview) org.
 
 ## Local install (primary distribution)
 
@@ -45,6 +45,23 @@ metadata in `agents/<skill>/agents/openai.yaml`. Listing copy, starter prompts, 
 cases and the owner gestures for the submission portal live in
 [`OPENAI-PLUGIN.md`](OPENAI-PLUGIN.md).
 
+## Claude Code plugin
+
+The same three skills ship in the `sceneview` plugin of the
+[`sceneview/claude-marketplace`](https://github.com/sceneview/claude-marketplace)
+repository, together with the MCP server:
+
+```
+/plugin marketplace add sceneview/claude-marketplace
+/plugin install sceneview@sceneview
+```
+
+The marketplace holds copies of `SKILL.md` and `references/` (not the Codex-only
+`agents/openai.yaml`). Its `scripts/sync-plugin-versions.sh` diffs them against
+this directory on `main`, and `--fix` refreshes them, so an edit here reaches the
+plugin through a marketplace PR. Contributor commands live in a separate plugin
+there, `sceneview-contrib`.
+
 ## Google `android-cli` registry submission (#1082)
 
 Getting the skills into Google's **hosted** `android-cli` skill registry would
@@ -64,11 +81,11 @@ iOS and web follow once the Android one is accepted):
 - **License:** Apache-2.0 (declared in the `SKILL.md` frontmatter).
 - **Source of truth:** <https://github.com/sceneview/sceneview> — `llms.txt`
   and the demos under `samples/android-demo/`.
-- **Maintenance contact:** the `sceneview-tools` org
+- **Maintenance contact:** the `sceneview` org
   (<https://github.com/sceneview>); issues at
   <https://github.com/sceneview/sceneview/issues>.
-- **Drift guarantee:** `check-sceneview-skill.sh` is wired into CI so the
-  skill cannot silently drift from the library source.
+- **Drift check:** `check-sceneview-skill.sh` validates the skill against the
+  library source; maintainers run it by hand before each plugin release.
 
 ### Submission steps
 

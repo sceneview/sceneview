@@ -438,6 +438,11 @@ class PlaneVisualizerV2(
         addPlaneToScene()
     }
 
+    /**
+     * Destroys the entity, renderable and buffers this visualizer created. The
+     * MaterialInstances passed to [setPlaneMaterial] and [setShadowMaterial] belong to the
+     * caller: [PlaneRendererV2] destroys the two it created right after this call.
+     */
     fun destroy() {
         removePlaneFromScene()
         if (builtPrimitiveCount > 0) engine.renderableManager.destroy(entity)

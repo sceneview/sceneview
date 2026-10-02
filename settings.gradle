@@ -35,6 +35,8 @@ rootProject.name = "SceneView"
 include ":sceneview-core"
 include ":sceneview"
 include ":arsceneview"
+// Optional ML depth (LiteRT + Depth Anything V2 Small, model downloaded on demand).
+include ":arsceneview-depth-ml"
 include ":sceneview-web"
 // Compose Multiplatform façade over the per-platform renderers (viewer subset).
 // See docs/docs/compose-multiplatform.md.

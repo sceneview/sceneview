@@ -79,10 +79,11 @@ struct DemoItem: Identifiable {
     let order: Int
     /// Search keywords (`// @tags`) — mirrors Android's `DemoEntry.tags`.
     let tags: [String]
-    /// Version the demo first shipped in (`// @sinceVersion`) — mirrors
-    /// Android's `DemoEntry.sinceVersion`. Drives the "New" chip through
-    /// ``DemoFreshness``.
-    let sinceVersion: String?
+    /// Release the demo first shipped in on iOS (`// @addedIn`) — mirrors
+    /// Android's `DemoEntry.addedIn`. Drives the "New" chip through
+    /// ``DemoFreshness``. Required on every Scene file (`collate-ios-demos.sh`
+    /// fails without it); optional here only for items built by hand.
+    let addedIn: String?
     /// Version of the demo's last notable rework (`// @updatedIn`) — mirrors
     /// Android's `DemoEntry.updatedIn`. Drives the "Updated" chip.
     let updatedIn: String?
@@ -124,7 +125,7 @@ struct DemoItem: Identifiable {
         status: DemoStatus = .working,
         order: Int = 999,
         tags: [String] = [],
-        sinceVersion: String? = nil,
+        addedIn: String? = nil,
         updatedIn: String? = nil,
         @ViewBuilder destination: () -> V
     ) {
@@ -136,7 +137,7 @@ struct DemoItem: Identifiable {
         self.sceneId = sceneId
         self.order = order
         self.tags = tags
-        self.sinceVersion = sinceVersion
+        self.addedIn = addedIn
         self.updatedIn = updatedIn
         self.title = title
         self.icon = icon
@@ -164,7 +165,7 @@ struct DemoItem: Identifiable {
         subtitle: String,
         order: Int = 999,
         tags: [String] = [],
-        sinceVersion: String? = nil,
+        addedIn: String? = nil,
         updatedIn: String? = nil,
         section: DemoSection,
         category: DemoCategory,
@@ -173,7 +174,7 @@ struct DemoItem: Identifiable {
         self.sceneId = sceneId
         self.order = order
         self.tags = tags
-        self.sinceVersion = sinceVersion
+        self.addedIn = addedIn
         self.updatedIn = updatedIn
         self.title = title
         self.icon = icon

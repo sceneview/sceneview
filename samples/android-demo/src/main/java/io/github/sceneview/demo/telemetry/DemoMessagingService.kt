@@ -27,6 +27,15 @@ import io.github.sceneview.demo.R
  */
 class DemoMessagingService : FirebaseMessagingService() {
 
+    /**
+     * The manifest removes `FirebaseInitProvider`, so a process started by a push has no
+     * FirebaseApp yet: [Telemetry.ensureInit] starts it (push on, or an opt-out to finish).
+     */
+    override fun onCreate() {
+        Telemetry.ensureInit(applicationContext)
+        super.onCreate()
+    }
+
     override fun onNewToken(token: String) {
         if (BuildConfig.DEBUG) Log.d(TAG, "FCM token: $token")
     }

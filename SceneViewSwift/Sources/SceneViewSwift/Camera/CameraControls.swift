@@ -573,10 +573,11 @@ public struct CameraControls: Sendable {
     /// Fastest release, in points per second, a coast starts from.
     static let maxReleaseVelocity: CGFloat = 3000
 
-    /// Longest step, in seconds, ``advance(dt:)`` integrates at once. A frame
-    /// that arrives late (a model landing, a shader compiling) then pauses the
-    /// motion for the length of the hitch instead of leaping across it.
-    public static let maxMotionStep: Float = 0.05
+    /// Longest frame, in seconds, ``advance(dt:)`` integrates in full. A longer
+    /// frame is read as a hitch and pauses self-driven motion for its duration.
+    /// This matches `OrbitCameraController.MAX_FRAME_STEP` in `sceneview-web`,
+    /// so both platforms treat slow frames and hitches consistently.
+    public static let maxMotionStep: Float = 0.25
 
     /// Advances everything that moves the camera on its own — the coast a
     /// released drag leaves and the auto-rotation — by `dt` seconds.
@@ -586,12 +587,21 @@ public struct CameraControls: Sendable {
     /// release hands over without a step in velocity: the coast decays while
     /// the auto-rotation eases back in.
     ///
+    /// A positive `dt` at or below ``maxMotionStep`` is integrated in full. A
+    /// longer frame is treated as a hitch: neither coast nor auto-rotation
+    /// advances, and their state remains ready for the next normal frame.
+    /// Non-positive and non-finite values also advance nothing.
+    ///
     /// - Returns: `true` while there is motion left to advance.
     @discardableResult
     public mutating func advance(dt: Float) -> Bool {
-        let step = Swift.min(Swift.max(dt, 0), Self.maxMotionStep)
-        let coasting = applyInertia(dt: step)
-        applyAutoRotation(dt: step)
+        guard dt > 0, dt.isFinite, dt <= Self.maxMotionStep else {
+            let coasting = abs(inertiaVelocity.width) > 0.01
+                || abs(inertiaVelocity.height) > 0.01
+            return coasting || isAutoRotating
+        }
+        let coasting = applyInertia(dt: dt)
+        applyAutoRotation(dt: dt)
         return coasting || isAutoRotating
     }
 

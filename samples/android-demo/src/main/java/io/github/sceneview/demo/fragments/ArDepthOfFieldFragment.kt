@@ -17,6 +17,7 @@ object ArDepthOfFieldFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Camera,
         order = 44,
+        addedIn = "4.11.2",
         tags = setOf("ar", "depth", "bokeh", "focus", "post-fx"),
     )
 

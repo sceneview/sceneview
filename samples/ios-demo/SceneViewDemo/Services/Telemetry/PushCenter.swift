@@ -10,7 +10,8 @@ import FirebaseMessaging
 /// "What's new" pushes: permission, topics, the pre-prompt, and routing a tapped
 /// notification to its sample.
 ///
-/// Every Firebase call is gated on `FirebaseTelemetry.isConfigured`: a build without
+/// Every Firebase call is gated on `FirebaseTelemetry.isConfigured`, and the pre-prompt on
+/// `FirebaseTelemetry.hasBundledConfig`: a build without
 /// `GoogleService-Info.plist` shows no pre-prompt, subscribes to nothing and never
 /// touches `Messaging.messaging()` (which would assert without a configured app).
 ///
@@ -21,6 +22,12 @@ import FirebaseMessaging
 ///
 /// Data payload (identical on Android): `sample` — a demo id, opened on tap (an unknown
 /// id opens Home) — and `campaign`, reported in `push_opened`.
+///
+/// Usage-statistics consent (`ConsentStore`): the pre-prompt is never shown while that
+/// consent is pending, nor in the session it was answered in, so the two questions never
+/// come back to back. In the consent zone Firebase may not be configured yet: a yes at the
+/// system prompt (not before it) configures it (`PushTelemetryGate.startFirebase`) with
+/// collection still off — the push permission is a consent of its own.
 @MainActor
 final class PushCenter: NSObject, ObservableObject {
     static let shared = PushCenter()
@@ -52,12 +59,18 @@ final class PushCenter: NSObject, ObservableObject {
     private let policy: PushPrePromptPolicy
     private let messaging: any PushMessaging
     private let system: PushSystem
+    private let gate: PushTelemetryGate
     private var promptAnswered = false
+    private var messagingAttached = false
     /// An explicit token request is out (switch back ON after `deleteToken`).
     private var tokenRequestInFlight = false
     /// Unsubscribes + `deleteToken` are out: nothing subscribes until they land,
     /// or the new subscriptions would ride the token being deleted.
     private var tokenDeletionInFlight = false
+    /// The switch went back ON while a deletion was out: if it is OFF again when the
+    /// deletion lands, auto-init may have minted a new token meanwhile (Android's
+    /// `redoDisable`).
+    private var switchedOnDuringDeletion = false
     private var pendingUnsubscribes = 0
 
     struct PushTap: Equatable, Identifiable {
@@ -68,11 +81,13 @@ final class PushCenter: NSObject, ObservableObject {
 
     init(defaults: UserDefaults = .standard,
          messaging: any PushMessaging = FirebasePushMessaging(),
-         system: PushSystem = .live) {
+         system: PushSystem = .live,
+         gate: PushTelemetryGate = .live) {
         self.defaults = defaults
         self.policy = PushPrePromptPolicy(store: DefaultsPushPrePromptStore(defaults: defaults))
         self.messaging = messaging
         self.system = system
+        self.gate = gate
         self.notificationsEnabled = defaults.object(forKey: Self.notificationsKey) as? Bool ?? true
         super.init()
     }
@@ -105,21 +120,76 @@ final class PushCenter: NSObject, ObservableObject {
 
     // MARK: Launch
 
-    /// From `application(_:didFinishLaunchingWithOptions:)`, after `FirebaseTelemetry.start()`.
-    /// The notification-center delegate must be set before launch ends so a tap that
-    /// cold-starts the app is delivered.
-    func didFinishLaunching(_ application: UIApplication) {
+    /// From `application(_:didFinishLaunchingWithOptions:)`, after
+    /// `FirebaseTelemetry.startAtLaunch()`. The notification-center delegate must be set
+    /// before launch ends so a tap that cold-starts the app is delivered.
+    ///
+    /// `firebaseWaitsForPermission`: push was the only reason to configure Firebase and
+    /// nothing was subscribed yet (`ConsentStore.launchStartWaitsForPushPermission`), so
+    /// the launch left it off; the system permission is read first, and Firebase starts
+    /// only if it still allows push (it may have been revoked in iOS Settings since).
+    func didFinishLaunching(_ application: UIApplication, firebaseWaitsForPermission: Bool = false) {
         UNUserNotificationCenter.current().delegate = self
-        guard isAvailable else { return }
+        if firebaseWaitsForPermission {
+            Task { await appBecameActive() }
+        } else {
+            firebaseDidStart()
+        }
+    }
+
+    /// The app is in the foreground again (`scenePhase == .active`), as Android re-syncs on
+    /// resume: a permission granted in iOS Settings meanwhile configures Firebase and
+    /// subscribes, one revoked leaves the topics, and an opt-out whose `deleteToken`
+    /// failed is retried. Firebase is configured only when the permission allows push.
+    func appBecameActive() async {
+        let before = authorization
+        await refreshAuthorization()
+        let changed = authorization != before
+        if pushAllowed {
+            ensureFirebase()
+            if changed, isAvailable { system.registerForRemoteNotifications() }
+        }
+        let subscribed = defaults.bool(forKey: Self.subscribedKey)
+        if changed || pushAllowed != subscribed {
+            syncTopics()
+        } else {
+            rememberPushNeedsFirebase()
+        }
+    }
+
+    /// Firebase is configured (at launch, or later by a consent): FCM gets its delegate,
+    /// and an already-authorized install re-registers so the APNs token (hence the FCM
+    /// token and topics) stays fresh; a permission revoked in iOS Settings since the last
+    /// launch leaves the topics here. Nothing is asked. Idempotent.
+    func firebaseDidStart() {
+        guard isAvailable, !messagingAttached else { return }
+        messagingAttached = true
         #if canImport(FirebaseMessaging)
-        Messaging.messaging().delegate = self
+        if FirebaseTelemetry.isConfigured { Messaging.messaging().delegate = self }
         #endif
-        // Nothing is asked at launch. An already-authorized install re-registers so
-        // the APNs token (hence the FCM token and topics) stays fresh; a permission
-        // revoked in iOS Settings since the last launch leaves the topics here.
         Task {
             await refreshAuthorization(registerIfAllowed: true)
             syncTopics()
+        }
+    }
+
+    /// Push was allowed: configure Firebase if the consent zone left it off. Collection
+    /// stays as the usage consent says (off without it).
+    private func ensureFirebase() {
+        guard !isAvailable, gate.firebaseCanStart() else { return }
+        gate.startFirebase()
+        firebaseDidStart()
+    }
+
+    /// Whether Firebase has to be configured at the next launch: push is allowed, or an
+    /// opt-out has not finished yet (topics left, token deleted). The flag goes back to
+    /// false only once nothing is left to undo with FCM, so an opt-out that failed is
+    /// retried (`appBecameActive`, next launch), as Android's `pushDisablePending`.
+    private func rememberPushNeedsFirebase() {
+        if pushAllowed {
+            gate.setPushNeedsFirebase(true)
+        } else if !tokenDeletionInFlight, !defaults.bool(forKey: Self.subscribedKey) {
+            gate.setPushNeedsFirebase(false)
         }
     }
 
@@ -151,8 +221,7 @@ final class PushCenter: NSObject, ObservableObject {
         policy.onReturnedHome()
         Task {
             await refreshAuthorization()
-            let eligible = isAvailable && notificationsEnabled && authorization == .notDetermined
-            guard policy.shouldShow(eligible: eligible) else { return }
+            guard policy.shouldShow(eligible: prePromptEligible) else { return }
             // Let the demo's cover finish its dismissal before a sheet goes up.
             try? await Task.sleep(for: .milliseconds(450))
             policy.onShown()
@@ -162,15 +231,38 @@ final class PushCenter: NSObject, ObservableObject {
         }
     }
 
+    /// Push could matter now: Firebase is (or can be) configured, the Notifications switch
+    /// is on, iOS has not asked yet — and the usage consent is settled, in an earlier
+    /// session (never pending, never answered in this one).
+    var prePromptEligible: Bool {
+        (isAvailable || gate.firebaseCanStart())
+            && gate.consentSettled()
+            && notificationsEnabled
+            && authorization == .notDetermined
+    }
+
     /// "Notify me": the system prompt, then the result.
     func prePromptAccepted() {
+        markPrePromptAccepted()
+        Task { await answerPrePrompt() }
+    }
+
+    /// `prePromptAccepted`, awaited to the end (tests).
+    func acceptPrePrompt() async {
+        markPrePromptAccepted()
+        await answerPrePrompt()
+    }
+
+    /// Synchronous, so the sheet's `onDismiss` sees the answer and does not count a "Not now".
+    private func markPrePromptAccepted() {
         promptAnswered = true
         prePromptPresented = false
-        Task {
-            let granted = await requestSystemPermission()
-            policy.onAnswered()
-            DemoAnalytics.shared.log(.pushPromptResult(granted ? .granted : .denied))
-        }
+    }
+
+    private func answerPrePrompt() async {
+        let granted = await requestSystemPermission()
+        policy.onAnswered()
+        DemoAnalytics.shared.log(.pushPromptResult(granted ? .granted : .denied))
     }
 
     /// "Not now", or the sheet swiped away.
@@ -182,9 +274,14 @@ final class PushCenter: NSObject, ObservableObject {
         DemoAnalytics.shared.log(.pushPromptResult(.notNow))
     }
 
+    /// The system prompt. Firebase is configured only once it answered yes: before it,
+    /// `FirebaseApp.configure()` would already reach firebaseinstallations.googleapis.com
+    /// for a user who then refuses (#4268).
     @discardableResult
     private func requestSystemPermission() async -> Bool {
         let granted = await system.requestAuthorization()
+        await refreshAuthorization()
+        if pushAllowed { ensureFirebase() }
         await refreshAuthorization(registerIfAllowed: true)
         syncTopics()
         return granted
@@ -222,6 +319,7 @@ final class PushCenter: NSObject, ObservableObject {
                 // Already granted (OFF → ON): register again and resubscribe. The
                 // token was deleted when the switch went OFF, so `syncTopics` asks
                 // FCM for a new one first.
+                if pushAllowed { ensureFirebase() }
                 await refreshAuthorization(registerIfAllowed: true)
                 syncTopics()
             }
@@ -235,12 +333,16 @@ final class PushCenter: NSObject, ObservableObject {
     /// on, a token, then the topics. Not allowed after having been: leave the topics,
     /// then delete the FCM token.
     func syncTopics() {
+        rememberPushNeedsFirebase()
         guard isAvailable else { return }
         if pushAllowed {
             messaging.setAutoInit(true)
             // A deletion still running would take these subscriptions with it; its
             // completion calls back here.
-            guard !tokenDeletionInFlight else { return }
+            guard !tokenDeletionInFlight else {
+                switchedOnDuringDeletion = true
+                return
+            }
             guard messaging.hasToken else {
                 requestToken()
                 return
@@ -256,7 +358,8 @@ final class PushCenter: NSObject, ObservableObject {
         } else {
             messaging.setAutoInit(false)
             guard defaults.bool(forKey: Self.subscribedKey), !tokenDeletionInFlight else { return }
-            defaults.set(false, forKey: Self.subscribedKey)
+            // Kept until `deleteToken` lands: a failed opt-out is retried at the next launch.
+            gate.setPushNeedsFirebase(true)
             tokenDeletionInFlight = true
             pendingUnsubscribes = Self.topics.count
             for topic in Self.topics {
@@ -280,8 +383,18 @@ final class PushCenter: NSObject, ObservableObject {
             #endif
             guard let self else { return }
             tokenDeletionInFlight = false
+            // ON then OFF again while the deletion ran: the token auto-init minted in
+            // between is left as well, topics and all.
+            let redo = switchedOnDuringDeletion && !pushAllowed && messaging.hasToken
+            switchedOnDuringDeletion = false
+            if ok, !redo {
+                defaults.set(false, forKey: Self.subscribedKey)
+                if !pushAllowed { gate.setPushNeedsFirebase(false) }
+            } else if !ok {
+                Self.log.notice("FCM token deletion failed: retried on return to the foreground or at the next launch")
+            }
             // Switched back ON while the deletion ran: subscribe again now.
-            if pushAllowed { syncTopics() }
+            if pushAllowed || redo { syncTopics() }
         }
     }
 
@@ -383,6 +496,26 @@ struct PushSystem {
     )
 }
 
+/// What push needs from the usage-statistics consent and from Firebase's start-up, behind
+/// a seam so the consent guard is unit tested.
+struct PushTelemetryGate {
+    /// The build can configure Firebase (config bundled), even if it has not yet.
+    var firebaseCanStart: @MainActor () -> Bool
+    /// Configures Firebase now, collection as the usage consent says.
+    var startFirebase: @MainActor () -> Void
+    /// The usage consent is settled and was not answered in this session.
+    var consentSettled: @MainActor () -> Bool
+    /// Firebase must be configured at the next launch for push to keep working.
+    var setPushNeedsFirebase: @MainActor (Bool) -> Void
+
+    static let live = PushTelemetryGate(
+        firebaseCanStart: { FirebaseTelemetry.hasBundledConfig },
+        startFirebase: { FirebaseTelemetry.start() },
+        consentSettled: { TelemetryConsent.shared.settledBeforeThisSession },
+        setPushNeedsFirebase: { ConsentStore.shared.pushNeedsFirebase = $0 }
+    )
+}
+
 /// `PushMessaging` on Firebase Cloud Messaging. Never touches `Messaging.messaging()`
 /// unless Firebase was configured (it asserts otherwise).
 @MainActor
@@ -441,8 +574,11 @@ final class FirebasePushMessaging: PushMessaging {
 final class DemoAppDelegate: HDPackAppDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        FirebaseTelemetry.start()
-        PushCenter.shared.didFinishLaunching(application)
+        // In the EEA, UK and Switzerland, not before the user's yes (ConsentStore).
+        let waitsForPermission = ConsentStore.shared.launchStartWaitsForPushPermission(
+            topicsSubscribed: UserDefaults.standard.bool(forKey: PushCenter.subscribedKey))
+        FirebaseTelemetry.startAtLaunch(waitingForPushPermission: waitsForPermission)
+        PushCenter.shared.didFinishLaunching(application, firebaseWaitsForPermission: waitsForPermission)
         return true
     }
 

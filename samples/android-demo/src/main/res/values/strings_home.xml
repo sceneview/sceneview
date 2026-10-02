@@ -33,12 +33,21 @@
     <string name="category_short_dev_tools">Dev tools</string>
     <string name="category_short_create">Create</string>
     <string name="category_short_understand">Understand</string>
+    <!-- The filter chip that keeps only the samples marked New or Updated. Same label on iOS. -->
+    <string name="category_short_whats_new">What\'s new</string>
 
     <!-- Grid -->
     <!-- Header of the shelf right under the hero: the samples we push, in priority order. -->
     <string name="home_section_featured">Featured</string>
     <string name="home_browse_title">Browse online models</string>
     <string name="home_browse_subtitle">Discover models from online collections</string>
+    <!-- The row under the hero that leads to the "What's new" filter. %1$d is the number of
+         samples marked New or Updated, %2$s the oldest release still marked ("4.49"). -->
+    <string name="home_whats_new_title">What\'s new</string>
+    <plurals name="home_whats_new_subtitle">
+        <item quantity="one">%1$d new or updated since %2$s</item>
+        <item quantity="other">%1$d new or updated since %2$s</item>
+    </plurals>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>
 </resources>

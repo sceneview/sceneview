@@ -11,12 +11,22 @@ import Foundation
 ///
 /// Scene reconstruction requires a LiDAR-equipped device (iPhone 12 Pro+, iPad Pro).
 ///
+/// With ``ARSceneView``, ask for the mesh in its configuration — it then
+/// survives every re-run the view does:
+///
 /// ```swift
-/// ARSceneView(planeDetection: .horizontal)
-///     .onSessionStarted { arView in
-///         SceneReconstructionNode.enableReconstruction(in: arView)
-///     }
+/// ARSceneView(
+///     configuration: ARSessionConfiguration(
+///         sceneReconstruction: SceneReconstructionNode.isSupported ? .mesh : .none
+///     )
+/// )
+/// .onSessionStarted { arView in
+///     SceneReconstructionNode.enablePhysics(in: arView)
+/// }
 /// ```
+///
+/// ``enableReconstruction(in:classification:showDebugMeshOverlay:)`` is for
+/// an `ARView` whose session the host runs itself.
 public enum SceneReconstructionNode {
 
     /// Whether the device supports scene reconstruction (LiDAR).
@@ -29,34 +39,102 @@ public enum SceneReconstructionNode {
         ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification)
     }
 
-    /// Enables scene reconstruction mesh on an AR session.
+    /// Turns the LiDAR mesh on in the session the view is already running.
     ///
-    /// The mesh is automatically added to the scene as collidable geometry.
-    /// Requires a LiDAR-equipped device.
+    /// The live configuration is **amended**, not replaced: frame semantics
+    /// (people occlusion, person segmentation), plane detection, environment
+    /// texturing, detection images and every other option the session was
+    /// started with are kept. The session is re-run with no options — no
+    /// `.resetTracking`, no `.removeExistingAnchors` — so tracking, the world
+    /// map and the anchors already placed stay where they are.
+    ///
+    /// Nothing visible is added to the view. RealityKit's
+    /// `.showSceneUnderstanding` wireframe is a developer overlay; pass
+    /// `showDebugMeshOverlay: true` to draw it, and remove it again with
+    /// ``hideMeshVisualization(in:)``.
+    ///
+    /// - Important: Inside an ``ARSceneView`` the amendment lasts only until
+    ///   the view runs its own configuration again. When a later render
+    ///   passes a different ``ARSessionConfiguration`` (or changes a
+    ///   parameter of the classic initializer), the view re-runs the session
+    ///   from that value, and its `sceneReconstruction` — `.none` by
+    ///   default — replaces the mesh turned on here. Resuming after an
+    ///   interruption keeps it. To keep the mesh through every re-run, pass
+    ///   ``ARSessionConfiguration/sceneReconstruction`` to the view instead
+    ///   of calling this function.
     ///
     /// - Parameters:
-    ///   - arView: The ARView to enable reconstruction on.
+    ///   - arView: The ARView whose session gets the mesh.
     ///   - classification: Whether to enable mesh classification. Default false.
+    ///   - showDebugMeshOverlay: Draws RealityKit's debug wireframe over the
+    ///     mesh. Default false — debug options are never turned on implicitly.
+    /// - Returns: `true` when the session now runs with the requested
+    ///   reconstruction; `false` when the device has no LiDAR (or no
+    ///   classification support), or when the session runs a configuration
+    ///   other than `ARWorldTrackingConfiguration` (face or body tracking),
+    ///   which is left untouched rather than replaced.
+    @MainActor
+    @discardableResult
     public static func enableReconstruction(
         in arView: ARView,
-        classification: Bool = false
-    ) {
-        guard isSupported else { return }
-
-        let config = ARWorldTrackingConfiguration()
-        config.sceneReconstruction = classification
-            ? .meshWithClassification
-            : .mesh
-        config.environmentTexturing = .automatic
-        config.planeDetection = [.horizontal, .vertical]
-
-        arView.session.run(config)
-
-        // Enable mesh visualization for debugging
-        arView.debugOptions.insert(.showSceneUnderstanding)
+        classification: Bool = false,
+        showDebugMeshOverlay: Bool = false
+    ) -> Bool {
+        let requested: ARConfiguration.SceneReconstruction =
+            classification ? .meshWithClassification : .mesh
+        guard ARWorldTrackingConfiguration.supportsSceneReconstruction(requested) else {
+            return false
+        }
+        let current = arView.session.configuration
+        guard let amendment = amend(current, with: requested) else {
+            let running = current.map { String(describing: type(of: $0)) } ?? "nothing"
+            print("[SceneViewSwift] SceneReconstructionNode: the session runs \(running), which has no scene reconstruction — left unchanged")
+            return false
+        }
+        if amendment.needsRun {
+            arView.session.run(amendment.configuration, options: [])
+        }
+        if showDebugMeshOverlay {
+            arView.debugOptions.insert(.showSceneUnderstanding)
+        }
+        return true
     }
 
-    /// Disables mesh visualization (the mesh is still active for occlusion).
+    /// What to run so that `current` gains `reconstruction`.
+    ///
+    /// - A world-tracking `current` is amended **in place** — only its
+    ///   `sceneReconstruction` changes — and the same instance is returned,
+    ///   which is Apple's own pattern for scene reconstruction. It is not
+    ///   `copy()`'d: `ARWorldTrackingConfiguration`'s `NSCopying` drops
+    ///   plane detection, detection images, world alignment and
+    ///   collaboration (measured on the iOS 27 Simulator), which is the very
+    ///   loss this function exists to avoid. `needsRun` is `false` when the
+    ///   reconstruction was already on.
+    /// - No configuration at all (the session never ran) yields a fresh
+    ///   world-tracking configuration with the classic defaults.
+    /// - Any other configuration class yields `nil`: swapping a face- or
+    ///   body-tracking session for world tracking would change camera and
+    ///   throw the host's whole session away.
+    @MainActor
+    static func amend(
+        _ current: ARConfiguration?,
+        with reconstruction: ARConfiguration.SceneReconstruction
+    ) -> (configuration: ARWorldTrackingConfiguration, needsRun: Bool)? {
+        guard let current else {
+            let fresh = ARWorldTrackingConfiguration()
+            fresh.planeDetection = [.horizontal, .vertical]
+            fresh.environmentTexturing = .automatic
+            fresh.sceneReconstruction = reconstruction
+            return (fresh, true)
+        }
+        guard let world = current as? ARWorldTrackingConfiguration else { return nil }
+        if world.sceneReconstruction == reconstruction { return (world, false) }
+        world.sceneReconstruction = reconstruction
+        return (world, true)
+    }
+
+    /// Removes RealityKit's `.showSceneUnderstanding` debug wireframe (the
+    /// mesh itself stays active for occlusion and physics).
     ///
     /// - Parameter arView: The ARView.
     public static func hideMeshVisualization(in arView: ARView) {

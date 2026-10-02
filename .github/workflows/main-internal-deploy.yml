@@ -254,6 +254,28 @@ jobs:
           # explains why the default 0 is a silent multi-day delay).
           inAppUpdatePriority: 5
 
+      # Native crash symbols for Crashlytics — same step as play-store.yml.
+      # After the publish so it never slows the internal test loop; best effort.
+      - name: Upload native symbols to Crashlytics
+        id: symbols
+        if: steps.guard.outputs.skip != 'true'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          if [ ! -f samples/android-demo/google-services.json ]; then
+            echo "::notice::No Firebase config in this build: native symbol upload skipped"
+            exit 0
+          fi
+          ./gradlew :samples:android-demo:uploadCrashlyticsSymbolFileRelease \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
+
+      # continue-on-error hides a failed or timed-out upload behind a green
+      # check: say it out loud so a release never ships unsymbolized unnoticed.
+      - name: Warn if native symbol upload failed
+        if: steps.symbols.outcome == 'failure'
+        run: echo "::warning::Crashlytics native symbol upload failed (error or 15-minute timeout). Native crashes of this build stay unsymbolized until :samples:android-demo:uploadCrashlyticsSymbolFileRelease is re-run for it."
+
       - name: Clean up keystore
         if: always()
         run: rm -f samples/android-demo/release.keystore samples/android-demo/google-services.json

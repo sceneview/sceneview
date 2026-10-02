@@ -1,7 +1,7 @@
 {
   "name": "sceneview",
   "version": "4.34.0",
-  "description": "Build 3D and AR apps with the SceneView SDK — Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the free sceneview-mcp server.",
+  "description": "Build 3D and AR apps with the SceneView SDK — Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the sceneview-mcp server.",
   "author": {
     "name": "SceneView",
     "url": "https://github.com/sceneview"
@@ -15,7 +15,7 @@
   "interface": {
     "displayName": "SceneView 3D & AR",
     "shortDescription": "Write working 3D and AR code for Android, Apple and the web on the first try",
-    "longDescription": "SceneView is an AI-first 3D and AR SDK. This plugin gives ChatGPT and Codex the exact API contract, compilable recipes and migration guides for every SceneView platform — Android (Jetpack Compose + Filament + ARCore), Apple (SwiftUI + RealityKit on iOS, macOS and visionOS) and the web (Filament.js + WebXR) — plus the free sceneview-mcp tools: 38 compilable samples, setup guides, a code validator, node references and an inline 3D model viewer. It also covers the model formats SceneView reads, including the .3mf that AI print flows emit and that nothing else on Android opens in 3D or AR. Nothing is sold inside the plugin: SceneView is Apache-2.0 and the MCP tools it declares are the free tier.",
+    "longDescription": "SceneView is an AI-first 3D and AR SDK. This plugin gives ChatGPT and Codex the exact API contract, compilable recipes and migration guides for every SceneView platform — Android (Jetpack Compose + Filament + ARCore), Apple (SwiftUI + RealityKit on iOS, macOS and visionOS) and the web (Filament.js + WebXR) — plus the sceneview-mcp tools: 38 compilable samples, setup guides, a code validator, node references and an inline 3D model viewer. It also covers the model formats SceneView reads, including the .3mf that AI print flows emit and that nothing else on Android opens in 3D or AR. SceneView is open source under Apache-2.0.",
     "developerName": "SceneView",
     "category": "Developer Tools",
     "capabilities": ["Read"],

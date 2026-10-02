@@ -414,7 +414,16 @@ final class CosmosSpacetimeTests: XCTestCase {
     @MainActor
     func testTabDeepLink() throws {
         let key = DeepLinkRouter.tabDefaultsKey
-        defer { UserDefaults.standard.removeObject(forKey: key) }
+        let qaKey = DeepLinkRouter.qaModeDefaultsKey
+        let savedQAMode = UserDefaults.standard.object(forKey: qaKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: key)
+            if let savedQAMode {
+                UserDefaults.standard.set(savedQAMode, forKey: qaKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: qaKey)
+            }
+        }
         let url = try XCTUnwrap(URL(string: "sceneview://demo/cosmos?tab=Spacetime"))
         XCTAssertEqual(DeepLinkRouter.parse(url, allowedDemos: ["cosmos"]), "cosmos")
         XCTAssertEqual(UserDefaults.standard.string(forKey: key), "cosmos:Spacetime")

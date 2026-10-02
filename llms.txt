@@ -2014,6 +2014,108 @@ bounding box, a custom overlay). It does **not** apply when you unproject depth 
 with `camera.imageIntrinsics` — `DepthMeshNode` and the raw-depth point cloud are
 orientation-independent for that reason.
 
+### ML depth — metric depth without ARCore's Depth API (`MlDepthSession`)
+
+On a phone where `Session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)` is `false`,
+`MlDepthSession` (package `io.github.sceneview.ar.depth`, in `arsceneview`) produces metric
+depth from a monocular network: it runs a `MonocularDepthEstimator` on the CPU camera image,
+off the render thread, and scales the network's relative inverse depth to metres with a
+robust fit `1/z = s·d + t` on ARCore's own plane samples and feature points. The runtime
+lives in a separate module, `arsceneview-depth-ml` (LiteRT 2.1.5, in the repo, not yet on
+Maven Central): `DepthAnythingV2Estimator` runs Depth Anything V2 **Small** (Apache-2.0;
+Base/Large/Giant are CC-BY-NC — never ship them). `arsceneview` itself never depends on
+LiteRT. iOS has the same pipeline (`ARDepthFrame.Source.ml`, see the SceneViewSwift section).
+
+```kotlin notest needs the unpublished arsceneview-depth-ml module, absent from the snippets-check classpath
+val context = LocalContext.current
+val mlDepth = remember { MlDepthSession(DepthAnythingV2Estimator(context), context = context) }
+DisposableEffect(mlDepth) { onDispose { mlDepth.close() } }
+ARSceneView(
+    // Nothing reads ARCore's own depth here: keep it off (the ML fit uses planes + points).
+    depthMode = Config.DepthMode.DISABLED,
+    onSessionUpdated = { session, frame -> mlDepth.onSessionUpdated(session, frame) },
+)
+val depth by mlDepth.depthFrames.collectAsState()   // ArDepthFrame?, Source.Ml
+val state by mlDepth.state.collectAsState()          // MlDepthState
+depth?.depthMetersAt(x, y)                            // metres, NaN where none
+```
+
+Public API (exact signatures):
+
+```kotlin notest signature listing; the depth-ml types are not on the snippets-check classpath
+// arsceneview — io.github.sceneview.ar.depth
+class MlDepthSession(
+    estimator: MonocularDepthEstimator,  // owned: closed by close(), on the worker
+    targetHz: Float = 5f,                // max maps per second
+    context: Context? = null,            // thermal status only (API 29+)
+) : Closeable {
+    val depthFrames: StateFlow<ArDepthFrame?>  // null while no valid map; buffers pooled
+    val state: StateFlow<MlDepthState>
+    fun onSessionUpdated(session: Session, frame: Frame)  // render thread, every frame
+    override fun close()
+}
+sealed interface MlDepthState {
+    data object Preparing                                   // download + compile
+    data class WaitingForAnchors(val anchors: Int)          // nothing published
+    data class Running(val stats: MlDepthStats)
+    data object Throttled                                   // thermal SEVERE
+    data class Failed(val error: Throwable)                 // load error, or 3 failed runs in a row
+}
+data class MlDepthStats(val lastInferenceMs: Float, val medianInferenceMs: Float,
+    val publishedHz: Float, val anchors: Int, val inliers: Int,
+    val rmsRelativeError: Float, val holding: Boolean)
+class ArDepthFrame(val timestampNs: Long, val width: Int, val height: Int,
+    val millimetres: ShortBuffer, val confidence: ByteBuffer?, val intrinsics: DepthIntrinsics,
+    val cameraPose: Pose, val source: ArDepthFrame.Source) {
+    enum class Source { Native, Ml }      // iOS: ARDepthFrame.Source.native / .ml
+    fun depthMetersAt(x: Int, y: Int): Float
+    fun confidenceAt(x: Int, y: Int): Float
+}
+data class DepthIntrinsics(val fx: Float, val fy: Float, val cx: Float, val cy: Float)
+interface MonocularDepthEstimator : Closeable {
+    enum class OutputKind { AffineInverse, Metric }
+    val inputWidth: Int; val inputHeight: Int; val outputWidth: Int; val outputHeight: Int
+    val outputKind: OutputKind
+    fun warmUp()                                   // blocking; called on the worker
+    fun estimate(rgb: ByteArray, out: FloatArray)  // RGB interleaved in, row-major floats out
+}
+
+// arsceneview-depth-ml — io.github.sceneview.ar.depth.ml
+class DepthAnythingV2Estimator(
+    context: Context,
+    model: ModelSource = ModelSource.DepthAnythingV2Small,
+    backend: Backend = Backend.Cpu,         // enum class Backend { Cpu, Gpu } — GPU runs FP32
+    numThreads: Int = 4,
+    onDownloadProgress: (Float) -> Unit = {},
+) : MonocularDepthEstimator
+sealed interface ModelSource {
+    data class Asset(val path: String)
+    data class LocalFile(val file: File)
+    data class Url(val url: String, val sha256: String, val sizeBytes: Long,
+        val fileName: String = url.substringAfterLast('/'))
+    companion object { val DepthAnythingV2Small: Url }   // pinned HF revision 178427e
+}
+object ModelDownloader {
+    fun ensure(source: ModelSource.Url, directory: File, onProgress: (Float) -> Unit = {}): File
+    fun sha256(file: File): String
+}
+```
+
+Prerequisites: an ARCore session that tracks planes and feature points (the default
+`planeFindingMode` is fine); the fit refuses until it has **≥ 12 consistent anchors spanning
+≥ ×1.5 in depth**, then holds the last scale for up to 5 maps — no depth is ever published
+without metric support. `INTERNET` (merged from the module manifest) for the first download.
+`ArDepthFrame` is in the camera **sensor** orientation and tagged with the pose of the image
+it came from: unproject with `frame.cameraPose`, never the current pose.
+
+Cost: a one-time **27.7 MB** download into `noBackupFilesDir/sceneview-depth-ml/`, checked
+against its SHA-256 (concurrent loads share one download). LiteRT native code per ABI:
+arm64-v8a ≈ 8 MB, x86_64 ≈ 10.7 MB, armeabi-v7a 3.5 MB (CPU only); an AAB serves one ABI.
+The network input is **518×686** (H×W, the whole CPU image stretched), output 518×686
+inverse depth. Inference runs at ≤ 5 Hz on one worker thread, halves at thermal MODERATE,
+pauses at SEVERE and skips frames while the camera holds still; expect each map to be
+100–300 ms old. Read `MlDepthStats.medianInferenceMs` for the device's real figure.
+
 ### Raw depth point cloud — accumulated depth visualization
 
 `Config.DepthMode.RAW_DEPTH_ONLY` gives access to raw per-pixel depth **plus** a companion
@@ -2305,7 +2407,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
@@ -2407,7 +2509,7 @@ Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity cu
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
-**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -3221,6 +3323,8 @@ Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal bu
 ```
 
 Pass `types = setOf(StreetscapeGeometry.Type.BUILDING)` to drop the (often noisy) ground terrain in dense urban scenes. Pass `minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2` to render only the higher-LOD buildings and save a frame-rate cliff on low-end devices. The filter is a no-op early-return on the composable side, so unmatched geometries never allocate Filament buffers.
+
+`StreetscapeGeometryNode.meshNode` is `MeshNode?`: it is `null` while ARCore reports an empty mesh, and it is replaced when the geometry's vertex or index count changes. Use `meshNode?.` and style the mesh through `meshMaterialInstance` (re-applied on every rebuild), not by mutating `meshNode` (#4260).
 
 ```kotlin
 onSessionUpdated = { _, frame ->
@@ -4442,13 +4546,18 @@ struct ARDebugView: View {
 ### Python sidecar (dev machine)
 
 ```bash
-pip install rerun-sdk numpy
+pip install "rerun-sdk>=0.23" numpy                 # tested with 0.38
 python samples/android-demo/tools/rerun-bridge.py
-# Rerun viewer window opens automatically via rr.init(spawn=True)
+# The Rerun viewer opens on its own, serving on :9877 (--viewer-port);
+# the app keeps :9876 for the sidecar.
 
 # On the device:
 adb reverse tcp:9876 tcp:9876                       # Android, USB-tethered
 # or connect iPhone and Mac to the same LAN and point bridge at Mac's IP
+
+# No device: replay the session bundled with the demo app
+python samples/android-demo/tools/rerun-bridge.py \
+    --replay samples/android-demo/src/main/assets/rerun/sample-session.jsonl
 ```
 
 The sidecar maps each JSON event to the matching Rerun archetype:
@@ -4457,6 +4566,10 @@ The sidecar maps each JSON event to the matching Rerun archetype:
 - `point_cloud` → `rr.Points3D`
 - `anchor` → `rr.Transform3D`
 - `hit_result` → `rr.Points3D` (single highlighted point)
+
+From the same stream, with no app change, it also logs a scan-health dashboard under `metrics/scan/` (feature points per frame, surfaces and anchors seen so far, camera speed in m/s) and the path the phone walked as `world/trail`. Live and saved recordings carry a default layout: the AR world on the left, the three graphs on the right.
+
+The sidecar needs rerun-sdk 0.23 or newer. Older versions of this script called `rr.set_time_nanos`, which 0.23 removed, so every event was dropped; and the spawned viewer took :9876, so live mode stopped at startup with "Address already in use".
 
 ### Wire format (JSON-lines over TCP)
 
@@ -6642,6 +6755,9 @@ public struct ARSceneView: UIViewRepresentable {
     public func onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+
     public func onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+
     public func onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+
+    public func depthSource(_ source: DepthSource?) -> ARSceneView                          // .native (LiDAR) | .ml(estimator) | .auto(ml:) — see "ML depth (iOS)"
+    public func onDepthFrame(_ handler: @escaping (ARDepthFrame?) -> Void) -> ARSceneView   // metric depth, main thread; frame.source == .native or .ml; nil = no depth
+    public func onDepthSourceState(_ handler: @escaping (DepthSourceState) -> Void) -> ARSceneView // .native | .preparing | .waitingForAnchors | .running(stats) | .throttled | .failed | .unavailable
 }
 
 // v4.39.0+ — what the session runs, as one Equatable value
@@ -6664,6 +6780,139 @@ public enum ARTrackingStatus: Equatable { case notAvailable, limited(LimitedReas
 public enum ARSessionEvent { case started(ARSessionConfiguration), firstFrame, trackingStateChanged(ARTrackingStatus), interrupted, interruptionEnded, failed(Error) }
 @MainActor public protocol ARSceneSessionObserver: AnyObject { func arSession(didEmit event: ARSessionEvent, in arView: ARView) }
 extension View { public func arSessionObserver(_ observer: ARSceneSessionObserver?) -> some View }  // environment hook, no per-view wiring
+
+// LiDAR mesh on a bare ARView. Inside ARSceneView prefer ARSessionConfiguration(sceneReconstruction:):
+// the view's own re-runs replace an amendment made here.
+public enum SceneReconstructionNode {
+    public static var isSupported: Bool { get }                 // LiDAR present
+    public static var isClassificationSupported: Bool { get }
+    @MainActor @discardableResult
+    public static func enableReconstruction(                    // amends the running session: no reset, anchors kept
+        in arView: ARView,
+        classification: Bool = false,
+        showDebugMeshOverlay: Bool = false                      // the debug wireframe is never turned on implicitly
+    ) -> Bool                                                   // false = no LiDAR, or a face/body session left untouched
+    public static func hideMeshVisualization(in arView: ARView)
+    public static func enableOcclusion(in arView: ARView)
+    public static func enablePhysics(in arView: ARView)
+}
+```
+
+### ML depth (iOS)
+
+Metric depth on every ARKit iPhone, LiDAR or not. Android's twin is `MlDepthSource` (ARCore); the
+state names match it (`Preparing`, `WaitingForAnchors`, `Running(MlDepthStats)`, `Throttled`,
+`Failed`). The model lives in a separate SPM product, `SceneViewDepthML` (Core ML): Depth Anything
+V2 Small, Apache-2.0, downloaded once (25.4 MB, SHA-256 pinned), never bundled. The estimator
+returns relative inverse depth; the SDK scales it to metres from ARKit feature points (robust
+affine fit, smoothed), so a frame only comes once enough anchors are seen. Leave `.sceneDepth` out
+of `frameSemantics` in ML mode: the estimator never reads it.
+
+```swift
+import SceneViewSwift
+import SceneViewDepthML
+
+let estimator = try await DepthModelStore.shared.estimator(from: .pinnedDownload()) { fraction in }
+ARSceneView(configuration: ARSessionConfiguration(planeDetection: .both))
+    .depthSource(.auto(ml: estimator))          // LiDAR when present, else the estimator at 5 Hz
+    .onDepthFrame { frame in /* frame?.depth(atX:y:) in metres */ }
+    .onDepthSourceState { state in /* drive a status card */ }
+
+// SceneViewSwift
+public struct ARDepthFrame: Sendable {
+    public enum Source: String, Sendable, Hashable { case native, ml }
+    public let timestamp: TimeInterval
+    public let width: Int, height: Int
+    public let millimetres: [UInt16]                 // 0 = no depth
+    public let confidence: [UInt8]?                  // 0 (none) to 255 (high), same layout; optional
+    public let intrinsics: simd_float3x3             // of the depth map
+    public let cameraTransform: simd_float4x4
+    public let source: Source
+    public init(timestamp: TimeInterval, width: Int, height: Int, millimetres: [UInt16],
+                confidence: [UInt8]? = nil, intrinsics: simd_float3x3,
+                cameraTransform: simd_float4x4, source: Source)
+    public func depth(atX x: Int, y: Int) -> Float?          // metres
+    public func worldPoint(atX x: Int, y: Int) -> SIMD3<Float>?
+}
+public enum DepthSource: Sendable {
+    case native                                                        // LiDAR `.sceneDepth`
+    case ml(any MonocularDepthEstimator, targetHz: Double = 5)
+    case auto(ml: (any MonocularDepthEstimator)? = nil, targetHz: Double = 5)  // LiDAR, else ML
+    public static var automatic: DepthSource { get }                  // .auto(ml: nil)
+}
+public enum DepthSourceState: Sendable, Equatable {
+    case native
+    case preparing                                   // warming the estimator up
+    case waitingForAnchors(anchors: Int)             // estimating, not enough feature points to scale yet
+    case running(MLDepthStats)
+    case throttled(ThrottleReason)                   // .thermal | .tracking (last scale held)
+    case failed(any Error)                           // the estimator threw; == compares String(reflecting:)
+    case unavailable(UnavailableReason)              // .noSource | .tooSlow | .unsupportedMode
+}
+public struct MLDepthStats: Sendable, Hashable {     // Android `MlDepthStats`; window of 30 estimates
+    public let lastInferenceMs: Double
+    public let medianInferenceMs: Double
+    public let publishedHz: Double
+    public let anchors: Int                          // feature points sampled for the fit
+    public let inliers: Int                          // kept by the robust fit
+    public let rmsRelativeError: Float               // 0.04 = 4 %
+    public let holding: Bool                         // fit rejected, previous scale kept
+}
+public enum MonocularDepthOutputKind: String, Sendable, Hashable { case affineInverse, metric }
+public struct MonocularDepthEstimate: Sendable {
+    public let width: Int, height: Int
+    public let values: [Float]                       // row-major
+    public init(width: Int, height: Int, values: [Float])
+}
+public protocol MonocularDepthEstimator: AnyObject, Sendable {  // the SDK calls one instance from one serial queue
+    var identifier: String { get }
+    var inputSize: (width: Int, height: Int) { get }
+    var inputPixelFormat: OSType { get }
+    var outputKind: MonocularDepthOutputKind { get }
+    func warmUp() throws
+    func estimate(_ pixelBuffer: CVPixelBuffer) throws -> MonocularDepthEstimate
+}
+
+// SceneViewDepthML
+public final class DepthModelStore: Sendable {
+    public static let shared: DepthModelStore
+    public let directory: URL                        // Application Support/SceneViewDepthML by default
+    public init(directory: URL? = nil, session: URLSession = .shared)
+    public func estimator(from source: DepthModelSource = .pinnedDownload(),
+                          computeUnits: MLComputeUnits = .cpuAndNeuralEngine,
+                          progress: (@Sendable (Double) -> Void)? = nil) async throws -> DepthAnythingV2Estimator
+    public func compiledModel(from source: DepthModelSource,
+                              progress: (@Sendable (Double) -> Void)? = nil) async throws -> URL  // concurrent calls share one fetch
+    public func cachedCompiledModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) -> URL?
+    public func removeCachedModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) throws
+}
+public enum DepthModelSource: Sendable {
+    case compiledModel(URL)
+    case modelPackage(URL)                           // .mlpackage, compiled on device
+    case pinnedDownload(PinnedRemoteModel = .depthAnythingV2SmallF16INT8)
+    case onDemandResource(tag: String, resourceName: String = "DepthAnythingV2SmallF16INT8")
+}
+public struct PinnedRemoteModel: Sendable, Hashable {
+    public let name: String
+    public let revision: String                      // immutable commit
+    public let packageURL: URL
+    public let files: [PinnedModelFile]              // path, sha256, size
+    public let attribution: String
+    public init(name: String, revision: String, packageURL: URL, files: [PinnedModelFile], attribution: String)
+    public var totalBytes: Int64 { get }
+    public var cacheKey: String { get }
+    public static let depthAnythingV2SmallF16INT8: PinnedRemoteModel   // 25.4 MB (default)
+    public static let depthAnythingV2SmallF16: PinnedRemoteModel       // 49.8 MB
+}
+public final class DepthAnythingV2Estimator: MonocularDepthEstimator, @unchecked Sendable {
+    public let outputKind: MonocularDepthOutputKind = .affineInverse
+    public init(compiledModelURL: URL, computeUnits: MLComputeUnits = .cpuAndNeuralEngine) throws
+    public func warmUp() throws
+    public func estimate(_ pixelBuffer: CVPixelBuffer) throws -> MonocularDepthEstimate
+}
+public enum DepthModelError: Error, LocalizedError, Sendable {
+    case unexpectedModelInterface(String), checksumMismatch(file: String), download(String), onDemandResourceMissing(tag: String)
+}
 ```
 
 ### iOS: ModelNode
@@ -7042,19 +7291,25 @@ HTTP on `POST /mcp`; `GET /mcp` answers `405`, `GET /health` answers `{"status":
 Use `npx sceneview-mcp` locally instead when you need `analyze_project` (it reads a project from
 disk) or your own `SKETCHFAB_API_KEY` / `TRIPO_API_KEY`; the shared anonymous endpoint has neither.
 
-### Claude Code plugin (optional, Claude Code only)
+### Assistant plugins (optional)
 
-Everything above works without this. For Claude Code users, install the dedicated plugin to get the MCP **plus** 11 namespaced contributor commands and cross-platform reminder hooks in a single step:
+Everything above works without these. Claude Code and Codex each have a plugin that installs the MCP server **plus** the same three SceneView skills in one step: `sceneview` (Jetpack Compose + Filament + ARCore), `sceneview-ios` (SwiftUI + RealityKit) and `sceneview-web` (Filament.js + WebXR), all from `agents/` in this repository.
+
+Claude Code:
 
 ```
 /plugin marketplace add sceneview/claude-marketplace
 /plugin install sceneview@sceneview
 ```
 
-Plugin contents:
-- `sceneview-mcp` server starts automatically
-- `/sceneview:contribute`, `/sceneview:release`, `/sceneview:review`, `/sceneview:test`, `/sceneview:document`, `/sceneview:quality-gate`, `/sceneview:publish-check`, `/sceneview:sync-check`, `/sceneview:version-bump`, `/sceneview:evaluate`, `/sceneview:maintain`
-- Hooks that fire on edits to remind you to keep API parity across Android (Filament), iOS (RealityKit), Web (Filament.js), Flutter, and React Native
+Codex: this repository is the plugin. From a checkout (the path must be absolute):
+
+```
+codex plugin marketplace add "$PWD"
+codex plugin add sceneview@sceneview-local
+```
+
+Contributors to this repository can add `/plugin install sceneview-contrib@sceneview` for the maintainer commands (`/sceneview-contrib:release`, `:review`, `:version-bump`...) and cross-platform reminder hooks.
 
 Marketplace repo: [github.com/sceneview/claude-marketplace](https://github.com/sceneview/claude-marketplace).
 

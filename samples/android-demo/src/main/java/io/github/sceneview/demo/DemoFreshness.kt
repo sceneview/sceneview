@@ -18,9 +18,10 @@ package io.github.sceneview.demo
  * both counts: it is addressed to users, it ships in release builds, and it
  * expires on its own as the version moves.
  *
- * **Where the data lives.** Two optional fields on [DemoEntry] —
- * [DemoEntry.sinceVersion] and [DemoEntry.updatedIn] — declared in the demo's
- * own append-only `fragments/<Id>Fragment.kt`. That is the file a PR touching a
+ * **Where the data lives.** Two fields on [DemoEntry] — the required
+ * [DemoEntry.addedIn] and the optional [DemoEntry.updatedIn] — declared in the
+ * demo's own append-only `fragments/<Id>Fragment.kt`, back-filled from git
+ * history (the first release tag that contains the demo). That is the file a PR touching a
  * demo already edits (#1797), so maintaining the marker costs one line in a file
  * that is already open, and two PRs can never conflict over a shared list.
  *
@@ -32,13 +33,13 @@ package io.github.sceneview.demo
  * fragment is therefore harmless, which is the property that makes a
  * hand-maintained field survivable.
  *
- * **Why a version declared *ahead* of the build still counts as fresh.**
- * `VERSION_NAME` is bumped at release and then stays put until the next one, so
- * every `main` build between two releases reports the version that already
- * shipped. Work merged today lands in the *next* release and is therefore
- * declared with a version strictly greater than the build reports it. That work
- * is the newest thing in the app — precisely what the marker exists to point at
- * — so "newer than the build" is the freshest case, not an error.
+ * **Declare the current version, never the next one.** `VERSION_NAME` is
+ * bumped at release and then stays put, so work merged on `main` between two
+ * releases declares the version the build already reports. The registry test
+ * rejects a declaration newer than the build: a guessed "next" version is how a
+ * typo (`4.15.0` for `4.51.0`, `5.0.0`) would pin a pill on a card for good.
+ * [isRecentVersion] still reads a version ahead of the build as fresh, so a
+ * fragment from a release branch never loses its pill on the way in.
  */
 enum class DemoFreshness {
     /** First shipped within the freshness window — drawn as "New". */
@@ -54,11 +55,13 @@ enum class DemoFreshness {
 /**
  * How many minor releases back a marker keeps being drawn.
  *
- * `1` means the current release and the one before it. The window is small on
- * purpose: a marker that is on a third of the grid is decoration, and the QA
- * pass it serves happens per release, not per quarter.
+ * `2`: a 4.51 build marks what declares 4.49, 4.50 or 4.51. Shared with iOS
+ * (`DemoFreshness.windowMinors`). At `1` a release cadence of several minors a
+ * week left the pill on almost nothing by the time anyone opened the app, and
+ * the maintainer could not find what was new (02/10). It stays small on
+ * purpose: a marker on a third of the grid is decoration.
  */
-const val FRESHNESS_WINDOW_MINORS: Int = 1
+const val FRESHNESS_WINDOW_MINORS: Int = 2
 
 /**
  * A parsed `major.minor.patch`. Only [major] and [minor] take part in the
@@ -111,7 +114,7 @@ fun DemoEntry.freshness(
     buildVersion: String,
     window: Int = FRESHNESS_WINDOW_MINORS,
 ): DemoFreshness = when {
-    isRecentVersion(sinceVersion, buildVersion, window) -> DemoFreshness.New
+    isRecentVersion(addedIn, buildVersion, window) -> DemoFreshness.New
     isRecentVersion(updatedIn, buildVersion, window) -> DemoFreshness.Updated
     else -> DemoFreshness.None
 }
@@ -141,7 +144,7 @@ fun freshnessHeadlineVersion(
     window: Int = FRESHNESS_WINDOW_MINORS,
 ): String {
     val declared = demos
-        .flatMap { listOfNotNull(it.sinceVersion, it.updatedIn) }
+        .flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
         .filter { isRecentVersion(it, buildVersion, window) }
         .mapNotNull { raw -> parseSemVer(raw)?.let { it to raw } }
         .maxByOrNull { (v, _) -> v.major * 1_000 + v.minor }
@@ -153,4 +156,16 @@ fun freshnessHeadlineVersion(
 fun shortVersionOf(version: String): String {
     val v = parseSemVer(version) ?: return version
     return "${v.major}.${v.minor}"
+}
+
+/**
+ * The oldest release still inside the window, as `major.minor` — "since 4.49" on a 4.51
+ * build. Falls back to the build's own short version when it does not parse.
+ */
+fun freshnessWindowStart(
+    buildVersion: String,
+    window: Int = FRESHNESS_WINDOW_MINORS,
+): String {
+    val v = parseSemVer(buildVersion) ?: return buildVersion
+    return "${v.major}.${(v.minor - window).coerceAtLeast(0)}"
 }

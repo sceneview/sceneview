@@ -17,6 +17,7 @@ object ArBodyTrackerFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Accessibility,
         order = 38,
+        addedIn = "4.14.0",
         tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml"),
     )
 

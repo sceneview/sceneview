@@ -6,6 +6,8 @@
 // @available   true
 // @icon        scribble.variable
 // @order       16
+// @addedIn     4.15.2
+// @updatedIn   4.40.0
 import SwiftUI
 
 enum ShapeExtrudeScene: DemoScene {

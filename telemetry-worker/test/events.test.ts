@@ -306,6 +306,25 @@ describe("GET /v1/stats — auth", () => {
   });
 });
 
+describe("GET /v1/funnel", () => {
+  it("returns the usage funnel without a subscription stage", async () => {
+    const env = makeEnv();
+    const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+    db._rows = [{ installed: 4, activated: 3, engaged: 2, power_users: 1 }];
+
+    const res = await app.request("/v1/funnel", { method: "GET" }, env);
+    expect(res.status).toBe(200);
+
+    const json = await res.json() as { stages: Array<{ stage: string }> };
+    expect(json.stages.map(({ stage }) => stage)).toEqual([
+      "installed",
+      "activated",
+      "engaged",
+      "power_users",
+    ]);
+  });
+});
+
 describe("Payload size limits", () => {
   let env: ReturnType<typeof makeEnv>;
 

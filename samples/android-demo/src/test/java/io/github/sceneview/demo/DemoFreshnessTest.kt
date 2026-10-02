@@ -18,7 +18,8 @@ class DemoFreshnessTest {
 
     private fun demo(
         id: String = "demo",
-        sinceVersion: String? = null,
+        // Old enough to sit outside every window these tests use.
+        addedIn: String = "4.0.0",
         updatedIn: String? = null,
     ) = DemoEntry(
         id = id,
@@ -28,7 +29,7 @@ class DemoFreshnessTest {
         icon = Icons.Filled.Palette,
         order = 1,
         tags = setOf("tag"),
-        sinceVersion = sinceVersion,
+        addedIn = addedIn,
         updatedIn = updatedIn,
     )
 
@@ -40,21 +41,22 @@ class DemoFreshnessTest {
     }
 
     @Test
-    fun `the release before the build's is inside the default window`() {
+    fun `the two releases before the build's are inside the default window`() {
+        // Two minors, shared with iOS: a 4.35 build marks 4.33, 4.34 and 4.35.
+        assertEquals(2, FRESHNESS_WINDOW_MINORS)
         assertTrue(isRecentVersion("4.34.0", buildVersion = "4.35.0"))
+        assertTrue(isRecentVersion("4.33.0", buildVersion = "4.35.0"))
     }
 
     @Test
-    fun `two releases back is outside the default window`() {
-        assertFalse(isRecentVersion("4.33.0", buildVersion = "4.35.0"))
+    fun `three releases back is outside the default window`() {
+        assertFalse(isRecentVersion("4.32.0", buildVersion = "4.35.0"))
     }
 
     @Test
-    fun `a version declared ahead of the build is fresh, not an error`() {
-        // VERSION_NAME is bumped at release and then stays put, so every `main`
-        // build between two releases reports the version that already shipped
-        // while carrying work declared for the next one. That work is the newest
-        // thing in the app — the marker's whole subject.
+    fun `a version declared ahead of the build is fresh, not a crash`() {
+        // The registry test below forbids it; the rule itself still has to read
+        // a stray one as the newest thing in the app rather than as old.
         assertTrue(isRecentVersion("4.35.0", buildVersion = "4.34.0"))
         assertTrue(isRecentVersion("5.0.0", buildVersion = "4.34.0"))
     }
@@ -72,7 +74,7 @@ class DemoFreshnessTest {
 
     @Test
     fun `the patch level does not re-open the window`() {
-        assertFalse(isRecentVersion("4.33.9", buildVersion = "4.35.2"))
+        assertFalse(isRecentVersion("4.32.9", buildVersion = "4.35.2"))
     }
 
     @Test
@@ -88,22 +90,22 @@ class DemoFreshnessTest {
 
     @Test
     fun `a wider window can be asked for explicitly`() {
-        assertFalse(isRecentVersion("4.32.0", buildVersion = "4.35.0"))
-        assertTrue(isRecentVersion("4.32.0", buildVersion = "4.35.0", window = 3))
+        assertFalse(isRecentVersion("4.31.0", buildVersion = "4.35.0"))
+        assertTrue(isRecentVersion("4.31.0", buildVersion = "4.35.0", window = 4))
     }
 
     // ── The marker ────────────────────────────────────────────────────────
 
     @Test
-    fun `no declared version means no marker`() {
+    fun `an old arrival with no update means no marker`() {
         assertEquals(DemoFreshness.None, demo().freshness("4.35.0"))
     }
 
     @Test
-    fun `sinceVersion in the window reads New`() {
+    fun `addedIn in the window reads New`() {
         assertEquals(
             DemoFreshness.New,
-            demo(sinceVersion = "4.35.0").freshness("4.35.0"),
+            demo(addedIn = "4.35.0").freshness("4.35.0"),
         )
     }
 
@@ -121,7 +123,7 @@ class DemoFreshnessTest {
         // still, to a user, new.
         assertEquals(
             DemoFreshness.New,
-            demo(sinceVersion = "4.35.0", updatedIn = "4.35.0").freshness("4.35.0"),
+            demo(addedIn = "4.35.0", updatedIn = "4.35.0").freshness("4.35.0"),
         )
     }
 
@@ -129,7 +131,7 @@ class DemoFreshnessTest {
     fun `an old arrival with a recent change reads Updated`() {
         assertEquals(
             DemoFreshness.Updated,
-            demo(sinceVersion = "4.10.0", updatedIn = "4.35.0").freshness("4.35.0"),
+            demo(addedIn = "4.10.0", updatedIn = "4.35.0").freshness("4.35.0"),
         )
     }
 
@@ -137,7 +139,7 @@ class DemoFreshnessTest {
     fun `a stale declaration goes quiet on its own`() {
         // The property that makes a hand-maintained field survivable: nobody
         // ever has to open a fragment to remove a marker.
-        val stale = demo(sinceVersion = "4.20.0", updatedIn = "4.21.0")
+        val stale = demo(addedIn = "4.20.0", updatedIn = "4.21.0")
         assertEquals(DemoFreshness.None, stale.freshness("4.35.0"))
     }
 
@@ -148,7 +150,7 @@ class DemoFreshnessTest {
         val demos = listOf(
             demo(id = "a", updatedIn = "4.35.0"),
             demo(id = "b"),
-            demo(id = "c", sinceVersion = "4.35.0"),
+            demo(id = "c", addedIn = "4.35.0"),
             demo(id = "d", updatedIn = "4.10.0"),
         )
         assertEquals(listOf("a", "c"), freshDemos(demos, "4.35.0").map { it.id })
@@ -173,7 +175,7 @@ class DemoFreshnessTest {
 
     @Test
     fun `the headline ignores declarations outside the window`() {
-        val demos = listOf(demo(id = "a", updatedIn = "4.35.0"), demo(id = "b", sinceVersion = "3.99.0"))
+        val demos = listOf(demo(id = "a", updatedIn = "4.35.0"), demo(id = "b", addedIn = "3.99.0"))
         assertEquals("4.35", freshnessHeadlineVersion(demos, buildVersion = "4.35.0"))
     }
 
@@ -195,7 +197,7 @@ class DemoFreshnessTest {
         // A typo silently loses the badge rather than failing, so the only place
         // it can be caught is here.
         ALL_DEMOS.forEach { demo ->
-            listOfNotNull(demo.sinceVersion to "sinceVersion", demo.updatedIn to "updatedIn")
+            listOf(demo.addedIn to "addedIn", demo.updatedIn to "updatedIn")
                 .forEach { (version, field) ->
                     if (version != null) {
                         assertTrue(
@@ -208,13 +210,39 @@ class DemoFreshnessTest {
     }
 
     @Test
+    fun `every demo declares the version it was added in`() {
+        // Required, so a new fragment cannot ship without one: the field is what
+        // puts it under "New" for two releases and then takes it off again.
+        ALL_DEMOS.forEach { demo ->
+            assertTrue("${demo.id}: addedIn is blank", demo.addedIn.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `no demo declares a version newer than the build`() {
+        // Work on main declares the version it ships in today, VERSION_NAME. A
+        // version from the future would badge itself "New" until that release
+        // and two more after it.
+        val build = BuildConfig.VERSION_NAME
+        ALL_DEMOS.forEach { demo ->
+            listOfNotNull(demo.addedIn to "addedIn", demo.updatedIn?.let { it to "updatedIn" })
+                .forEach { (version, field) ->
+                    assertTrue(
+                        "${demo.id}: $field = \"$version\" is newer than the build ($build)",
+                        isRecentVersion(build, buildVersion = version, window = 0),
+                    )
+                }
+        }
+    }
+
+    @Test
     fun `a demo never claims to have been updated before it existed`() {
         ALL_DEMOS.forEach { demo ->
-            val since = demo.sinceVersion
+            val since = demo.addedIn
             val updated = demo.updatedIn
-            if (since != null && updated != null) {
+            if (updated != null) {
                 assertTrue(
-                    "${demo.id}: updatedIn ($updated) predates sinceVersion ($since)",
+                    "${demo.id}: updatedIn ($updated) predates addedIn ($since)",
                     isRecentVersion(updated, buildVersion = since, window = 0) ||
                         updated == since,
                 )
@@ -227,7 +255,7 @@ class DemoFreshnessTest {
         // The state #3927 made legal: every declaration is out of the window.
         val registry = listOf(
             demo(id = "a", updatedIn = "4.39.0"),
-            demo(id = "b", sinceVersion = "4.20.0"),
+            demo(id = "b", addedIn = "4.20.0"),
             demo(id = "c"),
         )
         assertTrue(freshDemos(registry, buildVersion = "4.43.0").isEmpty())

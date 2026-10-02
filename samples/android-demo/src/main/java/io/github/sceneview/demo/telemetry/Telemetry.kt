@@ -7,20 +7,30 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import io.github.sceneview.demo.R
 
 /**
  * The demo app's usage statistics and push, in one place.
  *
  * [analytics] is the only thing screens call. It is a no-op until [ensureInit] ran, and stays one
- * in a build without `google-services.json` (FirebaseApp never initialises — see
- * `PLAY_STORE_SETUP.md` § Firebase) or when Firebase fails to start: nothing here may crash a demo.
+ * in a build without `google-services.json` (see `PLAY_STORE_SETUP.md` § Firebase), until the
+ * user's consent allows collection ([TelemetryConsent]), or when Firebase fails to start: nothing
+ * here may crash a demo.
+ *
+ * Firebase does not start with the process: the manifest removes `FirebaseInitProvider`, and
+ * [FirebaseApp.initializeApp] runs only once collection is allowed (consent given in the EEA, the
+ * UK and Switzerland; on by default elsewhere) or the user turned push on. Except for push the
+ * user already turned on (FCM needs Firebase, and starts it before the consent is answered), no
+ * Firebase component runs before that and nothing reaches Google — not even a Firebase
+ * Installations call. A start without consent always has collection off ([initializeFirebase]).
  */
 object Telemetry {
 
@@ -38,10 +48,30 @@ object Telemetry {
     @Volatile
     private var delegate: DemoAnalytics = NoOpDemoAnalytics
 
-    /** Whether Firebase started, i.e. this build carries a config and push can work. */
+    /**
+     * Whether this build carries a Firebase config, i.e. analytics and push can work once
+     * allowed. Read from the generated resources, without starting Firebase.
+     */
     @Volatile
     var firebaseAvailable: Boolean = false
         private set
+
+    /** Whether FirebaseApp runs in this process (collection allowed, or push wanted). */
+    @Volatile
+    var firebaseStarted: Boolean = false
+        private set
+
+    /** Whether this install must be asked first ([ConsentRegion]), or the debug extra said "ask". */
+    @Volatile
+    private var consentZone: Boolean = true
+
+    /** Whether usage statistics and crash reports may be collected now. */
+    @Volatile
+    private var collecting: Boolean = false
+
+    /** Set by the debug `telemetry_consent=ask` extra: the sheet shows even without a config. */
+    @Volatile
+    private var forceAsk: Boolean = false
 
     /** Every screen's single entry point. */
     val analytics: DemoAnalytics = GatedDemoAnalytics(
@@ -52,19 +82,27 @@ object Telemetry {
             override fun setCollectionEnabled(enabled: Boolean) = delegate.setCollectionEnabled(enabled)
             override fun resetData() = delegate.resetData()
         },
-        isEnabled = { prefs?.analyticsEnabled == true },
+        isEnabled = { collecting },
     )
 
     /** How the next sample was reached; read (and reset) by the demo route when it opens. */
     var nextOpenSource: OpenSource = OpenSource.Other
 
     /** Compose-observable mirror of the two About -> Privacy & notifications switches. */
-    var analyticsEnabled by mutableStateOf(true)
+    var analyticsEnabled by mutableStateOf(false)
         private set
     var notificationsEnabled by mutableStateOf(false)
         private set
 
-    /** Push on and off; null in a build without Firebase. */
+    /** The consent sheet is owed: [ConsentHost] shows it over Home. */
+    var consentPending by mutableStateOf(false)
+        private set
+
+    /** The consent was answered in this process: the push pre-prompt waits for a later session. */
+    @Volatile
+    private var consentAnsweredThisSession: Boolean = false
+
+    /** Push on and off; null until Firebase started. */
     @Volatile
     private var push: PushSwitch? = null
 
@@ -74,27 +112,18 @@ object Telemetry {
         if (prefs != null) return
         val app = context.applicationContext
         val p = TelemetryPrefs(app)
-        prefs = p
-        analyticsEnabled = p.analyticsEnabled
+        migrateConsent(app, p)
+        consentZone = forceAsk || ConsentRegion.requiresConsent(ConsentSignals.read(app))
+        firebaseAvailable = runCatching { FirebaseOptions.fromResource(app) != null }.getOrDefault(false)
         notificationsEnabled = p.notificationsEnabled
-        firebaseAvailable = runCatching { FirebaseApp.getApps(app).isNotEmpty() }.getOrDefault(false)
+        refreshConsent(p)
+        prefs = p
         if (!firebaseAvailable) {
             Log.i(TAG, "No Firebase config in this build: analytics and push are off.")
             return
         }
-        delegate = runCatching { FirebaseDemoAnalytics(app) }
-            .onFailure { Log.w(TAG, "Firebase Analytics unavailable", it) }
-            .getOrDefault(NoOpDemoAnalytics)
-        // Re-applied at every launch; the reset is not (see setAnalyticsEnabled).
-        runCatching { delegate.setCollectionEnabled(p.analyticsEnabled) }
         createChannel(app)
-        push = PushSwitch(
-            backend = FirebasePushBackend(),
-            store = p,
-            topics = topics(app),
-            wanted = { notificationsEnabled },
-            systemAllows = { systemAllowsNotifications(app) },
-        )
+        startFirebaseIfNeeded(app)
         syncPush(app)
         refreshUserProperties(app)
     }
@@ -104,28 +133,87 @@ object Telemetry {
         return requireNotNull(prefs)
     }
 
-    /** About → "Share usage statistics". */
+    /**
+     * Whether the push pre-prompt may show: the consent is settled, and was not answered in this
+     * session — one question per session, never a second sheet right after the first.
+     */
+    fun consentAllowsPushPrompt(): Boolean {
+        val p = prefs ?: return false
+        return TelemetryConsent.pushPromptAllowed(p.consentState, consentZone, consentAnsweredThisSession)
+    }
+
+    /** The consent sheet: "Share" or "Don't share"; dismissing it counts as "Don't share". */
+    fun answerConsent(context: Context, granted: Boolean) {
+        consentAnsweredThisSession = true
+        setAnalyticsEnabled(context, granted)
+    }
+
+    /** About → "Share usage statistics": gives or withdraws the consent. */
     fun setAnalyticsEnabled(context: Context, enabled: Boolean) {
         ensureInit(context)
         val p = prefs ?: return
-        val wasEnabled = p.analyticsEnabled
-        if (!enabled && wasEnabled) {
+        val app = context.applicationContext
+        val wasCollecting = collecting
+        if (!enabled && wasCollecting) {
             // Best effort, and usually lost: logged while collection is still on, but the
             // resetData() below also clears the events still waiting on the device, this one
             // with them. Accepted rather than delaying the reset, which is what the opt-out
             // promises.
             analytics.log(AnalyticsEvent.SettingsChanged("analytics", "false"))
         }
-        p.analyticsEnabled = enabled
-        analyticsEnabled = enabled
-        runCatching { delegate.setCollectionEnabled(enabled) }
+        TelemetryConsent.record(p, granted = enabled, now = System.currentTimeMillis())
+        refreshConsent(p)
+        if (enabled) startFirebaseIfNeeded(app)
+        // Turns collection off too, and deletes the crash reports not sent yet.
+        runCatching { delegate.setCollectionEnabled(collecting) }
         // On -> off only: forget the app-instance id and the data waiting on the device, so
         // nothing collected before the opt-out can be joined to anything after an opt-in.
         // Not at every launch while opted out: there is nothing new to forget.
-        if (!enabled && wasEnabled) runCatching { delegate.resetData() }
+        if (!enabled && wasCollecting) runCatching { delegate.resetData() }
         if (enabled) {
             analytics.log(AnalyticsEvent.SettingsChanged("analytics", "true"))
-            refreshUserProperties(context)
+            refreshUserProperties(app)
+        }
+    }
+
+    /**
+     * Debug builds only: `adb shell am start ... --es telemetry_consent granted|denied|ask`.
+     * Automation passes `denied` so no capture or test run ever shows the sheet or sends data;
+     * `ask` forgets the answer and shows the sheet wherever the device is. Applied before
+     * [ensureInit] on a cold start, so Firebase never starts on a value about to change.
+     */
+    fun applyDebugConsent(context: Context, value: String?) {
+        val debug = DebugConsent.parse(value) ?: return
+        Log.i(TAG, "Debug consent override: $debug")
+        if (prefs == null) {
+            val seed = TelemetryPrefs(context.applicationContext)
+            migrateConsent(context.applicationContext, seed)
+            when (debug) {
+                DebugConsent.Granted -> TelemetryConsent.record(seed, granted = true, now = System.currentTimeMillis())
+                DebugConsent.Denied -> TelemetryConsent.record(seed, granted = false, now = System.currentTimeMillis())
+                DebugConsent.Ask -> {
+                    seed.consentState = ConsentState.Unknown
+                    forceAsk = true
+                }
+            }
+            ensureInit(context)
+            return
+        }
+        when (debug) {
+            DebugConsent.Granted -> setAnalyticsEnabled(context, true)
+            DebugConsent.Denied -> setAnalyticsEnabled(context, false)
+            DebugConsent.Ask -> {
+                val p = prefs ?: return
+                val wasCollecting = collecting
+                forceAsk = true
+                consentZone = true
+                consentAnsweredThisSession = false
+                p.consentState = ConsentState.Unknown
+                p.consentAt = 0L
+                refreshConsent(p)
+                runCatching { delegate.setCollectionEnabled(false) }
+                if (wasCollecting) runCatching { delegate.resetData() }
+            }
         }
     }
 
@@ -151,6 +239,8 @@ object Telemetry {
         val wasEnabled = p.notificationsEnabled
         p.notificationsEnabled = enabled
         notificationsEnabled = enabled
+        // Push is its own consent: it starts Firebase, with collection still as the consent says.
+        if (enabled) startFirebaseIfNeeded(context.applicationContext)
         if (enabled) syncPush(context) else push?.turnOff(wasOn = wasEnabled)
         refreshUserProperties(context)
     }
@@ -176,7 +266,7 @@ object Telemetry {
 
     /** Re-sends the user properties that can change while the app runs. */
     fun refreshUserProperties(context: Context) {
-        if (!firebaseAvailable) return
+        if (!firebaseStarted || !collecting) return
         val app = context.applicationContext
         val dark = (app.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
@@ -185,6 +275,72 @@ object Telemetry {
             UserProperty.NotifEnabled,
             (notificationsEnabled && systemAllowsNotifications(app)).toString(),
         )
+    }
+
+    /**
+     * The consent migration, plus the Firebase settings an older build persisted: they would
+     * otherwise override the manifest the first time Firebase starts ([FirebaseLeftovers]).
+     */
+    private fun migrateConsent(app: Context, store: ConsentStore) {
+        if (store.consentVersion < TelemetryConsent.VERSION) FirebaseLeftovers.clear(app)
+        TelemetryConsent.migrate(store)
+    }
+
+    /** Re-derives what the consent allows and mirrors it for Compose. */
+    private fun refreshConsent(store: ConsentStore) {
+        val allowed = TelemetryConsent.collectionAllowed(store.consentState, consentZone)
+        collecting = allowed
+        analyticsEnabled = allowed
+        consentPending = TelemetryConsent.mustAsk(store.consentState, consentZone) && (firebaseAvailable || forceAsk)
+    }
+
+    /**
+     * Starts FirebaseApp the first time something allows it: collection (consent, or outside the
+     * zone), push turned on, or a push opt-out still to finish. Never before.
+     */
+    @Synchronized
+    private fun startFirebaseIfNeeded(app: Context) {
+        if (firebaseStarted || !firebaseAvailable) return
+        val p = prefs ?: return
+        if (!collecting && !p.notificationsEnabled && !p.pushDisablePending) return
+        val started = runCatching {
+            FirebaseApp.getApps(app).firstOrNull()
+                ?: initializeFirebase(app, collecting) { FirebaseApp.initializeApp(app) }
+        }
+            .onFailure { Log.w(TAG, "Firebase failed to start", it) }
+            .getOrNull() != null
+        if (!started) return
+        firebaseStarted = true
+        Log.i(TAG, "Firebase started (collection=$collecting, push=${p.notificationsEnabled})")
+        delegate = runCatching { FirebaseDemoAnalytics(app) }
+            .onFailure { Log.w(TAG, "Firebase Analytics unavailable", it) }
+            .getOrDefault(NoOpDemoAnalytics)
+        // Re-applied at every start; the reset is not (see setAnalyticsEnabled).
+        runCatching { delegate.setCollectionEnabled(collecting) }
+        push = PushSwitch(
+            backend = FirebasePushBackend(),
+            store = p,
+            topics = topics(app),
+            wanted = { notificationsEnabled },
+            systemAllows = { systemAllowsNotifications(app) },
+        )
+    }
+
+    /**
+     * Runs [initialize] (`FirebaseApp.initializeApp`), first clearing the collection flags Firebase
+     * saved earlier ([FirebaseLeftovers]) whenever this start must not collect.
+     *
+     * Not only after a consent-version change: an install that collected outside the zone, never
+     * answered, then moved inside it (a US phone on a French network) with push on still holds
+     * `measurement_enabled=true` and the Crashlytics flag. Left in place, Firebase would start
+     * collecting until [DemoAnalytics.setCollectionEnabled] turns it off — time enough for
+     * Crashlytics to send cached reports. Cleared, the manifest's "off" applies from the first
+     * instant, and the consent re-applies its own value right after.
+     */
+    @VisibleForTesting
+    internal fun <T> initializeFirebase(app: Context, collecting: Boolean, initialize: () -> T): T {
+        if (!collecting) FirebaseLeftovers.clear(app)
+        return initialize()
     }
 
     private fun createChannel(context: Context) {

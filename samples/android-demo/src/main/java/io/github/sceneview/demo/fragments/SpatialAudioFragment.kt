@@ -17,6 +17,7 @@ object SpatialAudioFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.VolumeUp,
         order = 8,
+        addedIn = "4.12.0",
         tags = setOf("audio", "sound", "spatial", "3d-audio", "orbit"),
     )
 

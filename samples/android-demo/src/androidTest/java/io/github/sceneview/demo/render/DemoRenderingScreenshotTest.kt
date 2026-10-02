@@ -395,7 +395,9 @@ class DemoRenderingScreenshotTest {
         device.executeShellCommand(
             "am start -n $mainActivityComponent " +
                 "-f 0x14000000 " + // CLEAR_TOP | NEW_TASK
-                "--es demo $demoSlug --ez qa_mode true"
+                "--es demo $demoSlug --ez qa_mode true " +
+                // Debug-only: no consent sheet and no telemetry during a capture.
+                "--es telemetry_consent denied"
         )
         // Wait for the demo screen itself to be composed before anything else. Without this
         // the capture loop below can settle on the launcher SPLASH screen: the splash draws

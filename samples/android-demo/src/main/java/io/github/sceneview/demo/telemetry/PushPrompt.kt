@@ -70,7 +70,8 @@ fun PushPromptHost(returnedHomeFromSample: Int, onHome: Boolean) {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
                     Telemetry.systemAllowsNotifications(context)
                 )
-        if (!showing && policy.onReturnedHome(eligible)) {
+        // Never while the usage-statistics consent is owed, nor in the session that answered it.
+        if (!showing && policy.onReturnedHome(eligible, Telemetry.consentAllowsPushPrompt())) {
             policy.onShown()
             Telemetry.analytics.log(AnalyticsEvent.PushPromptShown)
             showing = true

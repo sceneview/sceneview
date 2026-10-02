@@ -8,6 +8,8 @@
 // @iosOnly     true
 // @order       41
 // @tags        ar,face,anchor,tracking,accessories
+// @addedIn     4.15.2
+// @updatedIn   4.45.0
 import SwiftUI
 
 enum ArAugmentedFacesScene: DemoScene {

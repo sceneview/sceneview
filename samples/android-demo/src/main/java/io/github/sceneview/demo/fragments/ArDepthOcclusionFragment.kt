@@ -17,6 +17,7 @@ object ArDepthOcclusionFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Layers,
         order = 36,
+        addedIn = "4.0.8",
         tags = setOf("ar", "depth", "occlusion", "arcore"),
     )
 

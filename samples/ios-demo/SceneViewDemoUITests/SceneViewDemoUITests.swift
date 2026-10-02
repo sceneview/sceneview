@@ -42,10 +42,12 @@ final class SceneViewDemoUITests: XCTestCase {
     /// `.keepAlways` is required — a passing test discards its attachments by
     /// default, which would leave the screenshot job with an empty artifact.
     /// Every launch turns the push pre-prompt off: a sheet that may appear after the
-    /// second sample closed must not cover the screen a test is about to tap.
+    /// second sample closed must not cover the screen a test is about to tap. The
+    /// usage-statistics consent is pre-answered for the same reason: in the EEA, UK and
+    /// Switzerland its sheet comes up over Home on first launch.
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-push_preprompt", "off"]
+        app.launchArguments = ["-push_preprompt", "off", "-telemetry_consent", "denied"]
         return app
     }
 
@@ -345,5 +347,93 @@ final class SceneViewDemoUITests: XCTestCase {
 
         let back = app.navigationBars.buttons.firstMatch
         XCTAssertTrue(back.exists && back.isHittable, "the top bar's back button is gone")
+    }
+
+    /// "The tab closes when you go into Featured" (02/10): scrolling from the
+    /// hero into Featured folded the tab bar down to its selected item, and it
+    /// stayed folded through a demo and back. Scrolls to each Featured card,
+    /// opens it, closes it, and checks every tab is still there each time, and
+    /// that the home came back where it was left.
+    /// Frames are also written to `$SV_CAPTURE_DIR` when the runner sets it
+    /// (`TEST_RUNNER_SV_CAPTURE_DIR=… xcodebuild test …`).
+    func testFeaturedRoundTripKeepsTheHome() {
+        let app = Self.makeApp()
+        app.launch()
+        let header = app.descendants(matching: .any)["home-section-featured"]
+        XCTAssertTrue(header.waitForExistence(timeout: 30), "the Featured group never appeared")
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "featured-01-home")
+
+        let tabs = ["Showcase", "AR View", "About"].map { app.tabBars.buttons[$0] }
+        func assertTabsOnScreen(_ moment: String) {
+            for tab in tabs {
+                XCTAssertTrue(tab.exists && tab.isHittable, "a tab is folded away \(moment)")
+            }
+        }
+        assertTabsOnScreen("on launch")
+        for (step, id) in ["cosmos", "splat-preview"].enumerated() {
+            let card = app.descendants(matching: .any)["home-featured-\(id)"]
+            for _ in 0..<6 where !(card.exists && card.isHittable) {
+                app.swipeUp(velocity: .slow)
+            }
+            Thread.sleep(forTimeInterval: 1.5)
+            XCTAssertTrue(card.isHittable, "Featured \(id) never came on screen")
+            let before = card.frame
+            capture(app, "featured-\(step + 2)a-\(id)-before")
+            assertTabsOnScreen("after scrolling to \(id)")
+            card.tap()
+
+            let close = app.descendants(matching: .any)["demo-close"]
+            XCTAssertTrue(close.waitForExistence(timeout: 20), "\(id) never opened")
+            Thread.sleep(forTimeInterval: 4)
+            capture(app, "featured-\(step + 2)b-\(id)-open")
+            close.tap()
+            Thread.sleep(forTimeInterval: 2.5)
+            capture(app, "featured-\(step + 2)c-\(id)-back")
+
+            assertTabsOnScreen("after closing \(id)")
+            XCTAssertTrue(card.exists && card.isHittable,
+                          "the home did not come back where it was left after \(id)")
+            XCTAssertEqual(card.frame.minY, before.minY, accuracy: 4,
+                           "the home scrolled away while \(id) was open")
+        }
+    }
+
+    /// "I still struggle to see where the new things are" (02/10): the What's
+    /// new row under the hero selects the What's new chip and brings the chip
+    /// row up under the header, with only the New / Updated demos below it.
+    func testWhatsNewRowOpensTheFilter() {
+        let app = Self.makeApp()
+        app.launch()
+        let row = app.descendants(matching: .any)["home-whats-new-row"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "whats-new-01-home")
+        row.tap()
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "whats-new-02-filtered")
+
+        let chip = app.buttons["home-chip-whats-new"]
+        XCTAssertTrue(chip.exists && chip.isHittable, "the What's new chip is not on screen")
+        XCTAssertTrue(chip.isSelected, "the What's new chip is not selected")
+        XCTAssertFalse(app.descendants(matching: .any)["home-row-lines-paths"].exists,
+                       "a demo with nothing new is still listed")
+        XCTAssertTrue(app.descendants(matching: .any)["home-row-lighting-lab"].waitForExistence(timeout: 5),
+                      "the new Lighting Lab is not listed")
+    }
+
+    private func capture(_ app: XCUIApplication, _ name: String) {
+        snapshot(app, name)
+        guard let dir = ProcessInfo.processInfo.environment["SV_CAPTURE_DIR"] else { return }
+        let png = app.screenshot().pngRepresentation
+        try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        let about = app.tabBars.buttons["About"]
+        let line = "\(name)\tAbout tab hittable=\(about.exists && about.isHittable)\n"
+        let log = URL(fileURLWithPath: dir).appendingPathComponent("log.txt")
+        if let h = try? FileHandle(forWritingTo: log) {
+            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+        } else {
+            try? Data(line.utf8).write(to: log)
+        }
     }
 }

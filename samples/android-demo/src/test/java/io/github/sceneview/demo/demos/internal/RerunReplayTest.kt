@@ -301,7 +301,8 @@ class RerunReplayTest {
         val texture = ReplayPlaneTexture(1, "p", Vec3(0f, 0f, 0f), Vec3(2f, 0f, 0f), Vec3(0f, 0f, 2f))
         val square = floatArrayOf(0f, 0.1f, 0f, 2f, -0.1f, 0f, 2f, 0f, 2f, 0f, 0.05f, 2f)
         val mesh = DebugMesh()
-        ReplayGeometry.addTexturedPlane(mesh, square, texture, flattenToY = -1f)
+        val flat = square.copyOf().also { for (i in 0 until 4) it[i * 3 + 1] = -1f }
+        ReplayGeometry.addTexturedPlane(mesh, square, texture, placed = flat)
         assertEquals(5, mesh.vertexCount) // the centre, then the four corners
         assertEquals(4, mesh.triangleCount)
         for (i in 0 until mesh.vertexCount) assertEquals(-1f, mesh.positions[i * 3 + 1], 0f)
@@ -314,7 +315,7 @@ class RerunReplayTest {
     fun `a sliver of a plane draws nothing`() {
         val mesh = DebugMesh()
         val texture = ReplayPlaneTexture(1, "p", Vec3(0f, 0f, 0f), Vec3(1f, 0f, 0f), Vec3(0f, 0f, 1f))
-        ReplayGeometry.addTexturedPlane(mesh, floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f), texture, null)
+        ReplayGeometry.addTexturedPlane(mesh, floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f), texture)
         assertTrue(mesh.isEmpty)
     }
 

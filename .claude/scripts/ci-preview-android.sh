@@ -133,9 +133,9 @@ for id in "${IDS[@]}"; do
     adbt logcat -c 2>/dev/null || true
     before="$(ss_pid)"
     if [ "$id" = home ]; then
-      adbt shell am start -n "$ACTIVITY" >/dev/null
+      adbt shell am start -n "$ACTIVITY" --es telemetry_consent denied >/dev/null
     else
-      adbt shell am start -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true >/dev/null
+      adbt shell am start -n "$ACTIVITY" --es demo "$id" --ez qa_mode true --ez qa_backdrop true --es telemetry_consent denied >/dev/null
     fi
     sleep "$SETTLE"
     shoot light "$id" "$before"; rc=$?

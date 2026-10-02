@@ -6,6 +6,8 @@
 // @available   true
 // @icon        tree.fill
 // @order       34
+// @addedIn     4.4.0
+// @updatedIn   4.32.0
 import SwiftUI
 
 enum MultiModelScene: DemoScene {

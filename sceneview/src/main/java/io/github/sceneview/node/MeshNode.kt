@@ -44,6 +44,15 @@ open class MeshNode(
     primitiveType: PrimitiveType,
     val vertexBuffer: VertexBuffer,
     val indexBuffer: IndexBuffer,
+    /**
+     * The mesh's axis-aligned bounding box, in local space. Pass one whenever the vertices are
+     * known: it enables frustum culling and shadows.
+     *
+     * Filament refuses to build a renderable without a box unless it is neither culled nor a
+     * shadow caster/receiver ("AABB can't be empty" abort). So when this is `null` the node
+     * disables culling, shadow casting **and shadow receiving** before [builder] runs; a
+     * [builder] that turns shadows back on must also set a non-empty `boundingBox`.
+     */
     val boundingBox: Box? = null,
     /**
      * Binds a material instance.
@@ -77,8 +86,17 @@ open class MeshNode(
                 indexBuffer
             )
             .apply {
-                boundingBox?.let { boundingBox(it) }
-                culling(boundingBox != null)
+                val box = this@MeshNode.boundingBox
+                if (box != null) {
+                    boundingBox(box)
+                    culling(true)
+                } else {
+                    // No box: Filament aborts in build() unless the renderable is neither culled
+                    // nor a shadow caster/receiver — and receiveShadows defaults to true.
+                    culling(false)
+                    castShadows(false)
+                    receiveShadows(false)
+                }
                 materialInstance?.let { materialInstance ->
                     material(0, materialInstance)
                 }
@@ -88,6 +106,9 @@ open class MeshNode(
     }
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // RenderableNode.destroy() tears down the renderable component first, then the
         // entity. Free the raw geometry buffers after that, only when this node owns them.
         super.destroy()

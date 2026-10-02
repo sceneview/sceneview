@@ -443,8 +443,15 @@ object SceneViewTokens {
         val rowTextPaddingEnd = 16.dp
         val rowTextPaddingVertical = 14.dp
 
-        /** Title-to-subtitle gap inside a row. */
+        /** Title-to-subtitle gap inside a row; also the badge line to the title. */
         val rowTextGap = 4.dp
+
+        /**
+         * `home-badge` — the "New" / "Updated" / status pill, on its own line above a
+         * row's title: `space-sm` across, 3 dp above and below, a 12 dp glyph.
+         */
+        val badgePaddingVertical = 3.dp
+        val badgeIcon = 12.dp
 
         /** Glyph of a row that has no picture (a demo without a capture, a utility row). */
         val rowGlyph = 40.dp

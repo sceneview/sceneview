@@ -229,13 +229,17 @@ class DepthFrame(
     }
 }
 
-/** Surfels of one [DepthFrame]: flat world xyz, unit world normals, colours and confidences. */
+/**
+ * Surfels of one [DepthFrame]: flat world xyz, unit world normals, colours and confidences, and
+ * how much the fusion trusts each ([weights], [DepthBackProjection.weight]; `null` = all alike).
+ */
 class DenseSamples(
     val count: Int,
     val positions: FloatArray,
     val normals: FloatArray,
     val colors: IntArray,
     val confidences: ByteArray,
+    val weights: FloatArray? = null,
 )
 
 /** Raw depth → world-space surfels: [DepthMeshGeometry]'s back-projection, plus normals. */
@@ -250,6 +254,22 @@ object DepthBackProjection {
 
     /** A surface seen more edge-on than this (cosine to the view ray) is too noisy to keep. */
     const val MIN_VIEW_COSINE = 0.15f
+
+    /**
+     * The depth up to which a sample weighs in full. Past it the weight falls as 1/d², the way
+     * ARCore's depth error grows with the square of the distance.
+     */
+    const val FULL_WEIGHT_M = 1f
+
+    /**
+     * How much a sample counts in [DenseFusion]: `confidence/255 × min(1, (FULL_WEIGHT_M/d)²) ×
+     * cos θ`, θ between the surface normal and the ray to the camera. A point 4 m away at
+     * confidence 130 seen face on counts 1/31st of one 0.8 m away at 250.
+     */
+    fun weight(confidence: Int, depthM: Float, cosine: Float): Float {
+        val near = FULL_WEIGHT_M / depthM
+        return confidence / 255f * minOf(1f, near * near) * cosine
+    }
 
     /**
      * The camera-space point of depth pixel ([px], [py]) at [depthM] metres: ARCore camera
@@ -277,6 +297,7 @@ object DepthBackProjection {
         val normals = FloatArray(capacity * 3)
         val colors = IntArray(capacity)
         val confidences = ByteArray(capacity)
+        val weights = FloatArray(capacity)
         var n = 0
         for (y in 0 until h) {
             for (x in 0 until w) {
@@ -290,8 +311,7 @@ object DepthBackProjection {
                 val right = neighbour(depth, w, x + 1, y, d, edge, x < w - 1)
                 val up = neighbour(depth, w, x, y - 1, d, edge, y > 0)
                 val down = neighbour(depth, w, x, y + 1, d, edge, y < h - 1)
-                val isolated = left == 0f && right == 0f
-                if (isolated || up == 0f && down == 0f) continue // no neighbour on an axis: no normal
+                if (noNormal(left, right, up, down)) continue
                 val p = cameraPoint(x, y, d, frame.fx, frame.fy, frame.cx, frame.cy)
                 val px0 = if (left != 0f) cameraPoint(x - 1, y, left, frame.fx, frame.fy, frame.cx, frame.cy) else p
                 val px1 = if (right != 0f) cameraPoint(x + 1, y, right, frame.fx, frame.fy, frame.cx, frame.cy) else p
@@ -319,11 +339,16 @@ object DepthBackProjection {
                 normals[n * 3 + 2] = worldNormal.z
                 colors[n] = frame.colors[i]
                 confidences[n] = confidence.toByte()
+                weights[n] = weight(confidence, d, cosine)
                 n++
             }
         }
-        return DenseSamples(n, positions, normals, colors, confidences)
+        return DenseSamples(n, positions, normals, colors, confidences, weights)
     }
+
+    /** No neighbour on an axis: no normal. */
+    private fun noNormal(left: Float, right: Float, up: Float, down: Float) =
+        left == 0f && right == 0f || up == 0f && down == 0f
 
     /** The depth at ([x], [y]) when [inside] the image and within [edge] of [d]; `0` otherwise. */
     private fun neighbour(depth: FloatArray, w: Int, x: Int, y: Int, d: Float, edge: Float, inside: Boolean): Float {
@@ -338,8 +363,11 @@ data class DenseFuseStats(val added: Int, val kept: Int, val total: Int)
 
 /**
  * The dense map: samples merged into [voxelM] voxels, deduplicated by a primitive
- * open-addressing hash — a voxel seen again averages its position, colour and normal (up to
- * [MAX_WEIGHT] views, so it keeps following a better view) and keeps its best confidence.
+ * open-addressing hash — a voxel seen again averages its position, colour and normal, each
+ * sample weighted by [DenseSamples.weights] (a near, confident, face-on view outweighs a far,
+ * doubtful, grazing one) up to [MAX_WEIGHT] full views, so it keeps following a better view, and
+ * keeps its best confidence. It also counts the [add] calls — depth frames — that saw it, so
+ * [cloud] can leave out a voxel one frame alone saw: the dust a noisy depth leaves in the air.
  * Capped at [maxPoints] voxels; voxels keep their insertion order, so a prefix of the cloud is
  * the map as it stood earlier. Single-threaded: one fusion at a time, off the main thread.
  */
@@ -358,13 +386,19 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
     private var r = FloatArray(INITIAL_POINTS)
     private var g = FloatArray(INITIAL_POINTS)
     private var b = FloatArray(INITIAL_POINTS)
-    private var weight = IntArray(INITIAL_POINTS)
-    private var colorWeight = IntArray(INITIAL_POINTS)
+    private var weight = FloatArray(INITIAL_POINTS)
+    private var colorWeight = FloatArray(INITIAL_POINTS)
     private var confidence = ByteArray(INITIAL_POINTS)
+    private var views = IntArray(INITIAL_POINTS)
+    private var lastView = IntArray(INITIAL_POINTS)
+
+    /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
+    private var view = 0
 
     /** Merges [samples] into the map. */
     @Suppress("LoopWithTooManyJumpStatements") // one skip per rejected sample
     fun add(samples: DenseSamples): DenseFuseStats {
+        view++
         var added = 0
         var kept = 0
         for (i in 0 until samples.count) {
@@ -385,41 +419,56 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         return DenseFuseStats(added, kept, count)
     }
 
-    /** The map's first [limit] voxels as a cloud: averaged positions, colours, unit normals. */
-    fun cloud(limit: Int = count): DenseCloud {
-        val n = limit.coerceIn(0, count)
+    /**
+     * The map's first [limit] voxels as a cloud — averaged positions, colours, unit normals —
+     * leaving out those fewer than [minViews] depth frames saw ([MIN_VIEWS] for a saved scan).
+     */
+    fun cloud(limit: Int = count, minViews: Int = 1): DenseCloud {
+        val first = limit.coerceIn(0, count)
+        val kept = IntArray(first)
+        var n = 0
+        for (i in 0 until first) if (views[i] >= minViews) kept[n++] = i
         val positions = FloatArray(n * 3)
         val normals = FloatArray(n * 3)
         val colors = IntArray(n)
-        for (i in 0 until n) {
-            positions[i * 3] = px[i]
-            positions[i * 3 + 1] = py[i]
-            positions[i * 3 + 2] = pz[i]
+        val confidences = ByteArray(n)
+        for (o in 0 until n) {
+            val i = kept[o]
+            positions[o * 3] = px[i]
+            positions[o * 3 + 1] = py[i]
+            positions[o * 3 + 2] = pz[i]
             val l = sqrt(nx[i] * nx[i] + ny[i] * ny[i] + nz[i] * nz[i])
             if (l > 1e-6f) {
-                normals[i * 3] = nx[i] / l
-                normals[i * 3 + 1] = ny[i] / l
-                normals[i * 3 + 2] = nz[i] / l
+                normals[o * 3] = nx[i] / l
+                normals[o * 3 + 1] = ny[i] / l
+                normals[o * 3 + 2] = nz[i] / l
             } else {
-                normals[i * 3 + 1] = 1f // opposite views cancelled out: face up
+                normals[o * 3 + 1] = 1f // opposite views cancelled out: face up
             }
-            colors[i] = if (colorWeight[i] == 0) 0 else {
+            colors[o] = if (colorWeight[i] == 0f) 0 else {
                 (0xFF shl 24) or (channel(r[i]) shl 16) or (channel(g[i]) shl 8) or channel(b[i])
             }
+            confidences[o] = confidence[i]
         }
-        return DenseCloud(positions, colors, normals, confidence.copyOf(n))
+        return DenseCloud(positions, colors, normals, confidences)
     }
 
     private fun merge(index: Int, x: Float, y: Float, z: Float, samples: DenseSamples, i: Int) {
-        val w = minOf(weight[index] + 1, MAX_WEIGHT)
+        if (lastView[index] != view) {
+            lastView[index] = view
+            views[index]++
+        }
+        val sw = (samples.weights?.get(i) ?: 1f).coerceAtLeast(MIN_SAMPLE_WEIGHT)
+        // A running weighted mean; past MAX_WEIGHT a new sample still moves it by sw / MAX_WEIGHT.
+        val w = minOf(weight[index] + sw, MAX_WEIGHT)
         weight[index] = w
-        val k = 1f / w
+        val k = sw / w
         px[index] += (x - px[index]) * k
         py[index] += (y - py[index]) * k
         pz[index] += (z - pz[index]) * k
-        nx[index] += samples.normals[i * 3]
-        ny[index] += samples.normals[i * 3 + 1]
-        nz[index] += samples.normals[i * 3 + 2]
+        nx[index] += samples.normals[i * 3] * sw
+        ny[index] += samples.normals[i * 3 + 1] * sw
+        nz[index] += samples.normals[i * 3 + 2] * sw
         // Keep the summed normal bounded so a long-seen voxel still turns with new views.
         val l = abs(nx[index]) + abs(ny[index]) + abs(nz[index])
         if (l > MAX_WEIGHT) {
@@ -430,9 +479,9 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         }
         val c = samples.colors[i]
         if (c != 0) {
-            val cw = minOf(colorWeight[index] + 1, MAX_WEIGHT)
+            val cw = minOf(colorWeight[index] + sw, MAX_WEIGHT)
             colorWeight[index] = cw
-            val ck = 1f / cw
+            val ck = sw / cw
             r[index] += ((c shr 16 and 0xFF) - r[index]) * ck
             g[index] += ((c shr 8 and 0xFF) - g[index]) * ck
             b[index] += ((c and 0xFF) - b[index]) * ck
@@ -460,9 +509,11 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         while (keys[slot] != EMPTY) slot = (slot + 1) and mask
         keys[slot] = key
         slots[slot] = count
-        weight[count] = 0
-        colorWeight[count] = 0
+        weight[count] = 0f
+        colorWeight[count] = 0f
         confidence[count] = 0
+        views[count] = 0
+        lastView[count] = 0
         px[count] = 0f; py[count] = 0f; pz[count] = 0f
         nx[count] = 0f; ny[count] = 0f; nz[count] = 0f
         r[count] = 0f; g[count] = 0f; b[count] = 0f
@@ -492,6 +543,8 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         weight = weight.copyOf(size)
         colorWeight = colorWeight.copyOf(size)
         confidence = confidence.copyOf(size)
+        views = views.copyOf(size)
+        lastView = lastView.copyOf(size)
     }
 
     companion object {
@@ -501,7 +554,17 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         /** 500 k surfels: a room, 6 MB of SVPC. */
         const val MAX_POINTS = 500_000
 
-        const val MAX_WEIGHT = 32
+        /** A voxel's weight stops growing at this many full-weight views. */
+        const val MAX_WEIGHT = 32f
+
+        /**
+         * Depth frames that must see a voxel for a saved scan to keep it: a voxel only one frame
+         * saw is most often that frame's noise.
+         */
+        const val MIN_VIEWS = 2
+
+        /** The least a sample counts, so a weight never divides by zero. */
+        private const val MIN_SAMPLE_WEIGHT = 1e-4f
 
         private const val INITIAL_SLOTS = 1 shl 14
         private const val INITIAL_POINTS = 1 shl 13

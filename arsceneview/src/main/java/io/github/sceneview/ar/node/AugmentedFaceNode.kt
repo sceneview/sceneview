@@ -405,6 +405,9 @@ open class AugmentedFaceNode(
     }
 
     override fun destroy() {
+        // Once only (#4259): a second call would free handles, material instances and an
+        // entity id that may already belong to another node.
+        if (isDestroyed) return
         // Destroy the face mesh resources we built in update() before tearing down
         // the parent chain. Filament does not reclaim VertexBuffer / IndexBuffer when
         // the owning Renderable is destroyed — they stay in the engine registry until

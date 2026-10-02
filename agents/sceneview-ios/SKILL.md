@@ -5,7 +5,7 @@ license: Apache-2.0
 metadata:
   author: SceneView
   source: https://github.com/sceneview/sceneview
-  last-updated: '2026-08-06'
+  last-updated: '2026-10-02'
   keywords:
   - sceneview
   - sceneviewswift
@@ -323,17 +323,13 @@ Full cross-platform guidance:
 
 Pair this skill with Xcode's command-line tools:
 
-- Build and run on the simulator — resolve the destination, never hardcode
-  `name=iPhone <model>`. A model name is a promise about a machine you do not
-  own, and the resolver also waits out the CoreSimulator cold window that made
-  iOS CI look flaky ([#3174](https://github.com/sceneview/sceneview/issues/3174)):
+- Build and run on the simulator — list the destinations available on the current
+  machine and select one by UDID instead of hardcoding an iPhone model name:
 
   ```bash
-  . .claude/scripts/lib/ios-simulator.sh
-  # Assign — the resolver reports failure through its EXIT CODE, and `set -e`
-  # cannot see a `$(...)` that fails inside another command's arguments.
-  DEST="$(ios_simulator_destination)"
-  xcodebuild -scheme SceneViewSwift -destination "$DEST"
+  xcrun simctl list devices available
+  xcodebuild -scheme SceneViewSwift \
+    -destination 'platform=iOS Simulator,id=<UDID from the list above>'
   ```
 - `xcrun simctl io booted screenshot ui.png` — capture the rendered scene.
 - `swift build` / `swift test` from `SceneViewSwift/` — build/test the package

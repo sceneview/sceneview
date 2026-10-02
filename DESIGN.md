@@ -149,7 +149,7 @@ Two shapes, one recipe:
   `home-row-text-start`, where the picture is down to a tenth of its opacity.
 
 The title is `type-card` (17, semibold, `on-surface`), the subtitle `type-caption` regular
-(`on-surface-variant`), the "New" / "Updated" / status chips on the title line. Each card is
+(`on-surface-variant`), the "New" / "Updated" / status chips on their own line above the title (`home-badge`: 3dp vertical padding, 12dp icon, accent text on `surface-container` at 92%, measured 6.3:1 light / 7.3:1 dark; the line collapses to zero height when no chip draws, so plain rows keep their rhythm). "New" covers a demo whose `addedIn` is within the last two minors of the build, "Updated" one whose `updatedIn` is, and both expire on their own; a "What's new" row under the hero and a "What's new" filter chip appear only while at least one demo carries a marker. Each card is
 its own `home-row-radius` tile, `home-row-gap` from the next. No shadow, no outline, in
 either theme — the ambient tone carries it. A demo without a capture shows its glyph at
 `home-row-glyph` in the category accent, over the accent's own ambient tint washed with
@@ -222,7 +222,11 @@ so the eye lands on the one thing the screen is for.
 
 | Token | Value | Usage |
 |---|---|---|
-| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — the launcher icon (`ic_sceneview_hero` on Android, the `about_mark` image set cut from `AppIcon` on iOS), never a Material glyph or an SF Symbol |
+| `about-mark` | 80dp / 80pt, `radius-xl` | Identity mark — a 3D cube with two orbit rings on iOS. Android uses `ic_sceneview_hero`; iOS keeps the `about_mark` image set as its placeholder until the 3D mark is ready. Never use a Material glyph or an SF Symbol |
+| `about-stage-height` | 176pt | Height of the iOS 3D mark band (`About.stageHeight`) |
+| `about-stage-shadow-size` | 132 × 18pt | Soft contact-shadow ellipse under the floating iOS mark |
+| `mark-color` | Body `#3D7FD9`, lid `#BDD3FF`, orbit `#A4C1FF` | iOS `MarkColor` palette for the 3D cube, inset, rings and satellites |
+| `mark-shadow` | `#0B1B3A` | Light-mode core colour of the contact shadow; it fades to transparent at the rim |
 | `about-row-icon` | 20dp | Leading glyph of an action row |
 | `about-row-affordance` | 16dp open-in-new / 20dp chevron | Trailing glyph — leaves the app, or stays in it. Two sizes because the chevron is the thinner drawing: matched boxes read as two icon sets. |
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
@@ -502,6 +506,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `mode-pill-outline` | 1dp #D1D2D4, opaque | Its edge: the container clears 3:1 on grounds of L ≥ 0.14, the outline on L ≤ 0.18 — every ground is covered |
 | `mode-pill-selected` / `on-mode-pill-selected` | #FFFFFF / #0B0F16 | The checked segment and its label (19.2:1) |
 | `on-mode-pill` | #FFFFFF | Unchecked labels (16.5:1 on the container) |
+| `mode-pill-segment-min-width` | 72dp | A segment's minimum width, so a short label ("ML") keeps a target as wide as the 48dp row is tall |
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
@@ -811,7 +816,7 @@ The surface for what an AR demo needs the user to **see** rather than read — a
 share, an input to fill, a meter to watch, or an explanation of why the screen cannot
 work. It stacks directly under the coaching overlay in the same bottom band, so the two
 must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairline, same
-`radius-lg`, same 480px max width, and no elevation shadow: under a translucent scrim a
+`radius-lg`, same `card-max-width` (480dp: iPad, landscape), and no elevation shadow: under a translucent scrim a
 shadow shows through as a darker inner rectangle in dark mode. Padding `space-md`,
 children spaced `space-sm`.
 
@@ -826,10 +831,11 @@ children spaced `space-sm`.
 - **Text input** is unstyled (`BasicTextField`), never a Material text field: every
   Material field colour is a theme role, which is the wrong ground here. Field fill is the
   `Button glass` white-at-8% used for every "present but empty" element over media.
-- **Meters** use three segments at `radius-xs`, `space-sm` tall, `space-xs` apart. Lit
-  segments take the coaching overlay's accent for the state they represent (`warning`
-  while the user must keep moving, `primary` once the value is acceptable); the unlit
-  track is the same `Button glass` fill.
+- **Meters** use three segments at `radius-xs`, `meter-height` (`space-sm`) tall,
+  `space-xs` apart. Lit segments take the coaching overlay's accent for the state they
+  represent (`warning` while the user must keep moving, `primary` once the value is
+  acceptable); the unlit track is the same `Button glass` fill. A **download** meter
+  uses ten segments, lit in `accent-progress`, one per 10 % (ML depth model).
 - **An explanation card carries no action when there is none.** A configuration a user
   cannot change from the phone gets a title and one sentence — a button that would do
   nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).

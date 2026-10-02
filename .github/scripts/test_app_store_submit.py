@@ -22,6 +22,7 @@ from unittest import mock
 
 SCRIPT = pathlib.Path(__file__).resolve().parent / "app_store_submit.py"
 BUILD = "202609280405"
+MISSING = object()
 
 
 class _Response:
@@ -44,12 +45,16 @@ def _version(vid, vs, state):
 
 
 class SubmitScriptTest(unittest.TestCase):
-    def run_submit(self, editable, holders, version="v4.47.0"):
+    def run_submit(self, editable, holders, version="v4.47.0", platform=None, bodies=None,
+                   build_platform=None, stdout=None):
         """Run app_store_submit.py; return (exit code, [(method, url)], step summary).
 
         `holders` answers the slot-holder probe. A tuple of lists answers
         successive probes in order (the last one repeats), which is how a case
         makes the slot fill between the look-before-create and the POST.
+        `platform` sets ASC_PLATFORM (unset by default, which means IOS),
+        `build_platform` can make the fake build belong to another platform,
+        and `bodies` / `stdout`, when given, collect POST JSON / printed output.
         """
         calls = []
         probes = list(holders) if isinstance(holders, tuple) else [holders]
@@ -64,7 +69,8 @@ class SubmitScriptTest(unittest.TestCase):
                               "relationships": {"preReleaseVersion": {
                                   "data": {"type": "preReleaseVersions", "id": "P1"}}}}],
                     "included": [{"type": "preReleaseVersions", "id": "P1",
-                                  "attributes": {"platform": "IOS", "version": "4.47.0"}}],
+                                  "attributes": {"platform": build_platform or platform or "IOS",
+                                                 "version": "4.47.0"}}],
                 })
             if "/appStoreVersions?" in url and "include=appStoreVersionSubmission" in url:
                 return _Response(200, {"data": editable})
@@ -74,6 +80,8 @@ class SubmitScriptTest(unittest.TestCase):
 
         def post(url, headers=None, json=None, **_):
             calls.append(("POST", url))
+            if bodies is not None:
+                bodies.append(json)
             if url.endswith("/appStoreVersions"):
                 return _Response(409, {"errors": [{"status": "409"}]})
             raise AssertionError(f"unexpected POST {url}")
@@ -92,12 +100,18 @@ class SubmitScriptTest(unittest.TestCase):
             env = {"HOME": home, "ASC_KEY_ID": "KEY", "ASC_ISSUER_ID": "ISSUER",
                    "ASC_VERSION_STRING": version, "ASC_EXPECTED_BUILD": BUILD,
                    "ASC_SUPERSEDE": "false", "GITHUB_STEP_SUMMARY": str(summary)}
-            with mock.patch.dict(os.environ, env), \
+            if platform:
+                env["ASC_PLATFORM"] = platform
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
                     mock.patch.dict(sys.modules, {"requests": fake_requests, "jwt": fake_jwt}), \
                     mock.patch("time.sleep"), \
+                    contextlib.redirect_stdout(out), \
                     self.assertRaises(SystemExit) as e:
                 runpy.run_path(str(SCRIPT), run_name="__main__")
             summary_text = summary.read_text() if summary.exists() else ""
+            if stdout is not None:
+                stdout.append(out.getvalue())
         return e.exception.code, calls, summary_text
 
     def test_never_renames_a_record_down(self):
@@ -111,13 +125,28 @@ class SubmitScriptTest(unittest.TestCase):
     def test_identified_holder_defers_with_75_without_a_409(self):
         # 4.48.0 waits for review: 4.49.0 is on TestFlight and defers, and no
         # version record is POSTed for Apple to refuse.
+        stdout = []
         code, calls, summary = self.run_submit(
             editable=[], holders=[_version("V48", "4.48.0", "WAITING_FOR_REVIEW")],
-            version="v4.49.0")
+            version="v4.49.0", stdout=stdout)
         self.assertEqual(code, 75)
         self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
         self.assertIn("4.49.0 deferred", summary)
         self.assertIn("4.48.0 is WAITING_FOR_REVIEW", summary)
+        self.assertIn("app-store-catch-up.yml submits 4.49.0 automatically", stdout[0])
+
+    def test_mac_deferred_requires_manual_follow_up_without_any_write(self):
+        stdout = []
+        code, calls, summary = self.run_submit(
+            editable=[], holders=[_version("V48", "4.48.0", "WAITING_FOR_REVIEW")],
+            version="v4.49.0", platform="MAC_OS", stdout=stdout)
+        self.assertEqual(code, 75)
+        self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
+        self.assertNotIn("app-store-catch-up.yml submits", stdout[0])
+        self.assertIn("app-store-catch-up.yml covers iOS only", stdout[0])
+        self.assertIn("dispatch app-store.yml on tag v4.49.0 with submit_for_review=true",
+                      stdout[0])
+        self.assertIn("app-store-catch-up.yml covers iOS only", summary)
 
     def test_release_already_in_review_defers_without_a_409(self):
         code, calls, summary = self.run_submit(
@@ -152,6 +181,43 @@ class SubmitScriptTest(unittest.TestCase):
                       calls)
 
 
+    def test_mac_run_reads_and_creates_mac_records_only(self):
+        # The macOS job sets ASC_PLATFORM=MAC_OS: the build, the version
+        # records it probes and the record it creates are all the Mac ones,
+        # never the iOS record of the same version.
+        bodies = []
+        code, calls, _ = self.run_submit(editable=[], holders=[], platform="MAC_OS",
+                                         bodies=bodies)
+        self.assertEqual(code, 1)
+        probes = [u for m, u in calls if m == "GET" and "/appStoreVersions?" in u]
+        self.assertTrue(probes, calls)
+        for url in probes:
+            self.assertIn("filter[platform]=MAC_OS", url)
+        self.assertFalse([u for _, u in calls if "IOS" in u], calls)
+        created = [b for b in bodies if b and b["data"]["type"] == "appStoreVersions"]
+        self.assertEqual([b["data"]["attributes"]["platform"] for b in created], ["MAC_OS"])
+
+    def test_mac_run_refuses_ios_build_with_the_same_build_number(self):
+        code, calls, _ = self.run_submit(
+            editable=[], holders=[], platform="MAC_OS", build_platform="IOS")
+        self.assertEqual(code, 1)
+        self.assertEqual(len([u for method, u in calls if method == "GET" and "/builds?" in u]),
+                         15)
+        self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
+
+    def test_default_platform_filters_every_platform_lookup_to_ios(self):
+        code, calls, _ = self.run_submit(editable=[], holders=[])
+        self.assertEqual(code, 1)
+        filtered = [url for _, url in calls if "filter[platform]=" in url]
+        self.assertTrue(filtered, calls)
+        self.assertTrue(all("filter[platform]=IOS" in url for url in filtered), filtered)
+        self.assertFalse(any("MAC_OS" in url for url in filtered), filtered)
+
+    def test_unknown_platform_fails_before_any_call(self):
+        code, calls, _ = self.run_submit(editable=[], holders=[], platform="TV_OS")
+        self.assertEqual(code, 1)
+        self.assertEqual(calls, [])
+
 API = "https://api.appstoreconnect.apple.com/v1"
 
 
@@ -176,14 +242,16 @@ class ReviewSubmissionTest(unittest.TestCase):
     (UNRESOLVED_ISSUES) and holds that same version.
     """
 
-    def run_submit(self, open_subs, sub_states=None, items=(), draft_items=()):
+    def run_submit(self, open_subs, sub_states=None, items=(), draft_items=(), platform=None,
+                   release_notes=MISSING, mac_release_notes=MISSING, request_bodies=None):
         """Run the whole program; return (exit code, [(method, url)], stdout).
 
         `open_subs` answers the open-reviewSubmissions probe. `sub_states`
         maps a submission id to the states its by-id reads return in turn (the
         last repeats). `items` is the sequence of answers to the review item
         CREATE (the last repeats). `draft_items` lists the appStoreVersion ids
-        already in a reused draft.
+        already in a reused draft. Release-note arguments create the respective
+        files in an isolated working directory; MISSING leaves a file absent.
         """
         calls = []
         sub_states = {k: list(v) for k, v in (sub_states or {}).items()}
@@ -199,10 +267,15 @@ class ReviewSubmissionTest(unittest.TestCase):
                               "relationships": {"preReleaseVersion": {
                                   "data": {"type": "preReleaseVersions", "id": "P1"}}}}],
                     "included": [{"type": "preReleaseVersions", "id": "P1",
-                                  "attributes": {"platform": "IOS", "version": "4.50.0"}}],
+                                  "attributes": {"platform": platform or "IOS",
+                                                 "version": "4.50.0"}}],
                 })
             if "/appStoreVersions?" in url and "include=appStoreVersionSubmission" in url:
                 return _Response(200, {"data": [_version("V", "4.48.0", "REJECTED")]})
+            if url == f"{API}/appStoreVersions/V/appStoreVersionLocalizations":
+                return _Response(200, {"data": [{
+                    "id": "LOC", "attributes": {"locale": "en-US"},
+                }]})
             if "/apps/APP/reviewSubmissions?" in url:
                 return _Response(200, {"data": open_subs})
             if "/items?include=appStoreVersion" in url:
@@ -219,6 +292,8 @@ class ReviewSubmissionTest(unittest.TestCase):
 
         def post(url, headers=None, json=None, **_):
             calls.append(("POST", url))
+            if request_bodies is not None:
+                request_bodies.append(("POST", url, json))
             if url == f"{API}/reviewSubmissions":
                 return _Response(201, {"data": {"id": "NEW"}})
             if url == f"{API}/reviewSubmissionItems":
@@ -227,6 +302,8 @@ class ReviewSubmissionTest(unittest.TestCase):
 
         def patch(url, headers=None, json=None, **_):
             calls.append(("PATCH", url))
+            if request_bodies is not None:
+                request_bodies.append(("PATCH", url, json))
             attrs = (json or {}).get("data", {}).get("attributes", {})
             if attrs.get("canceled"):
                 sid = url.rsplit("/", 1)[1]
@@ -246,19 +323,40 @@ class ReviewSubmissionTest(unittest.TestCase):
             keys = pathlib.Path(home, ".private_keys")
             keys.mkdir()
             (keys / "AuthKey_KEY.p8").write_text("not a real key")
+            notes_dir = pathlib.Path(home, "distribution", "app-store", "en-US")
+            notes_dir.mkdir(parents=True)
+            if release_notes is not MISSING:
+                (notes_dir / "release_notes.txt").write_text(release_notes)
+            if mac_release_notes is not MISSING:
+                (notes_dir / "release_notes_macos.txt").write_text(mac_release_notes)
             env = {"HOME": home, "ASC_KEY_ID": "KEY", "ASC_ISSUER_ID": "ISSUER",
                    "ASC_VERSION_STRING": "v4.50.0", "ASC_EXPECTED_BUILD": BUILD,
                    "ASC_SUPERSEDE": "false", "GITHUB_WORKSPACE": home,
                    "GITHUB_STEP_SUMMARY": str(pathlib.Path(home, "summary.md"))}
+            if platform:
+                env["ASC_PLATFORM"] = platform
             code = 0
-            with mock.patch.dict(os.environ, env), \
-                    mock.patch.dict(sys.modules, {"requests": fake_requests, "jwt": fake_jwt}), \
-                    mock.patch("time.sleep"), contextlib.redirect_stdout(out):
-                try:
-                    runpy.run_path(str(SCRIPT), run_name="__main__")
-                except SystemExit as e:
-                    code = e.code
+            previous_cwd = os.getcwd()
+            os.chdir(home)
+            try:
+                with mock.patch.dict(os.environ, env, clear=True), \
+                        mock.patch.dict(sys.modules, {"requests": fake_requests, "jwt": fake_jwt}), \
+                        mock.patch("time.sleep"), contextlib.redirect_stdout(out):
+                    try:
+                        runpy.run_path(str(SCRIPT), run_name="__main__")
+                    except SystemExit as e:
+                        code = e.code
+            finally:
+                os.chdir(previous_cwd)
         return code, calls, out.getvalue()
+
+    @staticmethod
+    def _whats_new(request_bodies):
+        payload = next(
+            body for method, url, body in request_bodies
+            if method == "PATCH" and url == f"{API}/appStoreVersionLocalizations/LOC"
+        )
+        return payload["data"]["attributes"]["whatsNew"]
 
     @staticmethod
     def _index(calls, call):
@@ -324,6 +422,40 @@ class ReviewSubmissionTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertNotIn(("POST", f"{API}/reviewSubmissionItems"), calls)
         self.assertIn("State: WAITING_FOR_REVIEW", out)
+
+    def test_mac_uses_release_notes_macos_when_present(self):
+        bodies = []
+        code, _, out = self.run_submit(
+            open_subs=[], platform="MAC_OS", release_notes="iOS notes",
+            mac_release_notes="Mac-only notes", request_bodies=bodies)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self._whats_new(bodies), "Mac-only notes")
+        self.assertIn("whatsNew sourced from release_notes_macos.txt", out)
+
+    def test_mac_without_release_notes_macos_filters_ar_paragraphs_from_ios_notes(self):
+        bodies = []
+        ios_notes = ("Keep the model viewer improvements.\n\n"
+                     "Replay an AR session with camera passthrough.\n\n"
+                     "Keep Spatial Audio improvements.")
+        code, _, out = self.run_submit(
+            open_subs=[], platform="MAC_OS", release_notes=ios_notes,
+            request_bodies=bodies)
+        self.assertEqual(code, 0, out)
+        whats_new = self._whats_new(bodies)
+        self.assertIn("Keep the model viewer improvements.", whats_new)
+        self.assertIn("Keep Spatial Audio improvements.", whats_new)
+        self.assertNotIn("Replay an AR session", whats_new)
+        self.assertIn("release_notes.txt with AR paragraphs removed for MAC_OS", out)
+
+    def test_ios_ignores_release_notes_macos(self):
+        bodies = []
+        code, _, out = self.run_submit(
+            open_subs=[], release_notes="iOS-only notes",
+            mac_release_notes="Mac-only notes", request_bodies=bodies)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self._whats_new(bodies), "iOS-only notes")
+        self.assertIn("whatsNew sourced from release_notes.txt", out)
+        self.assertNotIn("release_notes_macos.txt", out)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,8 @@
 package io.github.sceneview.ar.node
 
 import com.google.android.filament.Engine
-import com.google.android.filament.IndexBuffer
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
-import com.google.android.filament.RenderableManager.PrimitiveType
-import com.google.android.filament.VertexBuffer
-import com.google.android.filament.VertexBuffer.AttributeType
-import com.google.android.filament.VertexBuffer.VertexAttribute
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -24,6 +19,15 @@ import io.github.sceneview.node.MeshNode
  * Obtained from a call to [Session.getAllTrackables] or [Frame.getUpdatedTrackables] when
  * [Config.StreetscapeGeometryMode] is set to [Config.StreetscapeGeometryMode.ENABLED] and
  * [Config.GeospatialMode] is set to [Config.GeospatialMode.ENABLED].
+ *
+ * ### Empty meshes
+ *
+ * The renderable [meshNode] is built with an axis-aligned bounding box computed from the mesh
+ * vertices. When ARCore reports a mesh with no vertex or no whole triangle, no renderable is
+ * built and [meshNode] is `null`; the node then draws nothing. Each time ARCore reports the
+ * geometry as updated with a different vertex or index count, the renderable is rebuilt (or
+ * dropped, if the mesh became empty). A rebuild replaces the [meshNode] instance, so changes made
+ * directly on it are lost; configure it through `meshMaterialInstance` and `builder`.
  *
  * ### Geospatial Depth (ARCore 1.54+, #1731)
  *
@@ -48,66 +52,25 @@ open class StreetscapeGeometryNode(
     onTrackingStateChanged = onTrackingStateChanged,
     onUpdated = onUpdated
 ) {
-    val meshNode = MeshNode(
+    // Builds, rebuilds and drops the renderable as the ARCore mesh changes.
+    private val meshRenderable = StreetscapeMeshRenderable(
         engine = engine,
-        primitiveType = PrimitiveType.TRIANGLES,
-        vertexBuffer = VertexBuffer.Builder()
-            // POSITION + TANGENTS + UV0, one backing buffer each (#3215).
-            //
-            // ARCore ships positions only, but the lit materials this node is normally given
-            // (`opaque_colored` / `transparent_colored` from MaterialLoader.createColorInstance)
-            // require POSITION|TANGENTS|UV0 (MAT_REQA 0xB). Filament does not fail the
-            // mismatch — it logs `missing required attributes (0xb), declared=0x1` and shades
-            // the overlay with a constant fallback normal. So the node derives smooth
-            // per-vertex normals from the mesh once, at construction, and encodes them as
-            // tangent quaternions; UV0 is a zero buffer (no natural parameterisation, and the
-            // colored materials never sample it). See StreetscapeMeshAttributes.kt.
-            .bufferCount(BUFFER_COUNT)
-            // Position Attribute (x, y, z)
-            .attribute(VertexAttribute.POSITION, BUFFER_INDEX_POSITION, AttributeType.FLOAT3)
-            // Tangent frame quaternion (x, y, z, w) — Filament's per-vertex normal input.
-            // No `.normalized(TANGENTS)`: that flag is for integer formats, these are FLOAT4.
-            .attribute(
-                VertexAttribute.TANGENTS,
-                BUFFER_INDEX_TANGENT,
-                AttributeType.FLOAT4,
-                0,
-                STREETSCAPE_TANGENT_STRIDE
-            )
-            .attribute(
-                VertexAttribute.UV0,
-                BUFFER_INDEX_UV,
-                AttributeType.FLOAT2,
-                0,
-                STREETSCAPE_UV_STRIDE
-            )
-            .vertexCount(streetscapeGeometry.mesh.vertexListSize)
-            .build(engine)
-            .apply {
-                val mesh = streetscapeGeometry.mesh
-                setBufferAt(engine, BUFFER_INDEX_POSITION, mesh.vertexList)
-                setBufferAt(
-                    engine,
-                    BUFFER_INDEX_TANGENT,
-                    computeStreetscapeTangents(mesh.vertexList, mesh.indexList, mesh.vertexListSize)
-                )
-                setBufferAt(engine, BUFFER_INDEX_UV, zeroStreetscapeUvs(mesh.vertexListSize))
-            },
-        indexBuffer = IndexBuffer.Builder()
-            .bufferType(IndexBuffer.Builder.IndexType.UINT)
-            .indexCount(streetscapeGeometry.mesh.indexListSize)
-            .build(engine)
-            .apply {
-                setBuffer(engine, streetscapeGeometry.mesh.indexList)
-            },
+        parent = this,
         materialInstance = meshMaterialInstance,
-        // This node builds the VertexBuffer/IndexBuffer above just for this MeshNode and
-        // owns them exclusively — free them when the node is destroyed (#2037). The mesh
-        // node is a child of this node, so Node.destroy()'s recursive child teardown
-        // (#2036) reaches it when the StreetscapeGeometryNode is destroyed.
-        destroyBuffersOnDispose = true,
         builder = builder
-    ).apply { parent = this@StreetscapeGeometryNode }
+    )
+
+    /**
+     * The renderable mesh of [streetscapeGeometry], or `null` while ARCore reports an empty
+     * mesh (no vertex or no whole triangle). Filament cannot build a renderable for an empty
+     * mesh, so none is created; the node draws nothing until a geometry update brings vertices.
+     *
+     * The instance is replaced when ARCore changes the mesh (see "Empty meshes" above): changes
+     * made directly on it (visibility, layer, material, touchability, ...) are lost on a rebuild.
+     * Configure the renderable through the constructor's `meshMaterialInstance` and `builder`,
+     * which every rebuild re-applies, or on this node.
+     */
+    val meshNode: MeshNode? get() = meshRenderable.meshNode
 
     val type get() = streetscapeGeometry.type
     val quality get() = streetscapeGeometry.quality
@@ -125,6 +88,8 @@ open class StreetscapeGeometryNode(
         constructed = true
         // Apply the initial pose that the gated update() skipped during the constructor dispatch.
         applyTrackableState()
+        // Build the initial renderable (none for an empty mesh).
+        syncMesh()
     }
 
     override fun update(trackable: StreetscapeGeometry?) {
@@ -133,6 +98,8 @@ open class StreetscapeGeometryNode(
         // Bail while the constructor dispatch is in flight (#2624) — init applies the state below.
         if (!constructed) return
         applyTrackableState()
+        // Only reached when ARCore reported this geometry as updated this frame.
+        syncMesh()
     }
 
     /** The class-specific trackable refresh — gated behind [constructed] (#2624). */
@@ -141,12 +108,19 @@ open class StreetscapeGeometryNode(
             pose = streetscapeGeometry.meshPose
         }
     }
-}
 
-// Vertex buffer slots of a StreetscapeGeometryNode. File-private: a `const val` in a
-// `private companion object` still compiles to a public static field on the class and
-// trips apiCheck.
-private const val BUFFER_INDEX_POSITION = 0
-private const val BUFFER_INDEX_TANGENT = 1
-private const val BUFFER_INDEX_UV = 2
-private const val BUFFER_COUNT = 3
+    /**
+     * Builds [meshNode] on the first call, then rebuilds it when the mesh's vertex or index count
+     * changed since it was built, and drops it when the mesh became empty. Only reads the vertex
+     * and index buffers when a (re)build happens.
+     */
+    private fun syncMesh() {
+        val mesh = streetscapeGeometry.mesh
+        meshRenderable.sync(
+            vertexCount = mesh.vertexListSize,
+            indexCount = mesh.indexListSize,
+            vertexList = { mesh.vertexList },
+            indexList = { mesh.indexList }
+        )
+    }
+}

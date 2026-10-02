@@ -120,11 +120,61 @@ final class CameraMotionContinuityTests: XCTestCase {
 
     func testALateFramePausesInsteadOfLeaping() {
         var c = CameraControls(mode: .orbit)
-        c.isAutoRotating = true
-        c.autoRotateSpeed = 1
+        c.endDrag(velocity: CGSize(width: 600, height: 0))
         let before = c.azimuth
-        c.advance(dt: 0.8) // a model landed on the main thread
-        XCTAssertEqual(c.azimuth - before, CameraControls.maxMotionStep, accuracy: 1e-5)
+        let velocityBeforeHitch = c.inertiaVelocity
+
+        XCTAssertTrue(c.advance(dt: 0.8)) // a model landed on the main thread
+        XCTAssertEqual(c.azimuth, before, accuracy: 1e-6)
+        XCTAssertEqual(c.inertiaVelocity, velocityBeforeHitch)
+
+        XCTAssertTrue(c.advance(dt: 1.0 / 60.0))
+        XCTAssertEqual(
+            c.azimuth - before,
+            -10 * c.sensitivity,
+            accuracy: 1e-5,
+            "the coast continues from the same velocity after the hitch"
+        )
+    }
+
+    func testASustainedLowFrameRateKeepsTheAnnouncedSpeed() {
+        var c = CameraControls(mode: .orbit)
+        c.isAutoRotating = true
+        c.autoRotateSpeed = 0.5
+
+        for _ in 0..<8 { c.advance(dt: 0.125) }
+
+        XCTAssertEqual(c.azimuth, 0.5, accuracy: 1e-4)
+    }
+
+    func testMotionStepBoundaryIsInclusive() {
+        var atThreshold = CameraControls(mode: .orbit)
+        atThreshold.isAutoRotating = true
+        atThreshold.autoRotateSpeed = 1
+
+        var aboveThreshold = atThreshold
+        XCTAssertTrue(atThreshold.advance(dt: CameraControls.maxMotionStep))
+        XCTAssertTrue(aboveThreshold.advance(dt: CameraControls.maxMotionStep + 0.001))
+
+        XCTAssertEqual(atThreshold.azimuth, CameraControls.maxMotionStep, accuracy: 1e-5)
+        XCTAssertEqual(aboveThreshold.azimuth, 0, accuracy: 1e-6)
+    }
+
+    func testCoastMatchesAtTenAndSixtyFramesPerSecond() {
+        var at10 = CameraControls(mode: .orbit)
+        var at60 = CameraControls(mode: .orbit)
+        at10.endDrag(velocity: CGSize(width: 600, height: 0))
+        at60.endDrag(velocity: CGSize(width: 600, height: 0))
+
+        for _ in 0..<10 { at10.advance(dt: 0.1) }
+        for _ in 0..<60 { at60.advance(dt: 1.0 / 60.0) }
+
+        XCTAssertEqual(at10.azimuth, at60.azimuth, accuracy: 1e-4)
+        XCTAssertEqual(
+            at10.inertiaVelocity.width,
+            at60.inertiaVelocity.width,
+            accuracy: 1e-4
+        )
     }
 
     func testAHostPoseCancelsTheCoast() {

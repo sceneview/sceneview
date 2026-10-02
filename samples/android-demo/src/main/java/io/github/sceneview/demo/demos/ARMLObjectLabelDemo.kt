@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +58,8 @@ import io.github.sceneview.rememberModelLoader
  *
  * Pipeline:
  *  1. Each AR frame, pull the CPU camera image via [io.github.sceneview.ar.arcore.cameraImage]
- *     (`Frame.acquireCameraImage()` wrapped to return `null` on `NotYetAvailableException`).
+ *     (`Frame.acquireCameraImage()` wrapped to return `null` while ARCore has no image to give:
+ *     warm-up, stale frame, full image pool).
  *  2. Feed the YUV image into ML Kit's [com.google.mlkit.vision.objects.ObjectDetector]
  *     configured with [ObjectDetectorOptions] (bundled model, single-image multi-object, label
  *     classification enabled).
@@ -130,10 +132,6 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
         onDispose { detector?.let { runCatching { it.close() } } }
     }
 
-    // Latest frame snapshot — recorded by onSessionUpdated and consumed by the detector
-    // dispatch below. Kept as a plain `var` (not Compose state) because the detector
-    // dispatch is fire-and-forget and we only need the most recent reference.
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var isTracking by remember { mutableStateOf(false) }
 
@@ -263,7 +261,6 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 },
                 onSessionUpdated = { _, frame: Frame ->
-                    latestFrame = frame
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
 
                     // Keep the camera world position fresh so every label billboards toward
@@ -305,15 +302,15 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     if (!detectInFlight.compareAndSet(false, true)) return@ARSceneView
                     lastDetectMs[0] = now
 
-                    // Pull the CPU camera image. `null` is normal during session warm-up.
-                    // Any failure from here on must clear the in-flight flag, or the demo
-                    // stops detecting for the rest of the session.
-                    val cameraImage = try {
-                        frame.cameraImage()
-                    } catch (e: Throwable) {
-                        detectInFlight.set(false)
-                        throw e
-                    }
+                    // Pull the CPU camera image. `null` is normal during session warm-up, and
+                    // `cameraImage()` also maps a stale frame or a full image pool to `null`.
+                    // Never re-throw from here: ARSceneView only logs what escapes the render
+                    // callback, and the frame's detection is lost either way. Anything else
+                    // ARCore raises (a dead session)
+                    // resurfaces from the next `session.update()` through the normal error
+                    // path. Every exit must clear the in-flight flag, or the demo stops
+                    // detecting for the rest of the session.
+                    val cameraImage = runCatching { frame.cameraImage() }.getOrNull()
                     if (cameraImage == null) {
                         detectInFlight.set(false)
                         if (statusBannerRes != R.string.demo_ar_ml_status_warming) {
@@ -395,31 +392,38 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
             ) {
-                // Render one billboard label per active detection. The (anchor, bitmap)
-                // pair is keyed on the anchor identity so when an anchor is replaced
-                // (object moves off-screen → re-detected) Compose tears down + recreates
-                // the node correctly.
+                // Render one billboard label per active detection, keyed on the anchor.
+                // Without the key, evicting the oldest label (the cap of six in
+                // `updateAnchorsFromDetections`) shifted every other label one slot down:
+                // each slot rebuilt its AnchorNode and destroyed the old one together with
+                // its billboard, while the billboard slot, `remember`ed on a shared cached
+                // bitmap, kept the destroyed node and destroyed it again later, after its
+                // Filament entity id had been recycled. This removes the double destroy only;
+                // the "Invalid texture still bound to MaterialInstance" abort at the sixth label
+                // is a separate issue, still reproducible with this change.
                 detections.forEach { entry ->
-                    val anchor = entry.anchor
-                    val bitmap = entry.bitmap
-                    if (anchor.trackingState == TrackingState.TRACKING) {
-                        AnchorNode(anchor = anchor) {
-                            BillboardNode(
-                                bitmap = bitmap,
-                                widthMeters = 0.30f,
-                                heightMeters = 0.12f,
-                                position = Position(y = 0.05f),
-                                // Face the camera every frame. Without this the quad keeps
-                                // the anchor's plane-aligned orientation and renders edge-on
-                                // / back-faced (mirrored UVs) — the #2478 warped-band bug.
-                                cameraPositionProvider = {
-                                    Position(
-                                        x = cameraPosition[0],
-                                        y = cameraPosition[1],
-                                        z = cameraPosition[2],
-                                    )
-                                },
-                            )
+                    key(entry.anchor) {
+                        val anchor = entry.anchor
+                        val bitmap = entry.bitmap
+                        if (anchor.trackingState == TrackingState.TRACKING) {
+                            AnchorNode(anchor = anchor) {
+                                BillboardNode(
+                                    bitmap = bitmap,
+                                    widthMeters = 0.30f,
+                                    heightMeters = 0.12f,
+                                    position = Position(y = 0.05f),
+                                    // Face the camera every frame. Without this the quad keeps
+                                    // the anchor's plane-aligned orientation and renders edge-on
+                                    // / back-faced (mirrored UVs) — the #2478 warped-band bug.
+                                    cameraPositionProvider = {
+                                        Position(
+                                            x = cameraPosition[0],
+                                            y = cameraPosition[1],
+                                            z = cameraPosition[2],
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 }

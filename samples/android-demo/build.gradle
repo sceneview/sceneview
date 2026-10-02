@@ -105,6 +105,14 @@ android {
 
     compileSdk 37
 
+    // The release build strips the native libraries and extracts their debug
+    // symbols (see `ndk { debugSymbolLevel }` below) with this NDK. Pinned
+    // rather than left to AGP's default so a toolchain bump is a visible diff:
+    // when the version is missing, AGP only warns "Unable to strip" and ships no
+    // symbols. 28.2.13676358 is AGP 9.4's default and is installed on GitHub's
+    // ubuntu-24.04 runners next to 27.3 and 29.0.
+    ndkVersion "28.2.13676358"
+
 
     defaultConfig {
         applicationId "io.github.sceneview.demo"
@@ -178,6 +186,14 @@ android {
             if (System.getenv("SCENEVIEW_GITHUB_KEYSTORE_FILE") != null) {
                 signingConfig signingConfigs.githubApk
             }
+            // The debug APK is the universal one (GitHub Releases, QA installs): it would carry
+            // every ABI build of Filament, ARCore and LiteRT. Keep what a phone (arm64-v8a) and
+            // the emulator (x86_64) run — the two ABIs where every native dependency of the demo,
+            // LiteRT included, ships a library. Release goes to Play as an AAB, which already
+            // serves one ABI per device, so it keeps all of them.
+            ndk {
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
         }
         release {
             minifyEnabled = true
@@ -186,6 +202,25 @@ android {
             def keystoreFile = System.getenv("SCENEVIEW_DEMO_KEYSTORE_FILE")
             if (keystoreFile != null) {
                 signingConfig signingConfigs.release
+            }
+            // Native crash symbols. FULL puts every native library's debug info
+            // (or symbol table, for the prebuilt stripped ones) in the bundle's
+            // BUNDLE-METADATA, which Play reads to symbolicate native crashes and
+            // ANRs and never delivers to devices: installed APKs do not grow.
+            // AGP needs the NDK to extract them — CI runners have it; a local
+            // build without one logs "Unable to strip" and ships no symbols.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
+            if (firebaseConfigured) {
+                firebaseCrashlytics {
+                    // R8 mapping: uploaded by the build itself, after R8.
+                    mappingFileUploadEnabled = true
+                    // Native symbols: only generated and uploaded by an explicit
+                    // `uploadCrashlyticsSymbolFileRelease`, which the Play deploy
+                    // workflows run after the bundle is built.
+                    nativeSymbolUploadEnabled = true
+                }
             }
         }
     }
@@ -365,6 +400,10 @@ dependencies {
     // SceneView — 3D + AR
     implementation project(":sceneview")
     implementation project(":arsceneview")
+    // ML depth (Depth Anything V2 Small on LiteRT) for the Depth Visualization demo's ML
+    // mode. The model is downloaded on first use and SHA-256 checked: 0 model bytes in the
+    // APK, ~8.6 MB of LiteRT native code per ABI.
+    implementation project(":arsceneview-depth-ml")
 
     // Google Play In-App Updates — Play Core deps come via :samples:common
     // (`api libs.play.app.update*`). Manager + banner live in
@@ -392,6 +431,11 @@ dependencies {
     implementation platform(libs.firebase.bom)
     implementation libs.firebase.analytics
     implementation libs.firebase.crashlytics
+    // The NDK half of Crashlytics: without it a native crash (Filament, ARCore,
+    // MediaPipe) never reaches Crashlytics, and that is where most of this app's
+    // crashes come from. Release only: it adds `libcrashlytics*.so` for every ABI
+    // (4.7 MB in a universal APK), and the debug APK, shared by CI, has no use for them.
+    releaseImplementation libs.firebase.crashlytics.ndk
     implementation libs.firebase.messaging
 
     // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works

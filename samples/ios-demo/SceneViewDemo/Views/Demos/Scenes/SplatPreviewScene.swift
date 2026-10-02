@@ -7,7 +7,7 @@
 // @icon        camera.metering.matrix
 // @order       31
 // @tags        splat,point-cloud,scan,spz
-// @updatedIn   4.37.0
+// @addedIn     4.25.0
 import SwiftUI
 
 enum SplatPreviewScene: DemoScene {

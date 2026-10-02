@@ -86,10 +86,9 @@ class OrbitCameraController(
          * hitch loses a quarter-second of turntable.
          *
          * Kept in step with `MAX_FRAME_STEP` in the web demo's
-         * `samples/web-demo/site/js/sceneview.js`: both viewers must agree on
-         * what counts as a hitch. iOS `CameraControls.maxMotionStep` still
-         * truncates at 0.05 s and carries the same defect — tracked separately,
-         * out of scope for this web fix.
+         * `samples/web-demo/site/js/sceneview.js` and iOS
+         * `CameraControls.maxMotionStep`: every viewer integrates a frame at or
+         * below 0.25 s in full and pauses self-driven motion above that threshold.
          */
         const val MAX_FRAME_STEP: Double = 0.25
 

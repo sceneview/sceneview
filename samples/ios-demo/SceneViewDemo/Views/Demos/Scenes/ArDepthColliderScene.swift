@@ -9,6 +9,8 @@
 // @status      knownIssue
 // @order       46
 // @tags        ar,depth,physics,collision,rigid-body
+// @addedIn     4.15.2
+// @updatedIn   4.46.0
 import SwiftUI
 
 enum ArDepthColliderScene: DemoScene {
@@ -160,8 +162,15 @@ struct ARDepthColliderDemo: View {
 
     #if !targetEnvironment(simulator)
     private var arSceneView: some View {
+        // `.physics` collides against the LiDAR mesh, which ARSceneView runs
+        // only when its configuration asks for it. Asking here, rather than
+        // amending the session later, keeps the mesh through every re-run
+        // the view does.
         ARSceneView(
-            planeDetection: .horizontal,
+            configuration: ARSessionConfiguration(
+                planeDetection: .horizontal,
+                sceneReconstruction: SceneReconstructionNode.isSupported ? .mesh : .none
+            ),
             showPlaneOverlay: false,
             showCoachingOverlay: true
         )
@@ -175,11 +184,9 @@ struct ARDepthColliderDemo: View {
             simRoot = root
 
             isLiDARSupported = SceneReconstructionNode.isSupported
-            if isLiDARSupported {
-                if #available(iOS 17.0, *) {
-                    SceneReconstructionNode.enablePhysics(in: arView)
-                    isDepthPhysicsActive = true
-                }
+            if isLiDARSupported, #available(iOS 17.0, *) {
+                SceneReconstructionNode.enablePhysics(in: arView)
+                isDepthPhysicsActive = true
             }
             if !isDepthPhysicsActive {
                 addFallbackFloor(in: root)

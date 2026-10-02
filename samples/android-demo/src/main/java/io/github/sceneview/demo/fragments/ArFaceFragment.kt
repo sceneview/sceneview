@@ -17,6 +17,7 @@ object ArFaceFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Face,
         order = 34,
+        addedIn = "4.0.1",
         tags = setOf("ar", "face", "mesh", "tracking", "augmented-faces"),
     )
 

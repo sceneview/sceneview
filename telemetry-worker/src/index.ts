@@ -547,7 +547,7 @@ app.get("/v1/top-clients", async (c) => {
   }
 });
 
-// ── Funnel endpoint (conversion: install → first call → 10th call → pro) ─────
+// ── Funnel endpoint (conversion: install → first call → 10th call → power user) ──
 app.get("/v1/funnel", async (c) => {
   const token = c.env.STATS_TOKEN;
   if (token) {
@@ -575,8 +575,7 @@ app.get("/v1/funnel", async (c) => {
          SELECT
            COALESCE(install_id, 'client:' || client) as dev_key,
            COUNT(CASE WHEN event = 'init' THEN 1 END) as inits,
-           COUNT(CASE WHEN event = 'tool' THEN 1 END) as tools,
-           MAX(CASE WHEN tier = 'pro' THEN 1 ELSE 0 END) as is_pro
+           COUNT(CASE WHEN event = 'tool' THEN 1 END) as tools
          FROM events
          WHERE ingested > datetime('now', ?)${bf}
          GROUP BY dev_key
@@ -585,8 +584,7 @@ app.get("/v1/funnel", async (c) => {
          COUNT(*) as installed,
          COUNT(CASE WHEN tools >= 1 THEN 1 END) as activated,
          COUNT(CASE WHEN tools >= 10 THEN 1 END) as engaged,
-         COUNT(CASE WHEN tools >= 50 THEN 1 END) as power_users,
-         COUNT(CASE WHEN is_pro = 1 THEN 1 END) as pro_users
+         COUNT(CASE WHEN tools >= 50 THEN 1 END) as power_users
        FROM per_dev`,
     )
       .bind(window)
@@ -595,14 +593,12 @@ app.get("/v1/funnel", async (c) => {
         activated: number;
         engaged: number;
         power_users: number;
-        pro_users: number;
       }>();
 
     const installed = stages?.installed ?? 0;
     const activated = stages?.activated ?? 0;
     const engaged = stages?.engaged ?? 0;
     const power = stages?.power_users ?? 0;
-    const pro = stages?.pro_users ?? 0;
     const pct = (n: number) =>
       installed > 0 ? +((n / installed) * 100).toFixed(1) : 0;
 
@@ -614,7 +610,6 @@ app.get("/v1/funnel", async (c) => {
         { stage: "activated", label: "≥1 tool call", count: activated, pct: pct(activated) },
         { stage: "engaged", label: "≥10 tool calls", count: engaged, pct: pct(engaged) },
         { stage: "power_users", label: "≥50 tool calls", count: power, pct: pct(power) },
-        { stage: "pro_users", label: "Pro tier", count: pro, pct: pct(pro) },
       ],
     });
   } catch {

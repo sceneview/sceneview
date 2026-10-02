@@ -44,6 +44,7 @@
 		5A1A70000000000000000005 /* raccoon_family.spz in Resources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000005 /* raccoon_family.spz */; };
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
+		DE68B335F84EBD17190941FD /* WhatsNewChangelogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
 		C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000005 /* ViewerEntranceTests.swift */; };
 		C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */; };
@@ -52,6 +53,8 @@
 		FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4EC /* ViewerSheets.swift */; };
 		FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4ED /* OpenedFileViewer.swift */; };
 		F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE31566D2309ACB52F2541CF /* HomeFilter.swift */; };
+		919AB870032891FAD6260634 /* WhatsNewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97F54739F880F0B63513641 /* WhatsNewSheet.swift */; };
+		8EE31A19B5F218049F867C86 /* WhatsNewChangelog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 079037D8C36941ED98348375 /* WhatsNewChangelog.swift */; };
 		B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */; };
 		4D3AFF95252330C277928054 /* HomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251CDB4D89CD0202517E852 /* HomeHero.swift */; };
 		C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B001 /* HomeHeroFlight.swift */; };
@@ -249,6 +252,7 @@
 		491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */; };
 		FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */; };
 		1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */; };
+		C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000D701 /* ArDepthVisualizationScene.swift */; };
 		F10000000000000000000003 /* SceneViewDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SceneViewDemoUITests.swift */; };
 		FB1000000000000000000001 /* DemoAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000001 /* DemoAnalytics.swift */; };
 		FB1000000000000000000002 /* FirebaseTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000002 /* FirebaseTelemetry.swift */; };
@@ -261,6 +265,11 @@
 		FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000A /* DemoAnalyticsTests.swift */; };
 		FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000B /* PushPrePromptPolicyTests.swift */; };
 		FB100000000000000000000C /* PushCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000C /* PushCenterTests.swift */; };
+		FB100000000000000000000D /* ConsentRegion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000D /* ConsentRegion.swift */; };
+		FB100000000000000000000E /* ConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000E /* ConsentStore.swift */; };
+		FB1000000000000000000011 /* FirebaseLeftovers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000011 /* FirebaseLeftovers.swift */; };
+		FB100000000000000000000F /* ConsentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000F /* ConsentSheet.swift */; };
+		FB1000000000000000000010 /* ConsentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000010 /* ConsentTests.swift */; };
 		FB3000000000000000000002 /* FirebaseAnalyticsCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB2000000000000000000002 /* FirebaseAnalyticsCore */; };
 		FB3000000000000000000003 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = FB2000000000000000000003 /* FirebaseCrashlytics */; };
 		FB3000000000000000000004 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = FB2000000000000000000004 /* FirebaseMessaging */; };
@@ -321,6 +330,7 @@
 		5A1A71000000000000000005 /* raccoon_family.spz */ = {isa = PBXFileReference; lastKnownFileType = file; name = raccoon_family.spz; path = ../android-demo/src/main/assets/splats/raccoon_family.spz; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
+		A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewChangelogTests.swift; path = SceneViewDemoTests/WhatsNewChangelogTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
 		C4E5A0000000000000000005 /* ViewerEntranceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntranceTests.swift; path = SceneViewDemoTests/ViewerEntranceTests.swift; sourceTree = SOURCE_ROOT; };
 		C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerMaterialRepairs.swift; path = SceneViewDemo/Views/Viewer/ViewerMaterialRepairs.swift; sourceTree = SOURCE_ROOT; };
@@ -329,6 +339,8 @@
 		446371A911170C776F03B4EC /* ViewerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerSheets.swift; path = SceneViewDemo/Views/Viewer/ViewerSheets.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4ED /* OpenedFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenedFileViewer.swift; path = SceneViewDemo/Views/Viewer/OpenedFileViewer.swift; sourceTree = SOURCE_ROOT; };
 		DE31566D2309ACB52F2541CF /* HomeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilter.swift; path = SceneViewDemo/Views/Home/HomeFilter.swift; sourceTree = SOURCE_ROOT; };
+		E97F54739F880F0B63513641 /* WhatsNewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewSheet.swift; path = SceneViewDemo/Views/Home/WhatsNewSheet.swift; sourceTree = SOURCE_ROOT; };
+		079037D8C36941ED98348375 /* WhatsNewChangelog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewChangelog.swift; path = SceneViewDemo/Views/Home/WhatsNewChangelog.swift; sourceTree = SOURCE_ROOT; };
 		A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoMediaCard.swift; path = SceneViewDemo/Views/Home/DemoMediaCard.swift; sourceTree = SOURCE_ROOT; };
 		A251CDB4D89CD0202517E852 /* HomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHero.swift; path = SceneViewDemo/Views/Home/HomeHero.swift; sourceTree = SOURCE_ROOT; };
 		C0DE4E50000000000000B001 /* HomeHeroFlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroFlight.swift; path = SceneViewDemo/Views/Home/HomeHeroFlight.swift; sourceTree = SOURCE_ROOT; };
@@ -534,6 +546,7 @@
 		082ADF6A2C2D1C4D7C316F93 /* PlacementReticlePreviewScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlacementReticlePreviewScene.swift; path = SceneViewDemo/Views/Demos/Scenes/PlacementReticlePreviewScene.swift; sourceTree = SOURCE_ROOT; };
 		E1767394F8DE920AA4961C04 /* WallPlacementScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WallPlacementScene.swift; path = SceneViewDemo/Views/Demos/Scenes/WallPlacementScene.swift; sourceTree = SOURCE_ROOT; };
 		06F0C93174B1ABCF292626F4 /* ArDepthColliderScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthColliderScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthColliderScene.swift; sourceTree = SOURCE_ROOT; };
+		C2000000000000000000D701 /* ArDepthVisualizationScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArDepthVisualizationScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArDepthVisualizationScene.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000001 /* DemoAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalytics.swift; path = SceneViewDemo/Services/Telemetry/DemoAnalytics.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000002 /* FirebaseTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirebaseTelemetry.swift; path = SceneViewDemo/Services/Telemetry/FirebaseTelemetry.swift; sourceTree = SOURCE_ROOT; };
 		FB0000000000000000000003 /* PushPrePromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicy.swift; path = SceneViewDemo/Services/Telemetry/PushPrePromptPolicy.swift; sourceTree = SOURCE_ROOT; };
@@ -546,6 +559,11 @@
 		FB000000000000000000000A /* DemoAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalyticsTests.swift; path = SceneViewDemoTests/DemoAnalyticsTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000B /* PushPrePromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicyTests.swift; path = SceneViewDemoTests/PushPrePromptPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000C /* PushCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushCenterTests.swift; path = SceneViewDemoTests/PushCenterTests.swift; sourceTree = SOURCE_ROOT; };
+		FB000000000000000000000D /* ConsentRegion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentRegion.swift; path = SceneViewDemo/Services/Telemetry/ConsentRegion.swift; sourceTree = SOURCE_ROOT; };
+		FB000000000000000000000E /* ConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentStore.swift; path = SceneViewDemo/Services/Telemetry/ConsentStore.swift; sourceTree = SOURCE_ROOT; };
+		FB0000000000000000000011 /* FirebaseLeftovers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirebaseLeftovers.swift; path = SceneViewDemo/Services/Telemetry/FirebaseLeftovers.swift; sourceTree = SOURCE_ROOT; };
+		FB000000000000000000000F /* ConsentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentSheet.swift; path = SceneViewDemo/Views/Components/ConsentSheet.swift; sourceTree = SOURCE_ROOT; };
+		FB0000000000000000000010 /* ConsentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentTests.swift; path = SceneViewDemoTests/ConsentTests.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -622,6 +640,8 @@
 			children = (
 				B7E600000000000000000001 /* Rerun */,
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
+				E97F54739F880F0B63513641 /* WhatsNewSheet.swift */,
+				079037D8C36941ED98348375 /* WhatsNewChangelog.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
 				C0DE4E50000000000000B001 /* HomeHeroFlight.swift */,
@@ -673,8 +693,10 @@
 				FB000000000000000000000A /* DemoAnalyticsTests.swift */,
 				FB000000000000000000000B /* PushPrePromptPolicyTests.swift */,
 				FB000000000000000000000C /* PushCenterTests.swift */,
+				FB0000000000000000000010 /* ConsentTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */,
 				C0600000000000000000C067 /* CosmosSystemTests.swift */,
 				C0600000000000000000C06A /* CosmosSpacetimeTests.swift */,
 				C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */,
@@ -763,6 +785,7 @@
 				A20000000000000000002967 /* AssetCreditLine.swift */,
 				A20000000000000000002963 /* LabeledSlider.swift */,
 				FB0000000000000000000006 /* PushPrePromptSheet.swift */,
+				FB000000000000000000000F /* ConsentSheet.swift */,
 				FB0000000000000000000007 /* PrivacySettingsSection.swift */,
 			);
 			path = Components;
@@ -935,6 +958,9 @@
 				FB0000000000000000000003 /* PushPrePromptPolicy.swift */,
 				FB0000000000000000000004 /* TelemetryEnvironment.swift */,
 				FB0000000000000000000005 /* PushCenter.swift */,
+				FB000000000000000000000D /* ConsentRegion.swift */,
+				FB000000000000000000000E /* ConsentStore.swift */,
+				FB0000000000000000000011 /* FirebaseLeftovers.swift */,
 			);
 			name = Telemetry;
 			sourceTree = "<group>";
@@ -952,6 +978,7 @@
 				A60000010000000000000001 /* Sources */,
 				A30000010000000000000001 /* Frameworks */,
 				A60000010000000000000002 /* Resources */,
+				2D20D8F48BFE667B569A5932 /* Bundle changelog */,
 				FB5000000000000000000001 /* Embed Firebase config */,
 				FB5000000000000000000002 /* Upload Crashlytics dSYM */,
 			);
@@ -962,6 +989,7 @@
 			name = SceneViewDemo;
 			packageProductDependencies = (
 				A80000010000000000000001 /* SceneViewSwift */,
+				A80000010000000000000003 /* SceneViewDepthML */,
 				FB2000000000000000000002 /* FirebaseAnalyticsCore */,
 				FB2000000000000000000003 /* FirebaseCrashlytics */,
 				FB2000000000000000000004 /* FirebaseMessaging */,
@@ -1120,6 +1148,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		2D20D8F48BFE667B569A5932 /* Bundle changelog */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../CHANGELOG.md",
+			);
+			name = "Bundle changelog";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CHANGELOG.md",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The What's new sheet reads the release notes from the bundle, as Android\n# bundles the same CHANGELOG.md as an asset (BundleChangelogAsset). Without\n# it the sheet's entry stays hidden; a warning, not a failure.\nset -eu\nSRC=\"${SRCROOT}/../../CHANGELOG.md\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CHANGELOG.md\"\nif [ ! -f \"$SRC\" ]; then\n  echo \"warning: CHANGELOG.md not found at $SRC — the What's new sheet will be hidden.\"\n  exit 0\nfi\nmkdir -p \"$(dirname \"$DST\")\"\ncp \"$SRC\" \"$DST\"\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000005 /* Fetch assets */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -1143,7 +1192,7 @@
 		};
 		A60000010000000000000004 /* Collate iOS demos */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 0;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -1253,6 +1302,8 @@
 				C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */,
 				C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */,
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
+				919AB870032891FAD6260634 /* WhatsNewSheet.swift in Sources */,
+				8EE31A19B5F218049F867C86 /* WhatsNewChangelog.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
 				C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */,
@@ -1347,6 +1398,10 @@
 				FB1000000000000000000005 /* PushCenter.swift in Sources */,
 				FB1000000000000000000006 /* PushPrePromptSheet.swift in Sources */,
 				FB1000000000000000000007 /* PrivacySettingsSection.swift in Sources */,
+				FB100000000000000000000D /* ConsentRegion.swift in Sources */,
+				FB100000000000000000000E /* ConsentStore.swift in Sources */,
+				FB1000000000000000000011 /* FirebaseLeftovers.swift in Sources */,
+				FB100000000000000000000F /* ConsentSheet.swift in Sources */,
 				C10000000000000000000061 /* UpdateToast.swift in Sources */,
 				A10000000000000000002961 /* AssetSourcePill.swift in Sources */,
 				A10000000000000000002967 /* AssetCreditLine.swift in Sources */,
@@ -1399,6 +1454,7 @@
 				491E5281694990528BA8402A /* PlacementReticlePreviewScene.swift in Sources */,
 				FF2214F77B752E9AB93A66B1 /* WallPlacementScene.swift in Sources */,
 				1D4CD777A44CFD49CE0F02B3 /* ArDepthColliderScene.swift in Sources */,
+				C1000000000000000000D701 /* ArDepthVisualizationScene.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1414,6 +1470,7 @@
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				DE68B335F84EBD17190941FD /* WhatsNewChangelogTests.swift in Sources */,
 				C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */,
 				C0500000000000000000C05A /* CosmosSpacetimeTests.swift in Sources */,
 				C5D0000000000000000C5D13 /* ContactShadowMathTests.swift in Sources */,
@@ -1425,6 +1482,7 @@
 				FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */,
 				FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */,
 				FB100000000000000000000C /* PushCenterTests.swift in Sources */,
+				FB1000000000000000000010 /* ConsentTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
 				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
 				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,
@@ -1801,6 +1859,10 @@
 		A80000010000000000000001 /* SceneViewSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SceneViewSwift;
+		};
+		A80000010000000000000003 /* SceneViewDepthML */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SceneViewDepthML;
 		};
 		FB2000000000000000000002 /* FirebaseAnalyticsCore */ = {
 			isa = XCSwiftPackageProductDependency;

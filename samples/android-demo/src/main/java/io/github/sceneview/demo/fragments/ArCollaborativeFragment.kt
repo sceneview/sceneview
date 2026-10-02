@@ -17,6 +17,7 @@ object ArCollaborativeFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.Groups,
         order = 21,
+        addedIn = "4.14.0",
         tags = setOf("ar", "multi-user", "sync", "collaboration", "transport"),
     )
 

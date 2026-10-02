@@ -7,7 +7,8 @@
 // @icon        rotate.3d
 // @order       33
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer
-// @updatedIn   4.35.0
+// @addedIn     4.4.0
+// @updatedIn   4.49.0
 import SwiftUI
 
 enum ModelViewerScene: DemoScene {

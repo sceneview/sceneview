@@ -375,6 +375,22 @@ enum SceneViewTokens {
             light: Color(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255),
             dark: Color(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255)
         )
+        /// M3 `secondary` — #555F71 / #BDC7DC, Android's `md_theme_*_secondary`.
+        /// The What's new sheet's "Changed" and "Performance" labels: 6.4:1 on
+        /// white, 9.9:1 on the dark sheet.
+        static let secondary = Color(
+            light: Color(red: 0x55 / 255, green: 0x5F / 255, blue: 0x71 / 255),
+            dark: Color(red: 0xBD / 255, green: 0xC7 / 255, blue: 0xDC / 255)
+        )
+        /// M3 `tertiary` — #6446CD / #D2A8FF, Android's `md_theme_*_tertiary`.
+        /// The What's new sheet's "Fixed" label.
+        static let tertiary = sectionAccentDevTools
+        /// M3 `error` — #BA1A1A / #FFB4AB, Android's `md_theme_*_error`. The
+        /// What's new sheet's "Removed" label: 6.5:1 on white, 9.6:1 dark.
+        static let error = Color(
+            light: Color(red: 0xBA / 255, green: 0x1A / 255, blue: 0x1A / 255),
+            dark: Color(red: 0xFF / 255, green: 0xB4 / 255, blue: 0xAB / 255)
+        )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
         /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's
@@ -591,11 +607,9 @@ enum SceneViewTokens {
         /// `radius-xl`. The same picture in light and dark: it is the
         /// product's identity, not a themed surface.
         static let markSize: CGFloat = 80
-        /// The band the SceneView mark floats in, in 3D. iOS is ahead here:
-        /// Android `main` still shows the flat icon, and its 3D stage
-        /// (`About.stageHeight`, with the `DESIGN.md` token) comes with the
-        /// Android PR from `wow/demo-shell-android`. The launcher icon
-        /// (`markSize`) stands at the band's centre until the stage has drawn.
+        /// The band the SceneView mark floats in, in 3D. Android still shows
+        /// the flat icon at `SceneViewTokens.About.markSize`. On iOS that icon
+        /// stands at the band's centre until the stage has drawn.
         static let stageHeight: CGFloat = 176
         /// Width of the soft contact shadow under the floating mark.
         static let stageShadowWidth: CGFloat = 132
@@ -603,7 +617,7 @@ enum SceneViewTokens {
         static let stageShadowHeight: CGFloat = 18
     }
 
-    /// The SceneView mark as a 3D object — Android's `SceneViewTokens.MarkColor`.
+    /// The SceneView mark as a 3D object (`mark-color` in `DESIGN.md`).
     enum MarkColor {
         /// The cube body — the mark's right face (`#3D7FD9`); the key light
         /// shades the rest.
@@ -795,6 +809,17 @@ enum SceneViewTokens {
         /// Unlit track of a meter on the scrim, and "present but empty" over
         /// media — white at 8 %, Android's `ArOverlay.meterTrack`.
         static let meterTrack = Color.white.opacity(0x14 / 255)
+        /// `accent-progress` — a determinate meter's lit segments on the
+        /// scrim (#A4C1FF in both themes). Android's `ArOverlay.accentProgress`.
+        static let accentProgress = Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
+        /// `meter-height` — one segment of a meter on the scrim: `space-sm`, as
+        /// Android's `ArOverlayMeter`.
+        static let meterHeight: CGFloat = Space.sm
+        /// Vertical padding of a caption pill on the scrim (the depth legend).
+        static let captionPillVerticalPadding: CGFloat = 6
+        /// `card-max-width` — an AR overlay card never grows wider than this (iPad,
+        /// landscape). Android's `ArOverlay.maxWidth`.
+        static let cardMaxWidth: CGFloat = 480
     }
 
     /// `DESIGN.md` — the over-media **mode pill** (`mode-pill-*`): Cosmos's "Starlight |
@@ -823,6 +848,8 @@ enum SceneViewTokens {
         /// A segment's height. With `Space.xs` round it the capsule is `Layout.touchTarget`
         /// high — 48, as Android's toggle row — and each segment's hit area fills it.
         static let segmentHeight: CGFloat = 40
+        /// A segment's minimum width, so a short label ("ML") keeps a target as wide as tall.
+        static let segmentMinWidth: CGFloat = 72
 
         /// The sRGB components, 0…1.
         static func rgb(_ value: UInt32) -> SIMD3<Double> {
