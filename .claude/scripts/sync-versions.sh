@@ -610,6 +610,12 @@ fi
 # Plugins live in github.com/sceneview/claude-marketplace (separate repo).
 # Run `bash scripts/sync-plugin-versions.sh` THERE, not here. Plugin versions
 # track npm MCP versions, not gradle.properties.
+# The Codex/ChatGPT plugin manifest lives in this repo and tracks VERSION_NAME.
+CODEX_PLUGIN_JSON="$REPO_ROOT/.codex-plugin/plugin.json"
+if [ -f "$CODEX_PLUGIN_JSON" ]; then
+    V=$(python3 -c "import json; print(json.load(open('$CODEX_PLUGIN_JSON'))['version'])" 2>/dev/null || echo "MISSING")
+    add_check ".codex-plugin/plugin.json" "$V"
+fi
 
 # ─── 8. iOS demo ────────────────────────────────────────────────────────
 IOS_ABOUT="$REPO_ROOT/SceneViewSwift/Examples/SceneViewDemo/SceneViewDemo/Views/AboutView.swift"
@@ -1259,6 +1265,23 @@ with open('$PKG_JSON', 'w') as f:
             fi
         fi
     done
+
+    # Fix the Codex/ChatGPT plugin manifest (tracks the SDK version).
+    if [ -f "$CODEX_PLUGIN_JSON" ]; then
+        CURRENT=$(python3 -c "import json; print(json.load(open('$CODEX_PLUGIN_JSON'))['version'])" 2>/dev/null)
+        if [ "$CURRENT" != "$SOURCE_VERSION" ]; then
+            python3 -c "
+import json
+with open('$CODEX_PLUGIN_JSON', 'r') as f:
+    data = json.load(f)
+data['version'] = '$SOURCE_VERSION'
+with open('$CODEX_PLUGIN_JSON', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+"
+            echo -e "  Fixed: .codex-plugin/plugin.json ($CURRENT -> $SOURCE_VERSION)"
+        fi
+    fi
 
     # Fix react-native/react-native-sceneview/package-lock.json — keep the RN
     # library lockfile's two version slots in lockstep with its package.json.
