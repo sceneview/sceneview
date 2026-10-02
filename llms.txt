@@ -2274,7 +2274,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
@@ -2376,7 +2376,7 @@ Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity cu
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
-**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
