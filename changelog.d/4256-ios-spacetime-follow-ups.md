@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS demo: the Cosmos Spacetime transition waits visibly and starts from the live camera ([#4256](https://github.com/sceneview/sceneview/issues/4256)).** While the sheet builds, the "Lighting up the cosmos" hint shows instead of a still Starlight under a Spacetime caption; a sheet that fails three times stops retrying and says so; the ringed world's rings match Android's brightness in Spacetime.

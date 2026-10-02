@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Build: a JDK 21-only machine now builds the repo ([#4254](https://github.com/sceneview/sceneview/pull/4254)).** `settings.gradle` applies the Gradle foojay toolchain resolver, so the JDK 22 that `sceneview-compose` and the desktop demo require is downloaded into `~/.gradle/jdks` when none is installed. Before, every `./gradlew` call failed at configuration without a local JDK 22. CI is unchanged: it already installs JDK 22, which Gradle finds first.

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.51.0)
+  Source of truth: /llms.txt  (SceneView 4.52.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.51.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.52.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -348,13 +348,18 @@ struct ARDebugView: View {
 ### Python sidecar (dev machine)
 
 ```bash
-pip install rerun-sdk numpy
+pip install "rerun-sdk>=0.23" numpy                 # tested with 0.38
 python samples/android-demo/tools/rerun-bridge.py
-# Rerun viewer window opens automatically via rr.init(spawn=True)
+# The Rerun viewer opens on its own, serving on :9877 (--viewer-port);
+# the app keeps :9876 for the sidecar.
 
 # On the device:
 adb reverse tcp:9876 tcp:9876                       # Android, USB-tethered
 # or connect iPhone and Mac to the same LAN and point bridge at Mac's IP
+
+# No device: replay the session bundled with the demo app
+python samples/android-demo/tools/rerun-bridge.py \
+    --replay samples/android-demo/src/main/assets/rerun/sample-session.jsonl
 ```
 
 The sidecar maps each JSON event to the matching Rerun archetype:
@@ -363,6 +368,10 @@ The sidecar maps each JSON event to the matching Rerun archetype:
 - `point_cloud` → `rr.Points3D`
 - `anchor` → `rr.Transform3D`
 - `hit_result` → `rr.Points3D` (single highlighted point)
+
+From the same stream, with no app change, it also logs a scan-health dashboard under `metrics/scan/` (feature points per frame, surfaces and anchors seen so far, camera speed in m/s) and the path the phone walked as `world/trail`. Live and saved recordings carry a default layout: the AR world on the left, the three graphs on the right.
+
+The sidecar needs rerun-sdk 0.23 or newer. Older versions of this script called `rr.set_time_nanos`, which 0.23 removed, so every event was dropped; and the spawned viewer took :9876, so live mode stopped at startup with "Address already in use".
 
 ### Wire format (JSON-lines over TCP)
 
@@ -450,7 +459,7 @@ Key facts:
 - Audio: add `setAudioSource(...)` / `setAudioEncoder(...)` to the `MediaRecorder` for mic audio (needs `RECORD_AUDIO` permission).
 - Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SurfaceMirrorer` records the *rendered* scene — the shareable video with virtual content composited.
 
-Sample: `VideoRecordingDemo` (Android demo registry id `video-recording`) — Record/Stop button over a rotating model, saves an MP4 to app files.
+Sample: `SceneRecorderState` (`samples/android-demo/.../recording/SceneRecorderState.kt`) — the shared Record action of the Android demo app's `DemoScaffold` (shown on `cosmos`; the retired `video-recording` id opens it), saves an MP4 to app files.
 
 ---
 

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.51.0)
+  Source of truth: /llms.txt  (SceneView 4.52.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.51.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.52.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -128,6 +128,8 @@ Measured on a parked demo screen (#3718): dragging an *Environment rotation* sli
 **A `ViewNode` and a `VideoNode` are driven from outside the library** — an Android `View` hierarchy redrawing on its own schedule, a `MediaPlayer` decoding — so neither can be tracked through the scene graph. Both report themselves active from the one observable fact, every buffer their `SurfaceTexture` receives: an animating view or a playing video holds the full cadence, a finished view or a paused video parks with the rest of the scene (a paused player's **seek** or frame-step is one such buffer, and it is drawn). Neither is "permanently active" — do not generate a warning saying a `ViewNode` costs a screen its idle saving.
 
 **`onFrame` fires only for a *presented* frame, right after it reached the surface — so it can never be what keeps the loop awake.** Do not generate a screen whose animation clock, physics step or turntable is advanced from `onFrame` and relies on nothing but its own next call: under `OnDemand` the scene settles, parks, the callback stops and the motion freezes on open. A screen that drives motion states it — `frameRatePolicy = FrameRatePolicy.Continuous()` while it plays, `OnDemand()` when it pauses — and takes a rising edge (`LaunchedEffect(isPlaying) { if (isPlaying) invalidator.requestRender() }`) because flipping the flag on a parked loop otherwise changes a value nobody reads. A change the *user* just made (a scrub, a chip) is applied **outside** `onFrame`, then `requestRender()`: `onFrame` runs after presentation, so a pose written inside it lands one frame late, and under `OnDemand` that frame never comes.
+
+**A camera pose written from `onFrame` is overwritten on the next frame while a `cameraManipulator` is installed:** the loop updates the manipulator, calls its `getTransform()` exactly once, passes that pose through the camera-swap continuity resolver, and applies the resolved transform when it differs from `cameraNode.transform`. Pass `cameraManipulator = null` while a script owns the camera (as `applyCinematicOrbit` requires), or install a manipulator whose `getTransform()` returns the scripted pose—for example, a wrapper around the default manipulator that returns `cameraNode.transform` while the script owns it.
 
 **`SceneView(onFrame = …)` and `node.onFrame = { … }` are opposites, despite the name.** `SceneView`'s runs *after* its frame was presented and holds the loop open for nothing — it is an observer. `Node.onFrame` runs *before* the frame is drawn and **pins the loop**: `Node.isFrameActive` reads a non-null slot as a standing request for a frame every tick, because it is a driver (`PhysicsNode` steps its simulation there) and a driver that only runs when a frame happens could never produce the first one. So `node.onFrame = null` is how a node stops asking, and a transform written in it is on screen in the same frame, not one late. Do not generate a `node.onFrame` that merely observes — hold the value in Compose state instead, or the scene never parks. The library's own per-frame work does not use that slot and pins nothing: `BillboardNode` and `TextNode` re-orient only when the camera actually moved, a settled `PhysicsNode` reports itself idle, `rememberModelAnimationState` observes for free.
 
@@ -1221,28 +1223,58 @@ AutoPlacementScene(
 ```
 
 **Coaching overlay (on by default).** `AutoPlacementScene(coaching = true)` draws
-`ARCoachingOverlay` centred over the camera — the Android twin of Apple's
-`ARCoachingOverlayView`: a phone sweeping over a floor diamond (or a wall for
-`PlacementSurface.WALL`) while scanning, a short "surface found" beat (a cube lands on the
-filled target) when the object is placed, a pause glyph when tracking is limited, a "look
-back" arrow while a placed anchor relocalizes. It is silent when a card is due
-(`NO_SURFACE`, `RECOVERY_FAILED`, `CAMERA_ERROR`). Hide your own status pills while it
-shows:
+`ARCoachingOverlay` — the Android twin of Apple's `ARCoachingOverlayView`: a card just above
+the centre with a phone sweeping over a surface drawn in perspective (a wall for
+`PlacementSurface.WALL`), a two-line instruction under it ("Move your phone slowly" / "Point it
+at the floor or a table"), and a reason chip when ARCore says why tracking struggles ("Too
+dark", "Too fast", "Low detail"). When the object is placed the card steps aside for a small
+"Surface found" pill under the centre, so the landing object is never hidden. Limited tracking
+reads "Keep looking around"; a placed anchor that relocalizes reads "Point back at your
+object". It is silent when a card of yours is due (`NO_SURFACE`, `RECOVERY_FAILED`,
+`CAMERA_ERROR`). Hide your own status pills while it shows, and pass the height of your own
+bottom chrome so the card and the pill stay above it:
 
 ```kotlin
 val placement = rememberAutoPlacementState()
-val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE)
+val guidance = rememberArGuidanceState(placement, PlacementSurface.SURFACE, trackingFailureReason = failure)
 Box(Modifier.fillMaxSize()) {
-    AutoPlacementScene(assetReady = model != null, state = placement /* coaching = true */) { … }
+    AutoPlacementScene(
+        assetReady = model != null,
+        state = placement,
+        coachingContentPadding = PaddingValues(bottom = dockHeight), // coaching = true by default
+    ) { … }
     if (!guidance.isCoaching) MyStatusPill(placement.phase)   // one voice at a time
 }
 ```
 
 `guidance.cue` is an `ArGuidanceCue`: `NONE`, `INITIALIZING` (only after 500 ms),
-`SCAN`, `SURFACE_FOUND` (600 ms after a new placement), `TRACKING_LIMITED`,
-`RELOCALIZING`. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
-render `ARCoachingOverlay(guidance)` yourself in any `Box`. The placed model grows in from
-55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials cannot fade).
+`SCAN`, `SURFACE_FOUND` (held 1 000 ms after a new placement), `TRACKING_LIMITED`,
+`RELOCALIZING`; `guidance.hint` is the `ArTrackingHint` behind the chip and
+`guidance.scanLingering` turns the second line into "Try a brighter spot with more texture"
+after a long scan. For a custom look pass `coaching = false` and draw from `guidance.cue`, or
+render `ARCoachingOverlay(guidance, contentPadding = …)` yourself in any `Box`. Next to your own
+`ARSceneView`, feed it from the frame — name the arguments, three booleans in a row swap
+without a compiler error:
+
+```kotlin
+var cameraReady by remember { mutableStateOf(false) }
+var isTracking by remember { mutableStateOf(false) }
+var planeFound by remember { mutableStateOf(false) }
+var failure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+// Set from ARSceneView(onSessionUpdated = { _, frame -> … }, onTrackingFailureChanged = { failure = it }).
+val guidance = rememberArGuidanceState(
+    cameraReady = cameraReady,
+    isTracking = isTracking,
+    surfaceFound = planeFound,
+    trackingFailureReason = failure,
+)
+// Then, in the Box that holds the ARSceneView: ARCoachingOverlay(guidance)
+```
+
+The stateless overload, for previews and screenshot tests, is
+`ARCoachingOverlay(cue, surface, modifier, hint, scanLingering, contentPadding)`. The placed
+model grows in from 55 % over 260 ms and shrinks away on tracking loss (opaque glTF materials
+cannot fade).
 `placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
 "starting camera" cover on it, not on `INITIALIZING`.
 
@@ -1373,14 +1405,14 @@ Signature:
     reticleColor: Color = RETICLE_TINT,      // achromatic on-ar-scrim white; opacity + centre dot vary searching/hit/locked
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
-    coaching: Boolean = false,               // opt-in PlaneDiscoveryGuide onboarding overlay
+    coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
     groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
     sessionConfiguration: ((Session, Config) -> Unit)? = null,
-    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching pill — raise it by the
-                                             // height of your own bottom bar so the pill is not
+    coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching card — raise it by the
+                                             // height of your own bottom bar so the card is not
                                              // hidden behind it (#3735)
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
@@ -1399,10 +1431,11 @@ placement fires a `LongPress` haptic, so a tap that lands feels different from a
 For placement against arbitrary real geometry (sofas, slopes) use `DepthHitResultNode`; for full
 manual control drop down to `ARSceneView` + `HitResultNode`.
 
-**If your screen has a bottom bar, tell the coaching guide about it (#3735).** With
-`coaching = true` the onboarding pill sits above the bottom edge with a 16 dp gutter — a gap sized
-for a screen whose bottom is empty. Host it under a dock, a nav bar or a product sheet and the pill
-lands *behind* that chrome, half-legible, exactly when the user most needs it. `PlacementScene` has
+**If your screen has a bottom bar, tell the coaching card about it (#3735).** With
+`coaching = true` the `ARCoachingOverlay` card and its "Surface found" pill keep a 16 dp gutter
+off the bottom edge — a gap sized for a screen whose bottom is empty. Host them under a dock, a
+nav bar or a product sheet and they land *behind* that chrome, half-legible, exactly when the
+user most needs them. `PlacementScene` has
 no way to see a bar drawn by its caller, so pass the height yourself:
 `coachingBottomClearance = barHeight + 8.dp` (a spacing token, not a magic number). The parameter is
 purely additive — leave it out and nothing moves.
@@ -1937,6 +1970,108 @@ bounding box, a custom overlay). It does **not** apply when you unproject depth 
 with `camera.imageIntrinsics` — `DepthMeshNode` and the raw-depth point cloud are
 orientation-independent for that reason.
 
+### ML depth — metric depth without ARCore's Depth API (`MlDepthSession`)
+
+On a phone where `Session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)` is `false`,
+`MlDepthSession` (package `io.github.sceneview.ar.depth`, in `arsceneview`) produces metric
+depth from a monocular network: it runs a `MonocularDepthEstimator` on the CPU camera image,
+off the render thread, and scales the network's relative inverse depth to metres with a
+robust fit `1/z = s·d + t` on ARCore's own plane samples and feature points. The runtime
+lives in a separate module, `arsceneview-depth-ml` (LiteRT 2.1.5, in the repo, not yet on
+Maven Central): `DepthAnythingV2Estimator` runs Depth Anything V2 **Small** (Apache-2.0;
+Base/Large/Giant are CC-BY-NC — never ship them). `arsceneview` itself never depends on
+LiteRT. iOS has the same pipeline (`ARDepthFrame.Source.ml`, see the SceneViewSwift section).
+
+```kotlin notest needs the unpublished arsceneview-depth-ml module, absent from the snippets-check classpath
+val context = LocalContext.current
+val mlDepth = remember { MlDepthSession(DepthAnythingV2Estimator(context), context = context) }
+DisposableEffect(mlDepth) { onDispose { mlDepth.close() } }
+ARSceneView(
+    // Nothing reads ARCore's own depth here: keep it off (the ML fit uses planes + points).
+    depthMode = Config.DepthMode.DISABLED,
+    onSessionUpdated = { session, frame -> mlDepth.onSessionUpdated(session, frame) },
+)
+val depth by mlDepth.depthFrames.collectAsState()   // ArDepthFrame?, Source.Ml
+val state by mlDepth.state.collectAsState()          // MlDepthState
+depth?.depthMetersAt(x, y)                            // metres, NaN where none
+```
+
+Public API (exact signatures):
+
+```kotlin notest signature listing; the depth-ml types are not on the snippets-check classpath
+// arsceneview — io.github.sceneview.ar.depth
+class MlDepthSession(
+    estimator: MonocularDepthEstimator,  // owned: closed by close(), on the worker
+    targetHz: Float = 5f,                // max maps per second
+    context: Context? = null,            // thermal status only (API 29+)
+) : Closeable {
+    val depthFrames: StateFlow<ArDepthFrame?>  // null while no valid map; buffers pooled
+    val state: StateFlow<MlDepthState>
+    fun onSessionUpdated(session: Session, frame: Frame)  // render thread, every frame
+    override fun close()
+}
+sealed interface MlDepthState {
+    data object Preparing                                   // download + compile
+    data class WaitingForAnchors(val anchors: Int)          // nothing published
+    data class Running(val stats: MlDepthStats)
+    data object Throttled                                   // thermal SEVERE
+    data class Failed(val error: Throwable)                 // load error, or 3 failed runs in a row
+}
+data class MlDepthStats(val lastInferenceMs: Float, val medianInferenceMs: Float,
+    val publishedHz: Float, val anchors: Int, val inliers: Int,
+    val rmsRelativeError: Float, val holding: Boolean)
+class ArDepthFrame(val timestampNs: Long, val width: Int, val height: Int,
+    val millimetres: ShortBuffer, val confidence: ByteBuffer?, val intrinsics: DepthIntrinsics,
+    val cameraPose: Pose, val source: ArDepthFrame.Source) {
+    enum class Source { Native, Ml }      // iOS: ARDepthFrame.Source.native / .ml
+    fun depthMetersAt(x: Int, y: Int): Float
+    fun confidenceAt(x: Int, y: Int): Float
+}
+data class DepthIntrinsics(val fx: Float, val fy: Float, val cx: Float, val cy: Float)
+interface MonocularDepthEstimator : Closeable {
+    enum class OutputKind { AffineInverse, Metric }
+    val inputWidth: Int; val inputHeight: Int; val outputWidth: Int; val outputHeight: Int
+    val outputKind: OutputKind
+    fun warmUp()                                   // blocking; called on the worker
+    fun estimate(rgb: ByteArray, out: FloatArray)  // RGB interleaved in, row-major floats out
+}
+
+// arsceneview-depth-ml — io.github.sceneview.ar.depth.ml
+class DepthAnythingV2Estimator(
+    context: Context,
+    model: ModelSource = ModelSource.DepthAnythingV2Small,
+    backend: Backend = Backend.Cpu,         // enum class Backend { Cpu, Gpu } — GPU runs FP32
+    numThreads: Int = 4,
+    onDownloadProgress: (Float) -> Unit = {},
+) : MonocularDepthEstimator
+sealed interface ModelSource {
+    data class Asset(val path: String)
+    data class LocalFile(val file: File)
+    data class Url(val url: String, val sha256: String, val sizeBytes: Long,
+        val fileName: String = url.substringAfterLast('/'))
+    companion object { val DepthAnythingV2Small: Url }   // pinned HF revision 178427e
+}
+object ModelDownloader {
+    fun ensure(source: ModelSource.Url, directory: File, onProgress: (Float) -> Unit = {}): File
+    fun sha256(file: File): String
+}
+```
+
+Prerequisites: an ARCore session that tracks planes and feature points (the default
+`planeFindingMode` is fine); the fit refuses until it has **≥ 12 consistent anchors spanning
+≥ ×1.5 in depth**, then holds the last scale for up to 5 maps — no depth is ever published
+without metric support. `INTERNET` (merged from the module manifest) for the first download.
+`ArDepthFrame` is in the camera **sensor** orientation and tagged with the pose of the image
+it came from: unproject with `frame.cameraPose`, never the current pose.
+
+Cost: a one-time **27.7 MB** download into `noBackupFilesDir/sceneview-depth-ml/`, checked
+against its SHA-256 (concurrent loads share one download). LiteRT native code per ABI:
+arm64-v8a ≈ 8 MB, x86_64 ≈ 10.7 MB, armeabi-v7a 3.5 MB (CPU only); an AAB serves one ABI.
+The network input is **518×686** (H×W, the whole CPU image stretched), output 518×686
+inverse depth. Inference runs at ≤ 5 Hz on one worker thread, halves at thermal MODERATE,
+pauses at SEVERE and skips frames while the camera holds still; expect each map to be
+100–300 ms old. Read `MlDepthStats.medianInferenceMs` for the device's real figure.
+
 ### Raw depth point cloud — accumulated depth visualization
 
 `Config.DepthMode.RAW_DEPTH_ONLY` gives access to raw per-pixel depth **plus** a companion
@@ -2228,7 +2363,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
@@ -2330,7 +2465,7 @@ Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity cu
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
-**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift wrapper tracked in #1860 — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -2866,7 +3001,7 @@ session.start()
 
 **Trust model & hardening:** by default the transport auto-accepts every device advertising the same `serviceId` (the id is broadcast in cleartext — a rendezvous key, not a secret). For a real trust boundary pass the optional `shouldAcceptConnection: (peerId, authenticationDigits) -> Boolean` constructor parameter and compare the digits out of band; returning `false` rejects the connection before any payload flows. Defense in depth is built in: inbound messages are bound to the *connection-bound* transport peer id (a body claiming another `peer` is dropped as spoofed; a second live connection claiming an already-connected peer id is rejected — but peer ids are self-advertised names, so real identity assurance still requires the digits comparison), `CollaborativeState` rosters are capped (`MAX_PARTICIPANTS` = 64, `MAX_NODES` = 1024, overridable via its constructor), and `PlacedNode.modelKey` arrives from an untrusted peer — validate it against an allow-list, never use it directly in an asset path.
 
-**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The `ar-collaborative` sample demo proves the full sync end-to-end on one device via the loopback transport.
+**Cross-platform:** Android-only today. The `CollaborativeTransport` abstraction maps cleanly onto RealityKit's `MultipeerConnectivityService` on iOS — the interface shape is kept cross-platform-friendly. The Collaborative mode of the `ar-cloud-anchor` sample demo (the retired `ar-collaborative` deep link opens it) proves the full sync end-to-end on one device via the loopback transport.
 
 ### TrackableNode — generic trackable
 ```kotlin
@@ -3145,6 +3280,8 @@ Renders an ARCore Geospatial **Streetscape Geometry** mesh — full polygonal bu
 
 Pass `types = setOf(StreetscapeGeometry.Type.BUILDING)` to drop the (often noisy) ground terrain in dense urban scenes. Pass `minQuality = StreetscapeGeometry.Quality.BUILDING_LOD_2` to render only the higher-LOD buildings and save a frame-rate cliff on low-end devices. The filter is a no-op early-return on the composable side, so unmatched geometries never allocate Filament buffers.
 
+`StreetscapeGeometryNode.meshNode` is `MeshNode?`: it is `null` while ARCore reports an empty mesh, and it is replaced when the geometry's vertex or index count changes. Use `meshNode?.` and style the mesh through `meshMaterialInstance` (re-applied on every rebuild), not by mutating `meshNode` (#4260).
+
 ```kotlin
 onSessionUpdated = { _, frame ->
     geometries = frame.getUpdatedTrackables(StreetscapeGeometry::class.java).toList()
@@ -3312,7 +3449,7 @@ The composable refreshes the skeleton in a `SideEffect` (per recomposition) — 
 
 **Pure joint math** (`XrHandSkeleton`) is JVM-testable and runtime-free: `XrHandSkeleton.BONES` (the bone topology), `boneLength`, `boneMidpoint`, `lerp`, `totalBoneLength`, `trackedJointCount`. The `XrHandJoint` / `XrHandedness` enums and `XrHandSkeleton` carry no `androidx.xr.arcore` dependency, so they are safe to use on a phone-only build.
 
-Sample: the `ar-hand-tracking` demo renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
+Sample: the Hands mode of the `ar-xr` demo ("Android XR (preview)", listed on Android XR devices; the retired `ar-hand-tracking` deep link opens it) renders a static reference hand skeleton on phones (no public Android XR emulator yet) and points the developer at `XrHandNode` for the live integration on an Android XR headset.
 
 ### XrFaceNode — face tracking (Slice 3)
 
@@ -3346,7 +3483,7 @@ The composable refreshes the face in a `SideEffect` (per recomposition) — reco
 
 **Threading:** `XrFaceNode.update()` writes only Filament `Node` transforms and decodes the mesh into plain arrays (no JNI resource creation) but, like every node mutation, MUST run on the main thread.
 
-**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the `ar-xr-face` demo renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
+**Pure mesh math** (`XrFaceMesh`) is JVM-testable and runtime-free: `XrFaceMesh.isValid` (buffer-layout sanity check), `vertexAt`, `centroid`, `extent`, `regionDistance`, `lerp`, `trackedRegionCount`. The `XrFaceRegion` enum, `XrFaceMeshData` and `XrFaceMesh` carry no `androidx.xr.arcore` dependency, so they are safe on a phone-only build. Sample: the Face mode of the `ar-xr` demo (the retired `ar-xr-face` deep link opens it) renders a static reference face mesh on phones (no public Android XR emulator yet) and points the developer at `XrFaceNode` for the live integration.
 
 **Cross-platform parity:** hand tracking on visionOS is covered by `HandTrackingProvider` in `SceneViewSwift`, face mesh by `ARFaceTrackingConfiguration`; web covers WebXR `hand-tracking` under issue #1778. Updates to `docs/docs/cheatsheet-ios.md` mirror this section ([#1904](https://github.com/sceneview/sceneview/issues/1904)).
 
@@ -4326,7 +4463,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.51.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.52.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -4531,7 +4668,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.51.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.52.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -5155,7 +5292,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.51.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.52.0")
 ```
 
 Import: `import SceneViewSwift`

@@ -1,7 +1,7 @@
 {
   "name": "sceneview",
-  "version": "4.51.0",
-  "description": "Build 3D and AR apps with the SceneView SDK — Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the sceneview-mcp server.",
+  "version": "4.52.0",
+  "description": "Build 3D and AR apps with the SceneView SDK \u2014 Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the sceneview-mcp server.",
   "author": {
     "name": "SceneView",
     "url": "https://github.com/sceneview"
@@ -9,16 +9,37 @@
   "homepage": "https://sceneview.github.io",
   "repository": "https://github.com/sceneview/sceneview",
   "license": "Apache-2.0",
-  "keywords": ["3d", "ar", "augmented-reality", "android", "ios", "visionos", "web", "jetpack-compose", "swiftui", "filament", "realitykit", "arcore", "webxr", "gltf", "glb", "usdz", "3mf", "3d-printing"],
+  "keywords": [
+    "3d",
+    "ar",
+    "augmented-reality",
+    "android",
+    "ios",
+    "visionos",
+    "web",
+    "jetpack-compose",
+    "swiftui",
+    "filament",
+    "realitykit",
+    "arcore",
+    "webxr",
+    "gltf",
+    "glb",
+    "usdz",
+    "3mf",
+    "3d-printing"
+  ],
   "skills": "./agents/",
   "mcpServers": "./.codex-plugin/mcp.json",
   "interface": {
     "displayName": "SceneView 3D & AR",
     "shortDescription": "Write working 3D and AR code for Android, Apple and the web on the first try",
-    "longDescription": "SceneView is an AI-first 3D and AR SDK. This plugin gives ChatGPT and Codex the exact API contract, compilable recipes and migration guides for every SceneView platform — Android (Jetpack Compose + Filament + ARCore), Apple (SwiftUI + RealityKit on iOS, macOS and visionOS) and the web (Filament.js + WebXR) — plus the sceneview-mcp tools: 38 compilable samples, setup guides, a code validator, node references and an inline 3D model viewer. It also covers the model formats SceneView reads, including the .3mf that AI print flows emit and that nothing else on Android opens in 3D or AR. SceneView is open source under Apache-2.0.",
+    "longDescription": "SceneView is an AI-first 3D and AR SDK. This plugin gives ChatGPT and Codex the exact API contract, compilable recipes and migration guides for every SceneView platform \u2014 Android (Jetpack Compose + Filament + ARCore), Apple (SwiftUI + RealityKit on iOS, macOS and visionOS) and the web (Filament.js + WebXR) \u2014 plus the sceneview-mcp tools: 38 compilable samples, setup guides, a code validator, node references and an inline 3D model viewer. It also covers the model formats SceneView reads, including the .3mf that AI print flows emit and that nothing else on Android opens in 3D or AR. SceneView is open source under Apache-2.0.",
     "developerName": "SceneView",
     "category": "Developer Tools",
-    "capabilities": ["Read"],
+    "capabilities": [
+      "Read"
+    ],
     "websiteURL": "https://sceneview.github.io",
     "supportURL": "https://github.com/sceneview/sceneview/issues",
     "privacyPolicyURL": "https://sceneview.github.io/privacy",

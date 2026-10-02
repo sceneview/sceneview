@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **The Claude Code plugin now ships the three SceneView skills ([#4263](https://github.com/sceneview/sceneview/pull/4263)).** `/plugin install sceneview@sceneview` from `sceneview/claude-marketplace` installs the `sceneview`, `sceneview-ios` and `sceneview-web` skills with the MCP server, the same contents as the Codex plugin. The maintainer commands it used to carry (`/sceneview:release`, `/sceneview:version-bump`...) moved to a separate contributor plugin, `sceneview-contrib@sceneview`, as `/sceneview-contrib:*`.

@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **iOS demo app: the 3D About mark's reveal callback is `onReveal`, and its stage is in the design tokens ([#4229](https://github.com/sceneview/sceneview/issues/4229)).** The callback fires once the lighting has settled, so it no longer carries the `onFirstFrame` name. `DESIGN.md` now lists the stage height, the contact shadow and the `MarkColor` palette, and the comments stop naming Android symbols that are not on `main`.

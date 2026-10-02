@@ -1,4 +1,0 @@
-<!-- category: Added -->
-- **Demo app: new and updated demos are marked on Home ([#4267](https://github.com/sceneview/sceneview/pull/4267)).** A demo shows "New" or "Updated" for the two releases after it ships or changes, then the marker goes away on its own. A "What's new" row under the hero and a "What's new" filter chip list those demos. Every demo now declares the version that added it (and optionally the one that last changed it), and a registry test fails when one is missing or newer than the build.
-<!-- category: Fixed -->
-- **Demo app: the "What's new" sheet comes back after you open a sample from it ([#4267](https://github.com/sceneview/sceneview/pull/4267)).** It used to close for good, so back from the sample landed on a bare Home. It now reopens at the top, once its list has loaded.

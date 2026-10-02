@@ -1,2 +1,0 @@
-<!-- category: Changed -->
-- **Android demo app: readable native crash reports ([#4276](https://github.com/sceneview/sceneview/pull/4276)).** Release builds of the SceneView Demo app now ship their native debug symbols to Google Play and Crashlytics, and report native crashes (in the renderer or AR) to Crashlytics, which previously only saw Java and Kotlin crashes. The symbols stay out of the installed app. The SceneView libraries are unchanged.
