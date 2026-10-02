@@ -17,6 +17,7 @@ object ArCloudAnchorFragment : DemoFragment {
         category = DemoCategory.PLACE_AR,
         icon = Icons.Filled.CloudCircle,
         order = 20,
+        addedIn = "4.0.0",
         tags = setOf("ar", "cloud-anchor", "multi-user", "persistence", "arcore"),
         // #3421 rebuilt this screen as an explicit two-step flow. The state machine is
         // unit-tested and every visual state is captured on the emulator, but hosting and

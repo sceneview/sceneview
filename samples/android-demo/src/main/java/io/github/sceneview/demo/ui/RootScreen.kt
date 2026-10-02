@@ -99,6 +99,7 @@ import io.github.sceneview.demo.feedback.FeedbackOpenRequest
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.ui.explore.ExploreTabScreen
+import io.github.sceneview.demo.whatsnew.rememberReturningSheetState
 import io.github.sceneview.demo.ui.home.HomeScreen
 import io.github.sceneview.demo.whatsnew.WhatsNewSinceSheet
 import io.github.sceneview.demo.whatsnew.rememberWhatsNewSince
@@ -168,21 +169,22 @@ fun RootScreen(
 
     // Updates are available from the home action without interrupting app launch.
     val whatsNewSince = rememberWhatsNewSince()
-    var showWhatsNewSince by rememberSaveable { mutableStateOf(false) }
-    if (showWhatsNewSince) {
+    // Back from a sample opened in the sheet lands on the sheet again, not on a bare Home.
+    val whatsNewSinceSheet = rememberReturningSheetState(contentReady = whatsNewSince.isLoaded)
+    if (whatsNewSinceSheet.isShown) {
         WhatsNewSinceSheet(
             sections = whatsNewSince.unseen,
             seenVersion = whatsNewSince.seenVersion,
             onDemoClick = { id ->
-                showWhatsNewSince = false
+                whatsNewSinceSheet.leaveForSample()
                 Telemetry.nextOpenSource = OpenSource.Other
                 onDemoClick(id)
             },
             onMarkSeen = {
                 whatsNewSince.markSeen()
-                showWhatsNewSince = false
+                whatsNewSinceSheet.dismiss()
             },
-            onDismiss = { showWhatsNewSince = false },
+            onDismiss = { whatsNewSinceSheet.dismiss() },
         )
     }
 
@@ -319,7 +321,7 @@ fun RootScreen(
                         },
                         onBrowseOnlineClick = { galleryOpen = true },
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
-                        onWhatsNewSinceClick = { showWhatsNewSince = true },
+                        onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
                     )
                 }
                 RootTab.ArView -> ArViewTabContent(

@@ -17,6 +17,7 @@ object LinesPathsFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Timeline,
         order = 6,
+        addedIn = "4.0.1",
         tags = setOf(
             "line", "polyline", "path", "spline", "curve", "bezier", "catmull-rom",
             "tube", "stroke", "dashed", "points", "point cloud", "trail",

@@ -17,6 +17,7 @@ object PointAndAskFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.Psychology,
         order = 37,
+        addedIn = "4.23.0",
         tags = setOf("ar", "ai", "gemini", "on-device", "llm", "vision"),
     )
 

@@ -17,6 +17,8 @@ object SecondaryCameraFragment : DemoFragment {
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.PictureInPicture,
         order = 14,
+        addedIn = "4.0.1",
+        updatedIn = "4.48.0",
         tags = setOf("camera", "pip", "multi-view", "render-target"),
     )
 

@@ -25,9 +25,10 @@ object CameraAndGesturesFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.PhotoCamera,
         order = 33,
+        addedIn = "4.17.0",
+        updatedIn = "4.48.0",
         tags = setOf("camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit"),
         // #3500 rebuilt the screen from scratch around one stage.
-        updatedIn = "4.35.0",
     )
 
     @Composable

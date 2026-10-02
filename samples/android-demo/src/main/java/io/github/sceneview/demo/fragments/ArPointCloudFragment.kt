@@ -17,6 +17,7 @@ object ArPointCloudFragment : DemoFragment {
         category = DemoCategory.UNDERSTAND,
         icon = Icons.Filled.BlurOn,
         order = 45,
+        addedIn = "4.13.0",
         tags = setOf("ar", "point-cloud", "feature-points", "tracking"),
     )
 

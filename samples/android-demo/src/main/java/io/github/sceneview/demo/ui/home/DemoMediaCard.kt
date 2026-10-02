@@ -426,7 +426,10 @@ internal fun FreshnessChip(
         border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, outlineSubtle()),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm, vertical = 3.dp),
+            modifier = Modifier.padding(
+                horizontal = SceneViewTokens.Space.sm,
+                vertical = SceneViewTokens.Home.badgePaddingVertical,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
@@ -434,7 +437,7 @@ internal fun FreshnessChip(
                 imageVector = Icons.Filled.AutoAwesome,
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(12.dp),
+                modifier = Modifier.size(SceneViewTokens.Home.badgeIcon),
             )
             Text(
                 text = label,
@@ -442,7 +445,6 @@ internal fun FreshnessChip(
                 color = accent,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = Int.MAX_VALUE,
-
             )
         }
     }
@@ -465,7 +467,10 @@ internal fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
         border = BorderStroke(SceneViewTokens.Home.cardOutlineWidth, outlineSubtle()),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.sm, vertical = 3.dp),
+            modifier = Modifier.padding(
+                horizontal = SceneViewTokens.Space.sm,
+                vertical = SceneViewTokens.Home.badgePaddingVertical,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
@@ -473,7 +478,7 @@ internal fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
                 imageVector = Icons.Outlined.Info,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(12.dp),
+                modifier = Modifier.size(SceneViewTokens.Home.badgeIcon),
             )
             Text(
                 text = label,
@@ -481,7 +486,6 @@ internal fun StatusChip(status: DemoStatus, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
                 maxLines = Int.MAX_VALUE,
-
             )
         }
     }

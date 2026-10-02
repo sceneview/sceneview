@@ -38,6 +38,12 @@ class WhatsNewSinceState internal constructor(
     /** Base version of the last acknowledged build, for the subtitle. */
     val seenVersion: String?,
     private val onMarkSeen: () -> Unit,
+    /**
+     * Whether the changelog and the marker have been read. Until then [unseen] is empty
+     * because nothing is known yet, not because nothing is pending — a sheet shown now
+     * would open blank and fill a frame later.
+     */
+    val isLoaded: Boolean = true,
 ) {
     /** Drives the top-bar badge. */
     val hasUnseen: Boolean get() = unseen.isNotEmpty()
@@ -140,6 +146,8 @@ fun rememberWhatsNewSince(): WhatsNewSinceState {
                 )
                 seen = acknowledged
             },
+            // The marker is written with the sections, so a marker means both are in.
+            isLoaded = seen != null,
         )
     }
 }

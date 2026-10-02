@@ -17,8 +17,9 @@ object CosmosFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.AutoAwesome,
         order = 1,
+        addedIn = "4.49.0",
+        updatedIn = "4.51.0",
         tags = setOf("bloom", "emissive", "particles", "procedural", "shader", "galaxy", "space", "custom material"),
-        sinceVersion = "4.49.0",
     )
 
     @Composable

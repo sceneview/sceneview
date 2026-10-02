@@ -17,6 +17,7 @@ object VideoRecordingFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Videocam,
         order = 7,
+        addedIn = "4.22.0",
         tags = setOf("video", "recording", "mp4", "capture", "encoder"),
     )
 

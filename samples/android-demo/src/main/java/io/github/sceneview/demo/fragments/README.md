@@ -47,6 +47,13 @@ is no longer a shared anchor either.
            subtitleRes = R.string.demo_my_demo_subtitle,
            category = DemoCategory.VIEW_3D,
            icon = Icons.Filled.Star,
+           order = 99,
+           tags = setOf("my", "demo"),
+           // Required: the release this demo first ships in. On `main` between two
+           // releases, declare the current VERSION_NAME (gradle.properties) — the
+           // registry test rejects a version newer than the build. Drives the
+           // "New" pill; set `updatedIn` the same way when a later change is visible.
+           addedIn = "4.51.0",
        )
 
        @Composable

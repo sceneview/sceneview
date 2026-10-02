@@ -24,9 +24,10 @@ object LightingFragment : DemoFragment {
         category = DemoCategory.CREATE,
         icon = Icons.Filled.Lightbulb,
         order = 4,
+        addedIn = "4.0.0",
+        updatedIn = "4.49.0",
         tags = setOf("light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr"),
         // #3496 rebuilt the screen as a three-rig showcase over a shared stage.
-        updatedIn = "4.35.0",
     )
 
     @Composable

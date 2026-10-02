@@ -17,6 +17,7 @@ object ArRecordPlaybackFragment : DemoFragment {
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.RadioButtonChecked,
         order = 13,
+        addedIn = "4.0.8",
         tags = setOf("ar", "recording", "playback", "session", "mp4", "replay"),
     )
 
