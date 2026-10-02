@@ -59,9 +59,14 @@ struct MovableLightDemo: View {
         )
     }
 
-    /// World-space position of the model — kept here so the marker sphere and
-    /// light orbit centre stay in sync if we ever move it.
-    private let modelOffset = SIMD3<Float>(0, 0, -2)
+    /// Height of the floor the car stands on. The model is bottom-aligned at
+    /// load (Android's `centerOrigin = Position(y = -1f)`), so a pivot at this
+    /// height puts the tyres on the floor.
+    private static let floorY: Float = -0.35
+
+    /// World-space position of the car's pivot, on the floor. The light still
+    /// orbits (0, 0, -2) — see `lightPosition` — roughly the car's mid-height.
+    private let modelOffset = SIMD3<Float>(0, Self.floorY, -2)
 
     var body: some View {
         sceneContent
@@ -83,10 +88,15 @@ struct MovableLightDemo: View {
                 // that produces a strong specular response — exactly what this
                 // demo is designed to show off).
                 if let model = loadedModel {
-                    model.entity.position = modelOffset
+                    // A pivot on the floor carries position and scale; the model
+                    // under it keeps its bottom-aligned offset, so the tyres
+                    // touch the floor instead of hovering above it (#4230).
+                    let pivot = Entity()
+                    pivot.position = modelOffset
                     // Scale to roughly 1 m wide so it fits the framing.
-                    model.entity.scale = .init(repeating: 0.6)
-                    root.addChild(model.entity)
+                    pivot.scale = .init(repeating: 0.6)
+                    pivot.addChild(model.entity)
+                    root.addChild(pivot)
                 }
 
                 // Subtle ground plane so the light direction reads in space.
@@ -97,7 +107,7 @@ struct MovableLightDemo: View {
                     depth: 4,
                     color: .darkGray
                 )
-                floor.entity.position = .init(x: 0, y: -0.35, z: modelOffset.z)
+                floor.entity.position = .init(x: 0, y: Self.floorY, z: modelOffset.z)
                 root.addChild(floor.entity)
 
                 // User-controlled point light orbiting the model.
@@ -215,6 +225,9 @@ struct MovableLightDemo: View {
             // The shiny red paint + chrome trim is the perfect PBR showcase for
             // a "drag the light" demo — the specular highlight tracks visibly.
             let node = try await ModelNode.load("ferrari_f40")
+            // Bottom-aligned before it is parented: the tyres' lowest point
+            // becomes the node origin, which the pivot puts on the floor.
+            node.centerOrigin(normalized: [0, -1, 0])
             loadedModel = node
             isLoading = false
         } catch {
