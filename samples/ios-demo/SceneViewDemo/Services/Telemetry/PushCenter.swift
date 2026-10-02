@@ -67,6 +67,10 @@ final class PushCenter: NSObject, ObservableObject {
     /// Unsubscribes + `deleteToken` are out: nothing subscribes until they land,
     /// or the new subscriptions would ride the token being deleted.
     private var tokenDeletionInFlight = false
+    /// The switch went back ON while a deletion was out: if it is OFF again when the
+    /// deletion lands, auto-init may have minted a new token meanwhile (Android's
+    /// `redoDisable`).
+    private var switchedOnDuringDeletion = false
     private var pendingUnsubscribes = 0
 
     struct PushTap: Equatable, Identifiable {
@@ -119,9 +123,38 @@ final class PushCenter: NSObject, ObservableObject {
     /// From `application(_:didFinishLaunchingWithOptions:)`, after
     /// `FirebaseTelemetry.startAtLaunch()`. The notification-center delegate must be set
     /// before launch ends so a tap that cold-starts the app is delivered.
-    func didFinishLaunching(_ application: UIApplication) {
+    ///
+    /// `firebaseWaitsForPermission`: push was the only reason to configure Firebase and
+    /// nothing was subscribed yet (`ConsentStore.launchStartWaitsForPushPermission`), so
+    /// the launch left it off; the system permission is read first, and Firebase starts
+    /// only if it still allows push (it may have been revoked in iOS Settings since).
+    func didFinishLaunching(_ application: UIApplication, firebaseWaitsForPermission: Bool = false) {
         UNUserNotificationCenter.current().delegate = self
-        firebaseDidStart()
+        if firebaseWaitsForPermission {
+            Task { await appBecameActive() }
+        } else {
+            firebaseDidStart()
+        }
+    }
+
+    /// The app is in the foreground again (`scenePhase == .active`), as Android re-syncs on
+    /// resume: a permission granted in iOS Settings meanwhile configures Firebase and
+    /// subscribes, one revoked leaves the topics, and an opt-out whose `deleteToken`
+    /// failed is retried. Firebase is configured only when the permission allows push.
+    func appBecameActive() async {
+        let before = authorization
+        await refreshAuthorization()
+        let changed = authorization != before
+        if pushAllowed {
+            ensureFirebase()
+            if changed, isAvailable { system.registerForRemoteNotifications() }
+        }
+        let subscribed = defaults.bool(forKey: Self.subscribedKey)
+        if changed || pushAllowed != subscribed {
+            syncTopics()
+        } else {
+            rememberPushNeedsFirebase()
+        }
     }
 
     /// Firebase is configured (at launch, or later by a consent): FCM gets its delegate,
@@ -151,7 +184,7 @@ final class PushCenter: NSObject, ObservableObject {
     /// Whether Firebase has to be configured at the next launch: push is allowed, or an
     /// opt-out has not finished yet (topics left, token deleted). The flag goes back to
     /// false only once nothing is left to undo with FCM, so an opt-out that failed is
-    /// retried at the next launch, as Android's `pushDisablePending`.
+    /// retried (`appBecameActive`, next launch), as Android's `pushDisablePending`.
     private func rememberPushNeedsFirebase() {
         if pushAllowed {
             gate.setPushNeedsFirebase(true)
@@ -306,7 +339,10 @@ final class PushCenter: NSObject, ObservableObject {
             messaging.setAutoInit(true)
             // A deletion still running would take these subscriptions with it; its
             // completion calls back here.
-            guard !tokenDeletionInFlight else { return }
+            guard !tokenDeletionInFlight else {
+                switchedOnDuringDeletion = true
+                return
+            }
             guard messaging.hasToken else {
                 requestToken()
                 return
@@ -347,14 +383,18 @@ final class PushCenter: NSObject, ObservableObject {
             #endif
             guard let self else { return }
             tokenDeletionInFlight = false
-            if ok {
+            // ON then OFF again while the deletion ran: the token auto-init minted in
+            // between is left as well, topics and all.
+            let redo = switchedOnDuringDeletion && !pushAllowed && messaging.hasToken
+            switchedOnDuringDeletion = false
+            if ok, !redo {
                 defaults.set(false, forKey: Self.subscribedKey)
                 if !pushAllowed { gate.setPushNeedsFirebase(false) }
-            } else {
-                Self.log.notice("FCM token deletion failed: retried at the next launch")
+            } else if !ok {
+                Self.log.notice("FCM token deletion failed: retried on return to the foreground or at the next launch")
             }
             // Switched back ON while the deletion ran: subscribe again now.
-            if pushAllowed { syncTopics() }
+            if pushAllowed || redo { syncTopics() }
         }
     }
 
@@ -535,8 +575,10 @@ final class DemoAppDelegate: HDPackAppDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // In the EEA, UK and Switzerland, not before the user's yes (ConsentStore).
-        FirebaseTelemetry.startAtLaunch()
-        PushCenter.shared.didFinishLaunching(application)
+        let waitsForPermission = ConsentStore.shared.launchStartWaitsForPushPermission(
+            topicsSubscribed: UserDefaults.standard.bool(forKey: PushCenter.subscribedKey))
+        FirebaseTelemetry.startAtLaunch(waitingForPushPermission: waitsForPermission)
+        PushCenter.shared.didFinishLaunching(application, firebaseWaitsForPermission: waitsForPermission)
         return true
     }
 

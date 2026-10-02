@@ -53,8 +53,9 @@ private final class FakeMessaging: PushMessaging {
         }
     }
 
-    func finishDelete(success: Bool = true) {
-        if success { hasToken = false }
+    /// `tokenLeft`: auto-init minted a new token while the deletion ran.
+    func finishDelete(success: Bool = true, tokenLeft: Bool = false) {
+        if success { hasToken = tokenLeft }
         pendingDelete?(success)
         pendingDelete = nil
     }
@@ -95,6 +96,20 @@ final class PushCenterTests: XCTestCase {
     private var firebaseStarts = 0
     private var pushNeedsFirebase: Bool?
 
+    /// The consent as the next launch reads it, from the same defaults (consent zone,
+    /// usage statistics not granted).
+    private func consentStore() -> ConsentStore {
+        ConsentStore(defaults: defaults, requiresConsent: true)
+    }
+
+    /// What `DemoAppDelegate` decides at a cold launch with these defaults.
+    private var launchConfiguresFirebaseRightAway: Bool {
+        let store = consentStore()
+        return store.shouldStartFirebaseAtLaunch
+            && !store.launchStartWaitsForPushPermission(
+                topicsSubscribed: defaults.bool(forKey: PushCenter.subscribedKey))
+    }
+
     private func makeCenter() -> PushCenter {
         PushCenter(
             defaults: defaults,
@@ -115,7 +130,10 @@ final class PushCenterTests: XCTestCase {
                     self.fcm.isAvailable = true
                 },
                 consentSettled: { [unowned self] in self.consentSettled },
-                setPushNeedsFirebase: { [unowned self] in self.pushNeedsFirebase = $0 }
+                setPushNeedsFirebase: { [unowned self] in
+                    self.pushNeedsFirebase = $0
+                    self.consentStore().pushNeedsFirebase = $0
+                }
             )
         )
     }
@@ -343,5 +361,163 @@ final class PushCenterTests: XCTestCase {
         XCTAssertTrue(fcm.subscribed.isEmpty)
         XCTAssertTrue(fcm.unsubscribed.isEmpty)
         XCTAssertEqual(fcm.deleteCount, 0)
+    }
+    // MARK: Return to the foreground (#4279 review)
+
+    /// Refused at the prompt, then allowed in iOS Settings: back in the app, Firebase is
+    /// configured and the topics follow, as on Android's resume.
+    func testPermissionGrantedInSettingsConfiguresFirebaseOnReturn() async {
+        status = .notDetermined
+        authorizationGranted = false
+        fcm.isAvailable = false
+        let center = makeCenter()
+        await center.acceptPrePrompt()
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertEqual(pushNeedsFirebase, false)
+
+        status = .authorized
+        fcm.hasToken = true
+        await center.appBecameActive()
+
+        XCTAssertEqual(firebaseStarts, 1)
+        XCTAssertGreaterThanOrEqual(registerCount, 1, "APNs registration follows the new permission")
+        XCTAssertEqual(Set(fcm.subscribed), Set(PushCenter.subscribedTopics))
+        XCTAssertEqual(pushNeedsFirebase, true)
+    }
+
+    /// Still refused: returning to the app never configures Firebase.
+    func testDeniedPermissionStaysOffOnReturn() async {
+        status = .denied
+        fcm.isAvailable = false
+        let center = makeCenter()
+
+        await center.appBecameActive()
+        await center.appBecameActive()
+
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertEqual(registerCount, 0)
+        XCTAssertEqual(pushNeedsFirebase, false)
+    }
+
+    /// Switch OFF, `deleteToken` failed: the next return to the foreground retries it,
+    /// so pushes stop without waiting for a relaunch.
+    func testFailedTokenDeletionIsRetriedOnReturn() async {
+        let center = await makeSubscribedCenter()
+        fcm.completeDeleteImmediately = false
+        await center.applyNotificationsSwitch(false)
+        fcm.finishDelete(success: false)
+        XCTAssertEqual(pushNeedsFirebase, true)
+
+        fcm.completeDeleteImmediately = true
+        await center.appBecameActive()
+
+        XCTAssertEqual(fcm.deleteCount, 2)
+        XCTAssertFalse(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, false)
+    }
+
+    /// Permission revoked in iOS Settings while subscribed: back in the app, the topics
+    /// are left and the token deleted.
+    func testPermissionRevokedInSettingsLeavesTopicsOnReturn() async {
+        let center = await makeSubscribedCenter()
+        status = .denied
+
+        await center.appBecameActive()
+
+        XCTAssertEqual(Set(fcm.unsubscribed), Set(PushCenter.subscribedTopics))
+        XCTAssertEqual(fcm.deleteCount, 1)
+        XCTAssertEqual(pushNeedsFirebase, false)
+    }
+
+    /// Nothing changed: a return to the foreground subscribes nothing again.
+    func testUnchangedReturnTouchesNoTopic() async {
+        let center = await makeSubscribedCenter()
+
+        await center.appBecameActive()
+        await center.appBecameActive()
+
+        XCTAssertTrue(fcm.subscribed.isEmpty)
+        XCTAssertTrue(fcm.unsubscribed.isEmpty)
+        XCTAssertEqual(fcm.deleteCount, 0)
+    }
+
+    // MARK: Launch flag, read back as a relaunch would
+
+    /// Granted without an APNs token, then revoked in iOS Settings: the flag says push,
+    /// but nothing was subscribed, so the launch waits for the permission, which is
+    /// refused, and Firebase is never configured.
+    func testRevokedBeforeAnyTokenNeverConfiguresFirebaseAtRelaunch() async {
+        fcm.hasAPNsToken = false
+        let center = makeCenter()
+        await center.refreshAuthorization()
+        center.syncTopics()
+        XCTAssertTrue(consentStore().shouldStartFirebaseAtLaunch)
+        XCTAssertFalse(launchConfiguresFirebaseRightAway, "push alone, nothing subscribed: the launch waits")
+
+        // Revoked in iOS Settings, app killed; the relaunch reads the permission first.
+        status = .denied
+        fcm.isAvailable = false
+        let relaunched = makeCenter()
+        await relaunched.appBecameActive()
+
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertFalse(consentStore().shouldStartFirebaseAtLaunch)
+    }
+
+    /// The flag as the next launch reads it, through a real `ConsentStore`: subscribed
+    /// starts Firebase right away; a finished opt-out does not; a failed one does.
+    func testFlagDrivesFirebaseAtRelaunch() async {
+        XCTAssertFalse(consentStore().shouldStartFirebaseAtLaunch)
+
+        let center = await makeSubscribedCenter()
+        XCTAssertTrue(launchConfiguresFirebaseRightAway)
+
+        fcm.completeDeleteImmediately = false
+        await center.applyNotificationsSwitch(false)
+        fcm.finishDelete(success: false)
+        XCTAssertTrue(launchConfiguresFirebaseRightAway, "a failed opt-out is resumed at the next launch")
+
+        fcm.completeDeleteImmediately = true
+        await makeCenter().appBecameActive()
+        XCTAssertFalse(consentStore().shouldStartFirebaseAtLaunch)
+    }
+
+    // MARK: Switch edge cases
+
+    /// The switch turned ON while iOS already refuses: no prompt, no Firebase, no flag.
+    func testSwitchOnWithPermissionAlreadyDeniedNeverConfiguresFirebase() async {
+        status = .denied
+        fcm.isAvailable = false
+        let center = makeCenter()
+
+        await center.applyNotificationsSwitch(false)
+        await center.applyNotificationsSwitch(true)
+
+        XCTAssertNil(firebaseStartsAtPrompt, "iOS does not ask twice: no system prompt")
+        XCTAssertEqual(firebaseStarts, 0)
+        XCTAssertEqual(pushNeedsFirebase, false)
+        XCTAssertFalse(consentStore().shouldStartFirebaseAtLaunch)
+    }
+
+    /// OFF → ON → OFF while the token deletion runs: the token auto-init minted in
+    /// between is deleted too (Android's `redoDisable`), and nothing stays subscribed.
+    func testOffOnOffDuringDeletionDeletesTheNewToken() async {
+        let center = await makeSubscribedCenter()
+        fcm.completeDeleteImmediately = false
+
+        await center.applyNotificationsSwitch(false)
+        await center.applyNotificationsSwitch(true)
+        await center.applyNotificationsSwitch(false)
+        XCTAssertEqual(fcm.deleteCount, 1)
+
+        fcm.completeDeleteImmediately = true
+        fcm.finishDelete(tokenLeft: true)
+
+        XCTAssertEqual(fcm.deleteCount, 2)
+        XCTAssertFalse(fcm.hasToken)
+        XCTAssertFalse(fcm.autoInit)
+        XCTAssertTrue(fcm.subscribed.isEmpty)
+        XCTAssertFalse(defaults.bool(forKey: PushCenter.subscribedKey))
+        XCTAssertEqual(pushNeedsFirebase, false)
     }
 }

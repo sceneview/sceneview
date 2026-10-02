@@ -113,6 +113,14 @@ final class ConsentStore: @unchecked Sendable {
         collectionAllowed || pushNeedsFirebase
     }
 
+    /// Push is the only reason to configure Firebase at this launch and no topic was
+    /// subscribed (no FCM token to undo): the launch leaves Firebase off until the system
+    /// permission is read, so one granted then revoked in iOS Settings before any APNs
+    /// token never configures it (`PushCenter.appBecameActive`).
+    func launchStartWaitsForPushPermission(topicsSubscribed: Bool) -> Bool {
+        !collectionAllowed && pushNeedsFirebase && !topicsSubscribed
+    }
+
     /// Records an answer with its time and the current version. `unknown` forgets it.
     func record(_ state: State) {
         switch state {
