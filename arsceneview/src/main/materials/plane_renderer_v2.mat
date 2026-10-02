@@ -145,8 +145,11 @@ fragment {
         float radius = mix(0.09, 0.075, wall);
 
         // Slow ripples running outward from the reticle, on the focused plane only.
-        float time = getUserTime().x;
-        float ripple = 0.5 + 0.5 * sin(spotDistance * 9.0 - time * 2.4);
+        // The phase is wrapped in highp: `-p mobile` makes a plain `float` mediump, and engine
+        // uptime read into one steps by 0.25 s after 256 s and by 1 s after 1024 s, so the
+        // ripples stuttered and then froze. 2.6179939 s = 2π / 2.4: the wrap is seamless.
+        highp float ripplePhase = getUserTimeMod(2.6179939) * 2.4;
+        float ripple = 0.5 + 0.5 * sin(spotDistance * 9.0 - ripplePhase);
         radius *= 1.0 + spot * (0.35 + 0.25 * ripple);
 
         // ── Reveal front ─────────────────────────────────────────────────────────────────

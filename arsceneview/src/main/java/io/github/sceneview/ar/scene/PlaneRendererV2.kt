@@ -58,11 +58,12 @@ class PlaneRendererV2(
 
     override lateinit var viewSize: Size
 
-    private val visualizers = mutableMapOf<Plane, PlaneVisualizerV2>()
-
-    // Same visualizers as [visualizers], as a list the per-frame animation tick walks by index
-    // (no iterator allocated per frame).
-    private val visualizerList = ArrayList<PlaneVisualizerV2>()
+    // Each visualizer together with the two MaterialInstances it was given: they are created
+    // together and destroyed together, so live instances are always 2 × live visualizers.
+    private val visualizers = OwnedVisualizers<Plane, PlaneVisualizerV2, MaterialInstance>(
+        destroyVisualizer = { it.destroy() },
+        destroyInstance = { engine.safeDestroyMaterialInstance(it) },
+    )
 
     val planeTexture = ImageTexture.Builder()
         .bitmap(materialLoader.assets, "textures/plane_renderer.png")
@@ -97,8 +98,6 @@ class PlaneRendererV2(
             setParameter("focus", 0.0f)
         }
     }
-
-    private val materialInstances = mutableListOf<MaterialInstance>()
 
     private var shadowMaterial = materialLoader.createMaterial(
         "materials/plane_renderer_shadow.filamat"
@@ -138,7 +137,7 @@ class PlaneRendererV2(
         set(value) {
             if (field != value) {
                 field = value
-                visualizers.values.forEach { it.setEnabled(value) }
+                visualizers.forEach { _, visualizer -> visualizer.setEnabled(value) }
             }
         }
 
@@ -154,7 +153,7 @@ class PlaneRendererV2(
                 field = value
                 // Hiding is immediate for every plane; showing waits for the next update, which
                 // knows the centre plane (RENDER_CENTER shows only that one).
-                if (!value) visualizers.values.forEach { it.setVisible(false) }
+                if (!value) visualizers.forEach { _, visualizer -> visualizer.setVisible(false) }
             }
         }
 
@@ -167,7 +166,7 @@ class PlaneRendererV2(
         set(value) {
             if (field != value) {
                 field = value
-                visualizers.values.forEach { it.setShadowReceiver(value) }
+                visualizers.forEach { _, visualizer -> visualizer.setShadowReceiver(value) }
             }
         }
 
@@ -175,7 +174,7 @@ class PlaneRendererV2(
         set(value) {
             if (field != value) {
                 field = value
-                visualizers.values.forEach { it.setEnabled(isEnabled && value) }
+                visualizers.forEach { _, visualizer -> visualizer.setEnabled(isEnabled && value) }
             }
         }
 
@@ -195,6 +194,7 @@ class PlaneRendererV2(
         }
         // Every frame, enabled or not: planes keep fading out after `isEnabled = false`.
         val now = System.nanoTime()
+        val visualizerList = visualizers.visualizerList
         for (i in visualizerList.indices) visualizerList[i].tick(now)
     }
 
@@ -207,7 +207,7 @@ class PlaneRendererV2(
         val centerPlane = if (isVisible) CenterPlaneFinder.find(frame, visualizers.keys) else null
         @Suppress("DEPRECATION")
         val renderAll = planeRendererMode == PlaneRenderer.PlaneRendererMode.RENDER_ALL
-        visualizers.forEach { (plane, visualizer) ->
+        visualizers.forEach { plane, visualizer ->
             val isCenter = plane == centerPlane
             visualizer.setFocus(if (isCenter) 1f else 0f)
             visualizer.setVisible(isVisible && (renderAll || isCenter))
@@ -215,9 +215,9 @@ class PlaneRendererV2(
     }
 
     override fun destroy() {
-        visualizers.forEach { (_, planeVisualizer) -> planeVisualizer.destroy() }
-
-        materialInstances.forEach { engine.safeDestroyMaterialInstance(it) }
+        // Visualizers first: each one takes its entity out of the scene before its two
+        // MaterialInstances are destroyed.
+        visualizers.clear()
         materialLoader.destroyMaterial(planeMaterial)
         materialLoader.destroyMaterial(shadowMaterial)
         engine.safeDestroyTexture(planeTexture)
@@ -225,25 +225,32 @@ class PlaneRendererV2(
 
     /** Refreshes (or lazily creates) the [PlaneVisualizerV2] for [plane]. */
     private fun renderPlane(plane: Plane) {
-        if (plane.trackingState == TrackingState.TRACKING || plane.subsumedBy == null) {
-            val planeVisualizer = visualizers[plane]
-                ?: PlaneVisualizerV2(engine, scene, plane).apply {
-                    setPlaneMaterial(planeMaterial.createInstance().also {
-                        materialInstances += it
-                    })
-                    setShadowMaterial(shadowMaterial.createInstance().also {
-                        materialInstances += it
-                    })
-                    setShadowReceiver(isShadowReceiver)
-                    // Shown by refreshFocusAndVisibility once the centre plane is known.
-                    setVisible(false)
-                    setEnabled(isEnabled && isCameraTracking)
-                }.also {
-                    visualizers[plane] = it
-                    visualizerList += it
-                }
-            planeVisualizer.updatePlane()
+        val existing = visualizers[plane]
+        val action = planeVisualizerAction(
+            trackingState = plane.trackingState,
+            isSubsumed = plane.subsumedBy != null,
+            hasVisualizer = existing != null,
+        )
+        when (action) {
+            PlaneVisualizerAction.SKIP -> Unit
+            PlaneVisualizerAction.UPDATE -> existing?.updatePlane()
+            PlaneVisualizerAction.CREATE -> createVisualizer(plane).updatePlane()
         }
+    }
+
+    private fun createVisualizer(plane: Plane): PlaneVisualizerV2 {
+        val planeInstance = planeMaterial.createInstance()
+        val shadowInstance = shadowMaterial.createInstance()
+        val visualizer = PlaneVisualizerV2(engine, scene, plane).apply {
+            setPlaneMaterial(planeInstance)
+            setShadowMaterial(shadowInstance)
+            setShadowReceiver(isShadowReceiver)
+            // Shown by refreshFocusAndVisibility once the centre plane is known.
+            setVisible(false)
+            setEnabled(isEnabled && isCameraTracking)
+        }
+        visualizers.put(plane, visualizer, listOf(planeInstance, shadowInstance))
+        return visualizer
     }
 
     /**
@@ -252,16 +259,10 @@ class PlaneRendererV2(
      * Update the material parameters for all remaining planes.
      */
     private fun cleanupOldPlaneVisualizer() {
-        visualizers.entries.removeAll { (plane, planeVisualizer) ->
-            // If this plane was subsumed by another plane or it has permanently stopped tracking,
-            // remove it.
-            if (plane.subsumedBy != null || plane.trackingState == TrackingState.STOPPED) {
-                planeVisualizer.destroy()
-                visualizerList.remove(planeVisualizer)
-                true
-            } else {
-                false
-            }
+        // If this plane was subsumed by another plane or it has permanently stopped tracking,
+        // remove it — the visualizer and its two MaterialInstances together.
+        visualizers.removeIf { plane, _ ->
+            plane.subsumedBy != null || plane.trackingState == TrackingState.STOPPED
         }
     }
 
@@ -320,6 +321,90 @@ class PlaneRendererV2(
         private val DEFAULT_DOT_TINT = Float3(1.0f, 1.0f, 1.0f)
         private const val DEFAULT_DOT_ALPHA = 0.85f
         private const val DEFAULT_SURFACE_ALPHA = 0.015f
+    }
+}
+
+/** What [PlaneRendererV2] does with one plane ARCore reports as updated this frame. */
+internal enum class PlaneVisualizerAction { SKIP, CREATE, UPDATE }
+
+/**
+ * Decides whether an updated plane gets a new visualizer, a refresh, or nothing.
+ *
+ * A subsumed plane has been merged into a larger one, which is drawn instead, and a `STOPPED`
+ * plane is gone for good: both are skipped, and `cleanupOldPlaneVisualizer` releases a
+ * visualizer they may still have. Until this was a function the test read
+ * `TRACKING || subsumedBy == null`, which let every subsumed plane through, so each gated update
+ * built a visualizer (buffers, entity, two MaterialInstances) that the cleanup destroyed right
+ * after. A `PAUSED` plane keeps being updated: `updatePlane` fades it out.
+ */
+internal fun planeVisualizerAction(
+    trackingState: TrackingState,
+    isSubsumed: Boolean,
+    hasVisualizer: Boolean,
+): PlaneVisualizerAction = when {
+    isSubsumed || trackingState == TrackingState.STOPPED -> PlaneVisualizerAction.SKIP
+    hasVisualizer -> PlaneVisualizerAction.UPDATE
+    else -> PlaneVisualizerAction.CREATE
+}
+
+/**
+ * Plane → visualizer bookkeeping for [PlaneRendererV2], holding the MaterialInstances each
+ * visualizer was given. A visualizer and its instances are added together and released
+ * together — visualizer first, so its entity leaves the scene before its materials go — so the
+ * live instance count is always the instances-per-visualizer times [size].
+ *
+ * Generic so the ownership rule is unit-tested without a Filament Engine.
+ */
+internal class OwnedVisualizers<K : Any, V : Any, M : Any>(
+    private val destroyVisualizer: (V) -> Unit,
+    private val destroyInstance: (M) -> Unit,
+) {
+    private class Slot<V, M>(val visualizer: V, val instances: List<M>)
+
+    private val slots = LinkedHashMap<K, Slot<V, M>>()
+
+    /** The live visualizers as a list, for the per-frame tick to walk by index. */
+    val visualizerList = ArrayList<V>()
+
+    /** The planes that currently have a visualizer. */
+    val keys: Set<K> get() = slots.keys
+
+    val size: Int get() = slots.size
+
+    /** MaterialInstances held by live visualizers. */
+    val instanceCount: Int get() = slots.values.sumOf { it.instances.size }
+
+    operator fun get(key: K): V? = slots[key]?.visualizer
+
+    fun put(key: K, visualizer: V, instances: List<M>) {
+        slots.put(key, Slot(visualizer, instances))?.let { release(it) }
+        visualizerList += visualizer
+    }
+
+    fun forEach(action: (K, V) -> Unit) {
+        for ((key, slot) in slots) action(key, slot.visualizer)
+    }
+
+    fun removeIf(predicate: (K, V) -> Boolean) {
+        val iterator = slots.entries.iterator()
+        while (iterator.hasNext()) {
+            val (key, slot) = iterator.next()
+            if (predicate(key, slot.visualizer)) {
+                iterator.remove()
+                release(slot)
+            }
+        }
+    }
+
+    fun clear() {
+        slots.values.forEach { release(it) }
+        slots.clear()
+    }
+
+    private fun release(slot: Slot<V, M>) {
+        visualizerList.remove(slot.visualizer)
+        destroyVisualizer(slot.visualizer)
+        slot.instances.forEach(destroyInstance)
     }
 }
 
