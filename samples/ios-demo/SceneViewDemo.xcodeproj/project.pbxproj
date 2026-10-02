@@ -44,6 +44,7 @@
 		5A1A70000000000000000005 /* raccoon_family.spz in Resources */ = {isa = PBXBuildFile; fileRef = 5A1A71000000000000000005 /* raccoon_family.spz */; };
 		B7E40000000000000000001A /* showcase in Resources */ = {isa = PBXBuildFile; fileRef = B7E50000000000000000001A /* showcase */; };
 		2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */; };
+		DE68B335F84EBD17190941FD /* WhatsNewChangelogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */; };
 		B10000000000000000003585 /* ViewerAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000003584 /* ViewerAssetTests.swift */; };
 		C4E5A0000000000000000006 /* ViewerEntranceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000005 /* ViewerEntranceTests.swift */; };
 		C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */; };
@@ -52,6 +53,8 @@
 		FA3B37675AEEA33A5A8DA668 /* ViewerSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4EC /* ViewerSheets.swift */; };
 		FA3B37675AEEA33A5A8DA669 /* OpenedFileViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446371A911170C776F03B4ED /* OpenedFileViewer.swift */; };
 		F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE31566D2309ACB52F2541CF /* HomeFilter.swift */; };
+		919AB870032891FAD6260634 /* WhatsNewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97F54739F880F0B63513641 /* WhatsNewSheet.swift */; };
+		8EE31A19B5F218049F867C86 /* WhatsNewChangelog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 079037D8C36941ED98348375 /* WhatsNewChangelog.swift */; };
 		B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */; };
 		4D3AFF95252330C277928054 /* HomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = A251CDB4D89CD0202517E852 /* HomeHero.swift */; };
 		C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE4E50000000000000B001 /* HomeHeroFlight.swift */; };
@@ -321,6 +324,7 @@
 		5A1A71000000000000000005 /* raccoon_family.spz */ = {isa = PBXFileReference; lastKnownFileType = file; name = raccoon_family.spz; path = ../android-demo/src/main/assets/splats/raccoon_family.spz; sourceTree = SOURCE_ROOT; };
 		B7E50000000000000000001A /* showcase */ = {isa = PBXFileReference; lastKnownFileType = folder; name = showcase; path = ../android-demo/src/main/assets/rerun/showcase; sourceTree = SOURCE_ROOT; };
 		9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilterTests.swift; path = SceneViewDemoTests/HomeFilterTests.swift; sourceTree = SOURCE_ROOT; };
+		A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewChangelogTests.swift; path = SceneViewDemoTests/WhatsNewChangelogTests.swift; sourceTree = SOURCE_ROOT; };
 		B10000000000000000003584 /* ViewerAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerAssetTests.swift; path = SceneViewDemoTests/ViewerAssetTests.swift; sourceTree = SOURCE_ROOT; };
 		C4E5A0000000000000000005 /* ViewerEntranceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerEntranceTests.swift; path = SceneViewDemoTests/ViewerEntranceTests.swift; sourceTree = SOURCE_ROOT; };
 		C4E5A0000000000000000003 /* ViewerMaterialRepairs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerMaterialRepairs.swift; path = SceneViewDemo/Views/Viewer/ViewerMaterialRepairs.swift; sourceTree = SOURCE_ROOT; };
@@ -329,6 +333,8 @@
 		446371A911170C776F03B4EC /* ViewerSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ViewerSheets.swift; path = SceneViewDemo/Views/Viewer/ViewerSheets.swift; sourceTree = SOURCE_ROOT; };
 		446371A911170C776F03B4ED /* OpenedFileViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OpenedFileViewer.swift; path = SceneViewDemo/Views/Viewer/OpenedFileViewer.swift; sourceTree = SOURCE_ROOT; };
 		DE31566D2309ACB52F2541CF /* HomeFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeFilter.swift; path = SceneViewDemo/Views/Home/HomeFilter.swift; sourceTree = SOURCE_ROOT; };
+		E97F54739F880F0B63513641 /* WhatsNewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewSheet.swift; path = SceneViewDemo/Views/Home/WhatsNewSheet.swift; sourceTree = SOURCE_ROOT; };
+		079037D8C36941ED98348375 /* WhatsNewChangelog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WhatsNewChangelog.swift; path = SceneViewDemo/Views/Home/WhatsNewChangelog.swift; sourceTree = SOURCE_ROOT; };
 		A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoMediaCard.swift; path = SceneViewDemo/Views/Home/DemoMediaCard.swift; sourceTree = SOURCE_ROOT; };
 		A251CDB4D89CD0202517E852 /* HomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHero.swift; path = SceneViewDemo/Views/Home/HomeHero.swift; sourceTree = SOURCE_ROOT; };
 		C0DE4E50000000000000B001 /* HomeHeroFlight.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeHeroFlight.swift; path = SceneViewDemo/Views/Home/HomeHeroFlight.swift; sourceTree = SOURCE_ROOT; };
@@ -622,6 +628,8 @@
 			children = (
 				B7E600000000000000000001 /* Rerun */,
 				DE31566D2309ACB52F2541CF /* HomeFilter.swift */,
+				E97F54739F880F0B63513641 /* WhatsNewSheet.swift */,
+				079037D8C36941ED98348375 /* WhatsNewChangelog.swift */,
 				A7F9FD53B9A5E639F22AFB91 /* DemoMediaCard.swift */,
 				A251CDB4D89CD0202517E852 /* HomeHero.swift */,
 				C0DE4E50000000000000B001 /* HomeHeroFlight.swift */,
@@ -675,6 +683,7 @@
 				FB000000000000000000000C /* PushCenterTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
 				9D2C6D9D98B09170A0E218D8 /* HomeFilterTests.swift */,
+				A8BCC50D2865222C1EB5BB03 /* WhatsNewChangelogTests.swift */,
 				C0600000000000000000C067 /* CosmosSystemTests.swift */,
 				C0600000000000000000C06A /* CosmosSpacetimeTests.swift */,
 				C5D0000000000000000C5D03 /* ContactShadowMathTests.swift */,
@@ -952,6 +961,7 @@
 				A60000010000000000000001 /* Sources */,
 				A30000010000000000000001 /* Frameworks */,
 				A60000010000000000000002 /* Resources */,
+				2D20D8F48BFE667B569A5932 /* Bundle changelog */,
 				FB5000000000000000000001 /* Embed Firebase config */,
 				FB5000000000000000000002 /* Upload Crashlytics dSYM */,
 			);
@@ -1120,6 +1130,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		2D20D8F48BFE667B569A5932 /* Bundle changelog */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../CHANGELOG.md",
+			);
+			name = "Bundle changelog";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CHANGELOG.md",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The What's new sheet reads the release notes from the bundle, as Android\n# bundles the same CHANGELOG.md as an asset (BundleChangelogAsset). Without\n# it the sheet's entry stays hidden; a warning, not a failure.\nset -eu\nSRC=\"${SRCROOT}/../../CHANGELOG.md\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/CHANGELOG.md\"\nif [ ! -f \"$SRC\" ]; then\n  echo \"warning: CHANGELOG.md not found at $SRC — the What's new sheet will be hidden.\"\n  exit 0\nfi\nmkdir -p \"$(dirname \"$DST\")\"\ncp \"$SRC\" \"$DST\"\n";
+			showEnvVarsInLog = 0;
+		};
 		A60000010000000000000005 /* Fetch assets */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -1253,6 +1284,8 @@
 				C4E5A0000000000000000004 /* ViewerMaterialRepairs.swift in Sources */,
 				C4E5A0000000000000000002 /* ViewerEntrance.swift in Sources */,
 				F586F3A96E0830760ED36647 /* HomeFilter.swift in Sources */,
+				919AB870032891FAD6260634 /* WhatsNewSheet.swift in Sources */,
+				8EE31A19B5F218049F867C86 /* WhatsNewChangelog.swift in Sources */,
 				B141AC6435E99FE1BD6BE44E /* DemoMediaCard.swift in Sources */,
 				4D3AFF95252330C277928054 /* HomeHero.swift in Sources */,
 				C0DE4E50000000000000A001 /* HomeHeroFlight.swift in Sources */,
@@ -1414,6 +1447,7 @@
 				B7E400000000000000000044 /* RerunSessionStoreTests.swift in Sources */,
 				B7E400000000000000000045 /* RerunRRDReaderTests.swift in Sources */,
 				2A3CCE30CC57827E79F2EA6F /* HomeFilterTests.swift in Sources */,
+				DE68B335F84EBD17190941FD /* WhatsNewChangelogTests.swift in Sources */,
 				C0500000000000000000C057 /* CosmosSystemTests.swift in Sources */,
 				C0500000000000000000C05A /* CosmosSpacetimeTests.swift in Sources */,
 				C5D0000000000000000C5D13 /* ContactShadowMathTests.swift in Sources */,

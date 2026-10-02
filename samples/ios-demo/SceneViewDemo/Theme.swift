@@ -375,6 +375,22 @@ enum SceneViewTokens {
             light: Color(red: 0x64 / 255, green: 0x46 / 255, blue: 0xCD / 255),
             dark: Color(red: 0xD2 / 255, green: 0xA8 / 255, blue: 0xFF / 255)
         )
+        /// M3 `secondary` — #555F71 / #BDC7DC, Android's `md_theme_*_secondary`.
+        /// The What's new sheet's "Changed" and "Performance" labels: 6.4:1 on
+        /// white, 9.9:1 on the dark sheet.
+        static let secondary = Color(
+            light: Color(red: 0x55 / 255, green: 0x5F / 255, blue: 0x71 / 255),
+            dark: Color(red: 0xBD / 255, green: 0xC7 / 255, blue: 0xDC / 255)
+        )
+        /// M3 `tertiary` — #6446CD / #D2A8FF, Android's `md_theme_*_tertiary`.
+        /// The What's new sheet's "Fixed" label.
+        static let tertiary = sectionAccentDevTools
+        /// M3 `error` — #BA1A1A / #FFB4AB, Android's `md_theme_*_error`. The
+        /// What's new sheet's "Removed" label: 6.5:1 on white, 9.6:1 dark.
+        static let error = Color(
+            light: Color(red: 0xBA / 255, green: 0x1A / 255, blue: 0x1A / 255),
+            dark: Color(red: 0xFF / 255, green: 0xB4 / 255, blue: 0xAB / 255)
+        )
         /// `on-primary` — text and icons on a `primary` fill: #FFFFFF / #0D1117.
         static let onPrimary = chipSelectedText
         /// M3 `secondary-container` — #D9E3F8 / #3D4758, Android's

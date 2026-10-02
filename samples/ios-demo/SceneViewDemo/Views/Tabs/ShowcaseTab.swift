@@ -43,6 +43,13 @@ struct ShowcaseTab: View {
     @State private var fullScreenScene: DemoItem?
     @State private var comingSoonScene: DemoItem?
     @State private var showExplore = false
+    /// The release notes the What's new sheet lists, read off the main thread
+    /// on first appearance; empty until then, and the header's sparkle hidden.
+    @State private var releases: [WhatsNewRelease] = []
+    @State private var whatsNewSheet = WhatsNewSheetPhase.closed
+    /// The demo tapped in the What's new sheet, opened once the sheet is gone —
+    /// a cover cannot be presented while the sheet is still on screen.
+    @State private var demoFromSheet: DemoItem?
     /// The `matchedTransitionSource` id of whatever opened the current demo. A
     /// featured demo is on screen twice (Featured and its section), so the zoom
     /// has to know which of the two rows it grows out of.
@@ -90,6 +97,7 @@ struct ShowcaseTab: View {
             && scenePhase == .active
             && fullScreenScene == nil
             && comingSoonScene == nil
+            && whatsNewSheet != .open
             && !showExplore
     }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -273,7 +281,8 @@ struct ShowcaseTab: View {
                 topInset = inset
             }
             .overlay(alignment: .top) {
-                HomeHeader(scrolled: scrolled, overStage: overStage, query: $query, searchOpen: $searchOpen)
+                HomeHeader(scrolled: scrolled, overStage: overStage, query: $query, searchOpen: $searchOpen,
+                           showWhatsNew: !releases.isEmpty) { whatsNewSheet.open() }
             }
             #if os(iOS)
             // Light status-bar icons while they sit on the sky.
@@ -287,6 +296,29 @@ struct ShowcaseTab: View {
                 if scenes.isEmpty { scenes = GeneratedScenes.all() }
             }
             .task {
+                guard releases.isEmpty else { return }
+                releases = await Task.detached(priority: .utility) { WhatsNewChangelog.load() }.value
+            }
+            // Android's `WhatsNewSheet`, from the header's sparkle. Shown only
+            // once the release notes are loaded, so a return from a demo never
+            // brings back an empty sheet.
+            .sheet(isPresented: whatsNewSheetShown, onDismiss: {
+                guard let demo = demoFromSheet else { return }
+                demoFromSheet = nil
+                open(demo, from: Self.whatsNewSourceId)
+            }) {
+                WhatsNewSheet(releases: releases, tryDemos: tryDemos) { demo in
+                    demoFromSheet = demo
+                    whatsNewSheet.leaveForSample()
+                }
+                #if os(iOS)
+                .presentationDetents([.medium, .large])
+                .partialSheetBackground(.regularMaterial)
+                .presentationCornerRadius(SceneViewTokens.Radius.xl)
+                .presentationDragIndicator(.visible)
+                #endif
+            }
+            .task {
                 // One frame late, so the first layout paints the pre-reveal
                 // state and the cascade has something to animate from.
                 guard !catalogueRevealed else { return }
@@ -294,7 +326,7 @@ struct ShowcaseTab: View {
                 guard !Task.isCancelled else { return }
                 catalogueRevealed = true
             }
-            .sheet(item: $comingSoonScene) { scene in
+            .sheet(item: $comingSoonScene, onDismiss: { whatsNewSheet.hostReturned() }) { scene in
                 ComingSoonScreen(
                     title: scene.title,
                     subtitle: scene.subtitle,
@@ -309,7 +341,7 @@ struct ShowcaseTab: View {
                 #endif
             }
             #if os(iOS)
-            .fullScreenCover(item: $fullScreenScene) { scene in
+            .fullScreenCover(item: $fullScreenScene, onDismiss: { whatsNewSheet.hostReturned() }) { scene in
                 DemoCover(scene: scene, source: searching ? .search : .home) { fullScreenScene = nil }
                     // The row that was tapped expands into the demo, and
                     // collapses back into it on close. Before this, a demo
@@ -332,7 +364,7 @@ struct ShowcaseTab: View {
                     .interactiveDismissDisabled()
             }
             #elseif os(macOS)
-            .sheet(item: $fullScreenScene) { scene in
+            .sheet(item: $fullScreenScene, onDismiss: { whatsNewSheet.hostReturned() }) { scene in
                 DemoCover(scene: scene, source: searching ? .search : .home) { fullScreenScene = nil }
                     // A macOS sheet sizes to its content's ideal size, and a 3D stage
                     // has none: without a floor the demo opened as a 390×100 strip.
@@ -344,6 +376,26 @@ struct ShowcaseTab: View {
 
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
+
+    /// Zoom source of a demo opened from the What's new sheet: none on the
+    /// Home, so the demo comes up on its own rather than out of a row behind
+    /// the sheet.
+    private static let whatsNewSourceId = "whats-new-sheet"
+
+    private var whatsNewSheetShown: Binding<Bool> {
+        Binding(
+            get: { whatsNewSheet == .open && !releases.isEmpty },
+            set: { shown in if !shown { whatsNewSheet.dismiss() } }
+        )
+    }
+
+    /// The sheet's "try them" demos — Android's `inReviewDemos`: every demo
+    /// with a "New" or "Updated" chip, then any still in review.
+    private var tryDemos: [DemoItem] {
+        let fresh = homeScenes.filter { DemoFreshness.of($0) != .none }
+        let freshIds = Set(fresh.map(\.sceneId))
+        return fresh + homeScenes.filter { $0.status == .inReview && !freshIds.contains($0.sceneId) }
+    }
 
     private var heroHeight: CGFloat {
         expanded ? SceneViewTokens.Home.heroHeightExpanded : SceneViewTokens.Home.heroHeight
@@ -432,7 +484,7 @@ struct ShowcaseTab: View {
     private var whatsNewSlot: Int { showWhatsNew ? 1 : 0 }
 
     /// Coordinate space of the scrolled content, to know where the chip row sits.
-    private static let contentSpace = "home-content"
+    nonisolated private static let contentSpace = "home-content"
 
     /// The What's new row's tap: the What's new chip selected, and the page
     /// scrolled so the chip row lands just under the pinned header, the
@@ -594,6 +646,10 @@ private struct HomeHeader: View {
     var overStage = false
     @Binding var query: String
     @Binding var searchOpen: Bool
+    /// The sparkle that opens the What's new sheet — shown once the release
+    /// notes are loaded, as on Android.
+    var showWhatsNew = false
+    var onWhatsNew: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -605,7 +661,9 @@ private struct HomeHeader: View {
                     }
                     .transition(.opacity)
                 } else {
-                    TitleRow(overStage: overStage) { searchOpen = true }
+                    TitleRow(overStage: overStage, showWhatsNew: showWhatsNew, onWhatsNew: onWhatsNew) {
+                        searchOpen = true
+                    }
                         .transition(.opacity)
                 }
             }
@@ -669,6 +727,8 @@ private struct HeaderGround: View {
 
 private struct TitleRow: View {
     var overStage = false
+    var showWhatsNew = false
+    var onWhatsNew: () -> Void = {}
     let onSearch: () -> Void
 
     var body: some View {
@@ -684,6 +744,19 @@ private struct TitleRow: View {
                 .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroTitle : SceneViewTokens.HomeColor.onSurface)
                 .animation(SceneViewTokens.Spring.fade, value: overStage)
             Spacer()
+            if showWhatsNew {
+                Button(action: onWhatsNew) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroSubtitle : SceneViewTokens.HomeColor.onSurfaceDim)
+                        .animation(SceneViewTokens.Spring.fade, value: overStage)
+                        .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 12)
+                .accessibilityLabel("What's new")
+                .accessibilityIdentifier("home-whats-new")
+            }
             Button(action: onSearch) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 20, weight: .medium))
