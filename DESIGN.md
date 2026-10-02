@@ -502,6 +502,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `mode-pill-outline` | 1dp #D1D2D4, opaque | Its edge: the container clears 3:1 on grounds of L ≥ 0.14, the outline on L ≤ 0.18 — every ground is covered |
 | `mode-pill-selected` / `on-mode-pill-selected` | #FFFFFF / #0B0F16 | The checked segment and its label (19.2:1) |
 | `on-mode-pill` | #FFFFFF | Unchecked labels (16.5:1 on the container) |
+| `mode-pill-segment-min-width` | 72dp | A segment's minimum width, so a short label ("ML") keeps a target as wide as the 48dp row is tall |
 
 - **No blur on Android.** A `SurfaceView` cannot be sampled by a Compose render
   effect, so glass over the scene is fill + border only. Do not emulate blur.
@@ -791,7 +792,7 @@ The surface for what an AR demo needs the user to **see** rather than read — a
 share, an input to fill, a meter to watch, or an explanation of why the screen cannot
 work. It stacks directly under the coaching overlay in the same bottom band, so the two
 must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairline, same
-`radius-lg`, same 480px max width, and no elevation shadow: under a translucent scrim a
+`radius-lg`, same `card-max-width` (480dp: iPad, landscape), and no elevation shadow: under a translucent scrim a
 shadow shows through as a darker inner rectangle in dark mode. Padding `space-md`,
 children spaced `space-sm`.
 
@@ -806,10 +807,11 @@ children spaced `space-sm`.
 - **Text input** is unstyled (`BasicTextField`), never a Material text field: every
   Material field colour is a theme role, which is the wrong ground here. Field fill is the
   `Button glass` white-at-8% used for every "present but empty" element over media.
-- **Meters** use three segments at `radius-xs`, `space-sm` tall, `space-xs` apart. Lit
-  segments take the coaching overlay's accent for the state they represent (`warning`
-  while the user must keep moving, `primary` once the value is acceptable); the unlit
-  track is the same `Button glass` fill.
+- **Meters** use three segments at `radius-xs`, `meter-height` (`space-sm`) tall,
+  `space-xs` apart. Lit segments take the coaching overlay's accent for the state they
+  represent (`warning` while the user must keep moving, `primary` once the value is
+  acceptable); the unlit track is the same `Button glass` fill. A **download** meter
+  uses ten segments, lit in `accent-progress`, one per 10 % (ML depth model).
 - **An explanation card carries no action when there is none.** A configuration a user
   cannot change from the phone gets a title and one sentence — a button that would do
   nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).

@@ -50,6 +50,13 @@ let package = Package(
             dependencies: ["SceneViewSwift"],
             path: "Tests/SceneViewSwiftTests",
             resources: [.copy("Resources/ml-depth-fit-vectors.json")]
+        ),
+        // DepthModelStore and DepthAnythingV2Estimator against a tiny model
+        // built in the test and served by a stub URLProtocol: no network.
+        .testTarget(
+            name: "SceneViewDepthMLTests",
+            dependencies: ["SceneViewDepthML", "SceneViewSwift"],
+            path: "Tests/SceneViewDepthMLTests"
         )
     ]
 )

@@ -798,11 +798,13 @@ enum SceneViewTokens {
         /// `accent-progress` — a determinate meter's lit segments on the
         /// scrim (#A4C1FF in both themes). Android's `ArOverlay.accentProgress`.
         static let accentProgress = Color(red: 0xA4 / 255, green: 0xC1 / 255, blue: 0xFF / 255)
-        /// Height of one segment of a meter on the scrim.
-        static let meterHeight: CGFloat = 4
+        /// `meter-height` — one segment of a meter on the scrim: `space-sm`, as
+        /// Android's `ArOverlayMeter`.
+        static let meterHeight: CGFloat = Space.sm
         /// Vertical padding of a caption pill on the scrim (the depth legend).
         static let captionPillVerticalPadding: CGFloat = 6
-        /// An AR overlay card never grows wider than this (iPad, landscape).
+        /// `card-max-width` — an AR overlay card never grows wider than this (iPad,
+        /// landscape). Android's `ArOverlay.maxWidth`.
         static let cardMaxWidth: CGFloat = 480
     }
 

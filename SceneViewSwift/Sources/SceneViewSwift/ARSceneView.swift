@@ -409,9 +409,11 @@ public struct ARSceneView: UIViewRepresentable {
     /// - ``DepthSource/native``: LiDAR `sceneDepth` only — add `.sceneDepth`
     ///   to ``ARSessionConfiguration/frameSemantics``.
     /// - ``DepthSource/ml(_:targetHz:)``: a monocular estimator, scaled to
-    ///   metres against ARKit's feature points and planes, about 10 Hz, on a
-    ///   background queue. `DepthAnythingV2Estimator` lives in the separate
-    ///   `SceneViewDepthML` product so the base package carries no model.
+    ///   metres against ARKit's feature points and planes, up to 5 Hz by
+    ///   default (Android's `MlDepthSession` cadence), on a background queue.
+    ///   Leave `.sceneDepth` out of `frameSemantics` in this mode.
+    ///   `DepthAnythingV2Estimator` lives in the separate `SceneViewDepthML`
+    ///   product so the base package carries no model.
     /// - ``DepthSource/auto(ml:targetHz:)``: LiDAR when the frame has it,
     ///   otherwise the estimator if its first-launch benchmark passes.
     ///
@@ -433,7 +435,10 @@ public struct ARSceneView: UIViewRepresentable {
         return copy
     }
 
-    /// Receives the depth layer's status on the main thread, only when it changes.
+    /// Receives the depth layer's status on the main thread, only when it
+    /// changes. While ML depth runs, ``DepthSourceState/running(_:)`` carries
+    /// fresh ``MLDepthStats`` with every published map (Android:
+    /// `MlDepthSession.state`).
     public func onDepthSourceState(_ handler: @escaping (DepthSourceState) -> Void) -> ARSceneView {
         var copy = self
         copy.onDepthSourceState = handler

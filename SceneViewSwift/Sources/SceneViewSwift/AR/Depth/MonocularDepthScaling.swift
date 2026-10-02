@@ -3,12 +3,12 @@ import Foundation
 /// One metric anchor for the scale fit: the model's raw output `d` sampled
 /// where a world point of known depth `z` (metres, along the optical axis)
 /// projects, with a confidence weight.
-public struct DepthAnchorSample: Sendable, Hashable, Codable {
-    public var d: Float
-    public var z: Float
-    public var confidence: Float
+struct DepthAnchorSample: Sendable, Hashable, Codable {
+    var d: Float
+    var z: Float
+    var confidence: Float
 
-    public init(d: Float, z: Float, confidence: Float = 1) {
+    init(d: Float, z: Float, confidence: Float = 1) {
         self.d = d
         self.z = z
         self.confidence = confidence
@@ -32,61 +32,56 @@ public struct DepthAnchorSample: Sendable, Hashable, Codable {
 /// anchors whose relative depth error exceeds 20 %. A fit is only returned
 /// when it is well conditioned: at least 12 inliers, an inlier depth range of
 /// at least 1.5×, and a positive scale. The same algorithm and the same JSON
-/// test vectors exist on Android (`DepthScaleFit`).
-public enum AffineInverseDepthFit {
-    public struct Parameters: Sendable, Hashable {
+/// test vectors exist on Android (`DepthScaleFit`, internal there too).
+enum AffineInverseDepthFit {
+    struct Parameters: Sendable, Hashable {
         /// Weight of the temporal prior relative to the data term (λ = α · data).
-        public var priorWeight: Double = 0.05
+        var priorWeight: Double = 0.05
         /// Huber threshold on the relative depth error.
-        public var huberDelta: Double = 0.05
+        var huberDelta: Double = 0.05
         /// Anchors whose predicted depth is off by more than this are dropped.
-        public var outlierRelativeError: Double = 0.2
+        var outlierRelativeError: Double = 0.2
         /// IRLS refinements after the first solve.
-        public var iterations: Int = 3
-        public var minimumInliers: Int = 12
-        public var minimumDepthRatio: Float = 1.5
+        var iterations: Int = 3
+        var minimumInliers: Int = 12
+        var minimumDepthRatio: Float = 1.5
 
-        public init() {}
+        init() {}
     }
 
-    public struct Result: Sendable, Hashable {
-        public let scale: Float
-        public let shift: Float
-        public let inlierCount: Int
+    struct Result: Sendable, Hashable {
+        let scale: Float
+        let shift: Float
+        let inlierCount: Int
         /// RMS of the inliers' relative depth error.
-        public let relativeRMSError: Float
+        let relativeRMSError: Float
         /// Depth range covered by the inliers, in metres.
-        public let inlierDepthRange: ClosedRange<Float>
+        let inlierDepthRange: ClosedRange<Float>
     }
 
-    /// Fits `1/z = s·d + t` (``MonocularDepthOutputKind/affineInverse``) or
-    /// `z = s·d + t` (``MonocularDepthOutputKind/affineDepth``). Returns `nil`
-    /// when the anchors cannot support a trustworthy fit.
-    public static func fit(
+    /// Fits `1/z = s·d + t` for ``MonocularDepthOutputKind/affineInverse``
+    /// output. Returns `nil` for metric output (nothing to fit) and when the
+    /// anchors cannot support a trustworthy fit.
+    static func fit(
         _ anchors: [DepthAnchorSample],
         kind: MonocularDepthOutputKind = .affineInverse,
         prior: (scale: Float, shift: Float)? = nil,
         parameters: Parameters = Parameters()
     ) -> Result? {
-        guard kind != .metric, anchors.count >= parameters.minimumInliers else { return nil }
-        let inverse = kind == .affineInverse
+        guard kind == .affineInverse, anchors.count >= parameters.minimumInliers else { return nil }
         let n = anchors.count
         let d = anchors.map { Double($0.d) }
         let z = anchors.map { Double($0.z) }
         let c = anchors.map { Double($0.confidence) }
         // Target and base weight per anchor: both make the residual relative in z.
-        let y = z.map { inverse ? 1 / $0 : $0 }
-        func baseWeight(_ i: Int) -> Double { inverse ? c[i] * z[i] * z[i] : c[i] / (z[i] * z[i]) }
+        let y = z.map { 1 / $0 }
+        func baseWeight(_ i: Int) -> Double { c[i] * z[i] * z[i] }
         var inlier = (0..<n).map { z[$0] > 0 && z[$0].isFinite && c[$0] > 0 && d[$0].isFinite }
 
         func relativeDepthError(_ i: Int, _ s: Double, _ t: Double) -> Double {
             let p = s * d[i] + t
-            if inverse {
-                guard p > minimumInverseDepth else { return .infinity }
-                return abs(1 / p - z[i]) / z[i]
-            }
-            guard p > 0 else { return .infinity }
-            return abs(p - z[i]) / z[i]
+            guard p > minimumInverseDepth else { return .infinity }
+            return abs(1 / p - z[i]) / z[i]
         }
 
         // Consensus seed: with z²-weighting, a few far outliers dominate a
@@ -205,38 +200,38 @@ public enum AffineInverseDepthFit {
 /// keeps the previous one for at most ``maxHeldFrames`` ML frames; after that
 /// the output is `nil` and depth stops until a new valid fit — never a stale
 /// scale held forever.
-public struct DepthScaleSmoother: Sendable {
-    public struct Output: Sendable, Hashable {
-        public let scale: Float
-        public let shift: Float
-        public let inlierCount: Int
-        public let relativeRMSError: Float
-        public let inlierDepthRange: ClosedRange<Float>
-        public let held: Bool
+struct DepthScaleSmoother: Sendable {
+    struct Output: Sendable, Hashable {
+        let scale: Float
+        let shift: Float
+        let inlierCount: Int
+        let relativeRMSError: Float
+        let inlierDepthRange: ClosedRange<Float>
+        let held: Bool
     }
 
     /// Weight of the new fit, 0…1.
-    public var gain: Float
-    public var maxHeldFrames: Int
+    var gain: Float
+    var maxHeldFrames: Int
     private var current: Output?
     private var heldFrames = 0
 
-    public init(gain: Float = 0.6, maxHeldFrames: Int = 5) {
+    init(gain: Float = 0.6, maxHeldFrames: Int = 5) {
         self.gain = gain
         self.maxHeldFrames = maxHeldFrames
     }
 
     /// The prior for the next fit: the last smoothed value, if any.
-    public var prior: (scale: Float, shift: Float)? {
+    var prior: (scale: Float, shift: Float)? {
         current.map { ($0.scale, $0.shift) }
     }
 
-    public mutating func reset() {
+    mutating func reset() {
         current = nil
         heldFrames = 0
     }
 
-    public mutating func update(with fit: AffineInverseDepthFit.Result?) -> Output? {
+    mutating func update(with fit: AffineInverseDepthFit.Result?) -> Output? {
         guard let fit else {
             guard let previous = current else { return nil }
             heldFrames += 1
@@ -269,12 +264,12 @@ public struct DepthScaleSmoother: Sendable {
 
 /// Turns a relative map plus a fit into the millimetre map and per-pixel
 /// confidence of an ``ARDepthFrame``.
-public enum MonocularDepthConversion {
+enum MonocularDepthConversion {
     /// Depths outside this window (metres) are reported as invalid.
-    public static let validRange: ClosedRange<Float> = 0.2...8
+    static let validRange: ClosedRange<Float> = 0.2...8
 
     /// - Returns: `width × height` millimetres (`0` = invalid) and confidences.
-    public static func convert(
+    static func convert(
         _ estimate: MonocularDepthEstimate,
         kind: MonocularDepthOutputKind,
         scale: Float,
@@ -294,8 +289,6 @@ public enum MonocularDepthConversion {
             case .affineInverse:
                 let p = scale * v + shift
                 z = p > Float(AffineInverseDepthFit.minimumInverseDepth) ? 1 / p : 0
-            case .affineDepth:
-                z = scale * v + shift
             case .metric:
                 z = v
             }

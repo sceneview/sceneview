@@ -11,8 +11,10 @@ import simd
 /// - ``Source-swift.enum/native`` — ARKit `sceneDepth` (LiDAR), 256×192.
 /// - ``Source-swift.enum/ml`` — a monocular estimator (Depth Anything V2
 ///   Small through the `SceneViewDepthML` product), scaled to metres against
-///   ARKit's feature points and planes. Lower resolution, ~10 Hz, and 100 to
+///   ARKit's feature points and planes. Lower resolution, up to 5 Hz, and 100 to
 ///   300 ms behind the camera: always use ``cameraTransform`` to place it.
+///   The fit figures (anchors, inliers, error) live in
+///   ``DepthSourceState/running(_:)``, as on Android.
 ///
 /// The map is stored in the camera image's own orientation (landscape, the
 /// sensor's), row-major, top-left origin. A value of `0` means "no depth here".
@@ -37,43 +39,6 @@ public struct ARDepthFrame: Sendable {
         case ml
     }
 
-    /// What a monocular frame was scaled with. Only present on
-    /// ``Source-swift.enum/ml`` frames; meant for debug overlays and logs.
-    public struct MLMetadata: Sendable, Hashable {
-        /// Wall time of the model call alone, in milliseconds.
-        public let inferenceMilliseconds: Double
-        /// Anchors projected into the frame (feature points + plane hits).
-        public let anchorCount: Int
-        /// Anchors kept by the robust fit.
-        public let inlierCount: Int
-        /// The fit `1/z = scale · d + shift` actually applied (after smoothing).
-        public let scale: Float
-        public let shift: Float
-        /// Root-mean-square relative depth error of the inliers (0.05 = 5 %).
-        public let relativeRMSError: Float
-        /// `true` when this frame reused the previous scale because its own fit
-        /// was not well conditioned (at most a few frames in a row).
-        public let heldPreviousScale: Bool
-
-        public init(
-            inferenceMilliseconds: Double,
-            anchorCount: Int,
-            inlierCount: Int,
-            scale: Float,
-            shift: Float,
-            relativeRMSError: Float,
-            heldPreviousScale: Bool
-        ) {
-            self.inferenceMilliseconds = inferenceMilliseconds
-            self.anchorCount = anchorCount
-            self.inlierCount = inlierCount
-            self.scale = scale
-            self.shift = shift
-            self.relativeRMSError = relativeRMSError
-            self.heldPreviousScale = heldPreviousScale
-        }
-    }
-
     /// Capture time, on the `ARFrame.timestamp` clock (seconds).
     public let timestamp: TimeInterval
     public let width: Int
@@ -89,8 +54,6 @@ public struct ARDepthFrame: Sendable {
     /// +x right, +y up, −z forward in the sensor's landscape orientation).
     public let cameraTransform: simd_float4x4
     public let source: Source
-    /// Scale fit details for ``Source-swift.enum/ml`` frames, `nil` otherwise.
-    public let ml: MLMetadata?
 
     public init(
         timestamp: TimeInterval,
@@ -100,8 +63,7 @@ public struct ARDepthFrame: Sendable {
         confidence: [UInt8]? = nil,
         intrinsics: simd_float3x3,
         cameraTransform: simd_float4x4,
-        source: Source,
-        ml: MLMetadata? = nil
+        source: Source
     ) {
         precondition(millimetres.count == width * height, "millimetres must hold width × height values")
         precondition(confidence == nil || confidence!.count == width * height,
@@ -114,7 +76,6 @@ public struct ARDepthFrame: Sendable {
         self.intrinsics = intrinsics
         self.cameraTransform = cameraTransform
         self.source = source
-        self.ml = ml
     }
 
     /// Depth along the optical axis in metres at pixel (`x`, `y`), or `nil`

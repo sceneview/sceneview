@@ -1,6 +1,7 @@
 import CoreML
 import CryptoKit
 import Foundation
+import os
 
 /// One file of a pinned remote model, verified by SHA-256 before use.
 public struct PinnedModelFile: Sendable, Hashable {
@@ -120,35 +121,56 @@ public enum DepthModelSource: Sendable {
 /// Fetches, verifies, compiles and caches depth models in
 /// `Application Support/SceneViewDepthML` (excluded from backups). Nothing is
 /// downloaded unless the app asks for ``DepthModelSource/pinnedDownload(_:)``.
-public final class DepthModelStore: @unchecked Sendable {
+///
+/// Safe to call from any number of tasks at once: concurrent requests for the
+/// same model share one download and one compilation (every caller's
+/// `progress` is reported), and each fetch stages its files in a folder of its
+/// own, so two fetches never write the same file.
+public final class DepthModelStore: Sendable {
     public static let shared = DepthModelStore()
 
     public let directory: URL
-    private let fileManager = FileManager.default
+    private let session: URLSession
+    private let fetches = ModelFetches()
+    /// Staging and `.incoming-` folders this process is writing right now,
+    /// which the stale-file sweep must leave alone however old they are.
+    private let activeFolders = OSAllocatedUnfairLock(initialState: Set<String>())
 
-    public init(directory: URL? = nil) {
+    /// Leftovers of an interrupted fetch older than this are deleted.
+    static let staleAge: TimeInterval = 10 * 60
+
+    /// - Parameters:
+    ///   - directory: the cache folder; `Application Support/SceneViewDepthML`
+    ///     by default.
+    ///   - session: the session pinned downloads go through (`.shared` by
+    ///     default).
+    public init(directory: URL? = nil, session: URLSession = .shared) {
         self.directory = directory ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SceneViewDepthML", isDirectory: true)
+        self.session = session
     }
 
     /// The compiled model cached for `key` (a ``PinnedRemoteModel/cacheKey``,
     /// an On-Demand Resources name or a package name), if it is on disk.
     public func cachedCompiledModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) -> URL? {
         let url = compiledURL(named: key)
-        return fileManager.fileExists(atPath: url.path) ? url : nil
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// Deletes the cached compiled model (and any interrupted download).
+    /// Deletes the cached compiled model.
     public func removeCachedModel(named key: String = PinnedRemoteModel.depthAnythingV2SmallF16INT8.cacheKey) throws {
-        for url in [compiledURL(named: key), stagingURL(named: key)] where fileManager.fileExists(atPath: url.path) {
-            try fileManager.removeItem(at: url)
+        let url = compiledURL(named: key)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
         }
     }
 
-    /// Fetches the model if needed and loads it. When a cached model fails to
-    /// load (a damaged cache, an interrupted OS update), the cache is purged
-    /// and the model fetched again, once.
+    /// Fetches the model if needed and loads it. When a cached model cannot
+    /// be read (a damaged cache, an interrupted OS update), the cache is
+    /// purged and the model fetched again, once. A model that loads but does
+    /// not look like a depth model (``DepthModelError``) is reported as is:
+    /// fetching it again would not change it.
     ///
     /// - Parameter progress: download fraction 0…1, called on an arbitrary queue.
     public func estimator(
@@ -159,6 +181,8 @@ public final class DepthModelStore: @unchecked Sendable {
         let url = try await compiledModel(from: source, progress: progress)
         do {
             return try DepthAnythingV2Estimator(compiledModelURL: url, computeUnits: computeUnits)
+        } catch let error as DepthModelError {
+            throw error
         } catch {
             guard let key = source.cacheKey else { throw error }
             try? removeCachedModel(named: key)
@@ -168,32 +192,58 @@ public final class DepthModelStore: @unchecked Sendable {
     }
 
     /// Returns a compiled model ready for `MLModel(contentsOf:)`, fetching and
-    /// compiling it first if needed.
+    /// compiling it first if needed. Concurrent calls for the same model share
+    /// one fetch.
     ///
     /// - Parameter progress: download fraction 0…1, called on an arbitrary queue.
     public func compiledModel(
         from source: DepthModelSource,
         progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> URL {
+        guard let key = source.cacheKey else {
+            if case .compiledModel(let url) = source { return url }
+            preconditionFailure("every other source has a cache key")
+        }
+        if case .modelPackage = source {
+            // A local package may change between calls: always recompile it.
+        } else if let cached = cachedCompiledModel(named: key) {
+            return cached
+        }
+        return try await fetches.run(key: key, progress: progress) { [self] report in
+            try await fetch(source, key: key, progress: report)
+        }
+    }
+
+    // MARK: - Internals
+
+    private func fetch(_ source: DepthModelSource, key: String,
+                       progress: @escaping @Sendable (Double) -> Void) async throws -> URL {
+        if case .modelPackage = source {} else if let cached = cachedCompiledModel(named: key) {
+            // Another fetch finished between the cache check and this one.
+            return cached
+        }
         switch source {
         case .compiledModel(let url):
             return url
         case .modelPackage(let url):
-            return try await compileAndCache(url, name: url.deletingPathExtension().lastPathComponent)
+            return try await compileAndCache(url, name: key)
         case .pinnedDownload(let remote):
-            if let cached = cachedCompiledModel(named: remote.cacheKey) { return cached }
-            let package = try await download(remote, progress: progress)
-            defer { try? fileManager.removeItem(at: stagingURL(named: remote.cacheKey)) }
-            return try await compileAndCache(package, name: remote.cacheKey)
+            try prepareDirectory()
+            let staging = directory.appendingPathComponent(
+                "staging-\(remote.cacheKey)-\(UUID().uuidString).mlpackage", isDirectory: true)
+            claim(staging)
+            defer {
+                try? FileManager.default.removeItem(at: staging)
+                release(staging)
+            }
+            try await download(remote, into: staging, progress: progress)
+            return try await compileAndCache(staging, name: key)
         case .onDemandResource(let tag, let resourceName):
-            if let cached = cachedCompiledModel(named: resourceName) { return cached }
             #if os(iOS) || os(visionOS) || os(tvOS)
             let request = NSBundleResourceRequest(tags: [tag])
-            let observation = progress.map { report in
-                request.progress.observe(\.fractionCompleted) { p, _ in report(p.fractionCompleted) }
-            }
+            let observation = request.progress.observe(\.fractionCompleted) { p, _ in progress(p.fractionCompleted) }
             defer {
-                observation?.invalidate()
+                observation.invalidate()
                 request.endAccessingResources()
             }
             try await request.beginAccessingResources()
@@ -211,27 +261,50 @@ public final class DepthModelStore: @unchecked Sendable {
         }
     }
 
-    // MARK: - Internals
-
     private func compiledURL(named name: String) -> URL {
         directory.appendingPathComponent("\(name).mlmodelc", isDirectory: true)
     }
 
-    private func stagingURL(named name: String) -> URL {
-        directory.appendingPathComponent("staging-\(name).mlpackage", isDirectory: true)
+    private func claim(_ folder: URL) {
+        _ = activeFolders.withLock { $0.insert(folder.lastPathComponent) }
     }
 
-    private func prepareDirectory() throws {
+    private func release(_ folder: URL) {
+        _ = activeFolders.withLock { $0.remove(folder.lastPathComponent) }
+    }
+
+    func prepareDirectory() throws {
+        let fileManager = FileManager.default
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         var url = directory
         try? url.setResourceValues(values)
+        removeStaleLeftovers()
+    }
+
+    /// Deletes what an interrupted fetch (a crash, a killed app) left behind:
+    /// `staging-*` and `.incoming-*` folders older than ``staleAge`` that no
+    /// fetch of this process is using.
+    func removeStaleLeftovers(now: Date = Date()) {
+        let fileManager = FileManager.default
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: []) else { return }
+        let active = activeFolders.withLock { $0 }
+        for entry in entries {
+            let name = entry.lastPathComponent
+            guard name.hasPrefix("staging-") || name.hasPrefix(".incoming-"), !active.contains(name) else { continue }
+            let modified = (try? entry.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            if now.timeIntervalSince(modified) > Self.staleAge {
+                try? fileManager.removeItem(at: entry)
+            }
+        }
     }
 
     private func compileAndCache(_ package: URL, name: String) async throws -> URL {
         let compiled = try await MLModel.compileModel(at: package)
-        defer { try? fileManager.removeItem(at: compiled) }
+        defer { try? FileManager.default.removeItem(at: compiled) }
         return try copyIntoCache(compiled, name: name)
     }
 
@@ -239,11 +312,14 @@ public final class DepthModelStore: @unchecked Sendable {
     /// crash or a full disk mid-copy leaves the previous model (or nothing),
     /// never half a model under the final name.
     private func copyIntoCache(_ compiled: URL, name: String) throws -> URL {
+        let fileManager = FileManager.default
         try prepareDirectory()
         let destination = compiledURL(named: name)
         let temporary = directory.appendingPathComponent(".incoming-\(UUID().uuidString).mlmodelc", isDirectory: true)
-        try fileManager.copyItem(at: compiled, to: temporary)
+        claim(temporary)
+        defer { release(temporary) }
         do {
+            try fileManager.copyItem(at: compiled, to: temporary)
             if fileManager.fileExists(atPath: destination.path) {
                 _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
             } else {
@@ -256,41 +332,35 @@ public final class DepthModelStore: @unchecked Sendable {
         return destination
     }
 
-    private func download(_ remote: PinnedRemoteModel, progress: (@Sendable (Double) -> Void)?) async throws -> URL {
-        try prepareDirectory()
-        let staging = stagingURL(named: remote.cacheKey)
+    /// Downloads every file of `remote` into `staging`, each checked against
+    /// its SHA-256 before it is moved in.
+    private func download(_ remote: PinnedRemoteModel, into staging: URL,
+                          progress: @escaping @Sendable (Double) -> Void) async throws {
+        let fileManager = FileManager.default
         let total = Double(max(1, remote.totalBytes))
         var done: Int64 = 0
         for file in remote.files {
+            try Task.checkCancellation()
             let destination = staging.appendingPathComponent(file.path)
-            if fileManager.fileExists(atPath: destination.path),
-               (try? Self.sha256(of: destination)) == file.sha256 {
-                done += file.size
-                progress?(Double(done) / total)
-                continue
-            }
             let offset = done
             let delegate = DownloadProgressDelegate { fraction in
-                progress?((Double(offset) + fraction * Double(file.size)) / total)
+                progress((Double(offset) + fraction * Double(file.size)) / total)
             }
-            let (temporary, response) = try await URLSession.shared.download(
+            let (temporary, response) = try await session.download(
                 from: remote.packageURL.appendingPathComponent(file.path), delegate: delegate)
+            defer { try? fileManager.removeItem(at: temporary) }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                try? fileManager.removeItem(at: temporary)
                 throw DepthModelError.download("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) for \(file.path)")
             }
             guard try Self.sha256(of: temporary) == file.sha256 else {
-                try? fileManager.removeItem(at: temporary)
                 throw DepthModelError.checksumMismatch(file: file.path)
             }
             try fileManager.createDirectory(at: destination.deletingLastPathComponent(),
                                             withIntermediateDirectories: true)
-            if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
             try fileManager.moveItem(at: temporary, to: destination)
             done += file.size
-            progress?(Double(done) / total)
+            progress(Double(done) / total)
         }
-        return staging
     }
 
     /// Streamed SHA-256, lowercase hex.
@@ -302,6 +372,49 @@ public final class DepthModelStore: @unchecked Sendable {
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// One fetch per cache key at a time: a second request for a model already
+/// being fetched waits for that fetch instead of starting its own.
+actor ModelFetches {
+    private struct Entry {
+        let task: Task<URL, any Error>
+        let progress: ProgressFanout
+    }
+
+    private var entries: [String: Entry] = [:]
+
+    func run(
+        key: String,
+        progress: (@Sendable (Double) -> Void)?,
+        operation: @escaping @Sendable (_ report: @escaping @Sendable (Double) -> Void) async throws -> URL
+    ) async throws -> URL {
+        if let entry = entries[key] {
+            entry.progress.add(progress)
+            return try await entry.task.value
+        }
+        let fanout = ProgressFanout()
+        fanout.add(progress)
+        let task = Task { try await operation(fanout.report) }
+        entries[key] = Entry(task: task, progress: fanout)
+        defer { entries[key] = nil }
+        return try await task.value
+    }
+}
+
+/// Forwards one fetch's progress to every caller waiting on it.
+final class ProgressFanout: Sendable {
+    private let handlers = OSAllocatedUnfairLock(initialState: [@Sendable (Double) -> Void]())
+
+    func add(_ handler: (@Sendable (Double) -> Void)?) {
+        guard let handler else { return }
+        handlers.withLock { $0.append(handler) }
+    }
+
+    @Sendable func report(_ fraction: Double) {
+        let current = handlers.withLock { $0 }
+        for handler in current { handler(fraction) }
     }
 }
 

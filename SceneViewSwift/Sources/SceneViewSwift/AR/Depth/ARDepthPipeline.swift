@@ -11,10 +11,10 @@ import VideoToolbox
 ///   well under a millisecond — at most ``lidarMaxHz`` times a second.
 /// - ML depth is captured on the main thread (one GPU blit of the camera
 ///   image into a pooled buffer at the model's input size, plus a copy of the
-///   anchors), then inferred, fitted and converted on a serial background
-///   queue. One inference in flight at most, never a queue: a frame that
-///   arrives while the model runs is simply not used. The `ARFrame` itself is
-///   never retained.
+///   anchors), then inferred, fitted and converted on the estimator's own
+///   serial queue. One inference in flight at most, never a backlog: a frame
+///   that arrives while the model runs is simply not used. The `ARFrame`
+///   itself is never retained.
 @MainActor
 final class ARDepthPipeline {
     static let lidarMaxHz: Double = 15
@@ -30,8 +30,10 @@ final class ARDepthPipeline {
     private var lastLidarPublish: TimeInterval = 0
     private var lastSubmit: TimeInterval = 0
     private var lastSubmittedPose: simd_float4x4?
-    private var lastMLPublish: TimeInterval?
-    private var measuredHz: Double = 0
+    private var stats = MLDepthStatsWindow()
+    /// Bumped whenever the worker changes: a result from an older worker that
+    /// was already on its way to the main queue is dropped.
+    private var generation = 0
 
     /// Installs (or replaces) the source. A source with the same identity is
     /// a no-op, so SwiftUI re-renders do not restart the model.
@@ -41,11 +43,11 @@ final class ARDepthPipeline {
         sourceIdentity = identity
         source = newSource
         worker?.cancel()
+        generation &+= 1
         worker = newSource?.estimator.map { MLDepthWorker(estimator: $0, benchmark: Self.needsBenchmark(newSource)) }
         state = nil
         lastSubmittedPose = nil
-        lastMLPublish = nil
-        measuredHz = 0
+        stats = MLDepthStatsWindow()
         if newSource == nil { publish(nil); return }
     }
 
@@ -56,6 +58,7 @@ final class ARDepthPipeline {
 
     func tearDown() {
         worker?.cancel()
+        generation &+= 1
         worker = nil
         source = nil
         sourceIdentity = nil
@@ -159,7 +162,7 @@ final class ARDepthPipeline {
             setState(.preparing)
             return
         case .failed:
-            setState(.unavailable(.modelFailed)); return
+            setState(.failed(worker.failure ?? MLDepthWorker.unknownFailure)); return
         case .tooSlow:
             setState(.unavailable(.tooSlow)); return
         case .ready:
@@ -184,45 +187,39 @@ final class ARDepthPipeline {
         }
         guard !worker.inFlight, frame.timestamp - lastSubmit >= interval else { return }
         // A still camera sees the same scene: keep the last map.
-        if let previous = lastSubmittedPose, lastMLPublish != nil,
+        if let previous = lastSubmittedPose, stats.hasPublished,
            Self.moved(from: previous, to: frame.camera.transform) == false {
             return
         }
         guard let job = worker.capture(frame) else { return }
         lastSubmit = frame.timestamp
         lastSubmittedPose = frame.camera.transform
+        let jobGeneration = generation
         worker.run(job) { [weak self] result in
-            MainActor.assumeIsolated { self?.receive(result) }
+            MainActor.assumeIsolated { self?.receive(result, generation: jobGeneration) }
         }
     }
 
-    private func receive(_ result: MLDepthResult) {
-        guard worker != nil else { return }
-        let frame: ARDepthFrame
+    func receive(_ result: MLDepthResult, generation jobGeneration: Int) {
+        guard worker != nil, jobGeneration == generation else { return }
         switch result {
-        case .frame(let published):
-            frame = published
-        case .waitingForAnchors(let anchors):
-            setState(.throttled(.waitingForAnchors(anchors: anchors)))
+        case .frame(let frame, let fit):
+            stats.recordInference(fit.inferenceMilliseconds)
+            stats.recordPublish(at: CACurrentMediaTime())
+            setState(.running(stats.snapshot(fit)))
+            publish(frame)
+        case .waitingForAnchors(let anchors, let inferenceMilliseconds):
+            stats.recordInference(inferenceMilliseconds)
+            setState(.waitingForAnchors(anchors: anchors))
             if publishedNonNil { publish(nil) }
-            return
-        case .estimatorError:
+        case .estimatorError(let error):
             // One bad inference keeps the current state; the worker turns
-            // three in a row into `.failed`, which the next frame reports.
+            // three in a row into `.failed`.
             if worker?.phase == .failed {
-                setState(.unavailable(.modelFailed))
+                setState(.failed(worker?.failure ?? error))
                 if publishedNonNil { publish(nil) }
             }
-            return
         }
-        let now = CACurrentMediaTime()
-        if let last = lastMLPublish {
-            let hz = 1 / max(0.001, now - last)
-            measuredHz = measuredHz == 0 ? hz : measuredHz * 0.7 + hz * 0.3
-        }
-        lastMLPublish = now
-        setState(.ml(hz: (measuredHz * 10).rounded() / 10))
-        publish(frame)
     }
 
     static func moved(from a: simd_float4x4, to b: simd_float4x4) -> Bool {
@@ -261,18 +258,40 @@ struct MLDepthJob: @unchecked Sendable {
 
 /// What one ML job produced.
 enum MLDepthResult: Sendable {
-    case frame(ARDepthFrame)
+    case frame(ARDepthFrame, MLDepthFitSummary)
     /// The fit had too few usable anchors; `anchors` were projected.
-    case waitingForAnchors(Int)
+    case waitingForAnchors(anchors: Int, inferenceMilliseconds: Double)
     /// `estimate(_:)` threw.
-    case estimatorError
+    case estimatorError(any Error)
 }
 
 /// The background half of the ML path. All mutable state below `queue` is
-/// only touched on `queue`; `phase` and `inFlight` are read on main and
-/// written through `stateLock`.
+/// only touched on `queue`; `phase`, `failure` and `inFlight` are read on
+/// main and written through `stateLock`.
+///
+/// `queue` belongs to the **estimator**, not to the worker: when a view
+/// replaces its source while an inference runs, the new worker's `warmUp`
+/// and `estimate` calls wait behind the old one, so an estimator is never
+/// called twice at once (the ``MonocularDepthEstimator`` contract).
 final class MLDepthWorker: @unchecked Sendable {
     enum Phase { case idle, preparing, ready, failed, tooSlow }
+
+    /// Reported when a worker failed without keeping the error (never expected).
+    static let unknownFailure = CocoaError(.featureUnsupported)
+
+    private static let queuesLock = NSLock()
+    nonisolated(unsafe) private static let queues = NSMapTable<AnyObject, DispatchQueue>.weakToStrongObjects()
+
+    /// The serial queue every worker of `estimator` runs on. Held as long as
+    /// the estimator lives.
+    static func queue(for estimator: any MonocularDepthEstimator) -> DispatchQueue {
+        queuesLock.withLock {
+            if let existing = queues.object(forKey: estimator) { return existing }
+            let queue = DispatchQueue(label: "io.github.sceneview.mldepth", qos: .userInitiated)
+            queues.setObject(queue, forKey: estimator)
+            return queue
+        }
+    }
 
     static let signposter = OSSignposter(subsystem: "io.github.sceneview", category: "mlDepth")
     static let benchmarkFloorMilliseconds: Double = 400
@@ -282,9 +301,10 @@ final class MLDepthWorker: @unchecked Sendable {
 
     let estimator: any MonocularDepthEstimator
     private let benchmark: Bool
-    private let queue = DispatchQueue(label: "io.github.sceneview.mldepth", qos: .userInitiated)
+    private let queue: DispatchQueue
     private let stateLock = NSLock()
     private var _phase: Phase = .idle
+    private var _failure: (any Error)?
     private var _inFlight = false
     private var _cancelled = false
     private var smoother = DepthScaleSmoother()
@@ -295,6 +315,7 @@ final class MLDepthWorker: @unchecked Sendable {
     init(estimator: any MonocularDepthEstimator, benchmark: Bool) {
         self.estimator = estimator
         self.benchmark = benchmark
+        self.queue = Self.queue(for: estimator)
     }
 
     deinit {
@@ -302,6 +323,9 @@ final class MLDepthWorker: @unchecked Sendable {
     }
 
     var phase: Phase { stateLock.withLock { _phase } }
+    /// Why the phase is `.failed`: the `warmUp` error, or the third
+    /// consecutive `estimate` error.
+    var failure: (any Error)? { stateLock.withLock { _failure } }
     var inFlight: Bool { stateLock.withLock { _inFlight } }
     private var cancelled: Bool { stateLock.withLock { _cancelled } }
 
@@ -310,7 +334,9 @@ final class MLDepthWorker: @unchecked Sendable {
     func prepare() {
         stateLock.withLock { _phase = .preparing }
         queue.async { [self] in
+            guard !cancelled else { return }
             let next: Phase
+            var failure: (any Error)?
             do {
                 try estimator.warmUp()
                 if benchmark {
@@ -321,8 +347,12 @@ final class MLDepthWorker: @unchecked Sendable {
                 }
             } catch {
                 next = .failed
+                failure = error
             }
-            stateLock.withLock { _phase = next }
+            stateLock.withLock {
+                _phase = next
+                _failure = failure
+            }
         }
     }
 
@@ -440,10 +470,13 @@ final class MLDepthWorker: @unchecked Sendable {
                 return
             }
             let result = infer(job)
-            if case .estimatorError = result {
+            if case .estimatorError(let error) = result {
                 consecutiveErrors += 1
                 if consecutiveErrors >= Self.maxConsecutiveErrors {
-                    stateLock.withLock { _phase = .failed }
+                    stateLock.withLock {
+                        _phase = .failed
+                        _failure = error
+                    }
                 }
             } else {
                 consecutiveErrors = 0
@@ -466,7 +499,7 @@ final class MLDepthWorker: @unchecked Sendable {
             estimate = try estimator.estimate(job.image)
         } catch {
             Self.signposter.endInterval("SV:mlDepth:infer", inferState)
-            return .estimatorError
+            return .estimatorError(error)
         }
         let inferenceMilliseconds = (CACurrentMediaTime() - start) * 1000
         Self.signposter.endInterval("SV:mlDepth:infer", inferState)
@@ -486,7 +519,9 @@ final class MLDepthWorker: @unchecked Sendable {
                                                inlierDepthRange: MonocularDepthConversion.validRange, held: false)
         } else {
             let fit = AffineInverseDepthFit.fit(anchors, kind: kind, prior: smoother.prior)
-            guard let output = smoother.update(with: fit) else { return .waitingForAnchors(anchors.count) }
+            guard let output = smoother.update(with: fit) else {
+                return .waitingForAnchors(anchors: anchors.count, inferenceMilliseconds: inferenceMilliseconds)
+            }
             scaled = output
         }
         let converted = MonocularDepthConversion.convert(
@@ -495,15 +530,73 @@ final class MLDepthWorker: @unchecked Sendable {
         return .frame(ARDepthFrame(
             timestamp: job.timestamp, width: estimate.width, height: estimate.height,
             millimetres: converted.millimetres, confidence: converted.confidence,
-            intrinsics: intrinsics, cameraTransform: job.cameraTransform, source: .ml,
-            ml: .init(inferenceMilliseconds: inferenceMilliseconds, anchorCount: anchors.count,
-                      inlierCount: scaled.inlierCount, scale: scaled.scale, shift: scaled.shift,
-                      relativeRMSError: scaled.relativeRMSError, heldPreviousScale: scaled.held)))
+            intrinsics: intrinsics, cameraTransform: job.cameraTransform, source: .ml),
+            MLDepthFitSummary(
+                inferenceMilliseconds: inferenceMilliseconds, anchors: anchors.count,
+                // Metric output has no fit: every anchor counts, as on Android.
+                inliers: kind == .metric ? anchors.count : scaled.inlierCount,
+                rmsRelativeError: scaled.relativeRMSError, holding: scaled.held))
     }
 }
 #endif
 
+import Foundation
 import simd
+
+/// The fit figures of one published ML map (what Android puts in `MlDepthStats`
+/// besides the timing windows).
+struct MLDepthFitSummary: Sendable, Hashable {
+    let inferenceMilliseconds: Double
+    let anchors: Int
+    let inliers: Int
+    let rmsRelativeError: Float
+    let holding: Bool
+}
+
+/// Rolling windows behind ``MLDepthStats``: the last 30 inference durations
+/// and the last 30 publish times. Same windows and formulas as Android's
+/// `MlDepthSession` (`STATS_WINDOW = 30`).
+struct MLDepthStatsWindow {
+    static let size = 30
+    private(set) var inferenceMilliseconds: [Double] = []
+    private(set) var publishTimes: [TimeInterval] = []
+
+    var hasPublished: Bool { !publishTimes.isEmpty }
+
+    mutating func recordInference(_ milliseconds: Double) {
+        inferenceMilliseconds.append(milliseconds)
+        if inferenceMilliseconds.count > Self.size { inferenceMilliseconds.removeFirst() }
+    }
+
+    mutating func recordPublish(at time: TimeInterval) {
+        publishTimes.append(time)
+        if publishTimes.count > Self.size { publishTimes.removeFirst() }
+    }
+
+    var medianInferenceMilliseconds: Double {
+        guard !inferenceMilliseconds.isEmpty else { return 0 }
+        let sorted = inferenceMilliseconds.sorted()
+        return sorted[sorted.count / 2]
+    }
+
+    var publishedHz: Double {
+        guard publishTimes.count >= 2, let first = publishTimes.first, let last = publishTimes.last,
+              last > first else { return 0 }
+        return Double(publishTimes.count - 1) / (last - first)
+    }
+
+    func snapshot(_ fit: MLDepthFitSummary) -> MLDepthStats {
+        MLDepthStats(
+            lastInferenceMs: fit.inferenceMilliseconds,
+            medianInferenceMs: medianInferenceMilliseconds,
+            publishedHz: publishedHz,
+            anchors: fit.anchors,
+            inliers: fit.inliers,
+            rmsRelativeError: fit.rmsRelativeError,
+            holding: fit.holding)
+    }
+}
+
 
 struct MLDepthPlane: Sendable {
     let transform: simd_float4x4

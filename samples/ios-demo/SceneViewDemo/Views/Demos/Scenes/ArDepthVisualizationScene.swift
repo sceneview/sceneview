@@ -130,7 +130,7 @@ struct ARDepthVisualizationDemo: View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
             Text("How to read")
                 .font(.subheadline.weight(.semibold))
-            Text("Warm colors (red/yellow) = near (~0.3 m). Cool colors (cyan/blue) = far (~5 m). Transparent pixels = no depth data.")
+            Text("Warm colors (red/yellow) = near (~0.3\u{00A0}m). Cool colors (cyan/blue) = far (~5\u{00A0}m). Transparent pixels = no depth data.")
                 .font(.footnote)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -154,7 +154,7 @@ struct ARDepthVisualizationDemo: View {
     private var depthSource: DepthSource? {
         switch source {
         case .sensor: return hasLiDAR ? .native : nil
-        case .ml: return model.estimator.map { .ml($0, targetHz: 10) }
+        case .ml: return model.estimator.map { .ml($0) }
         }
     }
 
@@ -163,7 +163,9 @@ struct ARDepthVisualizationDemo: View {
             ARSceneView(
                 configuration: ARSessionConfiguration(
                     planeDetection: .both,
-                    frameSemantics: hasLiDAR ? [.sceneDepth] : []
+                    // ML mode leaves `.sceneDepth` out: the estimator never reads it, and
+                    // the LiDAR stream would cost power for nothing.
+                    frameSemantics: hasLiDAR && source == .sensor ? [.sceneDepth] : []
                 ),
                 showPlaneOverlay: false,
                 showCoachingOverlay: true
@@ -253,7 +255,7 @@ private struct DepthLegendPill: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Text("Near (~0.3 m) ──── Far (~5 m)")
+        Text("Near (~0.3\u{00A0}m) ──── Far (~5\u{00A0}m)")
             .font(SceneViewTokens.TypeScale.chromeCaption)
             .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             .padding(.horizontal, SceneViewTokens.Space.md)
@@ -334,7 +336,7 @@ private struct MLDepthCard: View {
                 .accessibilityLabel("Model download progress")
                 .accessibilityValue("\(Int((fraction * 100).rounded(.down))) %")
             }
-            Text("Apache-2.0 · runs on this device · near 0.3 m to far 5 m")
+            Text("Apache-2.0 · runs on this device · near 0.3\u{00A0}m to far 5\u{00A0}m")
                 .font(SceneViewTokens.TypeScale.caption)
                 .foregroundStyle(Chrome.onScrimDim)
         }
@@ -354,7 +356,7 @@ private struct MLDepthCard: View {
 // MARK: - Model
 
 /// Loads the estimator, colourises depth maps off the main thread, and turns the SDK's
-/// `DepthSourceState` plus the frames' ML metadata into the card's status.
+/// `DepthSourceState` into the card's status — the same mapping as Android's `MlDepthCard`.
 @MainActor
 final class DepthVizModel: ObservableObject {
     enum ModelPhase: Equatable {
@@ -369,19 +371,9 @@ final class DepthVizModel: ObservableObject {
     @Published private(set) var estimator: DepthAnythingV2Estimator?
     @Published private(set) var overlay: UIImage?
     @Published var depthState: DepthSourceState?
-    @Published private(set) var lastML: ARDepthFrame.MLMetadata?
-
-    private var inferenceMs: [Double] = []
     private var rendering = false
     private var generation = 0
     private var loadTask: Task<Void, Never>?
-
-    /// Median of the last 15 estimates, as Android's card reports it.
-    var medianInferenceMs: Double? {
-        guard !inferenceMs.isEmpty else { return nil }
-        let sorted = inferenceMs.sorted()
-        return sorted[sorted.count / 2]
-    }
 
     var cardStatus: MLCardStatus {
         switch modelPhase {
@@ -393,25 +385,26 @@ final class DepthVizModel: ObservableObject {
         switch depthState {
         case .none, .preparing?, .native?:
             return .preparing
-        case .throttled(.waitingForAnchors(let anchors))?:
+        case .waitingForAnchors(let anchors)?:
             return .waiting(anchors: anchors)
+        case .running(let stats)?:
+            if stats.holding { return .holding }
+            return .running(
+                medianMs: Int(stats.medianInferenceMs.rounded()),
+                hz: stats.publishedHz,
+                anchors: stats.inliers,
+                fitErrorPercent: Int((stats.rmsRelativeError * 100).rounded())
+            )
         case .throttled(.thermal)?:
             return .throttled
         case .throttled(.tracking)?:
             return .holding
+        case .failed(let error)?:
+            return .failed(error.localizedDescription)
         case .unavailable(.tooSlow)?:
             return .failed("too slow on this iPhone")
         case .unavailable?:
             return .failed("the estimator stopped")
-        case .ml(let hz)?:
-            guard let ml = lastML else { return .preparing }
-            if ml.heldPreviousScale { return .holding }
-            return .running(
-                medianMs: Int((medianInferenceMs ?? ml.inferenceMilliseconds).rounded()),
-                hz: hz,
-                anchors: ml.inlierCount,
-                fitErrorPercent: Int((ml.relativeRMSError * 100).rounded())
-            )
         }
     }
 
@@ -449,19 +442,12 @@ final class DepthVizModel: ObservableObject {
         generation += 1
         overlay = nil
         depthState = nil
-        lastML = nil
-        inferenceMs.removeAll()
     }
 
     func receive(_ frame: ARDepthFrame?) {
         guard let frame else {
             overlay = nil
             return
-        }
-        if let ml = frame.ml {
-            lastML = ml
-            inferenceMs.append(ml.inferenceMilliseconds)
-            if inferenceMs.count > 15 { inferenceMs.removeFirst() }
         }
         // LiDAR maps come at 60 Hz: skip while the previous one is still being coloured.
         guard !rendering else { return }
@@ -554,7 +540,7 @@ struct DepthVizPreview {
         case "downloading": return ml(.downloading(0.42))
         case "preparing": return ml(.preparing)
         case "waiting": return ml(.waiting(anchors: 3))
-        case "running": return ml(.running(medianMs: 31, hz: 9.6, anchors: 214, fitErrorPercent: 4))
+        case "running": return ml(.running(medianMs: 31, hz: 4.8, anchors: 214, fitErrorPercent: 4))
         case "holding": return ml(.holding)
         case "throttled": return ml(.throttled)
         case "failed": return ml(.failed("The depth model could not be downloaded (HTTP 503)."))

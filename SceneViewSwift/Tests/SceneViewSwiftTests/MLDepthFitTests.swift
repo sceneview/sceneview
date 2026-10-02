@@ -100,15 +100,13 @@ final class MLDepthFitTests: XCTestCase {
         XCTAssertLessThan(fit.relativeRMSError, 1e-4)
     }
 
-    func testAffineDepthKind() throws {
-        // z = 0.5·d + 0.3
+    func testMetricOutputIsNeverFitted() throws {
+        // 1/z = 0.5·d + 0.1: fits as affine inverse, refused as metric.
         let anchors = (0..<20).map { i -> DepthAnchorSample in
             let z = 0.5 + Float(i) * 0.15
-            return DepthAnchorSample(d: (z - 0.3) / 0.5, z: z)
+            return DepthAnchorSample(d: (1 / z - 0.1) / 0.5, z: z)
         }
-        let fit = try XCTUnwrap(AffineInverseDepthFit.fit(anchors, kind: .affineDepth))
-        XCTAssertEqual(fit.scale, 0.5, accuracy: 1e-3)
-        XCTAssertEqual(fit.shift, 0.3, accuracy: 1e-3)
+        XCTAssertNotNil(AffineInverseDepthFit.fit(anchors, kind: .affineInverse))
         XCTAssertNil(AffineInverseDepthFit.fit(anchors, kind: .metric))
     }
 
@@ -252,5 +250,33 @@ final class MLDepthFitTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(DepthAnchorProjection.sampleBilinear(map, width: 2, height: 2, u: 1, v: 1)), 1.5,
                        accuracy: 1e-6)
         XCTAssertNil(DepthAnchorProjection.sampleBilinear(map, width: 2, height: 2, u: 0.2, v: 0.5))
+    }
+
+    // MARK: - Stats (Android: MlDepthSession STATS_WINDOW = 30)
+
+    func testStatsWindowMedianAndPublishedRate() {
+        var window = MLDepthStatsWindow()
+        XCTAssertFalse(window.hasPublished)
+        XCTAssertEqual(window.publishedHz, 0)
+        for ms in [300.0, 100, 200] { window.recordInference(ms) }
+        XCTAssertEqual(window.medianInferenceMilliseconds, 200)
+        // 5 publishes 0.25 s apart = 4 Hz.
+        for i in 0..<5 { window.recordPublish(at: 10 + Double(i) * 0.25) }
+        XCTAssertEqual(window.publishedHz, 4)
+        // Only the last 30 runs count.
+        for _ in 0..<30 { window.recordInference(50) }
+        XCTAssertEqual(window.medianInferenceMilliseconds, 50)
+        let stats = window.snapshot(MLDepthFitSummary(
+            inferenceMilliseconds: 48, anchors: 120, inliers: 90, rmsRelativeError: 0.04, holding: true))
+        XCTAssertEqual(stats, MLDepthStats(lastInferenceMs: 48, medianInferenceMs: 50, publishedHz: 4,
+                                           anchors: 120, inliers: 90, rmsRelativeError: 0.04, holding: true))
+    }
+
+    func testFailedStatesCompareByError() {
+        struct Boom: Error { let code: Int }
+        XCTAssertEqual(DepthSourceState.failed(Boom(code: 1)), .failed(Boom(code: 1)))
+        XCTAssertNotEqual(DepthSourceState.failed(Boom(code: 1)), .failed(Boom(code: 2)))
+        XCTAssertNotEqual(DepthSourceState.failed(Boom(code: 1)), .preparing)
+        XCTAssertEqual(DepthSourceState.waitingForAnchors(anchors: 3), .waitingForAnchors(anchors: 3))
     }
 }
