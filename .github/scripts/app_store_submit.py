@@ -39,8 +39,9 @@ Exit codes are the step's verdict: a non-zero exit is a red step and a release
 that did NOT reach App Review. Do not add a bare `except` that swallows one.
 Exit 75 (EX_TEMPFAIL) is the one exception: DEFERRED, because an IDENTIFIED
 version holds App Store Connect's single non-live slot. Callers grade it green
-with a notice, since app-store-catch-up.yml submits the latest release once
-the slot frees. It is not 2 on purpose: python itself exits 2 when it cannot
+with a notice. For iOS, app-store-catch-up.yml submits the latest release once
+the slot frees; macOS requires a manual app-store.yml dispatch or submission in
+App Store Connect. It is not 2 on purpose: python itself exits 2 when it cannot
 open this file, and that must stay red. A 409 whose holder cannot be named is
 exit 1 — nothing proves it is only a wait.
 """
@@ -168,10 +169,10 @@ for attempt in range(1, POLL_ATTEMPTS + 1):
     # W2's classifier a 401 to misreport as bad credentials. A local
     # ES256 sign costs nothing.
     headers = asc_headers()
-    # With an expected build, ask Apple for that build number directly:
-    # app-store-catch-up.yml re-submits a build uploaded days earlier, which
-    # can sit below the 20 newest uploads. The macOS build carries the same
-    # number, so the platform is still checked client-side below.
+    # With an expected build, ask Apple for that build number directly: the iOS
+    # app-store-catch-up.yml re-submits a build uploaded days earlier, which can
+    # sit below the 20 newest uploads. The macOS build carries the same number,
+    # so the platform is still checked client-side below.
     r = requests.get(
         f"{BASE}/builds?filter[app]={app_id}&filter[processingState]=VALID"
         + (f"&filter[version]={expected_build}" if expected_build else "")
@@ -378,7 +379,7 @@ def _vtuple(vs):
 
 
 def claim_editable_version():
-    """Return the id of the editable iOS record this release will use, or None.
+    """Return the id of the editable platform record this release will use, or None.
 
     A record already named after this release wins. Otherwise the one
     editable record (Apple allows a single non-live version) is retargeted
@@ -447,7 +448,7 @@ def claim_editable_version():
 
 
 def find_slot_holder():
-    """(versionString, state) of the iOS version holding the non-live slot, or None."""
+    """(versionString, state) of this platform's non-live slot holder, or None."""
     OCCUPYING_STATES = ",".join([
         "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_APPLE_RELEASE",
         "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE",
@@ -516,7 +517,7 @@ def supersede(holder_vs, holder_state):
         print(f"Supersede: {holder_vs} not editable yet (attempt {attempt}/{SUPERSEDE_POLLS})")
         time.sleep(SUPERSEDE_POLL_S)
     print(f"::error::Supersede: {holder_vs} was withdrawn from review but never became editable. "
-          "Check it in App Store Connect; the next catch-up run retries.")
+          "Check it in App Store Connect; the next submission run retries.")
     raise SystemExit(1)
 
 
@@ -543,9 +544,9 @@ def defer_or_supersede(slot, apple_409=None):
     STOP HERE unless ASC_SUPERSEDE says otherwise. Step 5a below cancels every
     open reviewSubmission, and its OPEN_STATES includes IN_REVIEW: carrying on
     would pull the PREVIOUS release out of App Review to make room for this
-    one. Deferring costs a wait (app-store-catch-up.yml submits the latest
-    release once the slot frees); continuing costs a release, so it is a
-    human's call, made through the `supersede` input.
+    one. Deferring costs a wait (automatic catch-up on iOS, a manual retry on
+    macOS); continuing costs a release, so it is a human's call, made through
+    the `supersede` input.
     """
     holder_vs, holder_state = slot
     if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
@@ -554,6 +555,16 @@ def defer_or_supersede(slot, apple_409=None):
     if holder_vs == version_string:
         why = (f"{version_string} is already {holder_state} — this release is with "
                "Apple, there is nothing left to submit")
+    elif PLATFORM == "MAC_OS":
+        why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
+               f"version at a time. Build {build_version} is on TestFlight; "
+               "app-store-catch-up.yml covers iOS only. Once "
+               f"{holder_vs} is live, dispatch app-store.yml on tag v{version_string} with "
+               "submit_for_review=true (this rebuilds and uploads both iOS and macOS), or "
+               "submit the Mac build from App Store Connect")
+        if SUPERSEDE:
+            why += " (supersede was requested but only applies to an OLDER version "\
+                   "that is WAITING_FOR_REVIEW or IN_REVIEW)"
     else:
         why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
                f"version at a time. Build {build_version} is on TestFlight; "
@@ -571,9 +582,10 @@ def defer_or_supersede(slot, apple_409=None):
         with open(summary, "a") as f:
             f.write(f"### App Store: {version_string} deferred\n\n{why}.\n")
     # Deferred by Apple's state machine, not broken. Both callers grade
-    # EXIT_DEFERRED as a green step with this notice, because the catch-up
-    # workflow owns the retry — a red badge that only asks a human to
-    # press "re-run" later is what kept iOS days behind (2026-09-28).
+    # EXIT_DEFERRED as a green step with this notice. The catch-up workflow owns
+    # the iOS retry; the macOS notice gives the required manual follow-up. A red
+    # badge that only asks a human to press "re-run" later is what kept iOS days
+    # behind (2026-09-28).
     raise SystemExit(EXIT_DEFERRED)
 
 
@@ -661,8 +673,8 @@ try:
     attrs = {}
 
     # ── whatsNew (every tag) ──────────────────────────────────
-    # Preferred source: a hand-maintained, user-facing
-    # release_notes.txt. Apple's "What's New" must describe the
+    # Preferred source: a hand-maintained, user-facing release_notes.txt on
+    # iOS, or release_notes_macos.txt on macOS. Apple's "What's New" must describe the
     # DEMO app for its App Store users, NOT the SDK's technical,
     # cross-platform CHANGELOG (Apple Guideline 2.3.10 rejects
     # notes referencing other ecosystems). Deriving whatsNew from
@@ -672,7 +684,27 @@ try:
     # downstream (#2893).
     whats_new = None
     notes_file = pathlib.Path("distribution/app-store/en-US/release_notes.txt")
-    if notes_file.exists():
+    mac_notes_file = pathlib.Path("distribution/app-store/en-US/release_notes_macos.txt")
+    if PLATFORM == "MAC_OS":
+        if mac_notes_file.exists():
+            whats_new = mac_notes_file.read_text().strip() or None
+            if whats_new:
+                print(f"whatsNew sourced from release_notes_macos.txt ({len(whats_new)}c)")
+        if not whats_new and notes_file.exists():
+            ios_notes = notes_file.read_text().strip()
+            paragraphs = re.split(r"\n\s*\n", ios_notes) if ios_notes else []
+            other_ar_reference = re.compile(
+                r"ARKit|augmented reality|RealityKit AR|camera passthrough", re.I)
+            whats_new = "\n\n".join(
+                paragraph.strip() for paragraph in paragraphs
+                if paragraph.strip()
+                and not re.search(r"\bAR\b", paragraph)
+                and not other_ar_reference.search(paragraph)
+            ) or None
+            if whats_new:
+                print("whatsNew sourced from release_notes.txt with AR paragraphs removed "
+                      f"for MAC_OS ({len(whats_new)}c)")
+    elif notes_file.exists():
         whats_new = notes_file.read_text().strip() or None
         if whats_new:
             print(f"whatsNew sourced from release_notes.txt ({len(whats_new)}c)")
@@ -718,10 +750,17 @@ try:
             # Name the real state of the file: "No release_notes.txt"
             # sent whoever read this log looking for a missing file
             # that was actually there but blank (#2908 review nit).
-            notes_state = (
-                f"{notes_file} exists but is empty/whitespace-only"
-                if notes_file.exists() else "No release_notes.txt"
-            )
+            if PLATFORM == "MAC_OS":
+                mac_state = (
+                    "release_notes_macos.txt is empty/whitespace-only"
+                    if mac_notes_file.exists() else "No release_notes_macos.txt"
+                )
+                notes_state = f"{mac_state}, and release_notes.txt has no non-AR paragraphs"
+            else:
+                notes_state = (
+                    f"{notes_file} exists but is empty/whitespace-only"
+                    if notes_file.exists() else "No release_notes.txt"
+                )
             print(f"::warning::{notes_state}, and no usable '## v{version_string}' CHANGELOG section — whatsNew left empty; the review submission will 409 (ENTITY_STATE_INVALID) if the field is blank on App Store Connect")
     if whats_new:
         if len(whats_new) > 4000:
