@@ -7382,6 +7382,43 @@ ferrari_f40.glb
 </script>
 ```
 
+### Hand-written `sceneview.js` — transparent canvas, orbit camera, render on demand
+
+`https://sceneview.github.io/js/sceneview.js` (the script-tag viewer used above, global `SceneView`) is **not** the `sceneview-web` npm package described in the next section (Kotlin/JS, global `sceneview`). The two expose different method signatures. The one most often mixed up:
+
+| | Hand-written `sceneview.js` | `sceneview-web` (npm) |
+|---|---|---|
+| Camera orbit | `sv.setCameraOrbit({ angle, height, radius, target, fov })` — one object, every field optional | `sv.setCameraOrbit(theta, phi, distance)` — three positional numbers |
+| Units | `angle`: azimuth in radians. `height`: eye height, an absolute world Y, **not** an angle. `radius`: horizontal distance from the target | `theta`, `phi`: radians. `distance`: from the target |
+| Read it back | `sv.getCameraOrbit()` → `{ angle, height, radius, target, fov }` | — |
+| Frame the model | `sv.frameModel({ fill: 0.8 })` | `sv.fitToModels(0.9)` |
+
+Three positional numbers passed to the hand-written viewer move nothing: it reads fields off its first argument.
+
+```js
+const sv = await SceneView.create('viewer', {
+  transparent: true,       // alpha canvas: the page shows behind the model
+  renderMode: 'onDemand',  // default: 'continuous'
+  fov: 35
+});
+await sv.loadModel('https://sceneview.github.io/models/platforms/Fox.glb');
+
+sv.getCameraOrbit();                 // { angle, height, radius, target: [x, y, z], fov } (a copy)
+sv.setCameraOrbit({ angle: 0.6 });   // chainable; redraws even when the loop is parked
+sv.frameModel({ fill: 0.8 });        // the model covers at most 80% of the view, in height and in width
+sv.frameModel();                     // back to the on-load framing
+
+sv.setRenderMode('onDemand');        // or 'continuous'
+sv.requestRender();                  // one more frame; coalesced; safe to call inside onFrame
+const off = sv.onFrame((canvas) => mirrorCtx.drawImage(canvas, 0, 0)); // after every drawn frame
+off();                               // unsubscribe; dispose() also drops the listeners
+```
+
+- `frameModel({ fill })` fits the volume the bounding box sweeps over a full orbit, so the model is not cropped at any orbit angle; a rounded model reads smaller than `fill`.
+- `'onDemand'` parks the loop once nothing moves (no auto-rotate, drag, inertia, playing animation or pending texture decode). Input, camera calls, scene changes, video frames and `requestRender()` wake it.
+- Both modes draw nothing off-screen or in a hidden tab. A camera or scene call made off-screen still draws one frame, so the canvas is current when it scrolls back in; a playing video does not.
+- `onFrame` only observes frames: it never keeps the loop awake by itself.
+
 ---
 
 ## SceneView Web (Kotlin/JS + Filament.js)
@@ -7668,7 +7705,7 @@ SceneViewer instance methods (all return the viewer for chaining unless noted):
 sv.loadModel(url)           // → Promise<url>
 sv.setEnvironment(iblUrl)
 sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
-sv.setCameraOrbit(theta, phi, distance)  // radians
+sv.setCameraOrbit(theta, phi, distance)  // radians — sceneview-web only; the hand-written sceneview.js takes an object, setCameraOrbit({ angle, height, radius }), see above
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
 sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s

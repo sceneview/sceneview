@@ -1126,6 +1126,9 @@
           <p class="web-api-card__desc">
             Creates an empty viewer without loading a model.
             Call <code>loadModel(url)</code> later. Useful when the model URL is dynamic.
+            Options include <code>transparent</code> (alpha canvas over the page),
+            <code>renderMode</code>, <code>autoRotate</code>, <code>fov</code>,
+            <code>backgroundColor</code> and <code>iblUrl</code>.
           </p>
         </div>
 
@@ -1153,6 +1156,44 @@
           <p class="web-api-card__desc">
             Sets the orbit camera distance from the model center.
             Useful for controlling the initial zoom level.
+          </p>
+        </div>
+
+        <div class="web-api-card reveal">
+          <div class="web-api-card__name">viewer.getCameraOrbit / setCameraOrbit</div>
+          <div class="web-api-card__sig">setCameraOrbit({ angle, height, radius, target, fov })</div>
+          <p class="web-api-card__desc">
+            Reads or moves the orbit camera: azimuth in radians, eye height, distance,
+            look-at point and vertical FOV. Every field is optional. Chainable.
+          </p>
+        </div>
+
+        <div class="web-api-card reveal">
+          <div class="web-api-card__name">viewer.frameModel</div>
+          <div class="web-api-card__sig">frameModel({ fill })</div>
+          <p class="web-api-card__desc">
+            Re-centres the camera so the model covers at most a fraction of the view at any
+            orbit angle, for example <code>{ fill: 0.8 }</code>. Without options, reuses the
+            on-load framing.
+          </p>
+        </div>
+
+        <div class="web-api-card reveal">
+          <div class="web-api-card__name">viewer.setRenderMode / requestRender</div>
+          <div class="web-api-card__sig">setRenderMode('continuous' | 'onDemand')</div>
+          <p class="web-api-card__desc">
+            <code>'onDemand'</code> stops drawing once nothing moves and wakes on input,
+            camera calls, scene changes or <code>requestRender()</code>. Saves battery on
+            pages with several viewers.
+          </p>
+        </div>
+
+        <div class="web-api-card reveal">
+          <div class="web-api-card__name">viewer.onFrame</div>
+          <div class="web-api-card__sig">onFrame(callback) &rarr; unsubscribe</div>
+          <p class="web-api-card__desc">
+            Calls <code>callback(canvas)</code> after every drawn frame, while the image is
+            still readable: copy it with <code>drawImage</code> for reflections or thumbnails.
           </p>
         </div>
 
