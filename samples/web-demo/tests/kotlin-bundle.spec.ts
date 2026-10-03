@@ -205,7 +205,7 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
    */
   test('fitToModels centres a 2 cm model with the requested margin (#3880)', async ({ page }) => {
     const glb = sphereGlb([0.05, 0.03, 0.02], 0.01);
-    await page.route('**/models/khronos_damaged_helmet.glb', (route) =>
+    await page.route('**/models/khronos_toy_car.glb', (route) =>
       route.fulfill({ status: 200, contentType: 'model/gltf-binary', body: glb }),
     );
     await page.goto('/kotlin-bundle/index.html');

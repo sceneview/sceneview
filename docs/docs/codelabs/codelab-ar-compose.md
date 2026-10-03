@@ -117,7 +117,7 @@ Add the AR content block with a model on the anchor:
 val engine = rememberEngine()
 val modelLoader = rememberModelLoader(engine)
 
-val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
 var anchor by remember { mutableStateOf<Anchor?>(null) }
 
@@ -245,7 +245,7 @@ fun ARViewerScreen() {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     var anchor by remember { mutableStateOf<Anchor?>(null) }
 

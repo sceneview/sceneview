@@ -1121,7 +1121,7 @@
       // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
       // cover the wider catalogs.
       var CDN_MODELS = [
-        { name: 'Damaged Helmet', file: 'khronos_damaged_helmet.glb', category: 'Showcase' },
+        { name: 'Toy Car', file: 'khronos_toy_car.glb', category: 'Showcase' },
         { name: 'Sheen Chair', file: 'sheen_chair.glb', category: 'Showcase' },
         { name: 'Chronograph Watch', file: 'chronograph_watch.glb', category: 'Showcase' },
         { name: 'Ferrari F40', file: 'ferrari_f40.glb', category: 'Vehicles' },
@@ -1172,7 +1172,7 @@
 
       function init() {
         setupCanvas();
-        initSceneView('khronos_damaged_helmet.glb', 'Damaged Helmet');
+        initSceneView('khronos_toy_car.glb', 'Toy Car');
         setupTabs();
         setupExplore();
         setupSearch();
@@ -2286,7 +2286,7 @@
           sceneViewInstance.clearScene();
           geometryCount = 0;
           // Restore the default model so leaving the tab isn't a black screen.
-          loadModel(MODEL_BASE + 'khronos_damaged_helmet.glb', 'Damaged Helmet');
+          loadModel(MODEL_BASE + 'khronos_toy_car.glb', 'Toy Car');
         }
       }
 
