@@ -51,7 +51,7 @@ export default function ModelViewer() {
     <SceneView
       style={{ flex: 1 }}
       modelNodes={[
-        { src: 'models/damaged_helmet.glb', scale: 1.0 }
+        { src: 'models/toy_car.glb', scale: 1.0 }
       ]}
       environment="environments/sky_2k.hdr"
       cameraControlMode="orbit"

@@ -596,7 +596,7 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
       if (typeof sv.hitTest !== 'function') return { error: 'hitTest missing on the exported viewer' };
       try {
         // The default orbit camera targets the world origin — a cube at the
-        // default (0,0,0) sits dead under the canvas centre. The helmet the
+        // default (0,0,0) sits dead under the canvas centre. The model the
         // page loads has no collision shape (surface-A loadModel), so the
         // cube is the only pickable node.
         const cube = sv.addCubeNode(0.5);
@@ -623,7 +623,7 @@ test.describe('SceneView Kotlin/JS bundle — browser init', () => {
    *
    * The page behind the canvas is magenta, so a canvas that painted nothing (or painted
    * transparent) fails the opaque cases, and `a = 0` must show that magenta through.
-   * The corner block is empty (the helmet is framed at the centre); `±1` absorbs the
+   * The corner block is empty (the model is framed at the centre); `±1` absorbs the
    * post-process dithering.
    */
   test('setBackgroundColor lands on screen exactly, not tone-mapped (#3879)', async ({ page }) => {

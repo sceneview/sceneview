@@ -260,7 +260,7 @@ extract_refs() {
                    printf "%s|%s\n", $0, f }' || true
 
         # 1b. Single-quoted literals — JS/HTML commonly quote with `'…'`
-        #     (e.g. the web demo's `file: 'khronos_damaged_helmet.glb'`
+        #     (e.g. the web demo's `file: 'khronos_toy_car.glb'`
         #     catalog). `.dart` is here because the Flutter demo quotes every
         #     asset path this way: without it the whole flutter-demo leg
         #     discovered ZERO refs and still printed "All references resolve ✓"
@@ -432,7 +432,7 @@ if [ "$platforms" = "all" ] || [ "$platforms" = "web" ]; then
     # deliverable (copied verbatim to /web-demo/ by docs.yml) and the
     # Playwright dev-server root (playwright.config.ts: `http-server site`).
     # check_bundled_ref also probes the models/ and environments/ sub-roots,
-    # so a bare `khronos_damaged_helmet.glb` resolves.
+    # so a bare `khronos_toy_car.glb` resolves.
     process_platform_refs \
         "web-demo" \
         "samples/web-demo/site" \
