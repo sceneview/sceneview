@@ -55,6 +55,15 @@ fun ARScreen() {
 
 All `rememberXxx` helpers from the base `sceneview` module are also available.
 
+### Camera-image coordinate helpers
+
+| Function | Description |
+|---|---|
+| `Frame.cameraImageToViewMapping(imageSize, viewSize, inputRotationDegrees)` | Snapshots ARCore's current `IMAGE_PIXELS -> VIEW` transform for an asynchronous ML request. |
+| `CameraImageToViewMapping.mapPixel(x, y)` | Maps a pixel from the rotated detector output into view pixels. |
+| `CameraImageToViewMapping.mapNormalized(x, y)` | Maps a normalized point from the rotated detector output into view pixels. |
+| `CameraImageToViewMapping.mapImageNormalized(x, y)` | Maps a normalized point that remains in the unrotated CPU-image space (for example MediaPipe landmarks). |
+
 ### AR node composables (inside `ARSceneView { }`)
 
 | Node | Description |

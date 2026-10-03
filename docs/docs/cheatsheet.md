@@ -171,6 +171,12 @@ wall shadows, and never substitutes a synthetic pool for renderer shading.
 
 ## ARSceneView (low-level / manual placement)
 
+Camera-image ML pipelines should snapshot display geometry while the acquisition frame is
+current. `frame.cameraImageToViewMapping(imageSize, viewSize, rotationDegrees)` returns an
+immutable mapping whose `mapPixel` / `mapNormalized` functions convert rotated detector output
+to view pixels with ARCore's exact crop. Use `mapImageNormalized` when a pipeline reports points
+in the original unrotated image space (MediaPipe Pose does this).
+
 ```kotlin
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
