@@ -106,8 +106,10 @@ the demo draws seven in the two brand tints. Its card is an emulator capture (Pi
 1280×2856) of `sceneview://demo/geometry?cameraDistance=2.7` with `--ez qa_mode true` (spin
 parked), once the studio light has landed — the default framing fills a portrait band
 and leaves no room for a 5:4 crop, hence the distance. Crop: the full-width 1280×1024 band
-from y = 710, resized to 800×640, WebP q85, one capture per theme: the stage does not
-follow the theme, so the two differ by render noise only. The iOS `preview_geometry`
+from y = 710, resized to 800×640, WebP q85. One capture was taken per theme, but the stage
+does not follow the theme and the crop holds no chrome: the two crops came out pixel for
+pixel the same, so `preview_geometry_dark.webp` and `preview_geometry_light.webp` are the
+same bytes (same MD5), like `cosmos` above. The iOS `preview_geometry`
 imageset is not replaced: its scene is not this one yet.
 
 ### Cards generated from real captures (2026-09-30)
