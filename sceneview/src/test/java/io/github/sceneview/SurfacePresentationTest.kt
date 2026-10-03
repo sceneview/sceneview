@@ -29,6 +29,11 @@ class SurfacePresentationTest {
         val surfaceView = SurfaceView(context)
 
         presentation.attach(surfaceView)
+
+        // The composable's observer replays the screen's lifecycle right after attachment.
+        presentation.onLifecycleState(Lifecycle.State.CREATED)
+        assertHidden(surfaceView)
+        presentation.onLifecycleState(Lifecycle.State.STARTED)
         assertHidden(surfaceView)
 
         presentation.onLifecycleState(Lifecycle.State.RESUMED)
@@ -151,6 +156,32 @@ class SurfacePresentationTest {
         val laterSurface = SurfaceView(context)
         presentation.attach(laterSurface)
         assertHidden(laterSurface)
+    }
+
+    @Test
+    fun `a renderer never given a lifecycle state leaves its views alone`() {
+        val presentation = presentation()
+        val textureView = TextureView(context)
+        val replacement = SurfaceView(context)
+
+        // A host driving renderFrame itself: hiding the view would stop every frame from landing.
+        presentation.attach(textureView)
+        assertUntouched(textureView)
+
+        presentation.onFramePresented()
+        assertUntouched(textureView)
+
+        presentation.attach(replacement)
+        assertUntouched(textureView)
+        assertUntouched(replacement)
+
+        presentation.detach()
+        assertUntouched(replacement)
+    }
+
+    private fun assertUntouched(view: View) {
+        assertEquals(View.VISIBLE, view.visibility)
+        assertEquals(1f, view.alpha, 0f)
     }
 
     private fun assertHidden(view: View) {

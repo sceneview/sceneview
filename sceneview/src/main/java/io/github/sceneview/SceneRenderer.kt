@@ -376,6 +376,9 @@ class SceneRenderer(
      *
      * SceneView and ARSceneView call this from their lifecycle observers. Calls must run on the
      * main thread, like the rest of Android view attachment.
+     *
+     * Opt-in: a renderer that is never given a state leaves the visibility and alpha of its view
+     * untouched, so a host that drives [renderFrame] itself keeps presenting as before.
      */
     fun setPresentationState(state: Lifecycle.State) {
         surfacePresentation.onLifecycleState(state)
@@ -509,16 +512,26 @@ internal class SurfacePresentation(
     private val isHostResumed: (android.view.View) -> Boolean = ::isHostActivityResumed,
 ) {
     private var hostView: android.view.View? = null
-    private var presenting = false
+
+    /**
+     * `false` until the first lifecycle state arrives. A renderer nobody feeds a lifecycle (a host
+     * that owns its own frame loop, an instrumented test) must keep the view exactly as its owner
+     * laid it out: hiding it there would stop every frame from reaching the screen.
+     */
+    private var lifecycleDriven = false
+    private var presenting = true
     private var awaitingFirstFrame = false
 
     fun attach(view: android.view.View) {
-        hostView?.takeIf { it !== view }?.let(::hide)
+        val previous = hostView?.takeIf { it !== view }
         hostView = view
+        if (!lifecycleDriven) return
+        previous?.let(::hide)
         if (presenting) showAwaitingFrame(view) else hide(view)
     }
 
     fun onLifecycleState(state: Lifecycle.State) {
+        lifecycleDriven = true
         val present = when {
             state.isAtLeast(Lifecycle.State.RESUMED) -> true
             // Paused but started. A surface already on screen survives only an activity-level
@@ -541,7 +554,7 @@ internal class SurfacePresentation(
     }
 
     fun detach() {
-        hostView?.let(::hide)
+        if (lifecycleDriven) hostView?.let(::hide)
         hostView = null
         presenting = false
         awaitingFirstFrame = false
