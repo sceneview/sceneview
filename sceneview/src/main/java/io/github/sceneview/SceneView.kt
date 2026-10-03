@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
@@ -938,20 +937,12 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
-    // SurfaceView owns a compositor layer outside Compose. Stop presenting that layer as soon as
-    // this destination leaves RESUMED; waiting for AndroidView disposal lets its retained last
-    // buffer survive the whole Navigation exit transition. TextureView follows the same lifecycle
-    // so both surface types have one contract, and the 3D demos cannot retain a stale frame either.
-    // A pause the host activity shares (a system dialog over a still-visible window) keeps the
-    // surface — see [SceneRenderer.setPresentationState]. Disposal hides it through `destroy()`.
-    DisposableEffect(lifecycle, sceneRenderer) {
-        val observer = LifecycleEventObserver { _, event ->
-            sceneRenderer.setPresentationState(event.targetState)
-        }
-        // Adding the observer replays the events up to the current state, so no initial call.
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
+    // Deliberately NOT wired to [SceneRenderer.setPresentationState], unlike ARSceneView. The last
+    // frame of a 3D scene is a still of that scene: it is the right picture for the whole exit
+    // transition, the same as any other Compose content of the outgoing screen. Hiding the surface
+    // when the destination leaves RESUMED made the model vanish the instant back was pressed and
+    // left an empty scene under its chrome until the transition ended. Only a camera feed goes
+    // stale when it stops, so only AR opts in.
 
     // `frameRateGate` (the render-on-demand gate) is declared at the top of this function, above
     // everything that writes Filament state — see its doc comment there (#3108, #3560).

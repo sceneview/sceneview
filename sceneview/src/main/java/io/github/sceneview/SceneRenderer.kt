@@ -386,11 +386,13 @@ class SceneRenderer(
      *   surface is kept, and the frozen frame behind that overlay is the expected picture.
      * - Anything below `STARTED` hides the surface.
      *
-     * SceneView and ARSceneView call this from their lifecycle observers. Calls must run on the
-     * main thread, like the rest of Android view attachment.
+     * ARSceneView calls this from its lifecycle observer: a camera feed that stopped is a stale
+     * picture. Calls must run on the main thread, like the rest of Android view attachment.
      *
      * Opt-in: a renderer that is never given a state leaves the visibility and alpha of its view
-     * untouched, so a host that drives [renderFrame] itself keeps presenting as before.
+     * untouched. SceneView relies on that — the last frame of a 3D scene is a valid still, and it
+     * stays on screen through the exit transition like the rest of the outgoing screen — and so
+     * does a host that drives [renderFrame] itself.
      */
     fun setPresentationState(state: Lifecycle.State) {
         surfacePresentation.onLifecycleState(state)
