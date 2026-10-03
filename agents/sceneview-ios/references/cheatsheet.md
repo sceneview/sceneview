@@ -39,7 +39,7 @@ SceneView { … }
     .autoRotate(speed: 0.3)      // turntable
     .autoCenterContent(true)     // translate content centroid to orbit pivot
     .framingMargin(0.95)         // auto-fit padding; 1.15 default, 1.0 = bounding sphere tangent, < 1 tighter
-    .contentInsets(EdgeInsets(top: 0, leading: 0, bottom: sheetHeight, trailing: 0))  // keep the subject clear of your sheet; view not resized, pose untouched
+    .contentInsets(EdgeInsets(top: 0, leading: 0, bottom: sheetHeight, trailing: 0))  // v4.53.0+, 3D SceneView only (not AR) — keep the subject clear of your sheet; view not resized, pose untouched when autoCenterContent(false)
     .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // INITIAL orbit pose, radians (defaults 0, 30°)
     .cameraPose(pose)            // v4.27.0+ — continuous camera drive (SceneCameraPose, radians)
     .onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — read-back after every change; the hop is required

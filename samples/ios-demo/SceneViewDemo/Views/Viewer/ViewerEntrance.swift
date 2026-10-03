@@ -147,6 +147,13 @@ final class ViewerEntranceDriver {
     /// Until when a report counts as the re-fit that follows a Recenter.
     @ObservationIgnored private var refitDeadline: ContinuousClock.Instant?
     @ObservationIgnored private var onLanded: (() -> Void)?
+    /// Whether ``lastReported`` frames the arriving model, not the one before.
+    @ObservationIgnored private var fitIsOfArrival = false
+    /// Counts the viewport moves; the last one's token is the one that settles.
+    @ObservationIgnored private var viewportMove = 0
+    /// Whether the rectangle the model is framed in is animating: a sheet
+    /// rising or leaving. A fit read meanwhile is stale once it settles.
+    @ObservationIgnored private var viewportMoving = false
 
     private enum Phase {
         case idle
@@ -165,6 +172,7 @@ final class ViewerEntranceDriver {
         self.entity = entity
         restY = entity.position.y
         entity.components.set(OpacityComponent(opacity: 0))
+        fitIsOfArrival = false
         phase = .awaitingRest(azimuth: azimuth, elevation: elevation)
         // Never leave a model hidden: if no fit lands, or the start pose is
         // never reported, show it at rest.
@@ -196,6 +204,44 @@ final class ViewerEntranceDriver {
         phase = .flying
         runLoop()
         return true
+    }
+
+    /// The rectangle the model is framed in is about to animate — a sheet
+    /// rising or leaving. Returns the token to hand ``viewportDidSettle(_:)``.
+    ///
+    /// A flight writes absolute distances through `.cameraPose(_:)`, which
+    /// overwrite the rescale `SceneView.contentInsets(_:)` applies on every
+    /// frame of the move. So a flight under way lands at once — its resting
+    /// pose was fitted before the move, and `SceneView` carries it through —
+    /// and a model still waiting for its fit keeps waiting until the
+    /// rectangle is still.
+    func viewportWillMove() -> Int {
+        viewportMove += 1
+        viewportMoving = true
+        switch phase {
+        case .revealing, .flying:
+            let landed = onLanded
+            if let rest = flight?.rest { write(rest) }
+            stop(settle: true)
+            if let landed {
+                refitDeadline = ContinuousClock.now.advanced(by: .milliseconds(500))
+                landed()
+            }
+        case .idle, .awaitingRest:
+            break
+        }
+        return viewportMove
+    }
+
+    /// The move `token` came from has ended. A model that arrived meanwhile
+    /// takes off from the fit `SceneView` reports now, in the rectangle it
+    /// will stay in.
+    func viewportDidSettle(_ token: Int) {
+        guard token == viewportMove else { return }
+        viewportMoving = false
+        if case .awaitingRest = phase, let fit = lastReported, isEntityInScene, fitIsOfArrival {
+            cameraChanged(fit, entityInScene: true)
+        }
     }
 
     /// Ends any flight at once: the camera stays where it is and the model
@@ -235,6 +281,10 @@ final class ViewerEntranceDriver {
             // The first report once the new model is in the scene is the fit.
             // Reports before that frame the previous model.
             guard entityInScene else { return }
+            fitIsOfArrival = true
+            // Read while a sheet moves, the fit is for a rectangle that is
+            // already gone: `viewportDidSettle(_:)` starts from the last one.
+            guard !viewportMoving else { return }
             let rest = SceneCameraPose(azimuth: azimuth, elevation: elevation,
                                        distance: reported.distance, target: reported.target)
             self.rest = rest

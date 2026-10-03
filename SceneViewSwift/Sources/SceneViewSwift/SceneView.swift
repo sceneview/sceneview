@@ -569,15 +569,23 @@ public struct SceneView: View {
     /// behaves exactly as a view of that size would. This is the contract of
     /// `contentPadding` on Android.
     ///
-    /// The camera pose is untouched — ``onCameraChanged(_:)`` reports nothing
-    /// and ``cameraPose(_:)`` keeps meaning what it meant — so this works
-    /// **with ``autoCenterContent(_:)`` off**, on a camera the host drives.
-    /// With auto-framing on, the fit-to-bounds pass fits the content to the
-    /// visible rectangle instead of the whole view, and a camera the user has
-    /// pinched or orbited keeps its target, its angles and its zoom relative
-    /// to that fit.
+    /// **With ``autoCenterContent(_:)`` off**, on a camera the host drives, the
+    /// camera pose is untouched: ``onCameraChanged(_:)`` reports nothing and
+    /// ``cameraPose(_:)`` keeps meaning what it meant.
     ///
-    /// Taps hit what is drawn under the finger.
+    /// With auto-framing on (the default), the pose does move: the
+    /// fit-to-bounds pass fits the content to the visible rectangle instead of
+    /// the whole view, so the orbit distance follows the insets and
+    /// ``onCameraChanged(_:)`` reports each step. A camera the user has pinched
+    /// or orbited keeps its target, its angles and its zoom relative to that
+    /// fit. A distance written through ``cameraPose(_:)`` is absolute: one read
+    /// from a fit while the insets were changing is stale once they settle.
+    ///
+    /// Taps hit what is drawn under the finger, for ``onEntityTapped(_:)``,
+    /// ``onEntityTapHit(_:)`` and the per-entity ``NodeGesture`` handlers alike.
+    ///
+    /// 3D ``SceneView`` only: ``ARSceneView`` has no such modifier, the device
+    /// camera's projection is not SceneView's to move.
     ///
     /// The insets animate with the transaction that changes them, so a panel
     /// and the subject it pushes aside move on the same curve:
@@ -596,7 +604,8 @@ public struct SceneView: View {
     ///
     /// Applies to the cameras SceneView drives — ``CameraControlMode/orbit``,
     /// ``CameraControlMode/pan`` and ``CameraControlMode/firstPerson``. No
-    /// effect on visionOS, where the headset is the camera.
+    /// effect in the modes handed to Apple's camera controls, nor on visionOS,
+    /// where the headset is the camera. Since 4.53.0.
     ///
     /// - Parameter insets: How far each edge of the view is covered, in points.
     public func contentInsets(_ insets: EdgeInsets) -> SceneView {
@@ -839,18 +848,16 @@ private final class SceneEntities: ObservableObject {
     /// pinch — see #1034. visionOS renders through the headset, no manual
     /// camera entity exists.
     let perspCamera = PerspectiveCamera()
-    /// The perspective lens, set aside while `.contentInsets(_:)` renders
-    /// through a `ProjectiveTransformCameraComponent`. RealityKit keeps
-    /// rendering through the perspective component when an entity carries
-    /// both, so only one of the two is ever on ``perspCamera``.
-    var shelvedLens: PerspectiveCameraComponent?
+    /// Which lens ``perspCamera`` renders through: its perspective one, or
+    /// the projection `.contentInsets(_:)` asks for.
+    var insetsLens = ContentInsetsLens()
     /// The perspective lens SceneView configures — field of view, near plane —
     /// wherever it currently lives: on ``perspCamera``, or shelved.
     var lens: PerspectiveCameraComponent {
-        get { shelvedLens ?? perspCamera.camera }
+        get { insetsLens.shelved ?? perspCamera.camera }
         set {
-            if shelvedLens != nil {
-                shelvedLens = newValue
+            if insetsLens.shelved != nil {
+                insetsLens.shelved = newValue
             } else {
                 perspCamera.camera = newValue
             }
@@ -1655,9 +1662,10 @@ private struct SceneViewRepresentation: View {
         #if os(visionOS)
         return .identity
         #else
-        guard cameraControlMode.isCustom, let size = appliedCache.viewSize else { return .identity }
+        guard let size = appliedCache.viewSize else { return .identity }
         let insets = appliedCache.contentInsets
-        return ContentInsetsProjection(
+        return ContentInsetsProjection.resolved(
+            ownsProjection: cameraControlMode.isCustom,
             viewWidth: Float(size.width), viewHeight: Float(size.height),
             top: Float(insets.top), left: Float(insets.leading),
             bottom: Float(insets.bottom), right: Float(insets.trailing)
@@ -1716,11 +1724,7 @@ private struct SceneViewRepresentation: View {
         guard !projection.isIdentity, let aspect = liveViewportAspect else {
             if appliedCache.projection != nil {
                 appliedCache.projection = nil
-                entities.perspCamera.components.remove(ProjectiveTransformCameraComponent.self)
-                if let lens = entities.shelvedLens {
-                    entities.shelvedLens = nil
-                    entities.perspCamera.components.set(lens)
-                }
+                entities.insetsLens.set(nil, on: entities.perspCamera)
             }
             return
         }
@@ -1732,15 +1736,10 @@ private struct SceneViewRepresentation: View {
         )
         guard key != appliedCache.projection else { return }
         appliedCache.projection = key
-        if entities.shelvedLens == nil {
-            entities.shelvedLens = entities.perspCamera.camera
-            entities.perspCamera.components.remove(PerspectiveCameraComponent.self)
-        }
-        entities.perspCamera.components.set(ProjectiveTransformCameraComponent(
-            projectionMatrix: projection.matrix(
-                fovYDegrees: fovYDegrees, aspect: aspect, near: key.near
-            )
-        ))
+        entities.insetsLens.set(
+            projection.matrix(fovYDegrees: fovYDegrees, aspect: aspect, near: key.near),
+            on: entities.perspCamera
+        )
     }
     #endif
 
@@ -2528,7 +2527,15 @@ private struct SceneViewRepresentation: View {
         // not run or it will fight Apple's gesture system. Early-out here;
         // the modifier applied in `cameraInteractionView` does the work.
         // Closes #1049 (Phase 2).
-        guard cameraControlMode.isCustom else { return }
+        guard cameraControlMode.isCustom else {
+            #if os(iOS) || os(macOS)
+            // The projection is identity for these modes: this puts the
+            // perspective lens back if an inset had replaced it, so what is
+            // drawn and what a tap hits leave the offset together.
+            applyContentInsetsProjection()
+            #endif
+            return
+        }
 
         // Sync the camera state's mode with the modifier-provided value. Done
         // every frame because the modifier propagates as a `let` while the

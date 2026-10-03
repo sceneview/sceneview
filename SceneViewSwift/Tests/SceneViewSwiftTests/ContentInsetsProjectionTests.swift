@@ -1,5 +1,6 @@
 import XCTest
 import simd
+import RealityKit
 @testable import SceneViewSwift
 
 #if os(iOS) || os(macOS) || os(visionOS)
@@ -26,6 +27,62 @@ final class ContentInsetsProjectionTests: XCTestCase {
     /// NDC (y up) of a point given in view points (y down).
     private func ndc(x: Float, y: Float, in size: SIMD2<Float>) -> SIMD2<Float> {
         SIMD2<Float>(2 * x / size.x - 1, 1 - 2 * y / size.y)
+    }
+
+    // MARK: - Camera modes SceneView does not drive
+
+    func testInsetsResolveToIdentityInANativeCameraMode() {
+        for mode in [CameraControlMode.orbit, .pan, .firstPerson] {
+            XCTAssertFalse(resolved(mode, bottom: 400).isIdentity, "\(mode)")
+        }
+        for mode in [CameraControlMode.none, .tilt, .dolly] {
+            XCTAssertEqual(resolved(mode, bottom: 400), .identity, "\(mode)")
+        }
+    }
+
+    #if os(iOS) || os(macOS)
+    /// What `applyCamera()` runs when `.cameraControls(_:)` goes from orbit to
+    /// a native mode with the sheet still up: the projection resolves to
+    /// identity, and the lens swap must put the perspective lens back — the
+    /// tap ray is already back to the plain frustum.
+    @MainActor
+    func testLeavingOrbitWithInsetsPutsThePerspectiveLensBack() throws {
+        let camera = PerspectiveCamera()
+        camera.camera.fieldOfViewInDegrees = fov
+        camera.camera.near = 0.02
+        var lens = ContentInsetsLens()
+
+        let orbit = resolved(.orbit, bottom: 400)
+        lens.set(orbit.matrix(fovYDegrees: fov, aspect: portrait.x / portrait.y, near: 0.02), on: camera)
+        XCTAssertNil(camera.components[PerspectiveCameraComponent.self],
+                     "RealityKit ignores the projective component next to a perspective one")
+        XCTAssertNotNil(camera.components[ProjectiveTransformCameraComponent.self])
+        XCTAssertEqual(lens.shelved?.fieldOfViewInDegrees, fov)
+
+        // A second inset frame keeps the one shelved lens.
+        let taller = resolved(.orbit, bottom: 500)
+        lens.set(taller.matrix(fovYDegrees: fov, aspect: portrait.x / portrait.y, near: 0.02), on: camera)
+        XCTAssertEqual(lens.shelved?.fieldOfViewInDegrees, fov)
+
+        XCTAssertTrue(resolved(.dolly, bottom: 400).isIdentity)
+        lens.set(nil, on: camera)
+        XCTAssertNil(camera.components[ProjectiveTransformCameraComponent.self])
+        let restored = try XCTUnwrap(camera.components[PerspectiveCameraComponent.self])
+        XCTAssertEqual(restored.fieldOfViewInDegrees, fov)
+        XCTAssertEqual(restored.near, 0.02)
+        XCTAssertNil(lens.shelved)
+
+        // Idempotent: a native mode re-applies identity every update.
+        lens.set(nil, on: camera)
+        XCTAssertNotNil(camera.components[PerspectiveCameraComponent.self])
+    }
+    #endif
+
+    private func resolved(_ mode: CameraControlMode, bottom: Float) -> ContentInsetsProjection {
+        ContentInsetsProjection.resolved(
+            ownsProjection: mode.isCustom, viewWidth: portrait.x, viewHeight: portrait.y,
+            top: 0, left: 0, bottom: bottom, right: 0
+        )
     }
 
     // MARK: - Shift
@@ -224,8 +281,8 @@ final class ContentInsetsProjectionTests: XCTestCase {
     private var portraitFrustum: ViewFrustum { ViewFrustum(fovYDegrees: fov, aspect: portrait.x / portrait.y) }
     private var landscapeFrustum: ViewFrustum { ViewFrustum(fovYDegrees: fov, aspect: landscape.x / landscape.y) }
 
-    private func fittedCamera(in frustum: ViewFrustum) -> CameraControls {
-        var camera = CameraControls(mode: .orbit)
+    private func fittedCamera(in frustum: ViewFrustum) -> SceneViewSwift.CameraControls {
+        var camera = SceneViewSwift.CameraControls(mode: .orbit)
         camera.minRadius = 0.05
         camera.maxRadius = 100
         camera.orbitRadius = camera.fitRadius(

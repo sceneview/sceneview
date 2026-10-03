@@ -74,7 +74,9 @@ extension EnvironmentValues {
 /// it from its own environment.
 struct DemoControlsCover<Content: View>: View {
     /// The spring a system sheet rises on, near enough that the subject and
-    /// the sheet read as one motion.
+    /// the sheet read as one motion. Not a `SceneViewTokens` value on purpose:
+    /// it shadows UIKit's sheet transition, which the design system does not
+    /// set — `Spring.animation` (0.35 s) lands the subject before the sheet.
     static var animation: Animation { .spring(duration: 0.5, bounce: 0) }
 
     @Environment(\.demoControlsCover) private var cover
@@ -82,6 +84,28 @@ struct DemoControlsCover<Content: View>: View {
 
     var body: some View {
         content(cover)
+    }
+}
+
+/// Where the system puts a sheet, which decides whether it covers the stage's
+/// bottom at all.
+enum DemoSheetPlacement {
+    /// Whether a sheet presented in this size class is attached to the bottom
+    /// edge, so that its height is what it hides of the stage.
+    ///
+    /// True at compact width — iPhone, a narrow iPad window. At regular width
+    /// it is true from iPadOS 27, where a sheet with detents was captured
+    /// resting on the bottom edge; earlier systems were not observed and may
+    /// centre it as a form sheet, so nothing is inset there. macOS shows a
+    /// sheet as a window-modal panel that leaves no rectangle above it.
+    static func coversBottom(_ horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        #if os(iOS)
+        if horizontalSizeClass == .compact { return true }
+        if #available(iOS 27.0, *) { return true }
+        return false
+        #else
+        return false
+        #endif
     }
 }
 

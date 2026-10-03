@@ -86,6 +86,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     @Environment(\.colorScheme) private var colorScheme
     /// Read above the chrome's `...xxLarge` clamp: the user's real setting.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     public init(
@@ -122,7 +123,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                     // What the sheet hides of the stage, capped at the half the
                     // resting detent never exceeds: a sheet pulled to `.large`
                     // covers the scene, there is nothing left to frame it in.
-                    .environment(\.demoControlsCover, controlsPresented
+                    // Nothing where the sheet is not at the bottom
+                    // (`DemoSheetPlacement`).
+                    .environment(\.demoControlsCover,
+                                 controlsPresented && DemoSheetPlacement.coversBottom(horizontalSizeClass)
                                  ? min(controlsSheetHeight, proxy.size.height / 2)
                                     + proxy.safeAreaInsets.bottom
                                  : 0)

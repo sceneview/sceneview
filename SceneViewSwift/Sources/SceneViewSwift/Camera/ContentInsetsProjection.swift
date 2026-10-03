@@ -89,6 +89,23 @@ struct ContentInsetsProjection: Equatable {
         visibleFraction = SIMD2<Float>(visibleWidth / viewWidth, visibleHeight / viewHeight)
     }
 
+    /// The projection a view asks for, given who owns it.
+    ///
+    /// Identity when `ownsProjection` is false — the camera modes handed to
+    /// Apple's `realityViewCameraControls(_:)` — whatever the insets: SceneView
+    /// neither draws nor hit-tests through an offset there. Rendering, framing
+    /// and the tap ray all resolve through here, so they change together.
+    static func resolved(
+        ownsProjection: Bool, viewWidth: Float, viewHeight: Float,
+        top: Float, left: Float, bottom: Float, right: Float
+    ) -> ContentInsetsProjection {
+        guard ownsProjection else { return .identity }
+        return ContentInsetsProjection(
+            viewWidth: viewWidth, viewHeight: viewHeight,
+            top: top, left: left, bottom: bottom, right: right
+        )
+    }
+
     /// The symmetric frustum that sees exactly the visible rectangle.
     ///
     /// The fit-to-bounds pass fits the content to this frustum instead of the

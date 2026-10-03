@@ -1111,10 +1111,30 @@ private struct EntranceStage: View {
     let pickerPresented: Bool
     /// How much of the stage the controls sheet covers (``DemoControlsCover``).
     @Environment(\.demoControlsCover) private var controlsCover
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// The cover the scene is inset by, animated towards the sheets' own.
+    @State private var cover: CGFloat = 0
 
     var body: some View {
         GeometryReader { proxy in
-            stage(cover: max(controlsCover, pickerPresented ? proxy.size.height / 2 : 0))
+            // The picker hides the bottom half only where it is a bottom sheet.
+            let pickerCover = pickerPresented && DemoSheetPlacement.coversBottom(horizontalSizeClass)
+                ? proxy.size.height / 2 : 0
+            let target = max(controlsCover, pickerCover)
+            stage(cover: cover)
+                .onChange(of: target, initial: true) { _, target in
+                    guard target != cover else { return }
+                    // The flight and the move both drive the camera distance:
+                    // the driver stands down for as long as the cover animates.
+                    // `.removed`, not the logical end: the spring's tail still
+                    // rescales the camera, which a flight reads as a drag.
+                    let move = entrance.viewportWillMove()
+                    withAnimation(DemoControlsCover<EmptyView>.animation, completionCriteria: .removed) {
+                        cover = target
+                    } completion: {
+                        entrance.viewportDidSettle(move)
+                    }
+                }
         }
         .ignoresSafeArea()
     }
@@ -1134,6 +1154,5 @@ private struct EntranceStage: View {
                 let attached = MainActor.assumeIsolated { entrance.isEntityInScene }
                 Task { @MainActor in entrance.cameraChanged(pose, entityInScene: attached) }
             }
-            .animation(DemoControlsCover<EmptyView>.animation, value: cover)
     }
 }
