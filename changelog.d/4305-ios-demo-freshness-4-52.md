@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: the cards reworked in 4.52.0 say so ([#4305](https://github.com/sceneview/sceneview/pull/4305)).** Cosmos, Rolling Balls, Camera & Gestures, Animation & Physics and Contact Shadow Preview declare `@updatedIn 4.52.0`, and Depth Visualization `@addedIn 4.52.0`: merged before the release bump, they still carried 4.51.0, so their "New" and "Updated" chips would have aged out one release early.
