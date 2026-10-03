@@ -41,7 +41,9 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
+import io.github.sceneview.demo.demos.internal.RerunMeshSimplifier
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -65,7 +67,8 @@ import kotlinx.coroutines.withContext
 /*
  * The scan's surface: the room as one meshed, coloured 3D model — its raw depth fused into a TSDF
  * ([RerunTsdf]) while it recorded, meshed by marching cubes ([RerunMarchingCubes]) on demand, drawn
- * by the replay's own 3D view (Points | Surface) and shared as a `.glb` ([RerunMeshGlb]).
+ * by the replay's own 3D view (Points | Surface) and shared as a lighter `.glb` ([RerunMeshGlb],
+ * [RerunMeshSimplifier]) that any viewer opens.
  */
 
 /** What a room model is built from. */
@@ -147,8 +150,9 @@ internal object RerunLiveModels {
     }
 }
 
-/** A built model: its `.glb`, its size, and what building it took. */
+/** A built model: its mesh, the `.glb` the 3D view draws, its size, and what building it took. */
 internal class RerunModelBuild(
+    val mesh: RerunMesh,
     val glb: ByteArray,
     val bounds: FloatArray,
     val triangles: Int,
@@ -156,7 +160,44 @@ internal class RerunModelBuild(
     val buildMs: Long,
     val voxelBytes: Long,
     val budgetReached: Boolean,
-)
+) {
+    /** The light `.glb` a share sends ([sharedRerunModel]), kept from the first share that made it. */
+    @Volatile
+    var shared: ByteArray? = null
+
+    /** The triangles in [shared], so a cached copy that stayed heavy ([stillHeavy]) says so on every share. */
+    @Volatile
+    var sharedTriangles: Int = 0
+
+    /** What the last share has to say, in place of the model's figures; `null` when the light copy went out. */
+    var shareNote: RerunShareNote? by mutableStateOf(null)
+}
+
+/**
+ * The `.glb` a share sends, and whether it is the [whole] mesh instead of the light copy. A light
+ * copy the simplifier could not bring near its target is [heavy].
+ */
+internal class RerunSharedModel(val glb: ByteArray, val whole: Boolean, val heavy: Boolean = false)
+
+/** What a share says when the light copy is not what went out. */
+internal enum class RerunShareNote(@StringRes val message: Int) {
+    /** Too little memory to simplify the mesh: the whole one was shared. */
+    SentWhole(R.string.demo_ar_rerun_share_whole),
+
+    /** Too little memory to write even the whole mesh: nothing was shared. */
+    OutOfMemory(R.string.demo_ar_rerun_share_out_of_memory),
+
+    /** The file could not be written, or handed to the share sheet. */
+    Failed(R.string.demo_ar_rerun_share_failed),
+
+    /** The mesh was lightened, but the simplifier stopped well above its target. */
+    StillHeavy(R.string.demo_ar_rerun_share_still_heavy);
+
+    companion object {
+        /** The note for a share [error] stopped. */
+        fun of(error: Throwable): RerunShareNote = if (error is OutOfMemoryError) OutOfMemory else Failed
+    }
+}
 
 /** Builds the model of [source] — fuse (unless done), mesh, write — reporting its share done to [progress]. */
 internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit): RerunModelBuild {
@@ -193,6 +234,7 @@ internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit
             "glb ${glb.size / KB} KB",
     )
     return RerunModelBuild(
+        mesh = mesh,
         glb = glb,
         bounds = mesh.bounds(),
         triangles = mesh.triangleCount,
@@ -201,6 +243,69 @@ internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit
         voxelBytes = tsdf.bytes,
         budgetReached = tsdf.budgetReached,
     )
+}
+
+/**
+ * The `.glb` a share sends: [build]'s mesh simplified to [RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES]
+ * so a phone's viewer opens it, resting on its floor and centred. It is made on the first share —
+ * seconds of blocking CPU work, reported to [progress], which stops it by throwing — then kept.
+ *
+ * A mesh whose simplification does not fit in the [free] heap ([lightShareFits]), or runs out of
+ * it on the way, is sent whole instead — and not kept: the next share tries the light copy again,
+ * and a phone short of memory does not hold a second full model. Writing the whole one can still
+ * run out of memory: that error is the caller's to catch.
+ */
+internal fun sharedRerunModel(
+    build: RerunModelBuild,
+    free: Long = freeHeapBytes(),
+    progress: (Float) -> Unit,
+): RerunSharedModel {
+    build.shared?.let { return RerunSharedModel(it, whole = false, heavy = stillHeavy(build.sharedTriangles)) }
+    val started = System.nanoTime()
+    var reduced = build.triangles
+    val light = if (lightShareFits(build.vertices, build.triangles, free)) {
+        try {
+            RerunMeshGlb.writeShared(build.mesh, onReduced = { reduced = it }, progress = progress)
+        } catch (ignored: OutOfMemoryError) {
+            // The check is an estimate, and other threads allocate too.
+            null
+        }
+    } else {
+        null
+    }
+    val glb = light ?: RerunMeshGlb.writeShared(build.mesh, fullResolution = true)
+    Log.i(
+        TAG,
+        "shared model: ${build.triangles} triangles, ${build.glb.size / KB} KB -> ${glb.size / KB} KB " +
+            "in ${(System.nanoTime() - started) / NS_PER_MS} ms (${free / MB} MB free, sent whole ${light == null}); " +
+            "triangles ${build.triangles} in, $reduced out, target ${RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES}",
+    )
+    build.sharedTriangles = reduced
+    build.shared = light
+    return RerunSharedModel(glb, whole = light == null, heavy = light != null && stillHeavy(reduced))
+}
+
+/**
+ * Whether a light copy of [triangles] is still far above the simplifier's target: it stops when a
+ * sweep gains under 1 %, so a mesh whose collapses are mostly illegal comes out heavy. Beyond
+ * [HEAVY_OVERSHOOT] times the target the share says so.
+ */
+internal fun stillHeavy(
+    triangles: Int,
+    target: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
+): Boolean = triangles > target * HEAVY_OVERSHOOT
+
+/**
+ * Whether simplifying a mesh of this size fits in [free] bytes of heap: the simplifier's working
+ * arrays may take half of it, the rest is left to the model it writes and to the 3D view.
+ */
+internal fun lightShareFits(vertices: Int, triangles: Int, free: Long): Boolean =
+    RerunMeshSimplifier.workspaceBytes(vertices, triangles) <= free / SHARE_MEMORY_DIVISOR
+
+/** The heap this process may still take. */
+private fun freeHeapBytes(): Long {
+    val runtime = Runtime.getRuntime()
+    return runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
 }
 
 /**
@@ -220,6 +325,8 @@ internal class RerunSurfaceState(
     val failure: String?,
     /** The mesh, once built; on screen while [ReplaySurface.shown]. */
     val surface: ReplaySurface?,
+    /** What the last share has to say, in the words shown ([RerunShareNote]); `null` when it sent the light copy. */
+    val shareNote: String? = null,
 ) {
     /** There is no surface to show, and [failure] says why. */
     val failed: Boolean get() = failure != null
@@ -232,7 +339,7 @@ internal class RerunSurfaceState(
             !wanted -> null
             failure != null -> failure
             build == null -> ModelCopy.BUILDING
-            else -> ModelCopy.stats(build)
+            else -> shareNote ?: ModelCopy.stats(build)
         }
 }
 
@@ -334,13 +441,16 @@ internal fun rememberRerunSurface(
         build = build,
         failure = failure?.let { stringResource(it.message) },
         surface = surface,
+        shareNote = build?.shareNote?.let { stringResource(it.message) },
     )
 }
 
 /**
  * Points | Surface, the head of the replay's timeline card: what the 3D view above draws. The
- * surface builds on the first tap (its progress runs under the switch) and its `.glb` is shared
- * from the button beside it.
+ * surface builds on the first tap (its progress runs under the switch) and a lighter `.glb` of it
+ * is shared from the button beside it: the first share takes a few seconds to simplify the mesh,
+ * under the same progress line. A share that could not send that lighter copy says so in the
+ * surface's caption ([RerunShareNote]).
  *
  * With [captioned] the switch says what the surface is doing — building, failed, or its size —
  * on a line of its own: the card of a phone on its side has no caption to say it in.
@@ -356,7 +466,8 @@ internal fun RerunSurfaceSwitch(
     val chrome = LocalStageChrome.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var sharing by remember { mutableStateOf(false) }
+    // The share under way and its share done; null when there is none.
+    var sharing by remember { mutableStateOf<Float?>(null) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             ConnectedChoiceRow(
@@ -377,23 +488,28 @@ internal fun RerunSurfaceSwitch(
             if (state.wanted && built != null) {
                 IconButton(
                     onClick = {
-                        if (sharing) return@IconButton
-                        sharing = true
+                        if (sharing != null) return@IconButton
+                        sharing = 0f
                         scope.launch {
-                            shareModelFile(context, title, built.glb)
-                            sharing = false
+                            built.shareNote = null
+                            try {
+                                built.shareNote = shareModelFile(context, title, built) { sharing = it }
+                            } finally {
+                                sharing = null
+                            }
                         }
                     },
-                    enabled = !sharing,
+                    enabled = sharing == null,
                     modifier = Modifier.size(SceneViewTokens.Layout.touchTarget).testTag(RERUN_SHARE_MODEL_TAG),
                 ) {
                     Icon(Icons.Rounded.IosShare, contentDescription = ModelCopy.SHARE, tint = chrome.onCard)
                 }
             }
         }
-        if (state.building) {
+        val shareDone = sharing
+        if (state.building || shareDone != null) {
             LinearProgressIndicator(
-                progress = { state.progress },
+                progress = { shareDone ?: state.progress },
                 modifier = Modifier.fillMaxWidth(),
                 color = chrome.accent,
                 trackColor = chrome.track,
@@ -404,7 +520,8 @@ internal fun RerunSurfaceSwitch(
             Text(
                 caption,
                 style = OnScrimCaption,
-                maxLines = 1,
+                // Two lines: on its side the card is narrow, and a share note runs to ~48 characters.
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag(RERUN_SURFACE_CAPTION_TAG),
             )
@@ -412,14 +529,32 @@ internal fun RerunSurfaceSwitch(
     }
 }
 
-/** [glb] as `<title> model.glb` in a fresh cache directory, handed to the share sheet. */
-private suspend fun shareModelFile(context: Context, title: String, glb: ByteArray) {
+/**
+ * [build]'s light model ([sharedRerunModel]) as `<title> model.glb` in a fresh cache directory,
+ * handed to the share sheet. Leaving the screen stops the simplification at its next [progress] step.
+ *
+ * Returns what there is to say about it: the whole mesh went out, the light copy stayed heavy, or — out of memory, a file that
+ * could not be written — nothing did. `null` when the light copy was shared.
+ */
+private suspend fun shareModelFile(
+    context: Context,
+    title: String,
+    build: RerunModelBuild,
+    progress: (Float) -> Unit,
+): RerunShareNote? = runCatching {
+    val shared = withContext(Dispatchers.Default) {
+        val job = coroutineContext.job
+        sharedRerunModel(build) {
+            job.ensureActive()
+            progress(it)
+        }
+    }
     val file = withContext(Dispatchers.IO) {
         val shareRoot = File(context.cacheDir, RERUN_SHARE_DIR)
         // Only the latest shared file is kept: the share sheet has read it by the next share.
         shareRoot.deleteRecursively()
         val dir = File(shareRoot, UUID.randomUUID().toString()).apply { mkdirs() }
-        File(dir, ModelCopy.fileName(title)).apply { writeBytes(glb) }
+        File(dir, ModelCopy.fileName(title)).apply { writeBytes(shared.glb) }
     }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val send = Intent(Intent.ACTION_SEND).apply {
@@ -429,6 +564,15 @@ private suspend fun shareModelFile(context: Context, title: String, glb: ByteArr
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    when {
+        shared.whole -> RerunShareNote.SentWhole
+        shared.heavy -> RerunShareNote.StillHeavy
+        else -> null
+    }
+}.getOrElse { error ->
+    if (error is CancellationException) throw error
+    Log.w(TAG, "model not shared", error)
+    RerunShareNote.of(error)
 }
 
 /** The surface's words. */
@@ -475,3 +619,9 @@ private const val PERCENT = 100
 private const val LIVE_MIN_WEIGHT = 1f
 private const val FUSE_SHARE = 0.5f
 private const val MESH_SHARE = 0.95f
+
+/** A light copy more than this many times the triangle target is called heavy in the share's caption. */
+private const val HEAVY_OVERSHOOT = 1.5
+
+/** The simplifier's working arrays may take half of the heap left, no more. */
+private const val SHARE_MEMORY_DIVISOR = 2
