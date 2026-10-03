@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
@@ -872,6 +873,21 @@ fun SceneView(
 
     val sceneRenderer = remember(engine, view, renderer) {
         SceneRenderer(engine, view, renderer)
+    }
+
+    // SurfaceView owns a compositor layer outside Compose. Stop presenting that layer as soon as
+    // this destination leaves RESUMED; waiting for AndroidView disposal lets its retained last
+    // buffer survive the whole Navigation exit transition. TextureView follows the same lifecycle
+    // so both surface types have one contract, and the 3D demos cannot retain a stale frame either.
+    // A pause the host activity shares (a system dialog over a still-visible window) keeps the
+    // surface — see [SceneRenderer.setPresentationState]. Disposal hides it through `destroy()`.
+    DisposableEffect(lifecycle, sceneRenderer) {
+        val observer = LifecycleEventObserver { _, event ->
+            sceneRenderer.setPresentationState(event.targetState)
+        }
+        // Adding the observer replays the events up to the current state, so no initial call.
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     // `frameRateGate` (the render-on-demand gate) is declared at the top of this function, above

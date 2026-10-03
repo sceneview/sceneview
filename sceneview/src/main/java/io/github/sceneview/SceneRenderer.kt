@@ -1,6 +1,7 @@
 package io.github.sceneview
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.PixelFormat
 import android.os.Build
 import android.view.Display
@@ -8,6 +9,8 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceView
 import android.view.TextureView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
@@ -65,6 +68,9 @@ class SceneRenderer(
 
     /** Whether the renderer is currently attached to a surface. */
     val isAttached: Boolean get() = swapChainRef.get() != null
+
+    /** Keeps the platform view from presenting a retained buffer while its scene is paused. */
+    private val surfacePresentation = SurfacePresentation()
 
     /**
      * The native surface currently rendered into, kept so the cadence vote can reach it.
@@ -160,6 +166,7 @@ class SceneRenderer(
         display: Display,
         onTouch: ((MotionEvent) -> Unit)? = null
     ) {
+        surfacePresentation.attach(surfaceView)
         this.display = display
         this.displayHelper = DisplayHelper(context)
 
@@ -197,6 +204,7 @@ class SceneRenderer(
         display: Display,
         onTouch: ((MotionEvent) -> Unit)? = null
     ) {
+        surfacePresentation.attach(textureView)
         this.display = display
         this.displayHelper = DisplayHelper(context)
 
@@ -273,6 +281,9 @@ class SceneRenderer(
             renderer.render(view)
             renderer.endFrame()
             presentedFrameCount++
+            // A resumed surface is made visible at alpha 0 so Android can create it without
+            // exposing an empty (black) buffer. Reveal it only after a real frame landed.
+            surfacePresentation.onFramePresented()
             // Mirror the scene onto any mirrored surfaces (in-app video recording), as a second
             // render pass on its own renderer. Deliberately AFTER endFrame: mirroring must never
             // touch the window swap chain's frame — `Renderer.copyFrame`, which ran between
@@ -346,11 +357,39 @@ class SceneRenderer(
     // ── Cleanup ─────────────────────────────────────────────────────────────────────────────────
 
     /**
+     * Follows the lifecycle of the screen hosting this renderer, so the platform surface never
+     * presents a buffer its scene no longer owns.
+     *
+     * A [SurfaceView] is composited outside the Android view hierarchy and keeps its last buffer
+     * after rendering stops. Navigation moves an outgoing Compose destination below `RESUMED`
+     * before its exit transition finishes, so merely pausing the render loop leaves that buffer
+     * visible over or through the incoming screen. The rule applied to [state] is:
+     *
+     * - `RESUMED` shows the surface. A surface that was hidden comes back at alpha zero and
+     *   [renderFrame] reveals it only after a real frame has landed, so neither the retained
+     *   buffer nor an empty one is ever exposed.
+     * - `STARTED` (paused) hides the surface when the host activity itself is still resumed: only
+     *   this screen was paused, which is a navigation exit. When the activity is paused too — a
+     *   permission prompt, a share sheet, a purchase sheet over a still-visible window — the
+     *   surface is kept, and the frozen frame behind that overlay is the expected picture.
+     * - Anything below `STARTED` hides the surface.
+     *
+     * SceneView and ARSceneView call this from their lifecycle observers. Calls must run on the
+     * main thread, like the rest of Android view attachment.
+     */
+    fun setPresentationState(state: Lifecycle.State) {
+        surfacePresentation.onLifecycleState(state)
+    }
+
+    /**
      * Detaches from the current surface and releases all native resources.
      *
      * Safe to call multiple times.
      */
     fun destroy() {
+        // Hide before detaching UiHelper: SurfaceView otherwise retains its last composited buffer
+        // until Android removes the view, which can be later than Compose's disposal transition.
+        surfacePresentation.detach()
         // Release mirror swap chains first — they were created on the engine the mirrorer
         // bound at its first mirrored frame.
         surfaceMirrorer?.destroy()
@@ -456,6 +495,87 @@ class SceneRenderer(
             }
         }
     }
+}
+
+/**
+ * Main-thread state holder separated from [SceneRenderer] so its Android-view behaviour can be
+ * covered by Robolectric without constructing Filament native resources.
+ */
+internal class SurfacePresentation(
+    /**
+     * Whether the activity hosting a view is itself resumed. Tells a navigation exit (this screen
+     * paused, activity still resumed) from an overlay (the whole activity paused but visible).
+     */
+    private val isHostResumed: (android.view.View) -> Boolean = ::isHostActivityResumed,
+) {
+    private var hostView: android.view.View? = null
+    private var presenting = false
+    private var awaitingFirstFrame = false
+
+    fun attach(view: android.view.View) {
+        hostView?.takeIf { it !== view }?.let(::hide)
+        hostView = view
+        if (presenting) showAwaitingFrame(view) else hide(view)
+    }
+
+    fun onLifecycleState(state: Lifecycle.State) {
+        val present = when {
+            state.isAtLeast(Lifecycle.State.RESUMED) -> true
+            // Paused but started. A surface already on screen survives only an activity-level
+            // pause; a hidden one never comes back before RESUMED.
+            state.isAtLeast(Lifecycle.State.STARTED) ->
+                presenting && hostView?.let(isHostResumed) == false
+            else -> false
+        }
+        if (present == presenting) return
+        presenting = present
+        hostView?.let { view ->
+            if (present) showAwaitingFrame(view) else hide(view)
+        }
+    }
+
+    fun onFramePresented() {
+        if (!presenting || !awaitingFirstFrame) return
+        hostView?.alpha = 1f
+        awaitingFirstFrame = false
+    }
+
+    fun detach() {
+        hostView?.let(::hide)
+        hostView = null
+        presenting = false
+        awaitingFirstFrame = false
+    }
+
+    private fun showAwaitingFrame(view: android.view.View) {
+        awaitingFirstFrame = true
+        view.alpha = 0f
+        view.visibility = android.view.View.VISIBLE
+    }
+
+    private fun hide(view: android.view.View) {
+        awaitingFirstFrame = false
+        // Alpha first removes SurfaceView's punched-through region immediately; visibility then
+        // follows Android's default surface lifecycle and destroys the retained buffer.
+        view.alpha = 0f
+        view.visibility = android.view.View.INVISIBLE
+    }
+}
+
+/**
+ * `true` when the activity (or any lifecycle-owning context) hosting [view] is resumed. A host
+ * that exposes no lifecycle is reported resumed, so a paused screen is treated as a navigation
+ * exit and hidden — the safe side for the stale-frame bug this guards against.
+ */
+private fun isHostActivityResumed(view: android.view.View): Boolean {
+    var context: Context? = view.context
+    while (context != null) {
+        if (context is LifecycleOwner) {
+            return context.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        context = (context as? ContextWrapper)?.baseContext
+    }
+    return true
 }
 
 /**
