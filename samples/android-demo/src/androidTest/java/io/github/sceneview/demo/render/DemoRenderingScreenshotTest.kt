@@ -828,6 +828,8 @@ class DemoRenderingScreenshotTest {
             "customgeometry_default",
             "debugoverlay_default",
             "fog_default",
+            // Re-baselined after the #4335 rebuild (seven primitives on the stage), from the
+            // first-run capture of run 37154919481.
             "geometry_default",
             "lighting_default",
             "linespaths_default",
