@@ -8,7 +8,7 @@
 // @order       4
 // @tags        pbr,material,metallic,roughness,clearcoat,sheen,emissive,texture,streaming,occlusion
 // @addedIn     4.0.0
-// @updatedIn   4.32.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 /// Materials (samples audit, step 0) absorbs `texture-streaming` — the same

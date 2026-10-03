@@ -9,6 +9,7 @@
 // @order       49
 // @tags        ar,geospatial,streetscape,mesh,terrain,building
 // @addedIn     4.15.2
+// @updatedIn   4.52.0
 import SwiftUI
 
 enum ArSceneMeshScene: DemoScene {

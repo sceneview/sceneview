@@ -8,8 +8,7 @@
 // @status      inReview
 // @order       18
 // @tags        shadow,contact-shadow,procedural,grounding,no-camera
-// @addedIn     4.25.0
-// @updatedIn   4.52.0
+// @addedIn     4.52.0
 import SwiftUI
 
 enum ContactShadowPreviewScene: DemoScene {

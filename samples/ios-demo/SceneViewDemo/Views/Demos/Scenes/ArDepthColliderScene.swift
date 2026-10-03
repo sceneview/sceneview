@@ -10,7 +10,7 @@
 // @order       47
 // @tags        ar,depth,physics,collision,rigid-body
 // @addedIn     4.15.2
-// @updatedIn   4.46.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 enum ArDepthColliderScene: DemoScene {
