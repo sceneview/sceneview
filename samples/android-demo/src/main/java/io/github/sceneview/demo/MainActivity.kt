@@ -304,7 +304,7 @@ class MainActivity : ComponentActivity() {
                 ).show()
             }
         }
-        if (launch.demoId != null) Telemetry.nextEntryId = rawId ?: launch.demoId
+        Telemetry.nextEntryId = launch.demoId?.let { it to (rawId ?: it) }
     }
 
     /**
@@ -406,7 +406,7 @@ class MainActivity : ComponentActivity() {
             val launch = DeepLinkRouter.resolveLaunch(sample, tap.sample, tabParam = null)
             pushLaunch = launch
             Telemetry.nextOpenSource = OpenSource.Push
-            Telemetry.nextEntryId = tap.sample ?: sample
+            Telemetry.nextEntryId = launch.demoId?.let { it to (tap.sample ?: it) }
             pendingPushDemo.value = launch.demoId
         } else {
             pendingHome.value = true
@@ -522,7 +522,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     LaunchedEffect(openedModel) {
         val opened = openedModel ?: return@LaunchedEffect
         DemoSettings.openedModel = opened
-        Telemetry.nextEntryId = "model-viewer"
+        Telemetry.nextEntryId = "model-viewer" to "model-viewer"
         navController.navigate("demo/model-viewer") {
             // One viewer on the stack however many files are opened in a row.
             popUpTo("demo/model-viewer") { inclusive = true }
@@ -600,7 +600,10 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // handling above). The Play update snackbar lives in RootScreen's
                 // Scaffold, above the bottom navigation, on every tab.
                 RootScreen(
-                    onDemoClick = { id -> navController.navigate("demo/$id") },
+                    onDemoClick = { id ->
+                        Telemetry.nextEntryId = id to id
+                        navController.navigate("demo/$id")
+                    },
                     updatePrompt = activity?.updatePrompt,
                 )
             }

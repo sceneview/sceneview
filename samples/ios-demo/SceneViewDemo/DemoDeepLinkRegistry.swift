@@ -150,7 +150,7 @@ enum DemoDeepLinkRegistry {
         "environment": "image",
         "movable-light": "studio",
         "occlusion-material": "occlusion",
-        "multi-model": "park",
+        "multi-model": "multi_model",
     ]
 
     /// Hands a tab asked for under an alias to the card the alias opens.

@@ -11,6 +11,19 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.demos.AR_PLACEMENT_SURFACE_MODES
+import io.github.sceneview.demo.demos.COSMOS_MODES
+import io.github.sceneview.demo.demos.LightingRig
+import io.github.sceneview.demo.demos.MaterialsMode
+import io.github.sceneview.demo.demos.ModelViewerMode
+import io.github.sceneview.demo.demos.internal.GeospatialAnchorMode
+import io.github.sceneview.demo.fragments.ArCloudAnchorFragment
+import io.github.sceneview.demo.fragments.ArGeospatialAnchorsFragment
+import io.github.sceneview.demo.fragments.ArPlacementFragment
+import io.github.sceneview.demo.fragments.ArRerunFragment
+import io.github.sceneview.demo.fragments.ArXrFragment
+import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
+import io.github.sceneview.demo.fragments.RollingBallsFragment
 
 /**
  * The sample on screen, for events logged deep inside shared components (the settings sheet,
@@ -31,8 +44,7 @@ fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
     DisposableEffect(sampleId) {
         val source = Telemetry.nextOpenSource
         Telemetry.nextOpenSource = OpenSource.Other
-        val entryId = Telemetry.nextEntryId ?: sampleId
-        Telemetry.nextEntryId = null
+        val entryId = consumeEntryId(sampleId)
         val category = ALL_DEMOS.firstOrNull { it.id == sampleId }
             ?.category
             ?.let { DemoCategory.slug(it) }
@@ -90,18 +102,35 @@ fun logSampleModeChange(sampleId: String?, mode: String) {
 
 internal fun modeControl(mode: String): String = "mode_$mode"
 
+internal fun consumeEntryId(sampleId: String): String {
+    val entryId = Telemetry.nextEntryId
+        ?.takeIf { (expectedSampleId, _) -> expectedSampleId == sampleId }
+        ?.second
+        ?: sampleId
+    Telemetry.nextEntryId = null
+    return entryId
+}
+
+internal val SAMPLE_MODES: Map<String, List<String>> = mapOf(
+    "materials" to MaterialsMode.entries.map { it.analyticsMode },
+    "model-viewer" to ModelViewerMode.entries.map { it.analyticsMode },
+    "lighting" to LightingRig.entries.map { it.analyticsMode },
+    "ar-placement" to
+        AR_PLACEMENT_SURFACE_MODES + ArPlacementFragment.modes.drop(1).map { it.key },
+    "ar-geospatial-anchors" to
+        GeospatialAnchorMode.entries.map { it.analyticsMode } +
+        ArGeospatialAnchorsFragment.modes.drop(1).map { it.key },
+    "cosmos" to COSMOS_MODES,
+    "camera-gestures" to CameraAndGesturesFragment.modes.map { it.key },
+    "rolling-balls" to RollingBallsFragment.modes.map { it.key },
+    "ar-rerun" to ArRerunFragment.modes.map { it.key },
+    "ar-cloud-anchor" to ArCloudAnchorFragment.modes.map { it.key },
+    "ar-xr" to ArXrFragment.modes.map { it.key },
+)
+
 /** Initial mode of a catalogue umbrella. The pending tab is only peeked; the demo consumes it. */
 internal fun initialSampleMode(sampleId: String, initialTab: Int?): String? {
-    val modes = when (sampleId) {
-        "materials" -> listOf("gallery", "inspect", "occlusion")
-        "model-viewer" -> listOf("single_model", "multi_model")
-        "lighting" -> listOf("image", "studio", "sun")
-        "ar-placement" -> listOf("floor", "wall")
-        "ar-geospatial-anchors" -> listOf("terrain", "rooftop")
-        "ar-scene-mesh" -> listOf("mesh", "streetscape")
-        "cosmos" -> listOf("starlight", "spacetime")
-        else -> return null
-    }
+    val modes = SAMPLE_MODES[sampleId] ?: return null
     return modes.getOrNull(initialTab ?: 0) ?: modes.first()
 }
 

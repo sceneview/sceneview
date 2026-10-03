@@ -18,6 +18,11 @@ import io.github.sceneview.demo.demos.ARRerunDemo
  * the ARCore session recorder and its replay, next to the Rerun stream of a session.
  */
 object ArRerunFragment : DemoFragment {
+    val modes = listOf(
+        DemoMode("rerun", R.string.demo_mode_rerun),
+        DemoMode("session-mp4", R.string.demo_mode_session_mp4),
+    )
+
     override val entry: DemoEntry = DemoEntry(
         id = "ar-rerun",
         titleRes = R.string.demo_ar_rerun_title,
@@ -36,10 +41,7 @@ object ArRerunFragment : DemoFragment {
     @Composable
     override fun Screen(onBack: () -> Unit) {
         DemoModeHost(
-            modes = listOf(
-                DemoMode("rerun", R.string.demo_mode_rerun),
-                DemoMode("session-mp4", R.string.demo_mode_session_mp4),
-            ),
+            modes = modes,
             tabToMode = mapOf(0 to 0, 1 to 1),
         ) { mode ->
             when (mode) {

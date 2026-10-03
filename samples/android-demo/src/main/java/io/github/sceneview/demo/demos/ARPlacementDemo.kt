@@ -312,7 +312,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 if (next != wallMode) {
                     io.github.sceneview.demo.telemetry.logSampleModeChange(
                         sampleId,
-                        if (next) "wall" else "floor",
+                        AR_PLACEMENT_SURFACE_MODES[if (next) 1 else 0],
                     )
                     wallMode = next
                 }
@@ -404,6 +404,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
  * bundled row's id, and stable across catalogue rebuilds.
  */
 private fun streamedModelId(slug: SketchfabSlug): String = "streamed:${slug.uid}"
+
+internal val AR_PLACEMENT_SURFACE_MODES = listOf("place", "wall")
 
 /**
  * Process-wide memo of the streamed `ar_placement` rows' Sketchfab thumbnail URLs (#3987), so

@@ -76,10 +76,10 @@ extension AnalyticsEvent {
     static func sampleOpen(sampleId: String, entryId: String? = nil, category: String,
                            source: SampleOpenSource, mode: String? = nil) -> AnalyticsEvent {
         var params: [String: AnalyticsParam] = [
-            "sample_id": .string(sampleId), "entry_id": .string(entryId ?? sampleId),
-            "category": .string(category), "source": .string(source.rawValue),
+            "sample_id": .string(clip(sampleId)), "entry_id": .string(clip(entryId ?? sampleId)),
+            "category": .string(clip(category)), "source": .string(source.rawValue),
         ]
-        if let mode { params["mode"] = .string(mode) }
+        if let mode { params["mode"] = .string(clip(mode)) }
         return AnalyticsEvent(name: "sample_open", params: params)
     }
 
@@ -88,7 +88,10 @@ extension AnalyticsEvent {
     }
 
     static func sampleInteraction(sampleId: String, control: String) -> AnalyticsEvent {
-        AnalyticsEvent(name: "sample_interaction", params: ["sample_id": .string(sampleId), "control": .string(control)])
+        AnalyticsEvent(
+            name: "sample_interaction",
+            params: ["sample_id": .string(clip(sampleId)), "control": .string(clip(control))]
+        )
     }
 
     static func modelLoadFailed(sampleId: String, reason: String) -> AnalyticsEvent {
@@ -140,8 +143,10 @@ extension AnalyticsEvent {
 
     /// Firebase truncates parameter values at 100 characters; clip first so an error
     /// description never loses its head.
+    static let maxParamValueLength = 100
+
     private static func clip(_ value: String) -> String {
-        String(value.prefix(100))
+        String(value.prefix(maxParamValueLength))
     }
 }
 
@@ -275,15 +280,38 @@ final class DemoAnalytics: @unchecked Sendable {
         log(.sampleInteraction(sampleId: sampleId, control: control))
     }
 
+    static func modeControl(_ mode: String) -> String { "mode_\(mode)" }
+
     /// The stable category slug of a sample (`sample_open.category`).
     static func category(for section: DemoSection?) -> String {
         section?.analyticsSlug ?? "unknown"
     }
 
     /// Initial mode of the iOS catalogue's routable umbrella card.
+    static let modeSampleIds: Set<String> = [
+        "ar-placement", "camera-gestures", "cosmos", "lighting", "materials",
+        "model-viewer", "rolling-balls",
+    ]
+
+    @MainActor
     static func initialMode(for sampleId: String, tab: String? = nil) -> String? {
-        guard sampleId == "cosmos" else { return nil }
-        return tab == "spacetime" || tab == "1" ? "spacetime" : "starlight"
+        if sampleId == "cosmos" {
+            return CosmosDemo.analyticsMode(spacetime: tab == "spacetime" || tab == "1")
+        }
+        if sampleId == "lighting" {
+            return LightingDemo.Rig.initial(tab).analyticsMode
+        }
+        let modes: [DemoMode]
+        switch sampleId {
+        case "ar-placement": modes = ArPlacementScene.modes
+        case "camera-gestures": modes = CameraGesturesScene.modes
+        case "materials": modes = MaterialsScene.modes
+        case "model-viewer": modes = ModelViewerScene.modes
+        case "rolling-balls": modes = RollingBallsScene.modes
+        default: return nil
+        }
+        let requested = tab.flatMap { token in modes.first { $0.matches(token.lowercased()) } }
+        return (requested ?? modes.first)?.id
     }
 
     /// `model_load_failed.reason`, the Android keys: `asset_missing` (the file could not

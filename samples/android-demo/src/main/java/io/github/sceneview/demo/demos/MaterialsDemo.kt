@@ -196,7 +196,7 @@ fun MaterialsDemo(onBack: () -> Unit) {
  * a `MaterialInstance` that is already bound to a live renderable, which is the thing that
  * demo existed to show, minus the sphere it showed it on.
  */
-private enum class MaterialsMode(@StringRes val labelRes: Int, val analyticsMode: String) {
+internal enum class MaterialsMode(@StringRes val labelRes: Int, val analyticsMode: String) {
     Gallery(R.string.demo_materials_mode_gallery, "gallery"),
     Inspect(R.string.demo_materials_mode_inspect, "inspect"),
     Occlusion(R.string.demo_materials_mode_occlusion, "occlusion"),

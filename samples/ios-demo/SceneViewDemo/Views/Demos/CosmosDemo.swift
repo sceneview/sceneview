@@ -88,7 +88,7 @@ struct CosmosDemo: View {
                 DockItem(icon: kind.icon, label: kind.label, control: kind.analyticsControl,
                          selected: engine.scene == kind) {
                     if engine.spacetime && kind != .star {
-                        logMode("starlight")
+                        logMode(spacetime: false)
                     }
                     engine.select(kind)
                 }
@@ -129,13 +129,20 @@ struct CosmosDemo: View {
 
     private func selectSpacetime(_ enabled: Bool) {
         guard enabled != engine.spacetime else { return }
-        logMode(enabled ? "spacetime" : "starlight")
+        logMode(spacetime: enabled)
         engine.setSpacetime(enabled)
     }
 
-    private func logMode(_ mode: String) {
+    static func analyticsMode(spacetime: Bool) -> String {
+        spacetime ? "spacetime" : "starlight"
+    }
+
+    private func logMode(spacetime: Bool) {
         if let analyticsSampleId {
-            DemoAnalytics.shared.interaction(analyticsSampleId, "mode_\(mode)")
+            DemoAnalytics.shared.interaction(
+                analyticsSampleId,
+                DemoAnalytics.modeControl(Self.analyticsMode(spacetime: spacetime))
+            )
         }
     }
 

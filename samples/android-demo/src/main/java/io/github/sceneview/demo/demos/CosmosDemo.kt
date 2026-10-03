@@ -391,7 +391,7 @@ fun CosmosDemo(onBack: () -> Unit) {
     val showSpacetime: (Boolean) -> Unit = { on ->
         if (on != spacetime) {
             spacetime = on
-            logSampleModeChange(telemetrySampleId, if (on) "spacetime" else "starlight")
+            logSampleModeChange(telemetrySampleId, COSMOS_MODES[if (on) 1 else 0])
             // The camera's turn is kept on the way back, so the return flight leaves from the
             // pose on screen; it is reset once the sequence is back at Starlight (onFrame).
             if (on) {
@@ -934,6 +934,8 @@ fun CosmosDemo(onBack: () -> Unit) {
         }
     }
 }
+
+internal val COSMOS_MODES = listOf("starlight", "spacetime")
 
 @Composable
 private fun ToggleRow(label: String, value: Boolean, onChange: (Boolean) -> Unit) {

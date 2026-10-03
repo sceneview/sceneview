@@ -1,7 +1,10 @@
 package io.github.sceneview.demo.telemetry
 
+import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
+import io.github.sceneview.demo.DeepLinkRouter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -160,15 +163,34 @@ class DemoAnalyticsTest {
         val withoutMode = AnalyticsEvent.SampleOpen("geometry", "create", OpenSource.Home).params()
         assertEquals("geometry", withoutMode["entry_id"])
         assertTrue("mode" !in withoutMode)
+
+        val longValue = "x".repeat(AnalyticsEvent.MAX_VALUE + 20)
+        val capped = AnalyticsEvent.SampleOpen(
+            sampleId = longValue,
+            category = longValue,
+            source = OpenSource.Other,
+            entryId = longValue,
+            mode = longValue,
+        ).params()
+        capped.forEach { (key, value) ->
+            assertTrue(key.matches(Regex("[a-z][a-z0-9_]*")))
+            if (value is String) assertTrue(value.length <= AnalyticsEvent.MAX_VALUE)
+        }
     }
 
     @Test
     fun `every demo category has the shared stable slug`() {
-        assertEquals("create", DemoCategory.slug(DemoCategory.CREATE))
-        assertEquals("dev_tools", DemoCategory.slug(DemoCategory.DEV_TOOLS))
-        assertEquals("place_ar", DemoCategory.slug(DemoCategory.PLACE_AR))
-        assertEquals("view_3d", DemoCategory.slug(DemoCategory.VIEW_3D))
-        assertEquals("understand", DemoCategory.slug(DemoCategory.UNDERSTAND))
+        val expected = mapOf(
+            DemoCategory.CREATE to "create",
+            DemoCategory.DEV_TOOLS to "dev_tools",
+            DemoCategory.PLACE_AR to "place_ar",
+            DemoCategory.VIEW_3D to "view_3d",
+            DemoCategory.UNDERSTAND to "understand",
+        )
+        ALL_DEMOS.map { it.category }.toSet().forEach { category ->
+            assertEquals(expected[category], DemoCategory.slug(category))
+            assertTrue(DemoCategory.slug(category) != "unknown")
+        }
     }
 
     @Test
@@ -180,19 +202,59 @@ class DemoAnalyticsTest {
         assertEquals("image", initialSampleMode("lighting", null))
         assertEquals("studio", initialSampleMode("lighting", 1))
         assertEquals("sun", initialSampleMode("lighting", 2))
-        assertEquals("floor", initialSampleMode("ar-placement", null))
+        assertEquals("place", initialSampleMode("ar-placement", null))
         assertEquals("wall", initialSampleMode("ar-placement", 1))
+        assertEquals("free-pose", initialSampleMode("ar-placement", 2))
+        assertEquals("one-call", initialSampleMode("ar-placement", 3))
         assertEquals("terrain", initialSampleMode("ar-geospatial-anchors", null))
         assertEquals("rooftop", initialSampleMode("ar-geospatial-anchors", 1))
-        assertEquals("mesh", initialSampleMode("ar-scene-mesh", null))
-        assertEquals("streetscape", initialSampleMode("ar-scene-mesh", 1))
+        assertEquals("streetscape", initialSampleMode("ar-geospatial-anchors", 2))
+        assertEquals("balls", initialSampleMode("rolling-balls", null))
+        assertEquals("pendulum", initialSampleMode("rolling-balls", 1))
+        assertEquals("rerun", initialSampleMode("ar-rerun", null))
+        assertEquals("session-mp4", initialSampleMode("ar-rerun", 1))
         assertEquals("starlight", initialSampleMode("cosmos", 99))
         assertEquals(null, initialSampleMode("geometry", null))
 
-        assertEquals("mode_occlusion", modeControl("occlusion"))
+        assertEquals("mode_x", modeControl("x"))
         assertEquals(
-            "mode_occlusion",
-            AnalyticsEvent.SampleInteraction("materials", modeControl("occlusion")).params()["control"],
+            "mode_x",
+            AnalyticsEvent.SampleInteraction("materials", modeControl("x")).params()["control"],
         )
+        assertEquals(
+            AnalyticsEvent.MAX_VALUE,
+            (
+                AnalyticsEvent.SampleInteraction("materials", modeControl("x".repeat(200)))
+                    .params()["control"] as String
+            ).length,
+        )
+    }
+
+    @Test
+    fun `mode catalogue and aliased tabs resolve to live cards`() {
+        val liveIds = ALL_DEMOS.map { it.id }.toSet()
+        assertEquals(DeepLinkRouter.TABBED_DEMOS, SAMPLE_MODES.keys)
+        SAMPLE_MODES.keys.forEach { assertTrue(it, it in liveIds) }
+
+        DeepLinkRouter.ALIAS_INITIAL_TAB.forEach { (alias, tab) ->
+            val card = DeepLinkRouter.validate(alias)
+            assertNotNull(alias, card)
+            val resolvedCard = card!!
+            val modes = requireNotNull(SAMPLE_MODES[resolvedCard]) { "$alias -> $resolvedCard" }
+            assertTrue("$alias tab $tab", tab in modes.indices)
+            assertEquals(modes[tab], initialSampleMode(resolvedCard, tab))
+        }
+    }
+
+    @Test
+    fun `pending entry id cannot leak to an unrelated sample`() {
+        Telemetry.nextEntryId = "materials" to "texture-streaming"
+        assertEquals("texture-streaming", consumeEntryId("materials"))
+        Telemetry.nextEntryId = "materials" to "texture-streaming"
+        assertEquals("cosmos", consumeEntryId("cosmos"))
+        assertEquals(null, Telemetry.nextEntryId)
+        Telemetry.nextEntryId = "materials" to "texture-streaming"
+        Telemetry.nextEntryId = "materials" to "materials"
+        assertEquals("materials", consumeEntryId("materials"))
     }
 }

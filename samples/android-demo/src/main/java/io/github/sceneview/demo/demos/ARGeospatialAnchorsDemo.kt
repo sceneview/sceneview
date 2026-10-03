@@ -188,7 +188,7 @@ fun ARGeospatialAnchorsDemo(onBack: () -> Unit) {
     val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
     val onModeChange: (GeospatialAnchorMode) -> Unit = { next ->
         if (next != mode) {
-            io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.name.lowercase())
+            io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
             mode = next
         }
     }

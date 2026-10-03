@@ -296,7 +296,7 @@ internal object DeepLinkRouter {
         "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),
         "ar-cloud-anchor" to mapOf("cloud-anchors" to 0, "collaborative" to 1),
-        "ar-geospatial-anchors" to mapOf("anchors" to 0, "streetscape" to 2),
+        "ar-geospatial-anchors" to mapOf("anchors" to 0, "terrain" to 0, "streetscape" to 2),
         "ar-xr" to mapOf("hands" to 0, "face" to 1),
     )
 

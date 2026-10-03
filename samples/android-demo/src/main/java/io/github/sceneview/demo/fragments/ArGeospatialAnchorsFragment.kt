@@ -25,6 +25,11 @@ import io.github.sceneview.demo.demos.ARGeospatialAnchorsDemo
  * tabs 0 and 1 stay with [ARGeospatialAnchorsDemo]: terrain and rooftop.
  */
 object ArGeospatialAnchorsFragment : DemoFragment {
+    val modes = listOf(
+        DemoMode("terrain", R.string.demo_mode_anchors),
+        DemoMode("streetscape", R.string.demo_mode_streetscape),
+    )
+
     override val entry: DemoEntry = DemoEntry(
         id = "ar-geospatial-anchors",
         titleRes = R.string.demo_ar_geospatial_anchors_title,
@@ -44,10 +49,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
     @Composable
     override fun Screen(onBack: () -> Unit) {
         DemoModeHost(
-            modes = listOf(
-                DemoMode("anchors", R.string.demo_mode_anchors),
-                DemoMode("streetscape", R.string.demo_mode_streetscape),
-            ),
+            modes = modes,
             tabToMode = mapOf(STREETSCAPE_TAB to 1),
             defaultModeReadsTab = true,
         ) { mode ->

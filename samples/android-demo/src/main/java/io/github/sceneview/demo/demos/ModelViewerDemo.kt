@@ -445,7 +445,7 @@ private class EasedFraming {
     }
 }
 
-private enum class ModelViewerMode(val label: String, val analyticsMode: String) {
+internal enum class ModelViewerMode(val label: String, val analyticsMode: String) {
     Single("Single Model", "single_model"),
     Multi("Multi-Model", "multi_model"),
 }

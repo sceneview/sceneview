@@ -715,7 +715,7 @@ fun LightingDemo(onBack: () -> Unit) {
  * `movable-light` = 1, `dynamic-sky` = 2. Append, never reorder, or a retired deep link lands on
  * the wrong rig.
  */
-private enum class LightingRig(
+internal enum class LightingRig(
     @StringRes val labelRes: Int,
     @StringRes val explainerRes: Int,
     val analyticsMode: String,
