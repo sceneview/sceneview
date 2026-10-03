@@ -47,10 +47,13 @@ import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -224,9 +227,9 @@ internal class RerunSurfaceState(
 }
 
 /**
- * The surface of [source], built the first time it is [wanted] and once only: the build cannot be
- * cancelled, so going back to Points while it runs and asking again waits for the same build
- * instead of starting a second one beside it.
+ * The surface of [source], built the first time it is [wanted] and once only: going back to Points
+ * while it runs and asking again waits for the same build instead of starting a second one beside
+ * it. Leaving the replay stops the build at its next progress step.
  *
  * What it keeps is the model's `.glb`, not a model instance: the 3D view loads it itself
  * ([ReplaySurface]), so a view that left the screen — Camera mode — comes back with its room.
@@ -239,7 +242,17 @@ internal fun rememberRerunSurface(source: RerunModelSource?, wanted: Boolean): R
     LaunchedEffect(source) {
         val from = source ?: return@LaunchedEffect
         snapshotFlow { asked }.first { it }
-        result = withContext(Dispatchers.Default) { runCatching { buildRerunModel(from) { progress = it } } }
+        result = withContext(Dispatchers.Default) {
+            val job = coroutineContext.job
+            // The build is one blocking call. Once this screen is gone it is stopped at its next
+            // progress step, so leaving mid-build and coming back does not run two builds at once.
+            runCatching {
+                buildRerunModel(from) {
+                    job.ensureActive()
+                    progress = it
+                }
+            }.onFailure { if (it is CancellationException) throw it }
+        }
     }
     val build = result?.getOrNull()?.takeIf { it.triangles > 0 }
     val shown = wanted && source != null
@@ -358,12 +371,17 @@ internal object ModelCopy {
     const val FAILED = "No surface yet: scan slowly, 1–3 m from the walls."
     const val SHARE = "Share"
 
+    /**
+     * What was built, on one line. It is named a preview — a short scan gives a coarse, patchy
+     * mesh — and it carries no size: the figures above measure the room squared to its walls, and
+     * the mesh's world-axis box beside them read as a second, different room.
+     */
     fun stats(model: RerunModelBuild): String {
-        val size = "%.1f × %.1f m".format(model.bounds[3] - model.bounds[0], model.bounds[5] - model.bounds[2])
         val triangles = if (model.triangles >= THOUSAND) "${model.triangles / THOUSAND}k" else "${model.triangles}"
-        // One line under the title on an upright phone: the build time went, it was cut mid-figure.
-        return if (model.budgetReached) "$size · partial, memory was full" else "$size · $triangles triangles"
+        return if (model.budgetReached) "$PREVIEW · partial, memory was full" else "$PREVIEW · $triangles triangles"
     }
+
+    private const val PREVIEW = "Surface preview"
 
     fun fileName(title: String): String {
         val safe = title.replace(Regex("[^\\p{L}\\p{N} _-]"), "").trim().ifEmpty { "Room" }

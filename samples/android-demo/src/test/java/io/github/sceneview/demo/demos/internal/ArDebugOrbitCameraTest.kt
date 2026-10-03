@@ -90,6 +90,42 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `a terrace-sized scan is framed whole, from as far as it takes`() {
+        // 20 × 9 m, as a real outdoor scan reads (#4306): the fit stands past the 40 m the camera
+        // used to stop at, which cropped it.
+        val terrace = floatArrayOf(-10f, -1.3f, -4.5f, 10f, 1.3f, 4.5f)
+        val aspect = 1080f / 2400f
+        val band = OrbitBand.STAGE_PORTRAIT
+        var furthest = 0f
+        for (azimuth in listOf(0f, 35f, 90f, 200f, 310f)) {
+            for (elevation in listOf(ArDebugFraming.HOME_ELEVATION, ArDebugFraming.MAP_ELEVATION)) {
+                val home = ArDebugFraming.home(terrace, azimuth, fov, aspect, elevation, band)
+                val reach = assertFramed(home, band, aspect, terrace)
+                assertTrue("the terrace fills its band ($reach at $azimuth°, $elevation°)", reach > 0.97)
+                furthest = maxOf(furthest, home.distance)
+
+                // The gestures' limits hold that framing, and a pinch out stops 1.6× past it —
+                // with the terrace's far side still in front of the far plane.
+                val limits = ArDebugFraming.limits(terrace, home, floorY = terrace[1])
+                assertEquals(home.distance, ArDebugFraming.clamp(home, limits, band.lift, fov).distance, 1e-3f)
+                assertEquals(home.distance * ArDebugFraming.MAX_ZOOM_OUT, limits.maxDistance, 1e-2f)
+                assertTrue(limits.maxDistance + home.distance < ArDebugFraming.FAR_PLANE_M)
+            }
+        }
+        assertTrue("the terrace is framed from $furthest m", furthest > 50f)
+
+        // The camera itself rests on that pose: nothing between the fit and the lens pulls it in.
+        val camera = ArDebugOrbitCamera(drift = false, band = band)
+        camera.setViewport(1080, 2400)
+        val home = ArDebugFraming.home(terrace, 35f, fov, camera.aspect, band = band)
+        camera.home = home
+        camera.limits = ArDebugFraming.limits(terrace, home, floorY = terrace[1])
+        camera.snapTo(home)
+        assertEquals(home.distance, camera.pose.distance, 1e-3f)
+        assertFramed(camera.pose, band, camera.aspect, terrace)
+    }
+
+    @Test
     fun `a room off the origin is framed like one on it`() {
         val moved = FloatArray(6) { room[it] + floatArrayOf(40f, -7f, 12f)[it % 3] }
         val here = ArDebugFraming.home(room, 35f, fov, 0.46f, band = OrbitBand.STAGE_PORTRAIT)
@@ -166,6 +202,10 @@ class ArDebugOrbitCameraTest {
         assertNull(OrbitBand.halfWidthBeside(-1f, 2400f))
         // An upright phone: the figures span the width.
         assertNull(OrbitBand.halfWidthBeside(1040f, 1080f))
+        // A short and narrow window (split screen, 700 dp): two 296 dp cards leave no stage, so
+        // the replay keeps its stacked layout there rather than put the room under them.
+        assertNull(OrbitBand.halfWidthBeside(296f, 700f))
+        assertEquals(0.31f, OrbitBand.halfWidthBeside(296f, 900f)!!, 0.006f)
         assertNull(OrbitBand.betweenSides(Float.NaN, 1640f, 72f, 640f, 2400f, 1080f))
         assertNull(OrbitBand.betweenSides(880f, Float.NaN, 72f, 640f, 2400f, 1080f))
         assertNull(OrbitBand.betweenSides(880f, 1640f, 72f, Float.NaN, 2400f, 1080f))
@@ -423,6 +463,10 @@ class ArDebugOrbitCameraTest {
 
         assertEquals(ArDebugFraming.MIN_DISTANCE, camera.pose.distance, 1e-3f)
         assertFalse(camera.following)
+
+        // With nothing to keep whole, a pinch out stays within a room's size.
+        repeat(80) { camera.scrollUpdate(0, 0, 400f, 100f) }
+        assertEquals(ArDebugFraming.EMPTY_MAX_DISTANCE, camera.pose.distance, 1e-3f)
     }
 
     @Test
