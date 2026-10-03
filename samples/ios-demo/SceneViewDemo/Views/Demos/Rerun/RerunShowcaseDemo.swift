@@ -2,9 +2,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Rerun AR Replay demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's
+/// The Room Scan demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's
 /// `ARRerunDemo`: record a room with ARKit and replay it in 3D — the camera's path and photos,
-/// the surfaces with their photos, the room's coloured points and the models placed in it.
+/// the surfaces with their photos, the room's points and the models placed in it.
 ///
 /// It opens on "Your sessions" (``RerunSessionsLanding``): Record your room, a sample session,
 /// Open file, and every session kept on this iPhone. Stopping a recording saves it and opens
@@ -39,6 +39,7 @@ struct RerunShowcaseDemo: View {
         + "photos, the surfaces, the room's points and the models you placed. Stop, and the replay "
         + "opens. Share exports it to .rrd, .glb, .usdz and .ply, made on your iPhone."
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var screen: Screen
     @State private var mode: Mode
     @State private var session: RerunReplaySession?
@@ -79,10 +80,10 @@ struct RerunShowcaseDemo: View {
     var body: some View {
         GeometryReader { proxy in
             DemoScaffold(
-                "Rerun AR Replay",
+                "Room Scan",
                 dock: dock,
                 accent: accent,
-                chromeMode: screen == .record ? .ar : .stage
+                chromeMode: screen == .record ? .ar : .themedStage
             ) {
                 stage(topInset: Self.topReserve(safeTop: proxy.safeAreaInsets.top),
                       bottomInset: Self.bottomReserve(safeBottom: proxy.safeAreaInsets.bottom))
@@ -97,6 +98,10 @@ struct RerunShowcaseDemo: View {
             }
         }
         .task { await boot() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { session?.resumeIfSuspended() } else { session?.suspend() }
+        }
+        .onDisappear { session?.pause() }
         .onChange(of: inbox.pending) { _, pending in
             if pending != nil { Task { await importPending() } }
         }
@@ -200,10 +205,10 @@ struct RerunShowcaseDemo: View {
 
     private var failure: some View {
         ZStack {
-            SceneViewTokens.Stage.background
+            SceneViewTokens.RoomScan.background
             Text("This session could not be read.")
                 .font(SceneViewTokens.TypeScale.body)
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
         }
     }
 

@@ -221,7 +221,7 @@ enum RerunScanFile {
 }
 
 /// A scan file or `.rrd` handed to the app — by Files, AirDrop, Mail or any share sheet, or by
-/// `-open_file` — waiting for the Rerun demo to import it. The app copies the file in first, while
+/// `-open_file` — waiting for the Room Scan demo to import it. The app copies the file in first, while
 /// it holds the security-scoped access, so the demo never reads a URL it may have lost.
 @MainActor
 @Observable
@@ -231,7 +231,7 @@ final class RerunInbox {
     /// The copied file the demo has not imported yet.
     private(set) var pending: URL?
 
-    /// Whether the Rerun demo, rather than the 3D file viewer, opens `url`.
+    /// Whether the Room Scan demo, rather than the 3D file viewer, opens `url`.
     nonisolated static func handles(_ url: URL) -> Bool {
         [RerunScanFile.fileExtension, "rrd"].contains(url.pathExtension.lowercased())
     }

@@ -1,5 +1,4 @@
 #if os(iOS)
-import Metal
 import RealityKit
 import SwiftUI
 import UIKit
@@ -21,25 +20,55 @@ struct RerunReplayStage: View {
     /// The slow turntable drift and the crane-in intro. Off in QA so captures are deterministic.
     var drift = true
 
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.displayScale) private var displayScale
     @State private var renderer = RerunStageRenderer()
 
     var body: some View {
+        themed
+            .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
+            .onChange(of: recenterToken) { _, _ in renderer.recenter() }
+            .modifier(OrbitGestures(enabled: !compact, renderer: renderer, displayScale: displayScale))
+            .accessibilityElement()
+            .accessibilityLabel("Recorded room in 3D")
+            .accessibilityHint(hint)
+    }
+
+    // Split in three so each expression stays quick to type-check.
+    private var themed: some View {
+        stage
+            .background(SceneViewTokens.RoomScan.background)
+            .onChange(of: colorScheme) { _, scheme in repaint(scheme) }
+            .onChange(of: scenePhase) { _, phase in phaseChanged(phase) }
+            .onAppear { renderer.active = scenePhase == .active }
+            .onDisappear { renderer.active = false }
+    }
+
+    private var stage: some View {
         GeometryReader { proxy in
             RealityView { content in
+                repaint(colorScheme)
                 content.camera = .virtual
                 renderer.install(in: &content, session: session, compact: compact, drift: drift, overhead: overhead)
             }
             .onAppear { renderer.resize(proxy.size, scale: displayScale) }
             .onChange(of: proxy.size) { _, size in renderer.resize(size, scale: displayScale) }
         }
-        .background(SceneViewTokens.Stage.background)
-        .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
-        .onChange(of: recenterToken) { _, _ in renderer.recenter() }
-        .modifier(OrbitGestures(enabled: !compact, renderer: renderer, displayScale: displayScale))
-        .accessibilityElement()
-        .accessibilityLabel("Recorded room in 3D")
-        .accessibilityHint(compact ? "" : "Drag to orbit, pinch to zoom, double-tap to recenter.")
+    }
+
+    private var hint: String {
+        compact ? "" : "Drag to orbit, pinch to zoom, double-tap to recenter."
+    }
+
+    private func repaint(_ scheme: ColorScheme) {
+        renderer.repaint(dark: scheme == .dark)
+    }
+
+    private func phaseChanged(_ phase: ScenePhase) {
+        let active: Bool = phase == .active
+        renderer.active = active
+        if !active { session.suspend() }
     }
 }
 
@@ -107,6 +136,10 @@ final class RerunStageRenderer {
     static let pipPointScale: Float = 0.55
 
     var orbit = RerunOrbitController()
+    var active = true
+    private var dark = false
+    private var boundsHidden: Set<RerunGroup>?
+    private var bounds: (SIMD3<Float>, SIMD3<Float>)?
 
     private weak var session: RerunReplaySession?
     private var compact = false
@@ -160,6 +193,15 @@ final class RerunStageRenderer {
         }
     }
 
+    /// Replace value-type materials on the existing entities, never their meshes or scene.
+    func repaint(dark: Bool) {
+        self.dark = dark
+        for (layer, entity) in layers {
+            entity.model?.materials = [Self.flatMaterial(Self.paint(layer, dark: dark))]
+        }
+        points?.model?.materials = [Self.flatMaterial(SceneViewTokens.RoomScan.primary(dark: dark))]
+    }
+
     func resize(_ size: CGSize, scale: CGFloat) {
         guard size.width > 0, size.height > 0 else { return }
         viewport = size
@@ -175,7 +217,7 @@ final class RerunStageRenderer {
     // MARK: Frame
 
     private func update(_ delta: Float) {
-        guard let session else { return }
+        guard active, let session else { return }
         clock += Double(delta)
         session.tick(delta)
         if fpsMeter.tick(clock) { session.fps = fpsMeter.fps }
@@ -193,16 +235,24 @@ final class RerunStageRenderer {
         // A recording is framed whole from its first frame: the camera and the grid hold still
         // while it plays.
         let whole = session.whole
-        let bounds = RerunGeometry.contentBounds(whole)
+        if boundsHidden != session.hidden {
+            boundsHidden = session.hidden
+            bounds = RerunGeometry.contentBounds(whole, hidden: session.hidden, lens: session.pack.manifest.lens)
+        }
         let aspect = Float(viewport.width / max(viewport.height, 1))
         let home = RerunFraming.home(bounds: bounds, azimuth: orbit.home.azimuth, aspect: aspect,
                                      elevation: orbit.homeElevation, margin: RerunFraming.replayMargin)
         if orbit.following { orbit.home = home }
         if !orbit.hasFramedContent, bounds != nil {
             orbit.hasFramedContent = true
-            if orbit.drift { orbit.playIntro(from: RerunIntro.start(for: home)) } else { orbit.snap(to: home) }
+            // The entrance needs a running camera: a stage installed on a paused replay opens framed.
+            if orbit.drift && session.playback.cameraAdvances {
+                orbit.playIntro(from: RerunIntro.start(for: home))
+            } else {
+                orbit.snap(to: home)
+            }
         }
-        orbit.update(delta: delta)
+        orbit.update(delta: delta, advancing: session.playback.cameraAdvances)
         let lift = compact ? 0 : Self.mainLift
         let (eye, target) = orbit.eyeAndTarget(lift: lift, heightPixels: heightPixels)
         camera.look(at: target, from: eye, relativeTo: nil)
@@ -233,7 +283,7 @@ final class RerunStageRenderer {
         var out: [RerunLayer: RerunMesh] = [:]
         var touched: [RerunLayer] = []
 
-        let stage = RerunGeometry.stageBounds(whole)
+        let stage = RerunGeometry.stageBounds(bounds)
         if changed("stage", [stage.0, stage.1, SIMD3(floorY, mpp, 0)]) {
             RerunGeometry.buildStage(bounds: stage, y: floorY, style: style, into: &out)
             touched += [.gridMinor, .gridMajor, .axisX, .axisY, .axisZ]
@@ -407,19 +457,14 @@ final class RerunStageRenderer {
 
     private func buildEntities(_ session: RerunReplaySession) {
         for layer in RerunLayer.allCases {
-            let entity = makeEntity(Self.flatMaterial(Self.paint(layer)), order: Self.order(layer))
+            let entity = makeEntity(Self.flatMaterial(Self.paint(layer, dark: dark)), order: Self.order(layer))
             layers[layer] = entity
         }
         for (id, image) in session.media.planeImages {
             guard let texture = Self.texture(image) else { continue }
             planePhotos[id] = makeEntity(Self.photoMaterial(texture), order: Order.planePhoto)
         }
-        if let atlas = Self.atlasTexture(session.whole) {
-            var material = UnlitMaterial(applyPostProcessToneMap: false)
-            material.color = .init(tint: .white, texture: .init(atlas, sampler: Self.nearest))
-            material.faceCulling = .none
-            points = makeEntity(material, order: Order.points)
-        }
+        points = makeEntity(Self.flatMaterial(SceneViewTokens.RoomScan.primary(dark: dark)), order: Order.points)
         if let disc = Self.shadowImage().flatMap(Self.texture) {
             var material = UnlitMaterial(applyPostProcessToneMap: false)
             material.color = .init(tint: .white, texture: .init(disc))
@@ -463,7 +508,6 @@ final class RerunStageRenderer {
 
     private static let placeholder: MeshResource = MeshResource.generatePlane(width: 0.001, depth: 0.001)
 
-    private static var nearest: MaterialParameters.Texture.Sampler { RerunRealityKit.nearest }
 
     /// See ``RerunRealityKit/resource(_:)`` — shared with the Real-World Scan demo, which
     /// also builds on macOS.
@@ -498,30 +542,23 @@ final class RerunStageRenderer {
         return material
     }
 
-    /// Colour of each flat layer: `SceneViewTokens.DebugView`, the trail on the brand ramp.
-    static func paint(_ layer: RerunLayer) -> UInt32 {
-        typealias T = SceneViewTokens.DebugView
+    /// Theme-resolved DESIGN.md colours with opaque outlines and marks.
+    static func paint(_ layer: RerunLayer, dark: Bool) -> UInt32 {
+        typealias T = SceneViewTokens.RoomScan
+        let primary = T.primary(dark: dark), tertiary = T.tertiary(dark: dark)
         switch layer {
-        case .gridMinor: return T.gridMinor
-        case .gridMajor: return T.gridMajor
-        case .axisX: return T.axisX
-        case .axisY: return T.axisY
-        case .axisZ: return T.axisZ
-        case .planeFloor: return T.floorFill
-        case .planeWall: return T.wallFill
-        case .planeOther: return T.otherFill
-        case .outlineFloor: return T.floorOutline
-        case .outlineWall: return T.wallOutline
-        case .outlineOther: return T.otherOutline
-        case .livePoints: return T.livePoint
-        case .trailHead: return T.trailNew
-        case .keyframes: return T.keyframe
-        case .frustum: return T.frustum
-        case .anchors: return T.anchor
+        case .gridMinor, .gridMajor: return T.grid(dark: dark)
+        case .axisX, .axisY, .axisZ, .anchors: return T.ink(dark: dark)
+        case .planeFloor: return SceneViewTokens.RoomScan.fill(primary)
+        case .planeWall: return SceneViewTokens.RoomScan.fill(tertiary)
+        case .planeOther: return SceneViewTokens.RoomScan.fill(T.ink(dark: dark))
+        case .outlineFloor, .livePoints, .trailHead, .frustum, .keyframes: return primary
+        case .outlineWall: return tertiary
+        case .outlineOther: return T.ink(dark: dark)
         default:
             let steps = RerunLayer.trailSteps
             let f = Float(steps.firstIndex(of: layer) ?? 0) / Float(steps.count - 1)
-            return f < 0.5 ? lerp(T.trailOld, T.trailMid, f * 2) : lerp(T.trailMid, T.trailNew, (f - 0.5) * 2)
+            return lerp(tertiary, primary, f)
         }
     }
 
@@ -543,19 +580,6 @@ final class RerunStageRenderer {
             out |= UInt32((x + (y - x) * f).rounded()) << UInt32(shift)
         }
         return out
-    }
-
-    /// One texel per map point, read nearest so each point keeps its own colour.
-    static func atlasTexture(_ whole: RerunFrame) -> TextureResource? {
-        let size = RerunPointAtlas.size
-        let pixels = RerunPointAtlas.pixels(whole.mapPointColors, count: whole.mapPointCount)
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
-              let image = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-        else { return nil }
-        return try? TextureResource(image: image, withName: nil, options: .init(semantic: .color, mipmapsMode: .none))
     }
 
     /// A soft black disc fading to nothing: a contact shadow without a shadow pass.

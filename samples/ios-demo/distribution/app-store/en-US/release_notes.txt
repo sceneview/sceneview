@@ -1,6 +1,6 @@
 Cosmos gains a ringed world: a planet with translucent rings orbits the blue star, lit by it. Tap the planet or the star and the camera flies there.
 
-Home shows every demo's picture edge to edge, and opens on its most striking demos: Cosmos first, then Rerun AR Replay.
+Home shows every demo's picture edge to edge, and opens on its most striking demos: Cosmos first, then Room Scan.
 
 Controls over the 3D scene use Liquid Glass, so the model shows through. The About tab shows the SceneView mark in 3D.
 

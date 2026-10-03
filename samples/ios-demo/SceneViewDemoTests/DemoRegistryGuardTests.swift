@@ -371,6 +371,24 @@ final class DemoRegistryGuardTests: XCTestCase {
         )
     }
 
+    func testRoomScanCatalogueWording() throws {
+        let oldName = "Rerun AR Replay"
+        let entries = GeneratedScenes.all()
+        for entry in entries {
+            XCTAssertFalse(entry.title.contains(oldName), entry.sceneId)
+            XCTAssertFalse(entry.subtitle.contains(oldName), entry.sceneId)
+        }
+        let room = try XCTUnwrap(entries.first { $0.sceneId == "ar-rerun" })
+        XCTAssertEqual(room.title, "Room Scan")
+        XCTAssertEqual(room.subtitle, "Scan your room, then replay it in 3D")
+        #if os(iOS)
+        for entry in FeaturedARDemo.all {
+            XCTAssertFalse(entry.title.contains(oldName), entry.id)
+            XCTAssertFalse(entry.subtitle.contains(oldName), entry.id)
+        }
+        #endif
+    }
+
     /// Two demos sharing the same title would confuse users in the Samples
     /// grid — almost always a copy-paste bug in a new `*Scene.swift`'s
     /// `@title` directive. Mirrors Android's title/subtitle-resource

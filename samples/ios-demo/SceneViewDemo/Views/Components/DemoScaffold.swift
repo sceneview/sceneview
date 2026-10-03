@@ -44,6 +44,8 @@ public enum DemoChromeMode {
     /// A 3D scene the app renders. The scrim bands apply: the scene can be any
     /// brightness, and white chrome has to read over all of them.
     case stage
+    /// Room Scan: system theme, opaque token cards, no media scrims.
+    case themedStage
     /// A live camera feed. No bands — darkening 160 pt of sky and 220 pt of
     /// floor dims the one thing the user pointed the phone at, and it does so
     /// permanently, on every AR screen. Controls get an `ar-scrim` ground the
@@ -152,7 +154,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         // The chrome never rides the keyboard: a text field lives in the
         // sheet, and the sheet does its own avoidance.
         .ignoresSafeArea(.keyboard)
-        .background(SceneViewTokens.Stage.background.ignoresSafeArea())
+        // Under the stage while it fades in: the themed stage's own ground, not the dark one.
+        .background((chromeMode == .themedStage ? SceneViewTokens.RoomScan.background
+                                                : SceneViewTokens.Stage.background).ignoresSafeArea())
         .hideNavigationBar()
         .onAppear {
             withAnimation(SceneViewTokens.Spring.fade) { entered = true }
@@ -223,9 +227,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         .padding(.bottom, bottomInset)
         .opacity(entered ? 1 : 0)
         .animation(reduceMotion ? SceneViewTokens.Spring.fade : SceneViewTokens.Spring.animation, value: entered)
-        // Chrome over media is theme-independent: pin the material and every
-        // asset colour to their dark variant so light mode cannot wash it out.
-        .environment(\.colorScheme, .dark)
+        // Media keeps dark chrome; a themed stage inherits the system scheme.
+        .environment(\.colorScheme, chromeMode == .themedStage ? colorScheme : .dark)
+        .environment(\.themedDemoChrome, chromeMode == .themedStage)
         .environment(\.arChromeGround,
                      chromeMode == .ar ? SceneViewTokens.ARChrome.scrim(colorScheme) : nil)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
@@ -280,7 +284,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                 GlassPill {
                     Text(resolvedTitle)
                         .font(SceneViewTokens.TypeScale.chromeLabel)
-                        .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                        .foregroundStyle(chromeMode == .themedStage ? SceneViewTokens.RoomScan.text : SceneViewTokens.Glass.onGlass)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                         .accessibilityAddTraits(.isHeader)
@@ -290,7 +294,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                     if qaMode && !DeepLinkRouter.isScriptedCapture {
                         Text("QA ×")
                             .font(SceneViewTokens.TypeScale.chromeCaption)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                            .foregroundStyle(chromeMode == .themedStage ? SceneViewTokens.RoomScan.secondaryText : SceneViewTokens.Glass.onGlassMuted)
                             .onTapGesture { qaMode = false }
                             .accessibilityLabel("Disable QA mode")
                     }
@@ -448,10 +452,12 @@ private struct AccentButton: View {
 
     private static let glassLabelSize: CGFloat = 32
 
+    @Environment(\.themedDemoChrome) private var themed
+
     private var icon: some View {
         Image(systemName: item.icon)
             .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .medium))
-            .foregroundStyle(SceneViewTokens.Stage.background)
+            .foregroundStyle(themed ? SceneViewTokens.HomeColor.onPrimary : SceneViewTokens.Stage.background)
     }
 }
 
@@ -459,6 +465,7 @@ private struct DockButton: View {
     let item: DockItem
     let showsCaption: Bool
 
+    @Environment(\.themedDemoChrome) private var themed
     @State private var taps = 0
     @Environment(\.analyticsSampleId) private var analyticsSampleId
 
@@ -485,9 +492,9 @@ private struct DockButton: View {
             }
             // Icon and caption share one colour, so a selected toggle reads as a unit.
             .foregroundStyle(
-                !item.enabled ? SceneViewTokens.Glass.onGlassDisabled
+                !item.enabled ? (themed ? SceneViewTokens.RoomScan.secondaryText : SceneViewTokens.Glass.onGlassDisabled)
                     : item.selected ? SceneViewTokens.HomeColor.primary
-                    : SceneViewTokens.Glass.onGlass
+                    : (themed ? SceneViewTokens.RoomScan.text : SceneViewTokens.Glass.onGlass)
             )
             .padding(.horizontal, SceneViewTokens.Space.xs)
             .frame(minWidth: SceneViewTokens.Layout.touchTarget,
