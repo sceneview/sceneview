@@ -951,7 +951,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   room, under the header's line; the timeline folds onto one row (play, strip, clock), the
   camera card is dropped — the dock's *Camera* is one tap away — and the room is fitted
   between the two cards, under the status bar and above the mode pill
-  (`OrbitBand.betweenSides`).
+  (`OrbitBand.betweenSides`). Over the camera, the 3D picture-in-picture shrinks to
+  96 × 128 dp and sits under the timeline, beside the frame.
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
 - **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the

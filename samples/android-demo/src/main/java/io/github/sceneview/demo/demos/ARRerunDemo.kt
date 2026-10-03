@@ -576,7 +576,8 @@ private fun RerunReplayScreen(
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
     // A phone on its side has no height for that stack: the figures and the timeline stand on
-    // either side of the room, the timeline folds onto one row, and the corner card is dropped.
+    // either side of the room, the timeline folds onto one row, and the camera card is dropped
+    // (the 3D picture-in-picture, which runs the clock over the camera, moves under the timeline).
     val compact = LocalConfiguration.current.screenHeightDp.dp < SceneViewTokens.DebugView.compactStageHeight
     var stage by remember { mutableStateOf(Rect.Zero) }
     var hud by remember { mutableStateOf<Rect?>(null) }
@@ -649,8 +650,31 @@ private fun RerunReplayScreen(
                     )
                     Spacer(Modifier.weight(1f))
                     // The card pads itself by Space.md on either side.
-                    Box(Modifier.width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)) {
+                    Column(
+                        modifier = Modifier.width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2),
+                        horizontalAlignment = Alignment.End,
+                    ) {
                         timelineCard(Modifier.reveal(filmstripIn, rise = -Space.md))
+                        if (mode == RerunMode.Camera) {
+                            // Over the camera the 3D view is the one that runs the session's
+                            // clock: it stays, smaller, beside the frame rather than on it.
+                            ArDebugPip(
+                                session = session,
+                                orbit = pipOrbit,
+                                engine = engine,
+                                modelLoader = modelLoader,
+                                materialLoader = materialLoader,
+                                onExpand = { onMode(RerunMode.Scene) },
+                                modifier = Modifier
+                                    .padding(top = Space.md, end = Space.md)
+                                    .size(
+                                        SceneViewTokens.DebugView.compactPipWidth,
+                                        SceneViewTokens.DebugView.compactPipHeight,
+                                    )
+                                    .reveal(cardIn, rise = -Space.md),
+                                replay = media,
+                            )
+                        }
                     }
                 }
             } else if (media != null) {

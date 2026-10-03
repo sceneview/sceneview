@@ -684,10 +684,13 @@ object SceneViewTokens {
         /**
          * A phone on its side (#4306): under [compactStageHeight] the replay's stacked cards leave
          * the room no height, so the figures and the timeline stand on either side of it,
-         * [compactCardWidth] wide each — as narrow as the four figures allow.
+         * [compactCardWidth] wide each — as narrow as the four figures allow. Over the camera the
+         * picture-in-picture shrinks to fit under the timeline, the same 3:4.
          */
         val compactStageHeight = 500.dp
         val compactCardWidth = 280.dp
+        val compactPipWidth = 96.dp
+        val compactPipHeight = 128.dp
     }
 
     /** `DESIGN.md` — Spacing scale (`space-*`). */
