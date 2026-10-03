@@ -6,8 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the shared plane-primitive selection used by [PlaneVisualizer] (V1) and [PlaneVisualizerV2]
- * (#2328 / #2402).
+ * Pins the plane-primitive selection used by [PlaneVisualizer] (#2328 / #2402).
  *
  * `updateRenderable()` ran every frame the plane updated and built its primitive list with a fresh
  * `buildList { }` each call — a per-plane, per-frame allocation. [selectPlanePrimitives] replaces

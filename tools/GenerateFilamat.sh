@@ -10,9 +10,9 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (39 mats → 39 filamats), across THREE pinned toolchains:
+# Inventory (38 mats → 38 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
-#   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
+#   arsceneview/src/main/materials/        (8) → arsceneview/src/main/assets/materials/
 #   samples/android-demo/src/main/materials/ (11) → samples/android-demo/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
@@ -31,8 +31,8 @@
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 39 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 39 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 38 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 38 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -182,7 +182,6 @@ MATS=(
     "arsceneview:face_mesh:arsceneview/src/main/materials/face_mesh.mat:arsceneview/src/main/assets/materials/face_mesh.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:face_mesh_occluder:arsceneview/src/main/materials/face_mesh_occluder.mat:arsceneview/src/main/assets/materials/face_mesh_occluder.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer:arsceneview/src/main/materials/plane_renderer.mat:arsceneview/src/main/assets/materials/plane_renderer.filamat:--optimize-size -p mobile -a opengl -a vulkan"
-    "arsceneview:plane_renderer_v2:arsceneview/src/main/materials/plane_renderer_v2.mat:arsceneview/src/main/assets/materials/plane_renderer_v2.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_shadow:arsceneview/src/main/materials/plane_renderer_shadow.mat:arsceneview/src/main/assets/materials/plane_renderer_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:shadow_receiver:arsceneview/src/main/materials/shadow_receiver.mat:arsceneview/src/main/assets/materials/shadow_receiver.filamat:--optimize-size -p mobile -a opengl -a vulkan"
 )

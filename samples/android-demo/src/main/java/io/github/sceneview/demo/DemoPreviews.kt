@@ -45,7 +45,7 @@ object DemoPreviews {
         "ar-people-occlusion" to PreviewPair(R.drawable.preview_ar_people_occlusion_light, R.drawable.preview_ar_people_occlusion_dark),
         "ar-placement" to PreviewPair(R.drawable.preview_ar_placement_light, R.drawable.preview_ar_placement_dark),
         "ar-plane-node" to PreviewPair(R.drawable.preview_ar_plane_node_light, R.drawable.preview_ar_plane_node_dark),
-        "ar-plane-renderer-v2" to PreviewPair(R.drawable.preview_ar_plane_renderer_v2_light, R.drawable.preview_ar_plane_renderer_v2_dark),
+        "ar-surfaces" to PreviewPair(R.drawable.preview_ar_surfaces_light, R.drawable.preview_ar_surfaces_dark),
         "ar-point-cloud" to PreviewPair(R.drawable.preview_ar_point_cloud_light, R.drawable.preview_ar_point_cloud_dark),
         "ar-raw-depth-point-cloud" to PreviewPair(R.drawable.preview_ar_raw_depth_point_cloud_light, R.drawable.preview_ar_raw_depth_point_cloud_dark),
         "ar-rerun" to PreviewPair(R.drawable.preview_ar_rerun_light, R.drawable.preview_ar_rerun_dark),

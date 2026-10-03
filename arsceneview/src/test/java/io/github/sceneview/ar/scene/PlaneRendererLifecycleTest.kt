@@ -8,17 +8,17 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Lifecycle of [PlaneRendererV2]'s per-plane visualizers, without a Filament Engine:
+ * Lifecycle of [PlaneRenderer]'s per-plane visualizers, without a Filament Engine:
  *
  *  1. [planeVisualizerAction] never builds a visualizer for a subsumed or stopped plane. The
  *     test it replaces (`TRACKING || subsumedBy == null`) let every subsumed plane through, so
  *     each gated update built a visualizer the cleanup destroyed right after.
  *  2. [OwnedVisualizers] destroys a visualizer's MaterialInstances with it: live instances stay
  *     at 2 × live visualizers. They used to be released only when the whole renderer was.
- *  3. The ripple phase in `plane_renderer_v2.mat` is wrapped in highp, not read into a mediump
+ *  3. The ripple phase in `plane_renderer.mat` is wrapped in highp, not read into a mediump
  *     `float` that steps by 0.25 s after 256 s of engine uptime.
  */
-class PlaneRendererV2LifecycleTest {
+class PlaneRendererLifecycleTest {
 
     // ── 1. Which planes get a visualizer ─────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ class PlaneRendererV2LifecycleTest {
             },
         )
 
-        /** Mirrors `PlaneRendererV2.update`: renderPlane for each updated plane, then cleanup. */
+        /** Mirrors `PlaneRenderer.update`: renderPlane for each updated plane, then cleanup. */
         fun gatedUpdate(updatedPlanes: List<FakePlane>) {
             for (plane in updatedPlanes) {
                 val action = planeVisualizerAction(
@@ -129,7 +129,7 @@ class PlaneRendererV2LifecycleTest {
 
         // ARCore merges the table into the floor; the table stays in getUpdatedPlanes.
         table.isSubsumed = true
-        // 10 gated updates = 1 s at the default maxHitTestPerSecond.
+        // 10 gated updates = 1 s at the default maxUpdatesPerSecond.
         repeat(10) {
             fakes.gatedUpdate(all)
             fakes.assertInstancesMatchVisualizers()
@@ -171,7 +171,7 @@ class PlaneRendererV2LifecycleTest {
     @Test
     fun `ripple phase is wrapped in highp`() {
         // JVM tests run with the module directory as CWD.
-        val source = File("src/main/materials/plane_renderer_v2.mat").readText()
+        val source = File("src/main/materials/plane_renderer.mat").readText()
         assertFalse(
             "a plain `float` is mediump under `-p mobile`: engine uptime loses sub-second " +
                 "precision after 256 s",

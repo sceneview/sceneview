@@ -37,7 +37,6 @@
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-image-stabilization" to PreviewPair(R.drawable.preview_ar_image_stabilization_light, R.drawable.preview_ar_image_stabilization_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-ml-object-label" to PreviewPair(R.drawable.preview_ar_ml_object_label_light, R.drawable.preview_ar_ml_object_label_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-people-occlusion" to PreviewPair(R.drawable.preview_ar_people_occlusion_light, R.drawable.preview_ar_people_occlusion_dark)</ID>
-    <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-plane-renderer-v2" to PreviewPair(R.drawable.preview_ar_plane_renderer_v2_light, R.drawable.preview_ar_plane_renderer_v2_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-point-cloud" to PreviewPair(R.drawable.preview_ar_point_cloud_light, R.drawable.preview_ar_point_cloud_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-raw-depth-point-cloud" to PreviewPair(R.drawable.preview_ar_raw_depth_point_cloud_light, R.drawable.preview_ar_raw_depth_point_cloud_dark)</ID>
     <ID>MaxLineLength:DemoPreviews.kt:DemoPreviews$"ar-scene-semantics" to PreviewPair(R.drawable.preview_ar_scene_semantics_light, R.drawable.preview_ar_scene_semantics_dark)</ID>
