@@ -2,7 +2,6 @@ package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,13 +19,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.rounded.ScreenRotationAlt
 import androidx.compose.material3.Button
@@ -48,14 +42,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
@@ -87,7 +78,7 @@ import io.github.sceneview.demo.demos.internal.TrayStage
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
-import io.github.sceneview.demo.ui.overMediaEdge
+import io.github.sceneview.demo.ui.GlassChip
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.fitCameraToBounds
 import io.github.sceneview.gesture.CameraGestureDetector
@@ -498,7 +489,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
         bottomOverlay = {
             val kinds: @Composable () -> Unit = {
                 BallKind.entries.forEach { kind ->
-                    TrayGlassChip(
+                    GlassChip(
                         label = stringResource(kind.labelRes),
                         selected = kind == selectedKind,
                         swatch = kind.swatch,
@@ -531,7 +522,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     Spacer(Modifier.width(SceneViewTokens.Space.xs))
                     Text(stringResource(R.string.demo_rolling_balls_drop))
                 }
-                TrayGlassChip(
+                GlassChip(
                     label = stringResource(R.string.demo_rolling_balls_tilt_drag),
                     selected = tiltEnabled,
                     icon = Icons.Rounded.ScreenRotationAlt,
@@ -1049,64 +1040,6 @@ private class TrayGrip {
     }
 
     val velocity = TrayBallDrag.ThrowVelocityTracker()
-}
-
-/**
- * A selectable capsule over the scene: glass when off, solid white when on — the white-on-media
- * language of the dock, readable on the dark stage in both themes. [swatch] shows the colour of
- * the ball a material chip stands for; [icon] labels a toggle. [toggle] picks the semantics: a
- * switch for Tilt, one radio button of a group for the materials.
- */
-@Composable
-private fun TrayGlassChip(
-    label: String,
-    selected: Boolean,
-    toggle: Boolean,
-    onClick: () -> Unit,
-    swatch: Color? = null,
-    icon: ImageVector? = null,
-) {
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
-    val content = if (selected) SceneViewTokens.Stage.background else SceneViewTokens.Glass.onGlass
-    Row(
-        modifier = Modifier
-            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            .overMediaEdge(shape)
-            .clip(shape)
-            .background(if (selected) SceneViewTokens.Glass.onGlass else SceneViewTokens.Glass.surface)
-            .then(
-                if (toggle) {
-                    Modifier.toggleable(value = selected, role = Role.Switch, onValueChange = { onClick() })
-                } else {
-                    Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-                },
-            )
-            .padding(horizontal = SceneViewTokens.Glass.pillPaddingHorizontal),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-    ) {
-        when {
-            selected && swatch != null -> Icon(
-                Icons.Filled.Check,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
-            )
-            swatch != null -> Box(
-                Modifier
-                    .size(SceneViewTokens.Space.md)
-                    .clip(CircleShape)
-                    .background(swatch),
-            )
-            icon != null -> Icon(
-                icon,
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
-            )
-        }
-        Text(label, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
-    }
 }
 
 /**

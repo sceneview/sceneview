@@ -455,7 +455,11 @@ class DemoInteractionTest {
     // The retired `physics` id is the `rolling-balls` demo since #4083. Covered by
     // `rollingBalls_dropAndReset` below, which exercises Drop and Reset.
 
-    // ── 4. Geometry Primitives — 4 shape chips ────────────────────────────────
+    // ── 4. Geometry Primitives — 7 shape chips ────────────────────────────────
+    //
+    // Every shape is shown when the screen opens, so each tap hides one. The
+    // screenshot names are the pre-refactor ones: they are capture ids, kept so
+    // a run can still be compared with an older one.
 
     @Test
     fun geometryPrimitives_allShapes() {
@@ -473,6 +477,11 @@ class DemoInteractionTest {
 
         tap("Cube")
         screenshot("19_geometry_cube_off")
+
+        tap("Cone")
+        tap("Torus")
+        tap("Capsule")
+        screenshot("19b_geometry_all_hidden")
     }
 
     // ── 5. Custom Geometry — live mesh regeneration ───────────────────────────
