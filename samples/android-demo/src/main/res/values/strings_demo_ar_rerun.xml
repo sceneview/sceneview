@@ -11,4 +11,13 @@
 <resources>
     <string name="demo_ar_rerun_title">Room Scan</string>
     <string name="demo_ar_rerun_subtitle">Scan your room, then replay it in 3D</string>
+
+    <!-- Why the replay has no surface to show; the points stay on screen. One line each: the
+         timeline card's caption has room for one. -->
+    <!-- The scan gave nothing to mesh. -->
+    <string name="demo_ar_rerun_surface_poor_scan">No surface yet: scan slowly, 1–3 m from the walls.</string>
+    <!-- Building the mesh, or loading it into the 3D view, ran out of memory. -->
+    <string name="demo_ar_rerun_surface_out_of_memory">Not enough memory to build the surface.</string>
+    <!-- The build failed, or the 3D view could not load what it built. -->
+    <string name="demo_ar_rerun_surface_unavailable">The surface could not be shown.</string>
 </resources>

@@ -574,7 +574,7 @@ private fun RerunReplayScreen(
     // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
     // the built model itself each time it comes back.
     var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
-    val surface = rememberRerunSurface(surfaceSource, surfaceWanted)
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
