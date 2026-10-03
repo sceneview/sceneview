@@ -38,7 +38,9 @@ internal object RerunRrdBlueprint {
         val chunks = ArrayList<RerunChunk>()
         chunks += chunk(
             "/container/$root",
-            BlueprintColumn.u8s(CONTAINER, "container_kind", "$COMPONENTS.ContainerKind", listOf(byteArrayOf(HORIZONTAL))),
+            BlueprintColumn.u8s(
+                CONTAINER, "container_kind", "$COMPONENTS.ContainerKind", listOf(byteArrayOf(HORIZONTAL)),
+            ),
             BlueprintColumn.strings(
                 CONTAINER, "contents", "$COMPONENTS.IncludedContent", listOf(views.map { "view/${it.id}" }),
             ),

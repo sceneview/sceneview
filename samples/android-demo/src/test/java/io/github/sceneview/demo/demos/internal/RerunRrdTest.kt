@@ -98,7 +98,9 @@ class RerunRrdTest {
         assertTrue(withPhotos.any { it.entityPath.startsWith("/container/") })
         assertEquals(
             setOf("/viewport", "/blueprint_panel", "/selection_panel"),
-            withPhotos.map { it.entityPath }.filter { !it.startsWith("/view/") && !it.startsWith("/container/") }.toSet(),
+            withPhotos.map { it.entityPath }
+                .filter { !it.startsWith("/view/") && !it.startsWith("/container/") }
+                .toSet(),
         )
         for (chunk in withPhotos) {
             assertEquals(listOf(0L), chunk.times)
