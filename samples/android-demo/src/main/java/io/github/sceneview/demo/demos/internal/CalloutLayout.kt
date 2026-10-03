@@ -178,14 +178,31 @@ internal object CalloutLayout {
      * placement ever stops being a circle.
      */
     fun worldPosition(callout: Callout, spread: Float, turntableYawDegrees: Float): Position {
-        val local = localPosition(callout, spread)
-        val yaw = Math.toRadians(turntableYawDegrees.toDouble())
+        return worldPosition(
+            localPosition = localPosition(callout, spread),
+            parentYawDegrees = turntableYawDegrees,
+        )
+    }
+
+    /**
+     * Resolves a local position through a Y-rotated parent and a translated content root.
+     *
+     * [contentRootTranslation] is zero in the demo because it disables `autoCenterContent`.
+     * Keeping the translation explicit prevents future callers from computing a billboard
+     * heading from a position that differs from the node's actual world transform.
+     */
+    fun worldPosition(
+        localPosition: Position,
+        parentYawDegrees: Float,
+        contentRootTranslation: Position = Position(0f, 0f, 0f),
+    ): Position {
+        val yaw = Math.toRadians(parentYawDegrees.toDouble())
         val cosYaw = cos(yaw).toFloat()
         val sinYaw = sin(yaw).toFloat()
         return Position(
-            x = local.x * cosYaw + local.z * sinYaw,
-            y = local.y,
-            z = -local.x * sinYaw + local.z * cosYaw,
+            x = localPosition.x * cosYaw + localPosition.z * sinYaw + contentRootTranslation.x,
+            y = localPosition.y + contentRootTranslation.y,
+            z = -localPosition.x * sinYaw + localPosition.z * cosYaw + contentRootTranslation.z,
         )
     }
 

@@ -237,6 +237,10 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             // #2110 was filed for. Leaving the skybox off keeps the subject floating on the
             // demo's own background, so one scene reads correctly in both light and dark.
             environment = rememberModelDemoEnvironment(environmentLoader),
+            // This layout authors model, cards, camera target, and billboard math in world
+            // coordinates. An automatic content-root translation would make the rendered card
+            // position disagree with the position used to compute its heading.
+            autoCenterContent = false,
             cameraManipulator = rememberCameraManipulator(
                 // The orbit distance is the LENGTH of `orbitHomePosition` (see GeometryLayout and
                 // #2930), and `camera_distance` (#2652) is honoured so a capture run can reframe

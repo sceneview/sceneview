@@ -75,6 +75,22 @@ class CalloutLayoutTest {
         assertEquals(0f, spun.z, eps)
     }
 
+    @Test
+    fun `billboard heading uses the card position after a translated content root`() {
+        val actualWorld = CalloutLayout.worldPosition(
+            localPosition = Position(1f, 0f, 0f),
+            parentYawDegrees = 0f,
+            contentRootTranslation = Position(0f, 0f, 1f),
+        )
+        val camera = Position(0f, 0f, 3f)
+
+        val actual = CalloutLayout.billboardYawDegrees(actualWorld, camera)
+        val translationOmitted = CalloutLayout.billboardYawDegrees(Position(1f, 0f, 0f), camera)
+
+        assertEquals(-26.565f, actual, 1e-3f)
+        assertEquals(-18.435f, translationOmitted, 1e-3f)
+    }
+
     // ── Billboarding ─────────────────────────────────────────────────────────────────────
 
     @Test
