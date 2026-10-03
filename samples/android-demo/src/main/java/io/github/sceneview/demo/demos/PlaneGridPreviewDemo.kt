@@ -231,8 +231,8 @@ private enum class PreviewSurface(
     val tiltDegrees: Float,
 ) {
     Floor(R.string.plane_grid_preview_floor, 0f, Float3(1.0f, 1.0f, 1.0f), 0.85f, 0f),
-    Wall(R.string.plane_grid_preview_wall, 1f, Float3(0.16f, 0.45f, 1.0f), 0.80f, 75f),
-    Ceiling(R.string.plane_grid_preview_ceiling, 2f, Float3(1.0f, 0.62f, 0.22f), 0.65f, 0f),
+    Wall(R.string.plane_grid_preview_wall, 1f, Float3(0.04f, 0.22f, 0.90f), 0.80f, 75f),
+    Ceiling(R.string.plane_grid_preview_ceiling, 2f, Float3(0.90f, 0.35f, 0.04f), 0.70f, 0f),
 }
 
 private const val PLANE_RADIUS = 1.2f
@@ -240,7 +240,7 @@ private const val PLANE_RADIUS = 1.2f
 // PlaneRenderer's shared defaults (private to arsceneview), mirrored for the preview.
 private const val MARKS_PER_METRE = 10.0f
 private const val SURFACE_ALPHA = 0.015f
-private const val CONTRAST = 0.55f
+private const val CONTRAST = 0.80f
 
 private const val MAX_TILT_DEGREES = 90f
 private const val PLANE_SIDES = 8

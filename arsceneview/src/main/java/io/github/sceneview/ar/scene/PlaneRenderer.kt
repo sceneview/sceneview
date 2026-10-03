@@ -315,7 +315,7 @@ class PlaneRenderer(
         private val DEFAULT_MARK_TINT = Float3(1.0f, 1.0f, 1.0f)
         private const val DEFAULT_MARK_ALPHA = 0.85f
         private const val DEFAULT_SURFACE_ALPHA = 0.015f
-        private const val DEFAULT_CONTRAST = 0.55f
+        private const val DEFAULT_CONTRAST = 0.80f
     }
 }
 
@@ -490,10 +490,11 @@ internal data class PlaneMaterialPreset(
  * other two stay recognisable without competing with it. Unknown future ARCore plane types fall
  * back to the floor style rather than crashing.
  *
- * The wall and ceiling colours are saturated on purpose (linear luminance below 0.5 and 0.7):
- * walls and ceilings are white more often than not, and a pale tint on white paint in daylight
- * is no mark at all. The floor stays white and relies on the dark halo of the material
- * (`contrast`) over a light floor.
+ * The wall and ceiling colours are deep on purpose (linear luminance under 0.5): walls and
+ * ceilings are white more often than not, a mark cannot be brighter than white paint in
+ * daylight, and the view's filmic tone mapper turns any light tint into white up there. So
+ * they are darker than the wall, and still bright against a dark room. The floor stays white
+ * and relies on the dark halo of the material (`contrast`) over a light floor.
  */
 // `Plane.Type` is exhaustive at this ARCore version; the `else` arm is future-proofing — a
 // render-thread crash on an unknown enum value is strictly worse than a slightly-wrong mark.
@@ -510,8 +511,8 @@ private val FLOOR_PRESET = PlaneMaterialPreset(
     kind = PlaneSurfaceKind.FLOOR, gridR = 1.0f, gridG = 1.0f, gridB = 1.0f, markAlpha = 0.85f,
 )
 private val WALL_PRESET = PlaneMaterialPreset(
-    kind = PlaneSurfaceKind.WALL, gridR = 0.16f, gridG = 0.45f, gridB = 1.0f, markAlpha = 0.80f,
+    kind = PlaneSurfaceKind.WALL, gridR = 0.04f, gridG = 0.22f, gridB = 0.90f, markAlpha = 0.80f,
 )
 private val CEILING_PRESET = PlaneMaterialPreset(
-    kind = PlaneSurfaceKind.CEILING, gridR = 1.0f, gridG = 0.62f, gridB = 0.22f, markAlpha = 0.65f,
+    kind = PlaneSurfaceKind.CEILING, gridR = 0.90f, gridG = 0.35f, gridB = 0.04f, markAlpha = 0.70f,
 )

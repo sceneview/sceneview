@@ -15,6 +15,9 @@
 //             - Each mark, and the reticle ring, sits in a soft dark halo (`contrast`): a
 //               white dot disappears on a sunlit floor or a white wall, the halo keeps its
 //               outline; on a dark floor the halo is invisible and costs nothing.
+//               The view tone-maps with ToneMapper.Filmic, which flattens everything near
+//               white: a halo at 0.55 came out 10 % darker than a white wall, and a light
+//               blue came out white. Hence a strong halo (0.80) and deep tints.
 //             - The marks fade out towards the polygon edge (per-vertex ramp carried in local
 //               Y), with distance from the camera, and into an even tone where they get
 //               smaller than a pixel (no moiré at grazing angles).
@@ -225,8 +228,10 @@ fragment {
         float shade = rimMask * (1.0 - markMask) * contrast * emphasis * fade * opacity;
         shade = max(shade, ringRim * contrast * edgeFade * reveal * opacity);
 
+        // The pool of light under the reticle only lifts the tint a third of the way to white:
+        // more, and a wall lost its colour exactly where the user is looking.
         float3 rgb = mix(materialParams.gridTint, float3(1.0),
-            clamp(spot * 0.6 + front + ring, 0.0, 1.0));
+            clamp(spot * 0.35 + front + ring, 0.0, 1.0));
 
         // Premultiplied: the halo contributes coverage but no colour.
         material.baseColor = float4(rgb * light, clamp(light + shade * (1.0 - light), 0.0, 1.0));

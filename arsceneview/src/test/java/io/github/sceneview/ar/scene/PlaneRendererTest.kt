@@ -125,10 +125,10 @@ class PlaneRendererTest {
         val wall = luminance(planeMaterialPresetFor(Plane.Type.VERTICAL))
         val ceiling = luminance(planeMaterialPresetFor(Plane.Type.HORIZONTAL_DOWNWARD_FACING))
         assertTrue("wall luminance $wall must stay below 0.5", wall < 0.5f)
-        assertTrue("ceiling luminance $ceiling must stay below 0.7", ceiling < 0.7f)
+        assertTrue("ceiling luminance $ceiling must stay below 0.5", ceiling < 0.5f)
         // ...and bright enough to read in a dark room.
-        assertTrue("wall luminance $wall must stay above 0.3", wall > 0.3f)
-        assertTrue("ceiling luminance $ceiling must stay above 0.3", ceiling > 0.3f)
+        assertTrue("wall luminance $wall must stay above 0.2", wall > 0.2f)
+        assertTrue("ceiling luminance $ceiling must stay above 0.2", ceiling > 0.2f)
     }
 
     @Test
