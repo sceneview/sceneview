@@ -124,8 +124,8 @@ final class RerunTrace: @unchecked Sendable {
     private(set) var hasPointColors = false
     private var voxelIndex: [Int64: Int] = [:]
 
-    private var observationTimes: [Float] = []
-    private var observations: [[Int]] = []
+    private(set) var observationTimes: [Float] = []
+    private(set) var observations: [[Int]] = []
 
     private var planeOrder: [Int] = []
     private var planeHistory: [Int: [(Float, RerunPlane)]] = [:]
@@ -411,7 +411,8 @@ enum RerunLog {
             let confidences = (obj["confidences"] as? [Any])?.compactMap { ($0 as? NSNumber)?.floatValue }
             let colors = (obj["colors"] as? [Any])?.compactMap { entry -> UInt32? in
                 guard let rgb = floats(entry), rgb.count == 3 else { return nil }
-                return packRGB(rgb)
+                // A negative channel marks a point no photo showed: no colour, as on Android.
+                return rgb.contains { $0 < 0 } ? 0 : packRGB(rgb)
             }
             return .points(
                 nanos: nanos,
