@@ -183,16 +183,35 @@ class DemoSmokeTest {
     // still held: Filament aborted the process on the next frame, and this run with it.
     @Test
     fun a06c_arRerun_themeSwitchDuringReplay() =
-        switchThemeOverReplay(qaState = "replay", settleMillis = 10000, shot = "s06c_ar_rerun_theme_switch")
+        switchThemeOverReplay(qaState = "replay", shot = "s06c_ar_rerun_theme_switch") { Thread.sleep(10000) }
 
     // Same switch over the Surface view. Its ground is the scene's skybox, which the theme
-    // replaces: the scene kept the old one a dispatch after its owner had destroyed it, and
-    // Filament read it while taking the new one — a segfault, on some switches only.
+    // replaced: the scene kept the old one a dispatch after its owner had destroyed it, and
+    // Filament read it while taking the new one — a segfault, on some switches only. So the
+    // switches start once the surface is built and on screen (about a minute on the emulator;
+    // before that the view is still the points'), and there are enough of them for a defect
+    // that showed once in ~27 to show.
     @Test
     fun a06d_arRerun_themeSwitchOverSurface() =
-        switchThemeOverReplay(qaState = "model-synthetic", settleMillis = 20000, shot = "s06d_ar_rerun_theme_surface")
+        switchThemeOverReplay(
+            qaState = "model-synthetic",
+            shot = "s06d_ar_rerun_theme_surface",
+            rounds = SURFACE_SWITCH_ROUNDS,
+        ) {
+            // The caption turns from "Building the surface…" to the mesh's figures once it is built.
+            checkNotNull(device.wait(Until.findObject(By.textStartsWith("Surface preview")), SURFACE_TIMEOUT)) {
+                "The surface was not built within ${SURFACE_TIMEOUT / 1000} s"
+            }
+            // Built, then loaded into the 3D view and drawn.
+            Thread.sleep(8000)
+        }
 
-    private fun switchThemeOverReplay(qaState: String, settleMillis: Long, shot: String) {
+    private fun switchThemeOverReplay(
+        qaState: String,
+        shot: String,
+        rounds: Int = THEME_SWITCH_ROUNDS,
+        settle: () -> Unit,
+    ) {
         val initial = device.executeShellCommand("cmd uimode night").substringAfter(": ").trim()
         try {
             context.startActivity(
@@ -205,15 +224,17 @@ class DemoSmokeTest {
                 },
             )
             device.wait(Until.hasObject(By.text("Room Scan")), timeout)
-            Thread.sleep(settleMillis)
-            repeat(THEME_SWITCH_ROUNDS) {
-                device.executeShellCommand("cmd uimode night yes")
-                Thread.sleep(3000)
-                device.executeShellCommand("cmd uimode night no")
-                Thread.sleep(3000)
+            settle()
+            repeat(rounds) { round ->
+                for (night in listOf("yes", "no")) {
+                    device.executeShellCommand("cmd uimode night $night")
+                    Thread.sleep(SWITCH_SETTLE_MILLIS)
+                    check(device.currentPackageName == pkg) {
+                        "The demo left the foreground on round ${round + 1}, switching night mode to $night"
+                    }
+                }
             }
             screenshot(shot)
-            check(device.currentPackageName == pkg) { "The demo left the foreground after a theme switch" }
         } finally {
             device.executeShellCommand("cmd uimode night ${if (initial in NIGHT_MODES) initial else "no"}")
         }
@@ -248,5 +269,14 @@ class DemoSmokeTest {
 
         /** Dark then light, this many times: the freed skybox is not read on every switch. */
         const val THEME_SWITCH_ROUNDS = 3
+
+        /** Over the surface: 60 switches, twice what it took to see the abort once (#4330). */
+        const val SURFACE_SWITCH_ROUNDS = 30
+
+        /** A few rendered frames on the new theme, and time for an abort to take the process down. */
+        const val SWITCH_SETTLE_MILLIS = 1500L
+
+        /** The synthetic surface takes about a minute on the emulator, up to 95 s under load. */
+        const val SURFACE_TIMEOUT = 180_000L
     }
 }

@@ -20,6 +20,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.Viewport
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
@@ -43,7 +44,6 @@ import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setTexture
-import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -250,7 +250,7 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
     engine.destroySkybox(skybox)
     engine.destroyColorGrading(colorGrading)
     instances.forEach(materialLoader::destroyMaterialInstance)
-    engine.safeDestroyTexture(texture)
+    EngineDestroyQueue.of(engine).enqueueTexture(texture)
 }
 
 /** The off-screen warm-up's size: past bloom's seven halvings, nothing more. */
@@ -507,7 +507,7 @@ internal class ReplayLayers(
         measureMaterial.setTexture(texture, clamp)
         if (measureTexture !== atlas) {
             textures -= measureTexture
-            engine.safeDestroyTexture(measureTexture)
+            retire(measureTexture)
         }
         measureTexture = texture
     }
@@ -616,7 +616,7 @@ internal class ReplayLayers(
         while (iterator.hasNext() && frameTextures.size > FRAME_TEXTURE_CACHE) {
             val texture = iterator.next()
             if (texture in bound) continue
-            engine.safeDestroyTexture(texture)
+            retire(texture)
             iterator.remove()
         }
     }
@@ -630,12 +630,20 @@ internal class ReplayLayers(
     /** Material instances and textures, once the nodes are gone. */
     fun destroy() {
         materials.forEach { materialLoader.destroyMaterialInstance(it) }
-        textures.forEach { engine.safeDestroyTexture(it) }
-        frameTextures.values.forEach { engine.safeDestroyTexture(it) }
+        textures.forEach(::retire)
+        frameTextures.values.forEach(::retire)
         materials.clear()
         textures.clear()
         frameTextures.clear()
     }
+
+    /**
+     * Frees [texture] a few rendered frames from now, never in the call that unbinds it or
+     * destroys its material instance: Filament still commits that instance on the frame in
+     * flight, and a mipmapped texture gone by then aborts the renderer with "Invalid texture
+     * still bound to MaterialInstance" (#4330, the library's own rule in [EngineDestroyQueue]).
+     */
+    private fun retire(texture: Texture) = EngineDestroyQueue.of(engine).enqueueTexture(texture)
 
     private class PhotoSlot(val node: DebugLayerNode, val material: MaterialInstance) {
         var texture: Texture? = null

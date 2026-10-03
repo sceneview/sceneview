@@ -71,6 +71,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.DEFAULT_IBL_INTENSITY
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -115,10 +116,10 @@ import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.MeshNode
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
+import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.readBuffer
@@ -618,6 +619,41 @@ private fun stageBoundsOf(subject: FloatArray?): FloatArray {
 }
 
 /**
+ * The environment of a 3D view on the themed stage: the neutral light the placed models are lit by
+ * (the debug layers are unlit and ignore it) and a skybox in the stage's [ground].
+ *
+ * Built once for the view. A theme switch repaints the skybox in place: building another
+ * environment for it destroyed the skybox and the light of a scene still on screen (#4330), and
+ * left a cubemap of the light on the GPU each time — [Engine.safeDestroyEnvironment] frees the
+ * light, not the texture it was built from. That texture is freed here, with the view, a few
+ * frames after the light that reads it ([EngineDestroyQueue]).
+ */
+@Composable
+internal fun rememberStageEnvironment(engine: Engine, ground: Color): Environment {
+    val context = LocalContext.current
+    val light = remember(engine) {
+        KTX1Loader.createIndirectLight(engine, context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"))
+    }
+    // Before the environment's own effect, so Compose runs it after: the light first, then its cubemap.
+    DisposableEffect(light) {
+        onDispose { light.cubemap?.let { EngineDestroyQueue.of(engine).enqueueTexture(it) } }
+    }
+    val environment = remember(light) {
+        val stage = colorOf(ground).toLinearSpace()
+        Environment(
+            indirectLight = light.indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+            skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
+        )
+    }
+    DisposableEffect(environment) { onDispose { engine.safeDestroyEnvironment(environment) } }
+    SideEffect {
+        val stage = colorOf(ground).toLinearSpace()
+        environment.skybox?.setColor(stage.x, stage.y, stage.z, 1f)
+    }
+    return environment
+}
+
+/**
  * The 3D debug view: a second SceneView on the demo's [engine], drawing [session] from [orbit].
  *
  * [compact] is the picture-in-picture: a lower frame rate, and no touch (the card over it takes
@@ -642,7 +678,6 @@ internal fun ArDebugSceneView(
     surface: ReplaySurface? = null,
     onShown: (() -> Unit)? = null,
 ) {
-    val context = LocalContext.current
     val shown by rememberUpdatedState(onShown)
     // The room's surface, when it is the one shown: it stands in for the points and the photos.
     val solid by rememberUpdatedState(surface?.takeIf { it.shown })
@@ -661,17 +696,7 @@ internal fun ArDebugSceneView(
         ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
     }
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
-    val environment = rememberEnvironment(engine, key = chrome.ground) {
-        val stage = colorOf(chrome.ground).toLinearSpace()
-        Environment(
-            // The placed models are lit; the debug layers are unlit and ignore it.
-            indirectLight = KTX1Loader.createIndirectLight(
-                engine,
-                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-            ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-            skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
-        )
-    }
+    val environment = rememberStageEnvironment(engine, chrome.ground)
     val view = rememberView(engine)
     val renderer = rememberRenderer(engine)
 
