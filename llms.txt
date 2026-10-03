@@ -7343,7 +7343,7 @@ SceneView works inside Claude Artifacts (HTML type). Use this template:
   <script src="https://sceneview.github.io/js/filament/filament.js"></script>
   <script src="https://sceneview.github.io/js/sceneview.js"></script>
   <script>
-    SceneView.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb', {
+    SceneView.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/ToyCar.glb', {
       autoRotate: true,
       bloom: true,
       quality: 'high'
@@ -7355,7 +7355,7 @@ SceneView works inside Claude Artifacts (HTML type). Use this template:
 
 **Available CDN models** (all at `https://sceneview.github.io/models/platforms/`):
 AnimatedAstronaut.glb, AnimatedTrex.glb, AntiqueCamera.glb, Avocado.glb,
-BarnLamp.glb, CarConcept.glb, ChronographWatch.glb, DamagedHelmet.glb,
+BarnLamp.glb, CarConcept.glb, ChronographWatch.glb,
 DamaskChair.glb, DishWithOlives.glb, Duck.glb, Fox.glb, GameBoyClassic.glb,
 IridescenceLamp.glb, Lantern.glb, MaterialsVariantsShoe.glb, MonsteraPlant.glb,
 MosquitoInAmber.glb, SheenChair.glb, Shiba.glb, Sneaker.glb,
