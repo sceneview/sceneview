@@ -569,9 +569,10 @@ private fun RerunReplayScreen(
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
     val title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE
-    // Remembered above the 3D view, so the mesh is released after the node that draws it.
+    // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
+    // the built model itself each time it comes back.
     var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
-    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
@@ -585,8 +586,11 @@ private fun RerunReplayScreen(
     // On its side: where the mode pill and the dock start, under the room.
     var pillTop by remember { mutableFloatStateOf(Float.NaN) }
     val statusBottom = WindowInsets.safeDrawing.getTop(LocalDensity.current).toFloat()
+    // The room's dimensions are written under its floor, outside the box the band fits: they
+    // keep this much air over the mode pill.
+    val pillClearance = with(LocalDensity.current) { Space.lg.toPx() }
     val measured = when {
-        compact -> sideBand(stage, hud, timeline, statusBottom, pillTop)
+        compact -> sideBand(stage, hud, timeline, statusBottom, pillTop - pillClearance)
         else -> stackedBand(stage, hud, timeline)
     }
     val band = measured ?: stageBand
@@ -622,7 +626,15 @@ private fun RerunReplayScreen(
                     else -> "Drag to orbit · double-tap to recenter"
                 },
                 header = if (switchable) {
-                    { RerunSurfaceSwitch(surface, onWanted = { surfaceWanted = it }, title = title) }
+                    {
+                        // On its side the card has no caption line: the switch carries the surface's.
+                        RerunSurfaceSwitch(
+                            surface,
+                            onWanted = { surfaceWanted = it },
+                            title = title,
+                            captioned = compact,
+                        )
+                    }
                 } else {
                     null
                 },

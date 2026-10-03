@@ -110,6 +110,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.model
 import io.github.sceneview.node.MeshNode
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberModelInstance
@@ -801,7 +802,13 @@ internal fun ArDebugSceneView(
                 },
             )
             // The room in its own world space, metres, Y up: the same stage as the points it replaces.
-            surface?.let { ModelNode(modelInstance = it.instance, autoAnimate = false, isVisible = it.shown) }
+            surface?.let { room ->
+                // Created here, beside the node that draws it: when this view leaves the screen
+                // (Camera mode) the node destroys the instance's renderables with itself, so an
+                // instance kept above the view came back as an empty room (#4306).
+                val instance = rememberGlbInstance(modelLoader, room.glb)
+                instance?.let { ModelNode(modelInstance = it, autoAnimate = false, isVisible = room.shown) }
+            }
             if (session.isVisible(DebugGroup.Anchors) && ReplaySurface.keeps(solid, DebugGroup.Anchors)) {
                 anchors.forEach { anchor ->
                     // One instance per anchor: a Filament model instance can only hang off one node.
@@ -823,15 +830,32 @@ internal fun ArDebugSceneView(
 }
 
 /**
- * The room's meshed model in the replay's stage: its [instance], the [bounds] of its mesh, and
- * whether it is the reading [shown] — the surface — or waits behind the points.
+ * A model instance of [glb], owned by the scene that calls it: created with the scene, destroyed
+ * when the scene leaves the composition — a scene that comes back loads a fresh one.
+ */
+@Composable
+private fun rememberGlbInstance(modelLoader: ModelLoader, glb: ByteArray): ModelInstance? {
+    val instance = remember(modelLoader, glb) {
+        val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
+        buffer.rewind()
+        runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+    }
+    // As `rememberModelInstance` does: no order with the node's own disposal is relied on.
+    DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
+    return instance
+}
+
+/**
+ * The room's meshed model in the replay's stage: its [glb], the [bounds] of its mesh, and
+ * whether it is the reading [shown] — the surface — or waits behind the points. The view loads
+ * the [glb] itself, so the model lives and dies with the scene that draws it.
  *
  * [aligned] is `true` for a model built from the session on screen, which shares its world: the
  * path and the anchors stay, walking through it. A model from elsewhere (QA's ray-cast room, on
  * an emulator that cannot scan) stands alone and is framed on its own bounds.
  */
 internal class ReplaySurface(
-    val instance: ModelInstance,
+    val glb: ByteArray,
     val bounds: FloatArray,
     val aligned: Boolean,
     val shown: Boolean,

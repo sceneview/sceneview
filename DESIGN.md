@@ -950,9 +950,11 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   room nothing: the figures and the timeline become two 280 dp cards on either side of the
   room, under the header's line; the timeline folds onto one row (play, strip, clock), the
   camera card is dropped — the dock's *Camera* is one tap away — and the room is fitted
-  between the two cards, under the status bar and above the mode pill
-  (`OrbitBand.betweenSides`). Over the camera, the 3D picture-in-picture shrinks to
-  96 × 128 dp and sits under the timeline, beside the frame.
+  between the two cards, under the status bar and `Space.lg` above the mode pill — the
+  room's dimensions are written under its floor (`OrbitBand.betweenSides`). The one-row
+  card has no caption line, so the surface's own line (building, its size, or why there
+  is none) sits under the Points | Surface switch. Over the camera, the 3D
+  picture-in-picture shrinks to 96 × 128 dp and sits under the timeline, beside the frame.
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
 - **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the

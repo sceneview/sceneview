@@ -633,9 +633,11 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift
     contract: >-
-      Rerun | Session MP4. Rerun opens on a landing (Record your room, Watch a
-      sample session, Open file, Your sessions); a recording replays as a 3D
-      rebuild of the room (camera path, planes, points) and opens as a
+      Room Scan | Session MP4. Room Scan (the card's name on Android since
+      #4306; iOS still titles it "Rerun AR Replay", #4325) opens on a landing
+      (Record your room, Watch a sample session, Open file, Your sessions); a
+      recording replays as a 3D rebuild of the room (camera path, planes,
+      points) and opens as a
       dollhouse; sessions share as a file, and a live stream to the Rerun
       viewer saves a .rrd. Session MP4 (Android only, the former
       `ar-record-playback` card since samples step 0): record the ARCore
