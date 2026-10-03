@@ -415,10 +415,6 @@ object LightingStage {
     const val GOLDEN_EVENING_START_HOUR: Float = 16f
     const val NIGHT_START_HOUR: Float = 19.5f
 
-    /** Every HDR the Sun rig's sky can show — what a running clock keeps resident. */
-    val skyEnvironmentFiles: List<String>
-        get() = listOf(4f, 7f, 12f).map { skyEnvironmentFor(it).file }
-
     // ── Sun clock ────────────────────────────────────────────────────────────────────────────
 
     /**

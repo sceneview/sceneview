@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
 import java.nio.ByteBuffer
+import java.util.IdentityHashMap
 
 /** `Texture.Builder.levels` value Filament clamps to the full mip chain, as HDRLoader does. */
 private const val ALL_MIP_LEVELS = 0xff
@@ -58,6 +59,7 @@ class EnvironmentLoader(
     val iblPrefilter = IBLPrefilter(engine)
 
     private val environments = mutableListOf<Environment>()
+    private val environmentTextures = IdentityHashMap<Environment, List<Texture>>()
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
@@ -249,7 +251,15 @@ class EnvironmentLoader(
                 .environment(it)
                 .build(engine)
         }
-        return createEnvironment(indirectLight = indirectLight, skybox = skybox)
+        return createEnvironment(indirectLight = indirectLight, skybox = skybox).also { environment ->
+            // Filament's Skybox and IndirectLight do not own the textures passed to their
+            // builders. Track each distinct cubemap with the aggregate Environment so rapid
+            // remembered-environment swaps release the GPU images as well as the two wrappers.
+            environmentTextures[environment] = buildList {
+                add(reflections)
+                if (createSkybox && textureCubemap !== reflections) add(textureCubemap)
+            }
+        }
     }
 
     /**
@@ -520,12 +530,16 @@ class EnvironmentLoader(
         // Filament asserts on JNI thread mismatch (same pattern as MaterialLoader.loadMaterial).
         val iblBuffer = iblUrl?.let { context.loadFileBuffer(iblUrl) }
         val skyboxBuffer = skyboxUrl?.let { context.loadFileBuffer(skyboxUrl) }
-        return withContext(Dispatchers.Main) {
+        val environment = buildOnMainUnlessGone(
+            isEngineValid = { engine.isValid },
+            destroy = ::destroyEnvironment,
+        ) {
             createKTX1Environment(
                 iblBuffer = iblBuffer,
                 skyboxBuffer = skyboxBuffer
             )
         }
+        return checkNotNull(environment) { "Engine destroyed while the KTX environment loaded" }
     }
 
     /**
@@ -559,9 +573,15 @@ class EnvironmentLoader(
     )
 
     fun destroyEnvironment(environment: Environment) {
+        // Identity, not data-class equality: a `copy()` sharing these handles is a different
+        // owner record. An environment this loader never registered — `createEnvironment(loader)`
+        // builds one directly, and so can any caller — still has its handles destroyed here; the
+        // safe destroys make a second call for the same handles a no-op.
+        val environmentIndex = environments.indexOfFirst { it === environment }
+        if (environmentIndex != -1) environments.removeAt(environmentIndex)
         environment.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
         environment.skybox?.let { engine.safeDestroySkybox(it) }
-        environments -= environment
+        environmentTextures.remove(environment)?.forEach { engine.safeDestroyTexture(it) }
     }
 
     /**
@@ -574,7 +594,7 @@ class EnvironmentLoader(
      */
     fun clear() {
         environments.toList().forEach { destroyEnvironment(it) }
-        environments.clear()
+        environmentTextures.clear()
     }
 
     /**

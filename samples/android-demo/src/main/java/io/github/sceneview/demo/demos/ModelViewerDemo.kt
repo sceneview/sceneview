@@ -964,22 +964,23 @@ private fun SingleModelSection(
             }
         }
     }
-    // The first HDR decode runs on the main thread through Filament and stalls the UI for a
-    // couple of seconds on a software GPU; releasing the cover before it lands leaves a black
-    // composite on screen for that whole stall. One-way latch: later swaps re-decode but must
-    // not bring the preview back.
+    // The first HDR's Filament upload and prefilter run on the main thread and can stall for a
+    // couple of seconds on a software GPU; releasing the cover before they land leaves a black
+    // composite on screen for that whole stall. One-way latch: later swaps load in the background
+    // but must not bring the preview back.
     var firstEnvironmentLoaded by remember { mutableStateOf(false) }
     val firstModelFrame = remember {
         derivedStateOf { firstFrame.rendered.value && firstEnvironmentLoaded && modelFramesSeen.value >= MODEL_COVER_FRAMES }
     }
-    // The HDR decode is a `produceState` keyed on (asset, skybox): `key` forces a fresh slot
-    // per choice so a swap always re-decodes. Leaving the slot destroys the previous
-    // environment's IndirectLight/Skybox, so it must never stay attached to the scene
-    // (SIGSEGV in libfilament-jni) — the neutral default covers the decode instead.
+    // The first load uses the neutral environment. Later selections keep the complete HDR already
+    // on screen until the replacement's skybox and IBL are both ready; the helper also discards a
+    // superseded result when the user taps through the list quickly.
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val loadedEnvironment = key(requestedEnvironment.assetPath, showEnvironment) {
-        rememberHDREnvironment(environmentLoader, requestedEnvironment.assetPath, createSkybox = showEnvironment)
-    }
+    val loadedEnvironment = rememberHDREnvironment(
+        environmentLoader,
+        requestedEnvironment.assetPath,
+        createSkybox = showEnvironment,
+    )
     val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
     if (loadedEnvironment != null) firstEnvironmentLoaded = true
     LaunchedEffect(viewerEnvironment, iblIntensity) {
@@ -997,8 +998,11 @@ private fun SingleModelSection(
     DisposableEffect(stageBackdrop) {
         onDispose { engine.destroySkybox(stageBackdrop) }
     }
+    // Gated on the skybox actually being there, not on the toggle alone: turning the environment
+    // on reloads the HDR with its skybox, and the one still on screen meanwhile has none — handed
+    // over as is, it would drop the view to the renderer's black clear until the reload lands.
     val stagedEnvironment = remember(viewerEnvironment, showEnvironment, stageBackdrop) {
-        if (showEnvironment && loadedEnvironment != null) viewerEnvironment
+        if (showEnvironment && loadedEnvironment?.skybox != null) viewerEnvironment
         else viewerEnvironment.copy(skybox = stageBackdrop)
     }
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on

@@ -3,7 +3,10 @@ package io.github.sceneview.environment
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.rememberEnvironment
@@ -40,9 +43,10 @@ object EnvironmentPresets {
 /**
  * Asynchronously loads an HDR environment from an asset file and remembers the result.
  *
- * Returns `null` while loading. Once the environment is ready it is cached and reused across
- * recompositions. Falls back to `null` (not a neutral environment) so the caller can decide
- * what to display while loading.
+ * Returns `null` during the first load. When [assetFileLocation] or [createSkybox] changes, the
+ * current environment remains visible until the replacement has finished decoding, uploading,
+ * and prefiltering. The latest request wins: superseded results are destroyed instead of being
+ * published.
  *
  * ```kotlin
  * val env = rememberHDREnvironment(environmentLoader, "environments/sky_2k.hdr")
@@ -52,7 +56,8 @@ object EnvironmentPresets {
  * @param environmentLoader The [EnvironmentLoader] to use for decoding.
  * @param assetFileLocation Path to the HDR file relative to the `assets` folder.
  * @param createSkybox      Whether to also create a skybox from the HDR (default true).
- * @return The loaded [Environment], or `null` while loading or on failure.
+ * @return The loaded [Environment], or `null` while the first environment loads or on initial
+ * failure. A later failure keeps the last successfully loaded environment.
  */
 @ExperimentalSceneViewApi
 @Composable
@@ -61,14 +66,15 @@ fun rememberHDREnvironment(
     assetFileLocation: String,
     createSkybox: Boolean = true
 ): Environment? {
-    val environment = produceState<Environment?>(
-        initialValue = null,
-        key1 = environmentLoader,
-        key2 = assetFileLocation
-    ) {
+    val current = remember(environmentLoader) { mutableStateOf<Environment?>(null) }
+    val state = remember(environmentLoader) {
+        RetainedResourceState(environmentLoader::destroyEnvironment) { current.value = it }
+    }
+    LaunchedEffect(environmentLoader, assetFileLocation, createSkybox) {
+        val request = state.beginRequest()
         // loadHDREnvironment reads and decodes the HDR off the main thread, then runs only the
         // Filament upload + IBL prefilter on Main — a 2k equirect no longer stalls composition.
-        value = try {
+        val environment = try {
             environmentLoader.loadHDREnvironment(
                 url = assetFileLocation,
                 createSkybox = createSkybox
@@ -79,16 +85,21 @@ fun rememberHDREnvironment(
             Log.w(TAG, "Failed to load HDR environment $assetFileLocation", error)
             null
         }
-    }.value
-    // `produceState` only cancels the producer coroutine on a key change — it never destroys the
-    // previously produced [Environment]. Keying a [DisposableEffect] on the produced value fires
-    // `onDispose` for the *previous* environment whenever a new one is produced (key swap) and on
-    // leave-composition, matching the sibling `rememberEnvironment(key = …)`. `onDispose` runs on
-    // the composition (main) thread, satisfying the Filament JNI threading contract.
-    DisposableEffect(environment) {
-        onDispose { environment?.let { environmentLoader.destroyEnvironment(it) } }
+        state.complete(request, environment)
     }
-    return environment
+    LaunchedEffect(current.value) {
+        // Keep the replaced Filament handles alive until SceneView has observed the new value and
+        // presented it. Two frame boundaries avoid destroying the old environment in the apply
+        // phase that schedules the SceneView swap.
+        repeat(2) { withFrameNanos { } }
+        state.releaseRetired()
+    }
+    DisposableEffect(state) {
+        // Compose applies disposal and launches effects on Main, which is also Filament's JNI
+        // owner thread. clear() invalidates a result that finishes while this leaves composition.
+        onDispose(state::clear)
+    }
+    return current.value
 }
 
 /**
@@ -102,7 +113,8 @@ fun rememberHDREnvironment(
  * @param environmentLoader The [EnvironmentLoader] to use.
  * @param iblAssetFile      Path to the IBL KTX file in assets (null to skip IBL).
  * @param skyboxAssetFile   Path to the skybox KTX file in assets (null to skip skybox).
- * @return The loaded [Environment], or `null` while loading.
+ * @return The loaded [Environment], or `null` during the first load. Path changes retain the
+ * current environment until the replacement is ready; a failed replacement keeps it.
  */
 @ExperimentalSceneViewApi
 @Composable
@@ -111,24 +123,31 @@ fun rememberKTXEnvironment(
     iblAssetFile: String? = null,
     skyboxAssetFile: String? = null
 ): Environment? {
-    val environment = produceState<Environment?>(
-        initialValue = null,
-        key1 = environmentLoader,
-        key2 = iblAssetFile,
-        key3 = skyboxAssetFile
-    ) {
-        value = runCatching {
-            environmentLoader.createKTX1Environment(
-                iblAssetFile = iblAssetFile,
-                skyboxAssetFile = skyboxAssetFile
-            )
-        }.getOrNull()
-    }.value
-    // See [rememberHDREnvironment]: `produceState` skips per-key disposal, so destroy the previous
-    // [Environment] when the produced value changes (key swap) and on leave-composition. `onDispose`
-    // runs on the composition (main) thread, satisfying the Filament JNI threading contract.
-    DisposableEffect(environment) {
-        onDispose { environment?.let { environmentLoader.destroyEnvironment(it) } }
+    val current = remember(environmentLoader) { mutableStateOf<Environment?>(null) }
+    val state = remember(environmentLoader) {
+        RetainedResourceState(environmentLoader::destroyEnvironment) { current.value = it }
     }
-    return environment
+    LaunchedEffect(environmentLoader, iblAssetFile, skyboxAssetFile) {
+        val request = state.beginRequest()
+        val environment = try {
+            environmentLoader.loadKTX1Environment(
+                iblUrl = iblAssetFile,
+                skyboxUrl = skyboxAssetFile,
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+            Log.w(TAG, "Failed to load KTX environment", error)
+            null
+        }
+        state.complete(request, environment)
+    }
+    LaunchedEffect(current.value) {
+        repeat(2) { withFrameNanos { } }
+        state.releaseRetired()
+    }
+    DisposableEffect(state) {
+        onDispose(state::clear)
+    }
+    return current.value
 }
