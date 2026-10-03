@@ -68,6 +68,62 @@ class ObjectLabelTrackingTest {
         assertTrue(disposed.isEmpty())
     }
 
+    @Test
+    fun `an object that can no longer be placed loses its label after the expiry passes`() {
+        // The object was moved to where no surface is known: it is still detected, but every
+        // pass returns no payload. Its label must not stay at the old place.
+        val disposed = mutableListOf<String>()
+        val tracker = ObjectLabelTracker<String>(expiryPasses = 3) { disposed += it }
+        tracker.reconcile(listOf(observation(id = 7, x = 32f))) { _, _ -> "old place" }
+
+        val unplaced = { tracker.reconcile(listOf(observation(id = 7, x = 300f))) { _, _ -> null } }
+        assertEquals("old place", unplaced().single().payload)
+        assertEquals("old place", unplaced().single().payload)
+        val expired = unplaced().single()
+
+        assertEquals(null, expired.payload)
+        assertEquals("tracking:7", expired.key)
+        assertEquals(listOf("old place"), disposed)
+
+        // The track itself survives: the next pass that can place the object labels it again.
+        val placed = tracker.reconcile(listOf(observation(id = 7, x = 300f))) { _, previous ->
+            assertEquals(null, previous)
+            "new place"
+        }.single()
+        assertEquals("new place", placed.payload)
+        assertEquals(listOf("old place"), disposed)
+    }
+
+    @Test
+    fun `a confirmed payload restarts the expiry count`() {
+        val disposed = mutableListOf<String>()
+        val tracker = ObjectLabelTracker<String>(expiryPasses = 3) { disposed += it }
+        val seen = listOf(observation(id = 7, x = 32f))
+        tracker.reconcile(seen) { _, _ -> "anchor" }
+
+        // Two passes without a hit, one with: the hit-test of a still object flickers.
+        repeat(3) {
+            tracker.reconcile(seen) { _, _ -> null }
+            tracker.reconcile(seen) { _, _ -> null }
+            assertEquals("anchor", tracker.reconcile(seen) { _, previous -> previous }.single().payload)
+        }
+        assertTrue(disposed.isEmpty())
+    }
+
+    @Test
+    fun `unplaced and undetected passes add up toward expiry`() {
+        val disposed = mutableListOf<String>()
+        val tracker = ObjectLabelTracker<String>(expiryPasses = 3) { disposed += it }
+        val seen = listOf(observation(id = 7, x = 32f))
+        tracker.reconcile(seen) { _, _ -> "anchor" }
+
+        tracker.reconcile(seen) { _, _ -> null }
+        tracker.reconcile(emptyList()) { _, _ -> error("no observation") }
+        assertTrue(disposed.isEmpty())
+        assertEquals(0, tracker.reconcile(emptyList()) { _, _ -> error("no observation") }.size)
+        assertEquals(listOf("anchor"), disposed)
+    }
+
     private fun observation(id: Int?, x: Float) = ObjectLabelObservation(
         trackingId = id,
         label = "Home good",
