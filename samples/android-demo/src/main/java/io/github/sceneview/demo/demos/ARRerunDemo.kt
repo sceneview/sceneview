@@ -569,7 +569,7 @@ private fun RerunReplayScreen(
     // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
     // the built model itself each time it comes back.
     var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
-    val surface = rememberRerunSurface(surfaceSource, surfaceWanted)
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
@@ -648,6 +648,8 @@ private fun RerunReplayScreen(
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
+        // The mode pill belongs to the landing: under a replay's cards it only took room.
+        modeSwitch = null,
         topOverlay = {
             if (media != null && compact) {
                 Row(Modifier.fillMaxWidth()) {
@@ -1080,6 +1082,8 @@ private fun RerunLiveScreen(
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live.
         controls = { RerunSheet() },
+        // The mode pill belongs to the landing, not to a scan in progress.
+        modeSwitch = null,
         topOverlay = {
             if (recording && scanMedia != null) {
                 val stats = debugSession.stats

@@ -18,6 +18,7 @@ import io.github.sceneview.math.toDirection
 import io.github.sceneview.math.toFloat4
 import io.github.sceneview.math.toTransform
 import io.github.sceneview.math.worldToView as coreWorldToView
+import io.github.sceneview.postProjectionTransform
 import kotlin.math.log2
 
 /**
@@ -141,6 +142,45 @@ fun Camera.setCustomProjection(
 fun Camera.setScaling(scaling: Float2) = setScaling(scaling.x.toDouble(), scaling.y.toDouble())
 
 /**
+ * The shift applied after the projection, as set by `Camera.setShift`: `1` is one whole viewport
+ * (two NDC units), positive is right / up.
+ */
+val Camera.shift: Float2
+    get() = DoubleArray(2).apply { getShift(this) }.let { Float2(it[0].toFloat(), it[1].toFloat()) }
+
+/**
+ * The matrix Filament multiplies this camera's projection by at render time: its scaling
+ * (`Camera.setScaling`) and its shift (`Camera.setShift`).
+ *
+ * The identity unless one of them was set — which is what
+ * [io.github.sceneview.node.CameraNode.contentPadding] does.
+ */
+val Camera.postProjectionTransform: Transform
+    get() {
+        val scaling = DoubleArray(4).apply { getScaling(this) }
+        val shift = DoubleArray(2).apply { getShift(this) }
+        return postProjectionTransform(scaling[0], scaling[1], shift[0], shift[1])
+    }
+
+/**
+ * The projection this camera is actually **drawn** with: [projectionTransform] with the scaling
+ * and the shift applied.
+ *
+ * `Camera.getProjectionMatrix()` — and so [projectionTransform] — returns the projection *without*
+ * them. Use this one to relate a pixel to the world.
+ */
+val Camera.renderedProjectionTransform: Transform
+    get() = postProjectionTransform * projectionTransform
+
+/**
+ * The culling projection this camera is actually drawn with: [cullingProjectionTransform] with the
+ * scaling and the shift applied. It is what [viewToWorld], [worldToView] and [viewToRay] use, so
+ * picking stays under the finger when the projection is offset by a content padding.
+ */
+val Camera.renderedCullingProjectionTransform: Transform
+    get() = postProjectionTransform * cullingProjectionTransform
+
+/**
  * Sets the camera's model matrix.
  *
  * @param eye position of the camera in world space
@@ -260,6 +300,10 @@ val Camera.forwardDirection: Direction
  * @param z Z is used for the depth between 1 and 0
  * (1 = near, 0 = infinity).
  *
+ * The coordinate spans the **whole viewport**, whatever content padding the camera carries: the
+ * scaling and the shift of the projection are taken into account, so `(0.5, 0.5)` is the centre
+ * of the surface, not the optical centre.
+ *
  * @return The world position of the point.
  */
 fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
@@ -268,7 +312,10 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
         Float3(x = viewPosition.x, y = viewPosition.y, z = z) * 2.0f - 1.0f,
         w = 1.0f
     )
-    val worldPosition = inverse(cullingProjectionTransform * viewTransform) * clipSpacePosition
+    // The *rendered* projection: Filament's getter leaves the scaling and the shift out, and a
+    // touch would otherwise be unprojected through a picture that is not the one on screen.
+    val worldPosition =
+        inverse(renderedCullingProjectionTransform * viewTransform) * clipSpacePosition
     return when {
         worldPosition.w almostEquals 0.0f -> Position()
         else -> worldPosition.xyz / worldPosition.w
@@ -294,7 +341,7 @@ fun Camera.viewToWorld(viewPosition: Float2, z: Float = 1.0f): Position {
  * y = (0 = bottom, 0.5 = center, 1 = top)
  */
 fun Camera.worldToView(worldPosition: Position): Float2? =
-    coreWorldToView(worldPosition, cullingProjectionTransform, viewTransform)
+    coreWorldToView(worldPosition, renderedCullingProjectionTransform, viewTransform)
 
 /**
  * Calculates a ray in world space going from the near-plane of the camera and through a point in

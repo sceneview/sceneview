@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.LocalDemoBottomChromeCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.demos.internal.ScanCopy
@@ -129,7 +130,13 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(top = HeaderClearance, bottom = SETTINGS_FAB_RESERVED_SPACE)
+                // The list ends a gutter above everything the scaffold floats at the bottom —
+                // the mode pill and the settings button — so its last session scrolls clear.
+                .padding(
+                    top = HeaderClearance,
+                    bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) +
+                        Space.md,
+                )
                 .padding(horizontal = Space.md),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

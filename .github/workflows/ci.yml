@@ -803,8 +803,9 @@ jobs:
             :sceneview-web:jsMainClasses \
             --stacktrace
 
-      # samples/web-demo is a plain static site (HTML + inline JS +
-      # self-hosted sceneview.js) — NOT a Gradle module since #1946 removed
+      # samples/web-demo is a plain static site (HTML + inline JS + the
+      # website viewer staged from website-static/js/sceneview.js, #4316)
+      # — NOT a Gradle module since #1946 removed
       # its dead Kotlin/JS source set. There is nothing to compile; the
       # Playwright suite in samples/web-demo/tests/ (run by render-tests.yml
       # / device-qa.yml against the served static files) is what guards it.
