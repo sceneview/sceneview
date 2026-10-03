@@ -560,6 +560,7 @@
       this._pendingLoads = 0; // glTF texture decodes still landing (loadResources)
       this._animationDone = false; // a non-looping animation reached its last frame
       this._frameCallbacks = new Set(); // onFrame() listeners
+      this._renderRequested = false; // requestRender() landed while the loop was live
 
       this._setupControls();
       this._setupResizeObserver();
@@ -687,13 +688,19 @@
 
     /**
      * Fit the orbit camera around an asset's bounding box: target its centre, set the
-     * radius so the model fills `fill` of the vertical field of view, and scale the near
-     * plane and zoom limits with the model. Without `fill` the historical on-load
-     * framing is kept (1.8 x the largest dimension). A portrait canvas backs off so the
-     * width stays in frame too, since the FOV is vertical.
+     * radius, and scale the near plane and zoom limits with the model.
+     *
+     * With `fill`, the radius is the one at which the cylinder the bounding box sweeps
+     * over a full orbit (axis through the centre, radius = half the horizontal diagonal)
+     * covers `fill` of the view, in height and in width, whichever binds first. The
+     * swept volume, not the largest edge: the face nearest the camera is closer than the
+     * centre, so sizing an edge at the centre plane cropped a tall, deep model from
+     * fill ~0.7 up, and a long one on a portrait canvas.
+     * Without `fill` the historical on-load framing is kept (1.8 x the largest
+     * dimension, backed off on a portrait canvas so the width stays in frame too).
      *
      * @param {Object} asset - a gltfio FilamentAsset
-     * @param {number} [fill] - fraction of the view height the model should cover, (0, 1]
+     * @param {number} [fill] - largest fraction of the view the model may cover, (0, 1]
      * @returns {boolean} true when the asset had a non-empty bounding box
      * @private
      */
@@ -703,20 +710,30 @@
         const cx = (bbox.min[0] + bbox.max[0]) / 2;
         const cy = (bbox.min[1] + bbox.max[1]) / 2;
         const cz = (bbox.min[2] + bbox.max[2]) / 2;
-        const maxDim = Math.max(
-          bbox.max[0] - bbox.min[0],
-          bbox.max[1] - bbox.min[1],
-          bbox.max[2] - bbox.min[2]
-        );
+        const dx = bbox.max[0] - bbox.min[0];
+        const dy = bbox.max[1] - bbox.min[1];
+        const dz = bbox.max[2] - bbox.min[2];
+        const maxDim = Math.max(dx, dy, dz);
         if (!(maxDim > 0)) return false;
-        const k = fill > 0
-          ? 1 / (Math.min(fill, 1) * 2 * Math.tan(((this._fov || 45) * Math.PI) / 360))
-          : 1.8;
         const canvas = this._canvas;
         const aspect = canvas && canvas.clientHeight > 0
           ? canvas.clientWidth / canvas.clientHeight : 1;
+        let radius;
+        if (fill > 0) {
+          const t = Math.min(fill, 1) * Math.tan(((this._fov || 45) * Math.PI) / 360);
+          const sweep = 0.5 * Math.hypot(dx, dz);
+          // Height: the rim nearest the camera is `sweep` closer than the centre.
+          const forHeight = sweep + dy / (2 * t);
+          // Width: the outermost view rays are tangent to the cylinder, and the
+          // horizontal half-angle is the vertical one scaled by the aspect ratio.
+          const tw = t * Math.max(0.1, aspect);
+          const forWidth = sweep * Math.sqrt(1 + 1 / (tw * tw));
+          radius = Math.max(forHeight, forWidth);
+        } else {
+          radius = (maxDim * 1.8) / Math.max(0.5, Math.min(1, aspect));
+        }
         this._orbitTarget = [cx, cy, cz];
-        this._orbitRadius = (maxDim * k) / Math.max(0.5, Math.min(1, aspect));
+        this._orbitRadius = radius;
         this._orbitHeight = cy;
         // Scale the near plane and zoom limits with the model, so a 5 cm part is
         // not clipped by a 10 cm near plane and a 100 m scene can still zoom out.
@@ -796,13 +813,15 @@
     }
 
     /**
-     * Frame the loaded model: target its bounding-box centre and set the radius so its
-     * largest bounding-box dimension covers `fill` of the view height. The camera height goes to the model centre;
-     * angle and auto-rotate are untouched. Without `fill`, the on-load framing is reused.
-     * No-op before a model is loaded.
+     * Frame the loaded model: target its bounding-box centre and set the radius so the
+     * model covers at most `fill` of the view, in height and in width, at every angle of
+     * the orbit. The bounding box is what is measured, so a rounded model reads smaller
+     * than `fill`. The camera height goes to the model centre; angle and auto-rotate are
+     * untouched. Without `fill`, the on-load framing is reused. No-op before a model is
+     * loaded.
      *
      * @param {Object} [options]
-     * @param {number} [options.fill] - fraction of the view height to fill, (0, 1]; e.g. 0.8
+     * @param {number} [options.fill] - largest fraction of the view to cover, (0, 1]; e.g. 0.8
      * @returns {SceneViewInstance} this (for chaining)
      */
     frameModel(options) {
@@ -837,12 +856,20 @@
      * Ask for a redraw. In 'onDemand' mode this wakes the parked loop for at least one
      * frame; in 'continuous' mode it is a no-op while the loop runs. Off-screen, one
      * frame is still drawn so the canvas is current when it scrolls back in.
-     * Coalesced: several calls in the same task draw once.
+     * Coalesced: several calls in the same task draw once. Safe to call from an
+     * onFrame() callback: the frame it asks for is the next one.
      *
      * @returns {SceneViewInstance} this (for chaining)
      */
     requestRender() {
-      if (!this._running || this._rafId !== null) return this;
+      if (!this._running) return this;
+      if (this._rafId !== null) {
+        // The loop is live and draws the next frame anyway. A call made while a frame
+        // is being drawn (from an onFrame callback) arrives after the camera was read:
+        // flag it, so an 'onDemand' loop draws once more instead of parking on it.
+        this._renderRequested = true;
+        return this;
+      }
       if (this._shouldRender()) this._startRenderLoop();
       else this._primeFrame(true);
       return this;
@@ -870,7 +897,7 @@
       if (this._autoRotate || this._isDragging) return false;
       if (this._velocityAngle !== 0 || this._velocityHeight !== 0) return false;
       if (this._pendingLoads > 0) return false;
-      // Video quads are not listed: each new video frame calls requestRender itself.
+      // Video quads are not listed: each new video frame wakes the loop itself.
       if (this._animator && this._animationIndex >= 0 && this._animationPauseTime < 0
           && (this._animationLoop || !this._animationDone)) return false;
       return true;
@@ -1298,8 +1325,12 @@
             vi.ctx.putImageData(imgData, 0, 0);
           }
 
-          // Update the Filament texture
+          // Update the Filament texture, and wake an 'onDemand' loop for it. Not while
+          // the canvas is off-screen or the tab hidden: the gate (#2508) draws nothing
+          // there, and a playing video must not turn into one full render per frame.
+          // The loop redraws with the current texture when the canvas comes back.
           self._updateQuadTexture(entity, vi.canvas);
+          if (self._shouldRender()) self.requestRender();
         }
 
         // Use requestVideoFrameCallback if available (more efficient)
@@ -1485,6 +1516,7 @@
      */
     updateTexture(entity, canvas) {
       this._updateQuadTexture(entity, canvas);
+      this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -1586,7 +1618,6 @@
           this._updateQuadTexture(entity, canvas);
         }
       }
-      this.requestRender();
     }
 
     // ---------------------------------------------------------------
@@ -1789,6 +1820,9 @@
       this._videoElements.clear();
       this._mediaNodes.clear();
       this._billboards.clear();
+      // onFrame() callbacks capture page state (a mirror canvas, a component): drop them.
+      this._frameCallbacks.clear();
+      this._renderRequested = false;
 
       // Remove every tracked event listener (#2508 / #2507 LOW) — the 11 canvas
       // control listeners plus the document visibilitychange listener all capture
@@ -1995,8 +2029,12 @@
         self._updateAnimator();
 
         // 'onDemand': park once a frame is on screen and nothing moves any more.
-        // requestRender() (input, camera and scene calls) re-arms the loop.
-        if (self._drawFrame() && self._renderMode === 'onDemand' && self._isIdle()) {
+        // requestRender() (input, camera and scene calls) re-arms the loop. A call
+        // made during the draw itself, from an onFrame callback, keeps it going one
+        // more frame: the flag is cleared here and re-read once the frame is out.
+        self._renderRequested = false;
+        if (self._drawFrame() && self._renderMode === 'onDemand' && self._isIdle()
+            && !self._renderRequested) {
           self._rafId = null;
           return;
         }
