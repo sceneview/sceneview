@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -45,6 +44,7 @@ import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
+import io.github.sceneview.demo.DEMO_MIN_VISIBLE_FRACTION
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -54,6 +54,7 @@ import io.github.sceneview.demo.LocalDemoSheetCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
+import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.GeometryDemoState
 import io.github.sceneview.demo.demos.internal.GeometryLayout
@@ -197,8 +198,10 @@ fun GeometryDemo(onBack: () -> Unit) {
             val left = safe.calculateLeftPadding(layoutDirection)
             val right = safe.calculateRightPadding(layoutDirection)
             val chrome = LocalDemoSceneCover.current
-            val cover = geometryContentPadding(
-                chrome = chrome,
+            // The title row counts as a band at every window height here: the block of shapes
+            // below is laid out and framed for the band under it (#4335).
+            val cover = demoContentPadding(
+                cover = chrome,
                 sceneHeight = maxHeight,
                 left = left,
                 right = right,
@@ -216,7 +219,7 @@ fun GeometryDemo(onBack: () -> Unit) {
                 sheetClosed = LocalDemoSheetCover.current == 0.dp,
             )
             val restHeight = (maxHeight - chrome.calculateTopPadding() - restBottom)
-                .coerceAtLeast(maxHeight * GEOMETRY_MIN_VISIBLE_FRACTION)
+                .coerceAtLeast(maxHeight * DEMO_MIN_VISIBLE_FRACTION)
             val restAspect = (maxWidth - left - right) / restHeight
             val arrangement = GeometryLayout.arrangementFor(restAspect)
             val qaDistance = DemoSettings.cameraDistance
@@ -271,32 +274,6 @@ fun GeometryDemo(onBack: () -> Unit) {
         }
     }
 }
-
-/**
- * What the scene hands to `SceneView(contentPadding = …)`, from what the scaffold reports as
- * covered.
- *
- * The bottom is taken as it is: the chips, the dock and the settings sheet are where the shapes
- * must not be. The sides are the window's safe insets — a display cutout on a phone held
- * sideways — so the block is centred where the chips are centred. The top is the title row; under
- * a sheet dragged all the way up it gives way, because what is left is thinner than the tenth of
- * the view the SDK keeps visible and the SDK would take the difference from both edges — part of
- * it under the sheet.
- */
-internal fun geometryContentPadding(
-    chrome: PaddingValues,
-    sceneHeight: Dp,
-    left: Dp = 0.dp,
-    right: Dp = 0.dp,
-): PaddingValues {
-    val bottom = chrome.calculateBottomPadding()
-    val room = sceneHeight * (1f - GEOMETRY_MIN_VISIBLE_FRACTION) - bottom
-    val top = minOf(chrome.calculateTopPadding(), room.coerceAtLeast(0.dp))
-    return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
-}
-
-/** The floor the SDK applies to `contentPadding`: a tenth of the view stays visible. */
-private const val GEOMETRY_MIN_VISIBLE_FRACTION = 0.1f
 
 /**
  * What the chrome covers at the bottom of the scene **with the settings sheet closed**, as the

@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import kotlin.math.cos
 
 /**
  * What a demo whose scene runs edge to edge under the glass needs to keep its subject clear of
@@ -22,8 +24,25 @@ import androidx.compose.ui.unit.dp
  * @property restingAspect Width over height of the area left free with the sheet closed — the
  *   aspect to fit the camera distance for. See [LocalDemoSceneRestingCover] for why the fit is
  *   made once, at rest, and not for the live padding.
+ * @property compactHeight Whether the window is a phone held sideways ([isDemoCompactHeight]): the
+ *   free area is then a strip, and a demo that composes its shot differently there asks this.
  */
-internal class DemoSceneFrame(val contentPadding: PaddingValues, val restingAspect: Float)
+internal class DemoSceneFrame(
+    val contentPadding: PaddingValues,
+    val restingAspect: Float,
+    val compactHeight: Boolean,
+)
+
+/**
+ * Whether the window is short enough to be a phone held sideways — Material's compact height
+ * class. The one test the demos lay out and frame by: the scaffold's title stops counting as a
+ * band over the scene ([demoContentPadding]), Rolling Balls puts its two rows of controls on one
+ * line, and the demos whose scene is a strip there compose their shot for it.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun isDemoCompactHeight(): Boolean =
+    LocalConfiguration.current.screenHeightDp < DEMO_COMPACT_HEIGHT_DP
 
 /**
  * The [DemoSceneFrame] of a scene that fills this box, itself filling the scaffold's `scene` slot.
@@ -40,13 +59,14 @@ internal fun BoxWithConstraintsScope.demoSceneFrame(
     val left = safe.calculateLeftPadding(direction)
     val right = safe.calculateRightPadding(direction)
     val statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val compactHeight = LocalConfiguration.current.screenHeightDp < DEMO_COMPACT_HEIGHT_DP
+    val compactHeight = isDemoCompactHeight()
     val resting = demoContentPadding(
         LocalDemoSceneRestingCover.current, maxHeight, left, right, statusBar, compactHeight,
     )
     return DemoSceneFrame(
         contentPadding = demoContentPadding(cover, maxHeight, left, right, statusBar, compactHeight),
         restingAspect = demoFreeAspect(maxWidth, maxHeight, resting),
+        compactHeight = compactHeight,
     )
 }
 
@@ -57,8 +77,9 @@ internal fun BoxWithConstraintsScope.demoSceneFrame(
  * not be. The sides are the window's safe insets — a display cutout on a phone held sideways, a
  * navigation bar on the short edge — absolute, because a cutout does not change sides in RTL.
  *
- * The top is a row of glass chips over a live stage, and it gives way in two cases — the rule
- * Rolling Balls already frames its board by (`trayContentPadding`, #4310).
+ * The top is a row of glass chips over a live stage, and it gives way in two cases. One rule for
+ * every demo whose scene runs under the glass: Rolling Balls (#4310), Geometry (#4335) and the
+ * three of #4326 all call this.
  *
  * - **A phone held sideways** ([compactHeight]): the title is a chip in a corner a centred subject
  *   never reaches, and counting its row as a band leaves a strip a seventh of the screen tall
@@ -106,8 +127,8 @@ internal fun demoFreeAspect(sceneWidth: Dp, sceneHeight: Dp, padding: PaddingVal
 internal const val DEMO_MIN_VISIBLE_FRACTION = 0.1f
 
 /**
- * Below this window height, in dp, the title row stops counting as a band over the scene: a phone
- * held sideways. The same threshold Rolling Balls lays its controls out by.
+ * Below this window height, in dp, a window is a phone held sideways — Material's compact height
+ * class. Read through [isDemoCompactHeight].
  */
 internal const val DEMO_COMPACT_HEIGHT_DP = 480
 
@@ -119,6 +140,49 @@ internal fun pendulumSwingExtent(length1: Float, length2: Float, bobRadius: Floa
     2f * (length1 + length2 + bobRadius)
 
 /**
+ * How far above its hinge a double pendulum let go at rest can be drawn, in metres: the top of
+ * whichever bob can climb higher.
+ *
+ * Nothing adds energy after the release — the damping only takes some away — so the weighted sum
+ * of the two bobs' heights never passes its value at the release, whatever the gravity. Each bob
+ * is highest when the other is as low as the arms allow: the joint with the tip hanging straight
+ * under it, the tip with the joint straight under it. That is a ceiling, not a trajectory — the
+ * motion is chaotic — and it moves with the arm lengths, which is why it is computed.
+ *
+ * Angles are measured from the downward vertical, as in `DoublePendulumLink`.
+ */
+internal fun pendulumCeiling(
+    length1: Float,
+    length2: Float,
+    mass1: Float,
+    mass2: Float,
+    releaseAngle1: Float,
+    releaseAngle2: Float,
+    jointBobRadius: Float,
+    tipBobRadius: Float,
+): Float {
+    // Heights above the hinge.
+    val releasedJoint = -length1 * cos(releaseAngle1)
+    val releasedTip = releasedJoint - length2 * cos(releaseAngle2)
+    val budget = mass1 * releasedJoint + mass2 * releasedTip
+    val total = mass1 + mass2
+    val joint = (budget + mass2 * length2) / total
+    // The tip straight above the joint — unless that asks the joint to hang lower than its arm.
+    val balanced = (budget + mass1 * length2) / total
+    val tip = if (balanced - length2 >= -length1) balanced else (budget + mass1 * length1) / mass2
+    val jointCeiling = minOf(joint + PENDULUM_INTEGRATION_ALLOWANCE, length1)
+    val tipCeiling = minOf(tip + PENDULUM_INTEGRATION_ALLOWANCE, length1 + length2)
+    return maxOf(jointCeiling + jointBobRadius, tipCeiling + tipBobRadius)
+}
+
+/**
+ * What the stepped simulation may add to the exact ceiling, in metres. The integrator is
+ * semi-implicit Euler: its energy oscillates around the true one instead of drifting, by a few
+ * millimetres of height at the strongest gravity and the longest lead arm.
+ */
+private const val PENDULUM_INTEGRATION_ALLOWANCE = 0.03f
+
+/**
  * What the pendulum's camera fits upright and where it aims.
  *
  * @property extentY Height to fit, in metres.
@@ -127,18 +191,26 @@ internal fun pendulumSwingExtent(length1: Float, length2: Float, bobRadius: Floa
 internal class PendulumSubject(val extentY: Float, val centerY: Float)
 
 /**
- * The upright span the pendulum's camera fits, for a free area of [freeAspect] (width over height).
+ * The upright span the pendulum's camera fits.
  *
  * In an area taller than wide the width is what limits: the swing disc is fitted around the hinge
- * and the stand's foot has room below it. In a strip the height limits, and a disc fitted to it
- * leaves the foot outside — behind whatever closes the strip. There the span runs from the floor
- * to the top of the swing, so the whole stand is drawn in the free area.
+ * and the stand's foot has room below it. In a [strip] the height limits, and every metre fitted
+ * that nothing is ever drawn in is taken from the size of the subject. There the span runs from
+ * the floor, so the whole stand is drawn in the free area, to the [ceiling] the bobs can reach
+ * above the hinge ([pendulumCeiling]) — not to the top of the disc, which only a pendulum thrown
+ * upwards would touch.
  */
-internal fun pendulumSubject(pivotHeight: Float, swingExtent: Float, freeAspect: Float): PendulumSubject {
+internal fun pendulumSubject(
+    pivotHeight: Float,
+    swingExtent: Float,
+    ceiling: Float,
+    strip: Boolean,
+): PendulumSubject {
     val reach = swingExtent / 2f
-    val top = pivotHeight + reach
-    val hang = pivotHeight - reach
-    val foot = if (freeAspect > 1f) minOf(0f, hang) else hang
+    if (!strip) return PendulumSubject(extentY = swingExtent, centerY = pivotHeight)
+    // Never below the hinge itself, never past what the arms can reach.
+    val top = pivotHeight + ceiling.coerceIn(0f, reach)
+    val foot = minOf(0f, pivotHeight - reach)
     return PendulumSubject(extentY = top - foot, centerY = (top + foot) / 2f)
 }
 

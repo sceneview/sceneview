@@ -70,10 +70,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
@@ -138,6 +138,7 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
 import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.filamentBackendDrainWait
 import io.github.sceneview.demo.rememberBackendDrainWait
@@ -1359,10 +1360,10 @@ private fun SingleModelSection(
         // under them. The framing below fits the band above the sheet, and `EasedFraming` flies
         // the camera there and back as the sheet opens and closes — the model is never moved.
         //
-        // #4326 — that is the upright window. In one wider than it is tall the band is a strip:
+        // #4326 — that is the upright window. On a phone held sideways the band is a strip:
         // aiming past the model to lift it there tilts the shot, and the model ended half behind
         // the dock. There the cover goes to the SDK as `contentPadding` instead — see below.
-        val wideWindow = LocalWindowInfo.current.containerSize.let { it.width > it.height }
+        val compactHeight = isDemoCompactHeight()
         val topInset = LocalDemoChromeTopInset.current
         val sheetCover = maxOf(
             if (environmentSheetOpen) environmentSheetCover else 0.dp,
@@ -1373,47 +1374,32 @@ private fun SingleModelSection(
             sheetCover,
         )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // A wide window (#4326): the lens projects into the area the chrome and the sheets
-            // leave free, wherever they are right now, so the model is drawn — and picked — there.
-            // The scaffold's sheet reports its real position; the Lighting sheet reports where it
-            // settles, eased here over the same time the upright framing takes to follow it.
-            // Read in a wide window only: an upright one must not recompose with a moving sheet.
+            // A phone held sideways (#4326): the lens projects into the area the chrome and the
+            // sheets leave free, wherever they are right now, so the model is drawn — and picked —
+            // there. The scaffold's sheet reports its real position; the Lighting sheet reports
+            // where it settles, eased here over the same time the upright framing takes to follow
+            // it. Read there only: an upright window must not recompose with a moving sheet.
             val lightingCover = animateDpAsState(
                 targetValue = if (environmentSheetOpen) environmentSheetCover else 0.dp,
                 animationSpec = tween(FRAMING_SETTLE_MILLIS, easing = FastOutSlowInEasing),
                 label = "lightingCover",
             )
-            val sceneFrame = if (wideWindow) {
-                val chrome = LocalDemoSceneCover.current
-                demoSceneFrame(
-                    cover = PaddingValues(
-                        top = chrome.calculateTopPadding(),
-                        bottom = maxOf(chrome.calculateBottomPadding(), lightingCover.value),
-                    ),
-                )
+            val sceneFrame = if (compactHeight) {
+                demoSceneFrame(cover = viewerSceneCover(LocalDemoSceneCover.current, lightingCover.value))
             } else {
                 null
             }
             val restingAspect = sceneFrame?.restingAspect
             val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
                 val extents = bounds?.extents ?: return@remember null
-                if (restingAspect != null) {
-                    // The free area at rest is the whole frame as far as the lens is concerned:
-                    // no inset to aim around, and nothing to redo while a sheet moves.
-                    DemoMath.viewerFraming(
-                        extentX = extents.x, extentY = extents.y, extentZ = extents.z,
-                        viewportWidth = restingAspect, viewportHeight = 1f,
-                        topInset = 0f, bottomInset = 0f,
-                        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
-                    )
-                } else {
-                    DemoMath.viewerFraming(
-                        extentX = extents.x, extentY = extents.y, extentZ = extents.z,
-                        viewportWidth = maxWidth.value, viewportHeight = maxHeight.value,
-                        topInset = topInset.value, bottomInset = bottomInset.value,
-                        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
-                    )
-                }
+                viewerHomeFraming(
+                    extents = extents,
+                    viewportWidth = maxWidth.value,
+                    viewportHeight = maxHeight.value,
+                    topInset = topInset.value,
+                    bottomInset = bottomInset.value,
+                    restingAspect = restingAspect,
+                )
             }
             // Published for the "Camera distance" slider. A `SideEffect`, not a
             // `LaunchedEffect`: the effect ran a frame after the framing it reported, so the
@@ -2482,3 +2468,49 @@ private fun OverflowChipRow(content: @Composable RowScope.() -> Unit) {
         )
     }
 }
+
+/**
+ * What covers the viewer's scene on a phone held sideways: the scaffold's [chrome], and the
+ * Lighting sheet where it is taller than the dock — a sheet the scaffold does not know about.
+ */
+internal fun viewerSceneCover(chrome: PaddingValues, lightingCover: Dp): PaddingValues =
+    PaddingValues(
+        top = chrome.calculateTopPadding(),
+        bottom = maxOf(chrome.calculateBottomPadding(), lightingCover),
+    )
+
+/**
+ * The viewer's home framing of a model of [extents].
+ *
+ * Upright ([restingAspect] is `null`) the lens covers the whole window: the model is fitted to
+ * the band between [topInset] and [bottomInset] and the camera aims past it to lift it there.
+ * On a phone held sideways the free area at rest is handed to the SDK as `contentPadding` and is
+ * the whole frame as far as the lens is concerned — [restingAspect] is its width over its height:
+ * no inset to aim around, and nothing to redo while a sheet moves.
+ */
+internal fun viewerHomeFraming(
+    extents: Size,
+    viewportWidth: Float,
+    viewportHeight: Float,
+    topInset: Float,
+    bottomInset: Float,
+    restingAspect: Float?,
+): DemoMath.ViewerFraming =
+    if (restingAspect != null) {
+        DemoMath.viewerFraming(
+            extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+            viewportWidth = restingAspect, viewportHeight = 1f,
+            topInset = 0f, bottomInset = 0f,
+            verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+        )
+    } else {
+        DemoMath.viewerFraming(
+            extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+            viewportWidth = viewportWidth, viewportHeight = viewportHeight,
+            topInset = topInset, bottomInset = bottomInset,
+            verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+        )
+    }
+
+/** The SDK's default lens, which the viewer keeps. */
+private const val VIEWER_FOCAL_LENGTH_MM = 28.0

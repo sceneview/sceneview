@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -49,6 +50,7 @@ import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.orbitLabelFadeAlpha
@@ -63,6 +65,7 @@ import io.github.sceneview.math.Size
 import io.github.sceneview.node.ContactShadowContext
 import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.rememberEngine
+import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
@@ -195,7 +198,17 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     }
 
     val engine = rememberEngine()
-    val labelCamera = io.github.sceneview.rememberCameraNode(engine)
+    // One shot upright, another on a phone held sideways — see [contactShadowHomeShot].
+    val compactHeight = isDemoCompactHeight()
+    val homeShot = remember(compactHeight) { contactShadowHomeShot(strip = compactHeight) }
+    val renderInvalidator = rememberRenderInvalidator()
+    val labelCamera = io.github.sceneview.rememberCameraNode(engine) {
+        focalLength = homeShot.focalLengthMm
+    }
+    LaunchedEffect(labelCamera, homeShot.focalLengthMm) {
+        labelCamera.focalLength = homeShot.focalLengthMm
+        renderInvalidator.requestRender()
+    }
     val groundedLabel = stringResource(R.string.contact_shadow_label_grounded)
     val noShadowLabel = stringResource(R.string.contact_shadow_label_floating)
     val labelsFontSize = with(androidx.compose.ui.platform.LocalDensity.current) {
@@ -249,10 +262,10 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     // manipulator carries the whole camera pose and has no "go home" call — and the
     // continuity layer eases from wherever the user left the camera to that new home
     // instead of cutting (the Model Viewer's recenter pattern). QA mode keeps it a cut.
-    val homeOrbit = remember(demoState.cameraHomeGeneration) {
-        createDefaultCameraManipulator(eyePosition = CAMERA_EYE, targetPosition = CAMERA_TARGET)
+    val homeOrbit = remember(demoState.cameraHomeGeneration, homeShot) {
+        createDefaultCameraManipulator(eyePosition = homeShot.eye, targetPosition = homeShot.target)
     }
-    val cameraManipulator = rememberContinuousCameraManipulator(pivot = CAMERA_TARGET)
+    val cameraManipulator = rememberContinuousCameraManipulator(pivot = CONTACT_CAMERA_TARGET)
         .driving(homeOrbit)
 
     DemoScaffold(
@@ -292,11 +305,11 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             // The room is authored for the lens, not for a window: the home shot shows the same
-            // slice of it at every aspect. What the chrome covers goes to the SDK as
-            // `contentPadding`, which makes the area left free the lens's whole field — so on a
-            // phone held sideways, where the scene runs under the glass (#4310), the TV, the
-            // boxes and their pools are drawn between the title row and the controls instead of
-            // behind them (#4326), and follow the settings sheet up.
+            // slice of it, top to bottom, at every aspect. What the chrome covers goes to the SDK
+            // as `contentPadding`, which makes the area left free the lens's whole field — so on
+            // a phone held sideways, where the scene runs under the glass (#4310), the TV, the
+            // boxes and their pools are drawn above the controls instead of behind them (#4326),
+            // and follow the settings sheet up.
             val frame = demoSceneFrame()
             SceneView(
                 modifier = Modifier.fillMaxSize(),
@@ -304,6 +317,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 onFrame = firstFrame.onFrame,
                 engine = engine,
                 cameraNode = labelCamera,
+                renderInvalidator = renderInvalidator,
                 materialLoader = materialLoader,
                 environment = environment,
                 // Keep the hand-built room where it was authored — auto-centring would reframe the
@@ -340,16 +354,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 // ── The room ──────────────────────────────────────────────────────────────────
                 // Floor: an XZ quad (normal +Y).
                 PlaneNode(
-                    size = Size(x = 6f, y = 0f, z = 6f),
+                    size = Size(x = ROOM_WIDTH_METERS, y = 0f, z = ROOM_WIDTH_METERS),
                     normal = Direction(y = 1f),
                     materialInstance = floorMaterial,
                 )
                 // Back wall: an XY quad (normal +Z) — note the DIFFERENT size shape. `Plane` does
                 // not rotate its geometry to match `normal`, so a vertical quad is built in XY.
                 PlaneNode(
-                    size = Size(x = 6f, y = 3f, z = 0f),
+                    size = Size(x = ROOM_WIDTH_METERS, y = 3f, z = 0f),
                     normal = Direction(z = 1f),
-                    position = Position(x = 0f, y = 1.5f, z = -2f),
+                    position = Position(x = 0f, y = 1.5f, z = WALL_Z),
                     materialInstance = wallMaterial,
                 )
 
@@ -401,10 +415,11 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 )
 
                 listOf(
-                    Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
+                    Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + CONTACT_LABEL_GAP_METERS, BOXES_Z) to
+                        groundedLabel,
                     Position(
                         BOX_HALF_SPACING,
-                        DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
+                        DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + CONTACT_LABEL_GAP_METERS,
                         BOXES_Z,
                     ) to noShadowLabel,
                 ).forEach { (position, label) ->
@@ -414,7 +429,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                         textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
                         backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
                         widthMeters = 0.62f,
-                        heightMeters = 0.16f,
+                        heightMeters = CONTACT_LABEL_HEIGHT_METERS,
                         position = position,
                         cameraPositionProvider = { labelCamera.worldPosition },
                         // #3802: the room is built and lit for a roughly head-on view, so orbiting
@@ -441,7 +456,7 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                                 isVisible = orbitLabelFadeAlpha(
                                     orbitYawDeviationDegrees(
                                         eye = labelCamera.worldPosition,
-                                        target = CAMERA_TARGET,
+                                        target = CONTACT_CAMERA_TARGET,
                                         referenceYawDegrees = 0f,
                                     ),
                                 ) > 0f
@@ -453,16 +468,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
                 if (shadowsEnabled) {
                     ContactShadow(
-                        size = Size(x = 2.4f, y = 1.6f, z = 0f),
+                        size = Size(x = TV_SHADOW_WIDTH_METERS, y = TV_SHADOW_HEIGHT_METERS, z = 0f),
                         context = wallContext,
                         normal = Direction(z = 1f),
                         intensity = wallContext.intensity * intensityFactor,
-                        position = Position(x = 0f, y = 1.3f, z = -1.99f),
+                        position = Position(x = 0f, y = TV_CENTER_Y_METERS, z = WALL_Z + 0.01f),
                     )
                 }
-                Node(position = Position(x = 0f, y = 1.3f, z = -1.98f)) {
+                Node(position = Position(x = 0f, y = TV_CENTER_Y_METERS, z = WALL_Z + 0.02f)) {
                     CubeNode(
-                        size = Size(1.26f, 0.74f, 0.04f),
+                        size = Size(TV_WIDTH_METERS, TV_HEIGHT_METERS, 0.04f),
                         position = Position(z = 0.02f),
                         materialInstance = tvBody,
                     )
@@ -638,13 +653,40 @@ private const val MULTIPLIER_SIGN = '×'
 // ── Scene layout constants ────────────────────────────────────────────────────────────────
 
 /** Edge length of the two comparison boxes, metres. */
-private const val BOX_EDGE_METERS = 0.38f
+internal const val BOX_EDGE_METERS = 0.38f
 
 /** Half the centre-to-centre spacing of the comparison pair, metres. */
-private const val BOX_HALF_SPACING = 0.38f
+internal const val BOX_HALF_SPACING = 0.38f
 
 /** Z position of the comparison pair — pulled toward the camera, in front of the room. */
-private const val BOXES_Z = 0.35f
+internal const val BOXES_Z = 0.35f
+
+/** Clear height between the top of a box and the middle of its label, metres. */
+internal const val CONTACT_LABEL_GAP_METERS = 0.12f
+
+/** Height of the "Shadow" / "No shadow" labels, metres. */
+internal const val CONTACT_LABEL_HEIGHT_METERS = 0.16f
+
+/** Z of the back wall, metres. The TV and its pool sit a centimetre or two in front of it. */
+internal const val WALL_Z = -2f
+
+/** The wall TV: its body, and the height of its centre above the floor, metres. */
+internal const val TV_WIDTH_METERS = 1.26f
+internal const val TV_HEIGHT_METERS = 0.74f
+internal const val TV_CENTER_Y_METERS = 1.3f
+
+/** The quad the TV's pool is drawn on, flat against the wall and centred on the TV, metres. */
+internal const val TV_SHADOW_WIDTH_METERS = 2.4f
+internal const val TV_SHADOW_HEIGHT_METERS = 1.6f
+
+/**
+ * Width of the back wall and side of the square floor, metres. Wide enough that neither ends
+ * inside the frame, so the room never reads as a set standing in the void. The upright shot sees
+ * under 4 m of the wall; on a phone held sideways the lens's vertical field is the band above the
+ * controls alone, the frame is eight times as wide as that band — 25 m of wall — and wider still
+ * while the settings sheet is dragged up and the band shrinks.
+ */
+private const val ROOM_WIDTH_METERS = 80f
 
 /**
  * Travel direction of the directional key light — also the axis the grounded pool projects
@@ -660,7 +702,7 @@ private val KEY_LIGHT_DIRECTION = Direction(-0.35f, -1f, -0.4f)
  * peak of the hop, where it has slid furthest out from under its own box. Only the
  * grounded box has a quad; the comparison depends on the twin's floor staying bare.
  */
-private const val SHADOW_QUAD_METERS = 0.8f
+internal const val SHADOW_QUAD_METERS = 0.8f
 
 /** Camera eye — see the comment at its `rememberCameraManipulator` call site. */
 /**
@@ -707,12 +749,51 @@ internal class ContactShadowDemoState {
     }
 }
 
-private val CAMERA_EYE =Position(x = 0.0f, y = 1.35f, z = 3.3f)
+internal val CONTACT_CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)
 
 /**
  * Camera orbit target — see the comment at its `rememberCameraManipulator` call site. Also the
- * front-on reference the "Shadow" / "No shadow" labels fade around (#3802): [CAMERA_EYE] sits at
- * `0°` yaw in [CAMERA_EYE]/[CAMERA_TARGET]'s convention, which is why the `TextNode` fade below
+ * front-on reference the "Shadow" / "No shadow" labels fade around (#3802): [CONTACT_CAMERA_EYE] sits at
+ * `0°` yaw in [CONTACT_CAMERA_EYE]/[CONTACT_CAMERA_TARGET]'s convention, which is why the `TextNode` fade below
  * passes `referenceYawDegrees = 0f`.
  */
-private val CAMERA_TARGET = Position(x = 0.0f, y = 0.75f, z = -0.5f)
+internal val CONTACT_CAMERA_TARGET = Position(x = 0.0f, y = 0.75f, z = -0.5f)
+
+/** Where the home shot stands, what it looks at and through which lens. */
+internal class ContactShadowShot(val eye: Position, val target: Position, val focalLengthMm: Double)
+
+/**
+ * The home shot: the authored one, or its [strip] version for a phone held sideways (#4326).
+ *
+ * There the free area is a band above the controls a third of the window tall, and the lens's
+ * vertical field is spent on that band alone: at 28 mm from the authored eye the horizontal field
+ * passes 135° and the room is a small picture stretched towards the ends of a very wide one. The
+ * strip shot stands further back on the same line of sight, behind a longer lens — the same
+ * slice of the room top to bottom, from the front of the grounded box's pool to above the TV,
+ * with the far wall larger against the boxes in front of it and a field near 100°. Stepping back
+ * rather than only zooming in is what keeps the boxes in: from the authored eye they sit too far
+ * below the TV for a longer lens to hold both.
+ */
+internal fun contactShadowHomeShot(strip: Boolean): ContactShadowShot =
+    if (strip) {
+        ContactShadowShot(
+            eye = CONTACT_CAMERA_TARGET + (CONTACT_CAMERA_EYE - CONTACT_CAMERA_TARGET) * STRIP_CAMERA_PULL_BACK,
+            target = CONTACT_CAMERA_TARGET,
+            focalLengthMm = STRIP_FOCAL_LENGTH_MM,
+        )
+    } else {
+        ContactShadowShot(
+            eye = CONTACT_CAMERA_EYE,
+            target = CONTACT_CAMERA_TARGET,
+            focalLengthMm = AUTHORED_FOCAL_LENGTH_MM,
+        )
+    }
+
+/** The SDK's default lens, the one the room is authored for. */
+internal const val AUTHORED_FOCAL_LENGTH_MM = 28.0
+
+/** How much further from its target the strip shot stands than the authored one. */
+private const val STRIP_CAMERA_PULL_BACK = 1.8f
+
+/** The strip shot's lens: the pool's front edge just inside the bottom of the band. */
+private const val STRIP_FOCAL_LENGTH_MM = 70.0

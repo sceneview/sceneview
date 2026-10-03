@@ -3,12 +3,16 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.demoContentPadding
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
  * What Rolling Balls hands to `SceneView(contentPadding)` (#4310): the bottom of the chrome as it
  * is, and a top that gives way when keeping it would push the board under the settings sheet.
+ *
+ * The rule is the demos' shared [demoContentPadding] since #4326; these are the cases the board was
+ * framed by before it was shared, called the way Rolling Balls calls it, with the same numbers.
  */
 class TrayContentPaddingTest {
 
@@ -17,10 +21,10 @@ class TrayContentPaddingTest {
     private val statusBar = 48.dp
     private val chromeTop = 136.dp
 
-    private fun padding(bottom: Float, compactHeight: Boolean = false) = trayContentPadding(
-        chrome = PaddingValues(top = chromeTop, bottom = bottom.dp),
-        statusBar = statusBar,
+    private fun padding(bottom: Float, compactHeight: Boolean = false) = demoContentPadding(
+        cover = PaddingValues(top = chromeTop, bottom = bottom.dp),
         sceneHeight = scene,
+        statusBar = statusBar,
         compactHeight = compactHeight,
     )
 
@@ -55,16 +59,32 @@ class TrayContentPaddingTest {
     }
 
     @Test
+    fun `sideways the status bar is kept for as long as the sheet leaves a tenth of the view under it`() {
+        // A 427 dp window: the SDK keeps 42.7 dp visible. Up to a 336.3 dp sheet the status bar
+        // stays clear, as it always did; past it the board used to be pushed under the sheet by the
+        // SDK's own floor, and the top now yields instead.
+        fun top(bottom: Float) = demoContentPadding(
+            cover = PaddingValues(top = chromeTop, bottom = bottom.dp),
+            sceneHeight = 427.dp,
+            statusBar = statusBar,
+            compactHeight = true,
+        ).calculateTopPadding()
+        assertEquals(statusBar, top(bottom = 120f))
+        assertEquals(statusBar, top(bottom = 336f))
+        assertEquals(427f - 360f - 42.7f, top(bottom = 360f).value, 0.01f)
+    }
+
+    @Test
     fun `the window's side insets stay on their side whatever the layout direction`() {
         // A display cutout on the left of a phone held sideways: the controls are centred in what
         // it leaves, and so is the board.
-        val padding = trayContentPadding(
-            chrome = PaddingValues(top = chromeTop, bottom = 120.dp),
-            statusBar = statusBar,
+        val padding = demoContentPadding(
+            cover = PaddingValues(top = chromeTop, bottom = 120.dp),
             sceneHeight = 427.dp,
-            compactHeight = true,
             left = 52.dp,
             right = 0.dp,
+            statusBar = statusBar,
+            compactHeight = true,
         )
         for (direction in LayoutDirection.entries) {
             assertEquals(52.dp, padding.calculateLeftPadding(direction))
