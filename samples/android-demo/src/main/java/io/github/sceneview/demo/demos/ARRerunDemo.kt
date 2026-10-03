@@ -415,11 +415,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                     notice = null
                     openStored(it.id, it.info.title)
                 },
-                onShare = { session ->
-                    scope.launch {
-                        if (!shareScanFile(context, store, session.info)) notice = ScanCopy.OPEN_FAILED
-                    }
-                },
                 onViewInAr = { session ->
                     notice = null
                     openDollhouse(session.id, session.info.title, null)
@@ -775,8 +770,8 @@ private fun RerunReplayScreen(
         dockAccent = onViewInAr?.let {
             DockItem(
                 icon = Icons.Rounded.ViewInAr,
-                label = DollhouseCopy.VIEW_IN_AR,
-                caption = DollhouseCopy.VIEW_IN_AR_CAPTION,
+                label = stringResource(R.string.room_scan_place),
+                caption = stringResource(R.string.room_scan_place),
                 onClick = it,
                 enabled = media != null,
             )

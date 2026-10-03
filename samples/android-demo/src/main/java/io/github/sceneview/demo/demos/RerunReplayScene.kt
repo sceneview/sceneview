@@ -167,7 +167,8 @@ private suspend fun openReplay(
     events: List<ArDebugEvent>,
     archive: ByteArray,
 ): RerunReplayMedia = coroutineScope {
-    val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
+    val availableEvents = events.filter { it !is ArDebugEvent.Image || it.path in manifest.media }
+    val trace = ArDebugTrace.of(availableEvents).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
     val shell = RerunReplayMedia(trace, manifest, emptyMap(), emptyMap(), archive)
     // Decoded side by side: the cover stays up until they are, so their time is the wait.
     val planes = manifest.textures.map { texture ->

@@ -288,7 +288,7 @@ internal fun RoomDollhouseScreen(
                 DockItem(
                     icon = Icons.Rounded.ViewInAr,
                     label = DollhouseCopy.VIEW_AR_LABEL,
-                    caption = DollhouseCopy.VIEW_AR,
+                    caption = stringResource(R.string.room_scan_place),
                     onClick = { previewChosen = false },
                     enabled = arAvailable,
                     selected = inRoom,

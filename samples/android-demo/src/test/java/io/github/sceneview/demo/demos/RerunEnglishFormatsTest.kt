@@ -63,6 +63,37 @@ class RerunEnglishFormatsTest {
         assertEquals("4.7 MB", formatFileSize(4_700_000))
     }
 
+    @Test
+    fun `share sizes stay English across unit boundaries`() {
+        assertEquals("0 B", formatFileSize(0))
+        assertEquals("999 B", formatFileSize(999))
+        assertEquals("1 kB", formatFileSize(1_000))
+        assertEquals("1.0 MB", formatFileSize(1_000_000))
+        assertEquals("12.4 MB", formatFileSize(12_400_000))
+        assertEquals("1.0 GB", formatFileSize(1_000_000_000))
+    }
+
+    @Test
+    fun `share and placement actions use the agreed English vocabulary`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val labels = mapOf(
+            io.github.sceneview.demo.R.string.room_scan_place to "Place",
+            io.github.sceneview.demo.R.string.room_scan_share to "Share",
+            io.github.sceneview.demo.R.string.room_scan_close to "Close",
+            io.github.sceneview.demo.R.string.room_scan_include_photos to "Include photos",
+            io.github.sceneview.demo.R.string.ar_place_view_in_3d to "3D",
+            io.github.sceneview.demo.R.string.ar_place_keep_scanning to "Try again",
+            io.github.sceneview.demo.R.string.ar_place_scan_again to "Try again",
+            io.github.sceneview.demo.R.string.ar_place_tracking_paused to "Move slowly.",
+        )
+        for ((id, expected) in labels) assertEquals(expected, context.getString(id))
+        assertEquals(
+            "This file contains photos of your room and the path you walked. " +
+                "Anyone you send it to can see them.",
+            context.getString(io.github.sceneview.demo.R.string.room_scan_share_privacy),
+        )
+    }
+
     // ICU puts a narrow no-break space before "PM" on recent JDKs and Android versions.
     private fun String.plainSpaces() = replace('\u202F', ' ').replace('\u00A0', ' ')
 

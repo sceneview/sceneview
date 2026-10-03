@@ -30,8 +30,8 @@ import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunFileKind
 import io.github.sceneview.demo.demos.internal.RerunImportFailure
 import io.github.sceneview.demo.demos.internal.RerunRrdReader
-import io.github.sceneview.demo.demos.internal.RerunScanFile
 import io.github.sceneview.demo.demos.internal.RerunSessionStore
+import io.github.sceneview.demo.demos.internal.RerunShareCopy
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
@@ -40,6 +40,8 @@ import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.toJson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -47,7 +49,6 @@ import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
 /*
  * The Rerun demo's sessions, on Android: a finished scan built into the recorder's three files —
@@ -192,19 +193,34 @@ internal fun sessionOrigin(session: RerunStoredSession, locale: Locale = Locale.
     return "$date · ${session.source.label}"
 }
 
+/** A scan file ready to share: the [file] in the cache and its weight, read off the main thread. */
+internal class PreparedScan(val includePhotos: Boolean, val file: File, val bytes: Long)
+
 /**
- * Session [session] as a scan file in a fresh cache directory, named after its title, handed to the
- * system's share sheet. `false` when its capture is gone.
+ * Session [session] as the scan file the share sheet is about to send — with its photos, or
+ * without them ([RerunShareCopy]) — in a fresh cache directory, named after its title. The size
+ * the sheet shows is this very file's. `null` when the session's capture is gone.
+ *
+ * One copy at a time: each call replaces the previous one, and a call made while another is still
+ * writing waits for it, so a switch flipped twice in a row never deletes a file being written.
  */
-internal suspend fun shareScanFile(context: Context, store: RerunSessionStore, session: RerunStoredSession): Boolean {
-    val file = withContext(Dispatchers.IO) {
+internal suspend fun prepareSharedScan(
+    context: Context,
+    store: RerunSessionStore,
+    session: RerunStoredSession,
+    includePhotos: Boolean,
+): PreparedScan? = withContext(Dispatchers.IO) {
+    shareCopyLock.withLock {
         val capture = store.capture(session.id) ?: return@withContext null
-        val shareRoot = File(context.cacheDir, RERUN_SHARE_DIR)
-        // Only the latest shared file is kept: the share sheet has read it by the next share.
-        shareRoot.deleteRecursively()
-        val dir = File(shareRoot, UUID.randomUUID().toString()).apply { mkdirs() }
-        File(dir, RerunScanFile.fileName(session.title)).apply { writeBytes(RerunScanFile.write(capture)) }
-    } ?: return false
+        val file = RerunShareCopy.write(capture, session.title, File(context.cacheDir, RERUN_SHARE_DIR), includePhotos)
+        PreparedScan(includePhotos, file, file.length())
+    }
+}
+
+private val shareCopyLock = Mutex()
+
+/** Hands the prepared [file] to the system's share sheet: the bytes sent are the bytes weighed. */
+internal fun sharePreparedScan(context: Context, file: File, title: String) {
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val send = Intent(Intent.ACTION_SEND).apply {
         type = SCAN_MIME_TYPE
@@ -213,9 +229,8 @@ internal suspend fun shareScanFile(context: Context, store: RerunSessionStore, s
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(
-        Intent.createChooser(send, session.title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        Intent.createChooser(send, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
-    return true
 }
 
 /**

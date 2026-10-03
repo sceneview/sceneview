@@ -1,0 +1,193 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package io.github.sceneview.demo.demos
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.demos.internal.RerunStoredSession
+import io.github.sceneview.demo.demos.internal.formatFileSize
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.theme.SceneViewTokens.Type
+import kotlinx.coroutines.CancellationException
+
+/**
+ * What a shared scan contains, said before it leaves the phone: the photos of the room are in the
+ * file unless the switch takes them out, and the size shown is the size of the very file Share
+ * hands to Android. The copy is rebuilt off the main thread each time the switch moves; Share
+ * stays off until the copy for the current choice is written.
+ */
+@Composable
+internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember(context) { rerunSessionStore(context) }
+    var includePhotos by remember(session.id) { mutableStateOf(true) }
+    var prepared by remember(session.id) { mutableStateOf<PreparedScan?>(null) }
+    var failed by remember(session.id) { mutableStateOf(false) }
+    LaunchedEffect(session.id, includePhotos) {
+        // The cache holds one copy: the previous one is gone as soon as this one starts.
+        prepared = null
+        failed = false
+        try {
+            prepared = prepareSharedScan(context, store, session, includePhotos)
+            failed = prepared == null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            failed = true
+        }
+    }
+    // Only a copy written for the current switch position can be shared.
+    val ready = prepared?.takeIf { it.includePhotos == includePhotos }
+    DemoModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag(SHARE_SHEET_TAG)) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = Space.lg)
+                .padding(bottom = Space.lg),
+            verticalArrangement = Arrangement.spacedBy(Space.md),
+        ) {
+            Text(
+                text = stringResource(R.string.room_scan_share),
+                style = Type.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                text = stringResource(
+                    if (includePhotos) R.string.room_scan_share_privacy
+                    else R.string.room_scan_share_privacy_without_photos,
+                ),
+                style = Type.body,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Column {
+                // The whole row is the switch: one target, one announcement.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                        .toggleable(
+                            value = includePhotos,
+                            role = Role.Switch,
+                            onValueChange = { includePhotos = it },
+                        )
+                        .testTag(SHARE_PHOTOS_TAG),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Space.md),
+                ) {
+                    Text(
+                        text = stringResource(R.string.room_scan_include_photos),
+                        style = Type.body,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = includePhotos, onCheckedChange = null)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                        .semantics(mergeDescendants = true) {},
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Space.md),
+                ) {
+                    Text(
+                        text = stringResource(R.string.room_scan_file_size),
+                        style = Type.body,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = when {
+                            ready != null -> formatFileSize(ready.bytes)
+                            failed -> stringResource(R.string.room_scan_file_size_unknown)
+                            else -> stringResource(R.string.room_scan_share_preparing)
+                        },
+                        style = Type.body,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag(SHARE_SIZE_TAG),
+                    )
+                }
+            }
+            if (failed) {
+                Text(
+                    text = stringResource(R.string.room_scan_share_failed),
+                    style = Type.body,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                Button(
+                    onClick = {
+                        ready?.let { sharePreparedScan(context, it.file, session.title) }
+                        onDismiss()
+                    },
+                    enabled = ready != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                        .testTag(SHARE_SEND_TAG),
+                ) {
+                    Icon(Icons.Outlined.Share, contentDescription = null)
+                    Text(
+                        text = stringResource(R.string.room_scan_share),
+                        style = Type.body.copy(fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.padding(start = Space.sm),
+                    )
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SceneViewTokens.Layout.touchTarget),
+                ) {
+                    Text(
+                        text = stringResource(R.string.room_scan_close),
+                        style = Type.body.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
+        }
+    }
+}
+
+internal const val SHARE_SHEET_TAG = "ar_rerun_share_sheet"
+internal const val SHARE_PHOTOS_TAG = "ar_rerun_share_photos"
+internal const val SHARE_SIZE_TAG = "ar_rerun_share_size"
+internal const val SHARE_SEND_TAG = "ar_rerun_share_send"
