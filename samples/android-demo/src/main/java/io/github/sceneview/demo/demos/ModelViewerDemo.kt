@@ -5,6 +5,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -67,6 +70,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -81,6 +85,7 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.LocalDemoSheetCover
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -131,6 +136,7 @@ import io.github.sceneview.demo.demos.internal.ParkSlot
 import io.github.sceneview.demo.demos.internal.parkCamera
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.EntranceCameraManipulator
+import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.filamentBackendDrainWait
@@ -354,6 +360,9 @@ private const val CAMERA_ENTRANCE_MILLIS = 700
  * (the identity row measuring itself, the navigation bar settling). One `duration-medium`.
  */
 private const val FRAMING_SETTLE_MILLIS = 350
+
+/** An upright window frames with the camera's aim alone (see `SingleModelSection`). */
+private val NoContentPadding = PaddingValues(0.dp)
 
 /**
  * Largest step, in seconds, one frame may advance the camera flights by. The frames that first
@@ -1349,6 +1358,11 @@ private fun SingleModelSection(
         // model can be watched while it changes, and the model used to lose its lower third
         // under them. The framing below fits the band above the sheet, and `EasedFraming` flies
         // the camera there and back as the sheet opens and closes — the model is never moved.
+        //
+        // #4326 — that is the upright window. In one wider than it is tall the band is a strip:
+        // aiming past the model to lift it there tilts the shot, and the model ended half behind
+        // the dock. There the cover goes to the SDK as `contentPadding` instead — see below.
+        val wideWindow = LocalWindowInfo.current.containerSize.let { it.width > it.height }
         val topInset = LocalDemoChromeTopInset.current
         val sheetCover = maxOf(
             if (environmentSheetOpen) environmentSheetCover else 0.dp,
@@ -1359,14 +1373,47 @@ private fun SingleModelSection(
             sheetCover,
         )
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset) {
-                val extents = bounds?.extents ?: return@remember null
-                DemoMath.viewerFraming(
-                    extentX = extents.x, extentY = extents.y, extentZ = extents.z,
-                    viewportWidth = maxWidth.value, viewportHeight = maxHeight.value,
-                    topInset = topInset.value, bottomInset = bottomInset.value,
-                    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+            // A wide window (#4326): the lens projects into the area the chrome and the sheets
+            // leave free, wherever they are right now, so the model is drawn — and picked — there.
+            // The scaffold's sheet reports its real position; the Lighting sheet reports where it
+            // settles, eased here over the same time the upright framing takes to follow it.
+            // Read in a wide window only: an upright one must not recompose with a moving sheet.
+            val lightingCover = animateDpAsState(
+                targetValue = if (environmentSheetOpen) environmentSheetCover else 0.dp,
+                animationSpec = tween(FRAMING_SETTLE_MILLIS, easing = FastOutSlowInEasing),
+                label = "lightingCover",
+            )
+            val sceneFrame = if (wideWindow) {
+                val chrome = LocalDemoSceneCover.current
+                demoSceneFrame(
+                    cover = PaddingValues(
+                        top = chrome.calculateTopPadding(),
+                        bottom = maxOf(chrome.calculateBottomPadding(), lightingCover.value),
+                    ),
                 )
+            } else {
+                null
+            }
+            val restingAspect = sceneFrame?.restingAspect
+            val framing = remember(bounds, maxWidth, maxHeight, topInset, bottomInset, restingAspect) {
+                val extents = bounds?.extents ?: return@remember null
+                if (restingAspect != null) {
+                    // The free area at rest is the whole frame as far as the lens is concerned:
+                    // no inset to aim around, and nothing to redo while a sheet moves.
+                    DemoMath.viewerFraming(
+                        extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+                        viewportWidth = restingAspect, viewportHeight = 1f,
+                        topInset = 0f, bottomInset = 0f,
+                        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+                    )
+                } else {
+                    DemoMath.viewerFraming(
+                        extentX = extents.x, extentY = extents.y, extentZ = extents.z,
+                        viewportWidth = maxWidth.value, viewportHeight = maxHeight.value,
+                        topInset = topInset.value, bottomInset = bottomInset.value,
+                        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+                    )
+                }
             }
             // Published for the "Camera distance" slider. A `SideEffect`, not a
             // `LaunchedEffect`: the effect ran a frame after the framing it reported, so the
@@ -1483,6 +1530,7 @@ private fun SingleModelSection(
                 environment = stagedEnvironment,
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
+                contentPadding = sceneFrame?.contentPadding ?: NoContentPadding,
                 cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
             ) {

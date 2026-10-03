@@ -7,6 +7,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +47,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.demos.internal.DemoMath
@@ -288,178 +290,188 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             )
         }
     ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            cameraNode = labelCamera,
-            materialLoader = materialLoader,
-            environment = environment,
-            // Keep the hand-built room where it was authored — auto-centring would reframe the
-            // scene and break the deterministic camera below.
-            autoCenterContent = false,
-            // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
-            // pair in the lower half and the wall TV in the upper half. Seen high and far
-            // (the v1 framing), a floor pool degenerates into a sliver and can never read.
-            //
-            // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
-            // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
-            // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
-            // `TextNode.isVisible` assignment below.
-            cameraManipulator = cameraManipulator,
-        ) {
-            // Read the hop clock HERE, inside the content lambda, not in the demo body: this
-            // lambda is its own recomposition scope, so the per-frame state change re-executes
-            // only the scene nodes — never the scaffold, top bar, or settings sheet (the
-            // GeometryDemo spin pattern).
-            val hopHeight = DemoMath.bounceHeight(bounceElapsedNanos)
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // The room is authored for the lens, not for a window: the home shot shows the same
+            // slice of it at every aspect. What the chrome covers goes to the SDK as
+            // `contentPadding`, which makes the area left free the lens's whole field — so on a
+            // phone held sideways, where the scene runs under the glass (#4310), the TV, the
+            // boxes and their pools are drawn between the title row and the controls instead of
+            // behind them (#4326), and follow the settings sheet up.
+            val frame = demoSceneFrame()
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = frame.contentPadding,
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                cameraNode = labelCamera,
+                materialLoader = materialLoader,
+                environment = environment,
+                // Keep the hand-built room where it was authored — auto-centring would reframe the
+                // scene and break the deterministic camera below.
+                autoCenterContent = false,
+                // Low and pulled in: ~22° above the floor at the boxes, framing the comparison
+                // pair in the lower half and the wall TV in the upper half. Seen high and far
+                // (the v1 framing), a floor pool degenerates into a sliver and can never read.
+                //
+                // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
+                // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
+                // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
+                // `TextNode.isVisible` assignment below.
+                cameraManipulator = cameraManipulator,
+            ) {
+                // Read the hop clock HERE, inside the content lambda, not in the demo body: this
+                // lambda is its own recomposition scope, so the per-frame state change re-executes
+                // only the scene nodes — never the scaffold, top bar, or settings sheet (the
+                // GeometryDemo spin pattern).
+                val hopHeight = DemoMath.bounceHeight(bounceElapsedNanos)
 
-            // Directional key light for shape and specular — deliberately NOT a shadow caster.
-            // The ONLY grounding cue on screen must be the contact shadow, so a real cast
-            // shadow would muddy the with/without comparison.
-            LightNode(
-                type = LightManager.Type.DIRECTIONAL,
-                direction = KEY_LIGHT_DIRECTION,
-                apply = {
-                    intensity(60_000f)
-                    castShadows(false)
-                },
-            )
-
-            // ── The room ──────────────────────────────────────────────────────────────────
-            // Floor: an XZ quad (normal +Y).
-            PlaneNode(
-                size = Size(x = 6f, y = 0f, z = 6f),
-                normal = Direction(y = 1f),
-                materialInstance = floorMaterial,
-            )
-            // Back wall: an XY quad (normal +Z) — note the DIFFERENT size shape. `Plane` does
-            // not rotate its geometry to match `normal`, so a vertical quad is built in XY.
-            PlaneNode(
-                size = Size(x = 6f, y = 3f, z = 0f),
-                normal = Direction(z = 1f),
-                position = Position(x = 0f, y = 1.5f, z = -2f),
-                materialInstance = wallMaterial,
-            )
-
-            // ── The hero comparison: a grounded bouncer vs a floating twin ────────────────
-            // LEFT — grounded, and it BOUNCES to strike the floor. The pool tracks the hop:
-            // full-strength and tight at contact, dimmer and wider at the top (ambient-occlusion
-            // physics). That coupling is what makes this box read as LANDING ON the floor.
-            if (shadowsEnabled) {
-                // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
-                // centred and tight at contact, drifted out from under the box at the top of the
-                // hop. This slide — not the dim/spread alone — is what sells "landing on" vs
-                // "floating"; the shadowless twin gives the eye nothing equivalent to track.
-                val (slideX, slideZ) = DemoMath.groundingShadowOffset(
-                    hopHeight,
-                    KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
-                )
-                ContactShadow(
-                    size = Size(x = SHADOW_QUAD_METERS, y = 0f, z = SHADOW_QUAD_METERS),
-                    context = ContactShadowContext.Floor,
-                    normal = Direction(y = 1f),
-                    intensity = ContactShadowContext.Floor.intensity * intensityFactor *
-                        DemoMath.groundingIntensityFactor(hopHeight),
-                    position = Position(x = -BOX_HALF_SPACING + slideX, y = 0f, z = BOXES_Z + slideZ),
-                    scale = Scale(DemoMath.groundingSpread(hopHeight)),
-                )
-            }
-            CubeNode(
-                size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
-                position = Position(
-                    x = -BOX_HALF_SPACING,
-                    y = BOX_EDGE_METERS / 2f + hopHeight,
-                    z = BOXES_Z,
-                ),
-                materialInstance = boxMaterial,
-            )
-            // RIGHT — the floating twin. It does NOT bounce to the floor: it hovers high and
-            // bobs slowly (DemoMath.floatHoverY), clearly aloft, with no contact shadow. The
-            // floating is carried by the box's own MOTION — hovering high, never landing — so the
-            // absent shadow reads as "it's in the air", not "the shadow is missing" (#2740). This
-            // is the positive, kinetic cue an identically-hopping shadowless box could never give.
-            CubeNode(
-                size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
-                position = Position(
-                    x = BOX_HALF_SPACING,
-                    y = DemoMath.floatHoverY(bounceElapsedNanos),
-                    z = BOXES_Z,
-                ),
-                materialInstance = boxMaterial,
-            )
-
-            listOf(
-                Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
-                Position(
-                    BOX_HALF_SPACING,
-                    DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
-                    BOXES_Z,
-                ) to noShadowLabel,
-            ).forEach { (position, label) ->
-                TextNode(
-                    text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
-                    fontSize = labelsFontSize,
-                    textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
-                    backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
-                    widthMeters = 0.62f,
-                    heightMeters = 0.16f,
-                    position = position,
-                    cameraPositionProvider = { labelCamera.worldPosition },
-                    // #3802: the room is built and lit for a roughly head-on view, so orbiting
-                    // toward broadside collapses these two billboards' screen-space projections
-                    // until "Shadow" / "No shadow" merge into one illegible blob. Orbit stays
-                    // completely free — a yaw clamp read as a bug and was removed — so instead
-                    // each label hides itself once the camera has turned far enough from
-                    // front-on to start overlapping its neighbour, and reappears the moment the
-                    // camera comes back. `TextNode` shares its material — `image_texture.filamat`
-                    // — with every `ImageNode`/`BillboardNode` in the SDK, and that material
-                    // exposes only a `texture` sampler, no alpha uniform (see the .mat source),
-                    // so a continuous per-instance fade is not available without widening a
-                    // material used far outside this demo; `isVisible` is the documented,
-                    // node-scoped fallback.
-                    //
-                    // `Node.onFrame` (node-scoped, not `SceneView(onFrame = …)`) because the
-                    // value must track the live camera position on every rendered frame,
-                    // including mid-drag frames Compose recomposition never sees (dragging moves
-                    // the manipulator's native transform directly, the same reason
-                    // `cameraPositionProvider` above is a lambda and not a one-shot value). It's
-                    // a handful of float ops on the main thread — no per-frame allocation.
+                // Directional key light for shape and specular — deliberately NOT a shadow caster.
+                // The ONLY grounding cue on screen must be the contact shadow, so a real cast
+                // shadow would muddy the with/without comparison.
+                LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
+                    direction = KEY_LIGHT_DIRECTION,
                     apply = {
-                        onFrame = {
-                            isVisible = orbitLabelFadeAlpha(
-                                orbitYawDeviationDegrees(
-                                    eye = labelCamera.worldPosition,
-                                    target = CAMERA_TARGET,
-                                    referenceYawDegrees = 0f,
-                                ),
-                            ) > 0f
-                        }
+                        intensity(60_000f)
+                        castShadows(false)
                     },
                 )
-            }
 
-            // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
-            if (shadowsEnabled) {
-                ContactShadow(
-                    size = Size(x = 2.4f, y = 1.6f, z = 0f),
-                    context = wallContext,
+                // ── The room ──────────────────────────────────────────────────────────────────
+                // Floor: an XZ quad (normal +Y).
+                PlaneNode(
+                    size = Size(x = 6f, y = 0f, z = 6f),
+                    normal = Direction(y = 1f),
+                    materialInstance = floorMaterial,
+                )
+                // Back wall: an XY quad (normal +Z) — note the DIFFERENT size shape. `Plane` does
+                // not rotate its geometry to match `normal`, so a vertical quad is built in XY.
+                PlaneNode(
+                    size = Size(x = 6f, y = 3f, z = 0f),
                     normal = Direction(z = 1f),
-                    intensity = wallContext.intensity * intensityFactor,
-                    position = Position(x = 0f, y = 1.3f, z = -1.99f),
+                    position = Position(x = 0f, y = 1.5f, z = -2f),
+                    materialInstance = wallMaterial,
                 )
-            }
-            Node(position = Position(x = 0f, y = 1.3f, z = -1.98f)) {
+
+                // ── The hero comparison: a grounded bouncer vs a floating twin ────────────────
+                // LEFT — grounded, and it BOUNCES to strike the floor. The pool tracks the hop:
+                // full-strength and tight at contact, dimmer and wider at the top (ambient-occlusion
+                // physics). That coupling is what makes this box read as LANDING ON the floor.
+                if (shadowsEnabled) {
+                    // The pool follows the light's ground projection as the box lifts (ball-in-a-box):
+                    // centred and tight at contact, drifted out from under the box at the top of the
+                    // hop. This slide — not the dim/spread alone — is what sells "landing on" vs
+                    // "floating"; the shadowless twin gives the eye nothing equivalent to track.
+                    val (slideX, slideZ) = DemoMath.groundingShadowOffset(
+                        hopHeight,
+                        KEY_LIGHT_DIRECTION.x, KEY_LIGHT_DIRECTION.y, KEY_LIGHT_DIRECTION.z,
+                    )
+                    ContactShadow(
+                        size = Size(x = SHADOW_QUAD_METERS, y = 0f, z = SHADOW_QUAD_METERS),
+                        context = ContactShadowContext.Floor,
+                        normal = Direction(y = 1f),
+                        intensity = ContactShadowContext.Floor.intensity * intensityFactor *
+                            DemoMath.groundingIntensityFactor(hopHeight),
+                        position = Position(x = -BOX_HALF_SPACING + slideX, y = 0f, z = BOXES_Z + slideZ),
+                        scale = Scale(DemoMath.groundingSpread(hopHeight)),
+                    )
+                }
                 CubeNode(
-                    size = Size(1.26f, 0.74f, 0.04f),
-                    position = Position(z = 0.02f),
-                    materialInstance = tvBody,
+                    size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
+                    position = Position(
+                        x = -BOX_HALF_SPACING,
+                        y = BOX_EDGE_METERS / 2f + hopHeight,
+                        z = BOXES_Z,
+                    ),
+                    materialInstance = boxMaterial,
                 )
+                // RIGHT — the floating twin. It does NOT bounce to the floor: it hovers high and
+                // bobs slowly (DemoMath.floatHoverY), clearly aloft, with no contact shadow. The
+                // floating is carried by the box's own MOTION — hovering high, never landing — so the
+                // absent shadow reads as "it's in the air", not "the shadow is missing" (#2740). This
+                // is the positive, kinetic cue an identically-hopping shadowless box could never give.
                 CubeNode(
-                    size = Size(1.20f, 0.68f, 0.01f),
-                    position = Position(z = 0.045f),
-                    materialInstance = tvScreen,
+                    size = Size(BOX_EDGE_METERS, BOX_EDGE_METERS, BOX_EDGE_METERS),
+                    position = Position(
+                        x = BOX_HALF_SPACING,
+                        y = DemoMath.floatHoverY(bounceElapsedNanos),
+                        z = BOXES_Z,
+                    ),
+                    materialInstance = boxMaterial,
                 )
+
+                listOf(
+                    Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + 0.12f, BOXES_Z) to groundedLabel,
+                    Position(
+                        BOX_HALF_SPACING,
+                        DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + 0.12f,
+                        BOXES_Z,
+                    ) to noShadowLabel,
+                ).forEach { (position, label) ->
+                    TextNode(
+                        text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
+                        fontSize = labelsFontSize,
+                        textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
+                        backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
+                        widthMeters = 0.62f,
+                        heightMeters = 0.16f,
+                        position = position,
+                        cameraPositionProvider = { labelCamera.worldPosition },
+                        // #3802: the room is built and lit for a roughly head-on view, so orbiting
+                        // toward broadside collapses these two billboards' screen-space projections
+                        // until "Shadow" / "No shadow" merge into one illegible blob. Orbit stays
+                        // completely free — a yaw clamp read as a bug and was removed — so instead
+                        // each label hides itself once the camera has turned far enough from
+                        // front-on to start overlapping its neighbour, and reappears the moment the
+                        // camera comes back. `TextNode` shares its material — `image_texture.filamat`
+                        // — with every `ImageNode`/`BillboardNode` in the SDK, and that material
+                        // exposes only a `texture` sampler, no alpha uniform (see the .mat source),
+                        // so a continuous per-instance fade is not available without widening a
+                        // material used far outside this demo; `isVisible` is the documented,
+                        // node-scoped fallback.
+                        //
+                        // `Node.onFrame` (node-scoped, not `SceneView(onFrame = …)`) because the
+                        // value must track the live camera position on every rendered frame,
+                        // including mid-drag frames Compose recomposition never sees (dragging moves
+                        // the manipulator's native transform directly, the same reason
+                        // `cameraPositionProvider` above is a lambda and not a one-shot value). It's
+                        // a handful of float ops on the main thread — no per-frame allocation.
+                        apply = {
+                            onFrame = {
+                                isVisible = orbitLabelFadeAlpha(
+                                    orbitYawDeviationDegrees(
+                                        eye = labelCamera.worldPosition,
+                                        target = CAMERA_TARGET,
+                                        referenceYawDegrees = 0f,
+                                    ),
+                                ) > 0f
+                            }
+                        },
+                    )
+                }
+
+                // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
+                if (shadowsEnabled) {
+                    ContactShadow(
+                        size = Size(x = 2.4f, y = 1.6f, z = 0f),
+                        context = wallContext,
+                        normal = Direction(z = 1f),
+                        intensity = wallContext.intensity * intensityFactor,
+                        position = Position(x = 0f, y = 1.3f, z = -1.99f),
+                    )
+                }
+                Node(position = Position(x = 0f, y = 1.3f, z = -1.98f)) {
+                    CubeNode(
+                        size = Size(1.26f, 0.74f, 0.04f),
+                        position = Position(z = 0.02f),
+                        materialInstance = tvBody,
+                    )
+                    CubeNode(
+                        size = Size(1.20f, 0.68f, 0.01f),
+                        position = Position(z = 0.045f),
+                        materialInstance = tvScreen,
+                    )
+                }
             }
         }
     }

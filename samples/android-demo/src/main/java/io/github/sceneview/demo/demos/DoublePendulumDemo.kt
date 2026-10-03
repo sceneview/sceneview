@@ -34,6 +34,9 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
+import io.github.sceneview.demo.demoSceneFrame
+import io.github.sceneview.demo.pendulumSubject
+import io.github.sceneview.demo.pendulumSwingExtent
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
@@ -173,13 +176,13 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     }
 
     // --- Camera auto-framing ---------------------------------------------
-    // The tip can reach anywhere within (length1 + length2) of the pivot, so
-    // the swing envelope is a disc of that radius centred on the hinge. The
-    // camera looks at the hinge from straight in front and backs off until that
-    // disc fills the viewport the scene actually gets (the band above the
-    // Release pill), so the hinge sits dead centre and no swing leaves frame.
-    val reach = length1 + length2
-    val envelopeCenter = pivot
+    // The tip's centre can reach anywhere within (length1 + length2) of the pivot,
+    // and the bob drawn around it a radius further: the swing envelope is a disc
+    // of that radius centred on the hinge. Upright, the camera looks at the hinge
+    // from straight in front and backs off until that disc fills the area the
+    // chrome leaves free (the band above the Release pill), so the hinge sits
+    // dead centre of it and no swing leaves it.
+    val swingExtent = pendulumSwingExtent(length1, length2, TIP_BOB_RADIUS)
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
     // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
@@ -258,27 +261,37 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         },
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
-                maxWidth.value / maxHeight.value
-            } else {
-                0.5f
+            // The scene may run under the glass (a phone held sideways has no room to
+            // inset it, #4310): what covers it goes to the SDK as `contentPadding`, so
+            // the hinge is centred in the free area and the swing is drawn there, not
+            // behind the Release pill or the settings sheet (#4326).
+            val frame = demoSceneFrame()
+            // Fitted for the free area at rest. The sheet then only narrows the band the
+            // lens projects into — the same picture, smaller, follows it up — so opening
+            // Settings neither rebuilds the orbit nor resets the angle the user set.
+            // Upright the swing disc is fitted around the hinge; in a strip the fit runs
+            // down to the floor, or the stand's foot ends behind the Release pill.
+            val strip = frame.restingAspect > 1f
+            val subject = remember(swingExtent, strip) {
+                pendulumSubject(PIVOT_HEIGHT, swingExtent, frame.restingAspect)
             }
-            val cameraDistance = remember(reach, aspect) {
+            val cameraDistance = remember(swingExtent, subject, frame.restingAspect) {
                 io.github.sceneview.demo.fitOrbitRadius(
-                    extentX = reach * 2f,
-                    extentY = reach * 2f,
-                    extentZ = 0.1f,
-                    aspect = aspect,
+                    extentX = swingExtent,
+                    extentY = subject.extentY,
+                    extentZ = TIP_BOB_RADIUS * 2f,
+                    aspect = frame.restingAspect,
                     elevationDegrees = PENDULUM_ELEVATION_DEGREES,
-                    fill = PENDULUM_FRAME_FILL,
+                    fill = if (strip) PENDULUM_STRIP_FRAME_FILL else PENDULUM_FRAME_FILL,
                     azimuthInvariant = false,
                 )
             }
-            // Rebuilt when the envelope or the viewport changes, so a slider
+            val envelopeCenter = Position(pivot.x, subject.centerY, pivot.z)
+            // Rebuilt when the envelope or the resting area changes, so a slider
             // drag reframes live instead of leaving the swing cropped. A slight
             // look-down puts the floor grid under the stand in the lower frame:
             // a reference that shifts with every orbit.
-            val cameraManipulator = remember(cameraDistance) {
+            val cameraManipulator = remember(cameraDistance, subject) {
                 val pitch = Math.toRadians(PENDULUM_ELEVATION_DEGREES.toDouble())
                 CameraGestureDetector.DefaultCameraManipulator(
                     eyePosition = Position(
@@ -291,6 +304,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
             }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = frame.contentPadding,
                 onFrame = firstFrame.onFrame,
                 engine = engine,
                 view = view,
@@ -441,7 +455,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 )
                 // Tip bob — the trailing link's point mass; heavier, so larger.
                 SphereNode(
-                    radius = 0.085f,
+                    radius = TIP_BOB_RADIUS,
                     materialInstance = trailBobMaterial,
                     apply = {
                         isShadowCaster = true
@@ -514,8 +528,17 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     }
 }
 
-/** Share of the viewport the swing envelope's bounding square fills; the disc inside it sits clear. */
+/** Radius of the tip bob, included in the full swing envelope. */
+private const val TIP_BOB_RADIUS = 0.085f
+
+/** Share of the free area the swing envelope's bounding square fills. */
 private const val PENDULUM_FRAME_FILL = 0.96f
+
+/**
+ * The same in a strip, where the fit runs down to the stand's foot: a square has spare corners
+ * around the disc inside it, the foot and the shadow it casts forward have none.
+ */
+private const val PENDULUM_STRIP_FRAME_FILL = 0.88f
 
 /** Look-down of the home shot: enough to put the floor grid under the stand in frame. */
 private const val PENDULUM_ELEVATION_DEGREES = 10f
