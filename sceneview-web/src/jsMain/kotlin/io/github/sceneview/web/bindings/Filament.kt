@@ -86,6 +86,7 @@ external class Engine {
     fun destroySwapChain(swapChain: SwapChain)
     fun destroyRenderer(renderer: Renderer)
     fun destroyView(view: View)
+    fun destroyColorGrading(colorGrading: dynamic)
     fun destroyScene(scene: Scene)
     fun destroyCameraComponent(camera: Entity)
     fun destroyMaterial(material: Material)
