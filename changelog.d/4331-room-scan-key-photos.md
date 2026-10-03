@@ -1,2 +1,2 @@
 <!-- category: Added -->
-- **Demo app: Room Scan keeps sharper room photos ([#4331](https://github.com/sceneview/sceneview/pull/4331)).** Periodic key photos retain more detail for recognising doors and windows, with a fixed size budget for the photos in each scan. Fast camera movement defers photos until the view settles; existing recordings remain readable.
+- **Demo app: Room Scan keeps sharper room photos ([#4331](https://github.com/sceneview/sceneview/pull/4331)).** A few key photos per scan (at most 15) are kept sharper, taken when the camera is calm, so doors and windows stay recognisable; the other photos and the capture cadence are unchanged. The photos of a scan share a fixed size budget, and existing recordings remain readable.

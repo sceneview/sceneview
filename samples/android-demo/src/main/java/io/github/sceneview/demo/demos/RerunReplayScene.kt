@@ -183,7 +183,16 @@ private suspend fun openReplay(
             val options = BitmapFactory.Options().apply {
                 inSampleSize = ScanPhotoPolicy.thumbnailSample(bounds.outWidth, bounds.outHeight)
             }
-            shell.decode(path, options)?.let { path to it }
+            shell.decode(path, options)?.let { decoded ->
+                // A sharp photo's thumbnail is as large as its neighbours': 120x160, not a power of two off.
+                val (width, height) = ScanPhotoPolicy.thumbnailSize(bounds.outWidth, bounds.outHeight)
+                val sized = if (bounds.outWidth > 0 && (decoded.width != width || decoded.height != height)) {
+                    Bitmap.createScaledBitmap(decoded, width, height, true).also { decoded.recycle() }
+                } else {
+                    decoded
+                }
+                path to sized
+            }
         }
     }
     RerunReplayMedia(
