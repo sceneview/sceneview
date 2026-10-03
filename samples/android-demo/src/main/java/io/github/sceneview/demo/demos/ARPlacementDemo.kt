@@ -250,7 +250,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         rooms,
         wallMode,
     ) {
-        (if (wallMode) emptyList() else rooms) + listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
+        // A room stands on a table or the floor, never on a wall.
+        val roomRows = if (wallMode) emptyList() else rooms
+        roomRows + listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
             val isArmed = slug.uid == armedSlug?.uid
             PlacementModel(
                 id = streamedModelId(slug),
@@ -390,7 +392,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 DockItem(
                     icon = if (roomPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     label = stringResource(if (roomPlaying) R.string.ar_room_pause else R.string.ar_room_play),
-                    caption = stringResource(if (roomPlaying) R.string.ar_room_pause_caption else R.string.ar_room_play_caption),
+                    caption = stringResource(
+                        if (roomPlaying) R.string.ar_room_pause_caption else R.string.ar_room_play_caption,
+                    ),
                     onClick = { roomPlaying = !roomPlaying },
                 )
             } else null,

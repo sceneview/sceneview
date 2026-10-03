@@ -452,8 +452,8 @@ fun PlacementModelPickerSheet(
 
 /** A section's heading in the picker grid, with the one line that explains it. */
 @Composable
-private fun PickerSectionHeader(title: String, caption: String? = null) {
-    Column(modifier = Modifier.padding(top = SceneViewTokens.Space.xs)) {
+internal fun PickerSectionHeader(title: String, modifier: Modifier = Modifier, caption: String? = null) {
+    Column(modifier = modifier.padding(top = SceneViewTokens.Space.xs)) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,

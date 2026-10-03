@@ -30,7 +30,10 @@ class RoomPlacementModelsTest {
 
     @Test
     fun `many recordings are newest first with stable unique ids`() {
-        val rows = roomPlacementModels(listOf(room("a", 100), room("b", 300), room("c", 200), room("a", 100)), "Demo room")
+        val rows = roomPlacementModels(
+            listOf(room("a", 100), room("b", 300), room("c", 200), room("a", 100)),
+            "Demo room",
+        )
         assertEquals(listOf("b", "c", "a", BUNDLED_ROOM_RECORDING_ID), rows.map { it.roomRecordingId })
         assertEquals(rows.size, rows.map { it.id }.distinct().size)
         assertFalse(rows.any { it.inviteRoomScan })

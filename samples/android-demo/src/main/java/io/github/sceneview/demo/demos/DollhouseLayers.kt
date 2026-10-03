@@ -192,7 +192,10 @@ internal class DollhouseLayers(
 
     /** Every node, none of them pickable: a touch lands on [DollhouseModel]'s box instead. */
     val nodes: List<DebugLayerNode> =
-        (replay.nodes + listOfNotNull(denseNode) + flat.values + listOfNotNull(camera) + trail + plinth + plinthEdge + shadow).onEach {
+        (
+            replay.nodes + listOfNotNull(denseNode) + flat.values + listOfNotNull(camera) +
+                trail + plinth + plinthEdge + shadow
+            ).onEach {
             // Each layer is bounded by a 500 m box for cheap culling: as a collider it would take
             // every touch in the room.
             it.isHittable = false
@@ -226,7 +229,9 @@ internal class DollhouseLayers(
         // camera saw them in — the replay's, not the live view's one-colour markers.
         replay.sync(
             frame, style, room.fit.floorY,
-            ReplayVisibility(planes = !hasDense, points = !replaying || !hasDense, anchors = false, trail = currentFrame != null),
+            ReplayVisibility(
+                planes = !hasDense, points = !replaying || !hasDense, anchors = false, trail = currentFrame != null,
+            ),
         )
         denseNode?.let { node ->
             val seen = media.pointCountAt(frame.time)
@@ -263,7 +268,11 @@ internal class DollhouseLayers(
             camera.upload(cameraMesh)
         }
         // The finished footprint stays steady while the recording discovers the room.
-        if (!staticChanged) return
+        if (staticChanged) syncBase(scale, plinth)
+    }
+
+    /** The plinth, its edge and the shadow under it, for a room drawn at [scale]. */
+    private fun syncBase(scale: Float, plinth: Boolean) {
         this.plinth.isVisible = plinth
         plinthEdge.isVisible = plinth
         shadow.isVisible = plinth
