@@ -1299,7 +1299,7 @@ shell:
       list scrolls under it (surface 72 % / 78 % over a 24dp blur, API 31+),
       2-page featured pager (FEATURED_PAGER_IDS: Models live, Cosmos), then
       a list of picture cards: "Featured" as 2:1 banners dissolving downward
-      (FEATURED_IDS minus the pager's pages: AR placement, Room Scan,
+      (FEATURED_IDS minus the pager's pages: AR placement, AR Rerun,
       Materials; a demo is pushed once above the chips, pager then Featured
       then the What's-new row, homeTopSections, #4304), the What's-new row
       opening the What's-new sheet over the whole catalogue (never the

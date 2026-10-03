@@ -510,9 +510,9 @@ enum RerunGeometry {
                              planes: planes, mesh: anchors)
     }
 
-    /// Grid extent: the content bounds snapped to the grid.
-    static func stageBounds(_ frame: RerunFrame) -> (SIMD3<Float>, SIMD3<Float>) {
-        let (lo, hi) = contentBounds(frame) ?? (SIMD3(-1, 0, -2), SIMD3(1, 0, 0.5))
+    /// Grid extent: the framed bounds snapped to the grid.
+    static func stageBounds(_ bounds: (SIMD3<Float>, SIMD3<Float>)?) -> (SIMD3<Float>, SIMD3<Float>) {
+        let (lo, hi) = bounds ?? (SIMD3<Float>(-1, 0, -2), SIMD3<Float>(1, 0, 0.5))
         return (SIMD3((lo.x / gridCell).rounded(.down) * gridCell, 0, (lo.z / gridCell).rounded(.down) * gridCell),
                 SIMD3((hi.x / gridCell).rounded(.up) * gridCell, 0, (hi.z / gridCell).rounded(.up) * gridCell))
     }

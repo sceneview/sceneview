@@ -64,6 +64,7 @@ final class RerunReplaySession {
     var stats = RerunStats()
     var fps = 0
     private(set) var hidden: Set<RerunGroup> = []
+    @ObservationIgnored private var interrupted = false
 
     var duration: Float { pack.trace.duration }
 
@@ -92,8 +93,25 @@ final class RerunReplaySession {
     }
 
     func pause() {
+        interrupted = false
         playback.pause()
         sync()
+    }
+
+    /// The app left the foreground (Control Center, a call, the app switcher): pauses, and
+    /// remembers that the system did it, not the user.
+    func suspend() {
+        guard playback.playing else { return }
+        interrupted = true
+        playback.pause()
+        sync()
+    }
+
+    /// Back in the foreground: plays on only what ``suspend()`` stopped.
+    func resumeIfSuspended() {
+        guard interrupted else { return }
+        interrupted = false
+        resume()
     }
 
     func togglePlay() {

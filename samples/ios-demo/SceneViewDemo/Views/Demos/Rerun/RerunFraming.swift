@@ -248,6 +248,8 @@ struct RerunOrbitController: Sendable {
     /// Back to the automatic framing — the double tap, and the 3D button tapped again.
     mutating func recenter() {
         following = true
+        // An asked-for recenter ends the entrance: it eases home from where the camera is.
+        introFrom = nil
         followSeconds = 0
         azimuthVelocity = 0
         elevationVelocity = 0
@@ -294,13 +296,20 @@ struct RerunOrbitController: Sendable {
 
     /// Integrates one frame of `delta` seconds.
     mutating func update(delta: Float, advancing: Bool = true) {
-        // Gestures mutate the pose directly. Freeze all integration while paused,
-        // including inertia, and discard velocity so resuming cannot fling or jump.
+        // Paused: no drift, no entrance, no inertia, and no velocity kept, so resuming cannot
+        // fling. The ease to `home` still runs, so a recenter, the map view, a rotation or a
+        // layer toggle reframes a paused replay; gestures mutate the pose directly.
         guard advancing else {
             azimuthVelocity = 0
             elevationVelocity = 0
             dragAzimuth = 0
             dragElevation = 0
+            guard following, introFrom == nil, !grabbing, pinchStartDistance == nil,
+                  delta.isFinite, delta > 0, delta < 0.25 else { return }
+            // The drift stops where it stands and ramps back in on resume.
+            home.azimuth = pose.azimuth
+            followSeconds = 0
+            pose = RerunFraming.approach(pose, home: home, delta: delta)
             return
         }
         guard delta.isFinite, delta > 0, delta < 0.25 else { return }
