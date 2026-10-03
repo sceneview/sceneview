@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -62,8 +64,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -571,13 +575,20 @@ private fun RerunReplayScreen(
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
-    // A phone on its side has no height for that stack: the figures move beside the room, the
-    // timeline folds onto one row, and the corner card leaves the room the stage.
+    // A phone on its side has no height for that stack: the figures and the timeline stand on
+    // either side of the room, the timeline folds onto one row, and the corner card is dropped.
     val compact = LocalConfiguration.current.screenHeightDp.dp < SceneViewTokens.DebugView.compactStageHeight
     var stage by remember { mutableStateOf(Rect.Zero) }
     var hud by remember { mutableStateOf<Rect?>(null) }
-    var timelineTop by remember { mutableFloatStateOf(Float.NaN) }
-    val band = measuredBand(stage, hud, timelineTop, compact) ?: stageBand
+    var timeline by remember { mutableStateOf<Rect?>(null) }
+    // On its side: where the mode pill and the dock start, under the room.
+    var pillTop by remember { mutableFloatStateOf(Float.NaN) }
+    val statusBottom = WindowInsets.safeDrawing.getTop(LocalDensity.current).toFloat()
+    val measured = when {
+        compact -> sideBand(stage, hud, timeline, statusBottom, pillTop)
+        else -> stackedBand(stage, hud, timeline)
+    }
+    val band = measured ?: stageBand
     SideEffect { orbit.band = band }
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
@@ -593,6 +604,31 @@ private fun RerunReplayScreen(
         onClick = onExport,
         enabled = media != null,
     )
+    // One timeline card for both layouts: over the dock upright, beside the room on its side.
+    val timelineCard: @Composable (Modifier) -> Unit = { cardModifier ->
+        if (media != null) {
+            // The camera's frames have no surface to show: the switch belongs to the 3D views.
+            val switchable = surfaceSource != null && mode != RerunMode.Camera
+            RerunFilmstripCard(
+                media = media,
+                thumbnails = thumbnails,
+                session = session,
+                modifier = cardModifier.onGloballyPositioned { timeline = it.boundsInRoot() },
+                title = title,
+                caption = surface.caption?.takeIf { switchable } ?: when (mode) {
+                    RerunMode.Map -> "Top-down map of the room"
+                    RerunMode.Camera -> "What the camera saw"
+                    else -> "Drag to orbit · double-tap to recenter"
+                },
+                header = if (switchable) {
+                    { RerunSurfaceSwitch(surface, onWanted = { surfaceWanted = it }, title = title) }
+                } else {
+                    null
+                },
+                compact = compact,
+            )
+        }
+    }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -601,15 +637,30 @@ private fun RerunReplayScreen(
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
         topOverlay = {
-            if (media != null) {
-                val hudWidth = if (compact) SceneViewTokens.DebugView.compactHudWidth else ArOverlay.maxWidth
+            if (media != null && compact) {
+                Row(Modifier.fillMaxWidth()) {
+                    RerunReplayHud(
+                        session = session,
+                        modifier = Modifier
+                            .padding(start = Space.md)
+                            .width(SceneViewTokens.DebugView.compactCardWidth)
+                            .onGloballyPositioned { hud = it.boundsInRoot() }
+                            .reveal(hudIn, rise = -Space.md),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    // The card pads itself by Space.md on either side.
+                    Box(Modifier.width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)) {
+                        timelineCard(Modifier.reveal(filmstripIn, rise = -Space.md))
+                    }
+                }
+            } else if (media != null) {
                 // The surface is the finished result: nothing is laid over it.
                 val surfaceUp = surface.wanted && !surface.failed && mode != RerunMode.Camera
                 RerunReplayHud(
                     session = session,
-                    modifier = (if (compact) Modifier.align(Alignment.Start) else Modifier)
+                    modifier = Modifier
                         .padding(horizontal = Space.md)
-                        .widthIn(max = hudWidth)
+                        .widthIn(max = ArOverlay.maxWidth)
                         .fillMaxWidth()
                         // Measured outside the reveal: where the card rests, not where it rises from.
                         .onGloballyPositioned { hud = it.boundsInRoot() }
@@ -623,9 +674,8 @@ private fun RerunReplayScreen(
                     .reveal(cardIn, rise = -Space.md)
                 when {
                     // The map is a floor plan and needs the whole width: the camera card would sit
-                    // on the room's far corner. The dock's Camera button stays one tap away. On its
-                    // side the phone has no height for the card either.
-                    compact || mode == RerunMode.Map || surfaceUp -> Unit
+                    // on the room's far corner. The dock's Camera button stays one tap away.
+                    mode == RerunMode.Map || surfaceUp -> Unit
                     mode == RerunMode.Camera -> ArDebugPip(
                         session = session,
                         orbit = pipOrbit,
@@ -647,29 +697,12 @@ private fun RerunReplayScreen(
             }
         },
         bottomOverlay = {
-            if (media != null) {
-                // The camera's frames have no surface to show: the switch belongs to the 3D views.
-                val switchable = surfaceSource != null && mode != RerunMode.Camera
-                RerunFilmstripCard(
-                    media = media,
-                    thumbnails = thumbnails,
-                    session = session,
-                    modifier = Modifier
-                        .onGloballyPositioned { timelineTop = it.boundsInRoot().top }
-                        .reveal(filmstripIn, rise = Space.lg),
-                    title = title,
-                    caption = surface.caption?.takeIf { switchable } ?: when (mode) {
-                        RerunMode.Map -> "Top-down map of the room"
-                        RerunMode.Camera -> "What the camera saw"
-                        else -> "Drag to orbit · double-tap to recenter"
-                    },
-                    header = if (switchable) {
-                        { RerunSurfaceSwitch(surface, onWanted = { surfaceWanted = it }, title = title) }
-                    } else {
-                        null
-                    },
-                    compact = compact,
-                )
+            if (media != null && compact) {
+                // Nothing to draw: the timeline stands beside the room. This marks where the mode
+                // pill and the dock start under it — by its position: an empty box has no bounds.
+                Spacer(Modifier.fillMaxWidth().onGloballyPositioned { pillTop = it.positionInRoot().y })
+            } else {
+                timelineCard(Modifier.reveal(filmstripIn, rise = Space.lg))
             }
         },
         dock = listOfNotNull(
@@ -727,16 +760,29 @@ private fun RerunReplayScreen(
 }
 
 /**
- * The band the replay's chrome leaves the room on [stage], measured on screen: under the figures
- * and over the timeline when the phone is upright; on its side, from the figures' top edge down to
- * the timeline, and no wider than what the figures leave beside them. `null` until both are laid out.
+ * The band the replay's chrome leaves the room on [stage] when the phone is upright, measured on
+ * screen: under the figures and over the timeline. `null` until the cards are laid out.
  */
-private fun measuredBand(stage: Rect, hud: Rect?, timelineTop: Float, compact: Boolean): OrbitBand? {
-    if (hud == null) return null
-    val bottom = timelineTop - stage.top
-    if (!compact) return OrbitBand.between(hud.bottom - stage.top, bottom, stage.height)
-    val halfWidth = OrbitBand.halfWidthBeside(hud.right - stage.left, stage.width) ?: return null
-    return OrbitBand.between(hud.top - stage.top, bottom, stage.height, halfWidth)
+private fun stackedBand(stage: Rect, hud: Rect?, timeline: Rect?): OrbitBand? {
+    if (hud == null || timeline == null) return null
+    return OrbitBand.between(hud.bottom - stage.top, timeline.top - stage.top, stage.height)
+}
+
+/**
+ * The same band for a phone on its side: between the two cards that stand on either side of the
+ * room, from [statusBottom] under the status bar down to [pillTop], where the mode pill and the dock
+ * start. `null` until the cards are laid out.
+ */
+private fun sideBand(stage: Rect, hud: Rect?, timeline: Rect?, statusBottom: Float, pillTop: Float): OrbitBand? {
+    if (hud == null || timeline == null) return null
+    return OrbitBand.betweenSides(
+        startCardEnd = hud.right - stage.left,
+        endCardStart = timeline.left - stage.left,
+        top = (statusBottom - stage.top).coerceAtLeast(0f),
+        bottom = pillTop - stage.top,
+        viewWidth = stage.width,
+        viewHeight = stage.height,
+    )
 }
 
 /**

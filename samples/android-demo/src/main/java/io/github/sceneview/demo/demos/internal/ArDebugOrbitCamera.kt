@@ -408,6 +408,27 @@ data class OrbitBand(val halfWidth: Float, val halfHeight: Float, val lift: Floa
             if (half < MIN_BESIDE_HALF_WIDTH) return null
             return (half * 100f).roundToInt() / 100f
         }
+
+        /**
+         * A phone on its side: the band between two cards standing on either side of the session —
+         * one ends at [startCardEnd], the other starts at [endCardStart] — from [top], under the
+         * status bar, down to [bottom], where the chrome under the session starts. The session
+         * stays centred, so the card that reaches further in decides for both sides (a cutout
+         * pushes one of them).
+         */
+        @Suppress("LongParameterList")
+        fun betweenSides(
+            startCardEnd: Float,
+            endCardStart: Float,
+            top: Float,
+            bottom: Float,
+            viewWidth: Float,
+            viewHeight: Float,
+        ): OrbitBand? {
+            val cardEnd = maxOf(startCardEnd, viewWidth - endCardStart)
+            val halfWidth = halfWidthBeside(cardEnd, viewWidth) ?: return null
+            return between(top, bottom, viewHeight, halfWidth)
+        }
     }
 }
 

@@ -947,10 +947,11 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
   photographed planes, the coloured cloud, the mesh — keeps its full strength.
 - **A phone on its side (#4306).** Under 500 dp of height the stacked cards would leave the
-  room nothing: the figures become a 320 dp card at the start edge, the timeline folds onto
-  one row (play, strip, clock), the camera card is dropped — the dock's *Camera* is one tap
-  away — and the room is fitted between the figures and the opposite edge
-  (`OrbitBand.halfWidthBeside`).
+  room nothing: the figures and the timeline become two 280 dp cards on either side of the
+  room, under the header's line; the timeline folds onto one row (play, strip, clock), the
+  camera card is dropped — the dock's *Camera* is one tap away — and the room is fitted
+  between the two cards, under the status bar and above the mode pill
+  (`OrbitBand.betweenSides`).
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
 - **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the

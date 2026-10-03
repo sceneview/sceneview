@@ -128,12 +128,25 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
-    fun `a phone on its side keeps the room clear of the figures beside it`() {
-        // A 2400 x 1080 view: the figures end 880 px from the left, from 210 px down; the
-        // timeline starts at 560.
+    fun `a phone on its side keeps the room between the two cards beside it`() {
+        // A 2400 x 1080 view: the figures end 880 px from the left — a cutout pushes them in —
+        // the timeline starts 760 px from the right, the status bar ends 72 px down and the mode
+        // pill starts 640 px down.
         val halfWidth = OrbitBand.halfWidthBeside(cardEnd = 880f, viewWidth = 2400f)!!
         assertEquals((1f - 2f * 880f / 2400f) * OrbitBand.MEASURED_FILL, halfWidth, 0.006f)
-        val band = OrbitBand.between(top = 210f, bottom = 560f, viewHeight = 1080f, halfWidth = halfWidth)!!
+        val band = OrbitBand.betweenSides(
+            startCardEnd = 880f, endCardStart = 2400f - 760f, top = 72f, bottom = 640f,
+            viewWidth = 2400f, viewHeight = 1080f,
+        )!!
+        // The card that reaches further in decides for both sides, whichever side it is on.
+        assertEquals(halfWidth, band.halfWidth, 0f)
+        assertEquals(
+            band,
+            OrbitBand.betweenSides(
+                startCardEnd = 760f, endCardStart = 2400f - 880f, top = 72f, bottom = 640f,
+                viewWidth = 2400f, viewHeight = 1080f,
+            ),
+        )
 
         val pose = ArDebugFraming.home(room, 35f, fov, 2400f / 1080f, band = band)
         assertFramed(pose, band, 2400f / 1080f, room)
@@ -142,17 +155,24 @@ class ArDebugOrbitCameraTest {
             val px = (x + 1.0) / 2.0 * 2400.0
             val py = (1.0 - y) / 2.0 * 1080.0
             assertTrue("corner at $px px across", px > 880.0 && px < 2400.0 - 880.0)
-            assertTrue("corner at $py px down", py in 210.0..560.0)
+            assertTrue("corner at $py px down", py in 72.0..640.0)
         }
     }
 
     @Test
-    fun `figures that are not measured yet, or leave no stage beside them, fall back`() {
+    fun `cards that are not measured yet, or leave no stage between them, fall back`() {
         assertNull(OrbitBand.halfWidthBeside(Float.NaN, 2400f))
         assertNull(OrbitBand.halfWidthBeside(880f, 0f))
         assertNull(OrbitBand.halfWidthBeside(-1f, 2400f))
         // An upright phone: the figures span the width.
         assertNull(OrbitBand.halfWidthBeside(1040f, 1080f))
+        assertNull(OrbitBand.betweenSides(Float.NaN, 1640f, 72f, 640f, 2400f, 1080f))
+        assertNull(OrbitBand.betweenSides(880f, Float.NaN, 72f, 640f, 2400f, 1080f))
+        assertNull(OrbitBand.betweenSides(880f, 1640f, 72f, Float.NaN, 2400f, 1080f))
+        // The marker under the room is not placed yet: no height is left.
+        assertNull(OrbitBand.betweenSides(880f, 1640f, 72f, 0f, 2400f, 1080f))
+        // The two cards meet: nothing is left between them.
+        assertNull(OrbitBand.betweenSides(1150f, 1250f, 72f, 640f, 2400f, 1080f))
     }
 
     @Test
