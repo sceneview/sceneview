@@ -57,7 +57,7 @@ class MyModelViewer extends StatelessWidget {
     return SceneView(
       onSceneCreated: (controller) {
         controller.loadModel(ModelNode(
-          modelPath: 'models/damaged_helmet.glb',
+          modelPath: 'models/toy_car.glb',
           scale: 1.0,
         ));
         controller.setEnvironment('environments/sky_2k.hdr');

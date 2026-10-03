@@ -55,10 +55,10 @@ fun MultiModelScreen() {
         engine = engine,
         modelLoader = modelLoader
     ) {
-        val helmet = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+        val toyCar = rememberModelInstance(modelLoader, "models/toy_car.glb")
         val fox    = rememberModelInstance(modelLoader, "models/Fox.glb")
 
-        helmet?.let {
+        toyCar?.let {
             ModelNode(
                 modelInstance = it,
                 scaleToUnits = 1.0f,
@@ -118,7 +118,7 @@ loads the new model when the path changes.
 
 ```kotlin
 private val models = listOf(
-    "models/damaged_helmet.glb" to 1.0f,
+    "models/toy_car.glb" to 1.0f,
     "models/Fox.glb" to 0.012f,
 )
 
@@ -261,7 +261,7 @@ fun SpinningModelScreen() {
             cameraNode.lookAt(centerNode)
         }
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
             ModelNode(modelInstance = it, scaleToUnits = 1.0f)
         }
     }
@@ -294,7 +294,7 @@ fun BouncingModelScreen() {
         engine = engine,
         modelLoader = modelLoader
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
             ModelNode(
                 modelInstance = it,
                 scaleToUnits = 1.0f,
@@ -431,7 +431,7 @@ SceneView(
     )
 ) {
     // On a per-node level — clamp pinch-to-scale range
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(
             modelInstance = it,
             scaleToUnits = 1.0f,
@@ -464,12 +464,12 @@ SceneView(
         }
     )
 ) {
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(
             modelInstance = it,
             scaleToUnits = 1.0f,
             isTouchable = true,
-            apply = { name = "helmet" }
+            apply = { name = "toy_car" }
         )
     }
 }
@@ -482,7 +482,7 @@ scene.
 
 ```kotlin
 SceneView(...) {
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(
             modelInstance = it,
             scaleToUnits = 1.0f,
@@ -499,7 +499,7 @@ SceneView(...) {
 
 ```kotlin
 SceneView(...) {
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(
             modelInstance = it,
             scaleToUnits = 0.5f,
@@ -531,7 +531,7 @@ SceneView(
         }
     )
 ) {
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(
             modelInstance = it,
             scaleToUnits = 1.0f,
@@ -564,12 +564,12 @@ Box(modifier = Modifier.fillMaxSize()) {
             }
         )
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
             ModelNode(
                 modelInstance = it,
                 scaleToUnits = 1.0f,
                 isTouchable = true,
-                apply = { name = "helmet" }
+                apply = { name = "toy_car" }
             )
         }
     }
@@ -627,7 +627,7 @@ SceneView(
         sunIntensity = 110_000f
     )
 
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(modelInstance = it, scaleToUnits = 1.0f)
     }
 }
@@ -708,7 +708,7 @@ SceneView(
         }
     )
 
-    rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+    rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
         ModelNode(modelInstance = it, scaleToUnits = 1.0f)
     }
 }
@@ -731,7 +731,7 @@ fun TapToPlaceScreen() {
     var anchor by remember { mutableStateOf<Anchor?>(null) }
     var frame by remember { mutableStateOf<Frame?>(null) }
 
-    val instance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val instance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     ARSceneView(
         modifier = Modifier.fillMaxSize(),
@@ -783,7 +783,7 @@ fun MultiPlaceScreen() {
     var anchors by remember { mutableStateOf(listOf<Anchor>()) }
     var frame by remember { mutableStateOf<Frame?>(null) }
 
-    val instance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val instance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     ARSceneView(
         modifier = Modifier.fillMaxSize(),
@@ -1023,7 +1023,7 @@ fun SplitScreen() {
             engine = engine,
             modelLoader = modelLoader
         ) {
-            rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+            rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
                 ModelNode(modelInstance = it, scaleToUnits = scale)
             }
         }
@@ -1062,7 +1062,7 @@ fun OverlayScreen() {
             engine = engine,
             modelLoader = modelLoader
         ) {
-            rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+            rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
                 ModelNode(modelInstance = it, scaleToUnits = 1.0f)
             }
         }
@@ -1127,7 +1127,7 @@ fun ViewNodeScreen() {
             }
         }
 
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let {
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let {
             ModelNode(
                 modelInstance = it,
                 scaleToUnits = 1.0f,

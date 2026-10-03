@@ -113,7 +113,8 @@
       ],
       "usedIn": [
         "android-demo",
-        "ios-demo"
+        "ios-demo",
+        "web-demo"
       ],
       "defaultScale": 0.8,
       "cameraDistance": 3.0

@@ -1121,8 +1121,8 @@
       // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
       // cover the wider catalogs.
       var CDN_MODELS = [
-        { name: 'Damaged Helmet', file: 'khronos_damaged_helmet.glb', category: 'Showcase' },
         { name: 'Sheen Chair', file: 'sheen_chair.glb', category: 'Showcase' },
+        { name: 'Toy Car', file: 'khronos_toy_car.glb', category: 'Showcase' },
         { name: 'Chronograph Watch', file: 'chronograph_watch.glb', category: 'Showcase' },
         { name: 'Ferrari F40', file: 'ferrari_f40.glb', category: 'Vehicles' },
         { name: 'BMW M3 E30', file: 'bmw_m3_e30.glb', category: 'Vehicles' },
@@ -1172,7 +1172,11 @@
 
       function init() {
         setupCanvas();
-        initSceneView('khronos_damaged_helmet.glb', 'Damaged Helmet');
+        // Opening model: the Sheen Chair (CC0). It renders ~4x faster than the
+        // Toy Car on software WebGL (SwiftShader: ~17 fps vs ~4 fps at 1280x720,
+        // the Toy Car pays for transmission + clearcoat over 109k triangles),
+        // so the first frame and every tab switch stay responsive without a GPU.
+        initSceneView('sheen_chair.glb', 'Sheen Chair');
         setupTabs();
         setupExplore();
         setupSearch();
@@ -2286,7 +2290,7 @@
           sceneViewInstance.clearScene();
           geometryCount = 0;
           // Restore the default model so leaving the tab isn't a black screen.
-          loadModel(MODEL_BASE + 'khronos_damaged_helmet.glb', 'Damaged Helmet');
+          loadModel(MODEL_BASE + 'sheen_chair.glb', 'Sheen Chair');
         }
       }
 

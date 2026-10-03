@@ -88,7 +88,7 @@ this façade will not grow to cover them.
 ```kotlin
 // commonMain — compiles on Android, iOS and Desktop
 SceneViewer(
-    model = ModelSource.Asset("models/damaged_helmet.glb"),
+    model = ModelSource.Asset("models/toy_car.glb"),
     modifier = Modifier.fillMaxSize(),
     camera = rememberCameraState(distance = 4f),
     lighting = Lighting(intensity = 100_000f, castShadows = true),

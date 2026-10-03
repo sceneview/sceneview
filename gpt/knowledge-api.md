@@ -4601,7 +4601,7 @@ fun ModelScreen() {
     val camera = rememberCameraState(distance = 4f, elevation = 15f)
 
     SceneViewer(
-        model = ModelSource.Asset("models/damaged_helmet.glb"),
+        model = ModelSource.Asset("models/toy_car.glb"),
         modifier = Modifier.fillMaxSize(),
         camera = camera,
         lighting = Lighting(intensity = 80_000f, castShadows = true),
@@ -4746,7 +4746,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 SceneView.create(canvas, configure = {
     camera { eye(0.0, 1.5, 5.0); target(0.0, 0.0, 0.0) }
     light  { directional(); intensity(100_000.0) }
-    model("models/damaged_helmet.glb")
+    model("models/toy_car.glb")
     geometry { cube(); size(1.0); position(2.0, 0.0, 0.0); color(1.0, 0.0, 0.0, 1.0) }
 }) { sceneView -> sceneView.startRendering() }
 ```
@@ -4861,7 +4861,7 @@ SceneView.create(canvas, configure = {
         direction(0.6f, -1.0f, -0.8f)
         // for point/spot: position(x, y, z)
     }
-    model("models/damaged_helmet.glb") {
+    model("models/toy_car.glb") {
         scale(1.0f)                // raw uniform local scale (like Android
                                    //  ModelNode(scale = Scale(value))); default 1f
         autoAnimate(true)          // play glTF animation 0 (default true);

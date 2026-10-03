@@ -55,7 +55,7 @@ changes**, so it is already de-duplicated — no per-frame guard needed. The fir
 fun ArScreen(funnel: ArFunnel) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     var anchor by remember { mutableStateOf<Anchor?>(null) }
     var everTracked by remember { mutableStateOf(false) }

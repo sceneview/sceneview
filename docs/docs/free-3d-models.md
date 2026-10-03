@@ -203,10 +203,10 @@ These models are currently bundled or referenced in the sample apps:
 
 | Model | Used in | Source |
 |---|---|---|
-| DamagedHelmet | android-demo, web-demo, flutter-demo | Khronos glTF Sample Assets. **CC-BY-NC-4.0: non-commercial use only.** The website replaced it with ToyCar. |
+| DamagedHelmet | android-demo, flutter-demo | Khronos glTF Sample Assets. **CC-BY-NC-4.0: non-commercial use only.** The website replaced it with ToyCar. |
 | Fox | android-tv-demo | Khronos glTF Sample Assets |
 | space_helmet.glb | android-demo (effects) | Custom |
-| toy_car.glb | android-demo (showcase), website | Khronos (ToyCar), CC0-1.0 |
+| toy_car.glb | android-demo (showcase), web-demo, website | Khronos (ToyCar), CC0-1.0 |
 | FlightHelmet | web-demo | Khronos glTF Sample Assets |
 | Avocado | web-demo | Khronos glTF Sample Assets |
 | Lantern | web-demo | Khronos glTF Sample Assets |
