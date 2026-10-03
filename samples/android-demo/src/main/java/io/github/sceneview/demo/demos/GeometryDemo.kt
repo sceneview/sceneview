@@ -1,380 +1,594 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.horizontalScroll
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.google.android.filament.LightManager
-import dev.romainguy.kotlin.math.Float3
+import androidx.compose.ui.unit.isSpecified
+import com.google.android.filament.MaterialInstance
+import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
-import io.github.sceneview.demo.R
-import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.DockItem
+import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.LocalDemoSheetCover
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.demos.internal.GeometryDemoState
 import io.github.sceneview.demo.demos.internal.GeometryLayout
-import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.demos.internal.GeometryShape
+import io.github.sceneview.demo.driving
+import io.github.sceneview.demo.rememberContinuousCameraManipulator
+import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.GlassChip
+import io.github.sceneview.demo.ui.GlassChipStyle
+import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
+import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
-import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
-import io.github.sceneview.node.LightNode
-import io.github.sceneview.rememberCameraManipulator
+import io.github.sceneview.math.Size
+import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberRenderInvalidator
+import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
-import java.util.Locale
+
+/** Where the spin is parked in QA mode, so two captures of the same state are the same picture. */
+private const val QA_SPIN_DEGREES = 30f
 
 /**
- * Shows the four built-in geometry primitives: Cube, Sphere, Cylinder, Plane.
- *
- * Controls:
- * - Visibility chips per shape (scrollable on narrow viewports)
- * - Metallic / Roughness sliders applied to all visible primitives — lets users see
- *   the full PBR range from a chalky matte (M=0, R=1) to a polished mirror (M=1, R=0)
- * - Continuous Y-axis spin so each shape shows all sides instead of a single static face
- *
- * The four primitives sit in a **2 × 2 cluster**, not a row: a row of four is wider than a
- * phone-portrait frame at any camera distance, so one primitive was always clipped at an
- * edge (#2873). [GeometryLayout] owns every position, size and distance involved, and
- * `GeometryLayoutTest` asserts the cluster still clears the frame with margin.
+ * Tessellation of the round shapes, set once at creation: the library defaults (24 sides) show
+ * their facets on the silhouette of a mirror finish at this size.
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private const val ROUND_SEGMENTS = 48
+
+/** From this width the two sliders sit side by side, so both fit a landscape sheet's peek. */
+private val SIDE_BY_SIDE_CONTROLS_MIN_WIDTH = 560.dp
+
+/**
+ * The seven built-in geometry primitives of `SceneScope` — `CubeNode`, `SphereNode`,
+ * `CylinderNode`, `ConeNode`, `TorusNode`, `CapsuleNode`, `PlaneNode` — side by side on the stage.
+ *
+ * On screen:
+ * - **Shape chips** over the scene show or hide each primitive. A hidden shape leaves its slot
+ *   empty; nothing else moves and the camera stays where it is.
+ * - **Animate** (dock) starts and stops the spin; **Recenter** (dock) brings the camera home.
+ * - **Settings** holds the one material every shape shares: Metallic and Roughness, the whole
+ *   PBR range from chalk to mirror. Reset restores the screen as it opens.
+ *
+ * The scene is full-bleed and fitted to the band the chrome leaves free, in portrait and in
+ * landscape: the band goes to `SceneView(contentPadding = …)`, [GeometryLayout] picks the
+ * arrangement and frames it with `fitCameraToBounds`, [GeometryDemoState] holds what the user
+ * changed, and this file wires them to the screen.
+ */
 @Composable
 fun GeometryDemo(onBack: () -> Unit) {
-    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests):
-    // bypass the entire Filament-backed body BEFORE any rememberEngine() call. Without
-    // this, the preview pane crashes loading the .so files (Android-arch only, AS
-    // LayoutLib doesn't ship them). See DemoPreviewPlaceholder.
+    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): leave before any
+    // rememberEngine() call — LayoutLib does not ship Filament's native libraries.
     if (LocalInspectionMode.current) {
-        DemoPreviewPlaceholder(title = "Geometry Primitives", onBack = onBack)
+        DemoPreviewPlaceholder(title = stringResource(R.string.demo_geometry_title), onBack = onBack)
         return
     }
 
-    var showCube by remember { mutableStateOf(true) }
-    var showSphere by remember { mutableStateOf(true) }
-    var showCylinder by remember { mutableStateOf(true) }
-    var showPlane by remember { mutableStateOf(true) }
-    // PBR sliders. Defaults match a slightly metallic, slightly rough surface — a
-    // visually interesting "in-between" rather than either extreme. Range 0..1
-    // covers the full Filament PBR space.
-    var metallic by remember { mutableFloatStateOf(0.3f) }
-    var roughness by remember { mutableFloatStateOf(0.5f) }
+    val state = rememberSaveable(saver = GeometryDemoState.Saver) { GeometryDemoState() }
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
-    // IBL environment gives the primitives real ambient + specular highlights, so the
-    // rendering doesn't look flat. Without this the cube/cylinder/plane are unlit.
     val environmentLoader = rememberEnvironmentLoader(engine)
+    // Material parameters are written straight into Filament, which an on-demand scene cannot
+    // see: with the spin paused, nothing else would draw the change.
+    val renderInvalidator = rememberRenderInvalidator()
 
-    // On-brand ramp — Primary blue, Accent purple, light blue, soft purple — so the four
-    // primitives stay visually distinct while all reading as SceneView.
-    // metallic / roughness are pushed into each instance by rememberMaterialInstance
-    // itself (via a paired DisposableEffect) — no extra slider-sync LaunchedEffect needed.
-    val cubeMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[0], metallic, roughness)
-    val sphereMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[1], metallic, roughness)
-    val cylinderMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[2], metallic, roughness)
-    val planeMaterial = rememberMaterialInstance(materialLoader, SceneViewColors.Ramp4[3], metallic, roughness)
+    val firstFrame = rememberFirstFrameState(engine)
+    // The studio is lit, not drawn. Its light is what a metallic, mirror-smooth primitive has to
+    // reflect — without it Metallic 1 turns every flat face black — and "Scene ready" waits for
+    // it. Behind the shapes is the stage: the studio drawn as a backdrop is a grey wall with a
+    // white sweep across it, and no tone reads against both.
+    val studioLight = rememberMaterialsShowcaseEnvironment(environmentLoader, firstFrame)
+    // Drawn by Filament: the surface is opaque, and its clear is black, not the stage colour.
+    val stageBackdrop = remember(engine) { ViewerBackdrop.create(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    // `copy` shares the environment's Filament handles; only the backdrop is this screen's.
+    val environment = remember(studioLight, stageBackdrop) { studioLight.copy(skybox = stageBackdrop) }
 
-    // The plane spins on its Y axis, so for half of every revolution its back face
-    // points at the camera. With the default single-sided culling that half-turn
-    // renders nothing and the panel appears to blink out of existence — see #1426.
-    // Mark the shared PBR material double-sided so the back face stays visible.
-    // setDoubleSided is a per-MaterialInstance override on the ubershader, so this
-    // is a code-only change — no .filamat recompile. Keyed on planeMaterial so the
-    // override survives a material re-allocation.
-    DisposableEffect(planeMaterial) {
-        planeMaterial.setDoubleSided(true)
-        onDispose { }
+    val materials = rememberShapeMaterials(materialLoader, state.metallic, state.roughness)
+    LaunchedEffect(state.metallic, state.roughness) { renderInvalidator.requestRender() }
+
+    val spinDegrees = rememberSpinDegrees(spinning = state.spinning)
+
+    // Height of the chip block, measured: one row in landscape, two in portrait, more at 200 %
+    // text. The framing below clears whatever it turns out to be.
+    var chipsHeightPx by remember { mutableIntStateOf(0) }
+
+    DemoScaffold(
+        title = stringResource(R.string.demo_geometry_title),
+        onBack = onBack,
+        // The cover lifts on the lit scene, not on the first frame: the studio's light lands a
+        // moment after the shapes, and lifting in between showed the scene twice.
+        firstFrameRendered = firstFrame.sceneReady,
+        sceneReady = firstFrame.sceneReady,
+        onReset = state::reset,
+        dock = listOf(
+            DockItem(
+                icon = if (state.spinning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                label = stringResource(R.string.demo_geometry_animate),
+                selected = state.spinning,
+                onClick = { state.spinning = !state.spinning },
+            ),
+            DockItem(
+                icon = Icons.Outlined.RestartAlt,
+                label = stringResource(R.string.demo_geometry_recenter),
+                onClick = state::recenter,
+            ),
+        ),
+        bottomOverlay = {
+            GeometryShapeChips(
+                visibleShapes = state.visibleShapes,
+                onToggle = state::toggle,
+                modifier = Modifier
+                    .padding(horizontal = SceneViewTokens.Space.md)
+                    .onSizeChanged { chipsHeightPx = it.height },
+            )
+        },
+        controls = {
+            GeometryDemoControls(
+                metallic = state.metallic,
+                onMetallicChange = { state.metallic = it },
+                roughness = state.roughness,
+                onRoughnessChange = { state.roughness = it },
+            )
+        },
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            // The scene fills the window and the chrome floats over it. What the chrome covers
+            // goes to the SDK as `contentPadding`: the camera projects into the band left free —
+            // below the title row, above the chips, the dock and, once it is open, the settings
+            // sheet — without the surface being resized or the camera moved.
+            val layoutDirection = LocalLayoutDirection.current
+            val safe = WindowInsets.safeDrawing.asPaddingValues()
+            val left = safe.calculateLeftPadding(layoutDirection)
+            val right = safe.calculateRightPadding(layoutDirection)
+            val chrome = LocalDemoSceneCover.current
+            val cover = geometryContentPadding(
+                chrome = chrome,
+                sceneHeight = maxHeight,
+                left = left,
+                right = right,
+            )
+
+            // The block is laid out and framed for the band **at rest** — the sheet closed. The
+            // sheet then only narrows the band the camera projects into: the same picture, a
+            // little smaller, follows it up, and the orbit the user set survives opening
+            // Settings. Fitting to the live band instead would rebuild the orbit on every frame
+            // of a drag. The band at rest is what the scaffold reported while the sheet was
+            // closed, for this window and this chip block.
+            val rest = remember(maxWidth, maxHeight, chipsHeightPx) { GeometryRestBottom() }
+            val restBottom = rest.observe(
+                live = chrome.calculateBottomPadding(),
+                sheetClosed = LocalDemoSheetCover.current == 0.dp,
+            )
+            val restHeight = (maxHeight - chrome.calculateTopPadding() - restBottom)
+                .coerceAtLeast(maxHeight * GEOMETRY_MIN_VISIBLE_FRACTION)
+            val restAspect = (maxWidth - left - right) / restHeight
+            val arrangement = GeometryLayout.arrangementFor(restAspect)
+            val qaDistance = DemoSettings.cameraDistance
+            val home = remember(arrangement, restAspect, qaDistance) {
+                GeometryLayout.framing(arrangement, restAspect, qaDistance)
+            }
+
+            // A Filament manipulator has no "go home": the orbit is rebuilt at its framing on
+            // Recenter and Reset, and the continuity layer eases the camera there from wherever
+            // the user left it. Before the scene is shown there is nothing to ease from.
+            val homeOrbit = remember(home, state.cameraHomeGeneration) {
+                createDefaultCameraManipulator(eyePosition = home.eye, targetPosition = home.target)
+            }
+            val cameraManipulator = rememberContinuousCameraManipulator(pivot = home.target)
+                .driving(homeOrbit, contentShown = firstFrame.sceneReady.value)
+            // `SceneView` asks for a frame when it is handed another manipulator; this one stays
+            // the same and only changes what it drives. With the spin paused the scene is parked,
+            // and Recenter would wait for the next touch to be seen.
+            LaunchedEffect(homeOrbit) { renderInvalidator.requestRender() }
+
+            // The lens goes with the band at rest too: 28 mm on a portrait phone, longer on the
+            // shallow band a landscape one leaves, where 28 mm would stretch the ends of the row.
+            val focalLength = GeometryLayout.focalLengthMm(restAspect).toDouble()
+            val cameraNode = rememberCameraNode(engine) { this.focalLength = focalLength }
+            LaunchedEffect(cameraNode, focalLength) {
+                cameraNode.focalLength = focalLength
+                renderInvalidator.requestRender()
+            }
+
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = cover,
+                cameraNode = cameraNode,
+                onFrame = firstFrame.onFrame,
+                engine = engine,
+                materialLoader = materialLoader,
+                environmentLoader = environmentLoader,
+                environment = environment,
+                cameraManipulator = cameraManipulator,
+                renderInvalidator = renderInvalidator,
+                // Every shape owns a slot. Auto-centring would move the survivors each time one
+                // is hidden, and the camera with them.
+                autoCenterContent = false,
+            ) {
+                GeometryShapes(
+                    visibleShapes = state.visibleShapes,
+                    arrangement = arrangement,
+                    materials = materials,
+                    spinDegrees = spinDegrees.floatValue,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * What the scene hands to `SceneView(contentPadding = …)`, from what the scaffold reports as
+ * covered.
+ *
+ * The bottom is taken as it is: the chips, the dock and the settings sheet are where the shapes
+ * must not be. The sides are the window's safe insets — a display cutout on a phone held
+ * sideways — so the block is centred where the chips are centred. The top is the title row; under
+ * a sheet dragged all the way up it gives way, because what is left is thinner than the tenth of
+ * the view the SDK keeps visible and the SDK would take the difference from both edges — part of
+ * it under the sheet.
+ */
+internal fun geometryContentPadding(
+    chrome: PaddingValues,
+    sceneHeight: Dp,
+    left: Dp = 0.dp,
+    right: Dp = 0.dp,
+): PaddingValues {
+    val bottom = chrome.calculateBottomPadding()
+    val room = sceneHeight * (1f - GEOMETRY_MIN_VISIBLE_FRACTION) - bottom
+    val top = minOf(chrome.calculateTopPadding(), room.coerceAtLeast(0.dp))
+    return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
+}
+
+/** The floor the SDK applies to `contentPadding`: a tenth of the view stays visible. */
+private const val GEOMETRY_MIN_VISIBLE_FRACTION = 0.1f
+
+/**
+ * What the chrome covers at the bottom of the scene **with the settings sheet closed**, as the
+ * scaffold reported it — not worked out again from the scaffold's parts.
+ *
+ * `LocalDemoSceneCover` is the chrome or the sheet, whichever reaches higher, so the value at
+ * rest can only be read while the sheet is down. [observe] is fed every composition and keeps the
+ * last such reading. A sheet on its way down is "closed" for the scaffold from the moment it is
+ * let go, while it still covers more than the chrome: those readings are skipped until it is back
+ * at the remembered one.
+ */
+internal class GeometryRestBottom {
+    private var known: Dp = Dp.Unspecified
+    private var sheetSeenOpen = false
+
+    /**
+     * @param live        The bottom the scaffold reports right now.
+     * @param sheetClosed Whether the settings sheet is closed, or closing.
+     * @return the bottom at rest. Until one has been seen — Settings was already open when the
+     * window took this size — it is [live].
+     */
+    fun observe(live: Dp, sheetClosed: Boolean): Dp {
+        if (!sheetClosed) {
+            sheetSeenOpen = true
+        } else if (!sheetSeenOpen || !known.isSpecified || live <= known) {
+            known = live
+            sheetSeenOpen = false
+        }
+        return if (known.isSpecified) known else live
+    }
+}
+
+/**
+ * The two brand tints made for a dark ground, in turn, so no two neighbours in a row share one.
+ *
+ * The stage is `stage-background` in both themes. The darker half of the brand ramp — `primary`
+ * and `accent` — renders at about 2:1 against it; these two measure above 6:1.
+ */
+private val STAGE_TONES = listOf(SceneViewColors.TintLight, SceneViewColors.TintSoft)
+
+/** The shape's colour on the stage — see [STAGE_TONES]. */
+internal val GeometryShape.color: Color
+    get() = STAGE_TONES[ordinal % STAGE_TONES.size]
+
+@get:StringRes
+internal val GeometryShape.labelRes: Int
+    get() = when (this) {
+        GeometryShape.Cube -> R.string.demo_geometry_shape_cube
+        GeometryShape.Sphere -> R.string.demo_geometry_shape_sphere
+        GeometryShape.Cylinder -> R.string.demo_geometry_shape_cylinder
+        GeometryShape.Cone -> R.string.demo_geometry_shape_cone
+        GeometryShape.Torus -> R.string.demo_geometry_shape_torus
+        GeometryShape.Capsule -> R.string.demo_geometry_shape_capsule
+        GeometryShape.Plane -> R.string.demo_geometry_shape_plane
     }
 
-    // Continuous Y-axis spin shared by all primitives. withFrameNanos drives the
-    // angle off the Choreographer so it runs at the display's refresh rate without
-    // a separate Animatable per shape — one frame loop, four nodes share the value.
-    // The math (advance + 360° wrap) is in DemoMath.nextSpinDegrees so it can be JVM-
-    // unit-tested without firing up Compose / the Choreographer.
-    //
-    // QA mode (DemoSettings.qaMode = true, set via long-press on the title or
-    // `--ez qa_mode true` from adb) freezes the spin at a recognisable 30° angle so
-    // screenshot tests get a deterministic frame.
-    var spinDegrees by remember { mutableFloatStateOf(0f) }
-    // Spin pauses when the app is backgrounded — without the lifecycle wrap
-    // the `while(true) { withFrameNanos { … } }` loop kept burning frames
-    // (and the SceneView render thread alongside it) on the home screen.
-    // See #936.
-    LifecycleAwareLaunchedEffect(DemoSettings.qaMode) {
+// ── Scene ────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One material per shape, sharing [metallic] and [roughness]. The instances live as long as the
+ * screen; the sliders only write their parameters.
+ */
+@Composable
+private fun rememberShapeMaterials(
+    materialLoader: MaterialLoader,
+    metallic: Float,
+    roughness: Float,
+): Map<GeometryShape, MaterialInstance> {
+    val materials = GeometryShape.entries.associateWith { shape ->
+        rememberMaterialInstance(materialLoader, shape.color, metallic, roughness)
+    }
+    // A quad has one face; without this it disappears whenever the orbit goes behind it.
+    val plane = materials.getValue(GeometryShape.Plane)
+    DisposableEffect(plane) {
+        plane.setDoubleSided(true)
+        onDispose { }
+    }
+    return materials
+}
+
+/**
+ * The angle the shapes have turned by, advancing while [spinning] and the screen is resumed.
+ * QA mode parks it, so a capture does not depend on when it was taken.
+ */
+@Composable
+private fun rememberSpinDegrees(spinning: Boolean): MutableFloatState {
+    // Saved, so a paused pose survives whatever rebuilds the screen.
+    val degrees = rememberSaveable { mutableFloatStateOf(0f) }
+    LifecycleAwareLaunchedEffect(DemoSettings.qaMode, spinning) {
         if (DemoSettings.qaMode) {
-            spinDegrees = 30f // ~front-3/4 view, all shapes show their depth
+            degrees.floatValue = QA_SPIN_DEGREES
             return@LifecycleAwareLaunchedEffect
         }
+        if (!spinning) return@LifecycleAwareLaunchedEffect
         var lastNanos = 0L
         while (true) {
             withFrameNanos { nanos ->
                 if (lastNanos != 0L) {
-                    spinDegrees = DemoMath.nextSpinDegrees(spinDegrees, nanos - lastNanos)
+                    degrees.floatValue = DemoMath.nextSpinDegrees(degrees.floatValue, nanos - lastNanos)
                 }
                 lastNanos = nanos
             }
         }
     }
+    return degrees
+}
 
-    val firstFrame = rememberFirstFrameState(engine)
+/**
+ * The primitives themselves, each in its slot of [arrangement]. This is the part of the demo that
+ * is the public API: one `SceneScope` composable per shape, sized by plain parameters.
+ */
+@Composable
+private fun SceneScope.GeometryShapes(
+    visibleShapes: Set<GeometryShape>,
+    arrangement: GeometryLayout.Arrangement,
+    materials: Map<GeometryShape, MaterialInstance>,
+    spinDegrees: Float,
+) {
+    fun slot(shape: GeometryShape) = GeometryLayout.position(shape, arrangement)
+    fun material(shape: GeometryShape) = materials.getValue(shape)
 
+    // Tilted, then spun about the vertical: a solid of revolution turning on its own axis would
+    // look still, and a cube seen square-on would look like a square.
+    val tumble = Rotation(x = GeometryLayout.TILT_DEGREES, y = spinDegrees)
 
-    DemoScaffold(
-        title = stringResource(R.string.demo_geometry_title),
-        onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
-        peekHeader = "Choose a shape to show or hide it",
-        bottomOverlay = {
-            androidx.compose.foundation.layout.FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-            ) {
-                FilterChip(showCube, onClick = { showCube = !showCube }, label = { Text("Cube") })
-                FilterChip(showSphere, onClick = { showSphere = !showSphere }, label = { Text("Sphere") })
-                FilterChip(showCylinder, onClick = { showCylinder = !showCylinder }, label = { Text("Cylinder") })
-                FilterChip(showPlane, onClick = { showPlane = !showPlane }, label = { Text("Plane") })
-            }
-        },
-        bottomOverlayReservesScene = true,
-        controls = {
-            // Controls extracted into a separate composable so a Roborazzi snapshot
-            // test can capture the panel layout in pure JVM (no Filament, no SceneView).
-            // See GeometryDemoControlsSnapshotTest. Pattern from issue #880.
-            GeometryDemoControls(
-                showCube = showCube, onShowCubeChange = { showCube = it },
-                showSphere = showSphere, onShowSphereChange = { showSphere = it },
-                showCylinder = showCylinder, onShowCylinderChange = { showCylinder = it },
-                showPlane = showPlane, onShowPlaneChange = { showPlane = it },
-                metallic = metallic, onMetallicChange = { metallic = it },
-                roughness = roughness, onRoughnessChange = { roughness = it },
-            )
-        }
+    if (GeometryShape.Cube in visibleShapes) {
+        CubeNode(
+            size = Size(GeometryLayout.CUBE_EDGE),
+            materialInstance = material(GeometryShape.Cube),
+            position = slot(GeometryShape.Cube),
+            rotation = tumble,
+        )
+    }
+    if (GeometryShape.Sphere in visibleShapes) {
+        SphereNode(
+            radius = GeometryLayout.SPHERE_RADIUS,
+            stacks = ROUND_SEGMENTS,
+            slices = ROUND_SEGMENTS,
+            materialInstance = material(GeometryShape.Sphere),
+            position = slot(GeometryShape.Sphere),
+            rotation = tumble,
+        )
+    }
+    if (GeometryShape.Cylinder in visibleShapes) {
+        CylinderNode(
+            radius = GeometryLayout.CYLINDER_RADIUS,
+            height = GeometryLayout.CYLINDER_HEIGHT,
+            sideCount = ROUND_SEGMENTS,
+            materialInstance = material(GeometryShape.Cylinder),
+            position = slot(GeometryShape.Cylinder),
+            rotation = tumble,
+        )
+    }
+    if (GeometryShape.Cone in visibleShapes) {
+        ConeNode(
+            radius = GeometryLayout.CONE_RADIUS,
+            height = GeometryLayout.CONE_HEIGHT,
+            sideCount = ROUND_SEGMENTS,
+            materialInstance = material(GeometryShape.Cone),
+            position = slot(GeometryShape.Cone),
+            rotation = tumble,
+        )
+    }
+    if (GeometryShape.Torus in visibleShapes) {
+        TorusNode(
+            majorRadius = GeometryLayout.TORUS_MAJOR_RADIUS,
+            minorRadius = GeometryLayout.TORUS_MINOR_RADIUS,
+            majorSegments = ROUND_SEGMENTS,
+            minorSegments = ROUND_SEGMENTS / 2,
+            materialInstance = material(GeometryShape.Torus),
+            position = slot(GeometryShape.Torus),
+            // The ring lies flat (its axis is Y): stood up so the hole faces the camera once
+            // per turn instead of never.
+            rotation = Rotation(x = GeometryLayout.TORUS_TILT_DEGREES, y = spinDegrees),
+        )
+    }
+    if (GeometryShape.Capsule in visibleShapes) {
+        CapsuleNode(
+            radius = GeometryLayout.CAPSULE_RADIUS,
+            height = GeometryLayout.CAPSULE_HEIGHT,
+            sideSlices = ROUND_SEGMENTS,
+            materialInstance = material(GeometryShape.Capsule),
+            position = slot(GeometryShape.Capsule),
+            rotation = tumble,
+        )
+    }
+    if (GeometryShape.Plane in visibleShapes) {
+        PlaneNode(
+            // A flat XY quad facing +Z. `size.z` has to be 0: Plane uses all three components,
+            // and a depth would shear the quad into a diagonal surface.
+            size = Size(GeometryLayout.PLANE_EDGE, GeometryLayout.PLANE_EDGE, 0f),
+            normal = Direction(z = 1f),
+            materialInstance = material(GeometryShape.Plane),
+            position = slot(GeometryShape.Plane),
+            // Not the tumble: a zero-thickness quad spun about Y is edge-on twice a turn and
+            // vanishes. It turns in its own plane instead, tilted so it reads as a surface in
+            // space (#3237).
+            rotation = Rotation(x = GeometryLayout.TILT_DEGREES, z = spinDegrees),
+        )
+    }
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One switch per shape, floating over the scene — a legend of what is on the stage. Every chip
+ * is glass: shown, it carries a dot of its shape's colour; hidden, the dot is a hollow ring and
+ * the name is struck through.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun GeometryShapeChips(
+    visibleShapes: Set<GeometryShape>,
+    onToggle: (GeometryShape) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(
+            SceneViewTokens.Space.sm,
+            Alignment.CenterHorizontally,
+        ),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            onFrame = firstFrame.onFrame,
-            engine = engine,
-            materialLoader = materialLoader,
-            environmentLoader = environmentLoader,
-            // Framing lives in GeometryLayout so the cluster's fit in a portrait frame is
-            // arithmetic a unit test can check, not a number tuned by eye (#2873). Note that
-            // the orbit distance is the LENGTH of `orbitHomePosition`: Filament takes it as
-            // the eye verbatim, and `autoCenterContent = true` (the default, kept here) has
-            // already moved the cluster onto the world origin, so `targetPosition` does not
-            // enter into the distance — see GeometryLayout's orbit-distance note and #2930.
-            // The framing comment this replaces claimed 2.7 m for a camera that was 1.22 m
-            // out, which is the other half of why the row never fit.
-            //
-            // `camera_distance` (#2652) is honoured here even though this demo does NOT use
-            // `rememberHeroOrbitCameraManipulator` — the shared manipulator that reads the
-            // extra for the hero demos. Without this the extra was a silent no-op on
-            // `geometry`, which is why #2873 reports the clipping as unfixable "at every
-            // camera distance": the distances tried never reached the camera. That silent
-            // no-op on non-hero-orbit demos is #2785's scope; wiring it here fixes it for
-            // this one demo and makes the framing verifiable from a capture run.
-            cameraManipulator = rememberCameraManipulator(
-                orbitHomePosition = GeometryLayout.orbitHomeOffset(
-                    DemoSettings.cameraDistance ?: GeometryLayout.CAMERA_DISTANCE
-                ),
-                // The cluster is authored at z = GeometryLayout.TARGET_Z, but
-                // autoCenterContent (default true) re-centres it onto the world origin —
-                // targetPosition must track where the content actually ends up, not where
-                // it was authored, or the orbit pivot sits GeometryLayout.TARGET_Z metres
-                // behind the subject. A drag then swings the cluster across the frame
-                // instead of orbiting it in place, and the resting view reads off-centre
-                // (#3798). See GeometryLayout's orbit-distance note and #2930.
-                targetPosition = Position(0f, 0f, 0f),
-            ),
-        ) {
-            // Accent fill — a warm low-intensity rim that complements the v4.1.0
-            // SceneView defaults (10_000-lux main + 3_000-lux fill + IBL). Pre-v4.1.0
-            // this was stacked at 80_000 lux on top of the legacy hardcoded 100k
-            // main and read sanely; with the new defaults that combination blew
-            // out the metallic/rough sweep — primitives saturated to white and the
-            // material slider became visually inert. Re-tuned to 5_000 to match
-            // PhysicsDemo's PR #1144 retune (sibling of #1125). See #1146.
-            LightNode(
-                engine = engine,
-                type = LightManager.Type.DIRECTIONAL,
-                apply = {
-                    color(1.0f, 0.95f, 0.9f)
-                    intensity(5_000f)
-                    direction(0.3f, -1f, -0.5f)
-                    castShadows(false)
-                },
+        GeometryShape.entries.forEach { shape ->
+            GlassChip(
+                label = stringResource(shape.labelRes),
+                selected = shape in visibleShapes,
+                toggle = true,
+                onClick = { onToggle(shape) },
+                style = GlassChipStyle.Legend,
+                swatch = shape.color,
             )
-
-            // 2 × 2 cluster centred on x = 0, reading in the same order as the visibility
-            // chips (Cube, Sphere / Cylinder, Plane). Two columns instead of four halves
-            // the horizontal footprint, which is what makes the group fit a phone-portrait
-            // frame — the four-wide row it replaces was wider than the frame at every
-            // camera distance (#2873).
-            // The three SOLID shapes spin on Y to expose all sides — particularly
-            // the cylinder, whose curved side and flat caps read very differently.
-            // The plane is deliberately not one of them; see its own rotation below.
-            val spinRotation = Rotation(y = spinDegrees)
-            if (showCube) {
-                CubeNode(
-                    materialInstance = cubeMaterial,
-                    size = Float3(
-                        GeometryLayout.CUBE_EDGE,
-                        GeometryLayout.CUBE_EDGE,
-                        GeometryLayout.CUBE_EDGE,
-                    ),
-                    position = Position(
-                        x = -GeometryLayout.COLUMN_X,
-                        y = GeometryLayout.ROW_Y,
-                        z = GeometryLayout.TARGET_Z,
-                    ),
-                    rotation = spinRotation,
-                )
-            }
-            if (showSphere) {
-                SphereNode(
-                    materialInstance = sphereMaterial,
-                    radius = GeometryLayout.SPHERE_RADIUS,
-                    position = Position(
-                        x = GeometryLayout.COLUMN_X,
-                        y = GeometryLayout.ROW_Y,
-                        z = GeometryLayout.TARGET_Z,
-                    ),
-                    rotation = spinRotation,
-                )
-            }
-            if (showCylinder) {
-                CylinderNode(
-                    materialInstance = cylinderMaterial,
-                    radius = GeometryLayout.CYLINDER_RADIUS,
-                    height = GeometryLayout.CYLINDER_HEIGHT,
-                    position = Position(
-                        x = -GeometryLayout.COLUMN_X,
-                        y = -GeometryLayout.ROW_Y,
-                        z = GeometryLayout.TARGET_Z,
-                    ),
-                    rotation = spinRotation,
-                )
-            }
-            if (showPlane) {
-                // Plane primitive renders as a flat XY panel facing the camera (+Z).
-                // Previous `Float3(0.32, 0.32, 1f)` made a tilted parallelogram because
-                // Plane.getVertices uses ALL three size components — a non-zero z on what
-                // should be a flat XY quad twists the four corners into a diagonal surface.
-                // Use z=0 for a true flat panel, and set `normal = +Z` so lighting hits
-                // the visible face.
-                PlaneNode(
-                    materialInstance = planeMaterial,
-                    size = Float3(GeometryLayout.PLANE_EDGE, GeometryLayout.PLANE_EDGE, 0f),
-                    normal = Direction(z = 1f),
-                    position = Position(
-                        x = GeometryLayout.COLUMN_X,
-                        y = -GeometryLayout.ROW_Y,
-                        z = GeometryLayout.TARGET_Z,
-                    ),
-                    // NOT `spinRotation`. A zero-thickness quad spun about Y goes
-                    // edge-on twice per revolution and disappears outright — the
-                    // one shape in this demo that could vanish, in the demo whose
-                    // whole subject is shapes. Spinning about Z turns the quad in
-                    // its own plane, which leaves its normal pointing at the
-                    // camera, and PLANE_TILT_DEGREES tilts that normal by a fixed
-                    // amount so the panel still catches the light and reads as a
-                    // surface in space rather than a sticker. #3237
-                    rotation = Rotation(
-                        x = GeometryLayout.PLANE_TILT_DEGREES,
-                        z = spinDegrees,
-                    ),
-                )
-            }
         }
     }
 }
 
 /**
- * Controls panel for [GeometryDemo], extracted into a separate `@Composable` so a
- * Roborazzi snapshot test (`GeometryDemoControlsSnapshotTest`) can capture the panel
- * layout in pure JVM — no Filament Engine, no `SceneView`, no Choreographer.
- *
- * State + callbacks are passed in by the parent: this composable is **stateless** in
- * the Compose sense, which makes it both unit-testable and straightforwardly
- * reusable. See issue [#880](https://github.com/sceneview/sceneview/issues/880).
+ * The settings sheet: the material every shape shares. Two sliders and nothing else, so the
+ * sheet stays at its content height and the scene stays visible while a value is dragged.
  */
 @Composable
 internal fun GeometryDemoControls(
-    showCube: Boolean, onShowCubeChange: (Boolean) -> Unit,
-    showSphere: Boolean, onShowSphereChange: (Boolean) -> Unit,
-    showCylinder: Boolean, onShowCylinderChange: (Boolean) -> Unit,
-    showPlane: Boolean, onShowPlaneChange: (Boolean) -> Unit,
-    metallic: Float, onMetallicChange: (Float) -> Unit,
-    roughness: Float, onRoughnessChange: (Float) -> Unit,
+    metallic: Float,
+    onMetallicChange: (Float) -> Unit,
+    roughness: Float,
+    onRoughnessChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Text("Visible Shapes", style = MaterialTheme.typography.labelLarge)
-    // horizontalScroll on the chip row so a narrow viewport (or future
-    // additional shape chips) still fits without overflow / line break.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(showCube, onClick = { onShowCubeChange(!showCube) }, label = { Text("Cube") })
-        FilterChip(showSphere, onClick = { onShowSphereChange(!showSphere) }, label = { Text("Sphere") })
-        FilterChip(showCylinder, onClick = { onShowCylinderChange(!showCylinder) }, label = { Text("Cylinder") })
-        FilterChip(showPlane, onClick = { onShowPlaneChange(!showPlane) }, label = { Text("Plane") })
+    val metallicLabel = stringResource(R.string.demo_geometry_metallic)
+    val roughnessLabel = stringResource(R.string.demo_geometry_roughness)
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        if (maxWidth >= SIDE_BY_SIDE_CONTROLS_MIN_WIDTH) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg)) {
+                LabeledSlider(
+                    label = metallicLabel,
+                    value = metallic,
+                    onValueChange = onMetallicChange,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.weight(1f),
+                )
+                LabeledSlider(
+                    label = roughnessLabel,
+                    value = roughness,
+                    onValueChange = onRoughnessChange,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md)) {
+                LabeledSlider(
+                    label = metallicLabel,
+                    value = metallic,
+                    onValueChange = onMetallicChange,
+                    valueRange = 0f..1f,
+                )
+                LabeledSlider(
+                    label = roughnessLabel,
+                    value = roughness,
+                    onValueChange = onRoughnessChange,
+                    valueRange = 0f..1f,
+                )
+            }
+        }
     }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    LabeledSlider(
-        label = "Metallic",
-        value = metallic,
-        onValueChange = onMetallicChange,
-        valueRange = 0f..1f,
-        valueText = "%.2f".format(Locale.US, metallic),
-    )
-
-    LabeledSlider(
-        label = "Roughness",
-        value = roughness,
-        onValueChange = onRoughnessChange,
-        valueRange = 0f..1f,
-        valueText = "%.2f".format(Locale.US, roughness),
-    )
 }
 
-// ── Android Studio @Preview support ────────────────────────────────────────────
+// ── Android Studio @Preview support ──────────────────────────────────────────────────────────────
 //
-// `LocalInspectionMode.current == true` inside the preview pane (and inside Roborazzi
-// snapshot tests) makes the demo body short-circuit to DemoPreviewPlaceholder above,
-// so AS Preview shows the scaffold + a placeholder explaining that the actual 3D
-// content is rendered via Live Edit on a connected device. The two previews below
-// give the IDE a default + a dark-theme variant — the same pattern can be lifted
-// to every demo for "free" preview support.
+// In the preview pane the demo body short-circuits to DemoPreviewPlaceholder (see the top of
+// GeometryDemo); the chips and the sheet content are plain Compose and preview as they are.
 
 @Preview(name = "Demo (light)", showBackground = true)
 @Composable
@@ -392,21 +606,29 @@ private fun GeometryDemoPreview_Dark() {
     }
 }
 
-@Preview(name = "Controls only", showBackground = true)
+@Preview(name = "Controls", showBackground = true)
 @Composable
 private fun GeometryDemoControlsPreview() {
     SceneViewDemoTheme(darkTheme = false) {
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier.padding(16.dp),
-        ) {
+        Box(modifier = Modifier.padding(SceneViewTokens.Space.md)) {
             GeometryDemoControls(
-                showCube = true, onShowCubeChange = {},
-                showSphere = true, onShowSphereChange = {},
-                showCylinder = false, onShowCylinderChange = {},
-                showPlane = true, onShowPlaneChange = {},
-                metallic = 0.3f, onMetallicChange = {},
-                roughness = 0.5f, onRoughnessChange = {},
+                metallic = GeometryDemoState.DEFAULT_METALLIC,
+                onMetallicChange = {},
+                roughness = GeometryDemoState.DEFAULT_ROUGHNESS,
+                onRoughnessChange = {},
             )
         }
+    }
+}
+
+@Preview(name = "Shape chips", showBackground = true, backgroundColor = 0xFF0B0F16)
+@Composable
+private fun GeometryShapeChipsPreview() {
+    SceneViewDemoTheme(darkTheme = true) {
+        GeometryShapeChips(
+            visibleShapes = GeometryDemoState.ALL_SHAPES - GeometryShape.Cone,
+            onToggle = {},
+            modifier = Modifier.padding(SceneViewTokens.Space.md),
+        )
     }
 }

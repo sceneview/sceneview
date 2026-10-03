@@ -361,13 +361,15 @@ passes the variance check and is still unusable.
   margin per side (predicted left edge 187.2 px, measured 187 px), and
   `GeometryLayoutTest` pins the fit arithmetic.
 
-  Two capture-side reasons still argue against the slot, and neither is fixed by
-  the framing work. The 2 × 2 cluster leaves the frame **centre** empty, so the
-  3 × 3 centre-patch variance guard reads it as blank (measured 0.1, threshold
-  100) — a capture run on this id fails until either the layout or the guard
-  changes. And the shared Y-axis spin is free-running outside `qa_mode`, so the
-  flat plane is edge-on — invisible — at an unpredictable fraction of capture
-  instants. Judge a fresh mosaic before adding the id back.
+  Two capture-side reasons argued against the slot at that point: the 2 × 2
+  cluster left the frame **centre** empty, so the 3 × 3 centre-patch variance
+  guard read it as blank (measured 0.1, threshold 100), and the shared Y-axis
+  spin left the flat plane edge-on — invisible — at an unpredictable fraction of
+  capture instants. The scene has since been rebuilt: seven primitives in a
+  staggered 2-3-2 block with the cone at its centre, the plane turning in
+  its own plane, and the spin parked in `qa_mode`. Neither reason has been
+  re-measured against the guard since — judge a fresh mosaic before adding the id
+  back.
 - **#2785** — the `camera_distance` lever (#2652, `--ef camera_distance <f>`)
   is honoured only by demos built on `rememberHeroOrbitCameraManipulator`, and
   iOS has no equivalent launch argument at all. That gap is part of what blocks
