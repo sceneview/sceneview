@@ -6,14 +6,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -33,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,9 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Colors
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
@@ -55,10 +66,14 @@ import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.rotation as rotationMatrix
 import dev.romainguy.kotlin.math.transpose
+import io.github.sceneview.Aabb
+import io.github.sceneview.CameraFit
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.MIN_RESERVED_SCENE_HEIGHT
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -66,7 +81,6 @@ import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.TrayBallDrag
-import io.github.sceneview.demo.demos.internal.TrayFraming
 import io.github.sceneview.demo.demos.internal.TrayMotion
 import io.github.sceneview.demo.demos.internal.TrayMotion.Tilt
 import io.github.sceneview.demo.demos.internal.TrayStage
@@ -75,6 +89,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.fitCameraToBounds
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
@@ -96,6 +111,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.utils.screenToRay
+import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlin.math.abs
 import kotlin.math.cos
@@ -463,22 +479,24 @@ fun RollingBallsDemo(onBack: () -> Unit) {
         }
     }
 
+    // A phone held sideways leaves the board a band barely taller than the controls. There the
+    // two rows of controls sit on one line, and the live count — which the sheet repeats — gives
+    // its line back to the board.
+    val compactHeight = LocalConfiguration.current.screenHeightDp < TRAY_COMPACT_HEIGHT_DP
+
     DemoScaffold(
         title = stringResource(R.string.demo_rolling_balls_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
-        peekHeader = counts,
-        // The scene is framed inside the band between the title row and these controls, so the
-        // board is never drawn under them.
-        bottomOverlayReservesScene = true,
-        // The gesture hint is not in this band: the band reserves the scene, so a pill that comes
-        // and goes here resized the viewport and the board jumped (#4073). It floats over the
-        // scene instead — see the end of the `scene` slot.
+        peekHeader = if (compactHeight) null else counts,
+        // The scene is full-frame under the chrome and these controls: the stage runs edge to
+        // edge, and the board is framed in the band they leave free through `contentPadding` —
+        // see the `scene` slot. Nothing here resizes the viewport.
+        //
+        // The gesture hint is not in this band: a pill that comes and goes here changed the band
+        // the board is framed in, and the board jumped (#4073). It floats over the scene instead.
         bottomOverlay = {
-            Row(
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-            ) {
+            val kinds: @Composable () -> Unit = {
                 BallKind.entries.forEach { kind ->
                     TrayGlassChip(
                         label = stringResource(kind.labelRes),
@@ -494,11 +512,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     )
                 }
             }
-            Row(
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            val actions: @Composable () -> Unit = {
                 // Fixed over-media palette (#3726): this row is theme-independent chrome, and
                 // a default `Button` resolved to the light/dark `colorScheme.primary`.
                 Button(
@@ -532,6 +546,26 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                     label = stringResource(R.string.demo_rolling_balls_reset),
                     onClick = reset,
                 )
+            }
+            if (compactHeight) {
+                Row(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    kinds()
+                    actions()
+                }
+            } else {
+                Row(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                ) { kinds() }
+                Row(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { actions() }
             }
         },
         controls = {
@@ -586,17 +620,52 @@ fun RollingBallsDemo(onBack: () -> Unit) {
         }
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // Framed in the viewport this scene actually gets — the band between the title row
-            // and the controls — not the whole screen.
-            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
-                maxWidth.value / maxHeight.value
+            // The scene runs edge to edge under the glass: the title row, the controls band and
+            // the settings sheet all float over the live stage. What they cover is handed to the
+            // SDK as `contentPadding`, so the camera treats the band they leave free as its
+            // viewport — the board is drawn, and picked, there, and follows the sheet wherever
+            // the finger takes it. The surface is not resized and the user's orbit is not touched.
+            val safe = WindowInsets.safeDrawing.asPaddingValues()
+            val layoutDirection = LocalLayoutDirection.current
+            val cover = trayContentPadding(
+                chrome = LocalDemoSceneCover.current,
+                statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                sceneHeight = maxHeight,
+                compactHeight = compactHeight,
+                left = safe.calculateLeftPadding(layoutDirection),
+                right = safe.calculateRightPadding(layoutDirection),
+            )
+            // Framed in the band the chrome leaves free, not the whole screen. The SDK never lets
+            // that band go below a tenth of the view; the same floor here keeps the two in step.
+            val visibleHeight = (maxHeight - cover.calculateTopPadding() - cover.calculateBottomPadding())
+                .coerceAtLeast(maxHeight * TRAY_MIN_VISIBLE_FRACTION)
+            // The hint sits at the foot of that band. Under a sheet dragged all the way up, or in
+            // landscape, the band is barely taller than the hint and the board is all it has
+            // room for.
+            val hintFits = visibleHeight >= MIN_RESERVED_SCENE_HEIGHT + TRAY_HINT_CLEARANCE
+            val visibleWidth = maxWidth -
+                cover.calculateLeftPadding(layoutDirection) -
+                cover.calculateRightPadding(layoutDirection)
+            val aspect = if (visibleWidth.value > 0f && visibleHeight.value > 0f) {
+                visibleWidth.value / visibleHeight.value
             } else {
                 0.5f
             }
-            val manipulator = remember(aspect) { trayCameraManipulator(aspect) }
-            motion.aim = manipulator.target
+            val framing = remember(aspect) { trayFraming(aspect) }
+            // One manipulator for the life of the screen: it carries the user's orbit, and a
+            // framing that changes under it — the sheet, a window resize — re-fits the board
+            // around that orbit instead of snapping back to the opening shot.
+            val manipulator = remember { TrayCameraManipulator(home = framing) }
+            // Written once the composition is applied, never while it runs: a composition that
+            // is thrown away must not have moved the camera.
+            SideEffect {
+                manipulator.framing = framing
+                motion.aim = framing.target
+                renderInvalidator.requestRender()
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = cover,
                 engine = engine,
                 view = view,
                 modelLoader = modelLoader,
@@ -711,18 +780,19 @@ fun RollingBallsDemo(onBack: () -> Unit) {
                 }
             }
 
-            // Gesture hint, over the scene rather than in the reserved bottom band (#4073): it
-            // overlays the bottom of the viewport, just above the controls, so it never changes
-            // the size the board is framed in. It names what a drag does in the current mode and
-            // leaves once the user has done it; flipping Tilt brings it back for the new mode.
+            // Gesture hint, over the scene rather than in the bottom band (#4073): it sits just
+            // above whatever covers the bottom of the scene — the controls, or the sheet — so it
+            // never changes the size the board is framed in. It names what a drag does in the
+            // current mode and leaves once the user has done it; flipping Tilt brings it back for
+            // the new mode.
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = SceneViewTokens.Space.md),
+                    .padding(bottom = cover.calculateBottomPadding() + SceneViewTokens.Space.md),
             ) {
                 DemoStatusCard(
                     text = when {
-                        hintDismissed -> null
+                        hintDismissed || !hintFits -> null
                         tiltEnabled -> stringResource(R.string.demo_rolling_balls_tilt_hint)
                         else -> stringResource(R.string.demo_rolling_balls_orbit_hint)
                     },
@@ -1040,52 +1110,100 @@ private fun TrayGlassChip(
 }
 
 /**
- * The tray's camera for a viewport of [aspect]: the table itself fitted at
- * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
- * the band between the title row and the controls — with a stock orbit the user can drag (#4180).
+ * What Rolling Balls hands to `contentPadding`, from what the scaffold reports as covered.
+ *
+ * The bottom is taken as it is: the controls and the settings sheet are where the board must not
+ * be. The sides are the window's safe insets — a display cutout on a phone held sideways, a
+ * navigation bar on the short edge — so the board is centred where the controls are centred. The
+ * top is a row of glass chips over a live stage, and it gives way in two cases.
+ *
+ * - **A phone held sideways** ([compactHeight]): the title is a chip in a corner the centred
+ *   board never reaches, and counting it as a band would halve a stage that is already short.
+ *   Only the status bar is kept clear.
+ * - **A sheet dragged all the way up**: what is left under the title row is thinner than the
+ *   tenth of the view the SDK keeps visible, and the SDK would take the difference from both
+ *   edges — part of it under the sheet. The top yields the whole difference instead, so the
+ *   board stays above the sheet.
  */
-private fun trayCameraManipulator(aspect: Float): TrayCameraManipulator {
+internal fun trayContentPadding(
+    chrome: PaddingValues,
+    statusBar: Dp,
+    sceneHeight: Dp,
+    compactHeight: Boolean,
+    left: Dp = 0.dp,
+    right: Dp = 0.dp,
+): PaddingValues {
+    val bottom = chrome.calculateBottomPadding()
+    val top = if (compactHeight) {
+        statusBar
+    } else {
+        val room = sceneHeight - bottom - sceneHeight * TRAY_MIN_VISIBLE_FRACTION
+        minOf(chrome.calculateTopPadding(), room.coerceAtLeast(0.dp))
+    }
+    return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
+}
+
+/**
+ * The tray's opening shot for a visible area of [aspect]: the table itself fitted at
+ * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
+ * the band between the title row and the controls (#4180). The SDK's [fitCameraToBounds] does the
+ * fit; the scene declares its own bounds, because a board, its rails and thirty balls are not one
+ * model to measure.
+ */
+private fun trayFraming(aspect: Float): CameraFit {
     val half = PHYSICS_TABLE_SIZE / 2f
-    val shot = TrayFraming.fit(
-        min = Position(-half, PHYSICS_FLOOR - TrayStage.FIELD_THICKNESS - TrayStage.BODY_HEIGHT, -half),
-        max = Position(half, PHYSICS_FLOOR + TrayStage.RIM_HEIGHT, half),
-        aspect = aspect,
-        pitchDegrees = PHYSICS_CAMERA_PITCH_DEGREES,
-        verticalFovDegrees = io.github.sceneview.verticalFovDegreesForFocalLength(PHYSICS_FOCAL_LENGTH_MM)
-            .toFloat(),
+    val low = PHYSICS_FLOOR - TrayStage.FIELD_THICKNESS - TrayStage.BODY_HEIGHT
+    val high = PHYSICS_FLOOR + TrayStage.RIM_HEIGHT
+    val pitch = Math.toRadians(PHYSICS_CAMERA_PITCH_DEGREES.toDouble())
+    val fit = fitCameraToBounds(
+        bounds = Aabb(
+            center = Position(0f, (low + high) / 2f, 0f),
+            halfExtent = Position(half, (high - low) / 2f, half),
+        ),
+        direction = Position(0f, -sin(pitch).toFloat(), -cos(pitch).toFloat()),
+        verticalFovDegrees = verticalFovDegreesForFocalLength(PHYSICS_FOCAL_LENGTH_MM),
+        aspect = aspect.toDouble(),
         widthFill = PHYSICS_FRAME_WIDTH_FILL,
         heightFill = PHYSICS_FRAME_HEIGHT_FILL,
     )
-    return TrayCameraManipulator(eye = shot.eye, target = shot.target)
+    return checkNotNull(fit) { "the tray has a volume to frame" }
 }
 
 /**
  * The stock orbit with the eye kept above the tray: its polar angle is clamped between
  * [PHYSICS_MIN_POLAR_DEGREES] and [PHYSICS_MAX_POLAR_DEGREES] from straight up and re-aimed at
  * the tray, so no drag can carry the camera under the floor and lose the balls from view.
+ *
+ * The orbit is built once, around [home]. A later [framing] — the same board fitted in another
+ * visible area — is reached by carrying the orbit's eye over to it: same angles about the new
+ * target, radius scaled by the two fits' distances. The user's orbit and zoom survive a re-fit.
  */
 private class TrayCameraManipulator(
-    eye: Position,
-    val target: Position,
+    private val home: CameraFit,
 ) : CameraGestureDetector.CameraManipulator {
+    /** The fit in force. Written as a composition is applied, read by the frame loop — both on main. */
+    var framing: CameraFit = home
+
     private val orbit = CameraGestureDetector.DefaultCameraManipulator(
-        eyePosition = eye,
-        targetPosition = target,
+        eyePosition = home.eye,
+        targetPosition = home.target,
     )
 
     override fun setViewport(width: Int, height: Int) = orbit.setViewport(width, height)
 
     override fun getTransform(): Transform {
         val transform = orbit.getTransform()
-        val eye = transform.position
+        val orbitEye = transform.position
         val clamped = io.github.sceneview.demo.clampOrbitEyePitch(
-            eye, target, PHYSICS_MIN_POLAR_DEGREES, PHYSICS_MAX_POLAR_DEGREES,
+            orbitEye, home.target, PHYSICS_MIN_POLAR_DEGREES, PHYSICS_MAX_POLAR_DEGREES,
         )
-        if (clamped == eye) return transform
+        val live = framing
+        if (live == home && clamped == orbitEye) return transform
+        val scale = live.distance / home.distance
         return Transform(
             dev.romainguy.kotlin.math.lookAt(
-                eye = clamped,
-                target = target,
+                eye = live.target + (clamped - home.target) * scale,
+                target = live.target,
                 up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
             )
         )
@@ -1157,6 +1275,25 @@ private const val PHYSICS_FRAME_WIDTH_FILL = 0.92f
 
 /** Most of the viewport height the table may span — the binding axis in landscape. */
 private const val PHYSICS_FRAME_HEIGHT_FILL = 0.84f
+
+/**
+ * Least share of the scene's height the board is framed in, whatever the chrome covers: the floor
+ * the SDK applies to `contentPadding` (a tenth of the view), mirrored so the fit is computed for
+ * the band the camera really projects into.
+ */
+private const val TRAY_MIN_VISIBLE_FRACTION = 0.1f
+
+/**
+ * Window height, in dp, under which the two rows of controls share one line — Material's compact
+ * height class, i.e. a phone held sideways.
+ */
+private const val TRAY_COMPACT_HEIGHT_DP = 480
+
+/**
+ * Height the gesture hint takes at the foot of the free band, margin included. The hint shows
+ * only when the band keeps the least height a scene is framed in above it.
+ */
+private val TRAY_HINT_CLEARANCE = 80.dp
 
 /** SceneView's stock lens, which the demo's camera keeps. */
 private const val PHYSICS_FOCAL_LENGTH_MM = 28.0

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -70,6 +71,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -242,7 +244,10 @@ data class DockItem(
  * so no demo constant can drift out of sync with the chrome. Both are Columns:
  * two children stack, they never overlap. [bottomOverlayReservesScene] insets
  * the scene by the measured bottom band so the hero object can never descend
- * under it (#2957).
+ * under it (#2957) — as long as that leaves a scene: in a window too short for both bands
+ * (a phone in landscape) the scene stays full-frame under the glass instead. Either way
+ * [LocalDemoSceneCover] says what the chrome and the settings sheet cover of the slot, ready
+ * to be passed to `SceneView(contentPadding = …)`.
  *
  * **Themed stage**: every stage is media by default, so the chrome over it is the
  * theme-independent glass of [StageChrome.Media]. A demo that draws its own stage (the Rerun
@@ -308,10 +313,112 @@ val LocalDemoSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
  * A scene that scrolls under the chrome ends its content this far up, or its last rows stay under
  * the mode pill and the settings button with nothing left to scroll: Room Scan's landing hid its
  * fourth and fifth sessions that way. Unlike [LocalDemoChromeBottomInset] — the dock band alone,
- * for something that rests a gutter above it — this is the whole stack. Measured, so it lands one
- * frame late; zero outside a [DemoScaffold].
+ * for something that rests a gutter above it — this is the whole stack. Unlike
+ * [LocalDemoSceneCover] — made for a `SceneView`'s `contentPadding` — it leaves out the system
+ * inset, which a scrolling screen has already padded for, and the settings sheet, which must not
+ * resize a list while it is dragged. Measured, so it lands one frame late; zero outside a
+ * [DemoScaffold].
  */
 val LocalDemoBottomChromeCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
+ * What the scaffold draws **over the `scene` slot**, measured inwards from the slot's own top and
+ * bottom edges: the identity row and the status bar at the top; at the bottom, whichever reaches
+ * higher of the controls band above the dock and the settings sheet (#4310).
+ *
+ * It is made to be handed to the SDK as is — `SceneView(contentPadding = LocalDemoSceneCover.current)`
+ * — so a demo whose scene runs edge to edge under the glass still frames, and picks, its subject
+ * in the band the chrome leaves free.
+ *
+ * Unlike [LocalDemoSheetCover] this is the sheet's **real position**, read every frame it moves:
+ * dragged, flung or fully expanded, the value is where the glass is, and a camera fed with it
+ * follows the sheet on the sheet's own curve. It is also relative to the slot rather than to the
+ * window: under [DemoScaffold]'s `bottomOverlayReservesScene` the slot is already inset by the
+ * bands, and only what the sheet covers beyond them is left to report.
+ *
+ * Zero outside a [DemoScaffold].
+ */
+val LocalDemoSceneCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
+
+/**
+ * Whether insetting the scene by the bands above and below it still leaves a scene worth the
+ * name — `bottomOverlayReservesScene`'s own precondition.
+ *
+ * On a phone in landscape the two bands add up to more than the window is tall: the inset left a
+ * zero-height viewport, no frame was ever drawn and the first-frame cover ended on "stalled".
+ * Below [MIN_RESERVED_SCENE_HEIGHT] the scaffold keeps the scene full-frame under the glass
+ * instead and reports the bands through [LocalDemoSceneCover].
+ *
+ * `true` while the window has not been measured yet, so the first composition lays out as before.
+ */
+internal fun demoSceneReserveFits(windowHeight: Dp, topBand: Dp, bottomBand: Dp): Boolean =
+    windowHeight <= 0.dp || windowHeight - topBand - bottomBand >= MIN_RESERVED_SCENE_HEIGHT
+
+/**
+ * [LocalDemoSceneCover]'s value: the chrome's bands and the sheet, less what the slot is already
+ * inset by. Never negative.
+ *
+ * @param chromeTop    Identity row and status bar (or the top overlay band when it is taller).
+ * @param chromeBottom Controls band, dock and navigation bar.
+ * @param sheetCover   Height of the settings sheet above the window's bottom edge, right now.
+ * @param slotTop      Top inset the scaffold already applies to the slot.
+ * @param slotBottom   Bottom inset the scaffold already applies to the slot.
+ */
+internal fun demoSceneCover(
+    chromeTop: Dp,
+    chromeBottom: Dp,
+    sheetCover: Dp,
+    slotTop: Dp,
+    slotBottom: Dp,
+): PaddingValues = PaddingValues(
+    top = (chromeTop - slotTop).coerceAtLeast(0.dp),
+    bottom = (maxOf(chromeBottom, sheetCover) - slotBottom).coerceAtLeast(0.dp),
+)
+
+/**
+ * The least scene height `bottomOverlayReservesScene` may leave between its two bands. Under it
+ * a model is a strip a finger covers whole; the scene is better off full-frame under the glass.
+ */
+internal val MIN_RESERVED_SCENE_HEIGHT = 160.dp
+
+/**
+ * Provides [LocalDemoSceneCover] to [content].
+ *
+ * A composable of its own because it reads the sheet's offset, which changes on every frame of a
+ * drag: only this scope and the demos that read the local recompose with it, not the scaffold.
+ */
+@Composable
+private fun ProvideDemoSceneCover(
+    sheetState: SheetState,
+    windowHeightPx: Int,
+    chromeTop: Dp,
+    chromeBottom: Dp,
+    slotTop: Dp,
+    slotBottom: Dp,
+    content: @Composable () -> Unit,
+) {
+    val density = LocalDensity.current
+    val sheetCoverPx by remember(sheetState, windowHeightPx) {
+        androidx.compose.runtime.derivedStateOf {
+            // The offset is the sheet's top edge in the scaffold, which fills the window. It has
+            // no value until the sheet has been laid out once.
+            val top = try {
+                sheetState.requireOffset()
+            } catch (_: IllegalStateException) {
+                Float.NaN
+            }
+            if (top.isNaN() || windowHeightPx <= 0) 0f else (windowHeightPx - top).coerceAtLeast(0f)
+        }
+    }
+    val cover = demoSceneCover(
+        chromeTop = chromeTop,
+        chromeBottom = chromeBottom,
+        sheetCover = with(density) { sheetCoverPx.toDp() },
+        slotTop = slotTop,
+        slotBottom = slotBottom,
+    )
+    CompositionLocalProvider(LocalDemoSceneCover provides cover, content = content)
+}
 
 @Composable
 fun DemoScaffold(
@@ -631,10 +738,25 @@ fun DemoScaffold(
                 SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
                 dockBand,
             )
+            // What the chrome covers of the window, top and bottom. A demo that reserves the
+            // scene gets its slot inset by exactly these — unless that would leave no scene at
+            // all (a phone in landscape), in which case the slot stays full-frame and the bands
+            // are only reported, through [LocalDemoSceneCover] (#4310).
+            val chromeTop = maxOf(identityRow + statusBarInset, topOverlayBand)
+            val navigationBarInset = with(density) {
+                WindowInsets.safeDrawing.getBottom(density).toDp()
+            }
+            val chromeBottom = maxOf(bottomOverlayBand, dockBandClearance + navigationBarInset)
             // The whole bottom stack above the system inset, for a scene that scrolls under it.
             // The measured band counts the inset (see `DemoBottomOverlay`), so it comes off here.
-            val bottomInset = with(density) { WindowInsets.safeDrawing.getBottom(density).toDp() }
-            val bottomChromeCover = maxOf(dockClearance, bottomOverlayBand - bottomInset)
+            val bottomChromeCover = maxOf(dockClearance, bottomOverlayBand - navigationBarInset)
+            val reservesScene = bottomOverlayReservesScene && demoSceneReserveFits(
+                windowHeight = with(density) { rootHeightPx.toDp() },
+                topBand = chromeTop,
+                bottomBand = bottomOverlayBand,
+            )
+            val slotTop = if (reservesScene) chromeTop else 0.dp
+            val slotBottom = if (reservesScene) bottomOverlayBand else 0.dp
 
             // The sheet scaffold consumes no insets and its content padding (the peek
             // height) is ignored on purpose: the scene stays full-bleed under the sheet, and
@@ -668,14 +790,7 @@ fun DemoScaffold(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(
-                            top = if (bottomOverlayReservesScene) {
-                                maxOf(identityRow + statusBarInset, topOverlayBand)
-                            } else {
-                                0.dp
-                            },
-                            bottom = if (bottomOverlayReservesScene) bottomOverlayBand else 0.dp
-                        )
+                        .padding(top = slotTop, bottom = slotBottom)
                         // Observe taps without taking them: the 3D view keeps its drags.
                         .sceneTapToggle(enabled = chromeToggleOnTap && !touchExploration) {
                             chromeToggled = !chromeToggled
@@ -696,23 +811,32 @@ fun DemoScaffold(
                             LocalDemoBottomChromeCover provides bottomChromeCover,
                             LocalDemoSheetCover provides settingsSheetCover,
                         ) {
-                            if (arSessionFailed) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        // The viewport is still the stage when AR failed: the
-                                        // glass chrome and scrims sit on it. `surface` painted it
-                                        // white in light theme, banded by the scrims (#3990).
-                                        .background(chrome.ground),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    io.github.sceneview.demo.common.DemoStatusCard(
-                                        text = stringResource(R.string.demo_ar_session_failed),
-                                        tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
-                                        modifier = Modifier.padding(SceneViewTokens.Space.lg),
-                                    )
-                                }
-                            } else scene()
+                            ProvideDemoSceneCover(
+                                sheetState = settingsSheetState,
+                                windowHeightPx = rootHeightPx,
+                                chromeTop = chromeTop,
+                                chromeBottom = chromeBottom,
+                                slotTop = slotTop,
+                                slotBottom = slotBottom,
+                            ) {
+                                if (arSessionFailed) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            // The viewport is still the stage when AR failed: the
+                                            // glass chrome and scrims sit on it. `surface` painted it
+                                            // white in light theme, banded by the scrims (#3990).
+                                            .background(chrome.ground),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        io.github.sceneview.demo.common.DemoStatusCard(
+                                            text = stringResource(R.string.demo_ar_session_failed),
+                                            tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
+                                            modifier = Modifier.padding(SceneViewTokens.Space.lg),
+                                        )
+                                    }
+                                } else scene()
+                            }
                         }
                     },
                 )
