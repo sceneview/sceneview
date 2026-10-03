@@ -7,8 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 import io.github.sceneview.demo.ui.home.FEATURED_IDS
-import io.github.sceneview.demo.ui.home.FEATURED_SECTION_IDS
+import io.github.sceneview.demo.ui.home.FEATURED_PAGER_IDS
 import io.github.sceneview.demo.ui.home.HERO_DEMO_ID
+import io.github.sceneview.demo.ui.home.homeTopSections
 
 /**
  * Pure-JVM integrity tests for the demo registry ([ALL_DEMOS]).
@@ -202,29 +203,39 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `the featured shelf lists registered demos, once each, in the common Featured order`() {
-        // The shelf under the hero is the home's priority list. A renamed id would
-        // drop a card silently (the shelf skips what it cannot resolve), a repeat
-        // would collide on its grid key, and the hero repeated here wastes a slot.
+    fun `the featured lists name registered demos, once each, in the common Featured order`() {
+        // The pager and the shelf under it are the home's priority lists. A renamed id
+        // would drop a page or a card silently (both skip what they cannot resolve) and
+        // a repeat would collide on its key.
         val ids = ALL_DEMOS.map { it.id }.toSet()
-        val unknown = FEATURED_SECTION_IDS.filterNot { it in ids }
-        assertTrue("Featured shelf lists unregistered ids: $unknown", unknown.isEmpty())
+        val unknown = (FEATURED_IDS + FEATURED_PAGER_IDS).filterNot { it in ids }
+        assertTrue("Featured lists name unregistered ids: $unknown", unknown.isEmpty())
         assertEquals(
-            "Featured shelf lists a demo twice",
-            FEATURED_SECTION_IDS.size,
-            FEATURED_SECTION_IDS.toSet().size,
+            "The featured pager lists a demo twice",
+            FEATURED_PAGER_IDS.size,
+            FEATURED_PAGER_IDS.toSet().size,
         )
-        assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in FEATURED_SECTION_IDS)
+        assertEquals("The hero demo opens the pager", HERO_DEMO_ID, FEATURED_PAGER_IDS.first())
         // The common Featured list of the samples audit (§ 5), the same five ids as iOS.
         assertEquals(
             "The Featured list drifted from the one iOS shows",
             listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials"),
             FEATURED_IDS,
         )
+        // What the pager pages through never comes back as a banner (#4304), the hero
+        // first of all.
+        val shelf = homeTopSections(FEATURED_PAGER_IDS, FEATURED_IDS, fresh = emptyList()).featured
+        assertFalse("The hero demo must not repeat in the shelf", HERO_DEMO_ID in shelf)
+        assertTrue(
+            "A featured pager page repeats as a Featured banner",
+            shelf.none { it in FEATURED_PAGER_IDS },
+        )
+        // The banners are the card the Home is liked for: the pager stays short enough to
+        // leave some.
         assertEquals(
-            "The shelf is the Featured list minus the hero, in rank order",
-            FEATURED_IDS.filterNot { it == HERO_DEMO_ID },
-            FEATURED_SECTION_IDS,
+            "The Featured banners under the pager",
+            listOf("ar-placement", "ar-rerun", "materials"),
+            shelf,
         )
     }
 

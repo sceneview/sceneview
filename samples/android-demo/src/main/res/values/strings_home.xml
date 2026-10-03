@@ -41,13 +41,16 @@
     <string name="home_section_featured">Featured</string>
     <string name="home_browse_title">Browse online models</string>
     <string name="home_browse_subtitle">Discover models from online collections</string>
-    <!-- The row under the hero that leads to the "What's new" filter. %1$d is the number of
+    <!-- The row under the hero that opens the "What's new" sheet. %1$d is the number of
          samples marked New or Updated, %2$s the oldest release still marked ("4.49"). -->
     <string name="home_whats_new_title">What\'s new</string>
     <plurals name="home_whats_new_subtitle">
         <item quantity="one">%1$d new or updated since %2$s</item>
         <item quantity="other">%1$d new or updated since %2$s</item>
     </plurals>
+    <!-- Ends a list filtered by a chip: clears the filter. %1$d is the size of the whole
+         catalogue. -->
+    <string name="home_show_all">Show all %1$d samples</string>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>
 </resources>
