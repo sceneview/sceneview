@@ -2194,6 +2194,41 @@ fun Frame.semanticLabelFraction(label: SemanticLabel): Float   // 0f..1f — pix
 // pipelines. (#1733)
 fun Frame.cameraImage(): Image?
 
+// Snapshot the current camera-image -> view geometry next to image acquisition. The view is
+// the one ARCore already knows from the session's display geometry, so only the image size and
+// the rotation handed to the vision API are needed. The returned object is pure Kotlin and safe
+// to retain after the Frame becomes stale. Pick the pair of functions by what the vision API
+// reports:
+//  - points in the image AFTER `inputRotationDegrees` (ML Kit): mapPixel / mapNormalized, which
+//    undo that rotation and preserve ARCore's exact centered crop;
+//  - points in the UNROTATED CPU image (MediaPipe landmarks): mapImagePixel / mapImageNormalized.
+data class CameraImageSize(val width: Int, val height: Int)
+data class CameraImagePoint(val x: Float, val y: Float)
+// x' = m00*x + m01*y + m02 ; y' = m10*x + m11*y + m12 — raw IMAGE_PIXELS -> VIEW pixels.
+data class CameraImageToViewTransform(
+    val m00: Float, val m01: Float, val m02: Float,
+    val m10: Float, val m11: Float, val m12: Float,
+)
+fun CameraImageToViewTransform.map(x: Float, y: Float): CameraImagePoint
+fun Frame.cameraImageToViewMapping(
+    imageSize: CameraImageSize,
+    inputRotationDegrees: Int,
+): CameraImageToViewMapping
+val CameraImageToViewMapping.imagePixelsToView: CameraImageToViewTransform
+fun CameraImageToViewMapping.mapPixel(x: Float, y: Float): CameraImagePoint
+fun CameraImageToViewMapping.mapNormalized(x: Float, y: Float): CameraImagePoint
+fun CameraImageToViewMapping.mapImagePixel(x: Float, y: Float): CameraImagePoint
+fun CameraImageToViewMapping.mapImageNormalized(x: Float, y: Float): CameraImagePoint
+// Undo the input rotation only: the unrotated image pixel a detector-output pixel comes from —
+// the pixel `camera.imageIntrinsics` describes, hence the entry point for a world ray.
+fun CameraImageToViewMapping.detectorPixelToImagePixel(x: Float, y: Float): CameraImagePoint
+// Without an ARCore frame: rotation plus centered crop into a view of the given size.
+fun CameraImageToViewMapping.Companion.centerCrop(
+    imageSize: CameraImageSize,
+    viewSize: CameraImageSize,
+    inputRotationDegrees: Int,
+): CameraImageToViewMapping
+
 // ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
 suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
 ```

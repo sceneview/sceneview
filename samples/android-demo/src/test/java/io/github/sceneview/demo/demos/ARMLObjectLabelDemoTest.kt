@@ -6,7 +6,8 @@ import org.junit.Test
 /**
  * Pure-JVM tests for [confidenceBucketPercent] — the bucketing that keeps the `ar-ml-object-label`
  * label-bitmap cache from re-rasterising on every sub-percent confidence jitter between detector
- * passes.
+ * passes. [StickyConfidenceTest] covers the hysteresis on top of it, [LabelHitChoiceTest] the
+ * surface a label is anchored on.
  */
 class ARMLObjectLabelDemoTest {
 
@@ -36,41 +37,176 @@ class ARMLObjectLabelDemoTest {
     }
 }
 
-/**
- * Pure-JVM tests for [bboxCentreToScreenPoint] — the CPU-image-space → AR-surface-space
- * mapping fed into `Frame.hitTest` (#3337). Before this fix the caller passed a hardcoded
- * 1000×1000 square instead of the real surface size, so on a tall portrait phone (e.g. a
- * Pixel 9 at 1080×2424) a detection in the lower half of the frame hit-tested against the
- * wrong point on screen and its label anchor landed off the object.
- */
-class BboxCentreToScreenPointTest {
-
+class StickyConfidenceTest {
     @Test
-    fun `centre of the image maps to centre of the display`() {
-        val (x, y) = bboxCentreToScreenPoint(
-            cx = 320, cy = 240, imageW = 640, imageH = 480, displayW = 1080, displayH = 2424,
-        )
-        assertEquals(540f, x, 0.01f)
-        assertEquals(1212f, y, 0.01f)
+    fun `a new label shows its bucket`() {
+        assertEquals(80, stickyConfidencePercent(shownPercent = null, confidence = 0.84f))
     }
 
     @Test
-    fun `a detection in the lower half of a tall portrait display lands past a 1000px square`() {
-        // Regression for #3337: the old hardcoded 1000x1000 square could never produce a
-        // y beyond 1000px, silently clamping every lower-half detection onto the wrong point
-        // on a 2424px-tall real display.
-        val (_, y) = bboxCentreToScreenPoint(
-            cx = 320, cy = 400, imageW = 640, imageH = 480, displayW = 1080, displayH = 2424,
-        )
-        assert(y > 1000f) { "expected y > 1000f (past the old hardcoded square), was $y" }
+    fun `jitter around a bucket edge keeps the text shown`() {
+        // Raw buckets would read 80, 75, 80, 75: four redraws of the same label.
+        var shown: Int? = null
+        listOf(0.801f, 0.799f, 0.803f, 0.782f).forEach { confidence ->
+            shown = stickyConfidencePercent(shown, confidence)
+            assertEquals(80, shown)
+        }
     }
 
     @Test
-    fun `zero-size image dimensions are coerced instead of dividing by zero`() {
-        val (x, y) = bboxCentreToScreenPoint(
-            cx = 10, cy = 10, imageW = 0, imageH = 0, displayW = 1080, displayH = 2424,
+    fun `jitter around the upper edge keeps the text shown too`() {
+        assertEquals(80, stickyConfidencePercent(shownPercent = 80, confidence = 0.86f))
+        assertEquals(80, stickyConfidencePercent(shownPercent = 80, confidence = 0.874f))
+    }
+
+    @Test
+    fun `a real change redraws the label with the new bucket`() {
+        assertEquals(75, stickyConfidencePercent(shownPercent = 80, confidence = 0.77f))
+        assertEquals(85, stickyConfidencePercent(shownPercent = 80, confidence = 0.88f))
+        assertEquals(40, stickyConfidencePercent(shownPercent = 80, confidence = 0.42f))
+    }
+}
+
+class LabelHitChoiceTest {
+    private fun hit(surface: LabelSurface, distance: Float) = LabelHitCandidate(surface, distance)
+
+    @Test
+    fun `depth along the centre ray wins over the plane behind the object`() {
+        val centre = listOf(
+            hit(LabelSurface.SupportPlane, 2.4f), // the wall behind
+            hit(LabelSurface.Depth, 0.8f), // the object itself
         )
-        assertEquals(10f * 1080f, x, 0.01f)
-        assertEquals(10f * 2424f, y, 0.01f)
+        val base = listOf(hit(LabelSurface.SupportPlane, 0.9f))
+
+        assertEquals(LabelHitChoice(LabelRay.Centre, 1), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `without depth the label goes to the support under the object, not to the wall behind`() {
+        val centre = listOf(hit(LabelSurface.SupportPlane, 2.4f))
+        val base = listOf(
+            hit(LabelSurface.SupportPlane, 1.7f),
+            hit(LabelSurface.SupportPlane, 0.9f),
+        )
+
+        assertEquals(LabelHitChoice(LabelRay.Base, 1), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `a mug on a table not detected yet is not labelled on the floor behind it`() {
+        // No depth. The table is unknown to ARCore, the floor is known: the base ray goes
+        // through the table and lands on the floor, more than a metre behind the mug.
+        val centre = listOf(
+            hit(LabelSurface.FeaturePoint, 0.62f), // on the mug
+            hit(LabelSurface.SupportPlane, 2.1f), // the floor, never used along this ray
+        )
+        val base = listOf(hit(LabelSurface.SupportPlane, 1.9f)) // the floor again
+
+        assertEquals(LabelHitChoice(LabelRay.Centre, 0), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `with nothing to check it against, a far support plane places no label`() {
+        val floorBehind = listOf(hit(LabelSurface.SupportPlane, 1.9f))
+        val tableTop = listOf(hit(LabelSurface.SupportPlane, 0.7f))
+
+        assertEquals(null, chooseLabelHit(emptyList(), floorBehind))
+        assertEquals(LabelHitChoice(LabelRay.Base, 0), chooseLabelHit(emptyList(), tableTop))
+    }
+
+    @Test
+    fun `a support plane at the object's distance is its support, however far`() {
+        // A chair on the floor, seen from across the room: far, but the feature point on the
+        // chair says the floor hit is under it.
+        val centre = listOf(hit(LabelSurface.FeaturePoint, 2.9f))
+        val base = listOf(hit(LabelSurface.SupportPlane, 3.1f))
+
+        assertEquals(LabelHitChoice(LabelRay.Base, 0), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `own support is decided by the margin behind the scene, then by table-top range`() {
+        assertEquals(true, isOwnSupport(planeDistanceMeters = 0.9f, sceneDistanceMeters = 0.62f))
+        assertEquals(false, isOwnSupport(planeDistanceMeters = 0.95f, sceneDistanceMeters = 0.62f))
+        assertEquals(true, isOwnSupport(planeDistanceMeters = 1.0f, sceneDistanceMeters = null))
+        assertEquals(false, isOwnSupport(planeDistanceMeters = 1.05f, sceneDistanceMeters = null))
+    }
+
+    @Test
+    fun `the device log line names what each ray met and the hit chosen`() {
+        val centre = listOf(hit(LabelSurface.Depth, 0.62f), hit(LabelSurface.SupportPlane, 1.8f))
+        val base = emptyList<LabelHitCandidate>()
+
+        assertEquals(
+            "hitTest \"Cup\": centre ray [Depth 0.62 m, SupportPlane 1.80 m], " +
+                "base ray [none] -> Centre Depth 0.62 m",
+            labelHitReport("Cup", centre, base, chooseLabelHit(centre, base)),
+        )
+        assertEquals(
+            "hitTest \"Cup\": centre ray [none], base ray [Other 0.90 m] -> no label",
+            labelHitReport("Cup", base, listOf(hit(LabelSurface.Other, 0.9f)), null),
+        )
+    }
+
+    @Test
+    fun `a plane hit outside its polygon is not a surface`() {
+        // ARCore also reports where the ray meets the plane's infinite extension.
+        val base = listOf(hit(LabelSurface.Other, 0.9f))
+
+        assertEquals(null, chooseLabelHit(emptyList(), base))
+    }
+
+    @Test
+    fun `a plane along the centre ray alone places no label`() {
+        val centre = listOf(hit(LabelSurface.SupportPlane, 2.4f))
+
+        assertEquals(null, chooseLabelHit(centre, emptyList()))
+    }
+
+    @Test
+    fun `feature points are the last resort, centre ray first`() {
+        val centre = listOf(hit(LabelSurface.FeaturePoint, 1.1f))
+        val base = listOf(hit(LabelSurface.FeaturePoint, 0.7f))
+
+        assertEquals(LabelHitChoice(LabelRay.Centre, 0), chooseLabelHit(centre, base))
+        assertEquals(LabelHitChoice(LabelRay.Base, 0), chooseLabelHit(emptyList(), base))
+        assertEquals(
+            LabelHitChoice(LabelRay.Base, 1),
+            chooseLabelHit(centre, base + hit(LabelSurface.Depth, 0.75f)),
+        )
+    }
+
+    @Test
+    fun `the nearest hit of a kind wins whatever the list order, out of range ignored`() {
+        val centre = listOf(
+            hit(LabelSurface.Depth, 0.05f), // inside the minimum focus distance
+            hit(LabelSurface.Depth, 3.5f),
+            hit(LabelSurface.Depth, 1.4f),
+            hit(LabelSurface.Depth, 6f), // beyond useful tracking
+        )
+
+        assertEquals(LabelHitChoice(LabelRay.Centre, 2), chooseLabelHit(centre, emptyList()))
+        assertEquals(
+            null,
+            chooseLabelHit(listOf(hit(LabelSurface.Depth, 0.05f), hit(LabelSurface.Depth, 6f)), emptyList()),
+        )
+    }
+}
+
+class ReanchorToleranceTest {
+    @Test
+    fun `hit jitter of a still object keeps the anchor`() {
+        assertEquals(
+            true,
+            isWithinReanchorTolerance(floatArrayOf(0f, 0f, -1f), floatArrayOf(0.02f, 0.01f, -1.02f)),
+        )
+    }
+
+    @Test
+    fun `an object moved by ten centimetres is re-anchored`() {
+        assertEquals(
+            false,
+            isWithinReanchorTolerance(floatArrayOf(0f, 0f, -1f), floatArrayOf(0.1f, 0f, -1f)),
+        )
     }
 }

@@ -248,6 +248,61 @@ class CalloutLayoutTest {
         assertTrue(degenerate.y.isFinite())
     }
 
+    @Test
+    fun `the helmet and the control card both fit a portrait scene from the camera home`() {
+        // The demo turns `autoCenterContent` off, so these constants are the whole framing. With
+        // the previous ones the control card came out wider than a portrait viewport and its
+        // button fell off the bottom of the scene — visible only on a device, hence this test.
+        // One check covers every display: the card's world size no longer depends on the density.
+        val scale = CalloutLayout.DEFAULT_CARD_SCALE * CalloutLayout.CONTROL_CARD_SCALE_FACTOR
+        val halfWidth = CalloutLayout.cardWorldWidth(scale) / 2f
+        val halfHeight = CalloutLayout.cardWorldHeight(scale) / 2f
+        val card = CalloutLayout.CONTROL_CARD_POSITION
+
+        val cardTopLeft = project(Position(card.x - halfWidth, card.y + halfHeight, card.z))
+        val cardBottomRight = project(Position(card.x + halfWidth, card.y - halfHeight, card.z))
+        val helmetHalf = CalloutLayout.MODEL_SIZE_METERS / 2f
+        val helmetTop = project(Position(0f, helmetHalf, 0f))
+        val helmetBottom = project(Position(0f, -helmetHalf, 0f))
+
+        assertTrue(
+            "control card spans ±${cardBottomRight.first} of the width",
+            cardBottomRight.first < 1f - EDGE_MARGIN && cardTopLeft.first > -1f + EDGE_MARGIN,
+        )
+        assertTrue(
+            "control card bottom is at ${cardBottomRight.second}",
+            cardBottomRight.second > -1f + EDGE_MARGIN,
+        )
+        assertTrue("helmet top is at ${helmetTop.second}", helmetTop.second < 1f - EDGE_MARGIN)
+        assertTrue(
+            "control card top ${cardTopLeft.second} covers the helmet, whose chin is at " +
+                "${helmetBottom.second}",
+            cardTopLeft.second < helmetBottom.second,
+        )
+    }
+
+    // ── Card size ────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a card is the same size in the world on every display`() {
+        // What a ViewNode does with the rate: quad size = view size in px / pxPerUnits.
+        val worldWidths = DENSITIES.map { density ->
+            val widthPx = CalloutLayout.CARD_WIDTH_DP * density
+            widthPx / CalloutLayout.viewNodePxPerUnit(density) * CalloutLayout.DEFAULT_CARD_SCALE
+        }
+
+        worldWidths.forEach { width ->
+            assertEquals(CalloutLayout.cardWorldWidth(CalloutLayout.DEFAULT_CARD_SCALE), width, eps)
+        }
+    }
+
+    @Test
+    fun `the anchor density keeps ViewNode's default rate`() {
+        // 250 px/m is ViewNode's default: at 420 dpi a card is the size it was before the rate
+        // followed the density.
+        assertEquals(250f, CalloutLayout.viewNodePxPerUnit(CalloutLayout.FRAMING_DENSITY), eps)
+    }
+
     // ── The scene's own invariants ───────────────────────────────────────────────────────
 
     @Test
@@ -307,4 +362,51 @@ class CalloutLayoutTest {
     }
 
     private fun radius(position: Position) = hypot(position.x, position.z)
+
+    /**
+     * Projects a world point through the camera home into normalised device coordinates: `x` and
+     * `y` both run from `-1` to `1` across the viewport, `y` up.
+     *
+     * A plain pinhole — SceneView's default lens ([LENS_FOCAL_LENGTH_MM] on a
+     * [SENSOR_HEIGHT_MM]-tall sensor fixes the *vertical* field of view), so a portrait viewport
+     * is the narrow case. The eye and the target share `x = 0`, which leaves the camera's right
+     * axis on world `+X`.
+     */
+    private fun project(point: Position): Pair<Float, Float> {
+        val eye = CalloutLayout.cameraHomePosition()
+        val target = CalloutLayout.targetPosition()
+        val length = hypot(target.y - eye.y, target.z - eye.z)
+        val forwardY = (target.y - eye.y) / length
+        val forwardZ = (target.z - eye.z) / length
+
+        val dy = point.y - eye.y
+        val dz = point.z - eye.z
+        val depth = dy * forwardY + dz * forwardZ
+        // up = right × forward, with right = +X.
+        val up = dy * -forwardZ + dz * forwardY
+        val halfHeight = depth * SENSOR_HEIGHT_MM / 2f / LENS_FOCAL_LENGTH_MM
+        return (point.x - eye.x) / (halfHeight * PORTRAIT_ASPECT) to up / halfHeight
+    }
+
+    private companion object {
+        /** `CameraNode`'s default focal length. */
+        const val LENS_FOCAL_LENGTH_MM = 28f
+
+        /** Filament's `setLensProjection` sensor height. */
+        const val SENSOR_HEIGHT_MM = 24f
+
+        /**
+         * Width over height of the scene band on a phone held upright. Measured, not assumed: the
+         * demo's `SurfaceView` is 1280 x 1968 px on the Pixel 7a emulator (1280 x 2856, 480 dpi),
+         * between the top bar and the dock. Landscape is not covered: the band is then a short
+         * strip and the scene is framed by its height.
+         */
+        const val PORTRAIT_ASPECT = 0.65f
+
+        /** Fraction of the half-viewport kept clear at every edge. */
+        const val EDGE_MARGIN = 0.05f
+
+        /** mdpi up to the densest phones shipping. */
+        val DENSITIES = listOf(1f, 2f, 2.625f, 3f, 3.5f)
+    }
 }
