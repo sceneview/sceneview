@@ -20,6 +20,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.Viewport
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
@@ -43,7 +44,6 @@ import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setTexture
-import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -250,7 +250,7 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
     engine.destroySkybox(skybox)
     engine.destroyColorGrading(colorGrading)
     instances.forEach(materialLoader::destroyMaterialInstance)
-    engine.safeDestroyTexture(texture)
+    EngineDestroyQueue.of(engine).enqueueTexture(texture)
 }
 
 /** The off-screen warm-up's size: past bloom's seven halvings, nothing more. */
@@ -269,9 +269,9 @@ internal class ReplayLayers(
     private val materialLoader: MaterialLoader,
     private val media: RerunReplayMedia,
     /** The dimensions' ink, ARGB: the floor outline's colour, so they read as part of the plan. */
-    @ColorInt private val measureInk: Int = FALLBACK_POINT_COLOR,
+    @ColorInt private var measureInk: Int = FALLBACK_POINT_COLOR,
     /** The halo around the dimensions' figures, ARGB: the stage's ground, so they stay legible. */
-    @ColorInt private val measureHalo: Int = android.graphics.Color.TRANSPARENT,
+    @ColorInt private var measureHalo: Int = android.graphics.Color.TRANSPARENT,
     /**
      * The dense cloud drawn here: the scan's own, or a cut of it — the dollhouse's, without its
      * ceiling ([io.github.sceneview.demo.demos.internal.RoomDollhouse.cropDense]) — drawn whole.
@@ -463,6 +463,18 @@ internal class ReplayLayers(
     }
 
     /**
+     * The dimensions take another [ink] and [halo] — the theme changed. Their atlas is redrawn at
+     * the next [sync], by the swap that already follows a change of figures: the layers, their
+     * nodes and every other texture stay as they are (#4330).
+     */
+    fun setMeasureColors(@ColorInt ink: Int, @ColorInt halo: Int) {
+        if (ink == measureInk && halo == measureHalo) return
+        measureInk = ink
+        measureHalo = halo
+        measureLabels = null
+    }
+
+    /**
      * The dimensions' atlas: [labels]' width on row 0 and depth on row 1, in the ink with a halo
      * of the ground, and the solid strip the lines sample.
      */
@@ -495,7 +507,7 @@ internal class ReplayLayers(
         measureMaterial.setTexture(texture, clamp)
         if (measureTexture !== atlas) {
             textures -= measureTexture
-            engine.safeDestroyTexture(measureTexture)
+            retire(measureTexture)
         }
         measureTexture = texture
     }
@@ -604,7 +616,7 @@ internal class ReplayLayers(
         while (iterator.hasNext() && frameTextures.size > FRAME_TEXTURE_CACHE) {
             val texture = iterator.next()
             if (texture in bound) continue
-            engine.safeDestroyTexture(texture)
+            retire(texture)
             iterator.remove()
         }
     }
@@ -618,12 +630,19 @@ internal class ReplayLayers(
     /** Material instances and textures, once the nodes are gone. */
     fun destroy() {
         materials.forEach { materialLoader.destroyMaterialInstance(it) }
-        textures.forEach { engine.safeDestroyTexture(it) }
-        frameTextures.values.forEach { engine.safeDestroyTexture(it) }
+        textures.forEach(::retire)
+        frameTextures.values.forEach(::retire)
         materials.clear()
         textures.clear()
         frameTextures.clear()
     }
+
+    /**
+     * Frees [texture] a few rendered frames from now, through the library's [EngineDestroyQueue],
+     * as `ImageNode` frees its own: these layers destroy no texture in the call that rebinds or
+     * destroys the material instance that read it.
+     */
+    private fun retire(texture: Texture) = EngineDestroyQueue.of(engine).enqueueTexture(texture)
 
     private class PhotoSlot(val node: DebugLayerNode, val material: MaterialInstance) {
         var texture: Texture? = null
