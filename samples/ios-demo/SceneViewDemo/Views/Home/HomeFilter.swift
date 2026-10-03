@@ -75,13 +75,68 @@ private extension HomeSearchEntry {
     }
 }
 
+/// Pure Home decisions, in display priority: hero, Featured banners, then fresh ids.
+/// Mirrors Android's `HomeTopSections`; each group preserves order and owns an id once.
+struct HomeTopSections: Equatable {
+    let hero: [String]
+    let featured: [String]
+    let whatsNew: [String]
+    /// iOS's What's new row has no picture: its metadata describes all fresh demos,
+    /// even when every fresh picture has already been shown in an earlier group.
+    let freshCount: Int
+
+    init(hero: [String], featured: [String], fresh: [String]) {
+        var shown = Set<String>()
+        func notShownYet(_ ids: [String]) -> [String] {
+            ids.filter { shown.insert($0).inserted }
+        }
+        self.hero = notShownYet(hero)
+        self.featured = notShownYet(featured)
+        self.whatsNew = notShownYet(fresh)
+        self.freshCount = Set(fresh).count
+    }
+
+    func catalogue(_ entries: [HomeSearchEntry], selection: HomeSelection) -> [HomeSearchEntry] {
+        let matches = filterDemos(entries, section: selection.section, query: selection.query,
+                                  whatsNew: selection.whatsNew)
+        return selection.isFiltered ? matches : matches.filter { !featured.contains($0.id) }
+    }
+
+    func showsWhatsNew(searching: Bool) -> Bool { !searching && freshCount > 0 }
+}
+
+/// Chip and search state, with the same second-tap escape for every chip.
+struct HomeSelection: Equatable {
+    var section: DemoSection? = nil
+    var whatsNew = false
+    var query = ""
+
+    var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var isFiltered: Bool { section != nil || whatsNew || searching }
+
+    mutating func select(_ section: DemoSection?) {
+        self.section = !whatsNew && self.section == section ? nil : section
+        whatsNew = false
+    }
+
+    mutating func toggleWhatsNew() {
+        section = nil
+        whatsNew.toggle()
+    }
+
+    mutating func clear() { self = HomeSelection() }
+
+    /// Always names the whole catalogue, including the demos shown as banners.
+    func showAllCount(total: Int) -> Int? { isFiltered ? total : nil }
+}
+
 /// Editorial choices of the Showcase home that are not a property of any one
 /// scene (#3907): the "Featured" group and the demos kept off the home list.
 enum HomeCatalogue {
     /// The "Featured" group under the hero, in priority order — the one list
     /// both platforms share since the samples audit (step 0, § 5): only cards
-    /// present and current on Android and iOS. Cosmos is the hero, Placement
-    /// the single AR entry, then Models, Rerun and Materials.
+    /// present and current on Android and iOS. HomeTopSections removes the
+    /// hero before these candidates become banners.
     static let featuredIds: [String] = [
         "cosmos",
         "ar-placement",
