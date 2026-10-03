@@ -1,9 +1,10 @@
 package io.github.sceneview.web
 
 import kotlin.math.PI
-import kotlin.math.tan
+import kotlin.math.sin
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Pins the `fitToModels(margin)` distance math ([ContentCentering.fitDistance], #2946):
@@ -57,14 +58,33 @@ class FitDistanceTest {
     @Test
     fun narrowerFovMovesTheCameraBack() {
         val historical = ContentCentering.fitDistance(2.0, 1.0)
-        val ratio = tan(22.5 * PI / 180.0) / tan(11.25 * PI / 180.0)
+        val ratio = sin(22.5 * PI / 180.0) / sin(11.25 * PI / 180.0)
         assertEquals(historical * ratio, ContentCentering.fitDistance(2.0, 1.0, 22.5), 1e-9)
     }
 
     @Test
     fun widerFovMovesTheCameraCloser() {
         val historical = ContentCentering.fitDistance(2.0, 1.0)
-        val ratio = tan(22.5 * PI / 180.0) / tan(45.0 * PI / 180.0)
+        val ratio = sin(22.5 * PI / 180.0) / sin(45.0 * PI / 180.0)
         assertEquals(historical * ratio, ContentCentering.fitDistance(2.0, 1.0, 90.0), 1e-9)
+    }
+
+    @Test
+    fun wideFovKeepsTheContentBeyondItsFittedNearPlane() {
+        // At 90° the camera sits 1.35 radii out: the front of the bounding sphere is
+        // 0.35 radii away, past the fitted near plane (0.1 radius). A tan-based fit
+        // put it at 0.035 radius, in front of that plane.
+        val radius = 2.0
+        val distance = ContentCentering.fitDistance(radius, 1.0, 90.0)
+        val near = ContentCentering.clipPlanes(radius, distance)[0]
+        assertTrue(distance - radius > near, "front=${distance - radius} near=$near")
+    }
+
+    @Test
+    fun invalidFovKeepsHistoricalFit() {
+        val historical = ContentCentering.fitDistance(2.0, 1.0)
+        for (fov in listOf(0.0, -10.0, 180.0, Double.NaN, Double.POSITIVE_INFINITY)) {
+            assertEquals(historical, ContentCentering.fitDistance(2.0, 1.0, fov), 0.0, "fov=$fov")
+        }
     }
 }

@@ -1,7 +1,7 @@
 package io.github.sceneview.web
 
 import kotlin.math.PI
-import kotlin.math.tan
+import kotlin.math.sin
 
 /**
  * Pure, renderer-agnostic bounding-box math for the library-level
@@ -22,7 +22,9 @@ internal object ContentCentering {
      * Resolve explicit camera DSL values against the current automatic clip
      * planes. Invalid explicit values are ignored independently; an explicit
      * far plane is valid only when it is finite and beyond the effective near
-     * plane (explicit when valid, otherwise automatic).
+     * plane (explicit when valid, otherwise automatic). An explicit near plane
+     * at or beyond the automatic far plane pushes the far plane out by the
+     * default far / near ratio, so the frustum is never inverted.
      */
     fun resolveProjection(
         explicitFov: Double?,
@@ -31,9 +33,10 @@ internal object ContentCentering {
         autoNear: Double,
         autoFar: Double,
     ): Projection {
-        val fov = explicitFov?.takeIf { it.isFinite() && it > 0.0 && it < 180.0 } ?: 45.0
+        val fov = explicitFov?.takeIf { it > 0.0 && it < 180.0 } ?: DEFAULT_FOV
         val near = explicitNear?.takeIf { it.isFinite() && it > 0.0 } ?: autoNear
-        val far = explicitFar?.takeIf { it.isFinite() && it > near } ?: autoFar
+        val far = explicitFar?.takeIf { it.isFinite() && it > near }
+            ?: if (autoFar > near) autoFar else near * (DEFAULT_FAR / DEFAULT_NEAR)
         return Projection(fov, near, far)
     }
 
@@ -192,16 +195,21 @@ internal object ContentCentering {
     }
 
     /**
-     * The fitted orbit distance adjusted for a vertical [fovDegrees], keeping
-     * content at the same fraction of the viewport as the historical 45° fit.
+     * The fitted orbit distance adjusted for a vertical [fovDegrees]: the
+     * content's bounding sphere keeps the share of the field of view it has in
+     * the historical 45° fit. A sphere of radius `r` seen from `d` spans
+     * `2 × asin(r / d)`, so the distance scales with `1 / sin(fov / 2)` — a
+     * wide lens comes closer without ever cutting into the sphere the way a
+     * `tan` (flat-target) fit does. An invalid [fovDegrees] keeps the 45° fit.
      */
     fun fitDistance(radius: Double, margin: Double, fovDegrees: Double): Double {
         val distance = fitDistance(radius, margin)
-        if (fovDegrees == 45.0 || !(fovDegrees > 0.0 && fovDegrees < 180.0) || !fovDegrees.isFinite()) {
-            return distance
-        }
-        return distance * tan(22.5 * PI / 180.0) / tan(fovDegrees / 2.0 * PI / 180.0)
+        if (fovDegrees == DEFAULT_FOV || !(fovDegrees > 0.0 && fovDegrees < 180.0)) return distance
+        return distance * sin(DEFAULT_FOV / 2.0 * PI / 180.0) / sin(fovDegrees / 2.0 * PI / 180.0)
     }
+
+    /** Vertical field of view, in degrees, of a camera that sets none. */
+    const val DEFAULT_FOV: Double = 45.0
 
     /** Near clip plane of a scene the fit never ran on (metre-scale content). */
     const val DEFAULT_NEAR: Double = 0.1

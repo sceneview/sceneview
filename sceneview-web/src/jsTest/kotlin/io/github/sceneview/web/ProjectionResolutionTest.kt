@@ -2,6 +2,7 @@ package io.github.sceneview.web
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class ProjectionResolutionTest {
 
@@ -47,7 +48,7 @@ class ProjectionResolutionTest {
 
     @Test
     fun invalidFovIsIgnored() {
-        for (fov in listOf(0.0, 180.0, Double.NaN)) {
+        for (fov in listOf(0.0, -1.0, 180.0, Double.NaN, Double.POSITIVE_INFINITY)) {
             assertEquals(45.0, resolve(fov = fov).fovDegrees, "fov=$fov")
         }
     }
@@ -64,6 +65,13 @@ class ProjectionResolutionTest {
         assertEquals(autoFar, resolve(far = autoNear).farPlane)
         assertEquals(autoFar, resolve(near = 2.0, far = 2.0).farPlane)
         assertEquals(autoFar, resolve(near = 2.0, far = 1.0).farPlane)
+    }
+
+    @Test
+    fun explicitNearBeyondAutomaticFarNeverInvertsTheFrustum() {
+        val projection = resolve(near = 5000.0)
+        assertEquals(5000.0, projection.nearPlane)
+        assertTrue(projection.farPlane > projection.nearPlane, "far=${projection.farPlane}")
     }
 
     @Test
