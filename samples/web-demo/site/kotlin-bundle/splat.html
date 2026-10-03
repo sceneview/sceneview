@@ -3,36 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SceneView Kotlin/JS bundle — SplatNode smoke test</title>
+  <title>SceneView Kotlin/JS bundle — Anisotropic Gaussian splats</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #000; }
+    /* DESIGN.md surface tokens; theme can be fixed for comparison captures. */
+    :root { --surface: #ffffff; color-scheme: light; }
+    :root[data-theme="dark"] { --surface: #0D1117; color-scheme: dark; }
+    html, body { margin: 0; padding: 0; background: var(--surface); }
     #scene-canvas { width: 640px; height: 480px; display: block; }
   </style>
 </head>
 <body>
   <!--
-    SplatNode (#2646 P2) harness for the COMPILED Kotlin/JS bundle
-    (`sceneview-web.js`) — the real npm/CDN artifact, NOT the hand-authored
-    `js/sceneview.js`. Staged alongside a version-matched `filament.js`/`.wasm`
-    by `.claude/scripts/web-bundle-smoke.sh`. Driven by
-    `tests/splat-bundle.spec.ts`, which asserts `addSplatNode(url)` resolves,
-    the rainbow-sphere splat cloud renders non-blank, and the intra-batch alpha
-    blend stays stable across a camera orbit (the P1b gate, ported to web).
-
-    The splat asset is the byte-identical `rainbow_sphere.ply` the Android
-    splat-preview demo ships (8000 gaussians), served from `../models/splats/`.
+    Anisotropic SplatNode (#4046) demo against the compiled Kotlin/JS bundle.
+    Default: the cropped 233808-splat Niantic raccoon scan, identical to Android.
+    ?asset=rainbow keeps the local 8000-splat smoke fixture; ?theme=light|dark
+    fixes the background for captures. ?assetUrl=... overrides the local asset URL.
+    The raccoon is neither in git nor deployed: `bash tools/fetch-assets.sh --scope web-test`
+    puts it next to this page (assets/manifest.json). `.claude/scripts/web-bundle-smoke.sh`
+    stages the bundle and its version-matched filament.js/.wasm here too.
   -->
   <canvas id="scene-canvas" width="640" height="480"></canvas>
 
   <script src="./filament.js"></script>
   <script src="./sceneview-web.js"></script>
   <script>
+    var params = new URLSearchParams(window.location.search);
+    var theme = params.get('theme') ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+    var asset = params.get('asset') || 'raccoon';
+    var assetUrl = params.get('assetUrl') || (asset === 'rainbow'
+      ? '../models/splats/rainbow_sphere.ply'
+      : './raccoon_family.spz');
+
     // The spec polls these globals — same shape as the base kotlin-bundle
     // fixture so the two share the helper assertions.
     window.__smoke = {
       status: 'pending',      // pending | resolved | rejected | no-api
       error: null,
       version: null,
+      asset: asset,
+      theme: theme,
       splatLoaded: false,     // addSplatNode resolved and the node is in the scene
     };
     window.__initErrors = [];
@@ -68,13 +79,22 @@
             window.__smoke.status = 'no-splat-api';
             return;
           }
-          // No environment/IBL needed — splats are unlit, self-coloured.
-          return sv.addSplatNode('../models/splats/rainbow_sphere.ply');
+          // DESIGN.md surface colours; no IBL is needed for unlit splats.
+          if (theme === 'dark') sv.setBackgroundColor(13 / 255, 17 / 255, 23 / 255);
+          else sv.setBackgroundColor(1, 1, 1);
+          return sv.addSplatNode(assetUrl);
         })
         .then(function (handle) {
           if (handle) {
             window.__smoke.splatLoaded = true;
             window.__splat = handle;
+            if (asset !== 'rainbow') {
+              // The scan's centroid in x/z; in y the grass pulls the centroid down, so
+              // the target sits a little higher and the whole stump — raccoon heads
+              // included — fits the 4:3 canvas at the 45° vertical FOV.
+              window.__sv.setCameraTarget(0.0195114375, 0.14, 0.0200965739);
+              window.__sv.setCameraOrbit(0, Math.PI / 2 - 0.06241, 1.0);
+            }
           }
         })
         .catch(function (err) {

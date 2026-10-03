@@ -900,8 +900,11 @@ current Niantic format) are all read, in pure Kotlin on every target.
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
 `SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
-cloud. The web still draws isotropic billboards (anisotropic port: #4046); the painter's sort re-runs on camera motion automatically (the web
-node feeds it the live camera position). iOS is tracked separately under #2646.
+cloud. Splats are oriented ellipses with the Android projection (#4046) and display the stored
+colour on the bundle's Filmic view; a cloud holds at most 2^24 splats (above that the promise
+rejects / `onError` fires with the limit in the message). The painter's sort re-runs on camera
+motion automatically (the web node feeds it the live camera position). iOS is tracked
+separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
