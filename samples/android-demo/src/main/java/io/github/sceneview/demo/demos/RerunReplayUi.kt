@@ -287,9 +287,11 @@ internal fun RerunFilmstripCard(
     caption: String,
     modifier: Modifier = Modifier,
     title: String = ScanCopy.SAMPLE_TITLE,
+    header: (@Composable () -> Unit)? = null,
 ) {
     val duration = media.trace.duration
     OverlayCard(testTag = RERUN_FILMSTRIP_TAG, modifier = modifier) {
+        header?.invoke()
         Row(verticalAlignment = Alignment.CenterVertically) {
             val playing = session.playing && !session.live
             IconButton(

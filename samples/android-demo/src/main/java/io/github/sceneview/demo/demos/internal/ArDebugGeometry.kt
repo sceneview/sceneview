@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
@@ -666,4 +667,88 @@ object ArDebugGeometry {
         for (anchor in frame.anchors) add(anchor.pose.x, anchor.pose.y, anchor.pose.z)
         return if (any) b else null
     }
+
+    /**
+     * Bounds of what a finished recording shows: [contentBounds], grown to the body of its point
+     * map and of its dense cloud ([dense], flat xyz). The clouds are measured by [robustBounds],
+     * so the room they draw is framed whole and a stray point a street away is not.
+     */
+    fun subjectBounds(frame: ArDebugFrame, dense: FloatArray? = null): FloatArray? {
+        var bounds = contentBounds(frame)
+        for (cloud in listOfNotNull(frame.mapPoints, dense)) {
+            val body = robustBounds(cloud) ?: continue
+            bounds = bounds?.let { b ->
+                FloatArray(6) { if (it < 3) min(b[it], body[it]) else max(b[it], body[it]) }
+            } ?: body
+        }
+        return bounds
+    }
+
+    /**
+     * The box holding the body of a point cloud ([positions], flat xyz): on each axis, from its
+     * [ROBUST_TRIM] quantile to the opposite one, read on at most [ROBUST_SAMPLES] points spread
+     * across the cloud. `null` under [ROBUST_MIN_POINTS] points — too few to tell a body from
+     * its strays.
+     */
+    fun robustBounds(positions: FloatArray): FloatArray? {
+        val count = positions.size / 3
+        if (count < ROBUST_MIN_POINTS) return null
+        val samples = min(count, ROBUST_SAMPLES)
+        val axis = FloatArray(samples)
+        val out = FloatArray(6)
+        for (a in 0 until 3) {
+            for (i in 0 until samples) {
+                val index = (i.toLong() * count / samples).toInt()
+                axis[i] = positions[index * 3 + a]
+            }
+            axis.sort()
+            val cut = (samples * ROBUST_TRIM).toInt()
+            out[a] = axis[cut]
+            out[a + 3] = axis[samples - 1 - cut]
+        }
+        return out.takeIf { box -> box.all { it.isFinite() } }
+    }
+
+    /**
+     * The heading of a room's walls about +Y, in degrees within ±45: the direction its vertical
+     * [planes] run along, each weighing as much as it is long — walls a quarter-turn apart agree,
+     * which is what makes a room a rectangle. `null` when no wall is long enough to tell.
+     */
+    fun roomYawDegrees(planes: List<DebugPlane>): Float? {
+        var sumSin = 0.0
+        var sumCos = 0.0
+        for (plane in planes) {
+            if (plane.kind != DebugPlaneKind.Wall || plane.vertexCount < 2) continue
+            // A wall seen from above is a segment: its two farthest vertices give its run.
+            var best = 0f
+            var dx = 0f
+            var dz = 0f
+            for (i in 0 until plane.vertexCount) for (j in i + 1 until plane.vertexCount) {
+                val x = plane.polygon[j * 3] - plane.polygon[i * 3]
+                val z = plane.polygon[j * 3 + 2] - plane.polygon[i * 3 + 2]
+                val length = x * x + z * z
+                if (length > best) {
+                    best = length
+                    dx = x
+                    dz = z
+                }
+            }
+            val length = sqrt(best)
+            if (length < ROOM_YAW_MIN_WALL_M) continue
+            // Four times the angle folds the wall's two directions and its neighbours' onto one.
+            val folded = 4.0 * atan2(dx.toDouble(), dz.toDouble())
+            sumSin += length * sin(folded)
+            sumCos += length * cos(folded)
+        }
+        if (sumSin == 0.0 && sumCos == 0.0) return null
+        return Math.toDegrees(atan2(sumSin, sumCos) / 4.0).toFloat()
+    }
+
+    /** The share of a cloud left out at each end of an axis by [robustBounds]. */
+    const val ROBUST_TRIM = 0.04f
+    const val ROBUST_SAMPLES = 4096
+    const val ROBUST_MIN_POINTS = 32
+
+    /** A wall shorter than this, seen from above, has no heading worth squaring a map with. */
+    const val ROOM_YAW_MIN_WALL_M = 0.5f
 }

@@ -3,8 +3,12 @@
      `ArRerunFragment.kt`). Android's resource merger
      fans every `res/values/*.xml` file in, so `R.string.demo_ar_rerun_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
+     this file or `strings.xml` — see #1870.
+
+     The name says what the user does — scan a room, then look at it again in 3D — not the
+     tool behind it (#4306). The demo id, the string keys, the `rerun` mode key and the
+     `sceneview://demo/ar-rerun` deep link keep their names: links and analytics stay valid. -->
 <resources>
-    <string name="demo_ar_rerun_title">Rerun AR Replay</string>
-    <string name="demo_ar_rerun_subtitle">Watch a real AR session rebuild itself in 3D</string>
+    <string name="demo_ar_rerun_title">Room Scan</string>
+    <string name="demo_ar_rerun_subtitle">Scan your room, then replay it in 3D</string>
 </resources>

@@ -109,6 +109,7 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toLinearSpace
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.MeshNode
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberModelInstance
@@ -572,9 +573,9 @@ private class ArDebugLayers(engine: Engine, materials: Map<DebugLayer, MaterialI
         }
 }
 
-/** Grid extent for [frame]: the content bounds snapped to the grid, so it never crawls. */
-private fun stageBoundsOf(frame: ArDebugFrame): FloatArray {
-    val bounds = ArDebugGeometry.contentBounds(frame) ?: floatArrayOf(-1f, 0f, -2f, 1f, 0f, 0.5f)
+/** Grid extent for the framed [subject] bounds, snapped to the grid so it never crawls. */
+private fun stageBoundsOf(subject: FloatArray?): FloatArray {
+    val bounds = subject ?: floatArrayOf(-1f, 0f, -2f, 1f, 0f, 0.5f)
     val cell = ArDebugGeometry.GRID_CELL_M
     return floatArrayOf(
         floor(bounds[0] / cell) * cell, 0f, floor(bounds[2] / cell) * cell,
@@ -587,6 +588,9 @@ private fun stageBoundsOf(frame: ArDebugFrame): FloatArray {
  *
  * [compact] is the picture-in-picture: a lower frame rate, and no touch (the card over it takes
  * the tap that opens the full view).
+ *
+ * [surface] is the room's meshed model: once built it shares this stage and this camera with the
+ * points, and takes their place while it is [ReplaySurface.shown] — same view, another reading.
  *
  * [onShown] fires once, when the session's content has been on screen for a few rendered frames
  * — textures uploaded, nothing half-drawn — so a caller can hold its cover and chrome until then.
@@ -601,10 +605,13 @@ internal fun ArDebugSceneView(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     replay: RerunReplayMedia? = null,
+    surface: ReplaySurface? = null,
     onShown: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val shown by rememberUpdatedState(onShown)
+    // The room's surface, when it is the one shown: it stands in for the points and the photos.
+    val solid by rememberUpdatedState(surface?.takeIf { it.shown })
     // The ground and palette of the stage this view is drawn on (#4080): the dark stage under
     // media chrome, the light one on a themed stage in light theme.
     val chrome = LocalStageChrome.current
@@ -707,33 +714,55 @@ internal fun ArDebugSceneView(
                 } else {
                     frame
                 }
-                val bounds = ArDebugGeometry.contentBounds(whole)
+                val finished = replay != null && !replay.growing
+                // A finished recording is measured once, clouds included, and seen from the side
+                // it was scanned from; a session still growing is framed on what it has so far.
+                val subject = if (finished) {
+                    clock.subject?.takeIf { clock.subjectFor === whole }
+                        ?: SceneSubject.of(whole, replay?.dense?.cloud?.positions).also {
+                            clock.subject = it
+                            clock.subjectFor = whole
+                        }
+                } else {
+                    SceneSubject(ArDebugGeometry.contentBounds(whole))
+                }
+                // A surface built elsewhere than this session's own world is framed on its own.
+                val bounds = solid?.takeIf { !it.aligned }?.bounds ?: subject.bounds
+                val floorY = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
+                orbit.roomYawDegrees = subject.roomYawDegrees
+                val firstContent = !orbit.hasFramedContent && bounds != null
+                if (firstContent) {
+                    subject.frontAzimuth?.let { orbit.frontAzimuth = it }
+                    // Turns the automatic framing to the room's good side before it is first shown.
+                    orbit.recenter()
+                }
                 val home = ArDebugFraming.home(
                     bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
                     elevationDegrees = orbit.homeElevation,
-                    margin = if (replay != null) ArDebugFraming.REPLAY_MARGIN else ArDebugFraming.HOME_MARGIN,
+                    band = orbit.band,
+                    fill = if (finished) 1f else ArDebugFraming.GROWING_FILL,
                 )
                 if (orbit.following) orbit.home = home
-                if (!orbit.hasFramedContent && bounds != null) {
+                orbit.limits = ArDebugFraming.limits(bounds, home, floorY)
+                if (firstContent) {
                     orbit.hasFramedContent = true
-                    val intro = replay != null && !replay.growing && orbit.drift
-                    if (intro) orbit.playIntro(ReplayIntro.startFor(home), held = true) else orbit.snapTo(home)
+                    if (finished && orbit.drift) orbit.playIntro(ReplayIntro.startFor(home), held = true) else orbit.snapTo(home)
                 }
 
                 val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)
-                val floorY = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
                 // The picture-in-picture packs the room into a few hundred pixels: full-size points
                 // would read as noise there, so they shrink while lines keep their weight.
                 val pointStyle = if (compact) ArDebugStyle(style.metresPerPixel * PIP_POINT_SCALE) else style
-                layers.sync(frame, style, pointStyle, stageBoundsOf(whole), floorY, session::isVisible, replayLayers)
+                val visible = { group: DebugGroup -> session.isVisible(group) && ReplaySurface.keeps(solid, group) }
+                layers.sync(frame, style, pointStyle, stageBoundsOf(bounds), floorY, visible, replayLayers)
                 replayLayers?.sync(
                     frame, pointStyle, floorY,
                     ReplayVisibility(
-                        planes = session.isVisible(DebugGroup.Planes),
-                        points = session.isVisible(DebugGroup.Points),
-                        anchors = session.isVisible(DebugGroup.Anchors),
-                        trail = session.isVisible(DebugGroup.Trail),
-                        measure = !compact,
+                        planes = visible(DebugGroup.Planes),
+                        points = visible(DebugGroup.Points),
+                        anchors = visible(DebugGroup.Anchors),
+                        trail = visible(DebugGroup.Trail),
+                        measure = !compact && solid == null,
                     ),
                     eye = CameraRig.eye(orbit.pose).let { Vec3(it.x, it.y, it.z) },
                 )
@@ -767,7 +796,9 @@ internal fun ArDebugSceneView(
                     replayLayers?.nodes?.forEach { addChildNode(it) }
                 },
             )
-            if (session.isVisible(DebugGroup.Anchors)) {
+            // The room in its own world space, metres, Y up: the same stage as the points it replaces.
+            surface?.let { ModelNode(modelInstance = it.instance, autoAnimate = false, isVisible = it.shown) }
+            if (session.isVisible(DebugGroup.Anchors) && ReplaySurface.keeps(solid, DebugGroup.Anchors)) {
                 anchors.forEach { anchor ->
                     // One instance per anchor: a Filament model instance can only hang off one node.
                     key(anchor.id) {
@@ -787,6 +818,53 @@ internal fun ArDebugSceneView(
     }
 }
 
+/**
+ * The room's meshed model in the replay's stage: its [instance], the [bounds] of its mesh, and
+ * whether it is the reading [shown] — the surface — or waits behind the points.
+ *
+ * [aligned] is `true` for a model built from the session on screen, which shares its world: the
+ * path and the anchors stay, walking through it. A model from elsewhere (QA's ray-cast room, on
+ * an emulator that cannot scan) stands alone and is framed on its own bounds.
+ */
+internal class ReplaySurface(
+    val instance: ModelInstance,
+    val bounds: FloatArray,
+    val aligned: Boolean,
+    val shown: Boolean,
+) {
+    companion object {
+        /** Whether [group] is still drawn while [surface] is the one shown (`null`: the points are). */
+        fun keeps(surface: ReplaySurface?, group: DebugGroup): Boolean = when {
+            surface == null || group == DebugGroup.Stage -> true
+            group == DebugGroup.Trail || group == DebugGroup.Anchors -> surface.aligned
+            else -> false
+        }
+    }
+}
+
+/**
+ * What the camera frames of a session: its [bounds], the side it is best seen from
+ * ([frontAzimuth], `null` while the path names none) and the heading of its walls
+ * ([roomYawDegrees], `null` without any).
+ */
+internal class SceneSubject(
+    val bounds: FloatArray?,
+    val frontAzimuth: Float? = null,
+    val roomYawDegrees: Float? = null,
+) {
+    companion object {
+        /** The subject of the finished recording [whole], with its [dense] cloud (flat xyz). */
+        fun of(whole: ArDebugFrame, dense: FloatArray?): SceneSubject {
+            val bounds = ArDebugGeometry.subjectBounds(whole, dense)
+            return SceneSubject(
+                bounds = bounds,
+                frontAzimuth = ArDebugFraming.frontAzimuth(bounds, whole.trail),
+                roomYawDegrees = ArDebugGeometry.roomYawDegrees(whole.planes),
+            )
+        }
+    }
+}
+
 /** Per-view frame bookkeeping, deliberately not Compose state: it changes every frame. */
 private class FrameClock {
     var lastNanos = 0L
@@ -798,6 +876,8 @@ private class FrameClock {
     var statsAtNanos = 0L
     var wholeFrame: ArDebugFrame? = null
     var wholeFor: ArDebugTrace? = null
+    var subject: SceneSubject? = null
+    var subjectFor: ArDebugFrame? = null
     var contentFrames = 0
     var shown = false
 

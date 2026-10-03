@@ -16,6 +16,8 @@ import io.github.sceneview.demo.demos.ARRerunDemo
  *
  * Samples step 0 added `ar-record-playback` as the Session MP4 mode (`?tab=session-mp4`):
  * the ARCore session recorder and its replay, next to the Rerun stream of a session.
+ *
+ * Shown as "Room Scan" since #4306; the id, the mode keys and the deep link are unchanged.
  */
 object ArRerunFragment : DemoFragment {
     val modes = listOf(
@@ -33,7 +35,8 @@ object ArRerunFragment : DemoFragment {
         addedIn = "4.0.1",
         updatedIn = "4.52.0",
         tags = setOf(
-            "ar", "rerun", "replay", "3d", "streaming", "pose", "plane", "point cloud", "debug",
+            "ar", "room", "scan", "mesh", "rerun", "replay", "3d", "streaming", "pose", "plane", "point cloud",
+            "debug",
             "recording", "playback", "session", "mp4",
         ),
     )

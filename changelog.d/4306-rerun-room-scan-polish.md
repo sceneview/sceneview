@@ -1,0 +1,5 @@
+<!-- category: Fixed -->
+- **Android demo: the Rerun sample is now "Room Scan", and its cameras keep the room in the picture ([#4306](https://github.com/sceneview/sceneview/issues/4306)).**
+  The 3D view frames the real bounds of the scan (path, planes, anchors and both point clouds, strays trimmed) into the part of the screen the controls leave free, in portrait and landscape. Left alone it sways gently in front of the room instead of turning all the way round it; the map squares itself with the walls; a pinch, a drag or a pan can no longer put the camera inside the cloud, under the floor or far away from the room; automatic moves are eased and take the shortest way round.
+  "Build 3D model" no longer opens a second screen: a full-width **Points | Surface** switch heads the timeline card and draws the mesh in the same view, under the same camera, with the `.glb` share button beside it.
+  The demo id (`ar-rerun`), its deep link and its mode keys are unchanged.
