@@ -163,12 +163,14 @@ final class DemoAnalyticsTests: XCTestCase {
 
     func testSampleOpenAndCloseWithDuration() {
         analytics.install(backend)
-        analytics.sampleOpened("cosmos", category: "View 3D", source: .push)
+        analytics.sampleOpened("cosmos", category: "view_3d", source: .push)
         clock.date.addTimeInterval(42.7)
         analytics.sampleClosed("cosmos")
         XCTAssertEqual(backend.calls.dropFirst().map { $0 }, [
             .log("screen_view", ["screen_name": "cosmos", "screen_class": "Sample"]),
-            .log("sample_open", ["sample_id": "cosmos", "category": "View 3D", "source": "push"]),
+            .log("sample_open", [
+                "sample_id": "cosmos", "entry_id": "cosmos", "category": "view_3d", "source": "push",
+            ]),
             .log("sample_close", ["sample_id": "cosmos", "duration_s": .int(42)]),
         ])
     }
@@ -208,13 +210,84 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(OutboundTarget.classify(URL(string: "https://sketchfab.com/3d-models/x")!), .other)
     }
 
-    func testCategoriesMatchAndroidKeys() {
-        XCTAssertEqual(DemoAnalytics.category(for: .view3d), "View 3D")
-        XCTAssertEqual(DemoAnalytics.category(for: .create), "Create & Record")
-        XCTAssertEqual(DemoAnalytics.category(for: .placeAR), "Place in AR")
-        XCTAssertEqual(DemoAnalytics.category(for: .understand), "Understand the World")
-        XCTAssertEqual(DemoAnalytics.category(for: .devTools), "Developer Tools")
+    @MainActor
+    func testCategoriesMatchAndroidSlugs() {
+        let expected: [DemoSection: String] = [
+            .view3d: "view_3d", .create: "create", .placeAR: "place_ar",
+            .understand: "understand", .devTools: "dev_tools",
+        ]
+        for section in Set(GeneratedScenes.all().map(\.section)) {
+            XCTAssertEqual(DemoAnalytics.category(for: section), expected[section])
+            XCTAssertNotEqual(DemoAnalytics.category(for: section), "unknown")
+        }
         XCTAssertEqual(DemoAnalytics.category(for: nil), "unknown")
+    }
+
+    func testSampleOpenEntryIdAndOptionalModeMatchAndroid() {
+        XCTAssertEqual(
+            AnalyticsEvent.sampleOpen(sampleId: "cosmos", entryId: "cosmos-old", category: "create",
+                                      source: .deeplink, mode: "spacetime").params,
+            ["sample_id": "cosmos", "entry_id": "cosmos-old", "category": "create",
+             "source": "deeplink", "mode": "spacetime"]
+        )
+        let withoutMode = AnalyticsEvent.sampleOpen(sampleId: "geometry", category: "create", source: .home).params
+        XCTAssertEqual(withoutMode["entry_id"], "geometry")
+        XCTAssertNil(withoutMode["mode"])
+
+        let longValue = String(repeating: "x", count: AnalyticsEvent.maxParamValueLength + 20)
+        let capped = AnalyticsEvent.sampleOpen(
+            sampleId: longValue, entryId: longValue, category: longValue,
+            source: .other, mode: longValue
+        )
+        for (key, value) in capped.params {
+            XCTAssertNotNil(key.range(of: "^[a-z][a-z0-9_]*$", options: .regularExpression))
+            if case .string(let string) = value {
+                XCTAssertLessThanOrEqual(string.count, AnalyticsEvent.maxParamValueLength)
+            }
+        }
+    }
+
+    @MainActor
+    func testUmbrellaModesAndModeInteractionUseSharedValues() {
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos"), "starlight")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos", tab: "1"), "spacetime")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "cosmos", tab: "spacetime"), "spacetime")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "lighting", tab: "2"), "sun")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "ar-placement"), "place")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "ar-placement", tab: "1"), "wall")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "ar-placement", tab: "99"), "place")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "materials"), "gallery")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "materials", tab: "2"), "occlusion")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "model-viewer"), "single_model")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "model-viewer", tab: "1"), "multi_model")
+        XCTAssertEqual(DemoAnalytics.initialMode(for: "rolling-balls", tab: "1"), "pendulum")
+        XCTAssertNil(DemoAnalytics.initialMode(for: "geometry"))
+
+        XCTAssertEqual(DemoAnalytics.modeControl("x"), "mode_x")
+        XCTAssertEqual(
+            AnalyticsEvent.sampleInteraction(sampleId: "cosmos", control: DemoAnalytics.modeControl("x")).params["control"],
+            "mode_x"
+        )
+        let longControl = AnalyticsEvent.sampleInteraction(
+            sampleId: "cosmos",
+            control: DemoAnalytics.modeControl(String(repeating: "x", count: 200))
+        ).params["control"]
+        guard case .string(let value)? = longControl else { return XCTFail("control must be a string") }
+        XCTAssertEqual(value.count, AnalyticsEvent.maxParamValueLength)
+    }
+
+    @MainActor
+    func testModeCatalogueAndAliasedModesResolveToLiveCards() {
+        for id in DemoAnalytics.modeSampleIds {
+            XCTAssertTrue(GeneratedScenes.allowedIds.contains(id), id)
+        }
+        for (alias, mode) in DemoDeepLinkRegistry.aliasModes {
+            guard let card = DemoDeepLinkRegistry.legacyAliases[alias] else {
+                return XCTFail("\(alias) has a mode but no card")
+            }
+            XCTAssertTrue(GeneratedScenes.allowedIds.contains(card), "\(alias) -> \(card)")
+            XCTAssertEqual(DemoAnalytics.initialMode(for: card, tab: mode), mode, alias)
+        }
     }
 
     func testErrorReasonCarriesNoMessage() {

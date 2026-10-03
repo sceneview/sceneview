@@ -72,6 +72,14 @@ struct LightingDemo: View {
 
         var id: Int { rawValue }
 
+        var analyticsMode: String {
+            switch self {
+            case .image: return "image"
+            case .studio: return "studio"
+            case .sun: return "sun"
+            }
+        }
+
         /// The rig a deep-link token names, `.image` for none or an unknown one.
         static func initial(_ token: String?) -> Rig {
             switch token {
@@ -138,6 +146,7 @@ struct LightingDemo: View {
     @State private var viewport: CGSize = .zero
 
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
 
     // MARK: - Stage constants (Android `LightingStage`)
 
@@ -250,6 +259,22 @@ struct LightingDemo: View {
         }
     }
 
+    private var rigSelection: Binding<Rig> {
+        Binding(
+            get: { rig },
+            set: { next in
+                guard next != rig else { return }
+                if let analyticsSampleId {
+                    DemoAnalytics.shared.interaction(
+                        analyticsSampleId,
+                        DemoAnalytics.modeControl(next.analyticsMode)
+                    )
+                }
+                rig = next
+            }
+        )
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -288,7 +313,7 @@ struct LightingDemo: View {
             accessory: {
                 VStack(spacing: SceneViewTokens.Chrome.clusterGap) {
                     rigControl
-                    DemoOptionStrip(Rig.allCases, selection: $rig) { $0.title }
+                    DemoOptionStrip(Rig.allCases, selection: rigSelection) { $0.title }
                 }
             }
         ) {

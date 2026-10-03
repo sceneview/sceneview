@@ -31,6 +31,7 @@ struct CosmosDemo: View {
     @AppStorage(DeepLinkRouter.tabDefaultsKey) private var requestedTab: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.analyticsSampleId) private var analyticsSampleId
 
     @State private var engine = CosmosEngine()
 
@@ -50,12 +51,19 @@ struct CosmosDemo: View {
                     engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
                 })
                 if !engine.ready || (engine.spacetime && !engine.spacetimeReady && !engine.spacetimeFailed) {
-                    VStack(spacing: SceneViewTokens.Space.md) {
-                        ProgressView().tint(.white)
+                    // On a scrim (DESIGN.md `chrome-scrim`): it is drawn over the lit star, and
+                    // full white on 60 % black stays >= 5.7:1 even over a white ground.
+                    VStack(spacing: SceneViewTokens.Space.sm) {
+                        ProgressView().tint(SceneViewTokens.Glass.onGlass)
                         Text("Lighting up the cosmos")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.8))
+                            .font(SceneViewTokens.TypeScale.bodyMedium)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
                     }
+                    .padding(.horizontal, SceneViewTokens.Space.lg)
+                    .padding(.vertical, SceneViewTokens.Space.md)
+                    .background(SceneViewTokens.Chrome.scrim,
+                                in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+                    .accessibilityElement(children: .combine)
                 }
             }
             .onAppear { engine.viewport = viewport(geometry.size) }
@@ -86,11 +94,12 @@ struct CosmosDemo: View {
             dock: CosmosSceneKind.allCases.map { kind in
                 DockItem(icon: kind.icon, label: kind.label, control: kind.analyticsControl,
                          selected: engine.scene == kind) {
+                    selectSpacetime(Self.spacetime(afterSelecting: kind, current: engine.spacetime))
                     engine.select(kind)
                 }
             },
             onReset: {
-                engine.setSpacetime(false)
+                selectSpacetime(false)
                 engine.touring = !engine.frozen
                 engine.animating = true
                 engine.bloom = CosmosEngine.defaultBloom
@@ -101,7 +110,7 @@ struct CosmosDemo: View {
                     // The Star scene's two views, from its first frame — the voyage included.
                     if engine.scene == .star {
                         SpacetimeModePicker(spacetime: Binding(get: { engine.spacetime },
-                                                               set: { engine.setSpacetime($0) }))
+                                                               set: { selectSpacetime($0) }))
                     }
                 }
             }
@@ -121,6 +130,30 @@ struct CosmosDemo: View {
     /// The Star scene's view a `?tab=` link asks for — `true` for Spacetime — taken once.
     static func consumeRequestedSpacetime() -> Bool? {
         DeepLinkRouter.consumeTab(for: "cosmos").flatMap { tabs[$0] }
+    }
+
+    private func selectSpacetime(_ enabled: Bool) {
+        guard enabled != engine.spacetime else { return }
+        logMode(spacetime: enabled)
+        engine.setSpacetime(enabled)
+    }
+
+    static func analyticsMode(spacetime: Bool) -> String {
+        spacetime ? "spacetime" : "starlight"
+    }
+
+    /// Android leaves Spacetime before showing any scene other than Star.
+    static func spacetime(afterSelecting scene: CosmosSceneKind, current: Bool) -> Bool {
+        scene == .star && current
+    }
+
+    private func logMode(spacetime: Bool) {
+        if let analyticsSampleId {
+            DemoAnalytics.shared.interaction(
+                analyticsSampleId,
+                DemoAnalytics.modeControl(Self.analyticsMode(spacetime: spacetime))
+            )
+        }
     }
 
     private func viewport(_ size: CGSize) -> CGSize {

@@ -56,14 +56,6 @@ class DemoModeHostTest {
     }
 
     @Test
-    fun `a mode opened by a link is logged, the default mode is not`() {
-        val modes = listOf(DemoMode("balls", 0), DemoMode("pendulum", 0))
-        assertEquals("mode_pendulum", launchModeControl(modes, 1))
-        assertNull("mode 0 is the card itself, already counted by sample_open", launchModeControl(modes, 0))
-        assertNull(launchModeControl(modes, 5))
-    }
-
-    @Test
     fun `an unknown tab is dropped when the default mode reads none`() {
         DemoSettings.initialTab = 7
         assertEquals(0, initialHostMode(mapOf(0 to 0, 1 to 1), defaultModeReadsTab = false, modeCount = 2))

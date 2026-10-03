@@ -48,7 +48,7 @@ enum BundledAssetCredits {
     static let byPath: [String: BundledAssetCredit] = [
         "Models/game_boy_classic.usdz": .init(name: "Game Boy Classic", author: "JonhyOliver", license: "CC-BY 4.0"),
         "Models/tree_scene.usdz": .init(name: "Low Poly Tree Scene", author: "mateustorresg", license: "CC-BY 4.0"),
-        "Models/khronos_toy_car.usdz": .init(name: "Toy Car", author: "KhronosGroup", license: "CC-BY 4.0"),
+        "Models/khronos_toy_car.usdz": .init(name: "Toy Car", author: "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)", license: "CC0 1.0"),
         "Models/red_car.usdz": .init(name: "A Red Car", author: "SerjogaSan", license: "CC-BY 4.0"),
         "Models/animated_butterfly.usdz": .init(name: "Animated Flying Fluttering Butterfly Loop", author: "LasquetiSpice", license: "CC-BY 4.0"),
         "Models/retro_piano.usdz": .init(name: "Retro Piano", author: "DailyArt", license: "CC-BY-NC 4.0"),

@@ -66,12 +66,12 @@ const val GEOSPATIAL_ACCURACY_SEGMENTS: Int = 3
  * `DeepLinkRouter.ALIAS_INITIAL_TAB` indexes into it (`ar-rooftop` = 1). Append, never
  * reorder.
  */
-enum class GeospatialAnchorMode {
+enum class GeospatialAnchorMode(val analyticsMode: String) {
     /** `Earth.resolveAnchorOnTerrainAsync` — glued to the ground. */
-    Terrain,
+    Terrain("terrain"),
 
     /** `Earth.resolveAnchorOnRooftopAsync` — on the building at that point, else terrain. */
-    Rooftop,
+    Rooftop("rooftop"),
 }
 
 /** Where Earth localization stands. */

@@ -298,7 +298,7 @@
       <div class="hero__visual">
         <div class="hero__model-wrapper">
           <div class="hero__fallback-img" style="width:100%;aspect-ratio:16/9;border-radius:var(--radius-lg,16px);background:linear-gradient(135deg,var(--color-primary,#005bc1),var(--color-primary-container,#d4e3ff));display:flex;align-items:center;justify-content:center;color:var(--color-on-primary,#fff);font-size:1.25rem;font-weight:600" aria-label="3D Scene Preview">3D Scene Preview</div>
-          <canvas id="hero-canvas" class="hero__canvas" aria-label="3D damaged helmet rendered by SceneView Web (Filament.js)"></canvas>
+          <canvas id="hero-canvas" class="hero__canvas" aria-label="3D toy car rendered by SceneView Web (Filament.js)"></canvas>
           <div id="hero-loader" class="hero__loader">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" style="animation:spin 1.2s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20"/></svg>
             <span>Loading 3D engine&hellip;</span>
@@ -1575,7 +1575,7 @@ CLAUDE.md</code></pre>
     var loader = document.getElementById('hero-loader');
     var fallback = document.querySelector('.hero__fallback-img');
 
-    SceneView.modelViewer('hero-canvas', 'models/platforms/DamagedHelmet.glb', {
+    SceneView.modelViewer('hero-canvas', 'models/platforms/ToyCar.glb', {
       backgroundColor: [0, 0, 0, 0],
       lightIntensity: 150000,
       fov: 35

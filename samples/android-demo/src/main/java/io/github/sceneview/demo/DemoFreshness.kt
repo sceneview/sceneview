@@ -131,34 +131,6 @@ fun freshDemos(
 ): List<DemoEntry> = demos.filter { it.freshness(buildVersion, window) != DemoFreshness.None }
 
 /**
- * The `major.minor` the "What's new" entry names.
- *
- * It is the highest version *declared by a demo in the window*, not the build's
- * own `versionName`, because between two releases those differ and the honest
- * headline is the one that matches what the cards below it are badged with. With
- * nothing in the window it falls back to the build's own version.
- */
-fun freshnessHeadlineVersion(
-    demos: List<DemoEntry>,
-    buildVersion: String,
-    window: Int = FRESHNESS_WINDOW_MINORS,
-): String {
-    val declared = demos
-        .flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
-        .filter { isRecentVersion(it, buildVersion, window) }
-        .mapNotNull { raw -> parseSemVer(raw)?.let { it to raw } }
-        .maxByOrNull { (v, _) -> v.major * 1_000 + v.minor }
-        ?.second
-    return shortVersionOf(declared ?: buildVersion)
-}
-
-/** `"4.35.0-main.abc1234"` → `"4.35"`. The headline never shows a patch or a build suffix. */
-fun shortVersionOf(version: String): String {
-    val v = parseSemVer(version) ?: return version
-    return "${v.major}.${v.minor}"
-}
-
-/**
  * The oldest release still inside the window, as `major.minor` — "since 4.49" on a 4.51
  * build. Falls back to the build's own short version when it does not parse.
  */

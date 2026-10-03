@@ -272,4 +272,138 @@ class ViewTouchForwarderTest {
         assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL), view.actions)
         assertFalse("a new gesture must not stay captured by the old owner", forwarder.ownsStream)
     }
+
+    // ── Drag hand-back (#4033) ───────────────────────────────────────────────────────────────────
+
+    /** 10 px of slop, so the coordinates below read as "tap" or "drag" at a glance. */
+    private fun slopForwarderOn(view: RecordingView) = ViewTouchForwarder(view, touchSlopPx = 10.0f)
+
+    @Test
+    fun `a drag that starts on the card is handed back to the scene past the touch slop`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f))
+        assertFalse(forwarder.handedBack)
+        assertFalse(
+            "a drag past the slop belongs to the camera",
+            forwarder.onHit(event(MotionEvent.ACTION_MOVE, 130.0f, 100.0f), 40.0f, 20.0f)
+        )
+
+        assertEquals(
+            "the card's press is cancelled, not left stuck",
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_CANCEL),
+            view.actions
+        )
+        assertFalse(forwarder.ownsStream)
+        assertTrue("the dispatcher replays the DOWN once", forwarder.takeHandBack())
+        assertFalse(forwarder.takeHandBack())
+        // The rest of the gesture is no longer the card's.
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 160.0f, 100.0f), 70.0f, 20.0f))
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_UP, 160.0f, 100.0f), 70.0f, 20.0f))
+        assertEquals(3, view.actions.size)
+    }
+
+    @Test
+    fun `a tap that wobbles within the slop still clicks`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 106.0f, 105.0f), 12.0f, 21.0f))
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_UP, 106.0f, 105.0f), 12.0f, 21.0f))
+
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP),
+            view.actions
+        )
+        assertFalse(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `a drag the content claimed stays with the content`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        // What an inner list or a slider does through requestDisallowInterceptTouchEvent.
+        forwarder.onContentClaimedGesture(true)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 100.0f, 160.0f), 10.0f, 80.0f))
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_UP, 100.0f, 160.0f), 10.0f, 80.0f))
+
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP),
+            view.actions
+        )
+        assertFalse(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `a claim from an earlier gesture does not leak into the next one`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        forwarder.onContentClaimedGesture(true)
+        forwarder.onHit(event(MotionEvent.ACTION_UP, 100.0f, 100.0f), 10.0f, 20.0f)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 140.0f, 100.0f), 50.0f, 20.0f))
+        assertTrue(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `a drag that leaves the quad past the slop is handed back too`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertFalse(forwarder.onExit(event(MotionEvent.ACTION_MOVE, 200.0f, 100.0f)))
+
+        assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL), view.actions)
+        assertTrue(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `a second finger hands the gesture back so a pinch can zoom`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_POINTER_DOWN, 100.0f, 100.0f), 10.0f, 20.0f))
+
+        assertEquals(MotionEvent.ACTION_CANCEL, view.actions.last())
+        assertTrue(forwarder.takeHandBack())
+    }
+
+    @Test
+    fun `on an enlarged card the slop is measured in view pixels, not on screen`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        // A card drawn 6x larger than its view (camera close to it): 30 screen px of travel is
+        // only 5 view px, still inside the slop an inner list measures in. The list has not had
+        // the chance to claim the drag yet, so the scene must not steal it.
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 100.0f, 130.0f), 10.0f, 25.0f))
+        forwarder.onContentClaimedGesture(true)
+        assertTrue(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 100.0f, 220.0f), 10.0f, 40.0f))
+
+        assertFalse(forwarder.takeHandBack())
+        assertEquals(
+            listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_MOVE),
+            view.actions
+        )
+    }
+
+    @Test
+    fun `on a shrunk card a drag is handed back once it crosses the slop in view pixels`() {
+        val view = RecordingView(consume = true)
+        val forwarder = slopForwarderOn(view)
+
+        // A card drawn at half its view size: 8 screen px is 16 view px, past the slop.
+        forwarder.onHit(event(MotionEvent.ACTION_DOWN, 100.0f, 100.0f), 10.0f, 20.0f)
+        assertFalse(forwarder.onHit(event(MotionEvent.ACTION_MOVE, 108.0f, 100.0f), 26.0f, 20.0f))
+        assertTrue(forwarder.takeHandBack())
+    }
 }

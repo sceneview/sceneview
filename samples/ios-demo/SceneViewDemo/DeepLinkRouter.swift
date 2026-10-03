@@ -103,6 +103,14 @@ enum DeepLinkRouter {
         return String(stored.dropFirst(prefix.count)).lowercased()
     }
 
+    /// Peeks at the pending tab so analytics can record the initial mode before the demo consumes it.
+    static func pendingTab(for demo: String) -> String? {
+        let prefix = demo + ":"
+        guard let stored = UserDefaults.standard.string(forKey: tabDefaultsKey),
+              stored.hasPrefix(prefix) else { return nil }
+        return String(stored.dropFirst(prefix.count)).lowercased()
+    }
+
     /// `true` when the process was launched by a script rather than by a human
     /// — the App Store screenshot pipeline, or the XCUITest suite. Both route
     /// straight to a demo with `-demo <id>`, which no interactive launch ever

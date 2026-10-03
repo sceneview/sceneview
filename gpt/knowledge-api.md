@@ -945,8 +945,8 @@ Three gotchas that bite every `ViewNode`:
   streaming text panel drags its neighbours around while it types). Give every node
   sharing a manager the same explicit size — width *and* height — or give each node
   its own manager, at the cost of one system window per node.
-- **The rendered UI IS interactive**, and a control that consumes a touch takes the
-  whole gesture away from the scene — see immediately below.
+- **The rendered UI IS interactive**: a tap the content consumes never reaches the scene, a
+  drag started on the card still orbits the camera — see immediately below.
 
 **The rendered UI IS interactive** (since #2845). A `ViewNode` draws its Compose content into a
 texture, so Android never dispatches touches to it; instead the node converts the scene's picking
@@ -964,11 +964,14 @@ SceneView(viewNodeWindowManager = windowManager) {
 
 Two consequences to keep in mind:
 
-- **A consumed gesture never reaches the scene.** Like a view on screen, whatever the embedded
-  hierarchy consumes is invisible to `onGestureListener` and to the camera manipulator — and a
-  Material `Surface`/`Card` consumes touches even when nothing inside is clickable. An event the
-  content does **not** consume falls through untouched, so picking still works:
-  `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
+- **A consumed tap never reaches the scene; a drag does.** Like a view on screen, a tap the
+  embedded hierarchy consumes is invisible to `onGestureListener` and to the camera manipulator —
+  and a Material `Surface`/`Card` consumes touches even when nothing inside is clickable. Once the
+  pointer passes the touch slop (or a second finger lands) the card gets `ACTION_CANCEL` and the
+  scene takes the gesture, so a drag that starts on a card orbits the camera (#4033). Content
+  that wants the drag — a scrolling list, a slider — keeps it: Compose claims it through
+  `requestDisallowInterceptTouchEvent`. An event the content does **not** consume falls through
+  untouched, so picking still works: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
 - **Opt out with `apply = { isTouchForwardingEnabled = false }`** for a purely decorative overlay
   whose quad must never steal a gesture.
 - **The quad is double-sided, the touch mapping is not.** The material un-mirrors its UVs on the
@@ -4886,6 +4889,8 @@ SceneView.create(canvas, configure = {
 }) { sceneView -> /* onReady */ }
 ```
 
+Explicit `fov`, `near`, and `far` values win over automatic projection values. Unspecified or invalid values stay automatic independently; fitted content updates only the unspecified clip planes, and a custom FOV also adjusts the fit distance.
+
 ---
 
 ### OrbitCameraController
@@ -4948,7 +4953,7 @@ SceneViewer instance methods (all return the viewer for chaining unless noted):
 sv.loadModel(url)           // → Promise<url>
 sv.setEnvironment(iblUrl)
 sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
-sv.setCameraOrbit(theta, phi, distance)  // radians
+sv.setCameraOrbit(theta, phi, distance)  // radians — sceneview-web only; the hand-written sceneview.js takes an object, setCameraOrbit({ angle, height, radius }), see above
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
 sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s

@@ -107,6 +107,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Composable
 fun ARPlacementDemo(onBack: () -> Unit) {
     val context = LocalContext.current
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
 
     // Phase holder. Saveable, so a rotation in the camera does not dump the user back onto
     // the chooser.
@@ -307,7 +308,15 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             title = stringResource(R.string.demo_ar_placement_title),
             teaches = stringResource(R.string.ar_placement_teaches),
             wallMode = wallMode,
-            onWallModeChange = { wallMode = it },
+            onWallModeChange = { next ->
+                if (next != wallMode) {
+                    io.github.sceneview.demo.telemetry.logSampleModeChange(
+                        sampleId,
+                        AR_PLACEMENT_SURFACE_MODES[if (next) 1 else 0],
+                    )
+                    wallMode = next
+                }
+            },
         )
         return
     }
@@ -395,6 +404,8 @@ fun ARPlacementDemo(onBack: () -> Unit) {
  * bundled row's id, and stable across catalogue rebuilds.
  */
 private fun streamedModelId(slug: SketchfabSlug): String = "streamed:${slug.uid}"
+
+internal val AR_PLACEMENT_SURFACE_MODES = listOf("place", "wall")
 
 /**
  * Process-wide memo of the streamed `ar_placement` rows' Sketchfab thumbnail URLs (#3987), so

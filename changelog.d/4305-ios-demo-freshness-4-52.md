@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS demo: freshness badges now match the demos that visibly changed in 4.52.0 ([#4305](https://github.com/sceneview/sceneview/pull/4305)).** Contact Shadow Preview, Depth Visualization and Secondary Camera are marked as new, while AR Placement, Body Tracking, Camera & Gestures, Cosmos, Depth Collider, Materials, Model Viewer, Rolling Balls and Scene Mesh are marked as updated; unchanged demos no longer receive an "Updated" badge.

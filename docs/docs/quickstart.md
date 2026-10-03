@@ -45,12 +45,12 @@ Sync Gradle.
 
 ## Step 3: Add a 3D model
 
-You need a glTF/GLB file in the assets folder. The **Damaged Helmet** from Khronos is a good first model.
+You need a glTF/GLB file in the assets folder. The **Toy Car** from the Khronos glTF Sample Assets (CC0) is a good first model.
 
 1. Create the directory `app/src/main/assets/models/`.
 2. Download the model:
-    - [DamagedHelmet.glb](https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb)
-3. Save it as `app/src/main/assets/models/damaged_helmet.glb`.
+    - [ToyCar.glb](https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb)
+3. Save it as `app/src/main/assets/models/toy_car.glb`.
 
 !!! tip
     Any `.glb` or `.gltf` file works. If you have your own model, drop it in the same folder and update the path in the next step.
@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                 modelLoader = modelLoader,
                 cameraManipulator = rememberCameraManipulator(),
             ) {
-                rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+                rememberModelInstance(modelLoader, "models/toy_car.glb")
                     ?.let { instance ->
                         ModelNode(
                             modelInstance = instance,
@@ -124,7 +124,7 @@ That is the entire app. Here is what each piece does:
 ## Step 5: Run it
 
 1. Click **Run** (or press `Shift+F10`).
-2. After a brief loading moment, you will see the Damaged Helmet rendered in your viewport.
+2. After a brief loading moment, you will see the Toy Car rendered in your viewport.
 3. **Drag** to orbit around the model, **pinch** to zoom, and **two-finger drag** to pan.
 
 That is a production-quality, physically-based 3D viewer in under 30 lines of code.

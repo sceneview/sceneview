@@ -66,6 +66,7 @@ import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
+import io.github.sceneview.gesture.replayHandedBackDown
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -894,6 +895,12 @@ fun SceneView(
                 // Published before `gestureDetector` runs: its double-tap callback fires from
                 // inside that call and reads this to apply the same isolation (#3608).
                 cameraGesturesAbsorbedRef.set(absorbedByEditableNode)
+                // A drag that started on an interactive ViewNode may just have been handed back
+                // (#4033): replay the DOWN the detectors never saw.
+                replayHandedBackDown(
+                    event, capturedTouchNodeRef.get(), hitResult, gestureDetector,
+                    cameraGestureDetectorRef.get(), absorbedByEditableNode,
+                )
                 gestureDetector.onTouchEvent(event, hitResult)
                 if (!absorbedByEditableNode) {
                     cameraGestureDetectorRef.get()?.onTouchEvent(event)

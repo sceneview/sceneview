@@ -26,6 +26,9 @@ class CameraConfigTest {
         assertEquals(45.0, config.fovDegrees)
         assertEquals(0.1, config.nearPlane)
         assertEquals(1000.0, config.farPlane)
+        assertNull(config.explicitFovDegrees)
+        assertNull(config.explicitNearPlane)
+        assertNull(config.explicitFarPlane)
     }
 
     @Test
@@ -58,6 +61,30 @@ class CameraConfigTest {
         assertEquals(60.0, config.fovDegrees)
         assertEquals(0.01, config.nearPlane)
         assertEquals(500.0, config.farPlane)
+    }
+
+    @Test
+    fun fovMarksOnlyFovExplicit() {
+        val config = CameraConfig().apply { fov(30.0) }
+        assertEquals(30.0, config.explicitFovDegrees)
+        assertNull(config.explicitNearPlane)
+        assertNull(config.explicitFarPlane)
+    }
+
+    @Test
+    fun nearMarksOnlyNearExplicit() {
+        val config = CameraConfig().apply { near(0.001) }
+        assertNull(config.explicitFovDegrees)
+        assertEquals(0.001, config.explicitNearPlane)
+        assertNull(config.explicitFarPlane)
+    }
+
+    @Test
+    fun farMarksOnlyFarExplicit() {
+        val config = CameraConfig().apply { far(500.0) }
+        assertNull(config.explicitFovDegrees)
+        assertNull(config.explicitNearPlane)
+        assertEquals(500.0, config.explicitFarPlane)
     }
 
     @Test

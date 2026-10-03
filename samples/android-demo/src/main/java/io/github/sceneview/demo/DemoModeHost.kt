@@ -10,19 +10,17 @@ import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.telemetry.LocalSampleId
-import io.github.sceneview.demo.telemetry.logSampleInteraction
+import io.github.sceneview.demo.telemetry.logSampleModeChange
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
 
@@ -81,20 +79,10 @@ fun DemoModeHost(
         onSelect = { selected ->
             if (selected != mode) {
                 mode = selected
-                logSampleInteraction(sampleId, "mode_${modes[selected].key}")
+                logSampleModeChange(sampleId, modes[selected].key)
             }
         },
     )
-    // A mode opened by a link (`double-pendulum`, `?tab=pendulum`, a push) is logged once, with
-    // the same `mode_<key>` control as a tap on the pill: `sample_open` only names the card.
-    // Saved, so a rotation does not log it twice.
-    var launchLogged by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (!launchLogged) {
-            launchLogged = true
-            launchModeControl(modes, mode)?.let { logSampleInteraction(sampleId, it) }
-        }
-    }
     CompositionLocalProvider(LocalDemoModeSwitch provides switch) {
         key(mode) { content(mode) }
     }
@@ -115,13 +103,6 @@ internal fun initialHostMode(
     DemoSettings.initialTab = null
     return owned?.takeIf { it in 0 until modeCount } ?: 0
 }
-
-/**
- * The `sample_interaction` control for the mode a [DemoModeHost] opened on, or `null` for the
- * default mode (the card itself, which `sample_open` already counts) and an out-of-range index.
- */
-internal fun launchModeControl(modes: List<DemoMode>, mode: Int): String? =
-    modes.getOrNull(mode)?.takeIf { mode != 0 }?.let { "mode_${it.key}" }
 
 /**
  * The shared mode pill (`mode-pill-*` tokens, `DESIGN.md`): the same segmented glass pill

@@ -7,7 +7,7 @@ import org.junit.Test
 class ActiveClockTest {
 
     private var now = 10_000L
-    private val clock = ActiveClock { now }
+    private val clock = ActiveClock(now = { now })
 
     @Test
     fun `counts while running`() {

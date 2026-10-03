@@ -8,7 +8,7 @@
 // @order       37
 // @tags        physics,rigid-body,collision,simulation,tilt,balls,pendulum,chaos,kmp
 // @addedIn     4.48.0
-// @updatedIn   4.51.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 /// Rolling Balls (samples audit, step 0) absorbs `double-pendulum`, now its

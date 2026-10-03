@@ -991,8 +991,8 @@ Three gotchas that bite every `ViewNode`:
   streaming text panel drags its neighbours around while it types). Give every node
   sharing a manager the same explicit size — width *and* height — or give each node
   its own manager, at the cost of one system window per node.
-- **The rendered UI IS interactive**, and a control that consumes a touch takes the
-  whole gesture away from the scene — see immediately below.
+- **The rendered UI IS interactive**: a tap the content consumes never reaches the scene, a
+  drag started on the card still orbits the camera — see immediately below.
 
 **The rendered UI IS interactive** (since #2845). A `ViewNode` draws its Compose content into a
 texture, so Android never dispatches touches to it; instead the node converts the scene's picking
@@ -1010,11 +1010,14 @@ SceneView(viewNodeWindowManager = windowManager) {
 
 Two consequences to keep in mind:
 
-- **A consumed gesture never reaches the scene.** Like a view on screen, whatever the embedded
-  hierarchy consumes is invisible to `onGestureListener` and to the camera manipulator — and a
-  Material `Surface`/`Card` consumes touches even when nothing inside is clickable. An event the
-  content does **not** consume falls through untouched, so picking still works:
-  `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
+- **A consumed tap never reaches the scene; a drag does.** Like a view on screen, a tap the
+  embedded hierarchy consumes is invisible to `onGestureListener` and to the camera manipulator —
+  and a Material `Surface`/`Card` consumes touches even when nothing inside is clickable. Once the
+  pointer passes the touch slop (or a second finger lands) the card gets `ACTION_CANCEL` and the
+  scene takes the gesture, so a drag that starts on a card orbits the camera (#4033). Content
+  that wants the drag — a scrolling list, a slider — keeps it: Compose claims it through
+  `requestDisallowInterceptTouchEvent`. An event the content does **not** consume falls through
+  untouched, so picking still works: `onSingleTapUp = { _, node -> if (node is ViewNode) … }`.
 - **Opt out with `apply = { isTouchForwardingEnabled = false }`** for a purely decorative overlay
   whose quad must never steal a gesture.
 - **The quad is double-sided, the touch mapping is not.** The material un-mirrors its UVs on the
@@ -7425,7 +7428,7 @@ SceneView works inside Claude Artifacts (HTML type). Use this template:
   <script src="https://sceneview.github.io/js/filament/filament.js"></script>
   <script src="https://sceneview.github.io/js/sceneview.js"></script>
   <script>
-    SceneView.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb', {
+    SceneView.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/ToyCar.glb', {
       autoRotate: true,
       bloom: true,
       quality: 'high'
@@ -7437,7 +7440,7 @@ SceneView works inside Claude Artifacts (HTML type). Use this template:
 
 **Available CDN models** (all at `https://sceneview.github.io/models/platforms/`):
 AnimatedAstronaut.glb, AnimatedTrex.glb, AntiqueCamera.glb, Avocado.glb,
-BarnLamp.glb, CarConcept.glb, ChronographWatch.glb, DamagedHelmet.glb,
+BarnLamp.glb, CarConcept.glb, ChronographWatch.glb,
 DamaskChair.glb, DishWithOlives.glb, Duck.glb, Fox.glb, GameBoyClassic.glb,
 IridescenceLamp.glb, Lantern.glb, MaterialsVariantsShoe.glb, MonsteraPlant.glb,
 MosquitoInAmber.glb, SheenChair.glb, Shiba.glb, Sneaker.glb,
@@ -7463,6 +7466,43 @@ ferrari_f40.glb
   });
 </script>
 ```
+
+### Hand-written `sceneview.js` — transparent canvas, orbit camera, render on demand
+
+`https://sceneview.github.io/js/sceneview.js` (the script-tag viewer used above, global `SceneView`) is **not** the `sceneview-web` npm package described in the next section (Kotlin/JS, global `sceneview`). The two expose different method signatures. The one most often mixed up:
+
+| | Hand-written `sceneview.js` | `sceneview-web` (npm) |
+|---|---|---|
+| Camera orbit | `sv.setCameraOrbit({ angle, height, radius, target, fov })` — one object, every field optional | `sv.setCameraOrbit(theta, phi, distance)` — three positional numbers |
+| Units | `angle`: azimuth in radians. `height`: eye height, an absolute world Y, **not** an angle. `radius`: horizontal distance from the target | `theta`, `phi`: radians. `distance`: from the target |
+| Read it back | `sv.getCameraOrbit()` → `{ angle, height, radius, target, fov }` | — |
+| Frame the model | `sv.frameModel({ fill: 0.8 })` | `sv.fitToModels(0.9)` |
+
+Three positional numbers passed to the hand-written viewer move nothing: it reads fields off its first argument.
+
+```js
+const sv = await SceneView.create('viewer', {
+  transparent: true,       // alpha canvas: the page shows behind the model
+  renderMode: 'onDemand',  // default: 'continuous'
+  fov: 35
+});
+await sv.loadModel('https://sceneview.github.io/models/platforms/Fox.glb');
+
+sv.getCameraOrbit();                 // { angle, height, radius, target: [x, y, z], fov } (a copy)
+sv.setCameraOrbit({ angle: 0.6 });   // chainable; redraws even when the loop is parked
+sv.frameModel({ fill: 0.8 });        // the model covers at most 80% of the view, in height and in width
+sv.frameModel();                     // back to the on-load framing
+
+sv.setRenderMode('onDemand');        // or 'continuous'
+sv.requestRender();                  // one more frame; coalesced; safe to call inside onFrame
+const off = sv.onFrame((canvas) => mirrorCtx.drawImage(canvas, 0, 0)); // after every drawn frame
+off();                               // unsubscribe; dispose() also drops the listeners
+```
+
+- `frameModel({ fill })` fits the volume the bounding box sweeps over a full orbit, so the model is not cropped at any orbit angle; a rounded model reads smaller than `fill`.
+- `'onDemand'` parks the loop once nothing moves (no auto-rotate, drag, inertia, playing animation or pending texture decode). Input, camera calls, scene changes, video frames and `requestRender()` wake it.
+- Both modes draw nothing off-screen or in a hidden tab. A camera or scene call made off-screen still draws one frame, so the canvas is current when it scrolls back in; a playing video does not.
+- `onFrame` only observes frames: it never keeps the loop awake by itself.
 
 ---
 
@@ -7686,6 +7726,8 @@ SceneView.create(canvas, configure = {
 }) { sceneView -> /* onReady */ }
 ```
 
+Explicit `fov`, `near`, and `far` values win over automatic projection values. Unspecified or invalid values stay automatic independently; fitted content updates only the unspecified clip planes, and a custom FOV also adjusts the fit distance.
+
 ---
 
 ### OrbitCameraController
@@ -7748,7 +7790,7 @@ SceneViewer instance methods (all return the viewer for chaining unless noted):
 sv.loadModel(url)           // → Promise<url>
 sv.setEnvironment(iblUrl)
 sv.setEnvironmentWithSkybox(iblUrl, skyboxUrl)
-sv.setCameraOrbit(theta, phi, distance)  // radians
+sv.setCameraOrbit(theta, phi, distance)  // radians — sceneview-web only; the hand-written sceneview.js takes an object, setCameraOrbit({ angle, height, radius }), see above
 sv.setCameraTarget(x, y, z)
 sv.setAutoRotate(enabled)   // Boolean
 sv.setAutoRotateSpeed(radiansPerSecond)  // e.g. 30 * Math.PI / 180 for 30°/s

@@ -32,7 +32,7 @@ export interface ViewerOptions {
   cameraX?: number;
   cameraY?: number;
   cameraZ?: number;
-  /** Vertical field of view in degrees. Default `45`. */
+  /** Vertical field of view in degrees. Default `45`; applied to every projection update and model fit. */
   fov?: number;
   /** Main-light intensity in lux. Default `60_000`. */
   lightIntensity?: number;
@@ -267,6 +267,7 @@ export function createViewer(canvasId: string): Promise<SceneViewer>;
 export function createViewerAutoRotate(canvasId: string, autoRotate: boolean): Promise<SceneViewer>;
 
 /** Full factory — sets every option in one call. See {@link ViewerOptions}.
+ *  Its `fov` controls every projection update and model-fit distance; invalid values use `45`.
  *  Note: this Kotlin signature takes positional args so the type
  *  reflects that exactly. Prefer object-spread syntax at the call site
  *  if you want named options. */

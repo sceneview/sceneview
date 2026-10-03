@@ -12,7 +12,7 @@ is in the "SceneView Web" section of
 <script src="https://sceneview.github.io/js/filament/filament.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"></script>
 <script>
-  sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/DamagedHelmet.glb')
+  sceneview.modelViewer('viewer', 'https://sceneview.github.io/models/platforms/ToyCar.glb')
     .then(function (sv) {
       sv.setAutoRotate(true);
       sv.setBackgroundColor(0.05, 0.05, 0.12, 1.0);
@@ -129,7 +129,7 @@ Verified against `xr/ARSceneView.kt` (`VRSceneView`).
 ## CDN models
 
 `https://sceneview.github.io/models/platforms/` hosts a catalog of GLBs
-(DamagedHelmet.glb, Fox.glb, Avocado.glb, ToyCar.glb, …) — see `llms.txt` for
+(ToyCar.glb, Fox.glb, Avocado.glb, SheenChair.glb, …) — see `llms.txt` for
 the full list. Use absolute URLs for models.
 
 ## Cross-platform parity

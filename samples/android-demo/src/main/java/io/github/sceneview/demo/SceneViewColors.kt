@@ -1,6 +1,7 @@
 package io.github.sceneview.demo
 
 import androidx.compose.ui.graphics.Color
+import io.github.sceneview.demo.theme.SceneViewTokens
 
 /**
  * SceneView brand palette, mirrored from `DESIGN.md` — the same tokens the website and docs
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.Color
  * accent-deep    #5a32a3   alt-hero-gradient end
  * tint-light     #a4c1ff   dark-mode primary / light tint
  * tint-soft      #d2a8ff   dark-mode gradient end
+ * warning        #f59e0b   highlight — a picked / selected 3D object (token alias)
  * surface-dim    #161B22   dark surface — used for grounding planes
  * ```
  */
@@ -37,6 +39,16 @@ object SceneViewColors {
 
     /** Soft-tint purple — #d2a8ff. Dark-mode gradient end, also the fourth ramp colour. */
     val TintSoft = Color(0xFFD2A8FF)
+
+    /**
+     * Highlight amber — the colour of a picked or selected 3D object. Not a new colour: it is the
+     * existing `warning` accent, [SceneViewTokens.ArOverlay.accentGuidance] (#f59e0b), the closest
+     * warm token to DESIGN.md `info`. Warm, so it can never be mistaken for any [Ramp4] swatch,
+     * which are all blues and purples. [TintSoft] used to double as the "lit" colour in Picking &
+     * Collision and was also a default swatch there, so lighting that shape changed nothing
+     * visible (#4031).
+     */
+    val Highlight: Color get() = SceneViewTokens.ArOverlay.accentGuidance
 
     /** Dark surface — #161B22. Used for ground planes and neutral backdrops in demos. */
     val SurfaceDim = Color(0xFF161B22)
