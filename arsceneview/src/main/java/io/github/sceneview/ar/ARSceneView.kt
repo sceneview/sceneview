@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
@@ -1505,6 +1506,21 @@ fun ARSceneView(
 
     val sceneRenderer = remember(engine, view, renderer) {
         SceneRenderer(engine, view, renderer)
+    }
+
+    // SurfaceView retains and independently composites its last camera buffer after ARCore and the
+    // render loop pause. Navigation marks the outgoing destination non-RESUMED at the start of its
+    // exit transition, so hide the platform surface on that edge instead of waiting for disposal.
+    // Re-showing it recreates the surface; arFramesOwed below guarantees the fresh surface is drawn.
+    // A pause the host activity shares (a system dialog over a still-visible window) keeps the
+    // surface — see [SceneRenderer.setPresentationState]. Disposal hides it through `destroy()`.
+    DisposableEffect(lifecycle, sceneRenderer) {
+        val observer = LifecycleEventObserver { _, event ->
+            sceneRenderer.setPresentationState(event.targetState)
+        }
+        // Adding the observer replays the events up to the current state, so no initial call.
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     // AR's clock is the camera, not the scene, so it does not use the dirty-flag gate that
