@@ -139,6 +139,17 @@ card: no frame, no inset, no radius of its own. One vertical scroll, no carousel
 "Featured" banners, the "Browse online models" row, the category chips, then one group per
 category.
 
+**Above the chips, a demo is pushed once.** The header pager, the "Featured" banners and
+the "What's new" row's picture are read in that order, and each only shows what the ones
+before it do not; a group left with nothing of its own is not drawn. The "What's new" row
+opens the "What's new" sheet over the whole catalogue. It never selects the filter chip:
+a tap on a home row must not make the catalogue look smaller than it is.
+
+**A chip filter always shows its way out.** The selected chip is its own off switch (a
+second tap goes back to "All"), Back clears the filter before it leaves the app, and a
+filtered list ends on a "Show all N samples" text button that names the size of the
+whole catalogue.
+
 A card's ground is **ambient**: the colour of its own picture, taken down to a fixed
 luminance (`home-row-ambient`), so in dark every card is a deep version of its scene and
 in light a pale one, and the picture dissolves into it with no line between image and text.

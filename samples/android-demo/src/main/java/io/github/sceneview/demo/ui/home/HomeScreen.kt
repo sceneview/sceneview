@@ -3,6 +3,7 @@
 package io.github.sceneview.demo.ui.home
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -94,7 +95,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -119,7 +119,6 @@ import io.github.sceneview.demo.common.RequestLightStatusBarIcons
 import io.github.sceneview.demo.categoryDisplayNameRes
 import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
-import io.github.sceneview.demo.freshnessHeadlineVersion
 import io.github.sceneview.demo.freshnessWindowStart
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -132,7 +131,6 @@ import io.github.sceneview.demo.ui.cascadeIn
 import io.github.sceneview.demo.ui.pressScale
 import io.github.sceneview.demo.ui.rememberCascade
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Test tags for the home screen. */
@@ -152,6 +150,9 @@ object HomeTestTags {
     /** Test tag of the "Featured" group header, right under the hero. */
     const val FEATURED_SECTION = "home-section-featured"
 
+    /** Test tag of the "Show all N samples" action that ends a filtered list. */
+    const val SHOW_ALL = "home-show-all"
+
     /** Test tag of one demo's row in the home list. */
     fun row(demoId: String): String = "home-row-$demoId"
 }
@@ -159,9 +160,11 @@ object HomeTestTags {
 /**
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, one vertical scroll, no
  * nested scroll. Full-span header spacer, hero, then a standard Material 3 list: the
- * "Featured" group ([FEATURED_SECTION_IDS], priority order), a [BrowseOnlineRow] that
- * opens the online gallery, the chip row, then every demo as a [DemoListRow] in flat
- * editorial [DemoEntry.order], one grouped section per category. The 3D header is the
+ * "What's new" row, the "Featured" group, a [BrowseOnlineRow] that opens the online
+ * gallery, the chip row, then every demo as a [DemoListRow] in flat editorial
+ * [DemoEntry.order], one grouped section per category. Above the chips a demo is pushed
+ * once — the pager, then "Featured", then "What's new" ([homeTopSections]) — and a group
+ * left with nothing of its own is not drawn (#4304). The 3D header is the
  * one showpiece; what is under it looks like any well-made app, which is what the Home
  * sets out to show — the scene drops into an ordinary app. One column on a phone,
  * [homeListColumns] from `home-row-min-width` up.
@@ -247,6 +250,9 @@ fun HomeScreen(
         filterDemos(searchEntries, activeCategory, query).mapNotNull { byId[it.id] }
     }
     val searching = query.isNotBlank()
+    // A filter is a place the user went: Back leaves it for the whole catalogue before it
+    // leaves the app (#4304).
+    BackHandler(enabled = activeCategory != null) { onCategoryChange(null) }
     // A header earns its row only when it separates something. With one category
     // selected the chip already names it, and a lone header above a filtered grid
     // is chrome repeating what the user just tapped.
@@ -262,16 +268,21 @@ fun HomeScreen(
         demos.associate { it.id to it.freshness(buildVersion) }
     }
     val fresh = remember(demos, buildVersion) { freshDemos(demos, buildVersion) }
-    val freshVersion = remember(demos, buildVersion) {
-        freshnessHeadlineVersion(demos, buildVersion)
+
+    // What each group above the chips draws, a demo at most once: the pager's pages, then
+    // the "Featured" banners, then the "What's new" row's picture (#4304).
+    val top = remember(byId, fresh) {
+        homeTopSections(
+            pager = FEATURED_PAGER_IDS.filter { it in byId },
+            featured = FEATURED_IDS.filter { it in byId },
+            fresh = fresh.map { it.id },
+        )
     }
 
-    // The featured pager's pages (#3567). The "What's new" page leads when there
-    // is anything to say and is simply absent otherwise — an empty "nothing
-    // changed this release" page is worse than no page.
-    val featuredPages = remember(demos, fresh, freshVersion) {
+    // The featured pager's pages (#3567).
+    val featuredPages = remember(top, byId) {
         buildList {
-            FEATURED_DEMO_IDS.mapNotNull { id -> demos.firstOrNull { it.id == id } }
+            top.pager.mapNotNull { byId[it] }
                 .forEach { entry ->
                     add(
                         FeaturedPage.Demo(
@@ -286,16 +297,15 @@ fun HomeScreen(
         }
     }
 
-    // The "Featured" group under the hero: the demos we push, in priority order.
-    val featuredShelf = remember(byId) { FEATURED_SECTION_IDS.mapNotNull { byId[it] } }
-
-    // Where the "What's new" row scrolls to: the chip row's index while the row itself is
-    // on screen (no query, something fresh) — header spacer, hero, the row, the Featured
-    // header and banners, "Browse online", then the chips.
-    val scope = rememberCoroutineScope()
-    val chipsIndex = 3 + (if (featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) + 1
-    val chipsScrollOffsetPx = with(LocalDensity.current) {
-        (SceneViewTokens.Home.headerHeight + SceneViewTokens.Space.sm).roundToPx()
+    // The "Featured" group under the hero: the demos we push that the pager does not
+    // already show, in priority order. Empty — and not drawn — while the pager pages
+    // through the whole Featured list.
+    val featuredShelf = remember(top, byId) { top.featured.mapNotNull { byId[it] } }
+    // The fresh demos nothing above shows: the "What's new" row leads with one of them,
+    // a new demo over an updated one.
+    val whatsNewLead = remember(top, freshnessById) {
+        top.whatsNew.firstOrNull { freshnessById[it] == DemoFreshness.New }
+            ?: top.whatsNew.firstOrNull()
     }
 
     // "What's new" — derived from the bundled CHANGELOG.md, never hand-maintained.
@@ -434,9 +444,12 @@ fun HomeScreen(
                     )
                 }
                 // "What's new": the one row that answers "what changed?" without a scroll
-                // through the catalogue. It counts the New / Updated cards and opens the
-                // chip that keeps only them; it is absent when nothing is fresh (#3927).
-                if (!searching && fresh.isNotEmpty()) {
+                // through the catalogue (#3927). It counts the New / Updated cards and opens
+                // the sheet that lists them, over a catalogue left whole: selecting the
+                // filter chip from here read as "the app only has these samples" (#4304).
+                // The chip is still there for who wants the catalogue cut down. Absent
+                // when every fresh demo is already pushed by the pager or a banner.
+                if (!searching && whatsNewLead != null) {
                     item(key = WHATS_NEW_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
                         WhatsNewRow(
                             subtitle = pluralStringResource(
@@ -445,19 +458,8 @@ fun HomeScreen(
                                 fresh.size,
                                 freshnessWindowStart(buildVersion),
                             ),
-                            // A new demo leads over an updated one.
-                            leadDemoId = (
-                                fresh.firstOrNull { freshnessById[it.id] == DemoFreshness.New }
-                                    ?: fresh.firstOrNull()
-                                )?.id,
-                            onClick = {
-                                onCategoryChange(WHATS_NEW_FILTER)
-                                // The chips land just under the pinned header, the
-                                // selected one in view, the filtered cards below it.
-                                scope.launch {
-                                    gridState.animateScrollToItem(chipsIndex, -chipsScrollOffsetPx)
-                                }
-                            },
+                            leadDemoId = whatsNewLead,
+                            onClick = { whatsNewSheet.open() },
                             modifier = Modifier
                                 .testTag(HomeTestTags.WHATS_NEW_ROW)
                                 .animateItem()
@@ -468,8 +470,9 @@ fun HomeScreen(
                 }
                 // The "Featured" group: what we want seen first, right under the hero and
                 // above the catalogue, so the flagship samples never wait for a scroll to
-                // the section they are filed in. Its rows repeat in their own sections
-                // below — the catalogue stays complete — under a distinct item key.
+                // the section they are filed in. Only the ones the pager does not show
+                // (#4304). Its rows repeat in their own sections below — the catalogue
+                // stays complete — under a distinct item key.
                 if (!searching && featuredShelf.isNotEmpty()) {
                     item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
                         SectionHeader(
@@ -567,7 +570,19 @@ fun HomeScreen(
                         )
                     }
                 }
-
+                // A filtered list ends on the way back to the whole catalogue, with its
+                // size: someone who reached the bottom of "What's new" must not conclude
+                // the app stops there (#4304). Not while searching — the query is its own
+                // filter, and it has its own "Clear".
+                if (activeCategory != null && !searching) {
+                    item(key = "show-all", span = { GridItemSpan(maxLineSpan) }) {
+                        ShowAllRow(
+                            count = demos.size,
+                            onClick = { onCategoryChange(null) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
             }
         }
 
@@ -784,15 +799,13 @@ internal val FEATURED_IDS = listOf("cosmos", "ar-placement", "model-viewer", "ar
  * the demo the store listing, the deep link and the app icon all point at — then the rest of
  * [FEATURED_IDS] in rank order. Short on purpose: a carousel nobody reaches the end of is a
  * list, and the grid below is already the list.
+ *
+ * What the pager shows, the "Featured" banners under it do not repeat ([homeTopSections]):
+ * while this is the whole of [FEATURED_IDS] there is no banner group at all. Paging through
+ * fewer demos here is what brings the rest back as banners.
  */
-private val FEATURED_DEMO_IDS = listOf(HERO_DEMO_ID) + FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
-
-/**
- * The "Featured" group right under the hero: [FEATURED_IDS] in rank order, minus
- * [HERO_DEMO_ID], which is the hero itself. The rest stay in their sections too, which are
- * themselves ordered the same way (see [io.github.sceneview.demo.DEMO_CATEGORIES]).
- */
-internal val FEATURED_SECTION_IDS = FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
+internal val FEATURED_PAGER_IDS =
+    listOf(HERO_DEMO_ID) + FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
 
 @Composable
 private fun HomeHeader(
@@ -1068,7 +1081,9 @@ private fun CategoryChipRow(
             CategoryChip(
                 label = stringResource(labelRes),
                 selected = category == selected,
-                onClick = { onSelect(category) },
+                // The selected chip is its own off switch: tapping it again goes back to
+                // "All", so leaving a filter never means finding another chip (#4304).
+                onClick = { onSelect(category.takeUnless { it == selected }) },
             )
         }
     }
@@ -1128,6 +1143,24 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
                 color = content,
                 maxLines = 1,
             )
+        }
+    }
+}
+
+/** The last row of a filtered list: back to the whole catalogue, [count] samples. */
+@Composable
+private fun ShowAllRow(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = SceneViewTokens.Space.sm),
+        contentAlignment = Alignment.Center,
+    ) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.testTag(HomeTestTags.SHOW_ALL),
+        ) {
+            Text(stringResource(R.string.home_show_all, count))
         }
     }
 }

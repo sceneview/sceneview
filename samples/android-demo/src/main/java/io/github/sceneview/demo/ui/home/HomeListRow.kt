@@ -146,9 +146,10 @@ fun BrowseOnlineRow(
 }
 
 /**
- * The row under the hero that opens the "What's new" filter: one more
- * [HomeRowStyle.Fused] row, led by the picture of the freshest demo ([leadDemoId]) so the
- * entry point shows what is new rather than a symbol for it. A demo without a picture
+ * The row under the hero that opens the "What's new" sheet: one more
+ * [HomeRowStyle.Fused] row, led by the picture of the freshest demo nothing above it
+ * already shows ([leadDemoId]) so the entry point shows what is new rather than a symbol
+ * for it, and not the hero's picture a second time. A demo without a picture
  * falls back to the badges' own sparkle on a `primary`-tinted panel.
  */
 @Composable
