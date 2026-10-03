@@ -490,7 +490,16 @@ fun SceneView(
     // keyed on exactly that parameter (the pattern `renderQuality` already used since #1078), and
     // each asks for the frame its own write needs. Parameters that write nothing visible ask for
     // nothing, and are listed — with the reason — in the pull request's parameter table.
-    LaunchedEffect(scene, environment) {
+    //
+    // The environment is the one exception to "a `LaunchedEffect` per parameter": it is a
+    // `DisposableEffect`, because the scene has to let go of an environment before its owner
+    // destroys it (#4330). `rememberEnvironment(key = …)` destroys the previous environment in the
+    // same pass that hands this composable the next one; a `LaunchedEffect` only gave the scene
+    // the new skybox a dispatch later, and Filament's `Scene.setSkybox` reads the skybox it
+    // replaces — by then freed memory (SIGSEGV on a dark/light toggle). This effect is remembered
+    // after the caller's, so its `onDispose` runs first: the scene is already empty-handed when
+    // the old environment dies, and the swap completes before any frame can be drawn.
+    DisposableEffect(scene, environment) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
@@ -498,6 +507,12 @@ fun SceneView(
         // nothing else reports it, so without this the old sky stays on screen until something
         // unrelated wakes the loop.
         frameRateGate.requestRender()
+        onDispose {
+            // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
+            // given the scene another light since.
+            if (scene.skybox === environment.skybox) scene.skybox = null
+            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+        }
     }
     LaunchedEffect(view, scene) {
         view.scene = scene

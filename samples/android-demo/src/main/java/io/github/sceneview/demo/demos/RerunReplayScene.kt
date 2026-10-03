@@ -269,9 +269,9 @@ internal class ReplayLayers(
     private val materialLoader: MaterialLoader,
     private val media: RerunReplayMedia,
     /** The dimensions' ink, ARGB: the floor outline's colour, so they read as part of the plan. */
-    @ColorInt private val measureInk: Int = FALLBACK_POINT_COLOR,
+    @ColorInt private var measureInk: Int = FALLBACK_POINT_COLOR,
     /** The halo around the dimensions' figures, ARGB: the stage's ground, so they stay legible. */
-    @ColorInt private val measureHalo: Int = android.graphics.Color.TRANSPARENT,
+    @ColorInt private var measureHalo: Int = android.graphics.Color.TRANSPARENT,
     /**
      * The dense cloud drawn here: the scan's own, or a cut of it — the dollhouse's, without its
      * ceiling ([io.github.sceneview.demo.demos.internal.RoomDollhouse.cropDense]) — drawn whole.
@@ -460,6 +460,18 @@ internal class ReplayLayers(
             )
         }
         measureNode.upload(mesh)
+    }
+
+    /**
+     * The dimensions take another [ink] and [halo] — the theme changed. Their atlas is redrawn at
+     * the next [sync], by the swap that already follows a change of figures: the layers, their
+     * nodes and every other texture stay as they are (#4330).
+     */
+    fun setMeasureColors(@ColorInt ink: Int, @ColorInt halo: Int) {
+        if (ink == measureInk && halo == measureHalo) return
+        measureInk = ink
+        measureHalo = halo
+        measureLabels = null
     }
 
     /**

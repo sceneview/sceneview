@@ -177,6 +177,48 @@ class DemoSmokeTest {
         check(device.currentPackageName == pkg) { "The demo left the foreground after opening Record" }
     }
 
+    // The system theme changes while the bundled replay's 3D view is on screen (#4330). The
+    // activity handles `uiMode` itself, so the scene stays and takes the other theme's colours
+    // on the layers it already draws. Rebuilding them freed textures their material instances
+    // still held: Filament aborted the process on the next frame, and this run with it.
+    @Test
+    fun a06c_arRerun_themeSwitchDuringReplay() =
+        switchThemeOverReplay(qaState = "replay", settleMillis = 10000, shot = "s06c_ar_rerun_theme_switch")
+
+    // Same switch over the Surface view. Its ground is the scene's skybox, which the theme
+    // replaces: the scene kept the old one a dispatch after its owner had destroyed it, and
+    // Filament read it while taking the new one — a segfault, on some switches only.
+    @Test
+    fun a06d_arRerun_themeSwitchOverSurface() =
+        switchThemeOverReplay(qaState = "model-synthetic", settleMillis = 20000, shot = "s06d_ar_rerun_theme_surface")
+
+    private fun switchThemeOverReplay(qaState: String, settleMillis: Long, shot: String) {
+        val initial = device.executeShellCommand("cmd uimode night").substringAfter(": ").trim()
+        try {
+            context.startActivity(
+                Intent().apply {
+                    setClassName(pkg, MainActivity::class.java.name)
+                    putExtra("demo", "ar-rerun")
+                    putExtra("qa_mode", true)
+                    putExtra("qa_state", qaState)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+            device.wait(Until.hasObject(By.text("Room Scan")), timeout)
+            Thread.sleep(settleMillis)
+            repeat(THEME_SWITCH_ROUNDS) {
+                device.executeShellCommand("cmd uimode night yes")
+                Thread.sleep(3000)
+                device.executeShellCommand("cmd uimode night no")
+                Thread.sleep(3000)
+            }
+            screenshot(shot)
+            check(device.currentPackageName == pkg) { "The demo left the foreground after a theme switch" }
+        } finally {
+            device.executeShellCommand("cmd uimode night ${if (initial in NIGHT_MODES) initial else "no"}")
+        }
+    }
+
     // Samples step 0 — `ar-streetscape` is now the Streetscape mode of the Geospatial
     // Anchors card. The leg deliberately keeps driving the RETIRED id: that is what proves
     // the alias and its ALIAS_INITIAL_TAB entry still land on the Streetscape mode. The
@@ -198,5 +240,13 @@ class DemoSmokeTest {
     fun z01_cameraControls_smokeOpen() {
         openDemoTolerant("camera-gestures", "Camera & Gestures")
         screenshot("s08_camera_controls")
+    }
+
+    private companion object {
+        /** What `cmd uimode night` takes back, to leave the device as it was found. */
+        val NIGHT_MODES = setOf("yes", "no", "auto")
+
+        /** Dark then light, this many times: the freed skybox is not read on every switch. */
+        const val THEME_SWITCH_ROUNDS = 3
     }
 }
