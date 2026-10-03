@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-surfaces` demo (registered by
+     `ArSurfacesFragment.kt`). Android's resource merger
+     fans every `res/values/*.xml` file in, so `R.string.demo_ar_surfaces_title`
+     etc. remains globally resolvable. Adding a new demo never needs to touch
+     this file or `strings.xml` — see #1870. -->
+<resources>
+    <string name="demo_ar_surfaces_title">Surfaces</string>
+    <string name="demo_ar_surfaces_subtitle">Dots on floors, dashes on walls, rings on ceilings</string>
+    <string name="ar_surfaces_dock_surfaces_label">Show detected surfaces</string>
+    <string name="ar_surfaces_dock_surfaces_caption">Surfaces</string>
+    <string name="ar_surfaces_status_scanning">Move your phone slowly: dots mark floors, dashes mark walls.</string>
+    <string name="ar_surfaces_status_found">Tap the floor to place the car.</string>
+    <string name="ar_surfaces_status_placed">Drag the car to move it, twist to turn it, or tap the floor to put it elsewhere.</string>
+    <string name="ar_surfaces_status_move">Move your phone slowly so it can see the room.</string>
+</resources>

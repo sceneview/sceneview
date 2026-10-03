@@ -29,7 +29,7 @@
     <ID>MaxLineLength:ARCompletenessDefaultsTest.kt:ARCompletenessDefaultsTest$val</ID>
     <ID>MaxLineLength:ARCore.kt:ARCore$ReplaceWith("create(context, (context as? androidx.activity.ComponentActivity)?.let { ActivityARPermissionHandler(it) }, features)")</ID>
     <ID>MaxLineLength:ARCore.kt:ARCore$ReplaceWith("resume(context, (context as? androidx.activity.ComponentActivity)?.let { ActivityARPermissionHandler(it) })")</ID>
-    <ID>MaxLineLength:ARSceneView.kt:@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, planeRendererVersion, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))</ID>
+    <ID>MaxLineLength:ARSceneView.kt:@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))</ID>
     <ID>MaxLineLength:ARSceneView.kt:permissionHandler</ID>
     <ID>MaxLineLength:ARTypedConfigModesTest.kt:ARTypedConfigModesTest$"""LaunchedEffect\($name\)\s*\{[^}]*session\.configure\s*\{\s*config\s*->\s*config\.$name\s*=\s*$name\s*\}"""</ID>
     <ID>MaxLineLength:ARTypedConfigModesTest.kt:ARTypedConfigModesTest$"""planeFindingMode\s*:\s*Config\.PlaneFindingMode\s*=\s*Config\.PlaneFindingMode\.HORIZONTAL_AND_VERTICAL"""</ID>
@@ -39,7 +39,6 @@
     <ID>NestedBlockDepth:ARSceneView.kt:private fun onARFrame</ID>
     <ID>NestedBlockDepth:LightEstimator.kt:LightEstimator$fun update: Estimation?</ID>
     <ID>NestedBlockDepth:PlaneRenderer.kt:PlaneRenderer$override fun update</ID>
-    <ID>NestedBlockDepth:PlaneRendererV2.kt:PlaneRendererV2$override fun update</ID>
     <ID>NewLineAtEndOfFile:ARCameraNode.kt:io.github.sceneview.ar.node.ARCameraNode.kt</ID>
     <ID>NewLineAtEndOfFile:ARCameraStream.kt:io.github.sceneview.ar.camera.ARCameraStream.kt</ID>
     <ID>NewLineAtEndOfFile:Anchor.kt:io.github.sceneview.ar.scene.Anchor.kt</ID>

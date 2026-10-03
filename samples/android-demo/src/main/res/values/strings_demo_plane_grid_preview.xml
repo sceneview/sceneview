@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `plane-grid-preview` demo (registered by
-     `PlaneGridPreviewFragment.kt`). A NON-AR SceneView that renders the real
-     ARCore plane-detection grid material (`plane_renderer.filamat`) on a static
-     surface so the shader can be visually QA'd on any 3D-capable device or
-     emulator — no ARCore / physical AR device required (#2224). -->
+<!-- Strings for the `plane-grid-preview` debug tool (routed by `DemoHostActivity`).
+     A NON-AR SceneView that renders the real AR surface material
+     (`plane_renderer.filamat`) on a static surface so the shader can be visually
+     QA'd on any 3D-capable device or emulator — no ARCore / physical AR device
+     required (#2224, #4307). -->
 <resources>
     <string name="demo_plane_grid_preview_title">AR Plane Grid Preview</string>
-    <string name="plane_grid_preview_dots">Dots (Plane Renderer V2)</string>
-    <string name="demo_plane_grid_preview_subtitle">The AR plane-detection grid material on a static surface — no camera needed</string>
+    <string name="demo_plane_grid_preview_subtitle">The AR surface marks on a static surface — no camera needed</string>
+    <string name="plane_grid_preview_floor">Floor</string>
+    <string name="plane_grid_preview_wall">Wall</string>
+    <string name="plane_grid_preview_ceiling">Ceiling</string>
+    <string name="plane_grid_preview_bright_background">Bright background (outdoor)</string>
+    <string name="plane_grid_preview_tilt">Surface tilt</string>
 </resources>

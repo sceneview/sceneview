@@ -75,8 +75,9 @@ internal data class PlaneDepthMeshGeometry(
 }
 
 /**
- * Builds a plane-clipped triangle mesh from a single ARCore depth image — the workhorse
- * of [io.github.sceneview.ar.PlaneVisualizerV2].
+ * Builds a plane-clipped triangle mesh from a single ARCore depth image. Written for the
+ * depth-driven plane mesh of #2203; [io.github.sceneview.ar.PlaneVisualizer] draws a flat
+ * feathered mesh since #3507 and no longer calls it.
  *
  * For every sub-sampled depth pixel:
  *  1. Unproject into ARCore camera space (same math as [unprojectDepthPixel] /

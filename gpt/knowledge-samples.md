@@ -719,7 +719,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
 - `ar-measure` — Measure. Add two points, read the distance.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
-- `ar-plane-renderer-v2` — Plane Renderer V2. Soft dots show each surface your phone finds.
+- `ar-surfaces` — Surfaces. Dots on floors, dashes on walls, rings on ceilings.
 
 ### View in 3D
 

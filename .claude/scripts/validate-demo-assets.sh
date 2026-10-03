@@ -398,8 +398,8 @@ process_platform_refs() {
 if [ "$platforms" = "all" ] || [ "$platforms" = "android" ]; then
     # Android merges the asset folders of library-module dependencies into the
     # app APK, so a demo can reference assets shipped by the sceneview /
-    # arsceneview libraries (e.g. PlaneGridPreviewDemo reuses the AR plane
-    # renderer's `textures/plane_renderer.png` to mirror PlaneRenderer exactly).
+    # arsceneview libraries (e.g. PlaneGridPreviewDemo loads the AR plane
+    # renderer's `materials/plane_renderer.filamat` to mirror PlaneRenderer exactly).
     # Include those library asset roots so such merged refs resolve.
     process_platform_refs \
         "android-demo" \

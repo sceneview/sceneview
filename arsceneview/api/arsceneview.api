@@ -168,8 +168,8 @@ public abstract interface class io/github/sceneview/ar/ARPermissionHandler {
 }
 
 public final class io/github/sceneview/ar/ARSceneKt {
-	public static final fun ARScene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
-	public static final fun ARSceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Landroid/net/Uri;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lcom/google/ar/core/Config$PlaneFindingMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$InstantPlacementMode;Lcom/google/ar/core/Config$GeospatialMode;Lcom/google/ar/core/Config$StreetscapeGeometryMode;Lcom/google/ar/core/Config$CloudAnchorMode;Lcom/google/ar/core/Config$AugmentedFaceMode;Lcom/google/ar/core/Config$ImageStabilizationMode;Lcom/google/ar/core/Config$SemanticMode;Lcom/google/ar/core/Config$UpdateMode;Lcom/google/ar/core/Config$FocusMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/PlaneRendererBase$Version;Lio/github/sceneview/ar/scene/SceneUnderstanding;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIIIII)V
+	public static final fun ARScene (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIII)V
+	public static final fun ARSceneView (Landroidx/compose/ui/Modifier;Lio/github/sceneview/SurfaceType;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;Lio/github/sceneview/loaders/EnvironmentLoader;Ljava/util/Set;Ljava/io/File;Landroid/net/Uri;Lkotlin/jvm/functions/Function1;Lcom/google/ar/core/Config$FlashMode;Lcom/google/ar/core/Config$PlaneFindingMode;Lcom/google/ar/core/Config$DepthMode;Lcom/google/ar/core/Config$InstantPlacementMode;Lcom/google/ar/core/Config$GeospatialMode;Lcom/google/ar/core/Config$StreetscapeGeometryMode;Lcom/google/ar/core/Config$CloudAnchorMode;Lcom/google/ar/core/Config$AugmentedFaceMode;Lcom/google/ar/core/Config$ImageStabilizationMode;Lcom/google/ar/core/Config$SemanticMode;Lcom/google/ar/core/Config$UpdateMode;Lcom/google/ar/core/Config$FocusMode;Lkotlin/jvm/functions/Function2;ZLio/github/sceneview/ar/scene/SceneUnderstanding;Lio/github/sceneview/ar/camera/ARCameraStream;Lcom/google/android/filament/View;Lio/github/sceneview/RenderQuality;ZLcom/google/android/filament/Renderer;Lcom/google/android/filament/Scene;Lio/github/sceneview/environment/Environment;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/node/LightNode;Lio/github/sceneview/ar/node/ARCameraNode;Ljava/lang/Float;Lio/github/sceneview/collision/CollisionSystem;Lio/github/sceneview/node/ViewNode$WindowManager;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lio/github/sceneview/utils/SurfaceMirrorer;Lio/github/sceneview/gesture/GestureDetector$OnGestureListener;Lkotlin/jvm/functions/Function2;Lio/github/sceneview/ar/ARPermissionHandler;Landroidx/lifecycle/Lifecycle;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function4;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;IIIIIIII)V
 	public static final fun frontCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
 	public static final fun highestResolutionCameraConfig (Lcom/google/ar/core/Session;)Lcom/google/ar/core/CameraConfig;
 	public static final fun rememberARCameraNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ar/node/ARCameraNode;
@@ -789,8 +789,8 @@ public final class io/github/sceneview/ar/ComposableSingletons$ARSceneScopeKt {
 public final class io/github/sceneview/ar/ComposableSingletons$ARSceneViewKt {
 	public static final field INSTANCE Lio/github/sceneview/ar/ComposableSingletons$ARSceneViewKt;
 	public fun <init> ()V
-	public final fun getLambda$473211439$arsceneview_release ()Lkotlin/jvm/functions/Function4;
-	public final fun getLambda$478031680$arsceneview_release ()Lkotlin/jvm/functions/Function4;
+	public final fun getLambda$-581530437$arsceneview_release ()Lkotlin/jvm/functions/Function4;
+	public final fun getLambda$1159903948$arsceneview_release ()Lkotlin/jvm/functions/Function4;
 }
 
 public final class io/github/sceneview/ar/ComposableSingletons$PlaneDiscoveryGuideKt {
@@ -1021,6 +1021,7 @@ public final class io/github/sceneview/ar/PlaneDiscoveryPhase : java/lang/Enum {
 public final class io/github/sceneview/ar/PlaneVisualizer : io/github/sceneview/collision/TransformProvider {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/PlaneVisualizer$Companion;
+	public static final field SCAN_IN_DURATION_MS J
 	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Scene;Lcom/google/ar/core/Plane;)V
 	public final fun destroy ()V
 	public fun getTransformationMatrix ()Lio/github/sceneview/collision/Matrix;
@@ -1033,27 +1034,6 @@ public final class io/github/sceneview/ar/PlaneVisualizer : io/github/sceneview/
 }
 
 public final class io/github/sceneview/ar/PlaneVisualizer$Companion {
-}
-
-public final class io/github/sceneview/ar/PlaneVisualizerV2 : io/github/sceneview/collision/TransformProvider {
-	public static final field $stable I
-	public static final field Companion Lio/github/sceneview/ar/PlaneVisualizerV2$Companion;
-	public static final field DEPTH_REBUILD_INTERVAL_MS J
-	public static final field REFLECTION_FADE_IN_MS J
-	public static final field SCAN_IN_DURATION_MS J
-	public fun <init> (Lcom/google/android/filament/Engine;Lcom/google/android/filament/Scene;Lcom/google/ar/core/Plane;)V
-	public final fun destroy ()V
-	public fun getTransformationMatrix ()Lio/github/sceneview/collision/Matrix;
-	public final fun setEnabled (Z)V
-	public final fun setFrame (Lcom/google/ar/core/Frame;Lcom/google/ar/core/Camera;)V
-	public final fun setPlaneMaterial (Lcom/google/android/filament/MaterialInstance;)V
-	public final fun setShadowMaterial (Lcom/google/android/filament/MaterialInstance;)V
-	public final fun setShadowReceiver (Z)V
-	public final fun setVisible (Z)V
-	public final fun updatePlane ()V
-}
-
-public final class io/github/sceneview/ar/PlaneVisualizerV2$Companion {
 }
 
 public final class io/github/sceneview/ar/ReticlePhase : java/lang/Enum {
@@ -2725,31 +2705,34 @@ public final class io/github/sceneview/ar/scene/AnchorKt {
 	public static final fun destroy (Lcom/google/ar/core/Anchor;)V
 }
 
-public final class io/github/sceneview/ar/scene/PlaneRenderer : io/github/sceneview/ar/scene/PlaneRendererBase {
+public final class io/github/sceneview/ar/scene/PlaneRenderer {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/scene/PlaneRenderer$Companion;
-	public static final field MATERIAL_COLOR Ljava/lang/String;
-	public static final field MATERIAL_TEXTURE Ljava/lang/String;
+	public static final field MATERIAL_CONTRAST Ljava/lang/String;
+	public static final field MATERIAL_FOCUS Ljava/lang/String;
+	public static final field MATERIAL_GRID_ALPHA Ljava/lang/String;
+	public static final field MATERIAL_GRID_TINT Ljava/lang/String;
+	public static final field MATERIAL_OPACITY Ljava/lang/String;
+	public static final field MATERIAL_SCAN_PLANE_RADIUS Ljava/lang/String;
+	public static final field MATERIAL_SCAN_PROGRESS Ljava/lang/String;
+	public static final field MATERIAL_SURFACE_ALPHA Ljava/lang/String;
+	public static final field MATERIAL_SURFACE_KIND Ljava/lang/String;
 	public static final field MATERIAL_UV_SCALE Ljava/lang/String;
-	public field viewSize Landroid/util/Size;
 	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Scene;)V
-	public fun destroy ()V
+	public final fun destroy ()V
 	public final fun getEngine ()Lcom/google/android/filament/Engine;
-	public final fun getMaxHitTestPerSecond ()I
+	public final fun getMaxUpdatesPerSecond ()I
 	public final fun getPlaneMaterial ()Lcom/google/android/filament/Material;
 	public final fun getPlaneRendererMode ()Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
-	public final fun getPlaneTexture ()Lcom/google/android/filament/Texture;
-	public fun getViewSize ()Landroid/util/Size;
-	public fun isEnabled ()Z
-	public fun isShadowReceiver ()Z
-	public fun isVisible ()Z
-	public fun setEnabled (Z)V
-	public final fun setMaxHitTestPerSecond (I)V
+	public final fun isEnabled ()Z
+	public final fun isShadowReceiver ()Z
+	public final fun isVisible ()Z
+	public final fun setEnabled (Z)V
+	public final fun setMaxUpdatesPerSecond (I)V
 	public final fun setPlaneRendererMode (Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;)V
-	public fun setShadowReceiver (Z)V
-	public fun setViewSize (Landroid/util/Size;)V
-	public fun setVisible (Z)V
-	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
+	public final fun setShadowReceiver (Z)V
+	public final fun setVisible (Z)V
+	public final fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
 }
 
 public final class io/github/sceneview/ar/scene/PlaneRenderer$Companion {
@@ -2761,66 +2744,6 @@ public final class io/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode 
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
 	public static fun values ()[Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
-}
-
-public abstract interface class io/github/sceneview/ar/scene/PlaneRendererBase {
-	public abstract fun destroy ()V
-	public abstract fun getViewSize ()Landroid/util/Size;
-	public abstract fun isEnabled ()Z
-	public abstract fun isShadowReceiver ()Z
-	public abstract fun isVisible ()Z
-	public abstract fun setEnabled (Z)V
-	public abstract fun setShadowReceiver (Z)V
-	public abstract fun setViewSize (Landroid/util/Size;)V
-	public abstract fun setVisible (Z)V
-	public abstract fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
-}
-
-public final class io/github/sceneview/ar/scene/PlaneRendererBase$Version : java/lang/Enum {
-	public static final field V1 Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
-	public static final field V2 Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
-	public static fun values ()[Lio/github/sceneview/ar/scene/PlaneRendererBase$Version;
-}
-
-public final class io/github/sceneview/ar/scene/PlaneRendererV2 : io/github/sceneview/ar/scene/PlaneRendererBase {
-	public static final field $stable I
-	public static final field Companion Lio/github/sceneview/ar/scene/PlaneRendererV2$Companion;
-	public static final field MATERIAL_COLOR Ljava/lang/String;
-	public static final field MATERIAL_GRID_ALPHA Ljava/lang/String;
-	public static final field MATERIAL_GRID_TINT Ljava/lang/String;
-	public static final field MATERIAL_METALLIC Ljava/lang/String;
-	public static final field MATERIAL_REFLECTANCE Ljava/lang/String;
-	public static final field MATERIAL_REFLECTION_FADE_IN Ljava/lang/String;
-	public static final field MATERIAL_ROUGHNESS Ljava/lang/String;
-	public static final field MATERIAL_SCAN_PLANE_RADIUS Ljava/lang/String;
-	public static final field MATERIAL_SCAN_PROGRESS Ljava/lang/String;
-	public static final field MATERIAL_SURFACE_ALPHA Ljava/lang/String;
-	public static final field MATERIAL_TEXTURE Ljava/lang/String;
-	public static final field MATERIAL_UV_SCALE Ljava/lang/String;
-	public field viewSize Landroid/util/Size;
-	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/MaterialLoader;Lcom/google/android/filament/Scene;)V
-	public fun destroy ()V
-	public final fun getEngine ()Lcom/google/android/filament/Engine;
-	public final fun getMaxHitTestPerSecond ()I
-	public final fun getPlaneMaterial ()Lcom/google/android/filament/Material;
-	public final fun getPlaneRendererMode ()Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;
-	public final fun getPlaneTexture ()Lcom/google/android/filament/Texture;
-	public fun getViewSize ()Landroid/util/Size;
-	public fun isEnabled ()Z
-	public fun isShadowReceiver ()Z
-	public fun isVisible ()Z
-	public fun setEnabled (Z)V
-	public final fun setMaxHitTestPerSecond (I)V
-	public final fun setPlaneRendererMode (Lio/github/sceneview/ar/scene/PlaneRenderer$PlaneRendererMode;)V
-	public fun setShadowReceiver (Z)V
-	public fun setViewSize (Landroid/util/Size;)V
-	public fun setVisible (Z)V
-	public fun update (Lcom/google/ar/core/Session;Lcom/google/ar/core/Frame;)V
-}
-
-public final class io/github/sceneview/ar/scene/PlaneRendererV2$Companion {
 }
 
 public final class io/github/sceneview/ar/scene/SceneUnderstanding {
