@@ -2,16 +2,23 @@ package io.github.sceneview.ar
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.Looper
 import android.view.ContextThemeWrapper
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -54,6 +61,30 @@ class HostLifecycleTest {
         // The caller then falls back to LocalLifecycleOwner.
         assertNull(application.findHostLifecycle())
         assertNull(ContextThemeWrapper(application, 0).findHostLifecycle())
+    }
+
+    @Test
+    fun `inside a destination the composable resolves to the activity, not to the destination`() {
+        // What a NavHost does: the destination provides its own, narrower, LocalLifecycleOwner.
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val destination = HostContext(application)
+        var host: Lifecycle? = null
+        var local: Lifecycle? = null
+
+        activity.setContentView(
+            ComposeView(activity).apply {
+                setContent {
+                    CompositionLocalProvider(LocalLifecycleOwner provides destination) {
+                        host = rememberHostLifecycle()
+                        local = LocalLifecycleOwner.current.lifecycle
+                    }
+                }
+            }
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertSame(activity.lifecycle, host)
+        assertSame(destination.lifecycle, local)
     }
 
     /** Stands in for a `ComponentActivity`: a context that owns a lifecycle. */
