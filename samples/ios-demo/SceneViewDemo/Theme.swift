@@ -162,8 +162,13 @@ enum SceneViewTokens {
             dark ? UIColor(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255, alpha: 1)
                  : UIColor(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255, alpha: 1)
         }
+        #if canImport(UIKit)
         static let pipBackdropColor = Color(light: Color(uiColor: pipBackdrop(dark: false)),
                                             dark: Color(uiColor: pipBackdrop(dark: true)))
+        #else
+        static let pipBackdropColor = Color(light: Color(nsColor: pipBackdrop(dark: false)),
+                                            dark: Color(nsColor: pipBackdrop(dark: true)))
+        #endif
 
         /// The Secondary Camera (PiP) floor grid, DESIGN.md `stage-pip-grid`: 3.0:1 on
         /// ``pipFloor(dark:)`` in both
