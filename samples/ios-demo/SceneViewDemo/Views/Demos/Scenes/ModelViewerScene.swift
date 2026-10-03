@@ -19,10 +19,11 @@ enum ModelViewerScene: DemoScene {
     /// checks every `DemoDeepLinkRegistry.aliasModes` token lands on one of them.
     @MainActor static var modes: [DemoMode] {
         [
-            DemoMode("models", title: "Models", aliases: ["0", "single", "scene-gallery"]) {
+            DemoMode("single_model", title: "Models",
+                     aliases: ["0", "single", "models", "scene-gallery"]) {
                 ModelViewerDemo()
             },
-            DemoMode("park", title: "Park", aliases: ["1", "multi-model"]) {
+            DemoMode("multi_model", title: "Park", aliases: ["1", "multi-model", "park"]) {
                 MultiModelDemo()
             },
         ]

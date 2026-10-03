@@ -135,7 +135,9 @@ struct DemoModePicker: View {
             guard !selected else { return }
             // `sample_interaction(control = "mode_<x>")`, the event Android logs
             // for an umbrella card's mode change.
-            if let analyticsSampleId { DemoAnalytics.shared.interaction(analyticsSampleId, "mode_\(id)") }
+            if let analyticsSampleId {
+                DemoAnalytics.shared.interaction(analyticsSampleId, DemoAnalytics.modeControl(id))
+            }
             #if os(iOS)
             SceneViewHaptic.shared.selection()
             #endif

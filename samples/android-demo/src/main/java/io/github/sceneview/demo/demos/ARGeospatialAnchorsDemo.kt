@@ -185,6 +185,13 @@ fun ARGeospatialAnchorsDemo(onBack: () -> Unit) {
     var mode by remember {
         mutableStateOf(initialDemoMode(GeospatialAnchorMode.entries, GeospatialAnchorMode.Terrain))
     }
+    val sampleId = io.github.sceneview.demo.telemetry.LocalSampleId.current
+    val onModeChange: (GeospatialAnchorMode) -> Unit = { next ->
+        if (next != mode) {
+            io.github.sceneview.demo.telemetry.logSampleModeChange(sampleId, next.analyticsMode)
+            mode = next
+        }
+    }
     val forced = remember {
         geospatialScenarioOf(DemoSettings.qaDemoState)?.takeIf { qaStateOverridesAllowed() }
     }
@@ -194,7 +201,7 @@ fun ARGeospatialAnchorsDemo(onBack: () -> Unit) {
     }
     if (!rememberGeospatialPermissions(onBack)) return
     key(mode) {
-        GeospatialSection(onBack = onBack, mode = mode, onModeChange = { mode = it })
+        GeospatialSection(onBack = onBack, mode = mode, onModeChange = onModeChange)
     }
 }
 

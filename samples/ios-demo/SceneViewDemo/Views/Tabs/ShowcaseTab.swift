@@ -561,21 +561,27 @@ struct DemoCover: View {
     /// Canonical sample id, `nil` for an id that resolves to no screen.
     let sampleId: String?
     let category: String
+    let entryId: String?
     let source: SampleOpenSource
+    let mode: String?
 
     init(scene: DemoItem, source: SampleOpenSource = .other, onClose: @escaping () -> Void) {
         self.init(title: scene.title, destination: scene.destination, sampleId: scene.sceneId,
-                  category: DemoAnalytics.category(for: scene.section), source: source, onClose: onClose)
+                  category: DemoAnalytics.category(for: scene.section), entryId: scene.sceneId,
+                  source: source, mode: DemoAnalytics.initialMode(for: scene.sceneId), onClose: onClose)
     }
 
     init(title: String, destination: AnyView, sampleId: String? = nil, category: String = "unknown",
-         source: SampleOpenSource = .other, onClose: @escaping () -> Void) {
+         entryId: String? = nil, source: SampleOpenSource = .other, mode: String? = nil,
+         onClose: @escaping () -> Void) {
         self.title = title
         self.destination = destination
         self.onClose = onClose
         self.sampleId = sampleId
         self.category = category
+        self.entryId = entryId
         self.source = source
+        self.mode = mode
     }
 
     var body: some View {
@@ -606,7 +612,8 @@ struct DemoCover: View {
         #endif
         .onAppear {
             guard let sampleId else { return }
-            DemoAnalytics.shared.sampleOpened(sampleId, category: category, source: source)
+            DemoAnalytics.shared.sampleOpened(sampleId, entryId: entryId, category: category,
+                                              source: source, mode: mode)
         }
         .onDisappear {
             if let sampleId { DemoAnalytics.shared.sampleClosed(sampleId) }

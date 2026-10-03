@@ -15,16 +15,16 @@ import SwiftUI
 /// preset swap on a loaded model, already the Materials stage — and
 /// `occlusion-material`, now its Occlusion mode.
 ///
-/// Tokens follow Android's [PBR, Streaming, Occlusion] tabs: `0`/`1` (and the
-/// retired `texture-streaming`) open the materials stage, `2` and
-/// `occlusion-material` open Occlusion.
+/// Tokens follow Android's analytics slugs where the modes match: the combined
+/// materials stage reports `gallery`, while `2` and `occlusion-material` open
+/// the shared `occlusion` mode.
 enum MaterialsScene: DemoScene {
     /// The card's modes, in pill order. Also read by `DemoRegistryGuardTests`, which
     /// checks every `DemoDeepLinkRegistry.aliasModes` token lands on one of them.
     @MainActor static var modes: [DemoMode] {
         [
-            DemoMode("materials", title: "Materials",
-                     aliases: ["0", "pbr", "1", "streaming", "texture-streaming"]) {
+            DemoMode("gallery", title: "Materials",
+                     aliases: ["0", "materials", "pbr", "1", "streaming", "texture-streaming"]) {
                 MaterialsDemo()
             },
             DemoMode("occlusion", title: "Occlusion", aliases: ["2", "occlusion-material"]) {

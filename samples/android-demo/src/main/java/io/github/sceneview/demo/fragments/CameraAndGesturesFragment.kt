@@ -23,6 +23,11 @@ import io.github.sceneview.demo.demos.CameraAndGesturesDemo
  * Samples step 0 added `secondary-camera` as the PiP mode (`?tab=pip`).
  */
 object CameraAndGesturesFragment : DemoFragment {
+    val modes = listOf(
+        DemoMode("camera", R.string.demo_mode_camera),
+        DemoMode("pip", R.string.demo_mode_pip),
+    )
+
     override val entry: DemoEntry = DemoEntry(
         id = "camera-gestures",
         titleRes = R.string.demo_camera_and_gestures_title,
@@ -42,10 +47,7 @@ object CameraAndGesturesFragment : DemoFragment {
     @Composable
     override fun Screen(onBack: () -> Unit) {
         DemoModeHost(
-            modes = listOf(
-                DemoMode("camera", R.string.demo_mode_camera),
-                DemoMode("pip", R.string.demo_mode_pip),
-            ),
+            modes = modes,
             tabToMode = mapOf(0 to 0, 1 to 1),
         ) { mode ->
             when (mode) {

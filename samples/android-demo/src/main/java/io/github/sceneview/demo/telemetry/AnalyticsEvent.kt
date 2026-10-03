@@ -10,6 +10,7 @@ package io.github.sceneview.demo.telemetry
  * characters by [params]. No event carries a model file, a pose, a camera
  * frame, free text typed by the user or anything else that could identify a person — the funnel
  * needs counts, not content.
+ * `sample_open`: `sample_id`, received `entry_id`, category slug, `source`, and optional umbrella `mode`.
  *
  * This is demo-app instrumentation. The SceneView SDK itself ships no telemetry
  * (`docs/docs/recipes/measure-ar-funnel.md`); nothing in this package may move into a library.
@@ -28,10 +29,22 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("screen_name" to screenName, "screen_class" to screenClass)
     }
 
-    data class SampleOpen(val sampleId: String, val category: String, val source: OpenSource) :
+    data class SampleOpen(
+        val sampleId: String,
+        val category: String,
+        val source: OpenSource,
+        val entryId: String = sampleId,
+        val mode: String? = null,
+    ) :
         AnalyticsEvent("sample_open") {
         override fun rawParams() =
-            mapOf("sample_id" to sampleId, "category" to category, "source" to source.value)
+            buildMap<String, Any> {
+                put("sample_id", sampleId)
+                put("entry_id", entryId)
+                put("category", category)
+                put("source", source.value)
+                mode?.let { put("mode", it) }
+            }
     }
 
     data class SampleClose(val sampleId: String, val durationS: Long) : AnalyticsEvent("sample_close") {
