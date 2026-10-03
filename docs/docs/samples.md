@@ -87,9 +87,10 @@ Browser 3D viewer with:
 - WebXR AR/VR support ("Enter AR" / "Enter VR" buttons)
 - Orbit camera, auto-resize
 
-A plain static site (HTML + inline JS + a self-hosted `sceneview.js`) —
-not a Gradle module. From the repository root, stage the shared viewer and
-serve the folder:
+A plain static site (HTML + inline JS) — not a Gradle module. It runs the
+same viewer as sceneview.dev, `website-static/js/sceneview.js`, which is not
+committed under the demo. From the repository root, stage it and serve the
+folder:
 
 ```bash
 cp website-static/js/sceneview.js samples/web-demo/site/js/sceneview.js

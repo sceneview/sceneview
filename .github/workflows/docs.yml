@@ -221,12 +221,14 @@ jobs:
       - name: Copy samples/web-demo static site
         run: |
           # samples/web-demo is a plain static site — HTML + an inline
-          # <script> + a self-hosted sceneview.js, with self-hosted
-          # filament.js/.wasm, models and audio. The dead Kotlin/JS source
-          # set (which built a `web-model-viewer.js` bundle index.html never
-          # loaded) was removed in #1946, so there is nothing to compile:
-          # the files under `samples/web-demo/site/` ARE the deliverable.
-          # Stage the single hand-written viewer alongside the demo assets.
+          # <script>, with self-hosted filament.js/.wasm, models and audio.
+          # The dead Kotlin/JS source set (which built a
+          # `web-model-viewer.js` bundle index.html never loaded) was removed
+          # in #1946, so there is nothing to compile. The deliverable is the
+          # files under `samples/web-demo/site/` plus one file that is not
+          # committed there: the viewer, website-static/js/sceneview.js,
+          # staged into js/ below (#4316). Without that second `cp` the page
+          # loads no viewer at all.
           mkdir -p site/web-demo
           cp -r samples/web-demo/site/. site/web-demo/
           cp website-static/js/sceneview.js site/web-demo/js/sceneview.js

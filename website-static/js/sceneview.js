@@ -1041,7 +1041,7 @@
      * @param {number[]} [options.direction=[0,-1,0]] - Direction for directional/spot lights
      * @param {number[]} [options.position=[0,2,0]] - Position for point/spot lights
      * @param {number} [options.falloff=10] - Falloff radius for point/spot lights
-     * @returns {number} Entity handle (use with removeNode to delete)
+     * @returns {Object} Filament Entity handle (pass it to removeLight or removeNode to delete)
      */
     addLight(options) {
       options = options || {};
@@ -1784,14 +1784,7 @@
     removeNode(entity) {
       // Lights created via addLight() are not media nodes: handle them first.
       if (this._lightEntities.has(entity)) {
-        this._lightEntities.delete(entity);
-        try {
-          this._scene.remove(entity);
-          // Frees the light and transform components. The Filament.js
-          // LightManager binding has no destroy() of its own.
-          this._engine.destroyEntity(entity);
-        } catch (e) { /* ignore */ }
-        this.requestRender();
+        this.removeLight(entity);
         return;
       }
 
@@ -1849,6 +1842,7 @@
       });
       this._videoElements.clear();
       this._mediaNodes.clear();
+      this._lightEntities.clear();
       this._billboards.clear();
       // onFrame() callbacks capture page state (a mirror canvas, a component): drop them.
       this._frameCallbacks.clear();
@@ -2299,11 +2293,17 @@
      * Remove a single light from the scene by its entity handle (as returned
      * by addLight()). Use this to clean up lights between playground previews.
      *
-     * @param {number} entity - Entity handle returned by addLight()
+     * @param {Object} entity - Filament Entity handle returned by addLight()
      * @returns {SceneViewInstance} this (for chaining)
      */
     removeLight(entity) {
       try { this._scene.remove(entity); } catch (e) { /* ignore */ }
+      // A light created by addLight() is owned by the viewer: untrack it and
+      // free its light and transform components. The Filament.js LightManager
+      // binding has no destroy() of its own.
+      if (this._lightEntities.delete(entity)) {
+        try { this._engine.destroyEntity(entity); } catch (e) { /* ignore */ }
+      }
       return this.requestRender();
     }
 
