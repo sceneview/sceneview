@@ -1,0 +1,106 @@
+{
+  "index_dark_before": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 48608,
+      "mean": [
+        183.9,
+        121.6,
+        77.7
+      ],
+      "meanSaturation": 0.557,
+      "meanLuma": 131.7
+    }
+  },
+  "index_light_before": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 48383,
+      "mean": [
+        189.9,
+        127.5,
+        83.5
+      ],
+      "meanSaturation": 0.548,
+      "meanLuma": 137.6
+    }
+  },
+  "index_dark_after": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 48627,
+      "mean": [
+        184.1,
+        120.2,
+        70.6
+      ],
+      "meanSaturation": 0.6,
+      "meanLuma": 130.2
+    }
+  },
+  "index_light_after": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 48668,
+      "mean": [
+        189.8,
+        125.9,
+        76.4
+      ],
+      "meanSaturation": 0.589,
+      "meanLuma": 135.9
+    }
+  },
+  "threemf_dark_before": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 64659,
+      "mean": [
+        211.8,
+        202.7,
+        183.7
+      ],
+      "meanSaturation": 0.311,
+      "meanLuma": 203.2
+    }
+  },
+  "threemf_light_before": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 64264,
+      "mean": [
+        215.9,
+        206.6,
+        187.5
+      ],
+      "meanSaturation": 0.308,
+      "meanLuma": 207.2
+    }
+  },
+  "threemf_dark_after": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 64570,
+      "mean": [
+        190.3,
+        203.3,
+        186.8
+      ],
+      "meanSaturation": 0.411,
+      "meanLuma": 199.3
+    }
+  },
+  "threemf_light_after": {
+    "errors": [],
+    "stats": {
+      "modelPixels": 64263,
+      "mean": [
+        194.2,
+        207.3,
+        190.7
+      ],
+      "meanSaturation": 0.408,
+      "meanLuma": 203.3
+    }
+  }
+}
