@@ -638,10 +638,9 @@ internal class ReplayLayers(
     }
 
     /**
-     * Frees [texture] a few rendered frames from now, never in the call that unbinds it or
-     * destroys its material instance: Filament still commits that instance on the frame in
-     * flight, and a mipmapped texture gone by then aborts the renderer with "Invalid texture
-     * still bound to MaterialInstance" (#4330, the library's own rule in [EngineDestroyQueue]).
+     * Frees [texture] a few rendered frames from now, through the library's [EngineDestroyQueue],
+     * as `ImageNode` frees its own: these layers destroy no texture in the call that rebinds or
+     * destroys the material instance that read it.
      */
     private fun retire(texture: Texture) = EngineDestroyQueue.of(engine).enqueueTexture(texture)
 

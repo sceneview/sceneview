@@ -850,13 +850,11 @@ internal fun ArDebugSceneView(
                 }
             },
         ) {
-            // The layer nodes hang off one plain node, and are destroyed with it.
-            Node(
-                apply = {
-                    layers.nodes.values.forEach { addChildNode(it) }
-                    replayLayers?.nodes?.forEach { addChildNode(it) }
-                },
-            )
+            // Each set of layer nodes hangs off one plain node, and is destroyed with it. Keyed on
+            // the set: were it ever replaced while the view stays, its nodes leave the scene before
+            // its material instances are destroyed, and the next set's nodes are attached.
+            key(layers) { Node(apply = { layers.nodes.values.forEach { addChildNode(it) } }) }
+            key(replayLayers) { Node(apply = { replayLayers?.nodes?.forEach { addChildNode(it) } }) }
             // The room in its own world space, metres, Y up: the same stage as the points it replaces.
             surface?.let { room ->
                 // Taken here, beside the node that draws it: when this view leaves the screen

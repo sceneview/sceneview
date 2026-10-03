@@ -128,8 +128,8 @@ internal class DollhouseLayers(
     /**
      * The flat layers in [palette]'s colours over a plinth of [base]: what a theme switch changes,
      * on the nodes the scene already draws. The replay's layers — the room's photos and points,
-     * and every texture — are the camera's own colours and are left alone: building the layers
-     * again for a palette freed textures a frame still drew with (#4330).
+     * and every texture — are the camera's own colours and are left alone, where a set of layers
+     * per palette built and destroyed all of them on every theme switch (#4330).
      */
     fun paint(palette: DebugPalette, base: Color) {
         if (palette == this.palette && base == this.base) return
