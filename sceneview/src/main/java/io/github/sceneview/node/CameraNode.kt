@@ -9,6 +9,9 @@ import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Ray as MathRay
 import io.github.sceneview.Entity
 import io.github.sceneview.NULL_ENTITY
+import io.github.sceneview.ViewportPadding
+import io.github.sceneview.paddedViewport
+import io.github.sceneview.utils.renderedProjectionTransform
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.collision.MathHelper
 import io.github.sceneview.collision.Matrix
@@ -231,7 +234,7 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
     )
     fun worldToScreenPoint(point: Vector3): Vector3 {
         val m = Matrix()
-        Matrix.multiply(projectionTransform.toMatrix(), viewTransform.toMatrix(), m)
+        Matrix.multiply(camera.renderedProjectionTransform.toMatrix(), viewTransform.toMatrix(), m)
         val x = point.x
         val y = point.y
         val z = point.z
@@ -263,7 +266,7 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         var z = point.z
         Preconditions.checkNotNull(dest, "Parameter \"dest\" was null.")
         val m = Matrix()
-        Matrix.multiply(projectionTransform.toMatrix(), viewTransform.toMatrix(), m)
+        Matrix.multiply(camera.renderedProjectionTransform.toMatrix(), viewTransform.toMatrix(), m)
         Matrix.invert(m, m)
 
         // Invert Y because screen Y points down and Sceneform Y points up.
@@ -315,6 +318,50 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         if (view != null) {
             setLensProjection(focalLength, aspect, near.toDouble(), far.toDouble())
         }
+        applyContentPadding()
+    }
+
+    /**
+     * The part of the viewport that something else covers, in pixels from each edge. **What is
+     * left is this camera's viewport**: the optical centre moves to the centre of the visible
+     * area and the lens's field of view spans it, while the scene keeps drawing on the whole
+     * surface, under the padding too. See [paddedViewport] for the exact contract.
+     *
+     * This offsets the **projection** — Filament's `Camera.setScaling` / `setShift`, which this
+     * property owns while it is not [ViewportPadding.Zero]. The camera's pose is never touched, so
+     * an orbit the user dragged to survives, and no bounds are needed. Everything that reads this
+     * camera follows: [getViewPortAspect] is the visible area's aspect ratio, so
+     * [io.github.sceneview.fitCameraToBounds], `frameToBounds` and `autoFitContent` frame inside
+     * the visible area, and `viewToRay` / `worldToView` / `View.screenToRay` keep a touch under
+     * the finger.
+     *
+     * Set it every frame to animate it: the mapping is linear, so a padding that follows a panel
+     * moves the subject on the panel's own curve. `SceneView(contentPadding = …)` writes it for
+     * you.
+     */
+    var contentPadding: ViewportPadding = ViewportPadding.Zero
+        set(value) {
+            if (field == value) return
+            field = value
+            updateProjection()
+        }
+
+    /** `true` once a non-zero [contentPadding] wrote the camera's scaling and shift. */
+    private var ownsPostProjection = false
+
+    /**
+     * Pushes [contentPadding] onto the Filament camera for the current viewport. Until a padding is
+     * set, the scaling and the shift are never written: a caller that drives `setScaling` /
+     * `setShift` itself keeps them.
+     */
+    private fun applyContentPadding() {
+        if (contentPadding.isZero && !ownsPostProjection) return
+        val vp = viewport ?: return
+        val padded = paddedViewport(vp.width, vp.height, contentPadding)
+        camera.setScaling(padded.scaleX, padded.scaleY)
+        camera.setShift(padded.shiftX, padded.shiftY)
+        ownsPostProjection = !contentPadding.isZero
+        onComponentChanged()
     }
 
     /**
@@ -367,7 +414,12 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         updateProjection()
     }
 
+    /**
+     * Width / height of the area this camera projects into: the viewport, minus [contentPadding].
+     * `1` until the surface has a size.
+     */
     fun getViewPortAspect() =
-        viewport?.let { (it.width.toDouble() / it.height.toDouble()) }?.takeIf { !it.isNaN() }
+        viewport?.let { paddedViewport(it.width, it.height, contentPadding).aspect }
+            ?.takeIf { it.isFinite() && it > 0.0 }
             ?: 1.0
 }

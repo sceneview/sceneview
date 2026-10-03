@@ -2,10 +2,12 @@ package io.github.sceneview.demo.demos
 
 import android.view.MotionEvent
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,9 +48,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.coerceIn
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Colors
 import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
@@ -55,10 +65,13 @@ import com.google.android.filament.View
 import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.rotation as rotationMatrix
 import dev.romainguy.kotlin.math.transpose
+import io.github.sceneview.Aabb
+import io.github.sceneview.CameraFit
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.LocalDemoSheetCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusCard
 import io.github.sceneview.demo.common.DemoStatusTone
@@ -66,7 +79,6 @@ import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.TrayBallDrag
-import io.github.sceneview.demo.demos.internal.TrayFraming
 import io.github.sceneview.demo.demos.internal.TrayMotion
 import io.github.sceneview.demo.demos.internal.TrayMotion.Tilt
 import io.github.sceneview.demo.demos.internal.TrayStage
@@ -75,6 +87,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.rememberHDREnvironment
+import io.github.sceneview.fitCameraToBounds
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Position
@@ -96,6 +109,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.utils.screenToRay
+import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlin.math.abs
 import kotlin.math.cos
@@ -585,18 +599,50 @@ fun RollingBallsDemo(onBack: () -> Unit) {
             )
         }
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // Framed in the viewport this scene actually gets — the band between the title row
-            // and the controls — not the whole screen.
-            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
-                maxWidth.value / maxHeight.value
+        // How far this scene's bottom edge sits above the screen's: the band the scaffold reserves
+        // for the controls. The settings sheet is measured from the screen's bottom edge, so only
+        // what it covers *beyond* this band is taken from the board.
+        val density = LocalDensity.current
+        var gapBelowScene by remember { mutableStateOf(0.dp) }
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    val root = coordinates.findRootCoordinates()
+                    val gapPx = root.size.height - coordinates.boundsInRoot().bottom
+                    gapBelowScene = with(density) { gapPx.toDp() }.coerceAtLeast(0.dp)
+                },
+        ) {
+            // The settings sheet is glass over the live board. What it covers is handed to the
+            // SDK as `contentPadding`: the camera then treats the band above the sheet as its
+            // viewport, so the board is drawn — and picked — there, on the sheet's own spring.
+            // The surface is not resized and the user's orbit is not touched.
+            val sheetCover by animateDpAsState(
+                targetValue = (LocalDemoSheetCover.current - gapBelowScene).coerceAtLeast(0.dp),
+                animationSpec = SceneViewTokens.Motion.spring(),
+                label = "traySheetCover",
+            )
+            // The spring overshoots by a hair on its way back to zero; a padding cannot be negative.
+            val coveredBottom = sheetCover.coerceIn(0.dp, maxHeight)
+            // Framed in the area this scene actually shows — the band between the title row and
+            // the controls, less what the sheet covers — not the whole screen.
+            val visibleHeight = maxHeight - coveredBottom
+            val aspect = if (maxWidth.value > 0f && visibleHeight.value > 0f) {
+                maxWidth.value / visibleHeight.value
             } else {
                 0.5f
             }
-            val manipulator = remember(aspect) { trayCameraManipulator(aspect) }
-            motion.aim = manipulator.target
+            val framing = remember(aspect) { trayFraming(aspect) }
+            // One manipulator for the life of the screen: it carries the user's orbit, and a
+            // framing that changes under it — the sheet, a window resize — re-fits the board
+            // around that orbit instead of snapping back to the opening shot.
+            val manipulator = remember { TrayCameraManipulator(home = framing) }
+            manipulator.framing = framing
+            motion.aim = framing.target
+            SideEffect { renderInvalidator.requestRender() }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = coveredBottom),
                 engine = engine,
                 view = view,
                 modelLoader = modelLoader,
@@ -1040,52 +1086,66 @@ private fun TrayGlassChip(
 }
 
 /**
- * The tray's camera for a viewport of [aspect]: the table itself fitted at
+ * The tray's opening shot for a visible area of [aspect]: the table itself fitted at
  * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
- * the band between the title row and the controls — with a stock orbit the user can drag (#4180).
+ * the band between the title row and the controls (#4180). The SDK's [fitCameraToBounds] does the
+ * fit; the scene declares its own bounds, because a board, its rails and thirty balls are not one
+ * model to measure.
  */
-private fun trayCameraManipulator(aspect: Float): TrayCameraManipulator {
+private fun trayFraming(aspect: Float): CameraFit {
     val half = PHYSICS_TABLE_SIZE / 2f
-    val shot = TrayFraming.fit(
-        min = Position(-half, PHYSICS_FLOOR - TrayStage.FIELD_THICKNESS - TrayStage.BODY_HEIGHT, -half),
-        max = Position(half, PHYSICS_FLOOR + TrayStage.RIM_HEIGHT, half),
-        aspect = aspect,
-        pitchDegrees = PHYSICS_CAMERA_PITCH_DEGREES,
-        verticalFovDegrees = io.github.sceneview.verticalFovDegreesForFocalLength(PHYSICS_FOCAL_LENGTH_MM)
-            .toFloat(),
+    val low = PHYSICS_FLOOR - TrayStage.FIELD_THICKNESS - TrayStage.BODY_HEIGHT
+    val high = PHYSICS_FLOOR + TrayStage.RIM_HEIGHT
+    val pitch = Math.toRadians(PHYSICS_CAMERA_PITCH_DEGREES.toDouble())
+    val fit = fitCameraToBounds(
+        bounds = Aabb(
+            center = Position(0f, (low + high) / 2f, 0f),
+            halfExtent = Position(half, (high - low) / 2f, half),
+        ),
+        direction = Position(0f, -sin(pitch).toFloat(), -cos(pitch).toFloat()),
+        verticalFovDegrees = verticalFovDegreesForFocalLength(PHYSICS_FOCAL_LENGTH_MM),
+        aspect = aspect.toDouble(),
         widthFill = PHYSICS_FRAME_WIDTH_FILL,
         heightFill = PHYSICS_FRAME_HEIGHT_FILL,
     )
-    return TrayCameraManipulator(eye = shot.eye, target = shot.target)
+    return checkNotNull(fit) { "the tray has a volume to frame" }
 }
 
 /**
  * The stock orbit with the eye kept above the tray: its polar angle is clamped between
  * [PHYSICS_MIN_POLAR_DEGREES] and [PHYSICS_MAX_POLAR_DEGREES] from straight up and re-aimed at
  * the tray, so no drag can carry the camera under the floor and lose the balls from view.
+ *
+ * The orbit is built once, around [home]. A later [framing] — the same board fitted in another
+ * visible area — is reached by carrying the orbit's eye over to it: same angles about the new
+ * target, radius scaled by the two fits' distances. The user's orbit and zoom survive a re-fit.
  */
 private class TrayCameraManipulator(
-    eye: Position,
-    val target: Position,
+    private val home: CameraFit,
 ) : CameraGestureDetector.CameraManipulator {
+    /** The fit in force. Written from composition, read by the frame loop — both on main. */
+    var framing: CameraFit = home
+
     private val orbit = CameraGestureDetector.DefaultCameraManipulator(
-        eyePosition = eye,
-        targetPosition = target,
+        eyePosition = home.eye,
+        targetPosition = home.target,
     )
 
     override fun setViewport(width: Int, height: Int) = orbit.setViewport(width, height)
 
     override fun getTransform(): Transform {
         val transform = orbit.getTransform()
-        val eye = transform.position
+        val orbitEye = transform.position
         val clamped = io.github.sceneview.demo.clampOrbitEyePitch(
-            eye, target, PHYSICS_MIN_POLAR_DEGREES, PHYSICS_MAX_POLAR_DEGREES,
+            orbitEye, home.target, PHYSICS_MIN_POLAR_DEGREES, PHYSICS_MAX_POLAR_DEGREES,
         )
-        if (clamped == eye) return transform
+        val live = framing
+        if (live == home && clamped == orbitEye) return transform
+        val scale = live.distance / home.distance
         return Transform(
             dev.romainguy.kotlin.math.lookAt(
-                eye = clamped,
-                target = target,
+                eye = live.target + (clamped - home.target) * scale,
+                target = live.target,
                 up = dev.romainguy.kotlin.math.Float3(0f, 1f, 0f),
             )
         )
