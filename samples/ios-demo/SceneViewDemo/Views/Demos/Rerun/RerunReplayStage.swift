@@ -26,29 +26,49 @@ struct RerunReplayStage: View {
     @State private var renderer = RerunStageRenderer()
 
     var body: some View {
+        themed
+            .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
+            .onChange(of: recenterToken) { _, _ in renderer.recenter() }
+            .modifier(OrbitGestures(enabled: !compact, renderer: renderer, displayScale: displayScale))
+            .accessibilityElement()
+            .accessibilityLabel("Recorded room in 3D")
+            .accessibilityHint(hint)
+    }
+
+    // Split in three so each expression stays quick to type-check.
+    private var themed: some View {
+        stage
+            .background(SceneViewTokens.RoomScan.background)
+            .onChange(of: colorScheme) { _, scheme in repaint(scheme) }
+            .onChange(of: scenePhase) { _, phase in phaseChanged(phase) }
+            .onAppear { renderer.active = scenePhase == .active }
+            .onDisappear { renderer.active = false }
+    }
+
+    private var stage: some View {
         GeometryReader { proxy in
             RealityView { content in
-                renderer.repaint(dark: colorScheme == .dark)
+                repaint(colorScheme)
                 content.camera = .virtual
                 renderer.install(in: &content, session: session, compact: compact, drift: drift, overhead: overhead)
             }
             .onAppear { renderer.resize(proxy.size, scale: displayScale) }
             .onChange(of: proxy.size) { _, size in renderer.resize(size, scale: displayScale) }
         }
-        .background(SceneViewTokens.RoomScan.background)
-        .onChange(of: colorScheme) { _, scheme in renderer.repaint(dark: scheme == .dark) }
-        .onChange(of: scenePhase) { _, phase in
-            renderer.active = phase == .active
-            if phase != .active { session.suspend() }
-        }
-        .onAppear { renderer.active = scenePhase == .active }
-        .onDisappear { renderer.active = false }
-        .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
-        .onChange(of: recenterToken) { _, _ in renderer.recenter() }
-        .modifier(OrbitGestures(enabled: !compact, renderer: renderer, displayScale: displayScale))
-        .accessibilityElement()
-        .accessibilityLabel("Recorded room in 3D")
-        .accessibilityHint(compact ? "" : "Drag to orbit, pinch to zoom, double-tap to recenter.")
+    }
+
+    private var hint: String {
+        compact ? "" : "Drag to orbit, pinch to zoom, double-tap to recenter."
+    }
+
+    private func repaint(_ scheme: ColorScheme) {
+        renderer.repaint(dark: scheme == .dark)
+    }
+
+    private func phaseChanged(_ phase: ScenePhase) {
+        let active: Bool = phase == .active
+        renderer.active = active
+        if !active { session.suspend() }
     }
 }
 
