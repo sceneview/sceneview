@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
@@ -43,10 +42,18 @@ import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.arcore.position
+import io.github.sceneview.ar.camera.CameraImageSize
+import io.github.sceneview.ar.camera.CameraImageToViewMapping
+import io.github.sceneview.ar.camera.cameraImageToViewMapping
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.displayRotationDegrees
+import io.github.sceneview.demo.common.cameraImageRotationDegrees
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.DetectionCameraPose
+import io.github.sceneview.demo.demos.internal.ObjectLabelObservation
+import io.github.sceneview.demo.demos.internal.ObjectLabelTrack
+import io.github.sceneview.demo.demos.internal.ObjectLabelTracker
+import io.github.sceneview.demo.demos.internal.isDetectionCaptureCompatible
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -82,9 +89,8 @@ import io.github.sceneview.rememberModelLoader
  *
  * **Rate limiting.** The detector takes ~30–80 ms per frame on a mid-range phone; running
  * it on every AR frame (60 Hz) starves the renderer. We throttle to one detector run per
- * `kDetectIntervalMs` and de-duplicate anchors by (centre-pixel-bucket × label) so each
- * detected object spawns exactly one label even when the detector fires multiple times on
- * the same scene.
+ * `kDetectIntervalMs`, associate labels by ML Kit tracking ID (nearest same-label fallback),
+ * and replace matched anchors so each label follows its object instead of accumulating.
  */
 @Composable
 fun ARMLObjectLabelDemo(onBack: () -> Unit) {
@@ -145,11 +151,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
 
     // Detection state — the list of currently-anchored labels and a status banner.
     val detections = remember { mutableStateListOf<DetectionAnchor>() }
+    val detectionTracker = remember {
+        ObjectLabelTracker<Anchor> { anchor -> runCatching { anchor.detach() } }
+    }
     var statusBannerRes by remember { mutableIntStateOf(R.string.demo_ar_ml_status_warming) }
 
-    // Real pixel size of the AR surface, measured by Compose layout — see
-    // `updateAnchorsFromDetections`'s `displayW`/`displayH` doc for why this replaced a
-    // hardcoded 1000×1000 square (#3337). Zero until the first layout pass.
+    // Real pixel size of the AR surface, measured by Compose layout. It replaced a hardcoded
+    // 1000×1000 square (#3337) and is the view size the camera-image mapping is captured for.
+    // Zero until the first layout pass.
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
 
     // Detector throttle — minimum gap between detector runs so we don't starve the
@@ -260,7 +269,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // included so walls / shelves work too.
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 },
-                onSessionUpdated = { _, frame: Frame ->
+                onSessionUpdated = { session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
 
                     // Keep the camera world position fresh so every label billboards toward
@@ -274,16 +283,40 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // Turn the previous detector pass's results into anchors now, on the
                     // render thread, against *this* frame — see `pendingDetection` above.
                     pendingDetection.getAndSet(null)?.let { pending ->
-                        updateAnchorsFromDetections(
-                            frame = frame,
-                            results = pending.results,
-                            imageW = pending.imageW,
-                            imageH = pending.imageH,
-                            displayW = viewSize.width,
-                            displayH = viewSize.height,
-                            detections = detections,
-                            labelBitmaps = labelBitmaps,
+                        val currentMapping = if (viewSize.width > 0 && viewSize.height > 0) {
+                            runCatching {
+                                frame.cameraImageToViewMapping(
+                                    imageSize = pending.mapping.imageSize,
+                                    viewSize = CameraImageSize(viewSize.width, viewSize.height),
+                                    inputRotationDegrees = cameraImageRotationDegrees(context, session),
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                        val isCompatible = currentMapping != null && isDetectionCaptureCompatible(
+                            capturedPose = pending.cameraPose,
+                            currentPose = frame.camera.pose.toDetectionCameraPose(),
+                            capturedTimestampNanos = pending.frameTimestampNanos,
+                            currentTimestampNanos = frame.timestamp,
+                            capturedMapping = pending.mapping,
+                            currentMapping = currentMapping,
                         )
+                        if (isCompatible) {
+                            updateAnchorsFromDetections(
+                                frame = frame,
+                                results = pending.results,
+                                mapping = pending.mapping,
+                                tracker = detectionTracker,
+                                detections = detections,
+                                labelBitmaps = labelBitmaps,
+                            )
+                        }
+                        // A rejected result is dropped whole: it must not cast stale rays, and
+                        // it says nothing about which objects are still there, so it does not
+                        // advance track expiry either. The labels already placed are world
+                        // anchors — they stay on their objects while the phone moves, and the
+                        // next pass taken from a steady camera reconciles them.
                     }
 
                     if (!isTracking) return@ARSceneView
@@ -330,7 +363,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // prevent, because nothing in the UI would say so.
                     var dispatched = false
                     try {
-                        val rotationDegrees = displayRotationDegrees(context)
+                        val rotationDegrees = cameraImageRotationDegrees(context, session)
 
                         // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a
                         // reference until the task completes, so we close `cameraImage` in
@@ -340,6 +373,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                         val input = InputImage.fromMediaImage(cameraImage, rotationDegrees)
                         val imageW = cameraImage.width
                         val imageH = cameraImage.height
+                        if (viewSize.width <= 0 || viewSize.height <= 0) return@ARSceneView
+                        val captureMapping = frame.cameraImageToViewMapping(
+                            imageSize = CameraImageSize(imageW, imageH),
+                            viewSize = CameraImageSize(viewSize.width, viewSize.height),
+                            inputRotationDegrees = rotationDegrees,
+                        )
+                        val capturePose = frame.camera.pose.toDetectionCameraPose()
+                        val captureTimestamp = frame.timestamp
 
                         activeDetector.process(input)
                             .addOnSuccessListener { results ->
@@ -348,7 +389,12 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                     // the *next* current frame — never hit-test here (see
                                     // `pendingDetection` above for why).
                                     pendingDetection.set(
-                                        PendingDetection(results, imageW, imageH)
+                                        PendingDetection(
+                                            results = results,
+                                            cameraPose = capturePose,
+                                            frameTimestampNanos = captureTimestamp,
+                                            mapping = captureMapping,
+                                        )
                                     )
                                     // Once anything is anchored, the status text switches to
                                     // the live "N objects detected" count (see `statusText`
@@ -392,15 +438,17 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
             ) {
-                // Render one billboard label per active detection, keyed on the anchor.
-                // Without the key, evicting the oldest label (the cap of six in
-                // `updateAnchorsFromDetections`) shifted every other label one slot down:
-                // each slot rebuilt its AnchorNode and destroyed the old one together with
-                // its billboard, while the billboard slot, `remember`ed on a shared cached
-                // bitmap, kept the destroyed node and destroyed it again later, after its
-                // Filament entity id had been recycled. This removes the double destroy only;
-                // the "Invalid texture still bound to MaterialInstance" abort at the sixth label
-                // is a separate issue, still reproducible with this change.
+                // Render one billboard label per active detection, keyed on the anchor — never
+                // on the track. A slot whose anchor changes in place rebuilds its AnchorNode and
+                // destroys the old one together with its billboard, while the billboard slot,
+                // `remember`ed on a shared cached bitmap, keeps the destroyed node (the label
+                // vanishes) and destroys it again later, after its Filament entity id has been
+                // recycled. Keying on the anchor gives a re-anchored label a fresh slot, so each
+                // node is built and destroyed exactly once; `updateAnchorsFromDetections` keeps
+                // the anchor of a still object, so a label is only rebuilt when it really moves.
+                // This removes the double destroy only; the "Invalid texture still bound to
+                // MaterialInstance" abort at the sixth label is a separate issue, still
+                // reproducible with this change.
                 detections.forEach { entry ->
                     key(entry.anchor) {
                         val anchor = entry.anchor
@@ -434,7 +482,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // Sanity cleanup if the composable leaves — detach anchors so ARCore reclaims them.
     DisposableEffect(Unit) {
         onDispose {
-            detections.forEach { runCatching { it.anchor.detach() } }
+            detectionTracker.clear()
             detections.clear()
             labelBitmaps.clear()
         }
@@ -446,148 +494,106 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     }
 }
 
-/**
- * One anchored detection — the ARCore [Anchor] (created from a hit-test at the detection's
- * bounding-box centre) and the cached label bitmap.
- *
- * Keyed by `categoryKey` so a "Home good" bucket whose bbox jitters by a few pixels between
- * frames stays a single anchor instead of spawning a new label every detector pass.
- */
+/** One visible label: the ARCore [Anchor] its track currently uses and the cached label bitmap. */
 private data class DetectionAnchor(
-    val categoryKey: String,
     val anchor: Anchor,
     val bitmap: Bitmap,
 )
 
 /**
  * One completed-but-not-yet-anchored ML Kit detector pass, captured off the render thread.
- * `imageW`/`imageH` travel with the results because they describe the CPU image *that pass*
- * ran against, not necessarily the current frame's.
+ * Camera pose, timestamp, and display geometry travel with the result so a later render frame
+ * never casts an old detector point through a materially different camera ray.
  */
 private data class PendingDetection(
     val results: List<DetectedObject>,
-    val imageW: Int,
-    val imageH: Int,
+    val cameraPose: DetectionCameraPose,
+    val frameTimestampNanos: Long,
+    val mapping: CameraImageToViewMapping,
 )
-
-/**
- * Buckets a 0..1 ML Kit confidence into a stable percentage step so the label-bitmap cache
- * key changes only every [step] percent. Without bucketing, every sub-percent confidence
- * jitter between detector passes would invalidate the cache and re-rasterise the bitmap.
- */
-internal fun confidenceBucketPercent(confidence: Float, step: Int = 5): Int {
-    val pct = (confidence.coerceIn(0f, 1f) * 100f).toInt()
-    return (pct / step) * step
-}
-
-/**
- * Maps a detection's bounding-box centre, in **CPU image pixel space** (`imageW × imageH`),
- * to the equivalent point in **AR surface pixel space** (`displayW × displayH`) — the
- * coordinate space `Frame.hitTest` expects.
- *
- * Pure fraction-preserving scale: the fraction of the image the centre sits at (x/imageW,
- * y/imageH) is applied to the real display size. [displayW]/[displayH] MUST be the AR
- * surface's actual pixel size (see [updateAnchorsFromDetections] doc) — a fixed square
- * placeholder here was the root cause of #3337's mislocated bounding-box anchors on tall
- * portrait phones.
- */
-internal fun bboxCentreToScreenPoint(
-    cx: Int,
-    cy: Int,
-    imageW: Int,
-    imageH: Int,
-    displayW: Int,
-    displayH: Int,
-): Pair<Float, Float> {
-    val xFraction = cx.toFloat() / imageW.coerceAtLeast(1)
-    val yFraction = cy.toFloat() / imageH.coerceAtLeast(1)
-    return (xFraction * displayW) to (yFraction * displayH)
-}
 
 /**
  * Reconciles the current detection set with the latest ML Kit results.
  *
- * Strategy:
- *  - Bucket detections by category + bbox-centre cell so jittering bounding boxes
- *    map to the same anchor.
- *  - For each new bucket, hit-test the bbox centre against the AR scene; if a hit lands,
- *    create an anchor and a label bitmap.
- *  - For existing buckets that aren't in this frame's result, drop the anchor (release
- *    the ARCore resource) so labels follow the scene instead of accumulating.
- *
- * Bbox centre is mapped from the **CPU image coordinate space** (`imageW × imageH`) to
- * the display coordinate space via the active `frame`'s coords transform — ARCore's
- * `frame.transformCoordinates2d` would be the right tool, but for V1 we approximate by
- * scaling the bbox centre's fraction of the image to the same fraction of [displayW] ×
- * [displayH]. Detector throttle (#kDetectIntervalMs) keeps the cost bounded.
- *
- * [displayW]/[displayH] MUST be the AR surface's actual pixel size — the same size ARCore's
- * `Session.setDisplayGeometry` was configured with — because `Frame.hitTest` interprets its
- * arguments as screen-space pixels on that surface. An earlier version hardcoded a 1000×1000
- * square here ("arbitrary; hitTest takes screen-space pixels"): on a real phone's tall
- * portrait aspect (e.g. a Pixel 9 at 1080×2424) that square only spans the top ~41% of the
- * screen, so any object detected in the lower half of the frame hit-tested against the WRONG
- * point and its label anchor landed off the object — the "bounding box" mislocation reported
- * on-device in #3322/#3337.
+ * Tracking IDs survive large screen motion. Objects without an ID use nearest same-label
+ * association. A matched detection keeps its anchor while the fresh hit stays within
+ * [isWithinReanchorTolerance] (a still object must not rebuild its label on every pass) and is
+ * re-anchored once the object has moved; missing tracks expire through [ObjectLabelTracker],
+ * which detaches their anchors even when the result list is empty.
  */
 private fun updateAnchorsFromDetections(
     frame: Frame,
     results: List<DetectedObject>,
-    imageW: Int,
-    imageH: Int,
-    displayW: Int,
-    displayH: Int,
-    detections: SnapshotStateList<DetectionAnchor>,
+    mapping: CameraImageToViewMapping,
+    tracker: ObjectLabelTracker<Anchor>,
+    detections: MutableList<DetectionAnchor>,
     labelBitmaps: MutableMap<String, Bitmap>,
 ) {
-    if (results.isEmpty()) return
-    // No layout pass yet (first frame or two after the composable enters) — the surface's
-    // real pixel size isn't known, so a hit-test would be meaningless. Skip this pass; the
-    // next one retries once `onSizeChanged` has fired.
-    if (displayW <= 0 || displayH <= 0) return
+    val observations = results.mapNotNull { obj ->
+        val label = obj.labels.firstOrNull() ?: return@mapNotNull null
+        ObjectLabelObservation(
+            trackingId = obj.trackingId,
+            label = label.text,
+            confidence = label.confidence,
+            centerX = obj.boundingBox.exactCenterX(),
+            centerY = obj.boundingBox.exactCenterY(),
+        )
+    }
+    val tracks = tracker.reconcile(observations) { observation, previous ->
+        val screen = mapping.mapPixel(observation.centerX, observation.centerY)
+        val hits = runCatching { frame.hitTest(screen.x, screen.y) }.getOrNull().orEmpty()
+        val hitIndex = nearestUsableHitIndex(hits.map { it.distance }) ?: return@reconcile null
+        val hit = hits[hitIndex]
+        val keepsAnchor = previous != null &&
+            previous.trackingState == TrackingState.TRACKING &&
+            isWithinReanchorTolerance(previous.pose.translation, hit.hitPose.translation)
+        if (keepsAnchor) previous else runCatching { hit.createAnchor() }.getOrNull()
+    }
+    syncVisibleDetections(tracks, detections, labelBitmaps)
+}
 
-    // Build category keys from this frame's detections.
-    val newKeys = mutableSetOf<String>()
-    @Suppress("LoopWithTooManyJumpStatements") // multiple early-exit guards improve readability
-    for (obj in results) {
-        val labelInfo = obj.labels.firstOrNull() ?: continue
-        val label = labelInfo.text
-        val confidencePercent = confidenceBucketPercent(labelInfo.confidence)
-        // Bucket by 64-pixel cell so small bbox jitter doesn't create new anchors.
-        val cx = obj.boundingBox.centerX()
-        val cy = obj.boundingBox.centerY()
-        val key = "$label@${cx / 64},${cy / 64}"
-        if (!newKeys.add(key)) continue
-        if (detections.any { it.categoryKey == key }) continue
-
-        // Hit-test the bbox centre. ARCore's hitTest expects display-space coordinates,
-        // while the bbox is in CPU image space. The CPU image and the display share the
-        // same aspect under the default camera config — scaling the centre to the
-        // frame's hit-test surface as a proportion of width/height is the safest
-        // approximation without bringing in the (deprecated) transformCoordinates3d API.
-        val (screenX, screenY) = bboxCentreToScreenPoint(cx, cy, imageW, imageH, displayW, displayH)
-
-        val hits = runCatching {
-            frame.hitTest(screenX, screenY)
-        }.getOrNull().orEmpty()
-        val hit = hits.firstOrNull { it.distance in 0.1f..5.0f } ?: continue
-
-        val anchor = runCatching { hit.createAnchor() }.getOrNull() ?: continue
+/**
+ * Publishes the tracker's anchors to the composition. The label bitmap comes from the track's
+ * latest observation, so the confidence shown on a label stays current while its anchor is
+ * kept; the list is only rewritten when it really changed, so an unchanged pass does not
+ * recompose the scene.
+ */
+private fun syncVisibleDetections(
+    tracks: List<ObjectLabelTrack<Anchor>>,
+    detections: MutableList<DetectionAnchor>,
+    labelBitmaps: MutableMap<String, Bitmap>,
+) {
+    val visible = tracks.mapNotNull { track ->
+        val anchor = track.payload ?: return@mapNotNull null
+        val label = track.observation.label
         // Cache by label + confidence bucket so the rendered "%" stays current without
         // re-rasterising on every sub-percent jitter (#2478 — the user asked for the score).
-        val bitmapKey = "$label@$confidencePercent"
-        val bitmap = labelBitmaps.getOrPut(bitmapKey) {
-            createLabelBitmap(label, confidencePercent)
-        }
-        detections += DetectionAnchor(key, anchor, bitmap)
-
-        // Cap total anchored labels to 6 — beyond that, the AR scene gets cluttered
-        // and ARCore's anchor budget starts pushing back. Drop the oldest.
-        while (detections.size > 6) {
-            val oldest = detections.removeAt(0)
-            runCatching { oldest.anchor.detach() }
-        }
+        val confidencePercent = confidenceBucketPercent(track.observation.confidence)
+        DetectionAnchor(
+            anchor = anchor,
+            bitmap = labelBitmaps.getOrPut("$label@$confidencePercent") {
+                createLabelBitmap(label, confidencePercent)
+            },
+        )
     }
+    if (detections.toList() != visible) {
+        detections.clear()
+        detections.addAll(visible)
+    }
+}
+
+private fun com.google.ar.core.Pose.toDetectionCameraPose(): DetectionCameraPose {
+    val translation = translation
+    val rotation = rotationQuaternion
+    return DetectionCameraPose(
+        tx = translation[0],
+        ty = translation[1],
+        tz = translation[2],
+        qx = rotation[0],
+        qy = rotation[1],
+        qz = rotation[2],
+        qw = rotation[3],
+    )
 }
 
 /**
