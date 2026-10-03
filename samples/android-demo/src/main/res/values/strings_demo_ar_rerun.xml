@@ -29,4 +29,6 @@
     <string name="demo_ar_rerun_share_out_of_memory">Not enough memory to share the surface.</string>
     <!-- The file could not be written, or handed to the share sheet. -->
     <string name="demo_ar_rerun_share_failed">The surface could not be shared.</string>
+    <!-- The mesh was lightened, but the simplifier stopped well above its triangle target. -->
+    <string name="demo_ar_rerun_share_still_heavy">Shared lighter, but still heavier than planned.</string>
 </resources>

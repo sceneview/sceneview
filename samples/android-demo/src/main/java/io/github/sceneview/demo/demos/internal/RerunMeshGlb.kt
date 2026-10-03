@@ -21,8 +21,8 @@ object RerunMeshGlb {
      * The model a share sends: [mesh] simplified to [targetTriangles] ([RerunMeshSimplifier]) unless
      * [fullResolution], and with [floorOrigin] resting on Y=0 and centred in X/Z — what a viewer
      * that drops a model on a table expects. The floor is the mesh's lowest point, not a fitted
-     * plane. Blocking CPU work: run it on a worker; [progress] follows the simplification and
-     * stops it by throwing. [mesh] is not modified.
+     * plane. Blocking CPU work: run it on a worker; [onReduced] is told how many triangles are
+     * written; [progress] follows the simplification and stops it by throwing. [mesh] is not modified.
      */
     fun writeShared(
         mesh: RerunMesh,
@@ -30,11 +30,13 @@ object RerunMeshGlb {
         fullResolution: Boolean = false,
         targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
         floorOrigin: Boolean = true,
+        onReduced: (triangles: Int) -> Unit = {},
         progress: (Float) -> Unit = {},
     ): ByteArray {
         require(mesh.triangleCount > 0) { "a GLB mesh must contain triangles" }
         val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles, progress)
         require(reduced.triangleCount > 0) { "simplification must retain a surface" }
+        onReduced(reduced.triangleCount)
         val exported = if (floorOrigin) {
             val bounds = reduced.bounds()
             val origin = floatArrayOf((bounds[0] + bounds[3]) / 2, bounds[1], (bounds[2] + bounds[5]) / 2)

@@ -29,4 +29,16 @@ class RerunShareNoteTest {
         val lines = RerunShareNote.entries.map { it.message }
         assertEquals(lines.size, lines.distinct().size)
     }
+
+    @Test
+    fun `a light copy is heavy only well above the triangle target`() {
+        val target = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES
+        assertFalse(stillHeavy(target))
+        assertFalse(stillHeavy(target * 3 / 2))
+        assertTrue(stillHeavy(target * 3 / 2 + 1))
+        assertTrue(stillHeavy(target * 4))
+        assertFalse(stillHeavy(0))
+        assertFalse(stillHeavy(1_500, target = 1_000))
+        assertTrue(stillHeavy(1_501, target = 1_000))
+    }
 }
