@@ -10,6 +10,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
+import com.dropbox.differ.SimpleImageComparator
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.sceneview.demo.demos.internal.GeometryDemoState
 import io.github.sceneview.demo.demos.internal.GeometryShape
@@ -118,7 +120,10 @@ class GeometryDemoControlsSnapshotTest {
 
     @Test
     fun shapeChips_all_shown() {
-        captureRoboImage("src/test/snapshots/geometry_shape_chips_all.png") {
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_all.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
             Chips(GeometryDemoState.ALL_SHAPES)
         }
     }
@@ -126,7 +131,10 @@ class GeometryDemoControlsSnapshotTest {
     @Test
     fun shapeChips_only_cube_shown() {
         // Pins the hidden look — glass, white label — next to the one shown chip.
-        captureRoboImage("src/test/snapshots/geometry_shape_chips_only_cube.png") {
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_only_cube.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
             Chips(setOf(GeometryShape.Cube))
         }
     }
@@ -134,7 +142,10 @@ class GeometryDemoControlsSnapshotTest {
     @Test
     @Config(sdk = [34], qualifiers = "w891dp-h411dp-xhdpi")
     fun shapeChips_landscape_single_row() {
-        captureRoboImage("src/test/snapshots/geometry_shape_chips_landscape.png") {
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_landscape.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
             Chips(GeometryDemoState.ALL_SHAPES - GeometryShape.Torus)
         }
     }
@@ -158,5 +169,22 @@ class GeometryDemoControlsSnapshotTest {
                 }
             }
         }
+    }
+
+    private companion object {
+        /**
+         * The chips are translucent glass over the stage, and the Linux CI host blends them a
+         * hair differently from the macOS host the goldens are recorded on. Measured on the
+         * runner's `_actual.png` files (run 37147288022): up to 30 % of pixels differ, by at
+         * most 3/255 on one channel, a distance of 0.0162 for `SimpleImageComparator`. Same
+         * bound and same reasoning as `ContactShadowControlsSnapshotTest`: every pixel is still
+         * compared, and a real change (a label, a chip's shown state) moves whole glyphs.
+         */
+        val HOST_TOLERANT = RoborazziOptions(
+            compareOptions = RoborazziOptions.CompareOptions(
+                changeThreshold = 0f,
+                imageComparator = SimpleImageComparator(maxDistance = 0.02f),
+            ),
+        )
     }
 }
