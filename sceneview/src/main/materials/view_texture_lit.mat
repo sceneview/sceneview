@@ -7,10 +7,17 @@
 //   uvOffset — float2, per-axis UV mirror offset (1,0) flips X for front-camera use.
 //   texture  — samplerExternal, the View's hardware-rendered surface texture.
 // matc profile: A (heavy Android — "-p all -a all", see tools/GenerateFilamat.sh).
+//
+// #4032: `blending : fade`, not `transparent`. In `transparent` mode Filament applies alpha to the
+//        diffuse term only and keeps specular and IBL reflections on fully transparent texels,
+//        which is what glass needs and a rendered View does not: the transparent corners around a
+//        rounded Compose card reflected the environment and showed as an opaque dark rectangle
+//        behind the card. `fade` applies alpha to the whole lit result, so a texel the View left
+//        transparent stays transparent. Same premultiplied composite; opaque texels are unchanged.
 material {
     name : view,
     shadingModel : lit,
-    blending : transparent,
+    blending : fade,
     doubleSided : true,
 
     defines : [

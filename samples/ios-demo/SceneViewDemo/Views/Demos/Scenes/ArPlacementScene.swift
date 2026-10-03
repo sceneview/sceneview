@@ -9,7 +9,7 @@
 // @order       24
 // @tags        ar,plane,automatic-placement,anchor,gltf,model,wall,vertical-plane,tv,pose,transform,gesture,light-estimation
 // @addedIn     4.4.0
-// @updatedIn   4.35.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 /// The placement card (samples audit, step 0) absorbs the three AR cards that

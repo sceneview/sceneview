@@ -24,6 +24,7 @@ import androidx.activity.setViewTreeFullyDrawnReporterOwner
 import androidx.activity.setViewTreeOnBackPressedDispatcherOwner
 import androidx.annotation.LayoutRes
 import androidx.annotation.RequiresApi
+import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -363,6 +364,16 @@ class ViewNode(
      */
     override fun onCapturedTouchEvent(e: MotionEvent): Boolean = touchForwarder.onExit(e)
 
+    /**
+     * A drag that starts on the quad belongs to the scene (#4033): once the pointer passes the
+     * touch slop — or a second finger comes down — and nothing inside the embedded view has
+     * claimed the gesture (an inner list scrolling, a slider being dragged), the view gets an
+     * `ACTION_CANCEL` and the stream goes back to the scene gesture and camera detectors. A tap
+     * still clicks; a drag started on a card orbits the camera like a drag started beside it.
+     */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    override fun takeTouchStreamHandBack(): Boolean = touchForwarder.takeHandBack()
+
     override fun destroy() {
         // Once only (#4259): a second call would free handles, material instances and an
         // entity id that may already belong to another node.
@@ -475,6 +486,17 @@ class ViewNode(
             val parent = super.invalidateChildInParent(location, dirty)
             invalidate()
             return parent
+        }
+
+        /**
+         * A descendant wants the current gesture for itself — a list that started scrolling, a
+         * slider being dragged (#4033). Compose reports it here for any pointer input that consumed
+         * movement. The forwarder then keeps the stream instead of handing the drag back to the
+         * scene's camera.
+         */
+        override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+            super.requestDisallowInterceptTouchEvent(disallowIntercept)
+            touchForwarder.onContentClaimedGesture(disallowIntercept)
         }
 
         override fun dispatchDraw(canvas: Canvas) {

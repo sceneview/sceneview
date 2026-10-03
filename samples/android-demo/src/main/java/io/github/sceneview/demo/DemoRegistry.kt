@@ -142,6 +142,16 @@ object DemoCategory {
 
     /** The plumbing around the renderer — debug overlay, extra cameras, session record and replay. */
     const val DEV_TOOLS = "Developer Tools"
+
+    /** Stable `sample_open.category` value, independent of the user-facing section label. */
+    fun slug(category: String): String = when (category) {
+        CREATE -> "create"
+        DEV_TOOLS -> "dev_tools"
+        PLACE_AR -> "place_ar"
+        VIEW_3D -> "view_3d"
+        UNDERSTAND -> "understand"
+        else -> "unknown"
+    }
 }
 
 /**

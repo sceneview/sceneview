@@ -24,6 +24,11 @@ import io.github.sceneview.demo.demos.ARXrFaceDemo
  * phone it stays reachable by deep link and shows the static reference hand and face.
  */
 object ArXrFragment : DemoFragment {
+    val modes = listOf(
+        DemoMode("hands", R.string.demo_mode_hands),
+        DemoMode("face", R.string.demo_mode_face),
+    )
+
     override val entry: DemoEntry = DemoEntry(
         id = "ar-xr",
         titleRes = R.string.demo_ar_xr_title,
@@ -42,10 +47,7 @@ object ArXrFragment : DemoFragment {
     @Composable
     override fun Screen(onBack: () -> Unit) {
         DemoModeHost(
-            modes = listOf(
-                DemoMode("hands", R.string.demo_mode_hands),
-                DemoMode("face", R.string.demo_mode_face),
-            ),
+            modes = modes,
             tabToMode = mapOf(0 to 0, 1 to 1),
         ) { mode ->
             when (mode) {
