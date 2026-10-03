@@ -149,7 +149,7 @@ data class ArDebugStyle(
         (pixels * metresPerPixel).coerceIn(minMetres, maxMetres)
 
     val mapPointRadius get() = px(2.4f, 0.004f, 0.05f)
-    val livePointRadius get() = px(3.8f, 0.006f, 0.07f)
+    val livePointRadius get() = px(3.0f, 0.006f, 0.07f)
     val trailRadius get() = px(2.2f * trailWeight, 0.004f * trailWeight, 0.05f * trailWeight)
     val trailHeadRadius get() = px(3.4f * trailWeight, 0.006f * trailWeight, 0.08f * trailWeight)
     val frustumEdge get() = px(1.3f, 0.002f, 0.03f)

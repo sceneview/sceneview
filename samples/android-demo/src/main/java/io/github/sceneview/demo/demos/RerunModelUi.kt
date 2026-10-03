@@ -360,9 +360,8 @@ internal object ModelCopy {
     fun stats(model: RerunModelBuild): String {
         val size = "%.1f × %.1f m".format(model.bounds[3] - model.bounds[0], model.bounds[5] - model.bounds[2])
         val triangles = if (model.triangles >= THOUSAND) "${model.triangles / THOUSAND}k" else "${model.triangles}"
-        val time = "%.1f s".format(model.buildMs / 1000f)
-        val full = if (model.budgetReached) " · memory full, part left out" else ""
-        return "$size · $triangles triangles · built in $time$full"
+        // One line under the title on an upright phone: the build time went, it was cut mid-figure.
+        return if (model.budgetReached) "$size · partial, memory was full" else "$size · $triangles triangles"
     }
 
     fun fileName(title: String): String {

@@ -69,6 +69,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -570,10 +571,13 @@ private fun RerunReplayScreen(
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
+    // A phone on its side has no height for that stack: the figures move beside the room, the
+    // timeline folds onto one row, and the corner card leaves the room the stage.
+    val compact = LocalConfiguration.current.screenHeightDp.dp < SceneViewTokens.DebugView.compactStageHeight
     var stage by remember { mutableStateOf(Rect.Zero) }
-    var hudBottom by remember { mutableFloatStateOf(Float.NaN) }
+    var hud by remember { mutableStateOf<Rect?>(null) }
     var timelineTop by remember { mutableFloatStateOf(Float.NaN) }
-    val band = OrbitBand.between(hudBottom - stage.top, timelineTop - stage.top, stage.height) ?: stageBand
+    val band = measuredBand(stage, hud, timelineTop, compact) ?: stageBand
     SideEffect { orbit.band = band }
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
@@ -598,14 +602,17 @@ private fun RerunReplayScreen(
         themedStage = true,
         topOverlay = {
             if (media != null) {
+                val hudWidth = if (compact) SceneViewTokens.DebugView.compactHudWidth else ArOverlay.maxWidth
+                // The surface is the finished result: nothing is laid over it.
+                val surfaceUp = surface.wanted && !surface.failed && mode != RerunMode.Camera
                 RerunReplayHud(
                     session = session,
-                    modifier = Modifier
+                    modifier = (if (compact) Modifier.align(Alignment.Start) else Modifier)
                         .padding(horizontal = Space.md)
-                        .widthIn(max = ArOverlay.maxWidth)
+                        .widthIn(max = hudWidth)
                         .fillMaxWidth()
                         // Measured outside the reveal: where the card rests, not where it rises from.
-                        .onGloballyPositioned { hudBottom = it.boundsInRoot().bottom }
+                        .onGloballyPositioned { hud = it.boundsInRoot() }
                         .reveal(hudIn, rise = -Space.md),
                 )
                 // Space.sm on top of the scaffold's Space.sm stack gap: the card sits Space.md under
@@ -614,11 +621,12 @@ private fun RerunReplayScreen(
                     .align(Alignment.End)
                     .padding(top = Space.sm, end = Space.md)
                     .reveal(cardIn, rise = -Space.md)
-                when (mode) {
+                when {
                     // The map is a floor plan and needs the whole width: the camera card would sit
-                    // on the room's far corner. The dock's Camera button stays one tap away.
-                    RerunMode.Map -> Unit
-                    RerunMode.Camera -> ArDebugPip(
+                    // on the room's far corner. The dock's Camera button stays one tap away. On its
+                    // side the phone has no height for the card either.
+                    compact || mode == RerunMode.Map || surfaceUp -> Unit
+                    mode == RerunMode.Camera -> ArDebugPip(
                         session = session,
                         orbit = pipOrbit,
                         engine = engine,
@@ -628,7 +636,7 @@ private fun RerunReplayScreen(
                         modifier = corner,
                         replay = media,
                     )
-                    RerunMode.Scene -> RerunCameraCard(
+                    else -> RerunCameraCard(
                         media = media,
                         thumbnails = thumbnails,
                         session = session,
@@ -660,6 +668,7 @@ private fun RerunReplayScreen(
                     } else {
                         null
                     },
+                    compact = compact,
                 )
             }
         },
@@ -715,6 +724,19 @@ private fun RerunReplayScreen(
             )
         }
     }
+}
+
+/**
+ * The band the replay's chrome leaves the room on [stage], measured on screen: under the figures
+ * and over the timeline when the phone is upright; on its side, from the figures' top edge down to
+ * the timeline, and no wider than what the figures leave beside them. `null` until both are laid out.
+ */
+private fun measuredBand(stage: Rect, hud: Rect?, timelineTop: Float, compact: Boolean): OrbitBand? {
+    if (hud == null) return null
+    val bottom = timelineTop - stage.top
+    if (!compact) return OrbitBand.between(hud.bottom - stage.top, bottom, stage.height)
+    val halfWidth = OrbitBand.halfWidthBeside(hud.right - stage.left, stage.width) ?: return null
+    return OrbitBand.between(hud.top - stage.top, bottom, stage.height, halfWidth)
 }
 
 /**

@@ -382,7 +382,7 @@ data class OrbitBand(val halfWidth: Float, val halfHeight: Float, val lift: Floa
         ): OrbitBand? {
             val share = (bottom - top) / viewHeight
             // NaN — a card not laid out yet — fails every comparison, so it is asked for by name.
-            if (share.isNaN() || viewHeight <= 0f) return null
+            if (share.isNaN() || viewHeight <= 0f || halfWidth.isNaN()) return null
             if (top < 0f || bottom > viewHeight || share < MIN_MEASURED_SHARE) return null
             // Hundredths: a card that settles by a pixel does not move the camera.
             fun hundredths(value: Float) = (value * 100f).roundToInt() / 100f
@@ -391,6 +391,22 @@ data class OrbitBand(val halfWidth: Float, val halfHeight: Float, val lift: Floa
                 halfHeight = hundredths(share * MEASURED_FILL),
                 lift = hundredths(0.5f - (top + bottom) / 2f / viewHeight),
             )
+        }
+
+        /** Below this half-width, what a side card leaves is no stage at all. */
+        const val MIN_BESIDE_HALF_WIDTH = 0.2f
+
+        /**
+         * The half-width a card standing beside the session leaves it: in a view [viewWidth] wide
+         * the card ends at [cardEnd] from the near edge, and the session — which stays centred —
+         * may reach no closer to the centre's other side than that. `null` while the card is not
+         * laid out, or when it leaves no stage.
+         */
+        fun halfWidthBeside(cardEnd: Float, viewWidth: Float): Float? {
+            val half = (1f - 2f * cardEnd / viewWidth) * MEASURED_FILL
+            if (half.isNaN() || viewWidth <= 0f || cardEnd < 0f) return null
+            if (half < MIN_BESIDE_HALF_WIDTH) return null
+            return (half * 100f).roundToInt() / 100f
         }
     }
 }

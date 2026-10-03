@@ -940,7 +940,17 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   the same view, under the same camera, in place of its points and planes — never a second
   screen. The switch owns the card's caption (building, then the mesh's figures) and a
   `.glb` share button once built; it is absent over the camera's frames and for a
-  recording with nothing to mesh.
+  recording with nothing to mesh. The surface is the finished result: the camera card is
+  not laid over it.
+- **The room in front, the tracking aids behind it (#4306).** The glows are held low
+  (trail head 2.0, live points and frustum 1.4), the history frusta are `primary` at 25 %
+  on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
+  photographed planes, the coloured cloud, the mesh — keeps its full strength.
+- **A phone on its side (#4306).** Under 500 dp of height the stacked cards would leave the
+  room nothing: the figures become a 320 dp card at the start edge, the timeline folds onto
+  one row (play, strip, clock), the camera card is dropped — the dock's *Camera* is one tap
+  away — and the room is fitted between the figures and the opposite edge
+  (`OrbitBand.halfWidthBeside`).
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
 - **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the
