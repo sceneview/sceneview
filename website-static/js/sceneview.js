@@ -1867,6 +1867,14 @@
       this._hideLoadFallback();
 
       _activeCanvases.delete(this._canvas);
+      // Release the view's ColorGrading once, before the engine (a second dispose() skips it).
+      if (this._colorGrading) {
+        try {
+          this._view.setColorGrading(null);
+          this._engine.destroyColorGrading(this._colorGrading);
+        } catch (e) { /* engine already gone */ }
+        this._colorGrading = null;
+      }
       try { Filament.Engine.destroy(this._engine); } catch (e) { /* already destroyed */ }
     }
 
@@ -2620,6 +2628,12 @@
     var cameraEntity = Filament.EntityManager.get().create();
     var camera = engine.createCamera(cameraEntity);
     var view = engine.createView();
+    // Tone mapping: Filmic, as on Android (SceneFactories.createView) and in the Kotlin/JS
+    // bundle, instead of Filament's default ACES (legacy) — one model grades the same everywhere.
+    var colorGrading = Filament.ColorGrading.Builder()
+      .toneMapping(Filament.ColorGrading$ToneMapping.FILMIC)
+      .build(engine);
+    view.setColorGrading(colorGrading);
     var swapChain = engine.createSwapChain();
 
     view.setCamera(camera);
@@ -2706,6 +2720,8 @@
     instance._fov = fov;
     // Track base 3-point lights so clearLights() can wipe them for custom setups
     instance._baseLights = [sun, fill, back];
+    // Owned by the instance: dispose() destroys it before the engine.
+    instance._colorGrading = colorGrading;
 
     if (options.autoRotate === false) instance.setAutoRotate(false);
     if (options.renderMode !== undefined) instance.setRenderMode(options.renderMode);
