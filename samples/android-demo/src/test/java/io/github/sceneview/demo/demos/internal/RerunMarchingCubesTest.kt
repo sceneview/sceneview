@@ -70,7 +70,7 @@ class RerunMarchingCubesTest {
         val tsdf = RerunTsdf()
         RerunSyntheticRoom.frames().take(30).forEach { tsdf.integrate(it) }
         val mesh = RerunMarchingCubes.extract(tsdf).mesh
-        val glb = RerunMeshGlb.write(mesh)
+        val glb = RerunMeshGlb.writeShared(mesh, fullResolution = true, floorOrigin = false)
         assertEquals(0, glb.size % 4)
         val header = ByteBuffer.wrap(glb).order(ByteOrder.LITTLE_ENDIAN)
         assertEquals(0x46546C67, header.int)
@@ -83,7 +83,7 @@ class RerunMarchingCubesTest {
         assertEquals(true, accessors[2]["normalized"])
         assertEquals(mesh.indices.size, (accessors[3]["count"] as Number).toInt())
         val bin = file.bin!!
-        assertTrue(bin.size >= mesh.vertexCount * 28 + mesh.indices.size * 4)
+        assertTrue(bin.size >= mesh.vertexCount * 28 + mesh.indices.size * if (mesh.vertexCount <= 65535) 2 else 4)
         val attributes = file.json.objects("meshes")[0].objects("primitives")[0].obj("attributes")!!
         assertEquals(setOf("POSITION", "NORMAL", "COLOR_0"), attributes.keys)
     }
