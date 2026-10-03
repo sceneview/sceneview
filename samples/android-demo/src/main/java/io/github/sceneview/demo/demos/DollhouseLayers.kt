@@ -375,7 +375,7 @@ internal fun DollhousePreview(
                 val home = ArDebugFraming.home(
                     bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
                     elevationDegrees = PREVIEW_ELEVATION,
-                    margin = ArDebugFraming.REPLAY_MARGIN,
+                    band = orbit.band,
                 )
                 if (orbit.following) orbit.home = home
                 if (!orbit.hasFramedContent) {

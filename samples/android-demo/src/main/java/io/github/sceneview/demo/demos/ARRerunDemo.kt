@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -43,8 +45,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,13 +60,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -96,6 +109,7 @@ import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
+import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.RERUN_INTRO
@@ -184,8 +198,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         mutableStateOf(
             when {
                 startInDollhouse || qaState in DOLLHOUSE_QA_STATES -> RerunScreen.Dollhouse
-                qaState == QA_STATE_MODEL_SYNTHETIC -> RerunScreen.Model
-                qaReplay != null -> RerunScreen.Replay
+                qaReplay != null || qaState == QA_STATE_MODEL_SYNTHETIC -> RerunScreen.Replay
                 arPlaybackDataset != null || qaState in LIVE_QA_STATES -> RerunScreen.Live
                 else -> RerunScreen.Landing
             },
@@ -221,17 +234,21 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
     var openCount by remember { mutableIntStateOf(0) }
     val media = if (showingScan) scanMedia else sample
-    // The final model (RerunModelUi.kt): your scan's room, meshed. The sample is not offered one.
-    var modelSource by remember {
-        mutableStateOf<RerunModelSource?>(RerunModelSource.Synthetic.takeIf { qaState == QA_STATE_MODEL_SYNTHETIC })
+    // The room's surface (RerunModelUi.kt): your scan, meshed, drawn in place of its points. The
+    // sample has no depth to mesh; QA's synthetic room stands in for a scan on the emulator.
+    val surfaceSource = remember(showingScan, scanPack, scanMedia) {
+        when {
+            qaState == QA_STATE_MODEL_SYNTHETIC -> RerunModelSource.Synthetic
+            showingScan -> RerunModelSource.of(scanPack, scanMedia)
+            else -> null
+        }
     }
-    val scanModel = if (showingScan) RerunModelSource.of(scanPack, scanMedia) else null
 
     val replaySession = remember { ArDebugSession().apply { loops = true } }
-    // QA captures hold still: no intro fly-in, no idle drift. Each opening is framed afresh.
-    val replayOrbit = remember(media, openCount) {
-        ArDebugOrbitCamera(drift = qaState == null, lift = REPLAY_STAGE_LIFT)
-    }
+    // The band of the stage the chrome leaves free, per orientation: the room is fitted into it.
+    val stageBand = LocalConfiguration.current.let { OrbitBand.stage(it.screenWidthDp.toFloat() / it.screenHeightDp) }
+    // QA captures hold still: no intro fly-in, no idle sway. Each opening is framed afresh.
+    val replayOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null, band = stageBand) }
     val replayPipOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null) }
     LaunchedEffect(media, openCount) {
         val replay = media ?: return@LaunchedEffect
@@ -245,7 +262,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // cover, the chrome and the playback all wait for the stage, so nothing shows up empty.
     var revealed by remember(media, openCount) { mutableStateOf(false) }
     LaunchedEffect(revealed, media) {
-        if (revealed && !showingScan && qaReplay?.pauseAt == null) replaySession.playFromStart()
+        val held = qaReplay?.pauseAt != null || qaState == QA_STATE_MODEL_SYNTHETIC
+        if (revealed && !showingScan && !held) replaySession.playFromStart()
     }
     LaunchedEffect(mode, replayOrbit) { replayOrbit.overhead = mode == RerunMode.Map }
 
@@ -308,7 +326,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         when (screen) {
             RerunScreen.Dollhouse -> leaveDollhouse()
             RerunScreen.Live -> leaveLive()
-            RerunScreen.Model -> if (showingScan) screen = RerunScreen.Replay else toLanding()
             else -> toLanding()
         }
     }
@@ -444,16 +461,13 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scanTitle = scanTitle,
             session = replaySession,
             orbit = replayOrbit,
+            stageBand = stageBand,
             revealed = revealed,
             onRevealed = { revealed = true },
             pipOrbit = replayPipOrbit,
             onExport = { exporting = true },
-            onBuildModel = scanModel?.let { source ->
-                {
-                    modelSource = source
-                    screen = RerunScreen.Model
-                }
-            },
+            surfaceSource = surfaceSource,
+            startOnSurface = qaState == QA_STATE_MODEL_SYNTHETIC,
             // Your own room only: the sample is not a room of yours to stand on a table.
             onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
                 { openDollhouse(scanId, scanTitle, scan) }
@@ -482,17 +496,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             arPlaybackDataset = arPlaybackDataset,
             startIn3d = qaState == QA_STATE_DOLLHOUSE_3D,
         )
-        RerunScreen.Model -> modelSource?.let { source ->
-            RerunModelScreen(
-                source = source,
-                title = if (showingScan) scanTitle else ScanCopy.REPLAY_TITLE,
-                onBack = { if (showingScan) screen = RerunScreen.Replay else toLanding() },
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                drift = qaState == null,
-            )
-        }
     }
     if (exporting && screen == RerunScreen.Replay && media != null) {
         val source = remember(showingScan, scanTitle, scanPack) {
@@ -512,7 +515,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
  * The demo's screens: the landing, the live AR session (Record), the replay, and the dollhouse —
  * a session stood on a table in AR (#4075).
  */
-private enum class RerunScreen { Landing, Live, Replay, Dollhouse, Model }
+private enum class RerunScreen { Landing, Live, Replay, Dollhouse }
 
 /** The replay's three views. */
 private enum class RerunMode { Scene, Map, Camera }
@@ -539,6 +542,9 @@ private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, act
  * The bundled replay: the 3D view (orbit, or the overhead map) or the camera's frames, under the
  * HUD, the corner card that swaps to the other view, and the filmstrip. A themed stage (#4080):
  * it follows the app theme, where the live camera screen keeps the media chrome.
+ *
+ * A scan that can be meshed heads its timeline card with Points | Surface (#4306): the surface is
+ * drawn by this same 3D view, under the same camera, instead of a second screen.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine and replay state, handed down once
@@ -553,16 +559,44 @@ private fun RerunReplayScreen(
     onRevealed: () -> Unit,
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
+    stageBand: OrbitBand,
     pipOrbit: ArDebugOrbitCamera,
     onExport: () -> Unit,
     onViewInAr: (() -> Unit)?,
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
-    onBuildModel: (() -> Unit)? = null,
+    surfaceSource: RerunModelSource? = null,
+    startOnSurface: Boolean = false,
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
+    val title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE
+    // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
+    // the built model itself each time it comes back.
+    var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
+    // The stage the chrome really leaves, measured on screen: the room is fitted between the
+    // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
+    // A phone on its side has no height for that stack: the figures and the timeline stand on
+    // either side of the room, the timeline folds onto one row, and the camera card is dropped
+    // (the 3D picture-in-picture, which runs the clock over the camera, moves under the timeline).
+    val compact = compactStage()
+    var stage by remember { mutableStateOf(Rect.Zero) }
+    var hud by remember { mutableStateOf<Rect?>(null) }
+    var timeline by remember { mutableStateOf<Rect?>(null) }
+    // On its side: where the mode pill and the dock start, under the room.
+    var pillTop by remember { mutableFloatStateOf(Float.NaN) }
+    val statusBottom = WindowInsets.safeDrawing.getTop(LocalDensity.current).toFloat()
+    // The room's dimensions are written under its floor, outside the box the band fits: they
+    // keep this much air over the mode pill.
+    val pillClearance = with(LocalDensity.current) { Space.lg.toPx() }
+    val measured = when {
+        compact -> sideBand(stage, hud, timeline, statusBottom, pillTop - pillClearance)
+        else -> stackedBand(stage, hud, timeline)
+    }
+    val band = measured ?: stageBand
+    SideEffect { orbit.band = band }
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
     val readyState = rememberUpdatedState(ready)
@@ -577,6 +611,41 @@ private fun RerunReplayScreen(
         onClick = onExport,
         enabled = media != null,
     )
+    // One timeline card for both layouts: over the dock upright, beside the room on its side.
+    val timelineCard: @Composable (Modifier) -> Unit = { cardModifier ->
+        if (media != null) {
+            // The camera's frames have no surface to show: the switch belongs to the 3D views.
+            val switchable = surfaceSource != null && mode != RerunMode.Camera
+            RerunFilmstripCard(
+                media = media,
+                thumbnails = thumbnails,
+                session = session,
+                // Measured outside the reveal, like the HUD: where the card rests, not where it
+                // rises from.
+                modifier = Modifier.onGloballyPositioned { timeline = it.boundsInRoot() }.then(cardModifier),
+                title = title,
+                caption = surface.caption?.takeIf { switchable } ?: when (mode) {
+                    RerunMode.Map -> "Top-down map of the room"
+                    RerunMode.Camera -> "What the camera saw"
+                    else -> "Drag to orbit · double-tap to recenter"
+                },
+                header = if (switchable) {
+                    {
+                        // On its side the card has no caption line: the switch carries the surface's.
+                        RerunSurfaceSwitch(
+                            surface,
+                            onWanted = { surfaceWanted = it },
+                            title = title,
+                            captioned = compact,
+                        )
+                    }
+                } else {
+                    null
+                },
+                compact = compact,
+            )
+        }
+    }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -584,14 +653,60 @@ private fun RerunReplayScreen(
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
+        // The mode pill belongs to the landing: under a replay's cards it only took room.
+        modeSwitch = null,
         topOverlay = {
-            if (media != null) {
+            if (media != null && compact) {
+                Row(Modifier.fillMaxWidth()) {
+                    RerunReplayHud(
+                        session = session,
+                        modifier = Modifier
+                            .padding(start = Space.md)
+                            .width(SceneViewTokens.DebugView.compactCardWidth)
+                            // Measured outside the reveal: where the card rests.
+                            .onGloballyPositioned { hud = it.boundsInRoot() }
+                            .reveal(hudIn, rise = -Space.md),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    // The card pads itself by Space.md on either side.
+                    Column(
+                        modifier = Modifier.width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2),
+                        horizontalAlignment = Alignment.End,
+                    ) {
+                        timelineCard(Modifier.reveal(filmstripIn, rise = -Space.md))
+                        if (mode == RerunMode.Camera) {
+                            // Over the camera the 3D view is the one that runs the session's
+                            // clock: it stays, smaller, beside the frame rather than on it.
+                            ArDebugPip(
+                                session = session,
+                                orbit = pipOrbit,
+                                engine = engine,
+                                modelLoader = modelLoader,
+                                materialLoader = materialLoader,
+                                onExpand = { onMode(RerunMode.Scene) },
+                                modifier = Modifier
+                                    .padding(top = Space.md, end = Space.md)
+                                    .size(
+                                        SceneViewTokens.DebugView.compactPipWidth,
+                                        SceneViewTokens.DebugView.compactPipHeight,
+                                    )
+                                    .reveal(cardIn, rise = -Space.md),
+                                replay = media,
+                            )
+                        }
+                    }
+                }
+            } else if (media != null) {
+                // The surface is what the view is there to show: nothing is laid over it.
+                val surfaceUp = surface.wanted && !surface.failed && mode != RerunMode.Camera
                 RerunReplayHud(
                     session = session,
                     modifier = Modifier
                         .padding(horizontal = Space.md)
                         .widthIn(max = ArOverlay.maxWidth)
                         .fillMaxWidth()
+                        // Measured outside the reveal: where the card rests, not where it rises from.
+                        .onGloballyPositioned { hud = it.boundsInRoot() }
                         .reveal(hudIn, rise = -Space.md),
                 )
                 // Space.sm on top of the scaffold's Space.sm stack gap: the card sits Space.md under
@@ -600,11 +715,11 @@ private fun RerunReplayScreen(
                     .align(Alignment.End)
                     .padding(top = Space.sm, end = Space.md)
                     .reveal(cardIn, rise = -Space.md)
-                when (mode) {
+                when {
                     // The map is a floor plan and needs the whole width: the camera card would sit
                     // on the room's far corner. The dock's Camera button stays one tap away.
-                    RerunMode.Map -> Unit
-                    RerunMode.Camera -> ArDebugPip(
+                    mode == RerunMode.Map || surfaceUp -> Unit
+                    mode == RerunMode.Camera -> ArDebugPip(
                         session = session,
                         orbit = pipOrbit,
                         engine = engine,
@@ -614,7 +729,7 @@ private fun RerunReplayScreen(
                         modifier = corner,
                         replay = media,
                     )
-                    RerunMode.Scene -> RerunCameraCard(
+                    else -> RerunCameraCard(
                         media = media,
                         thumbnails = thumbnails,
                         session = session,
@@ -625,25 +740,12 @@ private fun RerunReplayScreen(
             }
         },
         bottomOverlay = {
-            if (media != null && onBuildModel != null) {
-                RerunBuildModelButton(
-                    onClick = onBuildModel,
-                    modifier = Modifier.align(Alignment.CenterHorizontally).reveal(filmstripIn, rise = Space.lg),
-                )
-            }
-            if (media != null) {
-                RerunFilmstripCard(
-                    media = media,
-                    thumbnails = thumbnails,
-                    session = session,
-                    modifier = Modifier.reveal(filmstripIn, rise = Space.lg),
-                    title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE,
-                    caption = when (mode) {
-                        RerunMode.Map -> "Top-down map of the room"
-                        RerunMode.Camera -> "What the camera saw"
-                        else -> "Drag to orbit · double-tap to recenter"
-                    },
-                )
+            if (media != null && compact) {
+                // Nothing to draw: the timeline stands beside the room. This marks where the mode
+                // pill and the dock start under it — by its position: an empty box has no bounds.
+                Spacer(Modifier.fillMaxWidth().onGloballyPositioned { pillTop = it.positionInRoot().y })
+            } else {
+                timelineCard(Modifier.reveal(filmstripIn, rise = Space.lg))
             }
         },
         dock = listOfNotNull(
@@ -691,12 +793,58 @@ private fun RerunReplayScreen(
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned { stage = it.boundsInRoot() },
                 replay = media,
+                surface = surface.surface,
                 onShown = onRevealed,
             )
         }
     }
+}
+
+/**
+ * A phone on its side: too short for the stacked cards, and wide enough for the two side cards to
+ * leave the room a stage between them — by the rule the band itself is measured with
+ * ([OrbitBand.halfWidthBeside]). A window that is short and narrow (split screen) keeps the
+ * stacked layout: beside the room, the cards would stand on it.
+ */
+@Composable
+private fun compactStage(): Boolean {
+    if (LocalConfiguration.current.screenHeightDp.dp >= SceneViewTokens.DebugView.compactStageHeight) return false
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing
+    // The room stays centred: the side a cutout pushes further in decides for both.
+    val inset = maxOf(insets.getLeft(density, direction), insets.getRight(density, direction))
+    val card = with(density) { (Space.md + SceneViewTokens.DebugView.compactCardWidth).toPx() }
+    val width = LocalWindowInfo.current.containerSize.width.toFloat()
+    return OrbitBand.halfWidthBeside(cardEnd = inset + card, viewWidth = width) != null
+}
+
+/**
+ * The band the replay's chrome leaves the room on [stage] when the phone is upright, measured on
+ * screen: under the figures and over the timeline. `null` until the cards are laid out.
+ */
+private fun stackedBand(stage: Rect, hud: Rect?, timeline: Rect?): OrbitBand? {
+    if (hud == null || timeline == null) return null
+    return OrbitBand.between(hud.bottom - stage.top, timeline.top - stage.top, stage.height)
+}
+
+/**
+ * The same band for a phone on its side: between the two cards that stand on either side of the
+ * room, from [statusBottom] under the status bar down to [pillTop], where the mode pill and the dock
+ * start. `null` until the cards are laid out.
+ */
+private fun sideBand(stage: Rect, hud: Rect?, timeline: Rect?, statusBottom: Float, pillTop: Float): OrbitBand? {
+    if (hud == null || timeline == null) return null
+    return OrbitBand.betweenSides(
+        startCardEnd = hud.right - stage.left,
+        endCardStart = timeline.left - stage.left,
+        top = (statusBottom - stage.top).coerceAtLeast(0f),
+        bottom = pillTop - stage.top,
+        viewWidth = stage.width,
+        viewHeight = stage.height,
+    )
 }
 
 /**
@@ -815,7 +963,7 @@ private fun RerunLiveScreen(
     }
     val scanMedia = scan?.live ?: qaScan
     val recording = scanMedia != null
-    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, lift = SCAN_STAGE_LIFT) }
+    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, band = OrbitBand.SCAN) }
 
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
@@ -940,6 +1088,8 @@ private fun RerunLiveScreen(
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live.
         controls = { RerunSheet() },
+        // The mode pill belongs to the landing, not to a scan in progress.
+        modeSwitch = null,
         topOverlay = {
             if (recording && scanMedia != null) {
                 val stats = debugSession.stats
@@ -1400,11 +1550,6 @@ private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record
 private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
 private const val QA_SEED = "ar-rerun"
 
-/** Where the replay stage draws the room: 7 % of the height above centre, clear of the filmstrip. */
-private const val REPLAY_STAGE_LIFT = 0.07f
-
-/** The Record screen's 3D card frames the room higher: its floor used to sit clipped at the card's foot. */
-private const val SCAN_STAGE_LIFT = 0.12f
 private const val QA_STATE_CONNECTED = "connected"
 private const val QA_STATE_SAVED = "saved"
 
