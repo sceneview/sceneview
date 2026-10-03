@@ -547,6 +547,13 @@ struct RerunManifest: Sendable {
     var floorY: Float?
     var textures: [RerunPlaneTexture]
     var media: [String: RerunMediaSpan]
+    var dense: Dense? = nil
+
+    struct Dense: Sendable {
+        var path: String
+        var count: Int
+        var voxelM: Float
+    }
 
     func texture(for planeId: Int) -> RerunPlaneTexture? { textures.first { $0.planeId == planeId } }
 
@@ -583,7 +590,12 @@ struct RerunManifest: Sendable {
             frameCount: (root["frames"] as? NSNumber)?.intValue ?? 0,
             floorY: (root["floorY"] as? NSNumber)?.floatValue,
             textures: textures,
-            media: media
+            media: media,
+            dense: (root["dense"] as? [String: Any]).flatMap { obj in
+                guard let path = obj["path"] as? String, let count = obj["count"] as? Int, count > 0 else { return nil }
+                let voxel = float(obj, "voxelM")
+                return Dense(path: path, count: count, voxelM: voxel.isFinite && voxel > 0 ? voxel : 0.02)
+            }
         )
     }
 }
@@ -605,9 +617,12 @@ struct RerunPack: Sendable {
     /// `true` for the session bundled with the app.
     var isShowcase: Bool
 
+    /// The static v2 cloud is carried by the replay session; the stage does not draw it yet.
+    var dense: RerunDenseCloud? = nil
+
     /// Photo `path`'s bytes, `nil` when the manifest does not index it.
     func bytes(for path: String) -> Data? {
-        guard let span = manifest.media[path], span.offset + span.length <= media.count else { return nil }
+        guard let span = manifest.media[path], span.offset <= media.count, span.length <= media.count - span.offset else { return nil }
         let start = media.startIndex + span.offset
         return media.subdata(in: start..<(start + span.length))
     }
@@ -615,7 +630,12 @@ struct RerunPack: Sendable {
     static func load(manifest: Data, log: Data, media: Data, title: String, isShowcase: Bool = false) throws -> RerunPack {
         guard let parsed = RerunManifest.parse(manifest) else { throw LoadError.unreadableManifest }
         let trace = RerunTrace.of(RerunLog.parse(log), keyframeSpacing: replayKeyframeSpacing)
-        return RerunPack(title: title, manifest: parsed, trace: trace, media: media, isShowcase: isShowcase)
+        var pack = RerunPack(title: title, manifest: parsed, trace: trace, media: media, isShowcase: isShowcase)
+        if let dense = parsed.dense, let bytes = pack.bytes(for: dense.path) {
+            pack.dense = RerunDenseCloud.decode(bytes, voxelM: dense.voxelM)
+            if pack.dense?.positions.count != dense.count { pack.dense = nil }
+        }
+        return pack
     }
 
     /// The session bundled with the app — the very files Android ships (`rerun/showcase/`).
@@ -790,5 +810,70 @@ struct RerunFpsMeter: Sendable {
         windowStart = seconds
         defer { fps = next }
         return next != fps
+    }
+}
+
+
+/// The `.svscan` v2 dense map: world-space metres, sRGB colours and the surfel voxel size.
+/// RRD Points3D has no normals; SVPC normals/confidence sections are accepted but not used.
+struct RerunDenseCloud: Sendable, Equatable {
+    static let path = "dense/points.bin"
+    var positions: [SIMD3<Float>]
+    var colors: [SIMD3<UInt8>]
+    var voxelM: Float = 0.02
+
+    var bounds: [Float] {
+        guard let first = positions.first else { return Array(repeating: 0, count: 6) }
+        var low = first, high = first
+        for p in positions {
+            for a in 0..<3 { low[a] = min(low[a], p[a]); high[a] = max(high[a], p[a]) }
+        }
+        return [low.x, low.y, low.z, high.x, high.y, high.z]
+    }
+
+    /// Android's SVPC v1: a 32-byte header, i16 xyz then u8 RGB (structure of arrays).
+    func encoded() -> Data {
+        let b = bounds
+        let origin = SIMD3((b[0] + b[3]) * 0.5, (b[1] + b[4]) * 0.5, (b[2] + b[5]) * 0.5)
+        let half = max(b[3] - origin.x, b[4] - origin.y, b[5] - origin.z, 0)
+        let scale: Float = half <= 32767 * 0.001 ? 0.001 : half / 32767
+        var data = Data("SVPC".utf8)
+        func append<T: FixedWidthInteger>(_ value: T) { RerunArrowIPC.appendLittleEndian(value, to: &data) }
+        append(UInt32(1)); append(UInt32(positions.count)); append(UInt32(0))
+        for value in [origin.x, origin.y, origin.z, scale] { append(value.bitPattern) }
+        for p in positions {
+            for a in 0..<3 {
+                let q = ((p[a] - origin[a]) / scale).rounded()
+                append(Int16(min(32767, max(-32767, q))))
+            }
+        }
+        for c in colors { data.append(contentsOf: [c.x, c.y, c.z]) }
+        return data
+    }
+
+    static func decode(_ data: Data, voxelM: Float) -> RerunDenseCloud? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 32, Array(bytes.prefix(4)) == Array("SVPC".utf8) else { return nil }
+        func uint(_ at: Int, _ size: Int = 4) -> UInt32 {
+            (0..<size).reduce(0) { $0 | UInt32(bytes[at + $1]) << (8 * $1) }
+        }
+        guard uint(4) == 1 else { return nil }
+        let count = Int(uint(8)), flags = uint(12)
+        let stride = 9 + (flags & 1 != 0 ? 2 : 0) + (flags & 2 != 0 ? 1 : 0)
+        guard count > 0, count <= (bytes.count - 32) / stride else { return nil }
+        let origin = SIMD3(Float(bitPattern: uint(16)), Float(bitPattern: uint(20)), Float(bitPattern: uint(24)))
+        let scale = Float(bitPattern: uint(28))
+        guard scale.isFinite, scale > 0, [origin.x, origin.y, origin.z].allSatisfy({ $0.isFinite }) else { return nil }
+        var positions: [SIMD3<Float>] = []
+        var colors: [SIMD3<UInt8>] = []
+        for i in 0..<count {
+            var p = origin
+            for a in 0..<3 { p[a] += Float(Int16(bitPattern: UInt16(uint(32 + (i * 3 + a) * 2, 2)))) * scale }
+            guard [p.x, p.y, p.z].allSatisfy({ $0.isFinite }) else { return nil }
+            positions.append(p)
+            let at = 32 + count * 6 + i * 3
+            colors.append(SIMD3(bytes[at], bytes[at + 1], bytes[at + 2]))
+        }
+        return RerunDenseCloud(positions: positions, colors: colors, voxelM: voxelM)
     }
 }

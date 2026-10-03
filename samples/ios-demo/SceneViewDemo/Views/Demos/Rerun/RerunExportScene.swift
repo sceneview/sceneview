@@ -94,4 +94,5 @@ struct RerunExportScene: Sendable {
     /// Every recorded photo; older callers can fall back to `keyframes`.
     var photos: [Keyframe] = []
     var pointObservations: [PointObservation] = []
+    var dense: RerunDenseCloud? = nil
 }

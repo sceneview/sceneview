@@ -14,6 +14,7 @@ import simd
 /// - `world` — Y-up, right-handed (`ViewCoordinates` RUB), static.
 /// - `world/points` — the coloured map (`Points3D`), static.
 /// - `world/points/live` — timed camera sightings (`Points3D`), one row per observation.
+/// - `world/dense` — a v2 dense cloud, static Points3D with half-voxel radius.
 /// - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and
 ///   every recorded photo at its time (`EncodedImage`, JPEG or PNG).
 /// - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under
@@ -36,6 +37,7 @@ enum RerunRRDWriter {
 
     enum Failure: Error, Equatable {
         case pointColorCountMismatch(points: Int, colors: Int)
+        case malformedDense
     }
 
     static func data(
@@ -45,6 +47,12 @@ enum RerunRRDWriter {
     ) throws -> Data {
         if !scene.pointColors.isEmpty, scene.pointColors.count != scene.points.count {
             throw Failure.pointColorCountMismatch(points: scene.points.count, colors: scene.pointColors.count)
+        }
+        if let dense = scene.dense {
+            guard dense.positions.count == dense.colors.count, dense.voxelM.isFinite, dense.voxelM > 0,
+                  dense.positions.allSatisfy({ [$0.x, $0.y, $0.z].allSatisfy { $0.isFinite } }) else {
+                throw Failure.malformedDense
+            }
         }
         var ids = RerunTuidSequence(recordingId: recordingId)
         let store = StoreIdentity(applicationId: applicationId, recordingId: recordingId.uuidString.lowercased())
@@ -148,6 +156,14 @@ enum RerunRRDWriter {
             }
             chunks.append(RerunChunk(entityPath: "/world/points", components: components))
             if let live = liveChunk(for: scene) { chunks.append(live) }
+        }
+
+        if let dense = scene.dense, !dense.positions.isEmpty {
+            chunks.append(RerunChunk(entityPath: "/world/dense", components: [
+                .vectors("Points3D", "positions", "Position3D", [flatten(dense.positions)], size: 3),
+                .floats("Points3D", "radii", "Radius", [[dense.voxelM / 2]]),
+                .colors("Points3D", [dense.colors.map { packedColor($0) }]),
+            ]))
         }
 
         chunks.append(contentsOf: cameraChunks(for: scene))

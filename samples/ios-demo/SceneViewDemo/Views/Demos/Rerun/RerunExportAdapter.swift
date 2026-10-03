@@ -115,7 +115,8 @@ enum RerunExportAdapter {
             planes: planes,
             anchors: anchors,
             photos: photos,
-            pointObservations: observations
+            pointObservations: observations,
+            dense: pack.dense
         )
     }
 
