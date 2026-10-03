@@ -28,6 +28,8 @@ import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
+import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
@@ -81,7 +83,7 @@ internal class ScanCapture private constructor(
     }
 
     private val gate = KeyframeGate()
-    private val photoSize = ScanProjection.photoSize(lens, PHOTO_LONG_SIDE)
+    private val photoMotion = ScanPhotoMotion()
     private val jpegs = ConcurrentHashMap<String, ByteArray>()
     private val thumbnails = ConcurrentHashMap<String, Bitmap>()
 
@@ -148,7 +150,12 @@ internal class ScanCapture private constructor(
     val isPhotoLimitReached: Boolean get() = gate.isFull
 
     /** Whether the camera at [display] should take a photo now. */
-    fun wantsPhoto(display: DebugPose): Boolean = inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    fun wantsPhoto(nanos: Long, display: DebugPose): Boolean {
+        // Called every tracked frame, before the cadence and backpressure checks, so the motion
+        // between two consecutive frames is always measured; a tracking gap defers too.
+        val steady = photoMotion.isSteady(nanos, display)
+        return steady && inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    }
 
     /** The camera image of [frame], or `null` when ARCore has none to give this frame. */
     fun acquire(frame: Frame): ScanImage? = runCatching {
@@ -168,7 +175,8 @@ internal class ScanCapture private constructor(
      * thumbnailed off the main thread.
      */
     fun takePhoto(nanos: Long, image: ScanImage, display: DebugPose) {
-        val path = ScanArchive.photoPath(gate.count)
+        val index = gate.count
+        val path = ScanArchive.photoPath(index)
         val pixels = image.copy()
         val sensor = image.sensor
         gate.accept(display)
@@ -177,14 +185,31 @@ internal class ScanCapture private constructor(
         inFlight.incrementAndGet()
         jobs += scope.launch(Dispatchers.Default) {
             try {
-                val (width, height) = photoSize
+                val size = ScanPhotoPolicy.targetSize(index, lens, pixels.width, pixels.height)
+                val (width, height) = size
                 val argb = ScanProjection.uprightImage(pixels, intrinsics, sensor, display, lens, width, height)
                 val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-                val jpeg = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, jpeg)
-                jpegs[path] = jpeg.toByteArray()
-                thumbnails[path] = Bitmap.createScaledBitmap(bitmap, width / 2, height / 2, true)
-                bitmap.recycle()
+                try {
+                    val encoded = ScanPhotoPolicy.encode(index, size) { w, h, quality ->
+                        val scaled = if (w == width && h == height) bitmap
+                        else Bitmap.createScaledBitmap(bitmap, w, h, true)
+                        try {
+                            val out = ByteArrayOutputStream()
+                            if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
+                        } finally {
+                            if (scaled !== bitmap) scaled.recycle()
+                        }
+                    } ?: return@launch
+                    jpegs[path] = encoded.bytes
+                    // Same small live thumbnails as before, even when the stored photo is sharp.
+                    val sample = ScanPhotoPolicy.thumbnailSample(encoded.width, encoded.height)
+                    thumbnails[path] = Bitmap.createScaledBitmap(
+                        bitmap, (encoded.width / sample).coerceAtLeast(1),
+                        (encoded.height / sample).coerceAtLeast(1), true,
+                    )
+                } finally {
+                    bitmap.recycle()
+                }
             } finally {
                 inFlight.decrementAndGet()
             }
@@ -409,10 +434,6 @@ internal class ScanCapture private constructor(
          * draw, so the card keeps its frame rate while the camera and the fusion run.
          */
         const val LIVE_DENSE_MAX_SURFELS = 150_000
-
-        /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
-        private const val PHOTO_LONG_SIDE = 320
-        private const val JPEG_QUALITY = 85
 
         /** Photos being encoded at once; past it a keyframe waits for the next frame. */
         private const val MAX_IN_FLIGHT = 3
