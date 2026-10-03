@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android AR: the camera frame disappears immediately on back.** `ARSceneView` now hides its retained platform surface as soon as its screen is navigated away from, instead of leaving the last camera image visible during the transition, and shows it again only once a fresh frame has been drawn; `SceneView` applies the same rule to 3D surfaces. A pause shared by the whole activity (a system dialog or a share sheet over the app) keeps the picture as before.
