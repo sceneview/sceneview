@@ -50,12 +50,19 @@ struct CosmosDemo: View {
                     engine.tap(tap.location, in: geometry.size, minRadius: Float(SceneViewTokens.Space.xl))
                 })
                 if !engine.ready || (engine.spacetime && !engine.spacetimeReady && !engine.spacetimeFailed) {
-                    VStack(spacing: SceneViewTokens.Space.md) {
-                        ProgressView().tint(.white)
+                    // On a scrim (DESIGN.md `chrome-scrim`): it is drawn over the lit star, and
+                    // full white on 60 % black stays >= 5.7:1 even over a white ground.
+                    VStack(spacing: SceneViewTokens.Space.sm) {
+                        ProgressView().tint(SceneViewTokens.Glass.onGlass)
                         Text("Lighting up the cosmos")
-                            .font(.callout)
-                            .foregroundStyle(.white.opacity(0.8))
+                            .font(SceneViewTokens.TypeScale.bodyMedium)
+                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
                     }
+                    .padding(.horizontal, SceneViewTokens.Space.lg)
+                    .padding(.vertical, SceneViewTokens.Space.md)
+                    .background(SceneViewTokens.Chrome.scrim,
+                                in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+                    .accessibilityElement(children: .combine)
                 }
             }
             .onAppear { engine.viewport = viewport(geometry.size) }
