@@ -23,8 +23,8 @@ private typealias Column = RerunComponentColumn
  *   observation, amber): the replay rebuilds the growing map and its live points from it.
  * - `world/dense` — a `.svscan` v2's dense cloud (`Points3D`: positions, colours, radius half a
  *   voxel), static, in one row: the room's surfaces where `world/points` has its landmarks.
- * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and each
- *   photo at its time (`EncodedImage`, JPEG or PNG): every photo of the session when the scene
+ * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, timed when photo
+ *   sizes vary) and each photo at its time (`EncodedImage`, JPEG or PNG): every photo when the scene
  *   has them, else the keyframes'.
  * - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under `world/camera`: a
  *   child of a pinhole lives in its 2D image space, and a child of the moving camera would move
@@ -263,8 +263,22 @@ object RerunRrdWriter {
             val data = scene.images[keyframe.imagePath] ?: return@mapNotNull null
             codec.photo(data)?.let { keyframe.time to it }
         }
-        pinhole(scene.lens, photos.firstOrNull()?.second)?.let { (matrix, resolution) ->
-            chunks += pinholeChunk(matrix, resolution)
+        val mixedSizes = photos.map { it.second.width to it.second.height }.distinct().size > 1
+        if (mixedSizes) {
+            var previousSize: Pair<Int, Int>? = null
+            for ((time, photo) in photos) {
+                val size = photo.width to photo.height
+                if (size != previousSize) {
+                    pinhole(scene.lens, photo)?.let { (matrix, resolution) ->
+                        chunks += pinholeChunk(matrix, resolution, nanoseconds(time))
+                    }
+                    previousSize = size
+                }
+            }
+        } else {
+            pinhole(scene.lens, photos.firstOrNull()?.second)?.let { (matrix, resolution) ->
+                chunks += pinholeChunk(matrix, resolution)
+            }
         }
         // The path's poses plus each photo's own pose, so the camera sits exactly where the
         // photo was taken at that instant (on a tie, the later row — the photo's — wins).
@@ -314,7 +328,7 @@ object RerunRrdWriter {
         times = photos.map { nanoseconds(it.first) },
     )
 
-    private fun pinholeChunk(matrix: FloatArray, resolution: FloatArray) = RerunChunk(
+    private fun pinholeChunk(matrix: FloatArray, resolution: FloatArray, time: Long? = null) = RerunChunk(
         "/world/camera",
         listOf(
             Column.vectors("Pinhole", "image_from_camera", "PinholeProjection", listOf(matrix), 9),
@@ -322,6 +336,7 @@ object RerunRrdWriter {
             Column.u8Vectors("Pinhole", "camera_xyz", "ViewCoordinates", listOf(VIEW_COORDINATES_RUB), 3),
             Column.floats("Pinhole", "image_plane_distance", "ImagePlaneDistance", listOf(floatArrayOf(IMAGE_PLANE))),
         ),
+        times = time?.let { listOf(it) },
     )
 
     /** Column-major `image_from_camera` and `[width, height]`, scaled to the photos' size. */
