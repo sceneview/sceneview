@@ -105,7 +105,7 @@ struct CosmosDemo: View {
                     // The Star scene's two views, from its first frame — the voyage included.
                     if engine.scene == .star {
                         SpacetimeModePicker(spacetime: Binding(get: { engine.spacetime },
-                                                               set: selectSpacetime))
+                                                               set: { selectSpacetime($0) }))
                     }
                 }
             }
