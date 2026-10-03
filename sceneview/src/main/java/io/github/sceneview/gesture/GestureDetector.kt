@@ -77,6 +77,32 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
     private var lastTouchEvent: MotionEvent? = null
 
+    private data class PendingSingleTap(val down: MotionEvent, val node: Node?)
+
+    private var currentDown: MotionEvent? = null
+    private var currentDownNode: Node? = null
+    private var pendingSingleTap: PendingSingleTap? = null
+
+    private fun clearPendingSingleTap() {
+        pendingSingleTap?.down?.recycle()
+        pendingSingleTap = null
+    }
+
+    private fun dispatchSingleTapConfirmed(e: MotionEvent, node: Node?) {
+        node?.onSingleTapConfirmed(e)
+        listener?.onSingleTapConfirmed(e, node)
+    }
+
+    private fun confirmPendingSingleTap() {
+        val pending = pendingSingleTap ?: return
+        pendingSingleTap = null
+        try {
+            dispatchSingleTapConfirmed(pending.down, pending.node)
+        } finally {
+            pending.down.recycle()
+        }
+    }
+
     private val gestureDetector = android.view.GestureDetector(context,
         object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = super.onDown(e).also {
@@ -90,6 +116,10 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
             }
 
             override fun onSingleTapUp(e: MotionEvent) = super.onSingleTapUp(e).also {
+                clearPendingSingleTap()
+                currentDown?.let {
+                    pendingSingleTap = PendingSingleTap(MotionEvent.obtain(it), currentDownNode)
+                }
                 touchedNode?.onSingleTapUp(e)
                 listener?.onSingleTapUp(e, touchedNode)
             }
@@ -120,11 +150,20 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
             }
 
             override fun onSingleTapConfirmed(e: MotionEvent) = super.onSingleTapConfirmed(e).also {
-                touchedNode?.onSingleTapConfirmed(e)
-                listener?.onSingleTapConfirmed(e, touchedNode)
+                val pending = pendingSingleTap
+                pendingSingleTap = null
+                try {
+                    dispatchSingleTapConfirmed(
+                        e,
+                        if (pending != null) pending.node else touchedNode,
+                    )
+                } finally {
+                    pending?.down?.recycle()
+                }
             }
 
             override fun onDoubleTap(e: MotionEvent) = super.onDoubleTap(e).also {
+                clearPendingSingleTap()
                 onDoubleTapCamera?.invoke(e)
                 touchedNode?.onDoubleTap(e)
                 listener?.onDoubleTap(e, touchedNode)
@@ -257,6 +296,12 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         lastTouchEvent = event
         touchedNode = hitResult?.node
 
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            currentDown?.recycle()
+            currentDown = MotionEvent.obtain(event)
+            currentDownNode = touchedNode
+        }
+
         // Press/release is dispatched ahead of gesture recognition: the sub-detectors only
         // report a Begin once their threshold is crossed, which is far too late for
         // on-model feedback to acknowledge the touch (#3357).
@@ -283,6 +328,15 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         moveGestureDetector.onTouchEvent(event)
         rotateGestureDetector.onTouchEvent(event)
         scaleGestureDetector.onTouchEvent(event)
+
+        if (event.actionMasked == MotionEvent.ACTION_UP ||
+            event.actionMasked == MotionEvent.ACTION_CANCEL
+        ) {
+            currentDown?.recycle()
+            currentDown = null
+            currentDownNode = null
+            if (event.actionMasked == MotionEvent.ACTION_CANCEL) clearPendingSingleTap()
+        }
     }
 
     /**
@@ -294,12 +348,13 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
      * platform tap detector must not: fed a `DOWN` here it would report a tap on the release of a
      * short drag (the pointer barely travels from the replayed point), an immediate long press
      * (the stream's original down time is already past the timeout) and, right after an earlier
-     * tap, a double tap that zooms the camera. So it is cancelled on both sides of the `DOWN`: the
-     * first `CANCEL` drops a tap still pending from the previous stream, the second drops the tap
-     * region and the long-press / tap timers the `DOWN` just armed. It keeps the `DOWN` as the
-     * origin of `onScroll` / `onFling`, which is all a drag needs from it.
+     * tap, a double tap that zooms the camera. Before cancelling the detector, any legitimate tap
+     * still awaiting confirmation is delivered: hand-back proves this drag cannot be its second
+     * tap. The second `CANCEL` then drops the tap region and long-press / tap timers armed by the
+     * replayed `DOWN`, while keeping that `DOWN` as the origin of `onScroll` / `onFling`.
      */
     internal fun onHandedBackDown(down: MotionEvent, hitResult: HitResult?) {
+        confirmPendingSingleTap()
         val cancel = MotionEvent.obtain(down)
         try {
             cancel.action = MotionEvent.ACTION_CANCEL

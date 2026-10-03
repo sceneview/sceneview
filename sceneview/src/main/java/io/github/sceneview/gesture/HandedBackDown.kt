@@ -11,8 +11,8 @@ import io.github.sceneview.node.Node
  * detectors never saw that stream's `DOWN`, so replay one, at the current pointer, before the rest
  * of the stream reaches them. [cameraAbsorbed] keeps it from the camera, like the rest of the stream.
  *
- * The scene [gestureDetector] takes it through [GestureDetector.onHandedBackDown], which keeps
- * the platform tap detector from turning a drag into a tap, a long press or a double tap.
+ * The scene [gestureDetector] takes it through [GestureDetector.onHandedBackDown], which confirms
+ * an earlier pending tap before keeping this drag from becoming a tap, long press or double tap.
  *
  * Shared by `SceneView` and `ARSceneView`; not part of the public API.
  */
