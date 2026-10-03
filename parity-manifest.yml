@@ -816,14 +816,18 @@ demos:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AllShapesDemo.swift
     contract: >-
-      Four spinning SDK primitives (cube, sphere, cylinder, plane) in brand
-      colours under IBL; chips show or hide each one, sliders set metallic and
-      roughness live.
+      Seven spinning SDK primitives (cube, sphere, cylinder, cone, torus,
+      capsule, plane) in brand colours in a drawn studio, full-bleed and fitted
+      to the band the chrome leaves free (2-3-2 block in portrait, one row in
+      landscape); chips over the scene show or hide each one in a fixed slot
+      without moving the camera; dock Animate and Recenter; Settings holds
+      Metallic and Roughness, live, plus Reset.
     parity: diverges
     evidence: >-
-      AllShapesDemo.swift:11-24,53: five static shapes (adds a cone), system
-      colours, text labels, a DemoHint, no controls; Android
-      GeometryDemo.kt:150-162,345-367
+      AllShapesDemo.swift:11-24,53: five static shapes (no torus, no capsule),
+      system colours, text labels, a DemoHint, no controls; Android
+      GeometryDemo.kt (GeometryDemo, GeometryShapes, GeometryShapeChips,
+      GeometryDemoControls)
   - id: lighting
     androidStatus: Working
     iosStatus: working

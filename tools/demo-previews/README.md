@@ -101,6 +101,15 @@ galaxy has rendered: the full-width 1080×864 band centred on the galaxy's brigh
 in both themes, so light and dark are the same pixels. The iOS `preview_cosmos` imageset
 carries the same crop as JPEG q90.
 
+`geometry` showed a generated picture of four shapes in red, blue, green and silver, while
+the demo draws seven in the brand tones. Its card is an emulator capture (Pixel_7a,
+1280×2856) of `sceneview://demo/geometry?cameraDistance=2.7` with `--ez qa_mode true` (spin
+parked), once the studio environment has landed — the default framing fills a portrait band
+and leaves no room for a 5:4 crop, hence the distance. Crop: the full-width 1280×1024 band
+from y = 710, resized to 800×640, WebP q85, one capture per theme: the studio does not
+follow the theme, so the two differ by render noise only. The iOS `preview_geometry`
+imageset is not replaced: its scene is not this one yet.
+
 ### Cards generated from real captures (2026-09-30)
 
 Eight cards were still weak after #4235: a flat side-on fox on a grey stage, a black frame

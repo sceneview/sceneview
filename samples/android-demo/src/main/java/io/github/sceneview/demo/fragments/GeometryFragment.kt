@@ -18,7 +18,10 @@ object GeometryFragment : DemoFragment {
         icon = Icons.Filled.Category,
         order = 11,
         addedIn = "4.0.0",
-        tags = setOf("geometry", "cube", "sphere", "cylinder", "plane", "primitive"),
+        updatedIn = "4.52.0",
+        tags = setOf(
+            "geometry", "cube", "sphere", "cylinder", "cone", "torus", "capsule", "plane", "primitive",
+        ),
     )
 
     @Composable
