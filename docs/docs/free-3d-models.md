@@ -104,7 +104,7 @@ Models for car configurators, dealership apps, and EV showcases.
 |---|---|---|---|---|
 | [CarConcept](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept) | ~8 MB | CC0/CC-BY | Concept car with material variants. Car configurator demo. | Product Viewer |
 | [ClearCoatCarPaint](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ClearCoatCarPaint) | ~2 MB | CC0/CC-BY | Automotive paint clearcoat material. Paint finish comparison tool. | 3D Viewer |
-| [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar) | 2.15 MB | CC0 | Detailed toy car with PBR, clearcoat, transmission. Shows material quality. | 3D Viewer |
+| [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar) | 5.17 MB (2.15 MB as the Draco-compressed copy in this repo) | CC0 | Detailed toy car with PBR, clearcoat, transmission. Shows material quality. | 3D Viewer |
 
 ---
 
@@ -203,10 +203,10 @@ These models are currently bundled or referenced in the sample apps:
 
 | Model | Used in | Source |
 |---|---|---|
-| DamagedHelmet | android-demo, web-demo, flutter-demo | Khronos glTF Sample Assets |
+| DamagedHelmet | android-demo, web-demo, flutter-demo | Khronos glTF Sample Assets. **CC-BY-NC-4.0: non-commercial use only.** The website replaced it with ToyCar. |
 | Fox | android-tv-demo | Khronos glTF Sample Assets |
 | space_helmet.glb | android-demo (effects) | Custom |
-| toy_car.glb | android-demo (showcase) | Khronos (ToyCar) |
+| toy_car.glb | android-demo (showcase), website | Khronos (ToyCar), CC0-1.0 |
 | FlightHelmet | web-demo | Khronos glTF Sample Assets |
 | Avocado | web-demo | Khronos glTF Sample Assets |
 | Lantern | web-demo | Khronos glTF Sample Assets |
@@ -265,10 +265,13 @@ https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Ce
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/BrainStem/glTF-Binary/BrainStem.glb
 
 # Showcase (already used)
-https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb
+https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/FlightHelmet/glTF/FlightHelmet.gltf
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Lantern/glTF-Binary/Lantern.glb
 https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Avocado/glTF-Binary/Avocado.glb
+
+# Non-commercial only (CC-BY-NC-4.0): fine for a test, not for an app you sell
+https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb
 ```
 
 ---
