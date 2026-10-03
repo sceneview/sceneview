@@ -1764,6 +1764,11 @@ public class io/github/sceneview/gesture/GestureDetector$SimpleOnGestureListener
 	public fun onSingleTapUp (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;)V
 }
 
+public final class io/github/sceneview/gesture/HandedBackDownKt {
+	public static final fun replayHandedBackDown (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;Z)V
+	public static synthetic fun replayHandedBackDown$default (Landroid/view/MotionEvent;Lio/github/sceneview/node/Node;Lio/github/sceneview/collision/HitResult;Lio/github/sceneview/gesture/GestureDetector;Lio/github/sceneview/gesture/CameraGestureDetector;ZILjava/lang/Object;)V
+}
+
 public class io/github/sceneview/gesture/MoveGestureDetector {
 	public static final field $stable I
 	public fun <init> (Landroid/content/Context;Lio/github/sceneview/gesture/MoveGestureDetector$OnMoveListener;)V
@@ -2986,6 +2991,7 @@ public class io/github/sceneview/node/Node : android/view/GestureDetector$OnCont
 	public fun setWorldRotation (Ldev/romainguy/kotlin/math/Float3;)V
 	public fun setWorldScale (Ldev/romainguy/kotlin/math/Float3;)V
 	public final fun setWorldTransform (Ldev/romainguy/kotlin/math/Mat4;)V
+	public fun takeTouchStreamHandBack ()Z
 	public final fun transform (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZF)Lio/github/sceneview/node/Node;
 	public final fun transform (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;Ldev/romainguy/kotlin/math/Float3;ZF)Lio/github/sceneview/node/Node;
 	public fun transform (Ldev/romainguy/kotlin/math/Mat4;ZF)Lio/github/sceneview/node/Node;
@@ -3393,6 +3399,7 @@ public final class io/github/sceneview/node/ViewNode : io/github/sceneview/node/
 	public final fun setPxPerUnits (F)V
 	public final fun setTouchForwardingEnabled (Z)V
 	public final fun setViewSize (Ldev/romainguy/kotlin/math/Float3;)V
+	public fun takeTouchStreamHandBack ()Z
 	public final fun updateGeometrySize ()V
 }
 
@@ -3404,6 +3411,7 @@ public final class io/github/sceneview/node/ViewNode$Layout : android/widget/Fra
 	public synthetic fun <init> (Lio/github/sceneview/node/ViewNode;Landroid/content/Context;Landroid/util/AttributeSet;IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun invalidateChildInParent ([ILandroid/graphics/Rect;)Landroid/view/ViewParent;
 	public fun onDescendantInvalidated (Landroid/view/View;Landroid/view/View;)V
+	public fun requestDisallowInterceptTouchEvent (Z)V
 }
 
 public final class io/github/sceneview/node/ViewNode$WindowManager {

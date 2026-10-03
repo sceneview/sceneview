@@ -2,6 +2,7 @@ package io.github.sceneview.node
 
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.math.Position
@@ -93,11 +94,38 @@ internal fun shouldMirrorX(
  *   rather than being handed mid-stream to the gesture/camera detectors, which never saw its
  *   `DOWN`.
  *
+ * ### Why a drag is handed back to the scene (#4033)
+ *
+ * A Material `Card`, a `Surface`, a `Button`: nearly every Compose container consumes the `DOWN`
+ * it is hit by, clickable or not. Holding the whole stream on that alone meant a one-finger drag
+ * that happened to start on a card never orbited the camera, and the scene read as broken.
+ *
+ * Android solves the same conflict between a `ScrollView` and the button under the finger with
+ * `requestDisallowInterceptTouchEvent`: the parent takes the gesture over once it becomes a drag,
+ * unless a child that wants the drag (a scrollable list, a slider) has claimed it. This class plays
+ * the parent: once the pointer has travelled further than the touch slop from its `DOWN`, or a
+ * second pointer comes down, and nothing inside [target] has claimed the gesture
+ * ([onContentClaimedGesture]), the embedded view gets an `ACTION_CANCEL` and the rest of the
+ * stream is handed back ([handedBack]). Compose claims it for every pointer-input node that
+ * consumes movement — `AndroidComposeView` calls `requestDisallowInterceptTouchEvent(true)` when a
+ * scroll, a drag or a slider takes the change — so an inner list keeps scrolling exactly as it did.
+ * A tap never travels that far and still lands on the button.
+ *
+ * While the pointer is on the quad the distance is measured in **view pixels** — the space the
+ * content's own scrollables measure their slop in — so a card rendered larger than its view (a
+ * close camera, a scaled node) does not have its list's scroll stolen before the list could claim
+ * it. Off the quad there is no view pixel left, so [onExit] falls back to screen pixels.
+ *
  * Extracted from [ViewNode] so this logic can be unit-tested without a Filament engine.
  *
  * @param target The view the events are dispatched into — a [ViewNode]'s `layout`.
+ * @param touchSlopPx How far a pointer may travel from its `DOWN` before an unclaimed stream
+ * becomes a drag the scene takes back — in view pixels on the quad, in screen pixels off it.
  */
-internal class ViewTouchForwarder(private val target: View) {
+internal class ViewTouchForwarder(
+    private val target: View,
+    private val touchSlopPx: Float = ViewConfiguration.get(target.context).scaledTouchSlop.toFloat(),
+) {
 
     /** True while a stream that started on the quad still belongs to [target]. */
     var ownsStream: Boolean = false
@@ -105,6 +133,40 @@ internal class ViewTouchForwarder(private val target: View) {
 
     /** True while [target] has a live (started, not yet ended or cancelled) stream. */
     private var isStreamLive: Boolean = false
+
+    /**
+     * True once something inside [target] asked for the current gesture — see
+     * [onContentClaimedGesture]. A claimed stream is never handed back.
+     */
+    private var isClaimedByContent: Boolean = false
+
+    /** View-pixel position of the current stream's `DOWN`: the slop origin while on the quad. */
+    private var downViewX: Float = 0.0f
+    private var downViewY: Float = 0.0f
+
+    /** Screen position of the current stream's `DOWN`: the slop origin once off the quad. */
+    private var downScreenX: Float = 0.0f
+    private var downScreenY: Float = 0.0f
+
+    /**
+     * Latched when a stream [target] owned is handed back to the scene mid-gesture (#4033), and
+     * cleared by [takeHandBack]. The scene's detectors never saw that stream's `DOWN`, so whoever
+     * routes the rest of it to them has to replay one first.
+     */
+    var handedBack: Boolean = false
+        private set
+
+    /**
+     * Something inside [target] called `requestDisallowInterceptTouchEvent` — a list that started
+     * scrolling, a slider being dragged, any Compose pointer input that consumed movement. The
+     * gesture is theirs: it will not be handed back to the scene.
+     */
+    fun onContentClaimedGesture(disallowIntercept: Boolean) {
+        if (disallowIntercept && ownsStream) isClaimedByContent = true
+    }
+
+    /** Returns [handedBack] and clears it: the caller replays the missed `DOWN` exactly once. */
+    fun takeHandBack(): Boolean = handedBack.also { handedBack = false }
 
     /**
      * Forwards [e], picked at the view pixel ([x], [y]), into [target].
@@ -116,6 +178,12 @@ internal class ViewTouchForwarder(private val target: View) {
             // Defensive: a stream left open (forwarding disabled mid-gesture, node re-added to the
             // scene, …) must not leak its pressed state into the new one.
             cancelLiveStream(e)
+            isClaimedByContent = false
+            handedBack = false
+            downViewX = x
+            downViewY = y
+            downScreenX = e.x
+            downScreenY = e.y
             ownsStream = dispatch(e, x, y)
             isStreamLive = ownsStream
             return ownsStream
@@ -124,6 +192,10 @@ internal class ViewTouchForwarder(private val target: View) {
         if (isStreamLive) {
             dispatch(e, x, y)
         }
+        // After the dispatch: a list inside the card claims the drag on the very MOVE that
+        // crosses its own slop, which is the same MOVE that crosses this one: both are measured
+        // in view pixels.
+        if (handBackIfDrag(e, x - downViewX, y - downViewY)) return false
         endStreamIfTerminal(e)
         return true
     }
@@ -141,7 +213,31 @@ internal class ViewTouchForwarder(private val target: View) {
     fun onExit(e: MotionEvent): Boolean {
         if (!ownsStream) return false
         cancelLiveStream(e)
+        // A drag that left the quad is still a drag: the scene takes it, as it would on the quad.
+        // No view pixel exists off the quad, so the distance is measured on screen.
+        if (handBackIfDrag(e, e.x - downScreenX, e.y - downScreenY)) return false
         endStreamIfTerminal(e)
+        return true
+    }
+
+    /**
+     * Hands an unclaimed stream back to the scene once it has become a drag or a multi-touch
+     * gesture (#4033): cancels [target]'s press and releases the stream. ([dx], [dy]) is how far
+     * the pointer travelled from its `DOWN`, in the space the caller measures it in.
+     *
+     * @return true when the stream was just handed back and [e] belongs to the scene.
+     */
+    private fun handBackIfDrag(e: MotionEvent, dx: Float, dy: Float): Boolean {
+        if (isClaimedByContent) return false
+        val isDrag = when (e.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> true
+            MotionEvent.ACTION_MOVE -> dx * dx + dy * dy > touchSlopPx * touchSlopPx
+            else -> false
+        }
+        if (!isDrag) return false
+        cancelLiveStream(e)
+        ownsStream = false
+        handedBack = true
         return true
     }
 

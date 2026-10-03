@@ -93,6 +93,7 @@ import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.GestureDetector
+import io.github.sceneview.gesture.replayHandedBackDown
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -1464,6 +1465,12 @@ fun ARSceneView(
             consumedByNode = capturedNode?.onCapturedTouchEvent(event) == true ||
                     (hitResult != null && hitNode?.onTouchEvent(event, hitResult) == true)
             if (!consumedByNode) {
+                // A drag that started on an interactive ViewNode may just have been handed back
+                // (#4033): replay the DOWN the detectors never saw. Mirrors SceneView.
+                replayHandedBackDown(
+                    event, capturedTouchNodeRef.get(), hitResult, gestureDetector,
+                    cameraGestureDetectorRef.get(),
+                )
                 gestureDetector.onTouchEvent(event, hitResult)
                 cameraGestureDetectorRef.get()?.onTouchEvent(event)
             }

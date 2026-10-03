@@ -6,6 +6,7 @@ import android.view.GestureDetector
 import android.view.GestureDetector.OnContextClickListener
 import android.view.GestureDetector.OnDoubleTapListener
 import android.view.MotionEvent
+import androidx.annotation.RestrictTo
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.Scene
@@ -1455,6 +1456,26 @@ open class Node protected constructor(
      * @return true when the node still owns the stream and the event must not be routed elsewhere.
      */
     open fun onCapturedTouchEvent(e: MotionEvent): Boolean = false
+
+    /**
+     * Whether this node, having captured a touch stream on its `ACTION_DOWN`, has just handed the
+     * rest of that stream back to the scene. Reading it clears it.
+     *
+     * The scene's gesture and camera detectors never saw the `DOWN` of a stream a node captured,
+     * so a node that gives the gesture up mid-way — [ViewNode] does, once a drag that started on
+     * it passes the touch slop (#4033) — needs that `DOWN` replayed before the rest arrives, or
+     * the camera would receive a drag with no start. The scene's touch dispatcher asks the node
+     * that owns the current stream and, on `true`, replays one `DOWN` at the current pointer
+     * position so the camera picks the gesture up from there, without a jump.
+     *
+     * The default implementation returns `false`: a node that never hands a stream back needs
+     * nothing replayed.
+     *
+     * Library-internal plumbing between [ViewNode] and the scene dispatchers, not an extension
+     * point: an app never overrides or calls it.
+     */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    open fun takeTouchStreamHandBack(): Boolean = false
 
     override fun onDown(e: MotionEvent) = gestureDelegate.onDown(e)
     override fun onShowPress(e: MotionEvent) = gestureDelegate.onShowPress(e)
