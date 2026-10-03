@@ -141,7 +141,10 @@ category.
 
 **Above the chips, a demo is pushed once.** The header pager, the "Featured" banners and
 the "What's new" row's picture are read in that order, and each only shows what the ones
-before it do not; a group left with nothing of its own is not drawn. The "What's new" row
+before it do not; a group left with nothing of its own is not drawn. The pager stays at two
+pages (Models, Cosmos) so the banners keep the other three featured demos: the banner is the
+card the Home is liked for. Under "All", a demo shown as a banner is not listed again in its
+category; a chip or a search is a query and lists every match. The "What's new" row
 opens the "What's new" sheet over the whole catalogue. It never selects the filter chip:
 a tap on a home row must not make the catalogue look smaller than it is.
 

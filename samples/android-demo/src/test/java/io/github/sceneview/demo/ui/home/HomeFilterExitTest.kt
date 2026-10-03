@@ -2,6 +2,8 @@ package io.github.sceneview.demo.ui.home
 
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -19,11 +21,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
-import io.github.sceneview.demo.isRecentVersion
-import io.github.sceneview.demo.listedDemos
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -128,14 +128,38 @@ class HomeFilterExitTest {
     }
 
     private companion object {
-        val DEMOS: List<DemoEntry> = listedDemos(ALL_DEMOS, xrDevice = false)
+        /** The build the fixture's versions are read against: only the two 4.50 demos are fresh. */
+        const val BUILD_VERSION = "4.50.0"
 
-        /** The newest version a demo declares, as the home goldens pin it (#3666). */
-        val BUILD_VERSION: String =
-            DEMOS.flatMap { listOfNotNull(it.addedIn, it.updatedIn) }
-                .reduceOrNull { newest, candidate ->
-                    if (isRecentVersion(candidate, newest, window = 0)) candidate else newest
-                }
-                ?: "0.0.0"
+        /**
+         * A fixed catalogue, so a demo added, moved or badged in the registry cannot change
+         * what these tests see: the hero's page, two fresh demos and two that are not, over
+         * three sections. The labels are any two strings of the app — no test reads them.
+         */
+        val DEMOS: List<DemoEntry> = listOf(
+            demo(HERO_DEMO_ID, DemoCategory.VIEW_3D, order = 1),
+            demo("fixture-updated", DemoCategory.CREATE, order = 2, updatedIn = "4.50.0"),
+            demo("fixture-added", DemoCategory.CREATE, order = 3, addedIn = "4.50.0"),
+            demo("fixture-settled", DemoCategory.CREATE, order = 4),
+            demo("fixture-tool", DemoCategory.DEV_TOOLS, order = 5),
+        )
+
+        fun demo(
+            id: String,
+            category: String,
+            order: Int,
+            addedIn: String = "4.0.0",
+            updatedIn: String? = null,
+        ) = DemoEntry(
+            id = id,
+            titleRes = R.string.home_section_featured,
+            subtitleRes = R.string.home_browse_subtitle,
+            category = category,
+            icon = Icons.Filled.Palette,
+            order = order,
+            tags = emptySet(),
+            addedIn = addedIn,
+            updatedIn = updatedIn,
+        )
     }
 }

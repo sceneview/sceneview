@@ -72,4 +72,17 @@ class HomeTopSectionsTest {
         val all = top.pager + top.featured + top.whatsNew
         assertEquals(all.distinct(), all)
     }
+
+    @Test
+    fun `the whole catalogue does not list a banner a second time`() {
+        val top = homeTopSections(pager = listOf("a"), featured = listOf("a", "b"), fresh = emptyList())
+        // "a" is a pager page, not a banner: the hero is not a card, the catalogue keeps it.
+        assertEquals(listOf("a", "c", "d"), top.catalogue(listOf("a", "b", "c", "d"), filtered = false))
+    }
+
+    @Test
+    fun `a chip or a search lists every match, banner or not`() {
+        val top = homeTopSections(pager = listOf("a"), featured = listOf("a", "b"), fresh = emptyList())
+        assertEquals(listOf("b", "c"), top.catalogue(listOf("b", "c"), filtered = true))
+    }
 }

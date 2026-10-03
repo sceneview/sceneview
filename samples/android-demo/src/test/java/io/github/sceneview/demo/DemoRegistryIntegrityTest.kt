@@ -230,6 +230,13 @@ class DemoRegistryIntegrityTest {
             "A featured pager page repeats as a Featured banner",
             shelf.none { it in FEATURED_PAGER_IDS },
         )
+        // The banners are the card the Home is liked for: the pager stays short enough to
+        // leave some.
+        assertEquals(
+            "The Featured banners under the pager",
+            listOf("ar-placement", "ar-rerun", "materials"),
+            shelf,
+        )
     }
 
     @Test

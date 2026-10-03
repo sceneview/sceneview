@@ -298,9 +298,17 @@ fun HomeScreen(
     }
 
     // The "Featured" group under the hero: the demos we push that the pager does not
-    // already show, in priority order. Empty — and not drawn — while the pager pages
-    // through the whole Featured list.
+    // already show, in priority order. Not drawn when the pager shows them all.
     val featuredShelf = remember(top, byId) { top.featured.mapNotNull { byId[it] } }
+    // The rows under the chips. In the whole catalogue a demo drawn as a banner just above
+    // is not listed a second time; a chip or a search is a query and lists every match.
+    val rows = remember(visible, top, activeCategory, searching) {
+        val listed = top.catalogue(
+            ids = visible.map { it.id },
+            filtered = activeCategory != null || searching,
+        ).toSet()
+        visible.filter { it.id in listed }
+    }
     // The fresh demos nothing above shows: the "What's new" row leads with one of them,
     // a new demo over an updated one.
     val whatsNewLead = remember(top, freshnessById) {
@@ -470,9 +478,9 @@ fun HomeScreen(
                 }
                 // The "Featured" group: what we want seen first, right under the hero and
                 // above the catalogue, so the flagship samples never wait for a scroll to
-                // the section they are filed in. Only the ones the pager does not show
-                // (#4304). Its rows repeat in their own sections below — the catalogue
-                // stays complete — under a distinct item key.
+                // the section they are filed in. Only the ones the pager does not show, and
+                // the whole catalogue below does not list them again (#4304); a chip or a
+                // search does, hence the distinct item key.
                 if (!searching && featuredShelf.isNotEmpty()) {
                     item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
                         SectionHeader(
@@ -525,13 +533,13 @@ fun HomeScreen(
                         EmptySearchState(query = query, onClear = { onQueryChange("") })
                     }
                 }
-                // Sections. `visible` is already in editorial order, and the registry
+                // Sections. `rows` is already in editorial order, and the registry
                 // keeps a category's demos contiguous within it (asserted by
                 // DemoRegistryIntegrityTest), so a section boundary is simply "the
                 // category changed" — no grouping pass, no re-sort, and the cards keep
                 // the exact order the collator emitted.
                 var previousCategory: String? = null
-                visible.forEach { demo ->
+                rows.forEach { demo ->
                     if (showSections && demo.category != previousCategory) {
                         // The first header sits right under the chip row, which already
                         // carries its own gap.
@@ -795,17 +803,14 @@ const val HERO_DEMO_ID = "model-viewer"
 internal val FEATURED_IDS = listOf("cosmos", "ar-placement", "model-viewer", "ar-rerun", "materials")
 
 /**
- * Editorial order of the featured pager's demo pages (#3567): [HERO_DEMO_ID] first — it is
- * the demo the store listing, the deep link and the app icon all point at — then the rest of
- * [FEATURED_IDS] in rank order. Short on purpose: a carousel nobody reaches the end of is a
- * list, and the grid below is already the list.
- *
- * What the pager shows, the "Featured" banners under it do not repeat ([homeTopSections]):
- * while this is the whole of [FEATURED_IDS] there is no banner group at all. Paging through
- * fewer demos here is what brings the rest back as banners.
+ * The featured pager's demo pages (#3567), in page order: [HERO_DEMO_ID] first — it is the
+ * demo the store listing, the deep link and the app icon all point at — then Cosmos, the
+ * first of [FEATURED_IDS]. Two pages on purpose: a carousel nobody reaches the end of is a
+ * list, and what the pager shows the "Featured" banners under it do not repeat
+ * ([homeTopSections], #4304). The rest of [FEATURED_IDS] is therefore the banner group; a
+ * page added here takes its demo out of the banners.
  */
-internal val FEATURED_PAGER_IDS =
-    listOf(HERO_DEMO_ID) + FEATURED_IDS.filterNot { it == HERO_DEMO_ID }
+internal val FEATURED_PAGER_IDS = listOf(HERO_DEMO_ID, "cosmos")
 
 @Composable
 private fun HomeHeader(

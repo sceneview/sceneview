@@ -19,7 +19,17 @@ data class HomeTopSections(
     val featured: List<String>,
     /** The fresh demos neither the pager nor the banners show — the What's new row leads with one. */
     val whatsNew: List<String>,
-)
+) {
+    /**
+     * The rows under the chips, out of the [ids] the current chip and query keep.
+     *
+     * In the whole catalogue a demo drawn as a [featured] banner just above is not listed a
+     * second time. A [filtered] list — a chip or a search — is a query: it lists every
+     * match, banner or not, so "Place in your room" never looks like it lacks its flagship.
+     */
+    fun catalogue(ids: List<String>, filtered: Boolean): List<String> =
+        if (filtered) ids else ids.filterNot { it in featured }
+}
 
 /**
  * Cuts the three lists into [HomeTopSections], in priority order. Pure, so the rule is
