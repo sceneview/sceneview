@@ -2,6 +2,7 @@ package io.github.sceneview.web.splat
 
 import io.github.sceneview.core.splat.SplatCloud
 import org.khronos.webgl.Float32Array
+import org.khronos.webgl.Uint8Array
 import org.khronos.webgl.set
 import kotlin.math.ceil
 import kotlin.math.max
@@ -9,35 +10,11 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * Pure CPU-side math for the web [io.github.sceneview.web.nodes.SplatNode]: per-splat
- * data-texture packing, draw batching, and the painter's (back-to-front) sort.
- *
- * **jsMain mirror of the Android `io.github.sceneview.splat.SplatBuffers`** — same texel
- * layout contract, same batching cap, same sort semantics (#2646 P2). The two diverge only
- * in buffer representation ([Float32Array] here vs JVM direct `FloatBuffer`) and in the
- * sort implementation (a typed-array comparator sort here — the Android `Long`-packed key
- * trick would run through Kotlin/JS's emulated `Long` and be slower than the thing it
- * optimises). Hoisting the shared parts into `sceneview-core` commonMain is a deliberate
- * P3 follow-up so P2 leaves the device-validated Android P1 code untouched.
- *
- * Everything here is plain Kotlin/JS (no Filament calls) so the texel layout, batching,
- * and sort-order contracts are unit-testable in `jsTest` without a WebGL context — the GPU
- * upload itself lives in `SplatNode`.
- *
- * ### Texel layout contract (mirrors `splat_web.mat`)
- *
- * Per-splat attributes are packed into two square `texWidth x texWidth` RGBA float
- * textures (uploaded as `RGBA16F`). The splat drawn by instance `i` of a batch with base
- * offset `o` reads texel `idx = o + i` at pixel `(idx % texWidth, idx / texWidth)`:
- *
- * | Texture              | r, g, b                          | a                                  |
- * |----------------------|----------------------------------|------------------------------------|
- * | `splatPositionScale` | splat centre `xyz` (model space) | billboard half-extent = [HALF_EXTENT_SIGMA]·max(scaleX, scaleY, scaleZ) |
- * | `splatColorOpacity`  | linear SH0 colour                | opacity `0..1` (straight, NOT premultiplied — the fragment premultiplies after the gaussian falloff) |
- *
- * Texels are written in **draw order**: `order[i]` is the index into the [SplatCloud]
- * arrays of the splat stored at texel `i`. Re-sorting therefore re-packs + re-uploads the
- * textures and the shader's indexing never changes.
+ * Pure packing, batching and sorting for the web splat renderer.
+ * Position/bound and display-referred colour/opacity are RGBA16F, uploaded once in
+ * cloud order. Rotation xyzw and scale xyz use two more RGBA16F textures.
+ * The RGBA8 order texture stores the splat index as three bytes (base-256 digits); only
+ * it changes on a sort. The shader reconstructs the index before fetching static attributes.
  */
 object SplatWebBuffers {
 
@@ -45,17 +22,29 @@ object SplatWebBuffers {
      * Filament hardware-instancing cap per renderable: a single
      * `RenderableManager$Builder.instances(n)` draw supports at most 65535 instances.
      * Clouds above this are split into multiple renderables ("batches") sharing the same
-     * two data textures, each shifted by its `instanceOffset` material parameter.
+     * static data textures, each shifted by its `instanceOffset` material parameter.
      * Same constant as Android `SplatBuffers.MAX_INSTANCES_PER_BATCH`.
      */
     const val MAX_INSTANCES_PER_BATCH = 65535
 
     /**
-     * Billboard half-extent in gaussian standard deviations. The quad edge (`|corner| = 1`)
-     * sits at 3σ, matching the fragment falloff `exp(-0.5 * dot(uv, uv) * k)` with
-     * `k = HALF_EXTENT_SIGMA² = 9` in `splat_web.mat` — beyond 3σ a gaussian contributes
-     * < 1.1%, so nothing visible is clipped. Keep the two constants in sync.
+     * Largest cloud the web renderer draws: 2^24 splats. The order texture stores an index
+     * in three bytes, and `texWidth` / `instanceOffset` reach the shader as floats, exact
+     * up to the same bound.
      */
+    const val MAX_SPLATS = 1 shl 24
+
+    /**
+     * Throws an [IllegalArgumentException] naming the limit when a cloud of [count] splats
+     * cannot be rendered. Called before any Filament object is created for the cloud.
+     */
+    fun requireSupportedCount(count: Int) {
+        require(count in 1..MAX_SPLATS) {
+            "SceneView web renders clouds of 1 to $MAX_SPLATS (2^24) splats; this one has $count"
+        }
+    }
+
+    /** Conservative culling radius in standard deviations; shader reach is at most 3σ. */
     const val HALF_EXTENT_SIGMA = 3f
 
     /** Floats per texel in both data textures (RGBA). */
@@ -101,15 +90,11 @@ object SplatWebBuffers {
 
     /**
      * Packs the `splatPositionScale` texture: texel `i` = centre `xyz` of splat
-     * [order]`[i]` plus its isotropic billboard half-extent in `a` (see the texel layout
+     * [order]`[i]` plus its conservative bounding half-extent in `a` (see the texel layout
      * contract above).
      *
-     * P2 web scope matches P1 Android: the half-extent is **isotropic** —
-     * [HALF_EXTENT_SIGMA] times the *largest* of the three per-axis standard deviations,
-     * so anisotropic gaussians render as their circumscribed disc.
-     *
-     * Unused tail texels (`i >= count`) stay zero: a zero half-extent collapses the quad
-     * to a degenerate point which rasterizes nothing, so garbage texels can never paint.
+     * The shader uses rotation/scale for the ellipse; this bound is for CPU culling.
+     * Unused tail texels stay zero.
      *
      * @param order draw order: `order[i]` = cloud index of the splat stored at texel `i`.
      *              Must be a permutation of `0 until cloud.count` (only size is validated).
@@ -135,7 +120,7 @@ object SplatWebBuffers {
     }
 
     /**
-     * Packs the `splatColorOpacity` texture: texel `i` = linear `rgb` colour of splat
+     * Packs the `splatColorOpacity` texture: texel `i` = display-referred `rgb` colour of splat
      * [order]`[i]` plus its straight opacity in `a`. Same ordering/tail semantics as
      * [packPositionScale].
      */
@@ -154,6 +139,47 @@ object SplatWebBuffers {
             buffer[i * FLOATS_PER_TEXEL + 1] = cloud.colors[c + 1]
             buffer[i * FLOATS_PER_TEXEL + 2] = cloud.colors[c + 2]
             buffer[i * FLOATS_PER_TEXEL + 3] = cloud.opacities[s]
+        }
+        return buffer
+    }
+
+    /**
+     * Cloud order: quaternion xyzw, then scale xyz with zero padding. Values are written as
+     * they are; the upload into the RGBA16F textures rounds them to half floats.
+     */
+    internal fun packRotationScale(cloud: SplatCloud, textureSize: Int): Pair<Float32Array, Float32Array> {
+        require(textureSize > 0 && textureSize.toDouble() * textureSize >= cloud.count)
+        val rotation = Float32Array(textureSize * textureSize * 4)
+        val scale = Float32Array(textureSize * textureSize * 4)
+        for (i in 0 until cloud.count) {
+            for (j in 0..3) rotation[i * 4 + j] = cloud.rotations[i * 4 + j]
+            for (j in 0..2) scale[i * 4 + j] = cloud.scales[i * 3 + j]
+        }
+        return rotation to scale
+    }
+
+    internal fun unpackRotationScale(rotation: Float32Array, scale: Float32Array, splat: Int): FloatArray =
+        FloatArray(7) { j ->
+            (if (j < 4) rotation.asDynamic()[splat * 4 + j]
+            else scale.asDynamic()[splat * 4 + j - 4]).unsafeCast<Float>()
+        }
+
+    /**
+     * The RGBA8 order texture: slot `i` holds the index of the `i`-th splat to draw as three
+     * bytes, least significant in `r`; `a` and the padding slots are zero. Upload size is
+     * `4 * texWidth²` bytes.
+     */
+    internal fun packOrder(order: IntArray, textureSize: Int): Uint8Array {
+        require(order.size <= MAX_SPLATS) { "The order texture indexes at most 2^24 splats" }
+        require(textureSize > 0 && textureSize.toDouble() * textureSize >= order.size)
+        val buffer = Uint8Array(textureSize * textureSize * 4)
+        for (i in order.indices) {
+            val index = order[i]
+            require(index in order.indices) { "Order index outside cloud: $index" }
+            // Kotlin's Byte is signed; the typed array stores the low 8 bits unchanged.
+            buffer[i * 4] = (index and 255).toByte()
+            buffer[i * 4 + 1] = ((index ushr 8) and 255).toByte()
+            buffer[i * 4 + 2] = ((index ushr 16) and 255).toByte()
         }
         return buffer
     }
