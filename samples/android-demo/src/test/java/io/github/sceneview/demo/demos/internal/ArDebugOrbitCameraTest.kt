@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -99,9 +100,39 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `the band measured between the chrome is the stage the room is fitted into`() {
+        // A 2400 px view: the figures end at 620, the timeline starts at 1570.
+        val band = OrbitBand.between(top = 620f, bottom = 1570f, viewHeight = 2400f)!!
+        // 950 px of 2400, with air kept against the chrome; centred 105 px above the middle.
+        assertEquals(950f / 2400f * OrbitBand.MEASURED_FILL, band.halfHeight, 0.006f)
+        assertEquals(105f / 2400f, band.lift, 0.006f)
+
+        val pose = ArDebugFraming.home(room, 35f, fov, 1080f / 2400f, band = band)
+        assertFramed(pose, band, 1080f / 2400f, room)
+        // Every corner of the room is drawn between the two cards, in pixels.
+        corners(room).forEach { corner ->
+            val y = project(pose, band.lift, 1080f / 2400f, corner).second
+            val px = (1.0 - y) / 2.0 * 2400.0
+            assertTrue("corner at $px px", px in 620.0..1570.0)
+        }
+    }
+
+    @Test
+    fun `a band that is not measured yet, or leaves no stage, falls back`() {
+        assertNull(OrbitBand.between(Float.NaN, 1570f, 2400f))
+        assertNull(OrbitBand.between(620f, Float.NaN, 2400f))
+        assertNull(OrbitBand.between(620f, 1570f, 0f))
+        // A landscape phone: the cards meet, or nearly.
+        assertNull(OrbitBand.between(500f, 620f, 1080f))
+        assertNull(OrbitBand.between(700f, 620f, 1080f))
+    }
+
+    @Test
     fun `a session still growing leaves room round it`() {
         val whole = ArDebugFraming.home(room, 35f, fov, 0.46f, band = OrbitBand.SCAN)
-        val growing = ArDebugFraming.home(room, 35f, fov, 0.46f, band = OrbitBand.SCAN, fill = ArDebugFraming.GROWING_FILL)
+        val growing = ArDebugFraming.home(
+            room, 35f, fov, 0.46f, band = OrbitBand.SCAN, fill = ArDebugFraming.GROWING_FILL,
+        )
 
         assertTrue(growing.distance > whole.distance)
         assertTrue(assertFramed(growing, OrbitBand.SCAN, 0.46f) < ArDebugFraming.GROWING_FILL + 0.02)

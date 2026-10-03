@@ -746,7 +746,11 @@ internal fun ArDebugSceneView(
                 orbit.limits = ArDebugFraming.limits(bounds, home, floorY)
                 if (firstContent) {
                     orbit.hasFramedContent = true
-                    if (finished && orbit.drift) orbit.playIntro(ReplayIntro.startFor(home), held = true) else orbit.snapTo(home)
+                    if (finished && orbit.drift) {
+                        orbit.playIntro(ReplayIntro.startFor(home), held = true)
+                    } else {
+                        orbit.snapTo(home)
+                    }
                 }
 
                 val style = ArDebugStyle.forOrbit(orbit.pose.distance, orbit.verticalFovDegrees, orbit.viewportHeight)

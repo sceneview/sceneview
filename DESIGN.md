@@ -924,9 +924,11 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   pinch zooms); double-tap or Recenter hands it back.
 - **The room never leaves the picture (#4306).** The subject is the box of everything
   drawn — path, planes, anchors and both point clouds, trimmed of stray points — and it is
-  fitted, corner by corner, into the **clear band** of the stage: the part the header, the
-  corner card and the timeline card leave free (`OrbitBand`, one per orientation; the
-  camera is lowered, never tilted, to centre the room in it). Left alone the view sways
+  fitted, corner by corner, into the **clear band** of the stage: the part the figures above
+  and the timeline card below leave free. The replay **measures** that band on screen
+  (`OrbitBand.between`), so it holds on any phone, font scale or card height; a view with
+  nothing to measure takes the band of its orientation. The camera is lowered, never
+  tilted, to centre the room in it. Left alone the view sways
   ±14° about the side the room was scanned from — never a turntable, which ends behind a
   wall. The *Map* is squared with the walls by the nearest quarter-turn. A gesture stops
   at the room's edge: the eye stays outside the cloud and above the floor, a pinch out

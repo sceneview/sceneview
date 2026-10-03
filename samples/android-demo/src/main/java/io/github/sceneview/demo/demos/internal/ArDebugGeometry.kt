@@ -718,23 +718,8 @@ object ArDebugGeometry {
         var sumSin = 0.0
         var sumCos = 0.0
         for (plane in planes) {
-            if (plane.kind != DebugPlaneKind.Wall || plane.vertexCount < 2) continue
-            // A wall seen from above is a segment: its two farthest vertices give its run.
-            var best = 0f
-            var dx = 0f
-            var dz = 0f
-            for (i in 0 until plane.vertexCount) for (j in i + 1 until plane.vertexCount) {
-                val x = plane.polygon[j * 3] - plane.polygon[i * 3]
-                val z = plane.polygon[j * 3 + 2] - plane.polygon[i * 3 + 2]
-                val length = x * x + z * z
-                if (length > best) {
-                    best = length
-                    dx = x
-                    dz = z
-                }
-            }
-            val length = sqrt(best)
-            if (length < ROOM_YAW_MIN_WALL_M) continue
+            val (dx, dz) = wallRun(plane) ?: continue
+            val length = sqrt(dx * dx + dz * dz)
             // Four times the angle folds the wall's two directions and its neighbours' onto one.
             val folded = 4.0 * atan2(dx.toDouble(), dz.toDouble())
             sumSin += length * sin(folded)
@@ -742,6 +727,26 @@ object ArDebugGeometry {
         }
         if (sumSin == 0.0 && sumCos == 0.0) return null
         return Math.toDegrees(atan2(sumSin, sumCos) / 4.0).toFloat()
+    }
+
+    /**
+     * The run of a wall seen from above — a segment, from one to the other of its two farthest
+     * vertices, as `(dx, dz)` — or `null` for a plane that is no wall, or too short to tell.
+     */
+    private fun wallRun(plane: DebugPlane): Pair<Float, Float>? {
+        if (plane.kind != DebugPlaneKind.Wall) return null
+        var best = 0f
+        var run: Pair<Float, Float>? = null
+        for (i in 0 until plane.vertexCount) for (j in i + 1 until plane.vertexCount) {
+            val x = plane.polygon[j * 3] - plane.polygon[i * 3]
+            val z = plane.polygon[j * 3 + 2] - plane.polygon[i * 3 + 2]
+            val length = x * x + z * z
+            if (length > best) {
+                best = length
+                run = x to z
+            }
+        }
+        return run?.takeIf { sqrt(best) >= ROOM_YAW_MIN_WALL_M }
     }
 
     /** The share of a cloud left out at each end of an axis by [robustBounds]. */

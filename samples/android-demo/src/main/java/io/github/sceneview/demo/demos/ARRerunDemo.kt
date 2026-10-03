@@ -46,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
@@ -238,7 +242,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     val stageBand = LocalConfiguration.current.let { OrbitBand.stage(it.screenWidthDp.toFloat() / it.screenHeightDp) }
     // QA captures hold still: no intro fly-in, no idle sway. Each opening is framed afresh.
     val replayOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null, band = stageBand) }
-    SideEffect { replayOrbit.band = stageBand }
     val replayPipOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null) }
     LaunchedEffect(media, openCount) {
         val replay = media ?: return@LaunchedEffect
@@ -451,6 +454,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scanTitle = scanTitle,
             session = replaySession,
             orbit = replayOrbit,
+            stageBand = stageBand,
             revealed = revealed,
             onRevealed = { revealed = true },
             pipOrbit = replayPipOrbit,
@@ -548,6 +552,7 @@ private fun RerunReplayScreen(
     onRevealed: () -> Unit,
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
+    stageBand: OrbitBand,
     pipOrbit: ArDebugOrbitCamera,
     onExport: () -> Unit,
     onViewInAr: (() -> Unit)?,
@@ -563,6 +568,13 @@ private fun RerunReplayScreen(
     var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
     val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
+    // The stage the chrome really leaves, measured on screen: the room is fitted between the
+    // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
+    var stage by remember { mutableStateOf(Rect.Zero) }
+    var hudBottom by remember { mutableFloatStateOf(Float.NaN) }
+    var timelineTop by remember { mutableFloatStateOf(Float.NaN) }
+    val band = OrbitBand.between(hudBottom - stage.top, timelineTop - stage.top, stage.height) ?: stageBand
+    SideEffect { orbit.band = band }
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
     val readyState = rememberUpdatedState(ready)
@@ -592,6 +604,8 @@ private fun RerunReplayScreen(
                         .padding(horizontal = Space.md)
                         .widthIn(max = ArOverlay.maxWidth)
                         .fillMaxWidth()
+                        // Measured outside the reveal: where the card rests, not where it rises from.
+                        .onGloballyPositioned { hudBottom = it.boundsInRoot().bottom }
                         .reveal(hudIn, rise = -Space.md),
                 )
                 // Space.sm on top of the scaffold's Space.sm stack gap: the card sits Space.md under
@@ -632,7 +646,9 @@ private fun RerunReplayScreen(
                     media = media,
                     thumbnails = thumbnails,
                     session = session,
-                    modifier = Modifier.reveal(filmstripIn, rise = Space.lg),
+                    modifier = Modifier
+                        .onGloballyPositioned { timelineTop = it.boundsInRoot().top }
+                        .reveal(filmstripIn, rise = Space.lg),
                     title = title,
                     caption = surface.caption?.takeIf { switchable } ?: when (mode) {
                         RerunMode.Map -> "Top-down map of the room"
@@ -692,7 +708,7 @@ private fun RerunReplayScreen(
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned { stage = it.boundsInRoot() },
                 replay = media,
                 surface = surface.surface,
                 onShown = onRevealed,

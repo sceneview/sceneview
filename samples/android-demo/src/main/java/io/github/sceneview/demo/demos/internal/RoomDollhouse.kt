@@ -598,7 +598,7 @@ object DollhouseCopy {
     const val RESET_HOLD = "Room removed. Point at a table — it stands where you aim."
 
     const val EMPTY_TITLE = "No room recorded yet"
-    const val EMPTY_BODY = "Record your room with the Rerun demo, and it stands on your table as a " +
+    const val EMPTY_BODY = "Record your room with the Room Scan demo, and it stands on your table as a " +
         "miniature you can walk around."
     const val RECORD = "Record your room"
 
@@ -613,7 +613,7 @@ object DollhouseCopy {
     const val PLACE_HINT = "Point at a table. Your room stands on it as a miniature."
     const val GESTURE_HINT = "Drag to move · twist to turn · pinch to resize"
 
-    const val INTRO = "Your own room, recorded with the Rerun demo, cut open and stood on a table " +
+    const val INTRO = "Your own room, recorded with the Room Scan demo, cut open and stood on a table " +
         "as a miniature, in the colours your phone saw. " +
         "Drag it, twist it, pinch it — or switch to Real size and stand inside it."
 

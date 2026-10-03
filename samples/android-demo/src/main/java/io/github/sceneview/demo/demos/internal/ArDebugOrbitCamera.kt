@@ -17,6 +17,7 @@ import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
@@ -360,6 +361,37 @@ data class OrbitBand(val halfWidth: Float, val halfHeight: Float, val lift: Floa
 
         /** The stage of a view of [aspect] (width / height). */
         fun stage(aspect: Float): OrbitBand = if (aspect > 1f) STAGE_LANDSCAPE else STAGE_PORTRAIT
+
+        /** The share of a measured band the session fills: the rest is air against the chrome. */
+        const val MEASURED_FILL = 0.92f
+
+        /** Below this share of the view's height, a measured band is no stage at all. */
+        const val MIN_MEASURED_SHARE = 0.2f
+
+        /**
+         * The band the chrome really leaves, measured on screen: in a view [viewHeight] tall, the
+         * chrome above ends at [top] and the chrome below starts at [bottom] (one unit, from the
+         * view's top edge). `null` while either is not laid out, or when they leave no stage
+         * between them — the caller then keeps [stage].
+         */
+        fun between(
+            top: Float,
+            bottom: Float,
+            viewHeight: Float,
+            halfWidth: Float = STAGE_PORTRAIT.halfWidth,
+        ): OrbitBand? {
+            val share = (bottom - top) / viewHeight
+            // NaN — a card not laid out yet — fails every comparison, so it is asked for by name.
+            if (share.isNaN() || viewHeight <= 0f) return null
+            if (top < 0f || bottom > viewHeight || share < MIN_MEASURED_SHARE) return null
+            // Hundredths: a card that settles by a pixel does not move the camera.
+            fun hundredths(value: Float) = (value * 100f).roundToInt() / 100f
+            return OrbitBand(
+                halfWidth = halfWidth,
+                halfHeight = hundredths(share * MEASURED_FILL),
+                lift = hundredths(0.5f - (top + bottom) / 2f / viewHeight),
+            )
+        }
     }
 }
 
