@@ -8,7 +8,7 @@
 // @order       34
 // @tags        gltf,glb,hdr,ibl,orbit,ar,viewer,park,scene,multi-model,gallery
 // @addedIn     4.4.0
-// @updatedIn   4.49.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 /// Models (samples audit, step 0) absorbs `multi-model` — the Park scene, now
