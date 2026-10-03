@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Demo app: a shared Room Scan opens in any 3D viewer ([#4334](https://github.com/sceneview/sceneview/pull/4334)).** The model you share from a scan's replay is now a lighter copy — at most 100,000 triangles, resting on its floor — so AR Model Viewer and other viewers open it. The first share takes a few seconds to prepare it; the surface on screen keeps its full detail.
