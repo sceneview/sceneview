@@ -4183,11 +4183,14 @@ Rules:
 - **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
   you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
   back down to zero, and resets it when the camera leaves the `SceneView`.
-- **Your own projection is kept.** Only the default lens is rebuilt for the visible
-  aspect. After `setProjection(fov, …)` the field of view, near, far and direction you
-  set are kept (the aspect follows the visible area only if you passed the viewport's
-  own); an orthographic, lens or custom projection is left exactly as set and only
-  scaled and shifted. `updateProjection()` hands the camera back to the default lens.
+- **Your own projection is kept across a padding — not across a resize.** A padding
+  rebuilds the default lens only. After `setProjection(fov, …)` the field of view, near,
+  far and direction you set are kept (the aspect follows the visible area only if you
+  passed the viewport's own); an orthographic, lens or custom projection is left exactly
+  as set and only scaled and shifted. `updateProjection()` hands the camera back to the
+  default lens, and `SceneView` calls it whenever the view changes size (first layout,
+  rotation, split-screen) — as it did before `contentPadding` existed. Set your
+  projection again after a resize.
 - With `autoFitContent = true` the fit runs again when the padding changes, once it has
   stopped moving.
 - A camera whose `setScaling` / `setShift` you drive yourself is left alone until a
@@ -8316,8 +8319,8 @@ SceneView { root in root.addChild(hero.entity) }
 > *fraction* where iOS's `framingMargin` is a *multiplier*: `margin == 1 + padding`,
 > so iOS `1.15` is Android `0.15`, and tangent is iOS `1.0` / Android `0.0`. Never
 > port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Do not
-> confuse it with `contentPadding` (#4310), which is the area a panel covers, in dp
-> (Android only for now). Android's
+> confuse it with `contentPadding` (#4310), which is the area a panel covers, in dp —
+> its iOS twin is `.contentInsets(_:)` (#4317), in points. Android's
 > demo host additionally accepts a `camera_distance` intent extra, but that is a
 > sample-app knob, not the library API. **Web follows the iOS convention**:
 > `sv.fitToModels(margin)` (v4.27.0+, #2946) takes the same multiplier, clamped to

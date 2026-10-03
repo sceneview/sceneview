@@ -39,7 +39,10 @@ import kotlin.math.tan
  * 2. a [CameraNode] with a padding reports, through the SDK's own conversions, a subject on the
  *    optical axis at the centre of the visible area — and a touch there comes back to the subject;
  * 3. a padding rebuilds the default lens only: a field of view, an orthographic or a custom
- *    projection the caller set is still the camera's projection afterwards.
+ *    projection the caller set is still the camera's projection afterwards;
+ * 4. a padding written to a camera whose Filament component is already gone is kept on the node
+ *    and writes nothing — the view gives its padding back on dispose, in no order with the model
+ *    that owned the camera (#3937).
  */
 @RunWith(AndroidJUnit4::class)
 class CameraNodeContentPaddingTest {
@@ -191,6 +194,31 @@ class CameraNodeContentPaddingTest {
             assertEquals(before, cameraNode.camera.projectionTransform)
             cameraNode.camera.getScaling(scaling)
             assertEquals(1.0, scaling[1], 1e-9)
+        }
+    }
+
+    @Test
+    fun aPaddingWrittenAfterTheCameraComponentIsGoneDoesNotThrow() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            cameraNode.contentPadding = sheet
+            // What `ModelLoader.destroyModel` does to a glTF camera before its node is disposed.
+            engine.destroyCameraComponent(cameraNode.entity)
+
+            cameraNode.contentPadding = ViewportPadding.Zero
+            assertEquals(ViewportPadding.Zero, cameraNode.contentPadding)
+            cameraNode.contentPadding = sheet
+            assertEquals(sheet, cameraNode.contentPadding)
+        }
+    }
+
+    @Test
+    fun aPaddingWrittenAfterTheNodeIsDestroyedDoesNotThrow() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            cameraNode.contentPadding = sheet
+            cameraNode.destroy()
+
+            cameraNode.contentPadding = ViewportPadding.Zero
+            assertEquals(ViewportPadding.Zero, cameraNode.contentPadding)
         }
     }
 

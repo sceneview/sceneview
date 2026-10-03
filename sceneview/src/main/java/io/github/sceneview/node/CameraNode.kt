@@ -424,6 +424,11 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
      * A projection written straight to the Filament [camera] cannot be seen from here and is
      * treated as the default lens.
      *
+     * **Kept across a padding, not across a resize.** When the view changes size — the first
+     * layout, a rotation, split-screen — `SceneView` calls [updateProjection], which rebuilds the
+     * default lens for the new size, as it did before this property existed. A projection you set
+     * yourself is gone from there: set it again after a resize.
+     *
      * ## Where it does not apply
      *
      * - An AR camera ignores it: its projection is the physical camera's, and shifting it would
@@ -435,6 +440,10 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         set(value) {
             if (field == value) return
             field = value
+            // Nothing left to write to: `camera` throws once the component is gone, and a glTF
+            // camera's component is torn down with its model, which may happen before the view
+            // that showed it gives the padding back on its way out (#3937).
+            if (!hasCameraComponent) return
             when (val projection = callerProjection) {
                 null -> updateProjection()
                 is CallerProjection.FieldOfView -> {
@@ -452,6 +461,13 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
                 CallerProjection.Opaque -> applyContentPadding()
             }
         }
+
+    /**
+     * `false` once this node is destroyed or its Filament camera component was destroyed under it.
+     * By entity, never through `camera`: that getter throws when the component is absent.
+     */
+    private val hasCameraComponent: Boolean
+        get() = !isDestroyed && engine.getCameraComponent(entity) != null
 
     /** `true` once a non-zero [contentPadding] wrote the camera's scaling and shift. */
     private var ownsPostProjection = false
