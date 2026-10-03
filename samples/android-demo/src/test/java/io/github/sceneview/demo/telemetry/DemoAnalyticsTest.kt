@@ -4,6 +4,7 @@ import io.github.sceneview.demo.ALL_DEMOS
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DeepLinkRouter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -256,5 +257,28 @@ class DemoAnalyticsTest {
         Telemetry.nextEntryId = "materials" to "texture-streaming"
         Telemetry.nextEntryId = "materials" to "materials"
         assertEquals("materials", consumeEntryId("materials"))
+    }
+
+    @Test
+    fun `a recreated sample logs open once and keeps its active time`() {
+        var now = 0L
+        val first = SampleTelemetrySession(now = { now })
+        assertTrue(first.markOpen())
+        first.resume()
+        now = 1_200L
+
+        val recreated = SampleTelemetrySession(
+            now = { now },
+            openLogged = true,
+            elapsedMillis = first.elapsedMillis(),
+        )
+        assertFalse(recreated.markOpen())
+        recreated.resume()
+        now = 3_500L
+        recreated.pause()
+
+        assertEquals(3_500L, recreated.elapsedMillis())
+        assertFalse(shouldCloseSample(isChangingConfigurations = true))
+        assertTrue(shouldCloseSample(isChangingConfigurations = false))
     }
 }

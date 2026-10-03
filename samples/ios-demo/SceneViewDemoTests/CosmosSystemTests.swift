@@ -14,6 +14,15 @@ final class CosmosSystemTests: XCTestCase {
 
     private let aspects: [Float] = [1206.0 / 2622.0, 1, 2622.0 / 1206.0]
 
+    func testLeavingStarTurnsSpacetimeOffAndReportsStarlight() {
+        for scene in CosmosSceneKind.allCases where scene != .star {
+            let spacetime = CosmosDemo.spacetime(afterSelecting: scene, current: true)
+            XCTAssertFalse(spacetime, "\(scene)")
+            XCTAssertEqual(CosmosDemo.analyticsMode(spacetime: spacetime), "starlight")
+        }
+        XCTAssertTrue(CosmosDemo.spacetime(afterSelecting: .star, current: true))
+    }
+
     func testEaseExpressiveRunsFromZeroToOneAndNeverTurnsBack() {
         XCTAssertEqual(CosmosSystem.easeExpressive(0), 0)
         XCTAssertEqual(CosmosSystem.easeExpressive(1), 1)

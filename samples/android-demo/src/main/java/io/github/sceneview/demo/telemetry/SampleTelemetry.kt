@@ -1,10 +1,17 @@
 package io.github.sceneview.demo.telemetry
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -40,41 +47,95 @@ val LocalSampleId = staticCompositionLocalOf<String?> { null }
 @Composable
 fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val activity = LocalContext.current.findActivity()
     val initialMode = initialSampleMode(sampleId, DemoSettings.initialTab)
-    DisposableEffect(sampleId) {
-        val source = Telemetry.nextOpenSource
-        Telemetry.nextOpenSource = OpenSource.Other
-        val entryId = consumeEntryId(sampleId)
-        val category = ALL_DEMOS.firstOrNull { it.id == sampleId }
-            ?.category
-            ?.let { DemoCategory.slug(it) }
-            ?: "unknown"
-        Telemetry.analytics.log(AnalyticsEvent.ScreenView(screenName = sampleId, screenClass = SCREEN_CLASS_SAMPLE))
-        Telemetry.analytics.log(AnalyticsEvent.SampleOpen(sampleId, category, source, entryId, initialMode))
-        val clock = ActiveClock(SystemClock::elapsedRealtime)
+    val session = rememberSaveable(
+        sampleId,
+        saver = SampleTelemetrySession.saver(SystemClock::elapsedRealtime),
+    ) {
+        SampleTelemetrySession(SystemClock::elapsedRealtime)
+    }
+    DisposableEffect(sampleId, lifecycle, activity) {
+        if (session.markOpen()) {
+            val source = Telemetry.nextOpenSource
+            Telemetry.nextOpenSource = OpenSource.Other
+            val entryId = consumeEntryId(sampleId)
+            val category = ALL_DEMOS.firstOrNull { it.id == sampleId }
+                ?.category
+                ?.let { DemoCategory.slug(it) }
+                ?: "unknown"
+            Telemetry.analytics.log(AnalyticsEvent.ScreenView(screenName = sampleId, screenClass = SCREEN_CLASS_SAMPLE))
+            Telemetry.analytics.log(AnalyticsEvent.SampleOpen(sampleId, category, source, entryId, initialMode))
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> clock.pause()
-                Lifecycle.Event.ON_START -> clock.resume()
+                Lifecycle.Event.ON_STOP -> session.pause()
+                Lifecycle.Event.ON_START -> session.resume()
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            Telemetry.analytics.log(AnalyticsEvent.SampleClose(sampleId, clock.elapsedMillis() / MILLIS_PER_SECOND))
+            session.pause()
+            if (shouldCloseSample(activity?.isChangingConfigurations == true)) {
+                Telemetry.analytics.log(
+                    AnalyticsEvent.SampleClose(sampleId, session.elapsedMillis() / MILLIS_PER_SECOND),
+                )
+            }
         }
     }
     CompositionLocalProvider(LocalSampleId provides sampleId, content = content)
 }
 
+/** One logical sample opening, retained across configuration-change recompositions. */
+internal class SampleTelemetrySession(
+    private val now: () -> Long,
+    private var openLogged: Boolean = false,
+    elapsedMillis: Long = 0L,
+) {
+    private val clock = ActiveClock(now, elapsedMillis = elapsedMillis, startRunning = false)
+
+    fun markOpen(): Boolean {
+        if (openLogged) return false
+        openLogged = true
+        return true
+    }
+
+    fun pause() = clock.pause()
+
+    fun resume() = clock.resume()
+
+    fun elapsedMillis(): Long = clock.elapsedMillis()
+
+    companion object {
+        fun saver(now: () -> Long): Saver<SampleTelemetrySession, Any> = listSaver(
+            save = { listOf(it.openLogged, it.elapsedMillis()) },
+            restore = {
+                SampleTelemetrySession(
+                    now = now,
+                    openLogged = it[0] as Boolean,
+                    elapsedMillis = it[1] as Long,
+                )
+            },
+        )
+    }
+}
+
+internal fun shouldCloseSample(isChangingConfigurations: Boolean): Boolean =
+    !isChangingConfigurations
+
 /**
  * A stopwatch that only counts while running. Starts running; [pause] and [resume] are
  * idempotent, so lifecycle events replayed on registration cannot double-count.
  */
-class ActiveClock(private val now: () -> Long) {
-    private var accumulated = 0L
-    private var runningSince: Long? = now()
+class ActiveClock(
+    private val now: () -> Long,
+    elapsedMillis: Long = 0L,
+    startRunning: Boolean = true,
+) {
+    private var accumulated = elapsedMillis
+    private var runningSince: Long? = now().takeIf { startRunning }
 
     fun pause() {
         val since = runningSince ?: return
@@ -147,3 +208,9 @@ fun logOutboundLink(url: String, sampleId: String? = null) {
 const val SCREEN_CLASS_SAMPLE = "Sample"
 const val SCREEN_CLASS_TAB = "Tab"
 private const val MILLIS_PER_SECOND = 1000L
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}

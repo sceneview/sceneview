@@ -87,9 +87,7 @@ struct CosmosDemo: View {
             dock: CosmosSceneKind.allCases.map { kind in
                 DockItem(icon: kind.icon, label: kind.label, control: kind.analyticsControl,
                          selected: engine.scene == kind) {
-                    if engine.spacetime && kind != .star {
-                        logMode(spacetime: false)
-                    }
+                    selectSpacetime(Self.spacetime(afterSelecting: kind, current: engine.spacetime))
                     engine.select(kind)
                 }
             },
@@ -135,6 +133,11 @@ struct CosmosDemo: View {
 
     static func analyticsMode(spacetime: Bool) -> String {
         spacetime ? "spacetime" : "starlight"
+    }
+
+    /// Android leaves Spacetime before showing any scene other than Star.
+    static func spacetime(afterSelecting scene: CosmosSceneKind, current: Bool) -> Bool {
+        scene == .star && current
     }
 
     private func logMode(spacetime: Bool) {
