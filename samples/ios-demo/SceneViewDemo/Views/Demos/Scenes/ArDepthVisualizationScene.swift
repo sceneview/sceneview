@@ -9,7 +9,7 @@
 // @status      knownIssue
 // @order       41
 // @tags        ar,depth,visualization,false-color,depth-map,ml,lidar
-// @addedIn     4.51.0
+// @addedIn     4.52.0
 import SwiftUI
 
 enum ArDepthVisualizationScene: DemoScene {
