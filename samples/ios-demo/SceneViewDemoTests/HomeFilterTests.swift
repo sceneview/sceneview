@@ -334,15 +334,32 @@ final class HomeTopSectionsTests: XCTestCase {
         XCTAssertFalse(selection.isFiltered)
     }
 
-    func testShowAllNamesTheWholeCatalogueAndClearsChipAndSearch() {
+    func testShowAllNamesTheWholeCatalogueUnderAChipOnly() {
+        XCTAssertNil(HomeSelection().showAllCount(total: entries.count))
+        XCTAssertEqual(HomeSelection(section: .create).showAllCount(total: entries.count), 3)
+        XCTAssertEqual(HomeSelection(whatsNew: true).showAllCount(total: entries.count), 3)
+    }
+
+    /// Android's `activeCategory != null && !searching`: a query is its own
+    /// filter, with its own "Clear".
+    func testShowAllStepsAsideWhileSearching() {
+        XCTAssertNil(HomeSelection(query: "no match").showAllCount(total: entries.count))
+        XCTAssertNil(HomeSelection(section: .create, query: "Materials").showAllCount(total: entries.count))
+        XCTAssertNil(HomeSelection(whatsNew: true, query: "fog").showAllCount(total: entries.count))
+        XCTAssertEqual(HomeSelection(section: .create, query: " \n ").showAllCount(total: entries.count), 3)
+    }
+
+    func testShowAllClearsTheChipAndLeavesTheQuery() {
         var selection = HomeSelection(section: .create, query: "Materials")
         XCTAssertEqual(top.catalogue(entries, selection: selection).count, 1)
-        XCTAssertEqual(selection.showAllCount(total: entries.count), 3)
-        selection.clear()
+        selection.showAll()
+        XCTAssertEqual(selection, HomeSelection(query: "Materials"))
+
+        selection = HomeSelection(whatsNew: true)
+        selection.showAll()
         XCTAssertEqual(selection, HomeSelection())
         XCTAssertNil(selection.showAllCount(total: entries.count))
-        XCTAssertEqual(HomeSelection(query: "no match").showAllCount(total: entries.count), 3)
-        XCTAssertEqual(HomeSelection(whatsNew: true).showAllCount(total: entries.count), 3)
+        XCTAssertEqual(top.catalogue(entries, selection: selection).map(\.id), ["hero", "other"])
     }
 }
 

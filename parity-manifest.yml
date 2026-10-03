@@ -1317,15 +1317,18 @@ shell:
       HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
       #4208. Since #4312, HomeTopSections in HomeFilter.swift assigns each
       picture once, hero then Featured then fresh ids; All omits banner rows,
-      while a chip or search lists every match. The What's-new row opens
-      WhatsNewSheet over All, every selected filter chip toggles back to All,
-      and a filtered list ends on "Show all N samples" (whole catalogue count,
-      clears chip and search, returns to the top of Home). HomeFilterTests.swift
-      mirrors Android's decision tests. Remaining differences: a single Models
-      HomeHero instead of the two-page pager (Cosmos remains a banner); the
-      What's-new row has no picture and retains the total fresh count even when
-      all fresh pictures appeared above; Show all also appears during search
-      to clear both query and chip; Android Back handling has no iOS equivalent.
+      while a chip or search lists every match. On screen the order is
+      Android's: hero, What's-new row, Featured. The What's-new row opens
+      WhatsNewSheet over the Home as it stands (a chosen chip stays chosen;
+      the sheet waits for the release notes, Android's contentReady), every
+      selected filter chip toggles back to All, and a chip-filtered list ends
+      on "Show all N samples" (whole catalogue count, clears the chip, hidden
+      while searching as on Android; iOS also returns to the top of Home).
+      HomeFilterTests.swift mirrors Android's decision tests. Remaining
+      differences: a single Models HomeHero instead of the two-page pager
+      (Cosmos remains a banner); the What's-new row has no picture and retains
+      the total fresh count even when all fresh pictures appeared above;
+      Android Back handling has no iOS equivalent.
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt

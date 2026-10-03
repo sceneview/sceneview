@@ -37,6 +37,10 @@ struct ShowcaseTab: View {
     var onPresentingChange: (Bool) -> Void = { _ in }
 
     @State private var scenes: [DemoItem] = []
+    /// What the Home pushes above the chips, derived from `scenes` when they
+    /// load (``loadScenes()``) rather than on every read: `body` asks for it a
+    /// dozen times per pass.
+    @State private var top = HomeTopSections(hero: [], featured: [], fresh: [])
     @State private var selection = HomeSelection()
     @State private var searchOpen = false
     @State private var scrolled = false
@@ -46,6 +50,9 @@ struct ShowcaseTab: View {
     /// The release notes the What's new sheet lists, read off the main thread
     /// on first appearance; empty until then, and the header's sparkle hidden.
     @State private var releases: [WhatsNewRelease] = []
+    /// The release notes have been read (even to an empty list) — Android's
+    /// `contentReady`: the sheet waits for it, so it never opens half filled.
+    @State private var releasesLoaded = false
     @State private var whatsNewSheet = WhatsNewSheetPhase.closed
     /// The demo tapped in the What's new sheet, opened once the sheet is gone —
     /// a cover cannot be presented while the sheet is still on screen.
@@ -127,12 +134,17 @@ struct ShowcaseTab: View {
         return top.featured.compactMap { byId[$0] }
     }
 
-    private var top: HomeTopSections {
-        let ids = Set(homeScenes.map(\.sceneId))
-        return HomeTopSections(
+    /// Reads the registry once, and settles what goes above the chips with it.
+    private func loadScenes() {
+        guard scenes.isEmpty else { return }
+        let all = GeneratedScenes.all()
+        let onHome = all.filter { HomeCatalogue.isOnHome($0.sceneId) }
+        let ids = Set(onHome.map(\.sceneId))
+        scenes = all
+        top = HomeTopSections(
             hero: ids.contains(Self.heroDemoId) ? [Self.heroDemoId] : [],
             featured: HomeCatalogue.featuredIds.filter { ids.contains($0) },
-            fresh: homeScenes.filter { DemoFreshness.of($0) != .none }.map(\.sceneId)
+            fresh: onHome.filter { DemoFreshness.of($0) != .none }.map(\.sceneId)
         )
     }
 
@@ -189,16 +201,13 @@ struct ShowcaseTab: View {
                         }
                     }
 
-                    if showFeatured {
-                        HomeSectionHeader(title: "Featured")
-                            .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
-                            .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
-                            .accessibilityIdentifier("home-section-featured")
-                            .staggeredReveal(position: 1, revealed: catalogueRevealed)
-                        featuredGroup
-                    }
-
-                    // Metadata only on iOS: no picture to repeat from the hero or banners.
+                    // "What's new", right under the hero: the one row that
+                    // answers "what changed?" without a scroll through the
+                    // catalogue — Android's `WhatsNewRow`, in Android's place
+                    // (pager, What's new, Featured). It counts the cards carrying
+                    // "New" / "Updated" and opens the sheet that lists them, over
+                    // a catalogue left whole. No picture on iOS, so nothing to
+                    // repeat from the hero or the banners.
                     if showWhatsNew {
                         WhatsNewRow(count: freshCount,
                                     since: DemoFreshness.windowStart(buildVersion: DemoFreshness.appVersion)) {
@@ -206,11 +215,19 @@ struct ShowcaseTab: View {
                         }
                         .padding(.top, SceneViewTokens.Home.groupGap)
                         .accessibilityIdentifier("home-whats-new-row")
-                        .staggeredReveal(position: showFeatured ? featured.count + 2 : 1,
-                                         revealed: catalogueRevealed)
+                        .staggeredReveal(position: 1, revealed: catalogueRevealed)
                     }
 
-                    // After the top groups, `home-group-gap` below them, full width —
+                    if showFeatured {
+                        HomeSectionHeader(title: "Featured")
+                            .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
+                            .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
+                            .accessibilityIdentifier("home-section-featured")
+                            .staggeredReveal(position: 1 + whatsNewSlot, revealed: catalogueRevealed)
+                        featuredGroup
+                    }
+
+                    // Under "Featured", `home-group-gap` below it, full width —
                     // Android's `browse-online` list row. It steps aside with
                     // the hero while a query is live.
                     if !searching {
@@ -248,18 +265,19 @@ struct ShowcaseTab: View {
                     sectionedList(visible)
                         .animation(SceneViewTokens.Spring.animation, value: visible.map(\.sceneId))
 
+                    // A chip-filtered list ends on the way back to the whole
+                    // catalogue, with its size — Android's `ShowAllRow`, a text
+                    // button like the empty search's "Clear". Not while
+                    // searching: the query is its own filter, with its own way out.
                     if let count = selection.showAllCount(total: homeScenes.count) {
                         Button(action: showAll) {
                             Text("Show all \(count) samples")
                                 .font(SceneViewTokens.TypeScale.bodyMedium)
-                                .padding(.vertical, SceneViewTokens.Space.sm)
-                                .frame(minHeight: SceneViewTokens.Home.heroPillHeight)
-                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: SceneViewTokens.Layout.touchTarget)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                         .tint(SceneViewTokens.HomeColor.primary)
-                        .foregroundStyle(SceneViewTokens.HomeColor.primary)
+                        .frame(maxWidth: .infinity)
                         .padding(.top, SceneViewTokens.Space.sm)
                         .accessibilityIdentifier("home-show-all")
                     }
@@ -314,15 +332,15 @@ struct ShowcaseTab: View {
                 ExploreTab(embedded: true)
             }
             .onChange(of: presenting, initial: true) { _, covered in onPresentingChange(covered) }
-            .onAppear {
-                if scenes.isEmpty { scenes = GeneratedScenes.all() }
-            }
+            .onAppear { loadScenes() }
             .task {
-                guard releases.isEmpty else { return }
+                guard !releasesLoaded else { return }
                 releases = await Task.detached(priority: .utility) { WhatsNewChangelog.load() }.value
+                releasesLoaded = true
             }
-            // Both the Home row and the header sparkle open this returning sheet.
-            // Fresh demos are available even while release notes are loading.
+            // Android's `WhatsNewSheet`, from the Home row and the header's
+            // sparkle. Shown only once the release notes are read, so neither a
+            // tap nor a return from a demo brings up a half-filled sheet.
             .sheet(isPresented: whatsNewSheetShown, onDismiss: {
                 guard let demo = demoFromSheet else { return }
                 demoFromSheet = nil
@@ -405,7 +423,7 @@ struct ShowcaseTab: View {
 
     private var whatsNewSheetShown: Binding<Bool> {
         Binding(
-            get: { whatsNewSheet == .open },
+            get: { whatsNewSheet == .open && releasesLoaded },
             set: { shown in if !shown { whatsNewSheet.dismiss() } }
         )
     }
@@ -450,7 +468,7 @@ struct ShowcaseTab: View {
                 .matchedTransitionSource(id: sourceId, in: cardNamespace)
                 #endif
                 .accessibilityIdentifier("home-featured-\(demo.sceneId)")
-                .staggeredReveal(position: index + 2, revealed: catalogueRevealed)
+                .staggeredReveal(position: index + 2 + whatsNewSlot, revealed: catalogueRevealed)
             }
         }
     }
@@ -491,35 +509,39 @@ struct ShowcaseTab: View {
         }
     }
 
-    /// Reveal slot of the chip row: hero (0), Featured header and banners,
-    /// the What's new metadata row, then "Browse online models".
+    /// Reveal slot of the chip row: after the hero (0), when shown the What's
+    /// new row, the Featured header and its rows, and the "Browse online
+    /// models" row.
     private var chipRevealPosition: Int {
         (showFeatured ? featured.count + 2 : 1) + (searching ? 0 : 1) + whatsNewSlot
     }
 
     private var showWhatsNew: Bool { top.showsWhatsNew(searching: searching) }
 
-    /// Reveal slots the metadata row takes after Featured.
+    /// Reveal slots the What's new row takes ahead of Featured.
     private var whatsNewSlot: Int { showWhatsNew ? 1 : 0 }
 
     /// Coordinate space of the scrolled content.
     nonisolated private static let contentSpace = "home-content"
 
-    /// Open release notes over the whole catalogue, leaving the chip as an opt-in filter.
+    /// The What's new row's tap: the sheet, over the Home as it stands —
+    /// Android's `whatsNewSheet.open()`. A chip already chosen stays chosen.
     private func openWhatsNew() {
         #if os(iOS)
         SceneViewHaptic.shared.light()
         #endif
-        selection.clear()
-        searchOpen = false
         whatsNewSheet.open()
     }
 
-    /// Return to the top: the hero and banners are part of the whole catalogue too.
-    /// Defer until the cleared search/filter has laid out its full content.
+    /// "Show all N samples": the chip goes back to "All" — Android's
+    /// `onCategoryChange(null)` — and the page returns to its top, where the
+    /// hero and the banners are: they are part of the whole catalogue too.
+    /// The scroll waits for the unfiltered list to be laid out.
     private func showAll() {
-        selection.clear()
-        searchOpen = false
+        #if os(iOS)
+        SceneViewHaptic.shared.selection()
+        #endif
+        selection.showAll()
         DispatchQueue.main.async {
             withAnimation(SceneViewTokens.Spring.animation) {
                 scrollPosition.scrollTo(edge: .top)

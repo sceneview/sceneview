@@ -75,8 +75,10 @@ private extension HomeSearchEntry {
     }
 }
 
-/// Pure Home decisions, in display priority: hero, Featured banners, then fresh ids.
-/// Mirrors Android's `HomeTopSections`; each group preserves order and owns an id once.
+/// Pure Home decisions, in the priority a demo is claimed: hero, Featured banners,
+/// then fresh ids. That is not the order on screen — the What's new row sits
+/// between the hero and Featured, as on Android. Mirrors Android's
+/// `HomeTopSections`; each group preserves order and owns an id once.
 struct HomeTopSections: Equatable {
     let hero: [String]
     let featured: [String]
@@ -124,10 +126,19 @@ struct HomeSelection: Equatable {
         whatsNew.toggle()
     }
 
-    mutating func clear() { self = HomeSelection() }
+    /// "Show all": the chip back to "All". The query is left alone — it is its
+    /// own filter, with its own "Clear".
+    mutating func showAll() {
+        section = nil
+        whatsNew = false
+    }
 
-    /// Always names the whole catalogue, including the demos shown as banners.
-    func showAllCount(total: Int) -> Int? { isFiltered ? total : nil }
+    /// What "Show all N samples" names: the whole catalogue, banners included.
+    /// `nil` hides the button — under "All", and while searching (Android's
+    /// `activeCategory != null && !searching`).
+    func showAllCount(total: Int) -> Int? {
+        (section != nil || whatsNew) && !searching ? total : nil
+    }
 }
 
 /// Editorial choices of the Showcase home that are not a property of any one
