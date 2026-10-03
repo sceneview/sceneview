@@ -39,7 +39,7 @@ object ArPlacementFragment : DemoFragment {
         icon = Icons.Filled.ViewInAr,
         order = 17,
         addedIn = "4.0.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf(
             "ar", "plane", "auto-place", "anchor", "gltf", "model", "floor", "wall", "tv",
             "pose", "transform", "gesture", "tap-to-place", "sceneform",

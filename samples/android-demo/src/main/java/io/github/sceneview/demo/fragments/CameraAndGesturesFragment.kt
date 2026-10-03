@@ -36,7 +36,7 @@ object CameraAndGesturesFragment : DemoFragment {
         icon = Icons.Filled.PhotoCamera,
         order = 33,
         addedIn = "4.17.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf(
             "camera", "orbit", "gesture", "pan", "zoom", "manipulator", "edit",
             "pip", "multi-view", "render-target",

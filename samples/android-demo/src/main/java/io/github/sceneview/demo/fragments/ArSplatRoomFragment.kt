@@ -22,8 +22,8 @@ object ArSplatRoomFragment : DemoFragment {
         icon = Icons.Filled.House,
         order = 16,
         addedIn = "4.45.0",
-        // #4105, #4137.
-        updatedIn = "4.49.0",
+        // #4231: the dollhouse shows the dense coloured cloud on the real floor.
+        updatedIn = "4.52.0",
         tags = setOf("ar", "rerun", "scan", "room", "dollhouse", "miniature", "placement", "real-scale"),
     )
 

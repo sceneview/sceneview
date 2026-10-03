@@ -34,7 +34,7 @@ object RollingBallsFragment : DemoFragment {
         icon = Icons.Filled.Workspaces,
         order = 30,
         addedIn = "4.48.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf(
             "physics", "rigid-body", "collision", "simulation", "tilt", "balls",
             "pendulum", "chaos", "kmp",
