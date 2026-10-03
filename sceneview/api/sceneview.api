@@ -417,7 +417,6 @@ public final class io/github/sceneview/SceneRenderer {
 	public final fun setOnSurfaceDestroyed (Lkotlin/jvm/functions/Function0;)V
 	public final fun setOnSurfaceReady (Lkotlin/jvm/functions/Function1;)V
 	public final fun setOnSurfaceResized (Lkotlin/jvm/functions/Function2;)V
-	public final fun setPresentationState (Landroidx/lifecycle/Lifecycle$State;)V
 	public final fun setSurfaceMirrorer (Lio/github/sceneview/utils/SurfaceMirrorer;)V
 }
 
