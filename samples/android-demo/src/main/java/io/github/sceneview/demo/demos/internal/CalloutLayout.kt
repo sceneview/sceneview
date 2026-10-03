@@ -31,14 +31,25 @@ internal object CalloutLayout {
     /** The model's largest dimension, in metres, after `scaleToUnits`. */
     const val MODEL_SIZE_METERS = 0.62f
 
-    /** Camera orbit radius from the turntable's centre, in metres. */
-    const val CAMERA_DISTANCE = 2.4f
+    /** Camera orbit radius from [targetPosition], in metres. */
+    const val CAMERA_DISTANCE = 2.6f
 
-    /** Camera height above the turntable's centre, in metres. A gentle look-down. */
-    const val CAMERA_HEIGHT = 0.34f
+    /** Camera height above [targetPosition], in metres. A gentle look-down. */
+    const val CAMERA_HEIGHT = 0.37f
 
-    /** How far off the ground the whole rig sits — the point the camera looks at. */
-    const val TARGET_Y = 0.02f
+    /**
+     * Height of the point the camera looks at and orbits around, in metres.
+     *
+     * Below the model on purpose. The frame holds two things — the helmet at the origin and the
+     * control card under it — so the camera aims between them, on the turntable's own axis: the
+     * helmet lands in the upper half of the scene, the card in the lower half, and an orbit still
+     * turns about the model rather than about a point in front of it.
+     *
+     * The scene disables `autoCenterContent`, so nothing re-centres the content behind these
+     * numbers: `CalloutLayoutTest` projects both subjects through this camera and fails if either
+     * leaves a portrait viewport.
+     */
+    const val TARGET_Y = -0.30f
 
     /** Turntable rotation, in degrees per second. One revolution every 24 s. */
     const val SPIN_DEGREES_PER_SECOND = 15f
@@ -84,6 +95,32 @@ internal object CalloutLayout {
     /** @see MIN_CARD_SCALE */
     const val DEFAULT_CARD_SCALE = 0.12f
 
+    /** Width of every in-scene card, in dp. One box for all of them — see `CardShell`. */
+    const val CARD_WIDTH_DP = 264f
+
+    /** Height of every in-scene card, in dp. */
+    const val CARD_HEIGHT_DP = 156f
+
+    /** `ViewNode.pxPerUnits` default — the px-to-metre rate every card's world size divides by. */
+    const val VIEW_NODE_PX_PER_UNIT = 250f
+
+    /**
+     * How much larger than a call-out the control card is drawn. It carries a button, so it has
+     * to stay a comfortable touch target at the distance the call-outs are merely readable from.
+     */
+    const val CONTROL_CARD_SCALE_FACTOR = 2.5f
+
+    /**
+     * A card's world width, in metres: its pixel width over [VIEW_NODE_PX_PER_UNIT], times the
+     * node scale. It grows with the display density — a `ViewNode` is sized in pixels, not dp.
+     */
+    fun cardWorldWidth(cardScale: Float, density: Float): Float =
+        CARD_WIDTH_DP * density / VIEW_NODE_PX_PER_UNIT * cardScale
+
+    /** A card's world height, in metres. @see cardWorldWidth */
+    fun cardWorldHeight(cardScale: Float, density: Float): Float =
+        CARD_HEIGHT_DP * density / VIEW_NODE_PX_PER_UNIT * cardScale
+
     /**
      * The three annotations pinned to the model, in the order they are composed.
      *
@@ -125,11 +162,16 @@ internal object CalloutLayout {
      * pinned in world space, billboarded on every frame, and always drawn on top. That split —
      * world-anchored annotations, viewer-anchored controls — is the part of this demo most worth
      * copying into a real app.
+     *
+     * These are the coordinates the card is rendered at, not a starting point the scene then
+     * shifts: `autoCenterContent` is off. It stands just clear of the helmet's front face, and
+     * low enough for its top edge to sit under the chin — any closer to the camera and a card
+     * [CONTROL_CARD_SCALE_FACTOR] times a call-out is wider than a portrait viewport.
      */
-    val CONTROL_CARD_POSITION = Position(x = 0f, y = -0.45f, z = 0.85f)
+    val CONTROL_CARD_POSITION = Position(x = 0f, y = -0.58f, z = 0.5f)
 
     /**
-     * The camera's home position, on a circle of radius [CAMERA_DISTANCE] around the origin.
+     * The camera's home position, [CAMERA_DISTANCE] away from [targetPosition].
      *
      * `rememberCameraManipulator` reads the **length** of `orbitHomePosition` as the orbit
      * distance (see `GeometryLayout` and #2930), so the vector has to be the real eye offset,
@@ -149,7 +191,7 @@ internal object CalloutLayout {
         return Position(x = 0f, y = TARGET_Y + height, z = horizontal)
     }
 
-    /** The point the camera orbits around — the model's centre, lifted off the ground. */
+    /** The point the camera looks at and orbits around — on the turntable's axis, at [TARGET_Y]. */
     fun targetPosition(): Position = Position(x = 0f, y = TARGET_Y, z = 0f)
 
     /**

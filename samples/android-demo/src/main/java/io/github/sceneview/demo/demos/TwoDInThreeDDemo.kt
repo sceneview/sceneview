@@ -239,7 +239,9 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             environment = rememberModelDemoEnvironment(environmentLoader),
             // This layout authors model, cards, camera target, and billboard math in world
             // coordinates. An automatic content-root translation would make the rendered card
-            // position disagree with the position used to compute its heading.
+            // position disagree with the position used to compute its heading. The price is
+            // that nothing frames the scene for us any more: CalloutLayout's camera and control
+            // card numbers are the framing, and CalloutLayoutTest holds them to the viewport.
             autoCenterContent = false,
             cameraManipulator = rememberCameraManipulator(
                 // The orbit distance is the LENGTH of `orbitHomePosition` (see GeometryLayout and
@@ -301,7 +303,7 @@ fun TwoDInThreeDDemo(onBack: () -> Unit) {
             // ── The control card: world-anchored, always facing, always on top ────────────────
             ControlCard(
                 windowManager = viewNodeManager,
-                cardScale = cardScale * 2.5f,
+                cardScale = cardScale * CalloutLayout.CONTROL_CARD_SCALE_FACTOR,
                 cameraPosition = cameraPosition,
                 spinning = spinning,
                 onToggleSpin = { spinning = !spinning; showDetails = true },
@@ -619,7 +621,7 @@ private fun statusLabel(cardScale: Float, alwaysOnTop: Boolean): String = String
 internal fun cardWidthLabel(cardScale: Float): String = String.format(
     Locale.US,
     "%d cm wide",
-    (CARD_WIDTH.value * BASELINE_DENSITY / VIEW_NODE_PX_PER_UNIT * cardScale * 100f).toInt(),
+    (CalloutLayout.cardWorldWidth(cardScale, BASELINE_DENSITY) * 100f).toInt(),
 )
 
 /** True when two eye positions differ by more than a millimetre on any axis. */
@@ -644,13 +646,10 @@ internal const val SPIN_RESUME_LABEL = "Resume spin"
 private const val HELMET_ASSET = "models/khronos_damaged_helmet.glb"
 
 /** @see CardShell */
-private val CARD_WIDTH = 264.dp
+private val CARD_WIDTH = CalloutLayout.CARD_WIDTH_DP.dp
 
 /** @see CardShell */
-private val CARD_HEIGHT = 156.dp
-
-/** `ViewNode.pxPerUnits` default — the px-to-metre rate every card's world size divides by. */
-private const val VIEW_NODE_PX_PER_UNIT = 250f
+private val CARD_HEIGHT = CalloutLayout.CARD_HEIGHT_DP.dp
 
 /** xhdpi. The density [cardWidthLabel]'s centimetre readout is quoted at. */
 private const val BASELINE_DENSITY = 2f
