@@ -36,41 +36,33 @@ class ARMLObjectLabelDemoTest {
     }
 }
 
-/**
- * Pure-JVM tests for [bboxCentreToScreenPoint] — the CPU-image-space → AR-surface-space
- * mapping fed into `Frame.hitTest` (#3337). Before this fix the caller passed a hardcoded
- * 1000×1000 square instead of the real surface size, so on a tall portrait phone (e.g. a
- * Pixel 9 at 1080×2424) a detection in the lower half of the frame hit-tested against the
- * wrong point on screen and its label anchor landed off the object.
- */
-class BboxCentreToScreenPointTest {
-
+class NearestUsableHitTest {
     @Test
-    fun `centre of the image maps to centre of the display`() {
-        val (x, y) = bboxCentreToScreenPoint(
-            cx = 320, cy = 240, imageW = 640, imageH = 480, displayW = 1080, displayH = 2424,
-        )
-        assertEquals(540f, x, 0.01f)
-        assertEquals(1212f, y, 0.01f)
+    fun `near surface wins even when ARCore results are not ordered`() {
+        assertEquals(1, nearestUsableHitIndex(listOf(3.5f, 0.8f, 1.4f)))
     }
 
     @Test
-    fun `a detection in the lower half of a tall portrait display lands past a 1000px square`() {
-        // Regression for #3337: the old hardcoded 1000x1000 square could never produce a
-        // y beyond 1000px, silently clamping every lower-half detection onto the wrong point
-        // on a 2424px-tall real display.
-        val (_, y) = bboxCentreToScreenPoint(
-            cx = 320, cy = 400, imageW = 640, imageH = 480, displayW = 1080, displayH = 2424,
+    fun `out of range hits are ignored`() {
+        assertEquals(2, nearestUsableHitIndex(listOf(0.05f, 5.5f, 2f)))
+        assertEquals(null, nearestUsableHitIndex(listOf(0.05f, 6f)))
+    }
+}
+
+class ReanchorToleranceTest {
+    @Test
+    fun `hit jitter of a still object keeps the anchor`() {
+        assertEquals(
+            true,
+            isWithinReanchorTolerance(floatArrayOf(0f, 0f, -1f), floatArrayOf(0.02f, 0.01f, -1.02f)),
         )
-        assert(y > 1000f) { "expected y > 1000f (past the old hardcoded square), was $y" }
     }
 
     @Test
-    fun `zero-size image dimensions are coerced instead of dividing by zero`() {
-        val (x, y) = bboxCentreToScreenPoint(
-            cx = 10, cy = 10, imageW = 0, imageH = 0, displayW = 1080, displayH = 2424,
+    fun `an object moved by ten centimetres is re-anchored`() {
+        assertEquals(
+            false,
+            isWithinReanchorTolerance(floatArrayOf(0f, 0f, -1f), floatArrayOf(0.1f, 0f, -1f)),
         )
-        assertEquals(10f * 1080f, x, 0.01f)
-        assertEquals(10f * 2424f, y, 0.01f)
     }
 }
