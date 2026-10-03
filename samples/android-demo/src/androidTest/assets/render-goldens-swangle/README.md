@@ -36,5 +36,6 @@ logs `first-frame slug=… elapsedMs=…` in the job's `logcat.txt`.
 
 | Case | Why |
 | --- | --- |
+| `geometry_default` | The scene was rebuilt in #4335 (seven primitives on the stage); the reference here still pictured the four-shape scene. The first `main` run after the merge (37154250953) lost its emulator at the Materials case, before Geometry ran, so there was no capture to review. It takes the first-run skip until a capture of the new scene is recorded with the procedure above. |
 | `lightinglab_default` | The helmet is missing from the recording capture (run 36415395782) and present in the next run: the scene reports ready before the model is always in it. It takes the first-run skip until a capture shows the full scene. |
 | `splatpreview_default` | Correct render, but not reproducible: the splat is framed differently from one run to the next (54.7 % of pixels differed from its recording in run 36416690269). No single capture can be its reference. |

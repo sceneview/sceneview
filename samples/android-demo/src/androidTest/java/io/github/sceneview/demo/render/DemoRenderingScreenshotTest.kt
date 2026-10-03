@@ -828,7 +828,6 @@ class DemoRenderingScreenshotTest {
             "customgeometry_default",
             "debugoverlay_default",
             "fog_default",
-            "geometry_default",
             "lighting_default",
             "linespaths_default",
             "materials_default",
@@ -836,6 +835,8 @@ class DemoRenderingScreenshotTest {
             "pickingcollision_default",
             "secondarycamera_default",
             "twodinthreed_default",
+            // geometry_default: out since the #4335 rebuild — its reference pictured the old
+            // four-shape scene and no CI capture of the new one has been reviewed yet.
             // lightinglab_default: rejected — the helmet is missing from the CI capture.
             // splatpreview_default: rejected — its framing differs run to run (54.7 % of
             // pixels in run 36416690269), so no single capture is a reference.
