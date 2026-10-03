@@ -1,0 +1,97 @@
+{
+  "label": "before",
+  "console": [],
+  "pageErrors": [],
+  "runs": {
+    "raccoon_dark": {
+      "glErrorAfterLoad": 0,
+      "orbit": {
+        "frames": 119,
+        "meanMs": 52.23865546218487,
+        "medianMs": 50,
+        "p95Ms": 66.70000000000073,
+        "maxMs": 67.70000000000073,
+        "uploads": 236,
+        "bytes": 884550656,
+        "shapes": [
+          "texSubImage2D,484,484,6408,5126,3748096"
+        ]
+      },
+      "idle": {
+        "uploads": 0,
+        "bytes": 0
+      },
+      "totalAtEnd": {
+        "uploads": 286,
+        "bytes": 923627808
+      },
+      "glErrorAtEnd": 0
+    },
+    "raccoon_light": {
+      "glErrorAfterLoad": 0,
+      "glErrorAtEnd": 0
+    }
+  },
+  "colour": [
+    {
+      "expected": [
+        127.5,
+        127.5,
+        127.5
+      ],
+      "measured": [
+        200.6,
+        198.2,
+        194.8
+      ]
+    },
+    {
+      "expected": [
+        51,
+        51,
+        51
+      ],
+      "measured": [
+        136.1,
+        136.3,
+        136.9
+      ]
+    },
+    {
+      "expected": [
+        204,
+        204,
+        204
+      ],
+      "measured": [
+        222.4,
+        218.8,
+        213.2
+      ]
+    },
+    {
+      "expected": [
+        229.5,
+        76.5,
+        25.5
+      ],
+      "measured": [
+        230.9,
+        171.9,
+        106.8
+      ]
+    },
+    {
+      "expected": [
+        25.5,
+        102,
+        178.5
+      ],
+      "measured": [
+        118.6,
+        185.5,
+        208.6
+      ]
+    }
+  ]
+}
