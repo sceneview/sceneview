@@ -1142,13 +1142,15 @@ Vertices are pure data and can be generated on any thread; `Geometry.Builder.bui
 
 When the topology changes at runtime, hand the `Geometry` to a `GeometryNode` instead of lending its buffers to a `MeshNode`: the node owns it, follows every `geometry.update(...)` — buffer rebuilds included — and destroys it for you.
 ```kotlin
-val node = GeometryNode(
+val material = materialLoader.createColorInstance(Color.Red)
+val sphere = Sphere.Builder().stacks(8).slices(8).build(engine)   // one submesh per stack
+val striped = GeometryNode(
     engine = engine,
-    geometry = geometry,                       // owned by the node from here on
-    materialInstances = listOf(body, cap),     // one per submesh (Geometry.primitivesOffsets)…
+    geometry = sphere,                         // owned by the nodes bound to it from here on
+    materialInstances = List(sphere.primitivesOffsets.size) { material },  // one per submesh…
 )
-val merged = GeometryNode(engine, geometry, materialInstance = material)   // …or one for all
-geometry.update(engine, vertices = moreVertices, primitivesIndices = moreIndices)  // rebuilds + rebinds both
+val merged = GeometryNode(engine, sphere, materialInstance = material)     // …or one for all
+sphere.update(engine, stacks = 32, slices = 32)   // rebuilds the buffers, re-points both nodes
 ```
 `GeometryNode`'s primary constructor takes `mergePrimitives: Boolean` (last parameter): `false` draws the geometry's natural submeshes with one material each, `true` draws every submesh as a single primitive with one material — the single-`materialInstance` constructor sets it for you. Those are the two supported layouts; any other `primitivesOffsets` throws `IllegalArgumentException`. Adding a submesh on a natural-layout node rebuilds its Filament renderable (new submeshes take the last material; a skinning buffer or `InstanceBuffer` set outside `builderApply` is not carried over). `RenderableNode.setGeometry(other)` destroys the geometry it replaces once no other node uses it.
 
