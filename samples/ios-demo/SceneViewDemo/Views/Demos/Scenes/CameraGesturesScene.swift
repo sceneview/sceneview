@@ -8,7 +8,7 @@
 // @order       41
 // @tags        camera,orbit,gesture,pan,zoom,manipulator,edit,move,scale,rotate
 // @addedIn     4.0.0
-// @updatedIn   4.51.0
+// @updatedIn   4.52.0
 import SwiftUI
 
 /// Camera & Gestures (samples audit, step 0): the iOS `camera-controls` and
