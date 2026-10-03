@@ -40,6 +40,12 @@ struct RerunExportScene: Sendable {
         var pose: CameraSample
     }
 
+    /// Map indices seen by the camera at one instant, in session seconds.
+    struct PointObservation: Sendable, Equatable {
+        var time: Double
+        var points: [Int]
+    }
+
     /// A plane's photo, laid on it: `origin` is the world position of texel (0, 0), `u` and
     /// `v` the texture's two full edges in world space. The texture coordinate of a world
     /// point `p` is `(dot(p - origin, u) / dot(u, u), dot(p - origin, v) / dot(v, v))`,
@@ -81,8 +87,11 @@ struct RerunExportScene: Sendable {
     /// The camera's path, oldest first.
     var cameraPath: [CameraSample]
     var keyframes: [Keyframe]
-    /// Encoded photos by path (`frames/012.webp`): the keyframes' images.
+    /// Encoded photos by path (`frames/012.webp`): every recorded image.
     var images: [String: Data]
     var planes: [Plane]
     var anchors: [Anchor]
+    /// Every recorded photo; older callers can fall back to `keyframes`.
+    var photos: [Keyframe] = []
+    var pointObservations: [PointObservation] = []
 }

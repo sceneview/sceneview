@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **iOS Rerun exports preserve the recording ([#4093](https://github.com/sceneview/sceneview/issues/4093)).** `.rrd` files now carry timed live feature points, every recorded photo and RGB/RGBA plane textures, matching Android. Reopened recordings retain the growing point map and transparent plane texels, and a point no photo coloured stays uncoloured instead of turning black.
