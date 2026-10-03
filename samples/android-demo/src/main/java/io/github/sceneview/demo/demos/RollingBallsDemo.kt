@@ -5,7 +5,6 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -43,11 +42,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Colors
@@ -62,6 +59,7 @@ import io.github.sceneview.CameraFit
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
+import io.github.sceneview.demo.DEMO_MIN_VISIBLE_FRACTION
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.MIN_RESERVED_SCENE_HEIGHT
@@ -71,10 +69,12 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
+import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.TrayBallDrag
 import io.github.sceneview.demo.demos.internal.TrayMotion
 import io.github.sceneview.demo.demos.internal.TrayMotion.Tilt
 import io.github.sceneview.demo.demos.internal.TrayStage
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
@@ -473,7 +473,7 @@ fun RollingBallsDemo(onBack: () -> Unit) {
     // A phone held sideways leaves the board a band barely taller than the controls. There the
     // two rows of controls sit on one line, and the live count — which the sheet repeats — gives
     // its line back to the board.
-    val compactHeight = LocalConfiguration.current.screenHeightDp < TRAY_COMPACT_HEIGHT_DP
+    val compactHeight = isDemoCompactHeight()
 
     DemoScaffold(
         title = stringResource(R.string.demo_rolling_balls_title),
@@ -618,18 +618,18 @@ fun RollingBallsDemo(onBack: () -> Unit) {
             // the finger takes it. The surface is not resized and the user's orbit is not touched.
             val safe = WindowInsets.safeDrawing.asPaddingValues()
             val layoutDirection = LocalLayoutDirection.current
-            val cover = trayContentPadding(
-                chrome = LocalDemoSceneCover.current,
-                statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+            val cover = demoContentPadding(
+                cover = LocalDemoSceneCover.current,
                 sceneHeight = maxHeight,
-                compactHeight = compactHeight,
                 left = safe.calculateLeftPadding(layoutDirection),
                 right = safe.calculateRightPadding(layoutDirection),
+                statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                compactHeight = compactHeight,
             )
             // Framed in the band the chrome leaves free, not the whole screen. The SDK never lets
             // that band go below a tenth of the view; the same floor here keeps the two in step.
             val visibleHeight = (maxHeight - cover.calculateTopPadding() - cover.calculateBottomPadding())
-                .coerceAtLeast(maxHeight * TRAY_MIN_VISIBLE_FRACTION)
+                .coerceAtLeast(maxHeight * DEMO_MIN_VISIBLE_FRACTION)
             // The hint sits at the foot of that band. Under a sheet dragged all the way up, or in
             // landscape, the band is barely taller than the hint and the board is all it has
             // room for.
@@ -1043,40 +1043,6 @@ private class TrayGrip {
 }
 
 /**
- * What Rolling Balls hands to `contentPadding`, from what the scaffold reports as covered.
- *
- * The bottom is taken as it is: the controls and the settings sheet are where the board must not
- * be. The sides are the window's safe insets — a display cutout on a phone held sideways, a
- * navigation bar on the short edge — so the board is centred where the controls are centred. The
- * top is a row of glass chips over a live stage, and it gives way in two cases.
- *
- * - **A phone held sideways** ([compactHeight]): the title is a chip in a corner the centred
- *   board never reaches, and counting it as a band would halve a stage that is already short.
- *   Only the status bar is kept clear.
- * - **A sheet dragged all the way up**: what is left under the title row is thinner than the
- *   tenth of the view the SDK keeps visible, and the SDK would take the difference from both
- *   edges — part of it under the sheet. The top yields the whole difference instead, so the
- *   board stays above the sheet.
- */
-internal fun trayContentPadding(
-    chrome: PaddingValues,
-    statusBar: Dp,
-    sceneHeight: Dp,
-    compactHeight: Boolean,
-    left: Dp = 0.dp,
-    right: Dp = 0.dp,
-): PaddingValues {
-    val bottom = chrome.calculateBottomPadding()
-    val top = if (compactHeight) {
-        statusBar
-    } else {
-        val room = sceneHeight - bottom - sceneHeight * TRAY_MIN_VISIBLE_FRACTION
-        minOf(chrome.calculateTopPadding(), room.coerceAtLeast(0.dp))
-    }
-    return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
-}
-
-/**
  * The tray's opening shot for a visible area of [aspect]: the table itself fitted at
  * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
  * the band between the title row and the controls (#4180). The SDK's [fitCameraToBounds] does the
@@ -1208,19 +1174,6 @@ private const val PHYSICS_FRAME_WIDTH_FILL = 0.92f
 
 /** Most of the viewport height the table may span — the binding axis in landscape. */
 private const val PHYSICS_FRAME_HEIGHT_FILL = 0.84f
-
-/**
- * Least share of the scene's height the board is framed in, whatever the chrome covers: the floor
- * the SDK applies to `contentPadding` (a tenth of the view), mirrored so the fit is computed for
- * the band the camera really projects into.
- */
-private const val TRAY_MIN_VISIBLE_FRACTION = 0.1f
-
-/**
- * Window height, in dp, under which the two rows of controls share one line — Material's compact
- * height class, i.e. a phone held sideways.
- */
-private const val TRAY_COMPACT_HEIGHT_DP = 480
 
 /**
  * Height the gesture hint takes at the foot of the free band, margin included. The hint shows

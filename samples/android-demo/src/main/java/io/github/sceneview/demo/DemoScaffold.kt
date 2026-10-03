@@ -325,6 +325,20 @@ val LocalDemoSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
 val LocalDemoSceneCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
 
 /**
+ * [LocalDemoSceneCover] with the settings sheet closed: the bands the chrome keeps over the
+ * `scene` slot at rest (#4326).
+ *
+ * This is the area to **fit a camera distance for**. The SDK's `contentPadding` makes the band the
+ * chrome leaves free the lens's whole field, so a subject fitted for the resting band keeps the
+ * same share of whatever band a rising sheet leaves: the picture follows the sheet, smaller, with
+ * nothing to recompute. Fitting for the live cover instead rebuilds the orbit on every frame of a
+ * drag, and throws away the angle the user had set the moment Settings opens.
+ *
+ * Zero outside a [DemoScaffold].
+ */
+val LocalDemoSceneRestingCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
+
+/**
  * Whether insetting the scene by the bands above and below it still leaves a scene worth the
  * name — `bottomOverlayReservesScene`'s own precondition.
  *
@@ -401,7 +415,22 @@ private fun ProvideDemoSceneCover(
         slotTop = slotTop,
         slotBottom = slotBottom,
     )
-    CompositionLocalProvider(LocalDemoSceneCover provides cover, content = content)
+    // The same bands with the sheet closed. Remembered, so the demos that only read this one are
+    // not recomposed by a sheet on the move.
+    val restingCover = remember(chromeTop, chromeBottom, slotTop, slotBottom) {
+        demoSceneCover(
+            chromeTop = chromeTop,
+            chromeBottom = chromeBottom,
+            sheetCover = 0.dp,
+            slotTop = slotTop,
+            slotBottom = slotBottom,
+        )
+    }
+    CompositionLocalProvider(
+        LocalDemoSceneCover provides cover,
+        LocalDemoSceneRestingCover provides restingCover,
+        content = content,
+    )
 }
 
 @Composable

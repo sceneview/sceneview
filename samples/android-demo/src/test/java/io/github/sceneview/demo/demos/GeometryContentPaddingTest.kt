@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.demoContentPadding
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -11,6 +12,9 @@ import org.junit.Test
  * reports it, the window's safe insets on the sides, and a top that gives way when keeping it
  * would push the shapes under a settings sheet dragged all the way up — and the bottom the block
  * is framed for, which is the chrome's with that sheet closed.
+ *
+ * The padding rule is the demos' shared [demoContentPadding] since #4326, called the way Geometry
+ * calls it — the title row a band at every window height — with the numbers it was written for.
  */
 class GeometryContentPaddingTest {
 
@@ -18,8 +22,8 @@ class GeometryContentPaddingTest {
     private val scene = 952.dp
     private val chromeTop = 136.dp
 
-    private fun padding(bottom: Float) = geometryContentPadding(
-        chrome = PaddingValues(top = chromeTop, bottom = bottom.dp),
+    private fun padding(bottom: Float) = demoContentPadding(
+        cover = PaddingValues(top = chromeTop, bottom = bottom.dp),
         sceneHeight = scene,
     )
 
@@ -49,12 +53,14 @@ class GeometryContentPaddingTest {
     @Test
     fun `the sides are the window's own, whatever the layout direction`() {
         // A phone held sideways: the cutout is on the left of the glass, in RTL too.
-        val padding = geometryContentPadding(
-            chrome = PaddingValues(top = 80.dp, bottom = 180.dp),
+        val padding = demoContentPadding(
+            cover = PaddingValues(top = 80.dp, bottom = 180.dp),
             sceneHeight = 426.dp,
             left = 48.dp,
             right = 0.dp,
         )
+        // Sideways too the title row is Geometry's band: 80 dp, not the status bar.
+        assertEquals(80.dp, padding.calculateTopPadding())
         LayoutDirection.entries.forEach { direction ->
             assertEquals(48.dp, padding.calculateLeftPadding(direction))
             assertEquals(0.dp, padding.calculateRightPadding(direction))
