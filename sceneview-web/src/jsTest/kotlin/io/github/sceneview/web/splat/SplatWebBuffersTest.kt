@@ -1,6 +1,7 @@
 package io.github.sceneview.web.splat
 
 import io.github.sceneview.core.splat.SplatCloud
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -151,7 +152,18 @@ class SplatWebBuffersTest {
     @Test
     fun orderTextureFollowsSortWithoutRepackingAttributes() {
         val c = cloud(3)
-        val staticPositions = SplatWebBuffers.packPositionScale(c, intArrayOf(0, 1, 2), 2)
+        val cloudOrder = intArrayOf(0, 1, 2)
+        // The four attribute buffers, uploaded once in cloud order.
+        fun attributes(): List<FloatArray> {
+            val (rotation, scale) = SplatWebBuffers.packRotationScale(c, 2)
+            return listOf(
+                SplatWebBuffers.packPositionScale(c, cloudOrder, 2),
+                SplatWebBuffers.packColorOpacity(c, cloudOrder, 2),
+                rotation,
+                scale,
+            ).map { buffer -> FloatArray(buffer.length) { buffer.asDynamic()[it].unsafeCast<Float>() } }
+        }
+        val before = attributes()
         val order = SplatWebBuffers.sortBackToFront(c.positions, c.count, 0f, 0f, 0f)
         val packed = SplatWebBuffers.packOrder(order, 2)
         assertContentEquals(intArrayOf(2, 1, 0), order)
@@ -164,7 +176,10 @@ class SplatWebBuffersTest {
         // RGBA8: four bytes per slot, padding slot left at zero.
         assertEquals(2 * 2 * 4, packed.length)
         assertEquals(0, packed.asDynamic()[12].unsafeCast<Int>())
-        assertEquals(0f, staticPositions.asDynamic()[0].unsafeCast<Float>())
+        // "Without repacking": the sort reversed the draw order, and the attribute buffers
+        // built after it are the ones built before it — only the order texture moved.
+        val after = attributes()
+        for (i in before.indices) assertContentEquals(before[i], after[i])
     }
 
     @Test
@@ -181,8 +196,30 @@ class SplatWebBuffersTest {
         assertFailsWith<IllegalArgumentException> { SplatWebBuffers.packOrder(intArrayOf(1), 1) }
     }
 
+    // What the view applies after the shader: ToneMapper.Filmic (Filament's FilmicToneMapper,
+    // the Narkowicz 2015 ACES fit) then the sRGB OETF (IEC 61966-2-1).
+    private fun filmic(x: Double): Double =
+        (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
+
+    private fun linearToSrgb(value: Double): Double =
+        if (value < 0.0031308) value * 12.92 else 1.055 * value.pow(1.0 / 2.4) - 0.055
+
     @Test
-    fun colourRoundTripMatchesAndroidConstants() {
+    fun colourRoundTripThroughFilmicAndSrgbIsTheIdentity() {
+        // Every 8-bit display level: shader side (EOTF, inverse Filmic), then view side
+        // (Filmic, OETF), must give the level back. Both inverses are analytic and this is
+        // Double arithmetic, so the only error is rounding: 1e-9 is a millionth of the
+        // 1/255 step, and far below the two levels the browser spec allows for the view's
+        // colour-grading LUT.
+        for (level in 0..255) {
+            val srgb = level / 255.0
+            val shader = SplatWebMath.inverseFilmic(SplatWebMath.srgbToLinear(srgb))
+            assertEquals(srgb, linearToSrgb(filmic(shader)), 1e-9, "level $level")
+        }
+    }
+
+    @Test
+    fun srgbEotfAndInverseFilmicMatchAndroidConstants() {
         val srgb = doubleArrayOf(0.0, 0.5, 1.0)
         val linear = doubleArrayOf(0.0, 0.21404114048223255, 1.0)
         val inverse = doubleArrayOf(0.0, 0.14927107629807476, 7.241657386774)
