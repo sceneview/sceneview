@@ -22,10 +22,22 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * paused, and it is closed when the composable leaves the composition. Between the two the
  * picture should stay live, so this is what the default binds to.
  *
- * Falls back to `LocalLifecycleOwner` when the context is not hosted by a lifecycle owner.
+ * Public so that a screen can name the default, for instance to choose between it and a
+ * narrower lifecycle:
+ *
+ * ```kotlin
+ * ARSceneView(
+ *     lifecycle = if (pauseWhenCovered) LocalLifecycleOwner.current.lifecycle
+ *                 else rememberHostLifecycle(),
+ * )
+ * ```
+ *
+ * @return the lifecycle of the first [LifecycleOwner] found by unwrapping `LocalContext` (the
+ * activity, also from inside a `Dialog` or a themed subtree), or `LocalLifecycleOwner`'s when
+ * the context is not hosted by one.
  */
 @Composable
-internal fun rememberHostLifecycle(): Lifecycle {
+fun rememberHostLifecycle(): Lifecycle {
     val context = LocalContext.current
     val local = LocalLifecycleOwner.current.lifecycle
     return remember(context, local) { context.findHostLifecycle() ?: local }

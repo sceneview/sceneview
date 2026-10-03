@@ -278,7 +278,7 @@ fun ARSceneView(
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
-    lifecycle: Lifecycle = /* the host activity lifecycle */,   // NOT LocalLifecycleOwner — see the note below
+    lifecycle: Lifecycle = rememberHostLifecycle(),   // the host ACTIVITY, not LocalLifecycleOwner — see the note below
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -288,16 +288,25 @@ without touching the screen, so the composable sets `keepScreenOn` on its host v
 the previous value back when it leaves the composition. Nothing to add in app code; a 3D
 `SceneView` leaves the display timeout alone.
 
-**Note — `ARSceneView.lifecycle` defaults to the host ACTIVITY's lifecycle.** The AR session and
-the render loop run while the composable is in the composition and the activity is resumed; the
-session pauses when the activity pauses and is closed on disposal. It deliberately does not follow
-`LocalLifecycleOwner`: inside a `NavHost` that is the destination, which leaves `RESUMED` when its
-exit transition *starts*, and a session bound to it froze the last camera image on screen for the
-whole transition. Do not add your own `session.pause()` on navigation. To pause the camera while
-an `ARSceneView` stays composed but hidden (an off-screen pager page), pass the narrower lifecycle
-explicitly: `ARSceneView(lifecycle = LocalLifecycleOwner.current.lifecycle)`. Two `ARSceneView`s
-composed at once (an AR screen animating into another) share the single camera: the one that
-resumes last runs, the other keeps its last frame. The 3D `SceneView` still defaults to
+**Note — `ARSceneView.lifecycle` defaults to `rememberHostLifecycle()`, the host ACTIVITY's
+lifecycle.** The AR session and the render loop run while the composable is in the composition and
+the activity is resumed; the session pauses when the activity pauses and is closed on disposal. It
+deliberately does not follow `LocalLifecycleOwner`: inside a `NavHost` that is the destination,
+which leaves `RESUMED` when its exit transition *starts*, and a session bound to it froze the last
+camera image on screen for the whole transition. Do not add your own `session.pause()` on
+navigation. The camera stays on wherever the host keeps the composable composed but not visible:
+- a **Fragment** kept off screen (a `ViewPager2` page) and a screen covered by a full-screen
+  `dialog()` destination: pass `ARSceneView(lifecycle = LocalLifecycleOwner.current.lifecycle)`.
+  Inside a fragment's `ComposeView` that is the fragment's view lifecycle. Two AR pages left on
+  the default: the last one to register takes the camera, whichever is visible.
+- a fragment hidden with `hide()` (it stays resumed) and a Compose `HorizontalPager` page (no
+  lifecycle per page): no lifecycle helps, take the `ARSceneView` out of the composition.
+
+Two `ARSceneView`s composed at once (an AR screen animating into another) share the single camera:
+the one that resumes last runs, the other keeps its last frame; if that resume fails, the failure
+goes to `onSessionFailed` and the first one runs again. Known limit: on a predictive back gesture
+from one AR screen to another, the screen previewed underneath takes the camera and the screen
+under the finger is frozen until the gesture ends. The 3D `SceneView` still defaults to
 `LocalLifecycleOwner`.
 
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D

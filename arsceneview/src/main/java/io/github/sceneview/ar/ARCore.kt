@@ -2,6 +2,9 @@ package io.github.sceneview.ar
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import androidx.annotation.MainThread
 import com.google.ar.core.ArCoreApk.Availability
 import com.google.ar.core.Config
 import com.google.ar.core.Session
@@ -125,6 +128,7 @@ class ARCore(
      * @param context Android context for session creation.
      * @param handler Permission handler, or `null` to skip permission checks.
      */
+    @MainThread
     fun resume(context: Context, handler: ARPermissionHandler?) {
         if (session == null) {
             if (handler == null || checkPermissionAndInstall(handler)) {
@@ -137,12 +141,13 @@ class ARCore(
     /**
      * Pauses the current ARCore session.
      *
-     * The session also gives up its turn for the camera: another session it had taken the
-     * camera from is not resumed here (see [CameraHandover]), only when this one is destroyed.
+     * The session also gives up its turn for the camera. Another session it had taken the
+     * camera from, and that is still resumed, runs again right after the current main-thread
+     * dispatch (see [CameraArbiter.pause]).
      */
+    @MainThread
     fun pause() {
-        cameraHandover.release(this)
-        yieldCamera()
+        cameraArbiter.pause(cameraClient)
     }
 
     /**
@@ -152,31 +157,22 @@ class ARCore(
      * both follow a resumed activity. The device has a single camera for ARCore, so the session
      * that resumes last takes it and the other one keeps its last frame for the rest of its
      * transition.
+     *
+     * A resume that throws (`CameraNotAvailableException` when another app holds the camera) is
+     * reported through [onArSessionFailed] instead of escaping into the lifecycle observer, and
+     * the camera goes back to the session it was taken from.
      */
     private fun resumeSession() {
-        val session = session ?: return
-        cameraHandover.claim(this)?.yieldCamera()
-        session.resume()
+        cameraArbiter.resume(cameraClient)
     }
 
-    /** Pauses the session when it is running. Its claim on the camera is left untouched. */
-    private fun yieldCamera() {
-        session?.takeIf { it.isResumed }?.pause()
-    }
-
-    /**
-     * Resumes a session that is still entitled to the camera after the one that had taken it
-     * was destroyed: a predictive back gesture that previews an AR screen and is then cancelled
-     * leaves the first screen in place, and its camera has to come back.
-     */
-    private fun takeBackCamera() {
-        val session = session?.takeUnless { it.isClosed || it.isResumed } ?: return
-        try {
-            session.resume()
-        } catch (e: Exception) {
-            // Reported to this session's host: the caller is another view's teardown.
-            onException(e)
-        }
+    /** This session as [CameraArbiter] sees it. */
+    private val cameraClient = object : CameraClient {
+        override val isRunning: Boolean get() = session?.isResumed == true
+        override val canRun: Boolean get() = session?.isClosed == false
+        override fun start() { session?.resume() }
+        override fun stop() { session?.takeIf { it.isResumed }?.pause() }
+        override fun onStartFailed(exception: Exception) = onException(exception)
     }
 
     /**
@@ -371,17 +367,17 @@ class ARCore(
      * Closing the session that runs the camera hands the camera back to the session it had
      * taken it from, when that one is still resumed (see [CameraHandover]).
      */
+    @MainThread
     fun destroy() {
-        cameraHandover.release(this)
-        session?.let {
-            synchronized(it) {
-                if (session == null) return@synchronized
-                closeSessionInOrder(isResumed = it.isResumed, pause = it::pause, close = it::close)
-                session = null
+        cameraArbiter.destroy(cameraClient) {
+            session?.let {
+                synchronized(it) {
+                    if (session == null) return@synchronized
+                    closeSessionInOrder(isResumed = it.isResumed, pause = it::pause, close = it::close)
+                    session = null
+                }
             }
         }
-        // The camera is free: a session this one had taken it from runs again.
-        cameraHandover.holder?.takeBackCamera()
     }
 
     /** Forwards an exception to the [onArSessionFailed] callback. */
@@ -442,8 +438,15 @@ fun TrackingFailureReason.getDescription(context: Context) = when (this) {
     else -> context.getString(R.string.sceneview_unknown_tracking_failure, this)
 }
 
-/** One camera per device, so one arbitration per process. Main thread only. */
-private val cameraHandover = CameraHandover<ARCore>()
+/**
+ * One camera per device, so one arbitration per process.
+ *
+ * It holds a session from its resume to its pause or its destroy, whichever comes first, so a
+ * host that drops an `ARCore` without either keeps it alive; `ARSceneView` always destroys on
+ * disposal. [ARCore.resume], [ARCore.pause] and [ARCore.destroy] are main-thread calls, like
+ * the ARCore session calls they make.
+ */
+private val cameraArbiter = CameraArbiter { block -> Handler(Looper.getMainLooper()).post(block) }
 
 /**
  * Pause-then-close for an ARCore session (#4026), split out so the order is a JVM test.
