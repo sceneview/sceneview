@@ -1,8 +1,6 @@
 package io.github.sceneview.demo.demos
 
 import androidx.annotation.StringRes
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,18 +13,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.RestartAlt
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -40,17 +32,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
@@ -59,38 +49,35 @@ import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
-import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.LocalDemoSheetCover
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
 import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.GeometryDemoState
 import io.github.sceneview.demo.demos.internal.GeometryLayout
 import io.github.sceneview.demo.demos.internal.GeometryShape
-import io.github.sceneview.demo.demos.internal.rememberStudioEnvironment
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.ui.overMediaEdge
+import io.github.sceneview.demo.ui.GlassChip
+import io.github.sceneview.demo.ui.GlassChipStyle
+import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
-
-/** The studio the shapes stand in: what a metallic, mirror-smooth primitive has to reflect. */
-private const val STUDIO_ENVIRONMENT = "environments/studio_warm_2k.hdr"
 
 /** Where the spin is parked in QA mode, so two captures of the same state are the same picture. */
 private const val QA_SPIN_DEGREES = 30f
@@ -106,7 +93,7 @@ private val SIDE_BY_SIDE_CONTROLS_MIN_WIDTH = 560.dp
 
 /**
  * The seven built-in geometry primitives of `SceneScope` — `CubeNode`, `SphereNode`,
- * `CylinderNode`, `ConeNode`, `TorusNode`, `CapsuleNode`, `PlaneNode` — side by side in a studio.
+ * `CylinderNode`, `ConeNode`, `TorusNode`, `CapsuleNode`, `PlaneNode` — side by side on the stage.
  *
  * On screen:
  * - **Shape chips** over the scene show or hide each primitive. A hidden shape leaves its slot
@@ -138,13 +125,19 @@ fun GeometryDemo(onBack: () -> Unit) {
     // see: with the spin paused, nothing else would draw the change.
     val renderInvalidator = rememberRenderInvalidator()
 
-    // A drawn studio, not just its light: metal has to have something to mirror, or Metallic 1
-    // turns every flat face black.
-    val studio = rememberStudioEnvironment(engine, environmentLoader, STUDIO_ENVIRONMENT)
-    val fallbackEnvironment = rememberEnvironment(environmentLoader)
     val firstFrame = rememberFirstFrameState(engine)
-    // The studio is the picture, not a refinement of it: "Scene ready" waits for it (#4174).
-    firstFrame.holdUntil(landed = studio != null)
+    // The studio is lit, not drawn. Its light is what a metallic, mirror-smooth primitive has to
+    // reflect — without it Metallic 1 turns every flat face black — and "Scene ready" waits for
+    // it. Behind the shapes is the stage: the studio drawn as a backdrop is a grey wall with a
+    // white sweep across it, and no tone reads against both.
+    val studioLight = rememberMaterialsShowcaseEnvironment(environmentLoader, firstFrame)
+    // Drawn by Filament: the surface is opaque, and its clear is black, not the stage colour.
+    val stageBackdrop = remember(engine) { ViewerBackdrop.create(engine) }
+    DisposableEffect(stageBackdrop) {
+        onDispose { engine.destroySkybox(stageBackdrop) }
+    }
+    // `copy` shares the environment's Filament handles; only the backdrop is this screen's.
+    val environment = remember(studioLight, stageBackdrop) { studioLight.copy(skybox = stageBackdrop) }
 
     val materials = rememberShapeMaterials(materialLoader, state.metallic, state.roughness)
     LaunchedEffect(state.metallic, state.roughness) { renderInvalidator.requestRender() }
@@ -158,7 +151,9 @@ fun GeometryDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = stringResource(R.string.demo_geometry_title),
         onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
+        // The cover lifts on the lit scene, not on the first frame: the studio's light lands a
+        // moment after the shapes, and lifting in between showed the scene twice.
+        firstFrameRendered = firstFrame.sceneReady,
         sceneReady = firstFrame.sceneReady,
         onReset = state::reset,
         dock = listOf(
@@ -213,10 +208,13 @@ fun GeometryDemo(onBack: () -> Unit) {
             // sheet then only narrows the band the camera projects into: the same picture, a
             // little smaller, follows it up, and the orbit the user set survives opening
             // Settings. Fitting to the live band instead would rebuild the orbit on every frame
-            // of a drag.
-            val restBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
-                maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoChromeBottomInset.current) +
-                with(LocalDensity.current) { chipsHeightPx.toDp() } + SceneViewTokens.Space.sm
+            // of a drag. The band at rest is what the scaffold reported while the sheet was
+            // closed, for this window and this chip block.
+            val rest = remember(maxWidth, maxHeight, chipsHeightPx) { GeometryRestBottom() }
+            val restBottom = rest.observe(
+                live = chrome.calculateBottomPadding(),
+                sheetClosed = LocalDemoSheetCover.current == 0.dp,
+            )
             val restHeight = (maxHeight - chrome.calculateTopPadding() - restBottom)
                 .coerceAtLeast(maxHeight * GEOMETRY_MIN_VISIBLE_FRACTION)
             val restAspect = (maxWidth - left - right) / restHeight
@@ -256,7 +254,7 @@ fun GeometryDemo(onBack: () -> Unit) {
                 engine = engine,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
-                environment = studio?.resource ?: fallbackEnvironment,
+                environment = environment,
                 cameraManipulator = cameraManipulator,
                 renderInvalidator = renderInvalidator,
                 // Every shape owns a slot. Auto-centring would move the survivors each time one
@@ -300,9 +298,48 @@ internal fun geometryContentPadding(
 /** The floor the SDK applies to `contentPadding`: a tenth of the view stays visible. */
 private const val GEOMETRY_MIN_VISIBLE_FRACTION = 0.1f
 
-/** The shape's colour: the four brand tones in turn, so no two neighbours share one. */
+/**
+ * What the chrome covers at the bottom of the scene **with the settings sheet closed**, as the
+ * scaffold reported it — not worked out again from the scaffold's parts.
+ *
+ * `LocalDemoSceneCover` is the chrome or the sheet, whichever reaches higher, so the value at
+ * rest can only be read while the sheet is down. [observe] is fed every composition and keeps the
+ * last such reading. A sheet on its way down is "closed" for the scaffold from the moment it is
+ * let go, while it still covers more than the chrome: those readings are skipped until it is back
+ * at the remembered one.
+ */
+internal class GeometryRestBottom {
+    private var known: Dp = Dp.Unspecified
+    private var sheetSeenOpen = false
+
+    /**
+     * @param live        The bottom the scaffold reports right now.
+     * @param sheetClosed Whether the settings sheet is closed, or closing.
+     * @return the bottom at rest. Until one has been seen — Settings was already open when the
+     * window took this size — it is [live].
+     */
+    fun observe(live: Dp, sheetClosed: Boolean): Dp {
+        if (!sheetClosed) {
+            sheetSeenOpen = true
+        } else if (!sheetSeenOpen || !known.isSpecified || live <= known) {
+            known = live
+            sheetSeenOpen = false
+        }
+        return if (known.isSpecified) known else live
+    }
+}
+
+/**
+ * The two brand tints made for a dark ground, in turn, so no two neighbours in a row share one.
+ *
+ * The stage is `stage-background` in both themes. The darker half of the brand ramp — `primary`
+ * and `accent` — renders at about 2:1 against it; these two measure above 6:1.
+ */
+private val STAGE_TONES = listOf(SceneViewColors.TintLight, SceneViewColors.TintSoft)
+
+/** The shape's colour on the stage — see [STAGE_TONES]. */
 internal val GeometryShape.color: Color
-    get() = SceneViewColors.Ramp4[ordinal % SceneViewColors.Ramp4.size]
+    get() = STAGE_TONES[ordinal % STAGE_TONES.size]
 
 @get:StringRes
 internal val GeometryShape.labelRes: Int
@@ -346,7 +383,8 @@ private fun rememberShapeMaterials(
  */
 @Composable
 private fun rememberSpinDegrees(spinning: Boolean): MutableFloatState {
-    val degrees = remember { mutableFloatStateOf(0f) }
+    // Saved, so a paused pose survives whatever rebuilds the screen.
+    val degrees = rememberSaveable { mutableFloatStateOf(0f) }
     LifecycleAwareLaunchedEffect(DemoSettings.qaMode, spinning) {
         if (DemoSettings.qaMode) {
             degrees.floatValue = QA_SPIN_DEGREES
@@ -464,8 +502,9 @@ private fun SceneScope.GeometryShapes(
 // ── Controls ─────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * One switch per shape, floating over the scene: solid white while the shape is shown, glass
- * once it is hidden — the white-on-media language of the dock, readable in both themes.
+ * One switch per shape, floating over the scene — a legend of what is on the stage. Every chip
+ * is glass: shown, it carries a dot of its shape's colour; hidden, the dot is a hollow ring and
+ * the name is struck through.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -483,39 +522,15 @@ internal fun GeometryShapeChips(
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
         GeometryShape.entries.forEach { shape ->
-            GeometryShapeChip(
+            GlassChip(
                 label = stringResource(shape.labelRes),
-                shown = shape in visibleShapes,
-                onToggle = { onToggle(shape) },
+                selected = shape in visibleShapes,
+                toggle = true,
+                onClick = { onToggle(shape) },
+                style = GlassChipStyle.Legend,
+                swatch = shape.color,
             )
         }
-    }
-}
-
-@Composable
-private fun GeometryShapeChip(label: String, shown: Boolean, onToggle: () -> Unit) {
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
-    val container by animateColorAsState(
-        targetValue = if (shown) SceneViewTokens.Glass.onGlass else SceneViewTokens.Glass.surface,
-        animationSpec = SceneViewTokens.Motion.fade(),
-        label = "geometry-chip-container",
-    )
-    val content by animateColorAsState(
-        targetValue = if (shown) SceneViewTokens.Stage.background else SceneViewTokens.Glass.onGlass,
-        animationSpec = SceneViewTokens.Motion.fade(),
-        label = "geometry-chip-content",
-    )
-    Box(
-        modifier = Modifier
-            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            .overMediaEdge(shape)
-            .clip(shape)
-            .background(container)
-            .toggleable(value = shown, role = Role.Switch, onValueChange = { onToggle() })
-            .padding(horizontal = SceneViewTokens.Glass.pillPaddingHorizontal),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1)
     }
 }
 

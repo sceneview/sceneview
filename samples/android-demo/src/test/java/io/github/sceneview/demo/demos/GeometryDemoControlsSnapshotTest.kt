@@ -130,7 +130,7 @@ class GeometryDemoControlsSnapshotTest {
 
     @Test
     fun shapeChips_only_cube_shown() {
-        // Pins the hidden look — glass, white label — next to the one shown chip.
+        // Pins the hidden look — hollow ring, name struck through — next to the one shown chip.
         captureRoboImage(
             "src/test/snapshots/geometry_shape_chips_only_cube.png",
             roborazziOptions = HOST_TOLERANT,

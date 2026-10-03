@@ -817,7 +817,8 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AllShapesDemo.swift
     contract: >-
       Seven spinning SDK primitives (cube, sphere, cylinder, cone, torus,
-      capsule, plane) in brand colours in a drawn studio, full-bleed and fitted
+      capsule, plane) in the two brand tints on the stage, lit by a studio
+      IBL, full-bleed and fitted
       to the band the chrome leaves free (2-3-2 block in portrait, one row in
       landscape); chips over the scene show or hide each one in a fixed slot
       without moving the camera; dock Animate and Recenter; Settings holds
