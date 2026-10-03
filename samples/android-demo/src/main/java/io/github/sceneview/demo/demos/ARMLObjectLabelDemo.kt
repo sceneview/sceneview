@@ -52,6 +52,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.CameraImageRotation
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.CAMERA_IMAGE_MAPPING_TAG
 import io.github.sceneview.demo.demos.internal.CameraMappingProbe
 import io.github.sceneview.demo.demos.internal.DetectionCameraPose
 import io.github.sceneview.demo.demos.internal.DetectionCapture
@@ -511,7 +512,9 @@ private class PendingDetection(
  * association. A matched detection keeps its anchor while the fresh hit stays within
  * [isWithinReanchorTolerance] (a still object must not rebuild its label on every pass) and is
  * re-anchored once the object has moved; missing tracks expire through [ObjectLabelTracker],
- * which detaches their anchors even when the result list is empty.
+ * which detaches their anchors even when the result list is empty. A detection no surface can
+ * be found for returns `null`: the tracker counts that pass toward expiry too, so an object
+ * moved to where nothing is known does not keep its label at the old place.
  */
 @Suppress("LongParameterList")
 private fun updateAnchorsFromDetections(
@@ -557,10 +560,16 @@ private fun findLabelHit(
 ): HitResult? {
     val centreHits = frame.hitTest(capture.worldRay(observation.centerX, observation.centerY))
     val baseHits = frame.hitTest(capture.worldRay(observation.centerX, observation.bottomY))
-    val choice = chooseLabelHit(
-        centreHits = centreHits.map { it.toLabelHitCandidate() },
-        baseHits = baseHits.map { it.toLabelHitCandidate() },
-    ) ?: return null
+    val centreCandidates = centreHits.map { it.toLabelHitCandidate() }
+    val baseCandidates = baseHits.map { it.toLabelHitCandidate() }
+    val choice = chooseLabelHit(centreHits = centreCandidates, baseHits = baseCandidates)
+    // ARCore documents depth points for the screen-point `hitTest` only. Whether this ray
+    // variant returns them too is read off this line on a device, once per detection and pass.
+    android.util.Log.d(
+        CAMERA_IMAGE_MAPPING_TAG,
+        labelHitReport(observation.label, centreCandidates, baseCandidates, choice),
+    )
+    if (choice == null) return null
     return when (choice.ray) {
         LabelRay.Centre -> centreHits[choice.index]
         LabelRay.Base -> baseHits[choice.index]
@@ -576,10 +585,14 @@ private fun HitResult.toLabelHitCandidate(): LabelHitCandidate {
         trackable.trackingState != TrackingState.TRACKING -> LabelSurface.Other
         trackable is DepthPoint -> LabelSurface.Depth
         // ARCore gives plane hits "significant geometric leeway": the ray only has to meet the
-        // plane's infinite extension. Same filter as the Measure demo.
+        // plane's infinite extension. Same filter as the Measure demo, plus the orientation: an
+        // object stands on a floor or a table, never on a wall.
         trackable is Plane ->
-            if (trackable.subsumedBy == null && trackable.isPoseInPolygon(hitPose)) {
-                LabelSurface.PlaneInsidePolygon
+            if (trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                trackable.subsumedBy == null &&
+                trackable.isPoseInPolygon(hitPose)
+            ) {
+                LabelSurface.SupportPlane
             } else {
                 LabelSurface.Other
             }

@@ -29,9 +29,14 @@ internal data class ObjectLabelTrack<T>(
  *
  * `createPayload` receives the track's previous payload. Returning that same instance keeps it
  * (nothing is disposed), returning a different one replaces and disposes the previous payload,
- * and returning `null` keeps the previous payload because no better one could be produced. A
- * missing observation is retained briefly to absorb detector flicker, then disposed after
- * [expiryPasses].
+ * and returning `null` means the object could not be placed on this pass.
+ *
+ * A payload is retained briefly to absorb flicker, then disposed after [expiryPasses]
+ * consecutive passes that did not confirm it — the object was not detected, or it was detected
+ * but `createPayload` returned `null`. The second case matters: an object moved to where no
+ * surface is known must not leave its label behind at the old place for as long as it stays
+ * in view. Such a track survives without a payload and gets one on the next pass that can
+ * place it.
  */
 internal class ObjectLabelTracker<T>(
     private val expiryPasses: Int = 3,
@@ -65,11 +70,17 @@ internal class ObjectLabelTracker<T>(
             if (replacement != null && previousPayload != null && replacement !== previousPayload) {
                 dispose(previousPayload)
             }
+            // A pass that could not place the object does not confirm where its payload is:
+            // it counts toward expiry like a pass that did not see the object at all.
+            val unconfirmed = previousPayload.takeIf { replacement == null }
+            val missed = if (unconfirmed != null) (previous?.missedPasses ?: 0) + 1 else 0
+            val expired = unconfirmed != null && missed >= expiryPasses
+            if (unconfirmed != null && expired) dispose(unconfirmed)
             tracks[key] = ObjectLabelTrack(
                 key = key,
                 observation = observation,
-                payload = replacement ?: previousPayload,
-                missedPasses = 0,
+                payload = if (expired) null else replacement ?: previousPayload,
+                missedPasses = if (expired) 0 else missed,
             )
         }
 

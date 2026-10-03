@@ -2205,7 +2205,8 @@ data class CameraImagePoint(val x: Float, val y: Float)
 data class CameraImageToViewTransform(
     val m00: Float, val m01: Float, val m02: Float,
     val m10: Float, val m11: Float, val m12: Float,
-) { fun map(x: Float, y: Float): CameraImagePoint }
+)
+fun CameraImageToViewTransform.map(x: Float, y: Float): CameraImagePoint
 fun Frame.cameraImageToViewMapping(
     imageSize: CameraImageSize,
     inputRotationDegrees: Int,

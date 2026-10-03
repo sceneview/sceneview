@@ -73,23 +73,79 @@ class LabelHitChoiceTest {
     @Test
     fun `depth along the centre ray wins over the plane behind the object`() {
         val centre = listOf(
-            hit(LabelSurface.PlaneInsidePolygon, 2.4f), // the wall behind
+            hit(LabelSurface.SupportPlane, 2.4f), // the wall behind
             hit(LabelSurface.Depth, 0.8f), // the object itself
         )
-        val base = listOf(hit(LabelSurface.PlaneInsidePolygon, 0.9f))
+        val base = listOf(hit(LabelSurface.SupportPlane, 0.9f))
 
         assertEquals(LabelHitChoice(LabelRay.Centre, 1), chooseLabelHit(centre, base))
     }
 
     @Test
     fun `without depth the label goes to the support under the object, not to the wall behind`() {
-        val centre = listOf(hit(LabelSurface.PlaneInsidePolygon, 2.4f))
+        val centre = listOf(hit(LabelSurface.SupportPlane, 2.4f))
         val base = listOf(
-            hit(LabelSurface.PlaneInsidePolygon, 1.7f),
-            hit(LabelSurface.PlaneInsidePolygon, 0.9f),
+            hit(LabelSurface.SupportPlane, 1.7f),
+            hit(LabelSurface.SupportPlane, 0.9f),
         )
 
         assertEquals(LabelHitChoice(LabelRay.Base, 1), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `a mug on a table not detected yet is not labelled on the floor behind it`() {
+        // No depth. The table is unknown to ARCore, the floor is known: the base ray goes
+        // through the table and lands on the floor, more than a metre behind the mug.
+        val centre = listOf(
+            hit(LabelSurface.FeaturePoint, 0.62f), // on the mug
+            hit(LabelSurface.SupportPlane, 2.1f), // the floor, never used along this ray
+        )
+        val base = listOf(hit(LabelSurface.SupportPlane, 1.9f)) // the floor again
+
+        assertEquals(LabelHitChoice(LabelRay.Centre, 0), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `with nothing to check it against, a far support plane places no label`() {
+        val floorBehind = listOf(hit(LabelSurface.SupportPlane, 1.9f))
+        val tableTop = listOf(hit(LabelSurface.SupportPlane, 0.7f))
+
+        assertEquals(null, chooseLabelHit(emptyList(), floorBehind))
+        assertEquals(LabelHitChoice(LabelRay.Base, 0), chooseLabelHit(emptyList(), tableTop))
+    }
+
+    @Test
+    fun `a support plane at the object's distance is its support, however far`() {
+        // A chair on the floor, seen from across the room: far, but the feature point on the
+        // chair says the floor hit is under it.
+        val centre = listOf(hit(LabelSurface.FeaturePoint, 2.9f))
+        val base = listOf(hit(LabelSurface.SupportPlane, 3.1f))
+
+        assertEquals(LabelHitChoice(LabelRay.Base, 0), chooseLabelHit(centre, base))
+    }
+
+    @Test
+    fun `own support is decided by the margin behind the scene, then by table-top range`() {
+        assertEquals(true, isOwnSupport(planeDistanceMeters = 0.9f, sceneDistanceMeters = 0.62f))
+        assertEquals(false, isOwnSupport(planeDistanceMeters = 0.95f, sceneDistanceMeters = 0.62f))
+        assertEquals(true, isOwnSupport(planeDistanceMeters = 1.0f, sceneDistanceMeters = null))
+        assertEquals(false, isOwnSupport(planeDistanceMeters = 1.05f, sceneDistanceMeters = null))
+    }
+
+    @Test
+    fun `the device log line names what each ray met and the hit chosen`() {
+        val centre = listOf(hit(LabelSurface.Depth, 0.62f), hit(LabelSurface.SupportPlane, 1.8f))
+        val base = emptyList<LabelHitCandidate>()
+
+        assertEquals(
+            "hitTest \"Cup\": centre ray [Depth 0.62 m, SupportPlane 1.80 m], " +
+                "base ray [none] -> Centre Depth 0.62 m",
+            labelHitReport("Cup", centre, base, chooseLabelHit(centre, base)),
+        )
+        assertEquals(
+            "hitTest \"Cup\": centre ray [none], base ray [Other 0.90 m] -> no label",
+            labelHitReport("Cup", base, listOf(hit(LabelSurface.Other, 0.9f)), null),
+        )
     }
 
     @Test
@@ -102,7 +158,7 @@ class LabelHitChoiceTest {
 
     @Test
     fun `a plane along the centre ray alone places no label`() {
-        val centre = listOf(hit(LabelSurface.PlaneInsidePolygon, 2.4f))
+        val centre = listOf(hit(LabelSurface.SupportPlane, 2.4f))
 
         assertEquals(null, chooseLabelHit(centre, emptyList()))
     }

@@ -38,7 +38,7 @@ internal fun cameraMappingReport(
  * run shows one line per orientation instead of one per detector pass.
  */
 internal class CameraMappingProbe(
-    private val log: (String) -> Unit = { Log.i(TAG, it) },
+    private val log: (String) -> Unit = { Log.i(CAMERA_IMAGE_MAPPING_TAG, it) },
 ) {
     private var lastGeometry: List<Int>? = null
 
@@ -55,8 +55,7 @@ internal class CameraMappingProbe(
         lastGeometry = geometry
         log(cameraMappingReport(mapping, viewWidth, viewHeight))
     }
-
-    private companion object {
-        const val TAG = "CameraImageMapping"
-    }
 }
+
+/** Logcat tag of the camera-image device checks: `adb logcat -s CameraImageMapping`. */
+internal const val CAMERA_IMAGE_MAPPING_TAG = "CameraImageMapping"
