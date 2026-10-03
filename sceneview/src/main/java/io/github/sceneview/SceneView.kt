@@ -17,12 +17,9 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
@@ -378,9 +375,13 @@ fun SceneView(
      * follows too — [autoFitContent], `frameToBounds` and [fitCameraToBounds] fit inside the
      * visible area.
      *
-     * Written to [cameraNode] as [CameraNode.contentPadding]; see [paddedViewport] for the exact
-     * contract. `ARSceneView` has no such parameter: an AR camera's projection is the device
-     * camera's and is never re-framed.
+     * Written to [cameraNode] as [CameraNode.contentPadding], which says which projections it
+     * rebuilds, and reset to nothing when the camera leaves this view. Left at its default, the
+     * parameter writes nothing at all — a [CameraNode.contentPadding] set by hand is kept. The
+     * visible area never goes below a tenth of the view on either axis.
+     *
+     * `ARSceneView` has no such parameter: an AR camera's projection is the device camera's and
+     * is never re-framed.
      */
     contentPadding: PaddingValues = PaddingValues(0.dp),
     /**
@@ -549,21 +550,22 @@ fun SceneView(
     }
     // The visible area, in the pixels of the surface. Keyed on the pixel values so an animated
     // padding writes the camera once per changed frame and an unrelated recomposition writes
-    // nothing — `CameraNode.contentPadding` asks for the frame that shows it by itself.
-    val layoutDirection = LocalLayoutDirection.current
-    val contentPaddingPx = with(LocalDensity.current) {
-        val start = contentPadding.calculateStartPadding(layoutDirection).toPx()
-        val end = contentPadding.calculateEndPadding(layoutDirection).toPx()
-        val rtl = layoutDirection == LayoutDirection.Rtl
-        ViewportPadding(
-            left = if (rtl) end else start,
-            top = contentPadding.calculateTopPadding().toPx(),
-            right = if (rtl) start else end,
-            bottom = contentPadding.calculateBottomPadding().toPx()
-        )
+    // nothing — `CameraNode.contentPadding` asks for the frame that shows it by itself. An
+    // effect, not a coroutine: the write lands in the frame that composed the padding, and a
+    // padding animated every frame launches nothing.
+    val contentPaddingPx =
+        contentPadding.toViewportPadding(LocalDensity.current, LocalLayoutDirection.current)
+    val contentPaddingBinding = remember(cameraNode) {
+        ContentPaddingBinding { cameraNode.contentPadding = it }
     }
-    LaunchedEffect(view, cameraNode, contentPaddingPx) {
-        cameraNode.contentPadding = contentPaddingPx
+    DisposableEffect(contentPaddingBinding, contentPaddingPx) {
+        contentPaddingBinding.apply(contentPaddingPx)
+        onDispose { }
+    }
+    // A camera that leaves this view — swapped for another, or the view itself going away — gets
+    // back the whole viewport: the padding belonged to this view's chrome, not to the camera.
+    DisposableEffect(contentPaddingBinding) {
+        onDispose { contentPaddingBinding.release() }
     }
     LaunchedEffect(view, isOpaque) {
         // Pair with `uiHelper.isOpaque` set in SceneRenderer.attachToSurfaceView/

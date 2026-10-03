@@ -1,5 +1,8 @@
 package io.github.sceneview
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import dev.romainguy.kotlin.math.Float4
 import dev.romainguy.kotlin.math.Mat4
 import io.github.sceneview.math.Transform
@@ -10,9 +13,11 @@ import io.github.sceneview.math.Transform
  *
  * It is the pixel form of the `contentPadding` parameter of [io.github.sceneview.SceneView], and
  * what [io.github.sceneview.node.CameraNode.contentPadding] stores. What is left once the four
- * edges are removed is the *visible area*: see [paddedViewport] for what the camera does with it.
+ * edges are removed is the *visible area*, and the camera projects into it.
  *
- * Negative and non-finite values are read as `0`.
+ * Negative and non-finite values are read as `0`. The visible area never goes below a tenth of
+ * the viewport on either axis: two opposite edges that add up to more than 90 % of it are both
+ * reduced in proportion.
  *
  * @property left   Pixels covered from the left edge.
  * @property top    Pixels covered from the top edge.
@@ -54,7 +59,7 @@ data class ViewportPadding(
  * @property shiftY Vertical offset of the visible area's centre, as a fraction of the viewport
  *                  **height**. Positive is **up**.
  */
-data class PaddedViewport(
+internal data class PaddedViewport(
     val aspect: Double,
     val scaleX: Double,
     val scaleY: Double,
@@ -91,13 +96,15 @@ data class PaddedViewport(
  * The function is linear in [padding], so a padding animated on the curve a panel slides on moves
  * the subject on that same curve.
  *
- * The visible area never collapses: when the padding of two opposite edges would leave less than
- * one pixel, both are reduced in proportion until one pixel is left.
+ * The visible area never goes below [MIN_VISIBLE_FRACTION] of the viewport on either axis: when
+ * the padding of two opposite edges adds up to more than the rest, both are reduced in proportion.
+ * A panel dragged over the whole view leaves a small picture, never a degenerate projection — the
+ * same floor as `contentInsets` on iOS.
  *
  * A viewport with no pixels (a surface that has not been sized yet) yields the identity with an
  * aspect of `1`.
  */
-fun paddedViewport(width: Int, height: Int, padding: ViewportPadding): PaddedViewport {
+internal fun paddedViewport(width: Int, height: Int, padding: ViewportPadding): PaddedViewport {
     if (width <= 0 || height <= 0) return PaddedViewport(1.0, 1.0, 1.0, 0.0, 0.0)
     val w = width.toDouble()
     val h = height.toDouble()
@@ -128,7 +135,7 @@ fun paddedViewport(width: Int, height: Int, padding: ViewportPadding): PaddedVie
  * @param shiftX Horizontal shift in Filament's unit: `1` is one viewport width (two NDC units).
  * @param shiftY Vertical shift, `1` being one viewport height, positive up.
  */
-fun postProjectionTransform(
+internal fun postProjectionTransform(
     scaleX: Double,
     scaleY: Double,
     shiftX: Double,
@@ -142,13 +149,64 @@ fun postProjectionTransform(
 
 private fun sanitize(value: Float): Float = if (value.isFinite() && value > 0f) value else 0f
 
-/** Shrinks two opposite paddings in proportion so at least [MIN_VISIBLE_PIXELS] stay visible. */
+/** Shrinks two opposite paddings in proportion so [MIN_VISIBLE_FRACTION] of [size] stays visible. */
 private fun fitOpposite(near: Float, far: Float, size: Double): Pair<Double, Double> {
     val total = near.toDouble() + far.toDouble()
-    val limit = (size - MIN_VISIBLE_PIXELS).coerceAtLeast(0.0)
+    val limit = size * (1.0 - MIN_VISIBLE_FRACTION)
     if (total <= limit || total <= 0.0) return near.toDouble() to far.toDouble()
     val factor = limit / total
     return near * factor to far * factor
 }
 
-private const val MIN_VISIBLE_PIXELS = 1.0
+/**
+ * Smallest share of the viewport the visible area keeps on each axis, whatever the padding: the
+ * padding of two opposite edges is capped at 90 % of the viewport. Same floor as SceneViewSwift's
+ * `contentInsets`.
+ */
+internal const val MIN_VISIBLE_FRACTION = 0.1
+
+/**
+ * The pixel form of a Compose padding: start and end resolved to the left and right edges of the
+ * surface for [layoutDirection], every edge converted with [density].
+ */
+internal fun PaddingValues.toViewportPadding(
+    density: Density,
+    layoutDirection: LayoutDirection
+): ViewportPadding = with(density) {
+    ViewportPadding(
+        left = calculateLeftPadding(layoutDirection).toPx(),
+        top = calculateTopPadding().toPx(),
+        right = calculateRightPadding(layoutDirection).toPx(),
+        bottom = calculateBottomPadding().toPx()
+    )
+}
+
+/**
+ * What ties the `contentPadding` parameter of [SceneView] to one camera, through [write] — the
+ * setter of [io.github.sceneview.node.CameraNode.contentPadding].
+ *
+ * The parameter owns the camera's padding only from the moment it is not zero: left at its
+ * default it writes nothing, so a padding the caller set on the camera by hand is kept. Once it
+ * has written a value it keeps writing — back down to zero included — and [release] gives the
+ * camera its whole viewport back when it leaves the view.
+ */
+internal class ContentPaddingBinding(private val write: (ViewportPadding) -> Unit) {
+
+    /** `true` while the last value written through [apply] was not zero. */
+    var owns = false
+        private set
+
+    /** Writes [padding], unless it is zero and this binding never took the camera's padding. */
+    fun apply(padding: ViewportPadding) {
+        if (padding.isZero && !owns) return
+        write(padding)
+        owns = !padding.isZero
+    }
+
+    /** Resets a padding this binding wrote; leaves one it never touched. */
+    fun release() {
+        if (!owns) return
+        write(ViewportPadding.Zero)
+        owns = false
+    }
+}

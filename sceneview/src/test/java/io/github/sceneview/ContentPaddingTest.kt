@@ -1,5 +1,9 @@
 package io.github.sceneview
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Float4
@@ -129,10 +133,30 @@ class ContentPaddingTest {
 
     @Test
     fun theVisibleAreaNeverCollapses() {
+        // Top and bottom ask for five viewports between them: a tenth of the height stays visible,
+        // and the two edges keep their 1:3 proportion.
         val padded = paddedViewport(width, height, ViewportPadding(top = 3000f, bottom = 9000f))
-        assertTrue(padded.scaleY > 0.0)
-        assertEquals(1.0 / height, padded.scaleY, 1e-9)
-        assertTrue(padded.aspect.isFinite())
+        assertEquals(MIN_VISIBLE_FRACTION, padded.scaleY, 1e-9)
+        assertEquals(1.0, padded.scaleX, 0.0)
+        assertEquals(width / (height * MIN_VISIBLE_FRACTION), padded.aspect, 1e-9)
+        // top = 0.9 * 2400 / 4 = 540, bottom = 1620: the centre sits (1620 - 540) / 2 px above.
+        assertEquals((1620.0 - 540.0) / (2.0 * height), padded.shiftY, 1e-9)
+    }
+
+    @Test
+    fun theFloorIsTenPercentOnEachAxis() {
+        // Exactly 90 % covered is honoured as is; a pixel more is capped.
+        val atLimit = paddedViewport(width, height, ViewportPadding(bottom = height * 0.9f))
+        assertEquals(MIN_VISIBLE_FRACTION, atLimit.scaleY, 1e-6)
+        val beyond = paddedViewport(width, height, ViewportPadding(bottom = height.toFloat()))
+        assertEquals(MIN_VISIBLE_FRACTION, beyond.scaleY, 1e-9)
+        val sides = paddedViewport(
+            width, height, ViewportPadding(left = width.toFloat(), right = width.toFloat())
+        )
+        assertEquals(MIN_VISIBLE_FRACTION, sides.scaleX, 1e-9)
+        // Capped evenly: the visible strip stays centred.
+        assertEquals(0.0, sides.shiftX, 1e-12)
+        assertEquals(1.0, sides.scaleY, 0.0)
     }
 
     @Test
@@ -223,5 +247,62 @@ class ContentPaddingTest {
         val drawn = worldToView(target, rendered(sheet), viewMatrix)!!.toPixel()
         assertEquals(height / 2f, throughGetter.y, 0.5f)
         assertEquals(500f, abs(throughGetter.y - drawn.y), 0.5f)
+    }
+
+    // ── The Compose side ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun startAndEndResolveToTheSurfaceEdgesInBothLayoutDirections() {
+        val density = Density(2f)
+        val padding = PaddingValues(start = 10.dp, top = 20.dp, end = 30.dp, bottom = 40.dp)
+        assertEquals(
+            ViewportPadding(left = 20f, top = 40f, right = 60f, bottom = 80f),
+            padding.toViewportPadding(density, LayoutDirection.Ltr)
+        )
+        // Right-to-left: `start` is the right edge of the surface.
+        assertEquals(
+            ViewportPadding(left = 60f, top = 40f, right = 20f, bottom = 80f),
+            padding.toViewportPadding(density, LayoutDirection.Rtl)
+        )
+    }
+
+    @Test
+    fun absolutePaddingIgnoresTheLayoutDirection() {
+        val density = Density(3f)
+        val padding = PaddingValues.Absolute(left = 4.dp, right = 8.dp)
+        val expected = ViewportPadding(left = 12f, right = 24f)
+        assertEquals(expected, padding.toViewportPadding(density, LayoutDirection.Ltr))
+        assertEquals(expected, padding.toViewportPadding(density, LayoutDirection.Rtl))
+    }
+
+    @Test
+    fun aDefaultParameterNeverTouchesAPaddingSetByHand() {
+        val written = mutableListOf<ViewportPadding>()
+        val binding = ContentPaddingBinding { written += it }
+        binding.apply(ViewportPadding.Zero)
+        binding.apply(ViewportPadding.Zero)
+        binding.release()
+        assertTrue("a zero parameter must write nothing", written.isEmpty())
+        assertTrue(!binding.owns)
+    }
+
+    @Test
+    fun aPaddingThatWasWrittenIsFollowedBackToZeroAndResetOnRelease() {
+        val written = mutableListOf<ViewportPadding>()
+        val binding = ContentPaddingBinding { written += it }
+        binding.apply(sheet)
+        assertTrue(binding.owns)
+        // The panel closes: the zero is written once, then the parameter lets go of the camera.
+        binding.apply(ViewportPadding.Zero)
+        binding.apply(ViewportPadding.Zero)
+        assertEquals(listOf(sheet, ViewportPadding.Zero), written)
+        binding.release()
+        assertEquals("nothing left to reset", 2, written.size)
+
+        // The camera leaves the view while padded: it gets its whole viewport back.
+        binding.apply(sheet)
+        binding.release()
+        assertEquals(listOf(sheet, ViewportPadding.Zero, sheet, ViewportPadding.Zero), written)
+        assertTrue(!binding.owns)
     }
 }

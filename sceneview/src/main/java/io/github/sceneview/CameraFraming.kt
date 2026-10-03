@@ -568,7 +568,8 @@ class SceneAutoFitState {
     /**
      * Runs the auto-fit pass against [contentRoot] for [cameraNode]. No-op once the gate has
      * latched on a settled union, or while the content bounds are still empty / degenerate (async
-     * loads not finished). On a frame where the union diagonal materially changed the camera is
+     * loads not finished). A [CameraNode.contentPadding] that changed since the last pass un-latches
+     * it: the content is framed again, inside the new visible area. On a frame where the union diagonal materially changed the camera is
      * repositioned via [CameraNode.frameToBounds] and the computed [fitDistance] is recorded; the
      * gate latches once that diagonal settles across consecutive frames.
      *
@@ -605,6 +606,10 @@ class SceneAutoFitState {
             gate.recordNoContent()
             return false
         }
+        // The framing is computed for the camera's visible area. A padding that changed since the
+        // last pass — a panel sliding over the view — leaves the content's diagonal untouched, so
+        // the latch has to be told (#4310).
+        if (gate.rearmOnChange(cameraNode.contentPadding)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because

@@ -19,6 +19,7 @@ import io.github.sceneview.collision.Preconditions
 import io.github.sceneview.collision.Ray
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.components.CameraComponent
+import io.github.sceneview.math.Transform
 import io.github.sceneview.math.toMatrix
 
 /**
@@ -318,14 +319,86 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         if (view != null) {
             setLensProjection(focalLength, aspect, near.toDouble(), far.toDouble())
         }
+        // The lens built this projection, not a caller: a later padding may rebuild it.
+        callerProjection = null
         applyContentPadding()
+    }
+
+    /**
+     * Who built the projection this camera currently holds, when it was not [updateProjection]:
+     * `null` for the default lens, otherwise what [contentPadding] needs to know to leave it alone.
+     */
+    private var callerProjection: CallerProjection? = null
+
+    /** A projection a caller set through one of the `set…Projection` functions. */
+    private sealed interface CallerProjection {
+        /**
+         * A field-of-view projection. [followsViewport] is `true` when it was built for this
+         * camera's own aspect ratio — the default of [setProjection] — so a padding that changes
+         * that ratio rebuilds it with the same field of view.
+         */
+        data class FieldOfView(
+            val fovInDegrees: Double,
+            val near: Double,
+            val far: Double,
+            val direction: Camera.Fov,
+            val followsViewport: Boolean
+        ) : CallerProjection
+
+        /** Orthographic, custom matrix or hand-set lens: only the caller can rebuild it. */
+        data object Opaque : CallerProjection
+    }
+
+    override fun setProjection(
+        projection: Camera.Projection,
+        left: Double,
+        right: Double,
+        bottom: Double,
+        top: Double,
+        near: Double,
+        far: Double
+    ) {
+        super.setProjection(projection, left, right, bottom, top, near, far)
+        callerProjection = CallerProjection.Opaque
+    }
+
+    override fun setProjection(
+        fovInDegrees: Double,
+        aspect: Double,
+        near: Double,
+        far: Double,
+        direction: Camera.Fov
+    ) {
+        super.setProjection(fovInDegrees, aspect, near, far, direction)
+        callerProjection = CallerProjection.FieldOfView(
+            fovInDegrees = fovInDegrees,
+            near = near,
+            far = far,
+            direction = direction,
+            followsViewport = aspect == getViewPortAspect()
+        )
+    }
+
+    override fun setLensProjection(focalLength: Double, aspect: Double, near: Double, far: Double) {
+        super.setLensProjection(focalLength, aspect, near, far)
+        callerProjection = CallerProjection.Opaque
+    }
+
+    override fun setCustomProjection(
+        inProjection: Transform,
+        near: Double,
+        far: Double,
+        inProjectionForCulling: Transform
+    ) {
+        super.setCustomProjection(inProjection, near, far, inProjectionForCulling)
+        callerProjection = CallerProjection.Opaque
     }
 
     /**
      * The part of the viewport that something else covers, in pixels from each edge. **What is
      * left is this camera's viewport**: the optical centre moves to the centre of the visible
      * area and the lens's field of view spans it, while the scene keeps drawing on the whole
-     * surface, under the padding too. See [paddedViewport] for the exact contract.
+     * surface, under the padding too.
      *
      * This offsets the **projection** — Filament's `Camera.setScaling` / `setShift`, which this
      * property owns while it is not [ViewportPadding.Zero]. The camera's pose is never touched, so
@@ -338,12 +411,46 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
      * Set it every frame to animate it: the mapping is linear, so a padding that follows a panel
      * moves the subject on the panel's own curve. `SceneView(contentPadding = …)` writes it for
      * you.
+     *
+     * ## Which projection it keeps
+     *
+     * - The default lens ([focalLength], [updateProjection]) is rebuilt for the visible area.
+     * - A field of view set with [setProjection] is kept: when it was built for this camera's own
+     *   aspect ratio (the default), it is rebuilt with the same field of view for the new one.
+     * - An orthographic, custom or explicit-aspect projection is left exactly as it was set. Only
+     *   the scaling and the shift are applied on top, so rebuild it at [getViewPortAspect] when
+     *   the padding changes that ratio, or it is drawn stretched.
+     *
+     * A projection written straight to the Filament [camera] cannot be seen from here and is
+     * treated as the default lens.
+     *
+     * ## Where it does not apply
+     *
+     * - An AR camera ignores it: its projection is the physical camera's, and shifting it would
+     *   pull virtual content away from the real world.
+     * - A recording or a mirror of the view (`SurfaceMirrorer`) draws the same camera, so it gets
+     *   the padded picture — the subject off-centre in the recorded frame.
      */
-    var contentPadding: ViewportPadding = ViewportPadding.Zero
+    open var contentPadding: ViewportPadding = ViewportPadding.Zero
         set(value) {
             if (field == value) return
             field = value
-            updateProjection()
+            when (val projection = callerProjection) {
+                null -> updateProjection()
+                is CallerProjection.FieldOfView -> {
+                    if (projection.followsViewport && view != null) {
+                        setProjection(
+                            projection.fovInDegrees,
+                            getViewPortAspect(),
+                            projection.near,
+                            projection.far,
+                            projection.direction
+                        )
+                    }
+                    applyContentPadding()
+                }
+                CallerProjection.Opaque -> applyContentPadding()
+            }
         }
 
     /** `true` once a non-zero [contentPadding] wrote the camera's scaling and shift. */
@@ -394,7 +501,7 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
         aspect: Double = getViewPortAspect(),
     ) {
         if (view != null) {
-            super.setProjection(fovInDegrees, aspect, near.toDouble(), far.toDouble(), direction)
+            setProjection(fovInDegrees, aspect, near.toDouble(), far.toDouble(), direction)
         }
     }
 
@@ -416,7 +523,8 @@ open class CameraNode(engine: Engine, entity: Entity) : Node(engine, entity), Ca
 
     /**
      * Width / height of the area this camera projects into: the viewport, minus [contentPadding].
-     * `1` until the surface has a size.
+     * `1` until the surface has a size. An AR camera has no padding, so this is always its
+     * viewport's own ratio.
      */
     fun getViewPortAspect() =
         viewport?.let { paddedViewport(it.width, it.height, contentPadding).aspect }

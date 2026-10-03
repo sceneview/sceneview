@@ -120,11 +120,6 @@ public final class io/github/sceneview/CinematicHeroKt {
 	public static final fun CinematicHero-Uww-Ezs (Landroidx/compose/foundation/lazy/grid/LazyGridState;FLandroidx/compose/ui/Modifier;Landroidx/compose/ui/graphics/Brush;Lio/github/sceneview/CinematicCameraProfile;FFLkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 }
 
-public final class io/github/sceneview/ContentPaddingKt {
-	public static final fun paddedViewport (IILio/github/sceneview/ViewportPadding;)Lio/github/sceneview/PaddedViewport;
-	public static final fun postProjectionTransform (DDDD)Ldev/romainguy/kotlin/math/Mat4;
-}
-
 public final class io/github/sceneview/DefaultCameraNode : io/github/sceneview/node/CameraNode {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/DefaultCameraNode$Companion;
@@ -286,28 +281,6 @@ public final class io/github/sceneview/FramingGate$Companion {
 public final class io/github/sceneview/NodeScope : io/github/sceneview/SceneScope {
 	public static final field $stable I
 	public final fun getParentNode ()Lio/github/sceneview/node/Node;
-}
-
-public final class io/github/sceneview/PaddedViewport {
-	public static final field $stable I
-	public fun <init> (DDDDD)V
-	public final fun component1 ()D
-	public final fun component2 ()D
-	public final fun component3 ()D
-	public final fun component4 ()D
-	public final fun component5 ()D
-	public final fun copy (DDDDD)Lio/github/sceneview/PaddedViewport;
-	public static synthetic fun copy$default (Lio/github/sceneview/PaddedViewport;DDDDDILjava/lang/Object;)Lio/github/sceneview/PaddedViewport;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getAspect ()D
-	public final fun getPostProjectionTransform ()Ldev/romainguy/kotlin/math/Mat4;
-	public final fun getScaleX ()D
-	public final fun getScaleY ()D
-	public final fun getShiftX ()D
-	public final fun getShiftY ()D
-	public fun hashCode ()I
-	public final fun isIdentity ()Z
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/RenderInvalidator {
@@ -2473,7 +2446,7 @@ public class io/github/sceneview/node/CameraNode : io/github/sceneview/node/Node
 	public fun destroy ()V
 	public fun getAperture ()F
 	public fun getCamera ()Lcom/google/android/filament/Camera;
-	public final fun getContentPadding ()Lio/github/sceneview/ViewportPadding;
+	public fun getContentPadding ()Lio/github/sceneview/ViewportPadding;
 	public fun getCullingFar ()F
 	public fun getCullingProjectionTransform ()Ldev/romainguy/kotlin/math/Mat4;
 	public fun getFar ()F
@@ -2503,7 +2476,7 @@ public class io/github/sceneview/node/CameraNode : io/github/sceneview/node/Node
 	public final fun motionEventToRay (Landroid/view/MotionEvent;)Lio/github/sceneview/collision/Ray;
 	public fun onComponentChanged ()V
 	public final fun screenPointToRay (FF)Lio/github/sceneview/collision/Ray;
-	public final fun setContentPadding (Lio/github/sceneview/ViewportPadding;)V
+	public fun setContentPadding (Lio/github/sceneview/ViewportPadding;)V
 	public fun setCustomProjection (Ldev/romainguy/kotlin/math/Mat4;DDLdev/romainguy/kotlin/math/Mat4;)V
 	public fun setEditable (Z)V
 	public fun setExposure (F)V

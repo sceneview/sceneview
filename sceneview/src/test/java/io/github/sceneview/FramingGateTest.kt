@@ -453,4 +453,68 @@ class FramingGateTest {
             )
         )
     }
+
+    /** Frames [diagonal] twice so the gate latches on a settled union. */
+    private fun FramingGate.settleAt(diagonal: Float) {
+        repeat(2) {
+            shouldFrame(diagonal)
+            recordFraming(diagonal)
+        }
+    }
+
+    /**
+     * #4310 — `contentPadding` changes where the content is framed without changing its bounds.
+     * A gate that only watches the diagonal stays latched on the framing of the old visible area.
+     */
+    @Test
+    fun aChangedFramingKeyReFramesContentThatDidNotMove() {
+        val gate = FramingGate()
+        val sheetClosed = ViewportPadding.Zero
+        val sheetOpen = ViewportPadding(bottom = 1200f)
+        assertFalse("the first key is only recorded", gate.rearmOnChange(sheetClosed))
+        gate.settleAt(2f)
+        assertTrue(gate.latched)
+
+        assertFalse("the same padding must not re-arm", gate.rearmOnChange(sheetClosed))
+        assertTrue(gate.latched)
+        assertFalse(gate.shouldRun(hasContent = true))
+
+        assertTrue("a new visible area must re-arm", gate.rearmOnChange(sheetOpen))
+        assertFalse(gate.latched)
+        assertTrue(gate.isPending)
+        assertTrue(gate.shouldRun(hasContent = true))
+        assertTrue("the same diagonal is framed again", gate.shouldFrame(2f))
+
+        gate.settleAt(2f)
+        assertTrue("and the gate settles again on the new framing", gate.latched)
+        assertFalse(gate.rearmOnChange(sheetOpen))
+    }
+
+    /** A padding animated every frame re-frames every frame, then settles when it stops. */
+    @Test
+    fun anAnimatedFramingKeyKeepsFramingUntilItStops() {
+        val gate = FramingGate()
+        gate.rearmOnChange(ViewportPadding.Zero)
+        gate.settleAt(2f)
+        for (step in 1..30) {
+            assertTrue(gate.rearmOnChange(ViewportPadding(bottom = step * 40f)))
+            assertTrue(gate.shouldRun(hasContent = true))
+            assertTrue(gate.shouldFrame(2f))
+            gate.recordFraming(2f)
+            assertFalse("one pass at a new padding is not settled yet", gate.latched)
+        }
+        // The panel stopped: one more pass at the same padding latches.
+        assertFalse(gate.rearmOnChange(ViewportPadding(bottom = 30 * 40f)))
+        assertFalse(gate.shouldFrame(2f))
+        gate.recordFraming(2f)
+        assertTrue(gate.latched)
+    }
+
+    @Test
+    fun aNullFramingKeyIsAKeyLikeAnyOther() {
+        val gate = FramingGate()
+        assertFalse(gate.rearmOnChange(null))
+        assertFalse(gate.rearmOnChange(null))
+        assertTrue(gate.rearmOnChange(ViewportPadding.Zero))
+    }
 }

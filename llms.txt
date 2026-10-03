@@ -4176,11 +4176,29 @@ Rules:
 - **The subject gets smaller** by `visibleHeight / height`: the padding centres, it does
   not re-pose. When the bounds are known, win the size back with a fit (below) at the
   visible area's aspect — `CameraNode.getViewPortAspect()` returns it once a padding is set.
+- **A tenth of the view always stays visible.** Two opposite edges that add up to more
+  than 90 % of the surface are both reduced in proportion — a sheet dragged over the
+  whole view leaves a small picture, never a degenerate projection. Negative and
+  non-finite values read as `0`.
+- **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
+  you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
+  back down to zero, and resets it when the camera leaves the `SceneView`.
+- **Your own projection is kept.** Only the default lens is rebuilt for the visible
+  aspect. After `setProjection(fov, …)` the field of view, near, far and direction you
+  set are kept (the aspect follows the visible area only if you passed the viewport's
+  own); an orthographic, lens or custom projection is left exactly as set and only
+  scaled and shifted. `updateProjection()` hands the camera back to the default lens.
+- With `autoFitContent = true` the fit runs again when the padding changes, once it has
+  stopped moving.
 - A camera whose `setScaling` / `setShift` you drive yourself is left alone until a
-  padding is set on it. `ARSceneView` takes no content padding: the AR projection is the
-  device camera's.
-- Android only for now. The iOS counterpart is planned as `.contentInsets(_:)` on
-  `SceneView` (SceneViewSwift) with the same contract — do not generate it until it ships.
+  padding is set on it.
+- **Not in AR.** `ARSceneView` takes no content padding and `ARCameraNode.contentPadding`
+  ignores what is written to it: the AR projection is the device camera's and has to
+  stay aligned with the camera feed.
+- **Recording captures the padded picture.** `SurfaceMirrorer` (and the recorder built on
+  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size.
+- iOS twin: `.contentInsets(_:)` on SceneViewSwift's `SceneView` (#4317), in points, with
+  the same contract and the same 10 % floor.
 
 ### Fit to bounds — frame a box under a given angle
 
