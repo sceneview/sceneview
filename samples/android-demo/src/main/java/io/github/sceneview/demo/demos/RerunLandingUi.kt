@@ -41,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -238,6 +239,9 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
     var confirming by remember { mutableStateOf<LandingSession?>(null) }
     var sharing by remember { mutableStateOf<LandingSession?>(null) }
     val context = LocalContext.current
+    // A scan copy handed to Android earlier stays in the cache for the app that reads it; the
+    // next visit to Room Scan removes it, so no photo of a room outlives its share.
+    LaunchedEffect(Unit) { discardSharedScan(context) }
     val sessions = state.sessions
     Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         Row {

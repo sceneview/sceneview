@@ -58,7 +58,10 @@ import kotlinx.coroutines.CancellationException
 internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val store = remember(context) { rerunSessionStore(context) }
-    var includePhotos by remember(session.id) { mutableStateOf(true) }
+    // A scan recorded without photos has none to leave out: the switch is not offered, and the
+    // sheet says what the file really holds.
+    val offersPhotos = offersPhotosSwitch(session.photos)
+    var includePhotos by remember(session.id) { mutableStateOf(offersPhotos) }
     var prepared by remember(session.id) { mutableStateOf<PreparedScan?>(null) }
     var failed by remember(session.id) { mutableStateOf(false) }
     LaunchedEffect(session.id, includePhotos) {
@@ -71,6 +74,10 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
+            failed = true
+        } catch (_: OutOfMemoryError) {
+            // The copy is built in memory: a long scan on a small heap ends in the sheet's own
+            // "could not be prepared" state, not in a crash.
             failed = true
         }
     }
@@ -106,36 +113,38 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Column {
-                // The whole row is the switch: one target, one announcement.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = SceneViewTokens.Layout.touchTarget)
-                        .toggleable(
-                            value = includePhotos,
-                            role = Role.Switch,
-                            onValueChange = { includePhotos = it },
+                if (offersPhotos) {
+                    // The whole row is the switch: one target, one announcement.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                            .toggleable(
+                                value = includePhotos,
+                                role = Role.Switch,
+                                onValueChange = { includePhotos = it },
+                            )
+                            .testTag(SHARE_PHOTOS_TAG),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.md),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.room_scan_include_photos),
+                            style = Type.body,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
                         )
-                        .testTag(SHARE_PHOTOS_TAG),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Space.md),
-                ) {
-                    Text(
-                        text = stringResource(R.string.room_scan_include_photos),
-                        style = Type.body,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // Off, M3 draws the border and the thumb in `outline`, 1.4:1 on the light
-                    // sheet: `onSurfaceVariant` keeps the off switch above 3:1 in both themes.
-                    Switch(
-                        checked = includePhotos,
-                        onCheckedChange = null,
-                        colors = SwitchDefaults.colors(
-                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    )
+                        // Off, M3 draws the border and the thumb in `outline`, 1.4:1 on the light
+                        // sheet: `onSurfaceVariant` keeps the off switch above 3:1 in both themes.
+                        Switch(
+                            checked = includePhotos,
+                            onCheckedChange = null,
+                            colors = SwitchDefaults.colors(
+                                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                    }
                 }
                 Row(
                     modifier = Modifier
@@ -209,6 +218,12 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
         }
     }
 }
+
+/**
+ * Whether the sheet offers the `Include photos` switch: only a scan that holds photos has any to
+ * leave out. Without them the sheet opens on the "no photos" wording, with no switch.
+ */
+internal fun offersPhotosSwitch(photos: Int): Boolean = photos > 0
 
 internal const val SHARE_SHEET_TAG = "ar_rerun_share_sheet"
 internal const val SHARE_PHOTOS_TAG = "ar_rerun_share_photos"

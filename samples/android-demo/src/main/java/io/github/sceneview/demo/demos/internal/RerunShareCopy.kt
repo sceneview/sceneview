@@ -23,13 +23,15 @@ internal object RerunShareCopy {
         val shared = if (includePhotos) capture else withoutPhotos(capture)
         shareRoot.deleteRecursively()
         val dir = File(shareRoot, UUID.randomUUID().toString()).apply { check(mkdirs()) }
-        return File(dir, RerunScanFile.fileName(title)).apply {
-            try {
+        // Whatever stops the write — an I/O error, or the heap running out — leaves no half file.
+        var written = false
+        try {
+            return File(dir, RerunScanFile.fileName(title)).apply {
                 writeBytes(RerunScanFile.write(shared))
-            } catch (failure: Exception) {
-                dir.deleteRecursively()
-                throw failure
+                written = true
             }
+        } finally {
+            if (!written) dir.deleteRecursively()
         }
     }
 
