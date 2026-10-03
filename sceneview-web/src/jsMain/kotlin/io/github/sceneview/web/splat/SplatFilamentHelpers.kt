@@ -45,13 +45,14 @@ internal fun newSplatEntity(): Entity =
 
 internal fun sampler2d(): dynamic = js("Filament.Texture\$Sampler.SAMPLER_2D")
 internal fun formatRgba16f(): dynamic = js("Filament.Texture\$InternalFormat.RGBA16F")
+internal fun formatRgba8(): dynamic = js("Filament.Texture\$InternalFormat.RGBA8")
 internal fun vertexAttributePosition(): dynamic = js("Filament.VertexAttribute.POSITION")
 internal fun attributeTypeFloat3(): dynamic = js("Filament.VertexBuffer\$AttributeType.FLOAT3")
 internal fun indexTypeUshort(): dynamic = js("Filament.IndexBuffer\$IndexType.USHORT")
 internal fun primitiveTypeTriangles(): dynamic = js("Filament.RenderableManager\$PrimitiveType.TRIANGLES")
 
 /**
- * NEAREST/NEAREST + CLAMP_TO_EDGE sampler for the two per-splat data textures — any
+ * NEAREST/NEAREST + CLAMP_TO_EDGE sampler for the per-splat data and order textures — any
  * filtering would blend the attributes of neighbouring splats into garbage (the Android
  * `MaterialLoader.createSplatInstance` contract).
  */
@@ -70,6 +71,17 @@ internal fun pixelBufferFloat(data: Float32Array): dynamic {
     val d: dynamic = data
     return js(
         "Filament.PixelBuffer(d, Filament.PixelDataFormat.RGBA, Filament.PixelDataType.FLOAT)"
+    )
+}
+
+/**
+ * Wraps [data] in a `Filament.PixelBuffer(RGBA, UBYTE)` descriptor — the order texture's
+ * bytes, uploaded as they are into an RGBA8 texture.
+ */
+internal fun pixelBufferUbyte(data: Uint8Array): dynamic {
+    val d: dynamic = data
+    return js(
+        "Filament.PixelBuffer(d, Filament.PixelDataFormat.RGBA, Filament.PixelDataType.UBYTE)"
     )
 }
 

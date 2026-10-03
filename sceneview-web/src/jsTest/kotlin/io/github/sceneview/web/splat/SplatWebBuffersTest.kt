@@ -1,6 +1,7 @@
 package io.github.sceneview.web.splat
 
 import io.github.sceneview.core.splat.SplatCloud
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -117,6 +118,136 @@ class SplatWebBuffersTest {
         assertFailsWith<IllegalArgumentException> {
             SplatWebBuffers.packColorOpacity(c, intArrayOf(0, 1, 2), 1)
         }
+    }
+
+    @Test
+    fun rotationScaleArePackedInCloudOrder() {
+        val c = cloud(3)
+        // Nontrivial normalized rotation, signed components, and three distinct scales.
+        c.rotations[0] = -0.5f; c.rotations[1] = 0.5f
+        c.rotations[2] = -0.5f; c.rotations[3] = 0.5f
+        val (rotation, scale) = SplatWebBuffers.packRotationScale(c, 2)
+        for (i in 0 until c.count) {
+            val decoded = SplatWebBuffers.unpackRotationScale(rotation, scale, i)
+            // Written as they are — the GPU upload does the half-float rounding.
+            for (j in 0..3) assertEquals(c.rotations[i * 4 + j], decoded[j])
+            for (j in 0..2) assertEquals(c.scales[i * 3 + j], decoded[4 + j])
+        }
+        assertContentEquals(FloatArray(7), SplatWebBuffers.unpackRotationScale(rotation, scale, 3))
+        assertEquals(0f, scale.asDynamic()[3].unsafeCast<Float>())
+    }
+
+    @Test
+    fun supportedCountIsOneToTwoPow24WithTheLimitInTheMessage() {
+        SplatWebBuffers.requireSupportedCount(1)
+        SplatWebBuffers.requireSupportedCount(16777216)
+        assertFailsWith<IllegalArgumentException> { SplatWebBuffers.requireSupportedCount(0) }
+        val tooMany = assertFailsWith<IllegalArgumentException> {
+            SplatWebBuffers.requireSupportedCount(16777217)
+        }
+        val message = tooMany.message.orEmpty()
+        assertTrue("16777216" in message && "16777217" in message, message)
+    }
+
+    @Test
+    fun orderTextureFollowsSortWithoutRepackingAttributes() {
+        val c = cloud(3)
+        val cloudOrder = intArrayOf(0, 1, 2)
+        // The four attribute buffers, uploaded once in cloud order.
+        fun attributes(): List<FloatArray> {
+            val (rotation, scale) = SplatWebBuffers.packRotationScale(c, 2)
+            return listOf(
+                SplatWebBuffers.packPositionScale(c, cloudOrder, 2),
+                SplatWebBuffers.packColorOpacity(c, cloudOrder, 2),
+                rotation,
+                scale,
+            ).map { buffer -> FloatArray(buffer.length) { buffer.asDynamic()[it].unsafeCast<Float>() } }
+        }
+        val before = attributes()
+        val order = SplatWebBuffers.sortBackToFront(c.positions, c.count, 0f, 0f, 0f)
+        val packed = SplatWebBuffers.packOrder(order, 2)
+        assertContentEquals(intArrayOf(2, 1, 0), order)
+        for (i in order.indices) {
+            val decoded = packed.asDynamic()[i * 4].unsafeCast<Int>() +
+                256 * packed.asDynamic()[i * 4 + 1].unsafeCast<Int>() +
+                65536 * packed.asDynamic()[i * 4 + 2].unsafeCast<Int>()
+            assertEquals(order[i], decoded)
+        }
+        // RGBA8: four bytes per slot, padding slot left at zero.
+        assertEquals(2 * 2 * 4, packed.length)
+        assertEquals(0, packed.asDynamic()[12].unsafeCast<Int>())
+        // "Without repacking": the sort reversed the draw order, and the attribute buffers
+        // built after it are the ones built before it — only the order texture moved.
+        val after = attributes()
+        for (i in before.indices) assertContentEquals(before[i], after[i])
+    }
+
+    @Test
+    fun orderDigitsAreExactAcrossRowsAndBatchBoundaries() {
+        val count = 233808 // Raccoon scan count; exercises multi-batch indexing.
+        val packed = SplatWebBuffers.packOrder(IntArray(count) { count - 1 - it }, 484)
+        for (slot in listOf(0, 1, 255, 256, 65534, 65535, count - 1)) {
+            // Read back as the unsigned bytes the GPU sees.
+            val digits = (0..2).map { packed.asDynamic()[slot * 4 + it].unsafeCast<Int>() }
+            assertTrue(digits.all { it in 0..255 }, "digits out of byte range: $digits")
+            assertEquals(count - 1 - slot, digits[0] + 256 * digits[1] + 65536 * digits[2])
+        }
+        assertEquals(484 * 484 * 4, packed.length)
+        assertFailsWith<IllegalArgumentException> { SplatWebBuffers.packOrder(intArrayOf(1), 1) }
+    }
+
+    // What the view applies after the shader: ToneMapper.Filmic (Filament's FilmicToneMapper,
+    // the Narkowicz 2015 ACES fit) then the sRGB OETF (IEC 61966-2-1).
+    private fun filmic(x: Double): Double =
+        (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
+
+    private fun linearToSrgb(value: Double): Double =
+        if (value < 0.0031308) value * 12.92 else 1.055 * value.pow(1.0 / 2.4) - 0.055
+
+    @Test
+    fun colourRoundTripThroughFilmicAndSrgbIsTheIdentity() {
+        // Every 8-bit display level: shader side (EOTF, inverse Filmic), then view side
+        // (Filmic, OETF), must give the level back. Both inverses are analytic and this is
+        // Double arithmetic, so the only error is rounding: 1e-9 is a millionth of the
+        // 1/255 step, and far below the two levels the browser spec allows for the view's
+        // colour-grading LUT.
+        for (level in 0..255) {
+            val srgb = level / 255.0
+            val shader = SplatWebMath.inverseFilmic(SplatWebMath.srgbToLinear(srgb))
+            assertEquals(srgb, linearToSrgb(filmic(shader)), 1e-9, "level $level")
+        }
+    }
+
+    @Test
+    fun srgbEotfAndInverseFilmicMatchAndroidConstants() {
+        val srgb = doubleArrayOf(0.0, 0.5, 1.0)
+        val linear = doubleArrayOf(0.0, 0.21404114048223255, 1.0)
+        val inverse = doubleArrayOf(0.0, 0.14927107629807476, 7.241657386774)
+        for (i in srgb.indices) {
+            assertEquals(linear[i], SplatWebMath.srgbToLinear(srgb[i]), 1e-12)
+            assertEquals(inverse[i], SplatWebMath.inverseFilmic(linear[i]), 1e-9)
+        }
+        assertEquals(0.3563298719772007, SplatWebMath.inverseFilmic(0.5), 1e-12)
+        assertEquals(0.04044 / 12.92, SplatWebMath.srgbToLinear(0.04044), 1e-12)
+    }
+
+    @Test
+    fun projectedCovarianceMatchesAxisAlignedAnd45DegreeEllipse() {
+        // fx = fy = 100 px, depth = 10: projected σ are 20 px and 10 px.
+        val scale = floatArrayOf(2f, 1f, 0.5f)
+        val center = floatArrayOf(0f, 0f, -10f)
+        val aligned = SplatWebMath.covariance2D(floatArrayOf(0f, 0f, 0f, 1f), scale, center, 1.0, 1.0, 200.0, 200.0)
+        assertEquals(400.3, aligned[0], 1e-6)
+        assertEquals(0.0, aligned[1], 1e-6)
+        assertEquals(100.3, aligned[2], 1e-6)
+        // R(45°) diag(400,100) Rᵀ = [[250,150],[150,250]], plus low-pass.
+        val rotated = SplatWebMath.covariance2D(floatArrayOf(0f, 0f, 0.3826834324f, 0.9238795325f), scale, center, 1.0, 1.0, 200.0, 200.0)
+        assertEquals(250.3, rotated[0], 0.0001)
+        assertEquals(150.0, rotated[1], 0.0001)
+        assertEquals(250.3, rotated[2], 0.0001)
+        // Off-axis x/depth=2 clamps to 1.3: Jz=13, adds 13² * 0.5² = 42.25.
+        val clamped = SplatWebMath.covariance2D(floatArrayOf(0f, 0f, 0f, 1f), scale, floatArrayOf(20f, 0f, -10f), 1.0, 1.0, 200.0, 200.0)
+        assertEquals(442.55, clamped[0], 1e-6)
     }
 
     // ── painter's sort ──────────────────────────────────────────────────────────────────

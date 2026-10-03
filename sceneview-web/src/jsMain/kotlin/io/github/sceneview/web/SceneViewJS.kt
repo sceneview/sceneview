@@ -291,8 +291,9 @@ class SceneViewJS {
      * Loads a Gaussian Splatting file (`.ply` INRIA / `.spz` Niantic) and returns a
      * Promise that resolves with the [NodeHandle] of its [io.github.sceneview.web.nodes.SplatNode]
      * once the cloud is parsed and in the scene — the JS mirror of
-     * `SceneView.addSplatNode(url)` (#2646 P2). Rejects on fetch/parse failure or an
-     * uninitialised viewer.
+     * `SceneView.addSplatNode(url)` (#2646 P2). Rejects on fetch/parse failure, on a cloud
+     * of more than 2^24 (16 777 216) splats — the limit of the order texture, named in the
+     * error — or on an uninitialised viewer.
      */
     @JsName("addSplatNode")
     fun addSplatNode(url: String): Promise<NodeHandle> {

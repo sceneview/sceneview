@@ -172,11 +172,16 @@ private fun SceneView.attachGeometry(node: GeometryNode, config: GeometryConfig,
  * `SplatParser.parse(bytes)`). Registers the node's batch renderables with the scene,
  * wires the painter's-sort camera feed to this view's camera, and hooks repaint +
  * scene-detach so `node.destroy()` cleans up completely.
+ *
+ * @throws IllegalArgumentException for an empty cloud or one above 2^24 splats; nothing is
+ * allocated in that case.
  */
 fun SceneView.addSplatNode(
     splatCloud: io.github.sceneview.core.splat.SplatCloud,
     parent: Node? = null,
 ): SplatNode {
+    // Refuse an unsupported cloud before an entity is allocated for it.
+    io.github.sceneview.web.splat.SplatWebBuffers.requireSupportedCount(splatCloud.count)
     val node = SplatNode(engine, newEntity(), splatCloud)
     // Repaint is wired by addNode below (Node.propagateInvalidate, #2024 P5b).
     node.onDetach = { entities -> scene.removeEntities(entities) }
@@ -200,7 +205,8 @@ fun SceneView.addSplatNode(
  * adds the resulting [SplatNode] — the async URL twin of the [SplatCloud] overload,
  * following [addModelNode]'s contract: the returned pivot [Node] is usable immediately
  * (transform it while the fetch is in flight), and the [SplatNode] attaches under it
- * when the load lands ([onLoaded] fires then; [onError] on fetch/parse failure).
+ * when the load lands ([onLoaded] fires then; [onError] on fetch/parse failure,
+ * or for a cloud above 2^24 splats).
  *
  * If the pivot is destroyed before the load lands, the cloud is dropped — nothing was
  * registered yet, so there is nothing to leak.
@@ -221,7 +227,15 @@ fun SceneView.addSplatNode(
             )
             return@loadSplatCloud
         }
-        val node = addSplatNode(cloud, parent = pivot)
+        // The file was fetched and parsed: a cloud the renderer refuses is reported as
+        // what it is, not as a failed fetch.
+        val node = try {
+            addSplatNode(cloud, parent = pivot)
+        } catch (e: Throwable) {
+            console.error("SceneView: cannot render the splat cloud from $url", e)
+            onError?.invoke(e)
+            return@loadSplatCloud
+        }
         onLoaded?.invoke(node)
     }
     return pivot

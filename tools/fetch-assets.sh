@@ -10,7 +10,7 @@
 # apps and the site still embed byte-identical files.
 #
 #   bash tools/fetch-assets.sh                   # every scope
-#   bash tools/fetch-assets.sh --scope android   # android | ios | web | tv (repeatable)
+#   bash tools/fetch-assets.sh --scope android   # android | ios | web | tv | web-test (repeatable)
 #   bash tools/fetch-assets.sh --check           # verify only; exit 1 if missing/mismatched
 #   bash tools/fetch-assets.sh --register PATH…  # add/refresh manifest entries (maintainers)
 #
