@@ -324,13 +324,16 @@ internal object StudioBackdrop {
  * The Materials demo's complete IBL + processed skybox for [assetPath]. The previous pair remains
  * visible until both parts of the replacement are ready, so a path change cannot expose a neutral
  * fallback or pair a new reflection with the old backdrop.
+ *
+ * The result names the file it was loaded from: while it differs from [assetPath] the screen is
+ * still showing the previous environment, and can say so.
  */
 @Composable
 internal fun rememberStudioEnvironment(
     engine: Engine,
     environmentLoader: EnvironmentLoader,
     assetPath: String,
-): Environment? {
+): Presented<Environment>? {
     val context: Context = LocalContext.current.applicationContext
     val state = remember(engine, environmentLoader) {
         mutableStateOf<StudioEnvironmentResources?>(null)
@@ -341,30 +344,24 @@ internal fun rememberStudioEnvironment(
         var backdrop: StudioBackdrop.Backdrop? = null
         var published = false
         try {
-            val loaded = environmentLoader.loadHDREnvironment(
-                url = assetPath,
-                createSkybox = false,
-            ) ?: return@LaunchedEffect
+            // Either half failing keeps the pair on screen: a load that threw is not worth a
+            // crash, nor a backdrop that failed to decode a neutral fallback mid-session.
+            val loaded = orNullOnFailure("Studio environment $assetPath failed to load") {
+                environmentLoader.loadHDREnvironment(url = assetPath, createSkybox = false)
+            } ?: return@LaunchedEffect
             loadedEnvironment = loaded
-            val faces = try {
+            val faces = orNullOnFailure("Studio backdrop for $assetPath failed to decode") {
                 withContext(Dispatchers.Default) {
                     StudioBackdrop.prepare(context.assets.open(assetPath).use { it.readBytes() })
                 }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-                // Keep the pair on screen: a backdrop that failed to decode is not worth a
-                // neutral fallback mid-session.
-                Log.w(TAG, "Studio backdrop for $assetPath failed to decode", error)
-                return@LaunchedEffect
-            }
+            } ?: return@LaunchedEffect
             currentCoroutineContext().ensureActive()
             val builtBackdrop = runCatching { StudioBackdrop.createSkybox(engine, faces) }.getOrNull()
                 ?: return@LaunchedEffect
             backdrop = builtBackdrop
             currentCoroutineContext().ensureActive()
 
-            val replacement = StudioEnvironmentResources(loaded, builtBackdrop)
+            val replacement = StudioEnvironmentResources(assetPath, loaded, builtBackdrop)
             val previous = state.value
             state.value = replacement
             published = true
@@ -390,16 +387,31 @@ internal fun rememberStudioEnvironment(
             retired.clear()
         }
     }
-    return state.value?.environment
+    return state.value?.presented
 }
 
 private const val TAG = "StudioBackdrop"
 
+/**
+ * Runs [load]. A failure is logged as [message] and reads as `null` — "keep what is on screen" —
+ * while cancellation propagates, the same contract as the SDK's `rememberHDREnvironment`.
+ */
+private suspend fun <T : Any> orNullOnFailure(message: String, load: suspend () -> T?): T? = try {
+    load()
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+    Log.w(TAG, message, error)
+    null
+}
+
 private class StudioEnvironmentResources(
+    assetPath: String,
     private val loadedEnvironment: Environment,
     private val backdrop: StudioBackdrop.Backdrop,
 ) {
-    val environment: Environment = loadedEnvironment.copy(skybox = backdrop.skybox)
+    /** The environment and the file it came from, published together. */
+    val presented = Presented(assetPath, loadedEnvironment.copy(skybox = backdrop.skybox))
 
     fun destroy(engine: Engine, environmentLoader: EnvironmentLoader) {
         environmentLoader.destroyEnvironment(loadedEnvironment)

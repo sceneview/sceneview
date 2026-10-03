@@ -2,11 +2,6 @@ package io.github.sceneview.environment
 
 import android.util.Log
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.rememberEnvironment
@@ -66,15 +61,15 @@ fun rememberHDREnvironment(
     assetFileLocation: String,
     createSkybox: Boolean = true
 ): Environment? {
-    val current = remember(environmentLoader) { mutableStateOf<Environment?>(null) }
-    val state = remember(environmentLoader) {
-        RetainedResourceState(environmentLoader::destroyEnvironment) { current.value = it }
-    }
-    LaunchedEffect(environmentLoader, assetFileLocation, createSkybox) {
-        val request = state.beginRequest()
+    return rememberRetainedResource(
+        owner = environmentLoader,
+        assetFileLocation,
+        createSkybox,
+        release = environmentLoader::destroyEnvironment,
+    ) {
         // loadHDREnvironment reads and decodes the HDR off the main thread, then runs only the
         // Filament upload + IBL prefilter on Main — a 2k equirect no longer stalls composition.
-        val environment = try {
+        try {
             environmentLoader.loadHDREnvironment(
                 url = assetFileLocation,
                 createSkybox = createSkybox
@@ -85,21 +80,7 @@ fun rememberHDREnvironment(
             Log.w(TAG, "Failed to load HDR environment $assetFileLocation", error)
             null
         }
-        state.complete(request, environment)
     }
-    LaunchedEffect(current.value) {
-        // Keep the replaced Filament handles alive until SceneView has observed the new value and
-        // presented it. Two frame boundaries avoid destroying the old environment in the apply
-        // phase that schedules the SceneView swap.
-        repeat(2) { withFrameNanos { } }
-        state.releaseRetired()
-    }
-    DisposableEffect(state) {
-        // Compose applies disposal and launches effects on Main, which is also Filament's JNI
-        // owner thread. clear() invalidates a result that finishes while this leaves composition.
-        onDispose(state::clear)
-    }
-    return current.value
 }
 
 /**
@@ -123,13 +104,13 @@ fun rememberKTXEnvironment(
     iblAssetFile: String? = null,
     skyboxAssetFile: String? = null
 ): Environment? {
-    val current = remember(environmentLoader) { mutableStateOf<Environment?>(null) }
-    val state = remember(environmentLoader) {
-        RetainedResourceState(environmentLoader::destroyEnvironment) { current.value = it }
-    }
-    LaunchedEffect(environmentLoader, iblAssetFile, skyboxAssetFile) {
-        val request = state.beginRequest()
-        val environment = try {
+    return rememberRetainedResource(
+        owner = environmentLoader,
+        iblAssetFile,
+        skyboxAssetFile,
+        release = environmentLoader::destroyEnvironment,
+    ) {
+        try {
             environmentLoader.loadKTX1Environment(
                 iblUrl = iblAssetFile,
                 skyboxUrl = skyboxAssetFile,
@@ -140,14 +121,5 @@ fun rememberKTXEnvironment(
             Log.w(TAG, "Failed to load KTX environment", error)
             null
         }
-        state.complete(request, environment)
     }
-    LaunchedEffect(current.value) {
-        repeat(2) { withFrameNanos { } }
-        state.releaseRetired()
-    }
-    DisposableEffect(state) {
-        onDispose(state::clear)
-    }
-    return current.value
 }

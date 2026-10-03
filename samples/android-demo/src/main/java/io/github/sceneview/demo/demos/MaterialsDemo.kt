@@ -39,7 +39,10 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lens
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -64,6 +67,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
@@ -261,11 +266,16 @@ private fun StudioSection(
     // cube, sampled sharp and tone-mapped from studio panels far brighter than white, broke
     // every bright edge into stair-stepped blocks. `rememberStudioEnvironment` draws the same
     // HDR instead, softened and with its highlights rolled off — see `StudioBackdrop`.
-    val environment = rememberStudioEnvironment(
+    val presentedEnvironment = rememberStudioEnvironment(
         engine = engine,
         environmentLoader = environmentLoader,
         assetPath = environmentOption.assetPath,
     )
+    val environment = presentedEnvironment?.resource
+    // The previous environment stays on screen while the picked one loads — several seconds on a
+    // slow device. For that stretch the picked chip says so, or the tap looks ignored.
+    val environmentSwapping =
+        presentedEnvironment != null && presentedEnvironment.file != environmentOption.assetPath
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
 
     // One MaterialInstance per library entry, allocated once for the life of the screen and
@@ -880,6 +890,11 @@ private fun StudioSection(
                             R.string.demo_materials_env_studio, R.string.demo_materials_env_interior,
                             R.string.demo_materials_env_sunset, R.string.demo_materials_env_night,
                         )[index])) },
+                        leadingIcon = if (environmentSwapping && index == environmentIndex) {
+                            { EnvironmentSwapIndicator() }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -1044,6 +1059,22 @@ private fun StudioSection(
             )
         }
     }
+}
+
+/**
+ * The picked environment chip's leading mark while its HDR is still loading: the previous
+ * environment is on screen until then, and this is the only sign the tap was taken.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun EnvironmentSwapIndicator() {
+    val loading = stringResource(R.string.demo_loading_generic)
+    LoadingIndicator(
+        modifier = Modifier
+            .size(FilterChipDefaults.IconSize)
+            .semantics { contentDescription = loading },
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+    )
 }
 
 /**
