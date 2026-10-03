@@ -117,6 +117,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
+    contentPadding: PaddingValues = PaddingValues(0.dp),   // area a panel covers — see "Content padding"
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -4142,6 +4143,111 @@ SceneView(onFrame = { fitState.maybeFit(cameraNode, contentRoot) }) { }
 
 `autoFitContent` defaults to `false` (callers that position the camera explicitly keep
 control). iOS already auto-frames from `visualBounds` (#1026 / #1391).
+
+### Content padding — keep the subject in the area a panel leaves free
+
+`SceneView(contentPadding = …)` (#4310) declares the part of the surface that something
+drawn above it covers — a bottom sheet, a side panel, a title bar. The visible rectangle
+becomes the camera's viewport: the optical centre moves to its centre and the lens field
+of view spans it. The surface is **not** resized (the scene still draws under the panel),
+the camera pose and the user's orbit are **not** touched, and pixels stay square. The
+mapping is linear in the padding, so animating the padding with the panel's own curve
+makes the subject follow the panel.
+
+```kotlin
+import androidx.compose.animation.core.animateDpAsState
+
+var sheetOpen by remember { mutableStateOf(false) }
+// The subject stays centred in what the sheet leaves free, and follows it as it slides.
+val covered by animateDpAsState(if (sheetOpen) 320.dp else 0.dp)
+SceneView(contentPadding = PaddingValues(bottom = covered)) { }
+
+// Imperative form, in pixels of the surface (what the composable sets for you):
+cameraNode.contentPadding = ViewportPadding(bottom = 1200f)
+```
+
+Rules:
+
+- **Picking follows the padding.** `Camera.viewToRay` / `viewToWorld` / `worldToView` and
+  `View.screenToRay` go through the projection that is drawn (lens × scaling × shift),
+  so a touch on the shifted subject hits it. Filament's own `getProjectionMatrix` /
+  `getCullingProjectionMatrix` leave `setScaling` / `setShift` out — read
+  `Camera.renderedProjectionTransform` / `renderedCullingProjectionTransform` instead.
+- **The subject gets smaller** by `visibleHeight / height`: the padding centres, it does
+  not re-pose. When the bounds are known, win the size back with a fit (below) at the
+  visible area's aspect — `CameraNode.getViewPortAspect()` returns it once a padding is set.
+- **A tenth of the view always stays visible.** Two opposite edges that add up to more
+  than 90 % of the surface are both reduced in proportion — a sheet dragged over the
+  whole view leaves a small picture, never a degenerate projection. Negative and
+  non-finite values read as `0`.
+- **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
+  you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
+  back down to zero, and resets it when the camera leaves the `SceneView`.
+- **Your own projection is kept across a padding — not across a resize.** A padding
+  rebuilds the default lens only. After `setProjection(fov, …)` the field of view, near,
+  far and direction you set are kept (the aspect follows the visible area only if you
+  passed the viewport's own); an orthographic, lens or custom projection is left exactly
+  as set and only scaled and shifted. `updateProjection()` hands the camera back to the
+  default lens, and `SceneView` calls it whenever the view changes size (first layout,
+  rotation, split-screen) — as it did before `contentPadding` existed. Set your
+  projection again after a resize.
+- With `autoFitContent = true` the fit runs again when the padding changes, once it has
+  stopped moving.
+- A camera whose `setScaling` / `setShift` you drive yourself is left alone until a
+  padding is set on it.
+- **Not in AR.** `ARSceneView` takes no content padding and `ARCameraNode.contentPadding`
+  ignores what is written to it: the AR projection is the device camera's and has to
+  stay aligned with the camera feed.
+- **Recording captures the padded picture.** `SurfaceMirrorer` (and the recorder built on
+  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size.
+- iOS twin: `.contentInsets(_:)` on SceneViewSwift's `SceneView` (#4317), in points, with
+  the same contract and the same 10 % floor.
+
+### Fit to bounds — frame a box under a given angle
+
+`fitDistanceForBounds` answers "how far" for a subject that may turn. `fitCameraToBounds`
+(#4310) fits the box **as seen from one direction**, corner by corner, and also answers
+"aimed where" — after a perspective projection the centre of a box is not the centre of
+its picture. The box needs no model behind it: a board, a room or a solar system declares
+the volume worth framing as an `Aabb`.
+
+```kotlin
+// Pure maths, JVM-testable. `direction` runs from the camera towards the subject.
+// Returns `CameraFit(eye, target)` — `distance` is the orbit radius — or null when the
+// bounds are empty / non-finite.
+fun fitCameraToBounds(
+    bounds: Aabb,
+    direction: Position = Position(0f, 0f, -1f),
+    verticalFovDegrees: Double, aspect: Double,
+    widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
+    heightFill: Float = DEFAULT_FRAMING_FILL
+): CameraFit?
+```
+
+Usage:
+
+```kotlin
+val board = Aabb(center = Position(0f, -0.5f, 0f), halfExtent = Position(0.9f, 0.1f, 0.9f))
+
+// On a camera: its own lens, its current look direction, the visible area's aspect.
+// Main thread — reads/writes Filament state.
+cameraNode.fitToBounds(board)?.let { cameraNode.frame(it) }
+
+// With an orbit manipulator, hand the fit to the manipulator instead of posing the camera:
+val fit = checkNotNull(
+    fitCameraToBounds(
+        bounds = board,
+        direction = Position(0f, -0.64f, -0.77f),   // looking 40° down
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = 0.8
+    )
+)
+val manipulator = rememberCameraManipulator(orbitHomePosition = fit.eye, targetPosition = fit.target)
+```
+
+On the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`)
+of the half-view; on the other it is centred and spans less. The camera is assumed
+upright (world `+Y` up); looking straight down, "right" is world `+X`.
 
 ---
 
@@ -8212,7 +8318,9 @@ SceneView { root in root.addChild(hero.entity) }
 > `DEFAULT_FRAMING_PADDING = 0.15f` (documented above under Camera framing). It is a
 > *fraction* where iOS's `framingMargin` is a *multiplier*: `margin == 1 + padding`,
 > so iOS `1.15` is Android `0.15`, and tangent is iOS `1.0` / Android `0.0`. Never
-> port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Android's
+> port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Do not
+> confuse it with `contentPadding` (#4310), which is the area a panel covers, in dp —
+> its iOS twin is `.contentInsets(_:)` (#4317), in points. Android's
 > demo host additionally accepts a `camera_distance` intent extra, but that is a
 > sample-app knob, not the library API. **Web follows the iOS convention**:
 > `sv.fitToModels(margin)` (v4.27.0+, #2946) takes the same multiplier, clamped to

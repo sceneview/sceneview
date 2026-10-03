@@ -2055,12 +2055,14 @@ public final class io/github/sceneview/ar/light/LightEstimator$Estimation {
 public class io/github/sceneview/ar/node/ARCameraNode : io/github/sceneview/node/CameraNode {
 	public static final field $stable I
 	public fun <init> (Lcom/google/android/filament/Engine;)V
+	public fun getContentPadding ()Lio/github/sceneview/ViewportPadding;
 	public final fun getFrame ()Lcom/google/ar/core/Frame;
 	public fun getPose ()Lcom/google/ar/core/Pose;
 	public final fun getSession ()Lcom/google/ar/core/Session;
 	public fun getTrackingState ()Lcom/google/ar/core/TrackingState;
 	public fun onCameraUpdated (Lcom/google/ar/core/Camera;)V
 	public fun onTrackingStateChanged (Lcom/google/ar/core/TrackingState;)V
+	public fun setContentPadding (Lio/github/sceneview/ViewportPadding;)V
 	public final fun setFrame (Lcom/google/ar/core/Frame;)V
 	protected fun setPose (Lcom/google/ar/core/Pose;)V
 	public final fun setSession (Lcom/google/ar/core/Session;)V
