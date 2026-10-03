@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -51,5 +52,23 @@ class TrayContentPaddingTest {
         val padding = padding(bottom = 120f, compactHeight = true)
         assertEquals(statusBar, padding.calculateTopPadding())
         assertEquals(120.dp, padding.calculateBottomPadding())
+    }
+
+    @Test
+    fun `the window's side insets stay on their side whatever the layout direction`() {
+        // A display cutout on the left of a phone held sideways: the controls are centred in what
+        // it leaves, and so is the board.
+        val padding = trayContentPadding(
+            chrome = PaddingValues(top = chromeTop, bottom = 120.dp),
+            statusBar = statusBar,
+            sceneHeight = 427.dp,
+            compactHeight = true,
+            left = 52.dp,
+            right = 0.dp,
+        )
+        for (direction in LayoutDirection.entries) {
+            assertEquals(52.dp, padding.calculateLeftPadding(direction))
+            assertEquals(0.dp, padding.calculateRightPadding(direction))
+        }
     }
 }

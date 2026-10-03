@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -623,11 +625,15 @@ fun RollingBallsDemo(onBack: () -> Unit) {
             // SDK as `contentPadding`, so the camera treats the band they leave free as its
             // viewport — the board is drawn, and picked, there, and follows the sheet wherever
             // the finger takes it. The surface is not resized and the user's orbit is not touched.
+            val safe = WindowInsets.safeDrawing.asPaddingValues()
+            val layoutDirection = LocalLayoutDirection.current
             val cover = trayContentPadding(
                 chrome = LocalDemoSceneCover.current,
                 statusBar = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
                 sceneHeight = maxHeight,
                 compactHeight = compactHeight,
+                left = safe.calculateLeftPadding(layoutDirection),
+                right = safe.calculateRightPadding(layoutDirection),
             )
             // Framed in the band the chrome leaves free, not the whole screen. The SDK never lets
             // that band go below a tenth of the view; the same floor here keeps the two in step.
@@ -637,8 +643,11 @@ fun RollingBallsDemo(onBack: () -> Unit) {
             // landscape, the band is barely taller than the hint and the board is all it has
             // room for.
             val hintFits = visibleHeight >= MIN_RESERVED_SCENE_HEIGHT + TRAY_HINT_CLEARANCE
-            val aspect = if (maxWidth.value > 0f && visibleHeight.value > 0f) {
-                maxWidth.value / visibleHeight.value
+            val visibleWidth = maxWidth -
+                cover.calculateLeftPadding(layoutDirection) -
+                cover.calculateRightPadding(layoutDirection)
+            val aspect = if (visibleWidth.value > 0f && visibleHeight.value > 0f) {
+                visibleWidth.value / visibleHeight.value
             } else {
                 0.5f
             }
@@ -1101,17 +1110,12 @@ private fun TrayGlassChip(
 }
 
 /**
- * The tray's opening shot for a visible area of [aspect]: the table itself fitted at
- * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
- * the band between the title row and the controls (#4180). The SDK's [fitCameraToBounds] does the
- * fit; the scene declares its own bounds, because a board, its rails and thirty balls are not one
- * model to measure.
- */
-/**
  * What Rolling Balls hands to `contentPadding`, from what the scaffold reports as covered.
  *
  * The bottom is taken as it is: the controls and the settings sheet are where the board must not
- * be. The top is a row of glass chips over a live stage, and it gives way in two cases.
+ * be. The sides are the window's safe insets — a display cutout on a phone held sideways, a
+ * navigation bar on the short edge — so the board is centred where the controls are centred. The
+ * top is a row of glass chips over a live stage, and it gives way in two cases.
  *
  * - **A phone held sideways** ([compactHeight]): the title is a chip in a corner the centred
  *   board never reaches, and counting it as a band would halve a stage that is already short.
@@ -1126,6 +1130,8 @@ internal fun trayContentPadding(
     statusBar: Dp,
     sceneHeight: Dp,
     compactHeight: Boolean,
+    left: Dp = 0.dp,
+    right: Dp = 0.dp,
 ): PaddingValues {
     val bottom = chrome.calculateBottomPadding()
     val top = if (compactHeight) {
@@ -1134,9 +1140,16 @@ internal fun trayContentPadding(
         val room = sceneHeight - bottom - sceneHeight * TRAY_MIN_VISIBLE_FRACTION
         minOf(chrome.calculateTopPadding(), room.coerceAtLeast(0.dp))
     }
-    return PaddingValues(top = top, bottom = bottom)
+    return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
 }
 
+/**
+ * The tray's opening shot for a visible area of [aspect]: the table itself fitted at
+ * [PHYSICS_CAMERA_PITCH_DEGREES] of look-down — [PHYSICS_FRAME_WIDTH_FILL] of the width, centred in
+ * the band between the title row and the controls (#4180). The SDK's [fitCameraToBounds] does the
+ * fit; the scene declares its own bounds, because a board, its rails and thirty balls are not one
+ * model to measure.
+ */
 private fun trayFraming(aspect: Float): CameraFit {
     val half = PHYSICS_TABLE_SIZE / 2f
     val low = PHYSICS_FLOOR - TrayStage.FIELD_THICKNESS - TrayStage.BODY_HEIGHT
