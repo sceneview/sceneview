@@ -84,13 +84,13 @@ struct RerunSessionStore: Sendable {
         } catch {
             throw Failure.unreadable(title)
         }
-        guard !pack.trace.isEmpty else { throw Failure.empty }
+        guard !pack.trace.isEmpty || pack.dense != nil else { throw Failure.empty }
         let last = RerunStats(frame: pack.trace.frameAt(pack.trace.duration))
         // Whole seconds: `session.json` stores ISO 8601, so what `save` returns equals what `list` reads.
         let createdAt = Date(timeIntervalSince1970: now.timeIntervalSince1970.rounded(.down))
         let session = RerunStoredSession(
             id: UUID(), title: title, createdAt: createdAt, source: source,
-            duration: pack.trace.duration, pathMetres: last.pathMetres, points: last.mapPoints,
+            duration: pack.trace.duration, pathMetres: last.pathMetres, points: pack.dense?.positions.count ?? last.mapPoints,
             planes: last.planes, photos: pack.trace.imageCount
         )
         let directory = directory(for: session.id)

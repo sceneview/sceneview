@@ -18,6 +18,7 @@ import simd
 ///   one pose row per photo so Rerun shows the camera where the photo was taken; those rows
 ///   are recognised and dropped (see ``pathPoses(_:path:photoTimes:)``), which gives back
 ///   the path the writer was given.
+/// - `world/dense` — the static dense cloud, stored as `.svscan` v2 SVPC media.
 /// - `world/points` — the coloured map; `world/points/live` — timed camera sightings.
 /// - `world/planes/<id>` — the polygon from the outline (without its closing point), the
 ///   kind from the outline's colour, and the plane photo when the `Mesh3D` carries one: the
@@ -50,7 +51,7 @@ enum RerunRRDReader {
         case malformed(String)
         /// A component the replay needs, in an Arrow layout the writer never emits.
         case unexpectedLayout(String)
-        /// A valid `.rrd` with nothing to replay: no camera pose, map point or plane.
+        /// A valid `.rrd` with nothing to replay: no camera pose, sparse/dense point or plane.
         case nothingToReplay
     }
 
@@ -142,6 +143,9 @@ extension RerunRRDReader {
         var title: String?
         var points: [SIMD3<Float>] = []
         var pointColors: [UInt32]?
+        var densePositions: [SIMD3<Float>]?
+        var denseColors: [UInt32]?
+        var denseRadius: Float?
         var sightings: [(time: Int64, order: Int, points: [SIMD3<Float>])] = []
         /// Camera rows: time, then whatever of the pose the row carries.
         var poseRows: [(time: Int64, order: Int, position: SIMD3<Float>?, orientation: simd_quatf?)] = []
@@ -160,7 +164,7 @@ extension RerunRRDReader {
         /// Whether a chunk on `entity` carries anything the replay uses; other chunks are
         /// skipped before their columns are decoded.
         static func reads(_ entity: String) -> Bool {
-            ["__properties", "world/points", "world/points/live", "world/camera", "world/camera_path"].contains(entity)
+            ["__properties", "world/points", "world/points/live", "world/dense", "world/camera", "world/camera_path"].contains(entity)
                 || child(of: planesPrefix, entity) != nil || child(of: anchorsPrefix, entity) != nil
         }
 
@@ -185,6 +189,17 @@ extension RerunRRDReader {
                         pointColors = nil
                     }
                     if let colors = try Self.last(chunk.uint32s("Points3D:colors")) { pointColors = colors }
+
+                case "world/dense":
+                    if let flat = try Self.last(chunk.floatVectors("Points3D:positions", size: 3)) {
+                        densePositions = Self.vectors3(flat)
+                        denseColors = nil
+                    }
+                    if let colors = try Self.last(chunk.uint32s("Points3D:colors")) { denseColors = colors }
+                    if let radii = try Self.last(chunk.floats("Points3D:radii")) {
+                        guard radii.count <= 1 else { throw Failure.malformed("dense radius count") }
+                        denseRadius = radii.first
+                    }
 
                 case "world/points/live":
                     let positions = try chunk.floatVectors("Points3D:positions", size: 3)
@@ -301,7 +316,8 @@ extension RerunRRDReader {
             }
             let mapPoints = points.indices.filter { Self.isFinite(points[$0]) }
 
-            guard !poses.isEmpty || !mapPoints.isEmpty || planeEvents.contains(where: { $0.polygon.count >= 3 }) else {
+            let dense = try denseCloud()
+            guard !poses.isEmpty || !mapPoints.isEmpty || dense != nil || planeEvents.contains(where: { $0.polygon.count >= 3 }) else {
                 throw Failure.nothingToReplay
             }
 
@@ -396,9 +412,16 @@ extension RerunRRDReader {
             mediaEntries = []
             for (path, bytes) in photoMedia + planeMedia { store(bytes, at: path) }
 
+            if let dense { store(dense.encoded(), at: RerunDenseCloud.path) }
+
             let seconds = (Double(end) - Double(start)) / 1e9 // In Double: hostile times cannot overflow.
             let frameRate = seconds > 0 && photoMedia.count > 1 ? Double(photoMedia.count) / seconds : 10
             var manifest = "{"
+            if let dense {
+                manifest += "\"version\":2,\"dense\":{\"path\":\"dense/points.bin\",\"count\":\(dense.positions.count)"
+                manifest += ",\"voxelM\":\(JSONText.number(dense.voxelM)),\"normals\":false,\"bounds\":["
+                manifest += dense.bounds.map(JSONText.number).joined(separator: ",") + "]},"
+            }
             if let lens = lens() {
                 manifest += "\"intrinsics\":{\"width\":\(lens.width),\"height\":\(lens.height)"
                 manifest += ",\"fx\":\(JSONText.number(lens.fx)),\"fy\":\(JSONText.number(lens.fy))"
@@ -417,6 +440,28 @@ extension RerunRRDReader {
                 title: title,
                 pack: RerunCapturePack(manifest: Data(manifest.utf8), log: Data(log.utf8), media: media)
             )
+        }
+
+        /// Static dense data, with non-finite points omitted and mismatched colours refused.
+        private func denseCloud() throws -> RerunDenseCloud? {
+            guard let positions = densePositions else { return nil }
+            if let colors = denseColors, colors.count != positions.count {
+                throw Failure.malformed("dense color count")
+            }
+            let kept = positions.indices.filter { Self.isFinite(positions[$0]) }
+            guard !kept.isEmpty else { return nil }
+            let colors: [SIMD3<UInt8>] = kept.map { i in
+                guard let c = denseColors?[i] else { return SIMD3(255, 255, 255) }
+                return SIMD3(UInt8(c >> 24), UInt8(c >> 16 & 0xFF), UInt8(c >> 8 & 0xFF))
+            }
+            let radius = denseRadius.flatMap { $0.isFinite && $0 > 0 && ($0 * 2).isFinite ? $0 : nil } ?? 0.01
+            let cloud = RerunDenseCloud(positions: kept.map { positions[$0] }, colors: colors, voxelM: radius * 2)
+            // Keep the SVPC centre/extent arithmetic finite before quantizing to i16.
+            let bounds = cloud.bounds
+            guard (0..<3).allSatisfy({ (bounds[$0] + bounds[$0 + 3]).isFinite && (bounds[$0 + 3] - bounds[$0]).isFinite }) else {
+                throw Failure.malformed("dense bounds")
+            }
+            return cloud
         }
 
         /// Camera rows in time order, each completed with the last position and rotation
@@ -1244,6 +1289,13 @@ extension RerunRRDReader {
                 out.reserveCapacity(range.count * size)
                 for index in (range.lowerBound * size)..<(range.upperBound * size) { out.append(try floats.float32(index)) }
                 return out
+            }
+        }
+
+        /// `list<float32>` (a Points3D radius in metres).
+        func floats(_ component: String) throws -> [[Float]?]? {
+            try rows(component, check: { $0.type == .float(bits: 32) }) { item, range in
+                try range.map { try item.float32($0) }
             }
         }
 

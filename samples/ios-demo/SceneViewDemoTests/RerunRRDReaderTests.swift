@@ -28,6 +28,125 @@ final class RerunRRDReaderTests: XCTestCase {
         return (recording.title, pack)
     }
 
+    // MARK: - Android-compatible static dense cloud
+
+    private func denseStream(_ chunks: [RerunChunk]) -> Data {
+        let id = UUID(uuidString: "00000000-0000-0000-0000-000000000021")!
+        var ids = RerunTuidSequence(recordingId: id)
+        let store = RerunRRDWriter.StoreIdentity(applicationId: "test", recordingId: id.uuidString.lowercased())
+        var data = RerunRRDWriter.streamHeader()
+        for chunk in chunks {
+            RerunRRDWriter.appendMessage(kind: 2, payload: RerunRRDWriter.arrowMessage(chunk, store: store, ids: &ids), to: &data)
+        }
+        return data
+    }
+
+    private func denseChunk(positions: [Float] = [0, 0, 0, 1, 2, 3],
+                            colors: [UInt32] = [0x0A141EFF, 0xFF0000FF],
+                            radii: [Float] = [0.015]) -> RerunChunk {
+        RerunChunk(entityPath: "/world/dense", components: [
+            .vectors("Points3D", "positions", "Position3D", [positions], size: 3),
+            .floats("Points3D", "radii", "Radius", [radii]),
+            .colors("Points3D", [colors]),
+        ])
+    }
+
+    private func densePack(_ data: Data) throws -> RerunPack {
+        let capture = try RerunRRDReader.capturePack(from: data)
+        return try RerunPack.load(manifest: capture.manifest, log: capture.log, media: capture.media, title: "Dense")
+    }
+
+    func testSingleDenseChunkLoadsAPackAndPersistsAsV2() throws {
+        let capture = try RerunRRDReader.capturePack(from: denseStream([denseChunk()]))
+        let scan = try RerunScanFile.capture(from: RerunScanFile.data(for: capture))
+        let pack = try RerunPack.load(manifest: scan.manifest, log: scan.log, media: scan.media, title: "Dense")
+        XCTAssertTrue(pack.trace.isEmpty)
+        let dense = try XCTUnwrap(pack.dense)
+        XCTAssertEqual(dense.positions, [SIMD3(0, 0, 0), SIMD3(1, 2, 3)])
+        XCTAssertEqual(dense.colors, [SIMD3(10, 20, 30), SIMD3(255, 0, 0)])
+        XCTAssertEqual(dense.voxelM / 2, 0.015, accuracy: 1e-7)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: scan.manifest) as? [String: Any])
+        XCTAssertEqual(root["version"] as? Int, 2)
+        XCTAssertEqual(pack.manifest.dense?.path, "dense/points.bin")
+    }
+
+    func testDenseAndPosesReplayTogether() throws {
+        let camera = RerunChunk(entityPath: "/world/camera", times: [0, 1_000_000_000], components: [
+            .vectors("Transform3D", "translation", "Translation3D", [[0, 0, 0], [1, 0, 0]], size: 3),
+        ])
+        let pack = try densePack(denseStream([denseChunk(), camera]))
+        XCTAssertEqual(pack.trace.poses.count, 2)
+        XCTAssertEqual(pack.trace.duration, 1, accuracy: 1e-6)
+        XCTAssertEqual(pack.dense?.positions.count, 2)
+    }
+
+    func testDenseRoundTripKeepsPositionsColorsAndRadius() throws {
+        let pack = try densePack(denseStream([denseChunk()]))
+        let scene = RerunExportAdapter.scene(for: pack)
+        let chunk = try XCTUnwrap(RerunRRDWriter.chunks(for: scene).first { $0.entityPath == "/world/dense" })
+        XCTAssertNil(chunk.times, "Android exports one static row without a timeline")
+        XCTAssertEqual(chunk.rowCount, 1)
+        let reopened = try densePack(RerunRRDWriter.data(for: scene))
+        XCTAssertEqual(reopened.dense, pack.dense)
+    }
+
+    func testMalformedDenseColumnsFailWithoutCrashing() throws {
+        for chunk in [denseChunk(colors: [0xFFFFFFFF]), denseChunk(radii: [0.01, 0.02])] {
+            XCTAssertThrowsError(try RerunRRDReader.recording(from: denseStream([chunk]))) { error in
+                guard let failure = error as? RerunRRDReader.Failure, case .malformed = failure else {
+                    return XCTFail("Expected a typed malformed error, got \(error)")
+                }
+            }
+        }
+        XCTAssertThrowsError(try RerunRRDReader.recording(from: denseStream([denseChunk(positions: [], colors: [])]))) {
+            XCTAssertEqual($0 as? RerunRRDReader.Failure, .nothingToReplay)
+        }
+    }
+
+    func testEmptyDenseIsSkippedWhenPosesRemain() throws {
+        let camera = RerunChunk(entityPath: "/world/camera", times: [0], components: [
+            .vectors("Transform3D", "translation", "Translation3D", [[0, 0, 0]], size: 3),
+        ])
+        let pack = try densePack(denseStream([denseChunk(positions: [], colors: []), camera]))
+        XCTAssertNil(pack.dense)
+        XCTAssertEqual(pack.trace.poses.count, 1)
+    }
+
+    func testDenseWithoutColorOrRadiusUsesAndroidDefaults() throws {
+        let chunk = RerunChunk(entityPath: "/world/dense", components: [
+            .vectors("Points3D", "positions", "Position3D", [[0, 0, 0]], size: 3),
+        ])
+        let dense = try XCTUnwrap(densePack(denseStream([chunk])).dense)
+        XCTAssertEqual(dense.colors, [SIMD3(255, 255, 255)])
+        XCTAssertEqual(dense.voxelM, 0.02)
+    }
+
+    func testDenseOnlyImportIsAcceptedBySessionStore() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let capture = try RerunRRDReader.capturePack(from: denseStream([denseChunk()]))
+        let store = RerunSessionStore(root: root)
+        let session = try store.save(capture, title: "Dense", source: .rrd)
+        XCTAssertEqual(session.points, 2)
+        let saved = try XCTUnwrap(store.capture(for: session.id))
+        let pack = try RerunPack.load(manifest: saved.manifest, log: saved.log, media: saved.media, title: "Dense")
+        XCTAssertEqual(pack.dense?.positions.count, 2)
+    }
+
+    func testSVPCMatchesAndroidLayoutAndRejectsTruncation() throws {
+        let cloud = RerunDenseCloud(positions: [SIMD3(0, 0, 0)], colors: [SIMD3(10, 20, 30)])
+        var expected = Data("SVPC".utf8)
+        for value in [UInt32(1), 1, 0, 0, 0, 0, Float(0.001).bitPattern] {
+            RerunArrowIPC.appendLittleEndian(value, to: &expected)
+        }
+        expected.append(contentsOf: [0, 0, 0, 0, 0, 0, 10, 20, 30])
+        XCTAssertEqual(cloud.encoded(), expected)
+        XCTAssertEqual(RerunDenseCloud.decode(expected, voxelM: 0.02), cloud)
+        for count in 0..<expected.count {
+            XCTAssertNil(RerunDenseCloud.decode(Data(expected.prefix(count)), voxelM: 0.02))
+        }
+    }
+
     // MARK: - Round trip
 
     func testShowcaseRoundTripReplaysTheSameSession() throws {
