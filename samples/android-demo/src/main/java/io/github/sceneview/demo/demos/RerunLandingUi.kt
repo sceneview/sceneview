@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -236,6 +237,7 @@ private fun GlassAction(icon: ImageVector, label: String, onClick: () -> Unit, m
 private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActions) {
     var confirming by remember { mutableStateOf<LandingSession?>(null) }
     var sharing by remember { mutableStateOf<LandingSession?>(null) }
+    val context = LocalContext.current
     val sessions = state.sessions
     Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         Row {
@@ -279,6 +281,8 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                 TextButton(
                     onClick = {
                         confirming = null
+                        // A copy shared earlier goes with the scan it was made from.
+                        discardSharedScan(context)
                         actions.onDelete(session)
                     },
                 ) { Text(ScanCopy.DELETE, color = destructive) }

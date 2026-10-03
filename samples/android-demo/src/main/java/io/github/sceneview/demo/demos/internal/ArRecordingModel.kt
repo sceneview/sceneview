@@ -9,6 +9,7 @@ import java.time.format.DateTimeParseException
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sqrt
 
 /*
@@ -318,11 +319,16 @@ fun formatClock(millis: Long): String {
     }
 }
 
-fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", bytes / 1_000_000_000.0)
-    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-    bytes >= 1_000 -> String.format(Locale.US, "%.0f kB", bytes / 1_000.0)
-    else -> "$bytes B"
+fun formatFileSize(bytes: Long): String {
+    // Rounded first, unit chosen after: 999 999 bytes read "1.0 MB", never "1000 kB".
+    val kilobytes = (bytes / 1_000.0).roundToLong()
+    val megabyteTenths = (bytes / 100_000.0).roundToLong()
+    return when {
+        megabyteTenths >= 10_000 -> String.format(Locale.US, "%.1f GB", bytes / 1_000_000_000.0)
+        kilobytes >= 1_000 -> String.format(Locale.US, "%.1f MB", megabyteTenths / 10.0)
+        bytes >= 1_000 -> "$kilobytes kB"
+        else -> "$bytes B"
+    }
 }
 
 /** How far the phone moved: "35 cm" under a metre, "1.2 m" above. */

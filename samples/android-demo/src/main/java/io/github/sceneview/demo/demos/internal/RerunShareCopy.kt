@@ -35,15 +35,18 @@ internal object RerunShareCopy {
 
     /**
      * [capture] without its camera photos: the archive keeps the baked plane textures and the
-     * dense cloud, repacked from offset 0, and the log loses its `image` events. What stays still
-     * pictures the room — its surfaces, its colours and the path walked — which is what the
-     * sheet says of a file shared this way.
+     * dense cloud, repacked from offset 0, and the log loses its `image` events. What stays is
+     * still made of camera pixels — the textures are the photos laid on the surfaces, the cloud
+     * carries their colours — which is what the sheet says of a file shared this way.
      */
     fun withoutPhotos(capture: RerunCapturePack): RerunCapturePack {
         val parsed = requireNotNull(ReplayManifest.parse(String(capture.manifest))) { "Unreadable manifest" }
         // A whitelist: anything else in the archive is a camera image, including one the log no
-        // longer points at.
-        val kept = parsed.textures.map { it.path }.toSet() + listOfNotNull(parsed.dense?.path)
+        // longer points at. The path counts too: a scan opened from a file could name a photo
+        // as a texture, and only what the recorder writes under these two directories stays.
+        val kept = (parsed.textures.map { it.path } + listOfNotNull(parsed.dense?.path))
+            .filter { path -> KEPT_DIRECTORIES.any(path::startsWith) }
+            .toSet()
         val (media, spans) = ScanArchive.pack(
             parsed.media.filterKeys { it in kept }.mapNotNull { (path, span) ->
                 if (span.offset + span.length > capture.media.size) return@mapNotNull null
@@ -78,4 +81,7 @@ internal object RerunShareCopy {
     }
 
     private const val IMAGE_TYPE = "image"
+
+    /** Where the recorder writes the baked plane textures and the dense cloud. */
+    private val KEPT_DIRECTORIES = listOf("planes/", "dense/")
 }

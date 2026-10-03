@@ -63,8 +63,8 @@ import kotlin.math.absoluteValue
  *
  *  - **scanning** — "Move slowly to find a surface." — the coaching line alone;
  *  - **placed** — the one-shot "Drag to move. Pinch to resize. Twist to turn." hint;
- *  - **no surface** — the 10 s card, *View in 3D* / *Keep scanning*;
- *  - **tracking lost** in low light — "Tracking paused. Move slowly. Try a brighter area.";
+ *  - **no surface** — the 10 s card, *3D* / *Try again*;
+ *  - **tracking lost** in low light — "Move slowly. Try a brighter area.";
  *  - **gesture** — a live pinch read-out, "Preview size · 120 %", hint window closed.
  *
  * Every state is photographed light and dark; the flat white and flat black grounds are

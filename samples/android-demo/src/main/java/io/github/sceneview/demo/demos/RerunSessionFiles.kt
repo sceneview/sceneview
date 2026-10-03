@@ -39,7 +39,10 @@ import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.toJson
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -49,6 +52,7 @@ import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 /*
  * The Rerun demo's sessions, on Android: a finished scan built into the recorder's three files —
@@ -203,21 +207,47 @@ internal class PreparedScan(val includePhotos: Boolean, val file: File, val byte
  *
  * One copy at a time: each call replaces the previous one, and a call made while another is still
  * writing waits for it, so a switch flipped twice in a row never deletes a file being written.
+ * The copy lives in its own directory of the share root ([RERUN_SHARE_SCAN]): the model and the
+ * exports are written next to it, never over it.
  */
 internal suspend fun prepareSharedScan(
     context: Context,
     store: RerunSessionStore,
     session: RerunStoredSession,
     includePhotos: Boolean,
-): PreparedScan? = withContext(Dispatchers.IO) {
-    shareCopyLock.withLock {
-        val capture = store.capture(session.id) ?: return@withContext null
-        val file = RerunShareCopy.write(capture, session.title, File(context.cacheDir, RERUN_SHARE_DIR), includePhotos)
-        PreparedScan(includePhotos, file, file.length())
+): PreparedScan? {
+    // Counted before the copy starts: a clean-up asked earlier never removes this copy.
+    shareCopyRequests.incrementAndGet()
+    return withContext(Dispatchers.IO) {
+        shareCopyLock.withLock {
+            val capture = store.capture(session.id) ?: return@withContext null
+            val root = rerunShareDirectory(context, RERUN_SHARE_SCAN)
+            val file = RerunShareCopy.write(capture, session.title, root, includePhotos)
+            PreparedScan(includePhotos, file, file.length())
+        }
     }
 }
 
+/**
+ * Removes the scan copy written for the share sheet: a sheet closed without sending, or a deleted
+ * scan, leaves no photo of the room behind in the cache. It waits for a copy still being written,
+ * outlives the screen that asked for it, and leaves alone a copy asked for after it.
+ */
+internal fun discardSharedScan(context: Context) {
+    val root = rerunShareDirectory(context, RERUN_SHARE_SCAN)
+    val asked = shareCopyRequests.get()
+    shareCleanup.launch {
+        shareCopyLock.withLock { if (shareCopyRequests.get() == asked) root.deleteRecursively() }
+    }
+}
+
+/** The directory of the share root one writer owns: a writer only ever empties its own. */
+internal fun rerunShareDirectory(context: Context, use: String): File =
+    File(File(context.cacheDir, RERUN_SHARE_DIR), use)
+
 private val shareCopyLock = Mutex()
+private val shareCopyRequests = AtomicInteger()
+private val shareCleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 /** Hands the prepared [file] to the system's share sheet: the bytes sent are the bytes weighed. */
 internal fun sharePreparedScan(context: Context, file: File, title: String) {
@@ -296,6 +326,10 @@ private fun InputStream.readBounded(): ByteArray {
 private const val SCAN_MIME_TYPE = "application/octet-stream"
 /** Scan files and exports handed to the share sheet; the FileProvider exposes only this. */
 internal const val RERUN_SHARE_DIR = "rerun-share"
+/** One directory per writer under [RERUN_SHARE_DIR]: the scan copy, the model, the exports. */
+internal const val RERUN_SHARE_SCAN = "scan"
+internal const val RERUN_SHARE_MODEL = "model"
+internal const val RERUN_SHARE_EXPORT = "export"
 private const val MILLIS = 1000L
 private const val HEAD_BYTES = 64
 private const val BUFFER_BYTES = 64 * 1024

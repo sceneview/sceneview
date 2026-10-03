@@ -74,6 +74,15 @@ class RerunEnglishFormatsTest {
     }
 
     @Test
+    fun `a size rounds before it picks its unit`() {
+        assertEquals("999 kB", formatFileSize(999_499))
+        assertEquals("1.0 MB", formatFileSize(999_500))
+        assertEquals("1.0 MB", formatFileSize(999_999))
+        assertEquals("999.9 MB", formatFileSize(999_949_999))
+        assertEquals("1.0 GB", formatFileSize(999_950_000))
+    }
+
+    @Test
     fun `share and placement actions use the agreed English vocabulary`() {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
         val labels = mapOf(
@@ -84,13 +93,28 @@ class RerunEnglishFormatsTest {
             io.github.sceneview.demo.R.string.ar_place_view_in_3d to "3D",
             io.github.sceneview.demo.R.string.ar_place_keep_scanning to "Try again",
             io.github.sceneview.demo.R.string.ar_place_scan_again to "Try again",
-            io.github.sceneview.demo.R.string.ar_place_tracking_paused to "Move slowly.",
+            io.github.sceneview.demo.R.string.ar_place_show_in_3d to "Show in 3D",
+            io.github.sceneview.demo.R.string.ar_place_tracking_paused to "Move slowly",
+            io.github.sceneview.demo.R.string.ar_place_tracking_paused_low_light to
+                "Move slowly. Try a brighter area.",
         )
         for ((id, expected) in labels) assertEquals(expected, context.getString(id))
         assertEquals(
             "This file contains photos of your room and the path you walked. " +
                 "Anyone you send it to can see them.",
             context.getString(io.github.sceneview.demo.R.string.room_scan_share_privacy),
+        )
+    }
+
+    @Test
+    fun `a scan shared without photos still says it shows the room`() {
+        // The baked surfaces are camera pixels and the points carry their colours: the sentence
+        // may not promise a file free of images.
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        assertEquals(
+            "The surfaces and points in this file are still images of your room, " +
+                "with the path you walked. Anyone you send it to can see them.",
+            context.getString(io.github.sceneview.demo.R.string.room_scan_share_privacy_without_photos),
         )
     }
 

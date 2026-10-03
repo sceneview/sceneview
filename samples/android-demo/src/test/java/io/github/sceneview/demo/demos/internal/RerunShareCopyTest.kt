@@ -85,6 +85,26 @@ class RerunShareCopyTest {
     }
 
     @Test
+    fun `a photo named as a texture or as the cloud does not leave with a scan shared without photos`() {
+        val capture = fixture()
+        val manifest = """{"version":2,"frames":1,
+            "textures":[{"plane":1,"path":"scan/frame-0001.jpg","origin":[0,0,0],"u":[1,0,0],"v":[0,0,1]},
+                {"plane":2,"path":"planes/a.jpg","origin":[0,0,0],"u":[1,0,0],"v":[0,0,1]}],
+            "dense":{"path":"frames/0001.jpg","count":1},
+            "media":[{"path":"scan/frame-0001.jpg","offset":0,"length":3},
+                {"path":"planes/a.jpg","offset":3,"length":2},
+                {"path":"frames/0001.jpg","offset":5,"length":4}]}""".trimIndent()
+        val forged = RerunCapturePack(manifest.toByteArray(), capture.log, capture.media)
+        val shared = RerunShareCopy.write(forged, "Room", temp.newFolder(), false)
+        val opened = RerunScanFile.read(shared.readBytes())!!.open()!!
+        assertEquals(setOf("planes/a.jpg"), opened.manifest.media.keys)
+        assertArrayEquals(byteArrayOf(4, 5), opened.bytesOf("planes/a.jpg"))
+        assertNull(opened.bytesOf("scan/frame-0001.jpg"))
+        assertNull(opened.bytesOf("frames/0001.jpg"))
+        assertFalse(opened.trace.isEmpty)
+    }
+
+    @Test
     fun `only the latest copy stays in the share cache`() {
         val capture = fixture()
         val cache = temp.newFolder("cache")

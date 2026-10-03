@@ -288,7 +288,7 @@ internal fun RoomDollhouseScreen(
                 DockItem(
                     icon = Icons.Rounded.ViewInAr,
                     label = DollhouseCopy.VIEW_AR_LABEL,
-                    caption = stringResource(R.string.room_scan_place),
+                    caption = DollhouseCopy.VIEW_AR,
                     onClick = { previewChosen = false },
                     enabled = arAvailable,
                     selected = inRoom,
@@ -337,8 +337,8 @@ internal fun RoomDollhouseScreen(
                         ScanRoomStatus.MoveSlowly -> DollhouseCopy.PLACE_HINT
                         ScanRoomStatus.KeepOnSurface -> stringResource(R.string.ar_place_keep_on_surface)
                         ScanRoomStatus.TrackingPaused -> stringResource(R.string.ar_place_tracking_paused)
-                        ScanRoomStatus.TrackingPausedLowLight -> stringResource(R.string.ar_place_tracking_paused) +
-                            " " + stringResource(R.string.ar_place_try_brighter_area)
+                        ScanRoomStatus.TrackingPausedLowLight ->
+                            stringResource(R.string.ar_place_tracking_paused_low_light)
                         ScanRoomStatus.FindingPlacement -> stringResource(R.string.ar_place_finding_placement)
                         ScanRoomStatus.GestureHint -> DollhouseCopy.GESTURE_HINT
                         ScanRoomStatus.Scale -> fit?.let { DollhouseCopy.pinched(it, state.scaleFactor, realSize) }

@@ -603,6 +603,7 @@ object DollhouseCopy {
     const val REAL_SIZE = "Real size"
     const val RESET = "Reset"
     const val VIEW_3D = "3D"
+    const val VIEW_AR = "AR"
     const val VIEW_3D_LABEL = "Show in 3D"
     const val VIEW_AR_LABEL = "Show on a table in AR"
 

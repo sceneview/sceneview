@@ -22,6 +22,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +50,8 @@ import kotlinx.coroutines.CancellationException
  * What a shared scan contains, said before it leaves the phone: the photos of the room are in the
  * file unless the switch takes them out, and the size shown is the size of the very file Share
  * hands to Android. The copy is rebuilt off the main thread each time the switch moves; Share
- * stays off until the copy for the current choice is written.
+ * stays off until the copy for the current choice is written. Closed without sending, the sheet
+ * removes its copy.
  */
 @Composable
 internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit) {
@@ -70,6 +72,12 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
         } catch (_: Exception) {
             failed = true
         }
+    }
+    // A sheet closed without sending leaves no copy of the room in the cache, whichever way it
+    // closes; a copy handed to Android stays until the next share, for the app that reads it.
+    val sent = remember(session.id) { booleanArrayOf(false) }
+    DisposableEffect(session.id) {
+        onDispose { if (!sent[0]) discardSharedScan(context) }
     }
     // Only a copy written for the current switch position can be shared.
     val ready = prepared?.takeIf { it.includePhotos == includePhotos }
@@ -155,8 +163,13 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
             Column(verticalArrangement = Arrangement.spacedBy(Space.xs)) {
                 Button(
                     onClick = {
-                        ready?.let { sharePreparedScan(context, it.file, session.title) }
-                        onDismiss()
+                        // Read at the tap, not at the last composition: the file sent is the
+                        // one written for the switch as it stands now.
+                        prepared?.takeIf { it.includePhotos == includePhotos }?.let { copy ->
+                            sent[0] = true
+                            sharePreparedScan(context, copy.file, session.title)
+                            onDismiss()
+                        }
                     },
                     enabled = ready != null,
                     modifier = Modifier

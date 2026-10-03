@@ -347,7 +347,7 @@ internal fun RerunSurfaceSwitch(
 /** [glb] as `<title> model.glb` in a fresh cache directory, handed to the share sheet. */
 private suspend fun shareModelFile(context: Context, title: String, glb: ByteArray) {
     val file = withContext(Dispatchers.IO) {
-        val shareRoot = File(context.cacheDir, RERUN_SHARE_DIR)
+        val shareRoot = rerunShareDirectory(context, RERUN_SHARE_MODEL)
         // Only the latest shared file is kept: the share sheet has read it by the next share.
         shareRoot.deleteRecursively()
         val dir = File(shareRoot, UUID.randomUUID().toString()).apply { mkdirs() }
