@@ -9,7 +9,10 @@ import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.max
 import dev.romainguy.kotlin.math.min
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.EntityInstance
+import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.math.Box
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.Direction
@@ -45,12 +48,53 @@ private const val kColorSize = 4 // r, g, b, a
 open class Geometry internal constructor(
     val primitiveType: PrimitiveType,
     vertices: List<Vertex>,
-    val vertexBuffer: VertexBuffer,
+    vertexBuffer: VertexBuffer,
     primitivesIndices: List<List<Int>>,
-    val indexBuffer: IndexBuffer,
+    indexBuffer: IndexBuffer,
     var primitivesOffsets: List<IntRange>,
     var boundingBox: Box
 ) {
+    var vertexBuffer: VertexBuffer = vertexBuffer
+        private set
+    var indexBuffer: IndexBuffer = indexBuffer
+        private set
+
+    internal interface Consumer {
+        fun validate(primitiveCount: Int)
+        fun rebind()
+    }
+
+    private val consumers = mutableSetOf<Consumer>()
+    private var destroyed = false
+    private val retiredBuffers = mutableListOf<Pair<VertexBuffer, IndexBuffer>>()
+
+    internal fun attach(consumer: Consumer) {
+        check(!destroyed) { "Geometry has been destroyed" }
+        consumers += consumer
+    }
+
+    internal fun detach(consumer: Consumer) { consumers -= consumer }
+
+    /** Releases buffers after the last node has stopped referencing them. Main-thread only. */
+    internal fun destroy(engine: Engine) {
+        if (destroyed || consumers.isNotEmpty()) return
+        destroyed = true
+        deferBuffers(engine, vertexBuffer, indexBuffer)
+        retiredBuffers.forEach { (vertices, indices) -> deferBuffers(engine, vertices, indices) }
+        retiredBuffers.clear()
+    }
+
+    private fun deferBuffers(engine: Engine, vertices: VertexBuffer, indices: IndexBuffer) {
+        EngineDestroyQueue.of(engine).enqueueVertexBuffer(vertices)
+        EngineDestroyQueue.of(engine).enqueueIndexBuffer(indices)
+    }
+
+    private fun rebindConsumers(engine: Engine) {
+        consumers.toList().forEach { it.rebind() }
+        retiredBuffers.forEach { (vertices, indices) -> deferBuffers(engine, vertices, indices) }
+        retiredBuffers.clear()
+    }
+
     /**
      * Used for constructing renderables dynamically
      *
@@ -152,16 +196,19 @@ open class Geometry internal constructor(
             ) -> T
         ): T {
             val vertexBuffer = vertexBuilder.build(engine)
-            val boundingBox = vertexBuffer.setVertices(engine, vertices)
-            val indexBuffer = indexBuilder.build(engine).apply {
-                setIndices(engine, indices.flatten())
+            var indexBuffer: IndexBuffer? = null
+            try {
+                val boundingBox = vertexBuffer.setVertices(engine, vertices)
+                val builtIndices = indexBuilder.build(engine)
+                indexBuffer = builtIndices
+                builtIndices.setIndices(engine, indices.flatten())
+                return constructor(vertexBuffer, builtIndices, indices.getOffsets(), boundingBox)
+            } catch (failure: Throwable) {
+                // These buffers have not been handed to any renderable yet.
+                engine.safeDestroyVertexBuffer(vertexBuffer)
+                indexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
+                throw failure
             }
-            return constructor(
-                vertexBuffer,
-                indexBuffer,
-                indices.getOffsets(),
-                boundingBox
-            )
         }
 
         open fun build(engine: Engine) =
@@ -173,36 +220,66 @@ open class Geometry internal constructor(
             }
     }
 
-    var vertices: List<Vertex> = vertices
+    var vertices: List<Vertex> = vertices.toList()
         private set
 
-    var primitivesIndices: List<List<Int>> = primitivesIndices
+    var primitivesIndices: List<List<Int>> = primitivesIndices.map { it.toList() }
         private set
 
     val indices: List<Int>
         get() = primitivesIndices.flatten()
 
     fun setVertices(engine: Engine, vertices: List<Vertex>) {
-        this.vertices = vertices
-        boundingBox = vertexBuffer.setVertices(engine, vertices)
+        update(engine, vertices = vertices)
     }
 
     fun setPrimitivesIndices(engine: Engine, primitivesIndices: List<List<Int>>) {
-        this.primitivesIndices = primitivesIndices
-        primitivesOffsets = primitivesIndices.getOffsets()
-        indexBuffer.setIndices(engine, primitivesIndices.flatMap { it.indices })
+        update(engine, primitivesIndices = primitivesIndices)
     }
 
+    /**
+     * Updates this geometry on the main thread. Equal vertex counts, per-primitive index counts
+     * and attribute layouts reuse the buffers; any change to these rebuilds both buffers.
+     * All nodes bound through GeometryNode or RenderableNode.setGeometry are synchronously
+     * rebound (including bounds and primitive ranges) before old buffers enter the engine's
+     * frame-deferred destruction queue. A shared geometry stays alive until its last node dies.
+     * Raw Filament renderables/buffer consumers must manage their own binding and lifetime;
+     * do not borrow these buffers for an independently managed renderable.
+     */
     fun update(
         engine: Engine,
         vertices: List<Vertex> = this.vertices,
         primitivesIndices: List<List<Int>> = this.primitivesIndices
     ) = apply {
-        if (this.vertices != vertices) {
-            setVertices(engine, vertices)
+        check(!destroyed) { "Geometry has been destroyed" }
+        if (this.vertices == vertices && this.primitivesIndices == primitivesIndices) {
+            if (retiredBuffers.isNotEmpty()) rebindConsumers(engine)
+            return@apply
         }
-        if (this.primitivesIndices != primitivesIndices) {
-            setPrimitivesIndices(engine, primitivesIndices)
+        consumers.forEach { it.validate(primitivesIndices.size) }
+        if (requiresBufferRebuild(this.vertices, this.primitivesIndices, vertices, primitivesIndices)) {
+            val replacement = Builder(primitiveType).vertices(vertices)
+                .primitivesIndices(primitivesIndices).build(engine)
+            val oldVertices = vertexBuffer
+            val oldIndices = indexBuffer
+            vertexBuffer = replacement.vertexBuffer
+            indexBuffer = replacement.indexBuffer
+            boundingBox = replacement.boundingBox
+            this.vertices = vertices.toList()
+            this.primitivesIndices = primitivesIndices.map { it.toList() }
+            primitivesOffsets = primitivesIndices.getOffsets()
+            // Retain on failure, and retry on the next update: a consumer may still reference them.
+            retiredBuffers += oldVertices to oldIndices
+            rebindConsumers(engine)
+        } else {
+            if (this.vertices != vertices) boundingBox = vertexBuffer.setVertices(engine, vertices)
+            if (this.primitivesIndices != primitivesIndices) {
+                indexBuffer.setIndices(engine, primitivesIndices.flatten())
+            }
+            this.vertices = vertices.toList()
+            this.primitivesIndices = primitivesIndices.map { it.toList() }
+            primitivesOffsets = primitivesIndices.getOffsets()
+            rebindConsumers(engine)
         }
     }
 }
@@ -210,6 +287,18 @@ open class Geometry internal constructor(
 val List<Geometry.Vertex>.hasNormals get() = any { it.normal != null }
 val List<Geometry.Vertex>.hasUvCoordinates get() = any { it.uvCoordinate != null }
 val List<Geometry.Vertex>.hasColors get() = any { it.color != null }
+
+/** Pure allocation decision; index counts are compared per primitive, not just in total. */
+internal fun requiresBufferRebuild(
+    oldVertices: List<Geometry.Vertex>,
+    oldIndices: List<List<Int>>,
+    newVertices: List<Geometry.Vertex>,
+    newIndices: List<List<Int>>
+): Boolean = oldVertices.size != newVertices.size ||
+    oldIndices.map { it.size } != newIndices.map { it.size } ||
+    oldVertices.hasNormals != newVertices.hasNormals ||
+    oldVertices.hasUvCoordinates != newVertices.hasUvCoordinates ||
+    oldVertices.hasColors != newVertices.hasColors
 
 /**
  * A fresh **direct** float buffer of [count] floats, filled by [fill] and left ready to read.

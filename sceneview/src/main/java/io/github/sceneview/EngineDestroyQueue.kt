@@ -1,6 +1,8 @@
 package io.github.sceneview
 
 import com.google.android.filament.Engine
+import com.google.android.filament.VertexBuffer
+import com.google.android.filament.IndexBuffer
 import com.google.android.filament.Stream
 import com.google.android.filament.Texture
 import java.util.WeakHashMap
@@ -67,6 +69,16 @@ class EngineDestroyQueue private constructor(
      */
     fun enqueueTexture(texture: Texture) {
         queue.enqueue { engine.safeDestroyTexture(texture) }
+    }
+
+    /** Enqueue only after every renderable has released or rebound this buffer. Main-thread only. */
+    internal fun enqueueVertexBuffer(buffer: VertexBuffer) {
+        queue.enqueue { engine.safeDestroyVertexBuffer(buffer) }
+    }
+
+    /** Enqueue only after every renderable has released or rebound this buffer. Main-thread only. */
+    internal fun enqueueIndexBuffer(buffer: IndexBuffer) {
+        queue.enqueue { engine.safeDestroyIndexBuffer(buffer) }
     }
 
     /**

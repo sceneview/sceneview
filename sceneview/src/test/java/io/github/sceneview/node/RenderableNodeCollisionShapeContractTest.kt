@@ -49,7 +49,7 @@ class RenderableNodeCollisionShapeContractTest {
      */
     private val updateGeometryNodes = listOf(
         "GeometryNode", "PlaneNode", "CubeNode", "SphereNode", "CylinderNode", "ConeNode",
-        "TorusNode", "CapsuleNode", "LineNode", "PathNode", "ShapeNode"
+        "TorusNode", "CapsuleNode", "LineNode", "PathNode", "ShapeNode", "TubeNode"
     )
 
     // ── 1. The refresh is wired at the choke point ───────────────────────────
@@ -68,16 +68,21 @@ class RenderableNodeCollisionShapeContractTest {
         )
         assertTrue(
             "the override must still perform the real geometry change",
-            override.contains("super.setGeometry(geometry)")
+            override.contains("bindGeometry(geometry, geometry.primitivesOffsets)")
         )
+        val rebind = renderableNodeSource
+            .substringAfter("private fun applyBoundGeometry() {", missingDelimiterValue = "")
+            .substringBefore("\n    }")
+        assertTrue("rebinding must update Filament geometry and bounds",
+            rebind.contains("renderableManager.setGeometry(renderableInstance, geometry, offsets)"))
         assertTrue(
             "the override must re-derive the collider from the new bounding box",
-            override.contains("updateCollisionShape()")
+            rebind.contains("updateCollisionShape()")
         )
         assertTrue(
             "the refresh must back off for an app-assigned collider — overwriting one would " +
                 "break the documented ability to set collisionShape by hand",
-            override.contains("hasCustomCollisionShape")
+            rebind.contains("hasCustomCollisionShape")
         )
     }
 

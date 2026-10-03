@@ -5,9 +5,7 @@ import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.geometries.geometry
-import io.github.sceneview.geometries.mergedForPrimitiveCount
 import io.github.sceneview.managers.materials
-import io.github.sceneview.safeDestroyGeometry
 
 /**
  * Mesh are bundles of primitives, each of which has its own geometry and material.
@@ -37,7 +35,7 @@ import io.github.sceneview.safeDestroyGeometry
  */
 open class GeometryNode(
     engine: Engine,
-    open val geometry: Geometry,
+    geometry: Geometry,
     materialInstances: List<MaterialInstance?>,
     primitivesOffsets: List<IntRange> = geometry.primitivesOffsets,
     /**
@@ -47,7 +45,9 @@ open class GeometryNode(
      * `false` for backward compatibility (#1123).
      */
     destroyMaterialsOnDispose: Boolean = false,
-    builderApply: RenderableManager.Builder.() -> Unit = {}
+    builderApply: RenderableManager.Builder.() -> Unit = {},
+    /** Whether all source submeshes share a single renderable primitive and material. */
+    private val mergePrimitives: Boolean = primitivesOffsets != geometry.primitivesOffsets
 ) : RenderableNode(
     engine = engine,
     primitiveCount = primitivesOffsets.size,
@@ -60,19 +60,13 @@ open class GeometryNode(
         apply(builderApply)
     }) {
 
-    /**
-     * The number of Filament primitives this node was actually built with — [primitivesOffsets]
-     * is a constructor parameter, not a stored property, so this is the only trace left of it
-     * once the builder above has run. Used by [setGeometry] to keep a merged-primitive node
-     * (built via the `materialInstance: MaterialInstance?` constructor below) merged after a
-     * resize instead of falling back to the new geometry's raw, un-merged primitive count
-     * (#3855).
-     *
-     * Named distinctly from [io.github.sceneview.components.RenderableComponent.primitiveCount]
-     * (the *current*, live Filament primitive count) — this is the count captured at
-     * construction time, which never changes even though the live one theoretically could.
-     */
-    private val builtPrimitiveCount = primitivesOffsets.size
+    open val geometry: Geometry = geometry
+
+    init {
+        // Register even when Geometry.update is called directly, or through another shared node.
+        setGeometryRebuildBuilder(builderApply)
+        setGeometry(geometry, primitivesOffsets, mergePrimitives)
+    }
 
     constructor(
         engine: Engine,
@@ -86,7 +80,8 @@ open class GeometryNode(
         materialInstances = listOf(materialInstance),
         primitivesOffsets = listOf(0..geometry.primitivesOffsets.last().last),
         destroyMaterialsOnDispose = destroyMaterialsOnDispose,
-        builderApply = builderApply
+        builderApply = builderApply,
+        mergePrimitives = true
     )
 
     fun updateGeometry(
@@ -95,30 +90,15 @@ open class GeometryNode(
     ) = setGeometry(geometry.update(engine, vertices, indices))
 
     /**
-     * Re-applies the merged-primitive mapping after a geometry change (#3855).
-     *
-     * The single-argument [RenderableNode.setGeometry] this would otherwise inherit always
-     * re-derives offsets from the *new* geometry's own [Geometry.primitivesOffsets] — its raw,
-     * un-merged per-primitive ranges. A node built via the merged-primitive constructor above has
-     * fewer Filament primitive slots than that (one, covering the whole shape for a single
-     * `MaterialInstance`), so that fallback walks past the slot Filament actually has: only the
-     * first — and usually smallest — raw primitive lands, which is what made a resized
-     * `CylinderNode(materialInstance = …)` draw as a single triangle instead of the whole
-     * cylinder. [mergedForPrimitiveCount] keeps the mapping consistent with
-     * [builtPrimitiveCount] instead.
+     * Rebinds this node's fixed geometry with its natural or merged primitive policy.
+     * Use RenderableNode when replacing the geometry object itself at runtime.
      */
     override fun setGeometry(geometry: Geometry) {
+        require(geometry === this.geometry) { "GeometryNode owns a fixed geometry object" }
         setGeometry(
             geometry,
-            geometry.primitivesOffsets.mergedForPrimitiveCount(builtPrimitiveCount)
+            if (mergePrimitives) listOf(0 until geometry.indices.size) else geometry.primitivesOffsets,
+            mergePrimitives
         )
-    }
-
-    override fun destroy() {
-        // Once only (#4259): a second call would free handles, material instances and an
-        // entity id that may already belong to another node.
-        if (isDestroyed) return
-        super.destroy()
-        engine.safeDestroyGeometry(geometry)
     }
 }

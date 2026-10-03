@@ -461,13 +461,11 @@ fun Engine.safeDestroyLight(@FilamentEntity entity: Entity) =
     runCatching { destroyLight(entity) }
 
 fun Engine.destroyGeometry(geometry: Geometry) {
-    destroyVertexBuffer(geometry.vertexBuffer)
-    destroyIndexBuffer(geometry.indexBuffer)
+    geometry.destroy(this)
 }
 
 fun Engine.safeDestroyGeometry(geometry: Geometry) {
-    safeDestroyVertexBuffer(geometry.vertexBuffer)
-    safeDestroyIndexBuffer(geometry.indexBuffer)
+    geometry.destroy(this)
 }
 
 fun Engine.safeDestroyVertexBuffer(vertexBuffer: VertexBuffer) =
