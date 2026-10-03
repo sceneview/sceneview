@@ -649,6 +649,11 @@ struct RerunPlayback: Equatable, Sendable {
 
     init(duration: Float) { self.duration = duration }
 
+    /// Automatic camera animation follows playback, including the end hold.
+    var cameraAdvances: Bool { playing && cursor < duration }
+
+    mutating func pause() { playing = false }
+
     /// Scrubbing pauses on the frame the finger is on.
     mutating func scrub(to seconds: Float) {
         playing = false

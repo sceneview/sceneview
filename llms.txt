@@ -4546,7 +4546,7 @@ Stream an ARCore or ARKit session to the [Rerun](https://rerun.io) viewer for sc
 - **Live (default)** — sidecar spawns the Rerun viewer, you debug interactively.
 - **Save & share** — sidecar writes a `.rrd` file. Drop it onto https://sceneview.github.io/rerun/ to view in-place, or re-host (R2, GitHub release, gist) and open `https://sceneview.github.io/rerun/?url=<encoded>` to share with remote teammates. Lets you attach a fully-replayable session to a bug report.
 
-The Android demo's Rerun Debug screen also draws the session **on the phone, with no computer**: a second `SceneView` on the same `Engine` (`SurfaceType.TextureSurface`, `isOpaque = true`, a custom `CameraGestureDetector.CameraManipulator`) shows the camera trail, the live frustum, the feature-point map, the planes and the anchors from a free orbit camera, with a timeline to scrub the session. It is demo code, not SDK API — `samples/android-demo/.../demos/ArDebugView.kt` is the pattern to copy for a second 3D view over an `ARSceneView`.
+The Android demo's Room Scan screen also draws the session **on the phone, with no computer**: a second `SceneView` on the same `Engine` (`SurfaceType.TextureSurface`, `isOpaque = true`, a custom `CameraGestureDetector.CameraManipulator`) shows the camera trail, the live frustum, the feature-point map, the planes and the anchors from a free orbit camera, with a timeline to scrub the session. It is demo code, not SDK API — `samples/android-demo/.../demos/ArDebugView.kt` is the pattern to copy for a second 3D view over an `ARSceneView`.
 
 ### Architecture
 
@@ -4567,7 +4567,7 @@ Same wire format on Android and iOS. A single sidecar handles both platforms.
 
 1. Run sidecar in save mode: `python rerun-bridge.py --save`
 2. In the app, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…","events":N}`.
-3. Open https://sceneview.github.io/rerun/ — when no session is loaded the page shows a drop-zone (drag the `.rrd` onto it to render in-place) and a QR code that opens the AR Rerun demo on a phone for users who don't have one to start from.
+3. Open https://sceneview.github.io/rerun/ — when no session is loaded the page shows a drop-zone (drag the `.rrd` onto it to render in-place) and a QR code that opens the Room Scan demo on a phone for users who don't have one to start from.
 4. To share with a remote teammate, re-host the `.rrd` on a public URL (Cloudflare R2, GitHub release asset, S3, gist) and send them `https://sceneview.github.io/rerun/?url=<encoded-public-url>`.
 
 The Kotlin API surface for step 2:
@@ -5998,7 +5998,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 
 ### Developer tools
 
-- `ar-rerun` — Rerun AR Replay. Watch a real AR session rebuild itself in 3D.
+- `ar-rerun` — Room Scan. Scan your room, then replay it in 3D.
 - `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
 
 ### Place in AR

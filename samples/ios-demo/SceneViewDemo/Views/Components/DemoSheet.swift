@@ -180,6 +180,7 @@ struct GlassIconButton: View {
     let label: String
     let action: () -> Void
 
+    @Environment(\.themedDemoChrome) private var themed
     @State private var taps = 0
 
     var body: some View {
@@ -190,7 +191,7 @@ struct GlassIconButton: View {
             GlassCircle {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                    .foregroundStyle(themed ? SceneViewTokens.RoomScan.text : SceneViewTokens.Glass.onGlass)
             }
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))

@@ -91,6 +91,11 @@ final class RerunReplaySession {
         sync()
     }
 
+    func pause() {
+        playback.pause()
+        sync()
+    }
+
     func togglePlay() {
         playback.togglePlay()
         sync()

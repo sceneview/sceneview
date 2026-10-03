@@ -73,8 +73,8 @@ enum RerunFraming {
     /// The map's near-vertical view: a floor plan, with just enough tilt to keep depth.
     static let mapElevation: Float = 84
     static let homeMargin: Float = 0.92
-    /// A recording's bounds are known up front: it fills the stage between HUD and filmstrip.
-    static let replayMargin: Float = 0.66
+    /// Keep the full bounding sphere in view, with room for the stage's vertical lift.
+    static let replayMargin: Float = 1.2
     /// Exponential approach to home, per second: ~95 % in one second.
     static let approachRate: Float = 3
     /// The SDK's default lens — 28 mm on a 24 mm-tall sensor, ~46.4° vertical.
@@ -293,7 +293,16 @@ struct RerunOrbitController: Sendable {
     // MARK: Frame
 
     /// Integrates one frame of `delta` seconds.
-    mutating func update(delta: Float) {
+    mutating func update(delta: Float, advancing: Bool = true) {
+        // Gestures mutate the pose directly. Freeze all integration while paused,
+        // including inertia, and discard velocity so resuming cannot fling or jump.
+        guard advancing else {
+            azimuthVelocity = 0
+            elevationVelocity = 0
+            dragAzimuth = 0
+            dragElevation = 0
+            return
+        }
         guard delta.isFinite, delta > 0, delta < 0.25 else { return }
         if grabbing {
             azimuthVelocity = min(max(dragAzimuth / delta, -Self.maxSpin), Self.maxSpin)

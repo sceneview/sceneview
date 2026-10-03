@@ -899,6 +899,24 @@ enum SceneViewTokens {
         }
     }
 
+    /// Room Scan's themed stage. Reuses DESIGN.md's PiP stage, primary, tertiary,
+    /// on-surface and container roles. Opaque marks retain contrast without bloom.
+    enum RoomScan {
+        static let background = Stage.pipBackdropColor
+        static let card = HomeColor.surfaceContainer
+        static let border = HomeColor.onSurfaceDim
+        static let text = HomeColor.onSurface
+        static let secondaryText = HomeColor.onSurfaceDim
+        static let point = HomeColor.primary
+
+        /// DESIGN.md plane fill: primary/tertiary at 12 %, outline carries contrast.
+        static func fill(_ ink: UInt32) -> UInt32 { (ink & 0x00FF_FFFF) | 0x1F00_0000 }
+        static func primary(dark: Bool) -> UInt32 { dark ? 0xFFA4_C1FF : 0xFF00_5BC1 }
+        static func tertiary(dark: Bool) -> UInt32 { dark ? 0xFFD2_A8FF : 0xFF64_46CD }
+        static func ink(dark: Bool) -> UInt32 { dark ? 0xFFF3_F4F6 : 0xFF1A_1A2E }
+        static func grid(dark: Bool) -> UInt32 { dark ? 0xFF5C_6780 : 0xFF7A_8494 }
+    }
+
     /// `DESIGN.md` "AR Debug View" — the Rerun replay's palette, the values of
     /// Android's `SceneViewTokens.DebugView` so both apps draw the same room.
     /// Fixed in both themes: the ground is always `Stage.background`.
@@ -944,6 +962,17 @@ enum SceneViewTokens {
                   blue: Double(argb & 0xFF) / 255,
                   opacity: Double((argb >> 24) & 0xFF) / 255)
         }
+    }
+}
+
+/// Opt-in for chrome over a stage that follows the system theme.
+private struct ThemedDemoChromeKey: EnvironmentKey {
+    static let defaultValue = false
+}
+extension EnvironmentValues {
+    var themedDemoChrome: Bool {
+        get { self[ThemedDemoChromeKey.self] }
+        set { self[ThemedDemoChromeKey.self] = newValue }
     }
 }
 
@@ -1101,6 +1130,7 @@ extension View {
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.arChromeGround) private var arGround
+    @Environment(\.themedDemoChrome) private var themed
     @Environment(\.chromeGlassNamespace) private var glassNamespace
     let shape: S
     let interactive: Bool
@@ -1108,7 +1138,12 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
     let native: Bool
 
     func body(content: Content) -> some View {
-        if let arGround {
+        if themed {
+            content
+                .background(SceneViewTokens.RoomScan.card, in: shape)
+                .overlay(shape.strokeBorder(SceneViewTokens.RoomScan.border,
+                                            lineWidth: SceneViewTokens.Glass.borderWidth))
+        } else if let arGround {
             // Over a camera feed the control carries its own near-opaque
             // ground instead of standing on a screen-wide scrim band. Blur is
             // deliberately absent: `.ultraThinMaterial` samples the live feed,

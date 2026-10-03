@@ -446,21 +446,68 @@ enum RerunGeometry {
         return (raw * 100).rounded() / 100
     }
 
-    /// Bounds of what the camera frames: trail, planes, anchors. Points are left out — one far
-    /// outlier would zoom the whole view out.
-    static func contentBounds(_ frame: RerunFrame) -> (SIMD3<Float>, SIMD3<Float>)? {
+    /// Structured layers keep their full bounds. Each point cloud uses its own 2–98 %
+    /// box (at least 50 finite points), so point density cannot erase a plane or path.
+    /// Dense clouds and meshes can use the same function; this replay currently draws
+    /// map/live points, planes, camera frustums and anchors, with no separate mesh layer.
+    static func visibleBounds(trajectory: [SIMD3<Float>] = [],
+                              featurePoints: [SIMD3<Float>] = [],
+                              denseCloud: [SIMD3<Float>] = [],
+                              planes: [SIMD3<Float>] = [],
+                              mesh: [SIMD3<Float>] = []) -> (SIMD3<Float>, SIMD3<Float>)? {
         var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var hi = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
         var any = false
+        func finite(_ p: SIMD3<Float>) -> Bool { p.x.isFinite && p.y.isFinite && p.z.isFinite }
         func add(_ p: SIMD3<Float>) {
+            guard finite(p) else { return }
             any = true
             lo = simd_min(lo, p)
             hi = simd_max(hi, p)
         }
-        frame.trail.forEach(add)
-        frame.planes.forEach { $0.polygon.forEach(add) }
-        frame.anchors.forEach { add($0.pose.position) }
+        func cloud(_ points: [SIMD3<Float>]) {
+            let points = points.filter(finite)
+            guard points.count >= 50 else { points.forEach(add); return }
+            let trim = Int(Float(points.count) * 0.02)
+            var lower = SIMD3<Float>.zero, upper = SIMD3<Float>.zero
+            for axis in 0..<3 {
+                let values = points.map { $0[axis] }.sorted()
+                lower[axis] = values[trim]
+                upper[axis] = values[values.count - 1 - trim]
+            }
+            add(lower)
+            add(upper)
+        }
+        trajectory.forEach(add)
+        planes.forEach(add)
+        mesh.forEach(add)
+        cloud(featurePoints)
+        cloud(denseCloud)
         return any ? (lo, hi) : nil
+    }
+
+    static func contentBounds(_ frame: RerunFrame, hidden: Set<RerunGroup> = [],
+                              lens: RerunLens = .default) -> (SIMD3<Float>, SIMD3<Float>)? {
+        var trajectory = hidden.contains(.trail) ? [] : frame.trail
+        if !hidden.contains(.trail) {
+            // Photos and frustums have extent beyond the camera centres.
+            for pose in frame.keyframes {
+                trajectory += frustumCorners(pose, depth: keyframeDepth, lens: lens)
+            }
+            if let camera = frame.camera {
+                trajectory += frustumCorners(camera, depth: frustumDepth, lens: lens)
+            }
+        }
+        let planes = hidden.contains(.planes) ? [] : frame.planes.flatMap(\.polygon)
+        // Include placed models' envelope, not just their centres (0.3 m shiba).
+        let anchors = hidden.contains(.anchors) ? [] : frame.anchors.flatMap { anchor in
+            [anchor.pose.position - SIMD3<Float>(repeating: 0.3),
+             anchor.pose.position + SIMD3<Float>(repeating: 0.3)]
+        }
+        return visibleBounds(trajectory: trajectory,
+                             featurePoints: hidden.contains(.points) ? [] : frame.livePoints,
+                             denseCloud: hidden.contains(.points) ? [] : Array(frame.mapPoints),
+                             planes: planes, mesh: anchors)
     }
 
     /// Grid extent: the content bounds snapped to the grid.
