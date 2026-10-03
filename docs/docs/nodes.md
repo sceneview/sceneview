@@ -1024,7 +1024,13 @@ LightNode(
 Button(onClick = { glowing = !glowing }) { Text("Toggle glow") }
 ```
 
-Parameters that **rebuild geometry** (`size` on `CubeNode`, `radius` on `SphereNode`, `vertices` on `MeshNode`) also work from state — but cost a mesh rebuild each change. Keep them monotonic or use `derivedStateOf` to debounce.
+Procedural geometry parameters also work from state. A radius, size or centre change reuses
+its buffers. Changing tessellation (`SphereNode(stacks, slices)`, `CylinderNode(sideCount)`,
+`ConeNode(sideCount)`, `TorusNode(majorSegments, minorSegments)`,
+`CapsuleNode(capStacks, sideSlices)`), growing `PathNode(points)` or `TubeNode(points)`,
+or adding `ShapeNode(color)` rebuilds buffers when their counts or attribute layout change.
+The library rebinds every node sharing the geometry and updates primitive ranges and bounds.
+Drive these parameters directly from state; no `key` or node recreation is needed.
 
 ---
 

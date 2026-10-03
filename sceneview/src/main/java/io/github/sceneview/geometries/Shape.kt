@@ -91,7 +91,7 @@ class Shape private constructor(
         fun color(color: Color?) = apply { this.color = color }
 
         override fun build(engine: Engine): Shape {
-            vertices(getVertices(polygonPath + delaunayPoints))
+            vertices(getVertices(polygonPath + delaunayPoints, normal, uvScale, color))
             primitivesIndices(
                 getPolygonIndices(
                     polygonPath,
@@ -142,7 +142,7 @@ class Shape private constructor(
     ) = apply {
         update(
             engine = engine,
-            vertices = getVertices(polygonPath + delaunayPoints),
+            vertices = getVertices(polygonPath + delaunayPoints, normal, uvScale, color),
             primitivesIndices = getPolygonIndices(polygonPath, polygonHoles) +
                     getDelaunayIndices(delaunayPoints)
         )

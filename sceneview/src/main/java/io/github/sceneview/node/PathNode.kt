@@ -76,5 +76,7 @@ open class PathNode private constructor(
     fun updateGeometry(
         points: List<Position> = geometry.points,
         closed: Boolean = geometry.closed
-    ) = setGeometry(geometry.update(engine, points, closed))
+    ) {
+        geometry.update(engine, points, closed)
+    }
 }
