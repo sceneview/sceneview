@@ -226,9 +226,10 @@ jobs:
           # set (which built a `web-model-viewer.js` bundle index.html never
           # loaded) was removed in #1946, so there is nothing to compile:
           # the files under `samples/web-demo/site/` ARE the deliverable.
-          # Copy them verbatim to the deployed `/web-demo/` route.
+          # Stage the single hand-written viewer alongside the demo assets.
           mkdir -p site/web-demo
           cp -r samples/web-demo/site/. site/web-demo/
+          cp website-static/js/sceneview.js site/web-demo/js/sceneview.js
           [ -f site/web-demo/index.html ] || {
             echo "::error::site/web-demo/index.html missing — deploy would 404"; exit 1; }
 

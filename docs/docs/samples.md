@@ -88,10 +88,11 @@ Browser 3D viewer with:
 - Orbit camera, auto-resize
 
 A plain static site (HTML + inline JS + a self-hosted `sceneview.js`) —
-not a Gradle module. Open `samples/web-demo/site/index.html` directly, or
+not a Gradle module. From the repository root, stage the shared viewer and
 serve the folder:
 
 ```bash
+cp website-static/js/sceneview.js samples/web-demo/site/js/sceneview.js
 npx http-server samples/web-demo/site -p 8080
 ```
 

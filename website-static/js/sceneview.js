@@ -530,6 +530,7 @@
       this._mediaNodes = new Map(); // entity -> { type, asset, texture, ... }
       this._billboards = new Set(); // entities that should always face camera
       this._videoElements = new Map(); // entity -> { video, canvas, ctx, rafId }
+      this._lightEntities = new Set(); // light entities created via addLight()
       this._quadGLB = null; // Cached quad GLB bytes
 
       // Per-frame allocation scratch (#2274) — eliminates the GC sawtooth, worst
@@ -755,8 +756,12 @@
     _applyProjection() {
       const canvas = this._canvas;
       if (!canvas || !(canvas.height > 0)) return;
+      // The far plane only ever widens: 1000 up to a framed radius of ~133, then it
+      // follows the zoom-out limit. A model authored in millimetres is framed
+      // thousands of units away and was culled whole by a fixed 1000 (#3742).
+      const far = Math.max(1000, (this._maxRadius || 50) * 1.5);
       this._camera.setProjectionFov(
-        this._fov || 45, canvas.width / canvas.height, this._nearPlane || 0.1, 1000,
+        this._fov || 45, canvas.width / canvas.height, this._nearPlane || 0.1, far,
         Filament.Camera$Fov.VERTICAL
       );
     }
@@ -1063,16 +1068,28 @@
         .intensity(intensity)
         .direction(direction);
 
+      if (type === 'point' || type === 'spot') builder.falloff(falloff);
+      builder.build(this._engine, entity);
+
       if (type === 'point' || type === 'spot') {
-        builder.falloff(falloff);
-        // Position point/spot lights via transform
+        // Position point/spot lights via transform. A bare light entity has no
+        // transform component: getInstance() on an entity without one returns an
+        // invalid instance, so create the component first.
         var tm = this._engine.getTransformManager();
+        if (!tm.hasComponent(entity)) tm.create(entity);
         var inst = tm.getInstance(entity);
-        tm.setTransform(inst, Filament.mat4.translation(position));
+        // Column-major translation matrix. The Filament.js binding has no
+        // `Filament.mat4` namespace, so `Filament.mat4.translation()` threw.
+        tm.setTransform(inst, [
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          position[0], position[1], position[2], 1
+        ]);
       }
 
-      builder.build(this._engine, entity);
       this._scene.addEntity(entity);
+      this._lightEntities.add(entity);
       this.requestRender();
       return entity;
     }
@@ -1765,6 +1782,19 @@
      * @param {number} entity - Entity handle
      */
     removeNode(entity) {
+      // Lights created via addLight() are not media nodes: handle them first.
+      if (this._lightEntities.has(entity)) {
+        this._lightEntities.delete(entity);
+        try {
+          this._scene.remove(entity);
+          // Frees the light and transform components. The Filament.js
+          // LightManager binding has no destroy() of its own.
+          this._engine.destroyEntity(entity);
+        } catch (e) { /* ignore */ }
+        this.requestRender();
+        return;
+      }
+
       var nodeInfo = this._mediaNodes.get(entity);
       if (!nodeInfo) return;
 
