@@ -59,10 +59,14 @@ All `rememberXxx` helpers from the base `sceneview` module are also available.
 
 | Function | Description |
 |---|---|
-| `Frame.cameraImageToViewMapping(imageSize, viewSize, inputRotationDegrees)` | Snapshots ARCore's current `IMAGE_PIXELS -> VIEW` transform for an asynchronous ML request. |
+| `Frame.cameraImageToViewMapping(imageSize, inputRotationDegrees)` | Snapshots ARCore's current `IMAGE_PIXELS -> VIEW` transform for an asynchronous ML request. |
 | `CameraImageToViewMapping.mapPixel(x, y)` | Maps a pixel from the rotated detector output into view pixels. |
 | `CameraImageToViewMapping.mapNormalized(x, y)` | Maps a normalized point from the rotated detector output into view pixels. |
+| `CameraImageToViewMapping.mapImagePixel(x, y)` | Maps a pixel of the unrotated CPU image into view pixels. |
 | `CameraImageToViewMapping.mapImageNormalized(x, y)` | Maps a normalized point that remains in the unrotated CPU-image space (for example MediaPipe landmarks). |
+| `CameraImageToViewMapping.detectorPixelToImagePixel(x, y)` | Undoes the input rotation only: the unrotated image pixel behind a detector-output pixel, the one `camera.imageIntrinsics` describes. |
+| `CameraImageToViewTransform` | The captured affine `IMAGE_PIXELS -> VIEW` transform, exposed as `mapping.imagePixelsToView`. |
+| `CameraImageToViewMapping.centerCrop(imageSize, viewSize, inputRotationDegrees)` | The same mapping without an ARCore frame: rotation plus centered crop. |
 
 ### AR node composables (inside `ARSceneView { }`)
 

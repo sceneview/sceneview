@@ -39,6 +39,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -96,7 +97,7 @@ import kotlin.math.abs
  * |---|---|---|
  * | Should the card face the viewer? | **Billboard** (dock) | Off, the cards ride the turntable and go edge-on, then show their backs. On, they pivot to stay square. |
  * | Should the model be able to hide it? | **Always on top** | Off, the Vents card is half-swallowed by the helmet. On, `setDepthCulling(false)` + `PRIORITY_LAST` float it over everything. |
- * | How big is a card in metres? | **Card size** | A `ViewNode` renders at `pxPerUnits` = 250 px/m, so a 264 dp card is metres wide before you scale it. |
+ * | How big is a card in metres? | **Card size** | A `ViewNode` is sized in pixels over `pxPerUnits` (250 px/m by default), so a 264 dp card is metres wide before you scale it — and wider on a denser display unless `pxPerUnits` follows the density, as it does here. |
  * | How far off the subject? | **Card distance** | Orbit radius of the three call-outs. |
  *
  * ## World-anchored labels, viewer-anchored controls
@@ -422,8 +423,12 @@ private fun rememberViewNodePolicy(
     val policy = remember { ViewNodeDepthPolicy(alwaysOnTop) }
     policy.alwaysOnTop = alwaysOnTop
     LaunchedEffect(policy, alwaysOnTop) { policy.apply() }
-    return remember(policy, touchForwarding) {
+    // A ViewNode is sized in pixels: without this the quad's world size follows the display
+    // density. See [CalloutLayout.CARD_DP_PER_METER].
+    val pxPerUnit = CalloutLayout.viewNodePxPerUnit(LocalDensity.current.density)
+    return remember(policy, touchForwarding, pxPerUnit) {
         {
+            pxPerUnits = pxPerUnit
             isTouchForwardingEnabled = touchForwarding
             policy.node = this
             // The node exists as of this line, so the initial state lands at construction and the
@@ -612,16 +617,14 @@ private fun statusLabel(cardScale: Float, alwaysOnTop: Boolean): String = String
 )
 
 /**
- * A card's world width, in centimetres, for the given scale.
- *
- * `ViewNode` renders at `pxPerUnits` = 250 px/m, and [CARD_WIDTH] is a dp value, so the exact
- * metre width depends on the display density. This uses the app's baseline density so the readout
- * is a stable, honest order of magnitude rather than a per-device number the reader cannot check.
+ * A card's world width, in centimetres, for the given scale. The real width on every display:
+ * the cards are built with a density-relative `pxPerUnits` (see
+ * [CalloutLayout.CARD_DP_PER_METER]).
  */
 internal fun cardWidthLabel(cardScale: Float): String = String.format(
     Locale.US,
     "%d cm wide",
-    (CalloutLayout.cardWorldWidth(cardScale, BASELINE_DENSITY) * 100f).toInt(),
+    (CalloutLayout.cardWorldWidth(cardScale) * 100f).toInt(),
 )
 
 /** True when two eye positions differ by more than a millimetre on any axis. */
@@ -650,9 +653,6 @@ private val CARD_WIDTH = CalloutLayout.CARD_WIDTH_DP.dp
 
 /** @see CardShell */
 private val CARD_HEIGHT = CalloutLayout.CARD_HEIGHT_DP.dp
-
-/** xhdpi. The density [cardWidthLabel]'s centimetre readout is quoted at. */
-private const val BASELINE_DENSITY = 2f
 
 /** A millimetre. Below this the camera has not really moved. */
 private const val CAMERA_EPSILON = 0.001f

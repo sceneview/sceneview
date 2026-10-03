@@ -53,8 +53,9 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
-import io.github.sceneview.demo.common.cameraImageRotationDegrees
+import io.github.sceneview.demo.common.CameraImageRotation
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.CameraMappingProbe
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -96,11 +97,29 @@ import java.io.ByteArrayOutputStream
  * landmarker showed a person lying sideways. MediaPipe's pose model is not rotation-invariant —
  * fed a 90°-off frame it almost never found a body, which is why the demo "did nothing" no
  * matter how a person stood in front of the camera. The fix passes the same
- * [io.github.sceneview.demo.common.cameraImageRotationDegrees] used by `ar-ml-object-label`'s ML
+ * [io.github.sceneview.demo.common.CameraImageRotation] used by `ar-ml-object-label`'s ML
  * Kit pipeline as an [ImageProcessingOptions] rotation hint to [PoseLandmarker.detect] — that
- * lets MediaPipe correct for inference without physically rotating the bitmap. Landmark
- * coordinates remain normalized to that unrotated bitmap, so the captured SceneView
- * camera-image mapping performs the separate rotation and center-crop into view pixels.
+ * lets MediaPipe correct for inference without physically rotating the bitmap.
+ *
+ * **Which image the landmarks are normalized to.** The *unrotated* input bitmap, not the
+ * upright image the model saw — so the overlay maps them with
+ * [CameraImageToViewMapping.mapImageNormalized], which applies the sensor rotation and the
+ * preview crop, and not with `mapNormalized`, which would undo a rotation that was never
+ * applied to the coordinates. This is what MediaPipe's sources say at the pinned version
+ * (`mediapipe-tasks-vision` 0.10.26, tag `v0.10.26` of `google-ai-edge/mediapipe`):
+ *  - `mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarker_graph.cc`, on the graph's
+ *    landmark outputs: "All returned coordinates are in the unrotated and uncropped input
+ *    image coordinates system."
+ *  - `mediapipe/tasks/java/com/google/mediapipe/tasks/vision/core/BaseVisionTaskApi.java`,
+ *    `convertToNormalizedRect`: the rotation of [ImageProcessingOptions] is not applied to the
+ *    image; it becomes the rotation of a region-of-interest rectangle laid over the input image
+ *    (`setRotation(-(float) Math.PI * rotationDegrees / 180.0f)`).
+ *  - `mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarks_detector_graph.cc`: the
+ *    landmarks found in that rotated crop are projected back onto the input image through the
+ *    same rectangle (`LandmarkProjectionCalculator`).
+ *
+ * Read in the sources, not yet observed on a phone: the device check is to raise the right arm
+ * and see the skeleton's arm rise on the same side, in portrait and in both landscapes.
  *
  * ### Model asset
  *
@@ -154,7 +173,13 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var bodyPose by remember { mutableStateOf(BodyPose(emptyMap())) }
     var bodyMapping by remember { mutableStateOf<CameraImageToViewMapping?>(null) }
+    // Only compared, in one log line per orientation, with where the mapping puts the image
+    // centre (see [CameraMappingProbe]); the mapping itself comes from ARCore's display geometry.
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
+    val mappingProbe = remember { CameraMappingProbe() }
+
+    // Sensor mount read once per camera id, not once per landmarker pass.
+    val imageRotation = remember(context) { CameraImageRotation(context) }
 
     // Landmarker throttle — minimum gap between detector runs so we don't starve the
     // renderer. ~6 fps is plenty for a live skeleton overlay.
@@ -271,15 +296,12 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                     val cameraImage = frame.cameraImage() ?: return@ARSceneView
                     bodyPose = cameraImage.use { image ->
                         runCatching {
-                            if (viewSize.width <= 0 || viewSize.height <= 0) {
-                                return@runCatching BodyPose(emptyMap())
-                            }
-                            val rotationDegrees = cameraImageRotationDegrees(context, session)
+                            val rotationDegrees = imageRotation.degrees(session)
                             val mapping = frame.cameraImageToViewMapping(
                                 imageSize = CameraImageSize(image.width, image.height),
-                                viewSize = CameraImageSize(viewSize.width, viewSize.height),
                                 inputRotationDegrees = rotationDegrees,
                             )
+                            mappingProbe.report(mapping, viewSize.width, viewSize.height)
                             val bitmap = image.toBitmap()
                             val mpImage = BitmapImageBuilder(bitmap).build()
                             // #3266: the bitmap is still in ARCore's raw sensor orientation —

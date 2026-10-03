@@ -33,6 +33,34 @@ data class CameraImageToViewTransform(
 }
 
 /**
+ * The affine transform that sends three corners of the raw camera image onto three view points.
+ *
+ * `IMAGE_PIXELS -> VIEW` is a rotation by a quarter turn, a uniform scale, a crop offset and,
+ * for a front camera, a mirror: an affine map, so three non-aligned points define it entirely.
+ * ARCore is asked where the corners `(0, 0)`, `(width, 0)` and `(0, height)` land and this
+ * solves the six coefficients from the answers. Split from the ARCore call so every rotation,
+ * the mirror and the crop are JVM tests.
+ *
+ * @param imageSize dimensions of the unrotated CPU image.
+ * @param origin view position of image pixel `(0, 0)`.
+ * @param xAxisEnd view position of image pixel `(width, 0)`.
+ * @param yAxisEnd view position of image pixel `(0, height)`.
+ */
+internal fun cameraImageToViewTransform(
+    imageSize: CameraImageSize,
+    origin: CameraImagePoint,
+    xAxisEnd: CameraImagePoint,
+    yAxisEnd: CameraImagePoint,
+): CameraImageToViewTransform = CameraImageToViewTransform(
+    m00 = (xAxisEnd.x - origin.x) / imageSize.width,
+    m01 = (yAxisEnd.x - origin.x) / imageSize.height,
+    m02 = origin.x,
+    m10 = (xAxisEnd.y - origin.y) / imageSize.width,
+    m11 = (yAxisEnd.y - origin.y) / imageSize.height,
+    m12 = origin.y,
+)
+
+/**
  * Immutable mapping from a detector's rotated output coordinates to view pixels.
  *
  * Vision APIs accept a clockwise input rotation; APIs such as ML Kit report points in that
@@ -47,13 +75,11 @@ data class CameraImageToViewTransform(
  * [centerCrop] creates the equivalent pure-Kotlin rotation plus centered-crop mapping.
  *
  * @param imageSize dimensions of the unrotated CPU image.
- * @param viewSize dimensions of the Android view configured through ARCore display geometry.
  * @param inputRotationDegrees clockwise rotation passed to the vision API: 0, 90, 180, or 270.
  * @param imagePixelsToView captured raw `IMAGE_PIXELS` to `VIEW` affine transform.
  */
 class CameraImageToViewMapping(
     val imageSize: CameraImageSize,
-    val viewSize: CameraImageSize,
     val inputRotationDegrees: Int,
     val imagePixelsToView: CameraImageToViewTransform,
 ) {
@@ -71,14 +97,22 @@ class CameraImageToViewMapping(
     val detectorHeight: Int
         get() = if (inputRotationDegrees % 180 == 0) imageSize.height else imageSize.width
 
-    /** Maps a detector-output pixel to Android view pixels. */
-    fun mapPixel(x: Float, y: Float): CameraImagePoint {
-        val raw = when (inputRotationDegrees) {
+    /**
+     * Undoes [inputRotationDegrees]: the pixel of the unrotated CPU image a detector-output
+     * pixel comes from. This is the pixel the camera intrinsics describe, so it is also the
+     * entry point for casting a world ray through a detection.
+     */
+    fun detectorPixelToImagePixel(x: Float, y: Float): CameraImagePoint =
+        when (inputRotationDegrees) {
             0 -> CameraImagePoint(x, y)
             90 -> CameraImagePoint(y, imageSize.height - x)
             180 -> CameraImagePoint(imageSize.width - x, imageSize.height - y)
             else -> CameraImagePoint(imageSize.width - y, x) // 270° clockwise
         }
+
+    /** Maps a detector-output pixel to Android view pixels. */
+    fun mapPixel(x: Float, y: Float): CameraImagePoint {
+        val raw = detectorPixelToImagePixel(x, y)
         return imagePixelsToView.map(raw.x, raw.y)
     }
 
@@ -146,7 +180,6 @@ class CameraImageToViewMapping(
             }
             return CameraImageToViewMapping(
                 imageSize = imageSize,
-                viewSize = viewSize,
                 inputRotationDegrees = inputRotationDegrees,
                 imagePixelsToView = transform,
             )

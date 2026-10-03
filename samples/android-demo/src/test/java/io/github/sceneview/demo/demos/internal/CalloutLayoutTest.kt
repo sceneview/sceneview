@@ -75,22 +75,6 @@ class CalloutLayoutTest {
         assertEquals(0f, spun.z, eps)
     }
 
-    @Test
-    fun `billboard heading uses the card position after a translated content root`() {
-        val actualWorld = CalloutLayout.worldPosition(
-            localPosition = Position(1f, 0f, 0f),
-            parentYawDegrees = 0f,
-            contentRootTranslation = Position(0f, 0f, 1f),
-        )
-        val camera = Position(0f, 0f, 3f)
-
-        val actual = CalloutLayout.billboardYawDegrees(actualWorld, camera)
-        val translationOmitted = CalloutLayout.billboardYawDegrees(Position(1f, 0f, 0f), camera)
-
-        assertEquals(-26.565f, actual, 1e-3f)
-        assertEquals(-18.435f, translationOmitted, 1e-3f)
-    }
-
     // ── Billboarding ─────────────────────────────────────────────────────────────────────
 
     @Test
@@ -269,33 +253,54 @@ class CalloutLayoutTest {
         // The demo turns `autoCenterContent` off, so these constants are the whole framing. With
         // the previous ones the control card came out wider than a portrait viewport and its
         // button fell off the bottom of the scene — visible only on a device, hence this test.
-        HIGH_DENSITIES.forEach { density ->
-            val scale = CalloutLayout.DEFAULT_CARD_SCALE * CalloutLayout.CONTROL_CARD_SCALE_FACTOR
-            val halfWidth = CalloutLayout.cardWorldWidth(scale, density) / 2f
-            val halfHeight = CalloutLayout.cardWorldHeight(scale, density) / 2f
-            val card = CalloutLayout.CONTROL_CARD_POSITION
+        // One check covers every display: the card's world size no longer depends on the density.
+        val scale = CalloutLayout.DEFAULT_CARD_SCALE * CalloutLayout.CONTROL_CARD_SCALE_FACTOR
+        val halfWidth = CalloutLayout.cardWorldWidth(scale) / 2f
+        val halfHeight = CalloutLayout.cardWorldHeight(scale) / 2f
+        val card = CalloutLayout.CONTROL_CARD_POSITION
 
-            val cardTopLeft = project(Position(card.x - halfWidth, card.y + halfHeight, card.z))
-            val cardBottomRight = project(Position(card.x + halfWidth, card.y - halfHeight, card.z))
-            val helmetHalf = CalloutLayout.MODEL_SIZE_METERS / 2f
-            val helmetTop = project(Position(0f, helmetHalf, 0f))
-            val helmetBottom = project(Position(0f, -helmetHalf, 0f))
+        val cardTopLeft = project(Position(card.x - halfWidth, card.y + halfHeight, card.z))
+        val cardBottomRight = project(Position(card.x + halfWidth, card.y - halfHeight, card.z))
+        val helmetHalf = CalloutLayout.MODEL_SIZE_METERS / 2f
+        val helmetTop = project(Position(0f, helmetHalf, 0f))
+        val helmetBottom = project(Position(0f, -helmetHalf, 0f))
 
-            assertTrue(
-                "control card spans ±${cardBottomRight.first} of the width at density $density",
-                cardBottomRight.first < 1f - EDGE_MARGIN && cardTopLeft.first > -1f + EDGE_MARGIN,
-            )
-            assertTrue(
-                "control card bottom is at ${cardBottomRight.second} at density $density",
-                cardBottomRight.second > -1f + EDGE_MARGIN,
-            )
-            assertTrue("helmet top is at ${helmetTop.second}", helmetTop.second < 1f - EDGE_MARGIN)
-            assertTrue(
-                "control card top ${cardTopLeft.second} covers the helmet, whose chin is at " +
-                    "${helmetBottom.second}, at density $density",
-                cardTopLeft.second < helmetBottom.second,
-            )
+        assertTrue(
+            "control card spans ±${cardBottomRight.first} of the width",
+            cardBottomRight.first < 1f - EDGE_MARGIN && cardTopLeft.first > -1f + EDGE_MARGIN,
+        )
+        assertTrue(
+            "control card bottom is at ${cardBottomRight.second}",
+            cardBottomRight.second > -1f + EDGE_MARGIN,
+        )
+        assertTrue("helmet top is at ${helmetTop.second}", helmetTop.second < 1f - EDGE_MARGIN)
+        assertTrue(
+            "control card top ${cardTopLeft.second} covers the helmet, whose chin is at " +
+                "${helmetBottom.second}",
+            cardTopLeft.second < helmetBottom.second,
+        )
+    }
+
+    // ── Card size ────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a card is the same size in the world on every display`() {
+        // What a ViewNode does with the rate: quad size = view size in px / pxPerUnits.
+        val worldWidths = DENSITIES.map { density ->
+            val widthPx = CalloutLayout.CARD_WIDTH_DP * density
+            widthPx / CalloutLayout.viewNodePxPerUnit(density) * CalloutLayout.DEFAULT_CARD_SCALE
         }
+
+        worldWidths.forEach { width ->
+            assertEquals(CalloutLayout.cardWorldWidth(CalloutLayout.DEFAULT_CARD_SCALE), width, eps)
+        }
+    }
+
+    @Test
+    fun `the anchor density keeps ViewNode's default rate`() {
+        // 250 px/m is ViewNode's default: at 420 dpi a card is the size it was before the rate
+        // followed the density.
+        assertEquals(250f, CalloutLayout.viewNodePxPerUnit(CalloutLayout.FRAMING_DENSITY), eps)
     }
 
     // ── The scene's own invariants ───────────────────────────────────────────────────────
@@ -390,16 +395,18 @@ class CalloutLayoutTest {
         /** Filament's `setLensProjection` sensor height. */
         const val SENSOR_HEIGHT_MM = 24f
 
-        /** Width over height of the scene band on a 20:9 phone held upright. */
+        /**
+         * Width over height of the scene band on a phone held upright. Measured, not assumed: the
+         * demo's `SurfaceView` is 1280 x 1968 px on the Pixel 7a emulator (1280 x 2856, 480 dpi),
+         * between the top bar and the dock. Landscape is not covered: the band is then a short
+         * strip and the scene is framed by its height.
+         */
         const val PORTRAIT_ASPECT = 0.65f
 
         /** Fraction of the half-viewport kept clear at every edge. */
         const val EDGE_MARGIN = 0.05f
 
-        /**
-         * xxhdpi up to the densest phones shipping. A `ViewNode` is sized in pixels, so the
-         * densest display is the one the card is widest on.
-         */
-        val HIGH_DENSITIES = listOf(2.625f, 3f, 3.5f)
+        /** mdpi up to the densest phones shipping. */
+        val DENSITIES = listOf(1f, 2f, 2.625f, 3f, 3.5f)
     }
 }

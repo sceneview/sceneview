@@ -83,9 +83,9 @@ internal object CalloutLayout {
     // ── Card size (world scale applied to the rendered Compose quad) ──────────────────────
 
     /**
-     * Card scale bounds. A `ViewNode` renders at `pxPerUnits = 250 px/m`, so the demo's 264 dp
-     * card is a couple of metres across at scale 1 — these are the factors that bring it back to
-     * a hand-sized label next to a 0.62 m model.
+     * Card scale bounds. At [CARD_DP_PER_METER] the demo's 264 dp card is a couple of metres
+     * across at scale 1 — these are the factors that bring it back to a hand-sized label next to
+     * a 0.62 m model.
      */
     const val MIN_CARD_SCALE = 0.07f
 
@@ -101,8 +101,25 @@ internal object CalloutLayout {
     /** Height of every in-scene card, in dp. */
     const val CARD_HEIGHT_DP = 156f
 
-    /** `ViewNode.pxPerUnits` default — the px-to-metre rate every card's world size divides by. */
-    const val VIEW_NODE_PX_PER_UNIT = 250f
+    /**
+     * The display density the card rate is anchored on: 420 dpi, the profile the demo's render
+     * goldens are recorded at. Only [CARD_DP_PER_METER] reads it.
+     */
+    const val FRAMING_DENSITY = 2.625f
+
+    /**
+     * How many dp of card make one metre of world, at node scale 1.
+     *
+     * A `ViewNode` is sized in **pixels**: its quad is the view's pixel size over
+     * `ViewNode.pxPerUnits`, which defaults to a fixed 250 px/m. Left at that default the same
+     * 264 dp card is 2.1 m wide on an xhdpi display and 3.7 m wide on a 560 dpi one, and the
+     * scene around it does not grow with it: on a dense phone the control card overflowed the
+     * viewport. So the demo sets `pxPerUnits` from the display density ([viewNodePxPerUnit]),
+     * which makes the rate a constant in dp and the card the same size in the world on every
+     * display. The value is the default rate at [FRAMING_DENSITY]: at 420 dpi a card is the
+     * size it always was, and every other display now matches it.
+     */
+    const val CARD_DP_PER_METER = 250f / FRAMING_DENSITY
 
     /**
      * How much larger than a call-out the control card is drawn. It carries a button, so it has
@@ -111,15 +128,19 @@ internal object CalloutLayout {
     const val CONTROL_CARD_SCALE_FACTOR = 2.5f
 
     /**
-     * A card's world width, in metres: its pixel width over [VIEW_NODE_PX_PER_UNIT], times the
-     * node scale. It grows with the display density — a `ViewNode` is sized in pixels, not dp.
+     * The `ViewNode.pxPerUnits` every card of this demo is built with on a display of the given
+     * [density]: [CARD_DP_PER_METER] expressed in that display's pixels.
      */
-    fun cardWorldWidth(cardScale: Float, density: Float): Float =
-        CARD_WIDTH_DP * density / VIEW_NODE_PX_PER_UNIT * cardScale
+    fun viewNodePxPerUnit(density: Float): Float = CARD_DP_PER_METER * density
+
+    /**
+     * A card's world width, in metres: its dp width over [CARD_DP_PER_METER], times the node
+     * scale. The same on every display, as long as the node uses [viewNodePxPerUnit].
+     */
+    fun cardWorldWidth(cardScale: Float): Float = CARD_WIDTH_DP / CARD_DP_PER_METER * cardScale
 
     /** A card's world height, in metres. @see cardWorldWidth */
-    fun cardWorldHeight(cardScale: Float, density: Float): Float =
-        CARD_HEIGHT_DP * density / VIEW_NODE_PX_PER_UNIT * cardScale
+    fun cardWorldHeight(cardScale: Float): Float = CARD_HEIGHT_DP / CARD_DP_PER_METER * cardScale
 
     /**
      * The three annotations pinned to the model, in the order they are composed.
@@ -220,31 +241,16 @@ internal object CalloutLayout {
      * placement ever stops being a circle.
      */
     fun worldPosition(callout: Callout, spread: Float, turntableYawDegrees: Float): Position {
-        return worldPosition(
-            localPosition = localPosition(callout, spread),
-            parentYawDegrees = turntableYawDegrees,
-        )
-    }
-
-    /**
-     * Resolves a local position through a Y-rotated parent and a translated content root.
-     *
-     * [contentRootTranslation] is zero in the demo because it disables `autoCenterContent`.
-     * Keeping the translation explicit prevents future callers from computing a billboard
-     * heading from a position that differs from the node's actual world transform.
-     */
-    fun worldPosition(
-        localPosition: Position,
-        parentYawDegrees: Float,
-        contentRootTranslation: Position = Position(0f, 0f, 0f),
-    ): Position {
-        val yaw = Math.toRadians(parentYawDegrees.toDouble())
+        // The turntable sits at the world origin and the scene disables `autoCenterContent`, so
+        // its yaw is the whole transform between a card's local position and its world one.
+        val local = localPosition(callout, spread)
+        val yaw = Math.toRadians(turntableYawDegrees.toDouble())
         val cosYaw = cos(yaw).toFloat()
         val sinYaw = sin(yaw).toFloat()
         return Position(
-            x = localPosition.x * cosYaw + localPosition.z * sinYaw + contentRootTranslation.x,
-            y = localPosition.y + contentRootTranslation.y,
-            z = -localPosition.x * sinYaw + localPosition.z * cosYaw + contentRootTranslation.z,
+            x = local.x * cosYaw + local.z * sinYaw,
+            y = local.y,
+            z = -local.x * sinYaw + local.z * cosYaw,
         )
     }
 
