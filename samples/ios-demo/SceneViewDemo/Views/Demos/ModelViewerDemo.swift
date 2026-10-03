@@ -591,7 +591,8 @@ struct ModelViewerDemo: View {
                 .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
                 .contentID(loadedNode == nil ? nil : "\(loadCount)")
                 .recenterCamera(recenterGeneration),
-                entrance: entrance
+                entrance: entrance,
+                pickerPresented: sheet != nil
             )
 
             if loadedNode == nil, let posterModel, let thumb = posterModel.thumbnailName {
@@ -1106,9 +1107,43 @@ struct ViewerLighting {
 private struct EntranceStage: View {
     let scene: SceneView
     let entrance: ViewerEntranceDriver
+    /// Whether the Models or Lighting sheet is up, at its medium detent.
+    let pickerPresented: Bool
+    /// How much of the stage the controls sheet covers (``DemoControlsCover``).
+    @Environment(\.demoControlsCover) private var controlsCover
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// The cover the scene is inset by, animated towards the sheets' own.
+    @State private var cover: CGFloat = 0
 
     var body: some View {
+        GeometryReader { proxy in
+            // The picker hides the bottom half only where it is a bottom sheet.
+            let pickerCover = pickerPresented && DemoSheetPlacement.coversBottom(horizontalSizeClass)
+                ? proxy.size.height / 2 : 0
+            let target = max(controlsCover, pickerCover)
+            stage(cover: cover)
+                .onChange(of: target, initial: true) { _, target in
+                    guard target != cover else { return }
+                    // The flight and the move both drive the camera distance:
+                    // the driver stands down for as long as the cover animates.
+                    // `.removed`, not the logical end: the spring's tail still
+                    // rescales the camera, which a flight reads as a drag.
+                    let move = entrance.viewportWillMove()
+                    withAnimation(DemoControlsCover<EmptyView>.animation, completionCriteria: .removed) {
+                        cover = target
+                    } completion: {
+                        entrance.viewportDidSettle(move)
+                    }
+                }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func stage(cover: CGFloat) -> some View {
         scene
+            // The model re-centres in what the sheet leaves visible; the scene
+            // keeps rendering under the glass.
+            .contentInsets(EdgeInsets(top: 0, leading: 0, bottom: cover, trailing: 0))
             .cameraPose(entrance.pose)
             .onCameraChanged { [entrance] pose in
                 // Called from inside RealityKit's update pass: hop before the
@@ -1119,6 +1154,5 @@ private struct EntranceStage: View {
                 let attached = MainActor.assumeIsolated { entrance.isEntityInScene }
                 Task { @MainActor in entrance.cameraChanged(pose, entityInScene: attached) }
             }
-            .ignoresSafeArea()
     }
 }

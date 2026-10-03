@@ -68,6 +68,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     private let controls: Controls
 
     @State private var controlsPresented = false
+    /// Height of the controls sheet at its current detent, safe area excluded.
+    @State private var controlsSheetHeight: CGFloat = 0
     @State private var entered = false
     @State private var accentTaps = 0
     /// Shapes of the bottom cluster (accessory + dock) morph within this
@@ -84,6 +86,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     @Environment(\.colorScheme) private var colorScheme
     /// Read above the chrome's `...xxLarge` clamp: the user's real setting.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage(DeepLinkRouter.qaModeDefaultsKey) private var qaMode: Bool = false
 
     public init(
@@ -117,6 +120,16 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             ZStack {
                 stage
                     .ignoresSafeArea()
+                    // What the sheet hides of the stage, capped at the half the
+                    // resting detent never exceeds: a sheet pulled to `.large`
+                    // covers the scene, there is nothing left to frame it in.
+                    // Nothing where the sheet is not at the bottom
+                    // (`DemoSheetPlacement`).
+                    .environment(\.demoControlsCover,
+                                 controlsPresented && DemoSheetPlacement.coversBottom(horizontalSizeClass)
+                                 ? min(controlsSheetHeight, proxy.size.height / 2)
+                                    + proxy.safeAreaInsets.bottom
+                                 : 0)
                     .opacity(entered ? 1 : 0)
                     .accessibilitySortPriority(2)
 
@@ -132,7 +145,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                 DemoControlsSheet(title: resolvedTitle, hasControls: hasControls,
                                   maxPeek: proxy.size.height / 2,
                                   foldInset: proxy.safeAreaInsets.bottom + SceneViewTokens.Space.sm,
-                                  onReset: onReset) { controls }
+                                  onReset: onReset,
+                                  onHeightChange: { controlsSheetHeight = $0 }) { controls }
             }
         }
         // The chrome never rides the keyboard: a text field lives in the
@@ -601,6 +615,9 @@ struct DemoControlsSheet<Controls: View>: View {
     /// demo's controls and not on an orphan line.
     let foldInset: CGFloat
     let onReset: (() -> Void)?
+    /// Reports the height of the detent the sheet rests on, so the stage can
+    /// keep its subject clear of it (`SceneView.contentInsets(_:)`).
+    var onHeightChange: (CGFloat) -> Void = { _ in }
     @ViewBuilder let controls: () -> Controls
 
     @Environment(\.openURL) private var openURL
@@ -644,6 +661,7 @@ struct DemoControlsSheet<Controls: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
+        .onChange(of: detentHeight, initial: true) { _, height in onHeightChange(height) }
         .presentationDetents(peek > 0 ? [.height(peek), .large] : [Self.fallback, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         #if os(iOS)
@@ -652,6 +670,13 @@ struct DemoControlsSheet<Controls: View>: View {
         .partialSheetBackground(Palette.surfaceContainer)
         .presentationCornerRadius(SceneViewTokens.Radius.xl)
         #endif
+    }
+
+    /// Height of the detent the sheet is on: the measured peek, the fallback
+    /// quarter before it is measured, everything at `.large`.
+    private var detentHeight: CGFloat {
+        if detent == .large { return .greatestFiniteMagnitude }
+        return peek > 0 ? peek : maxPeek / 2
     }
 
     /// The resting detent hugs the measured block plus the sheet's own insets.
