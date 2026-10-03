@@ -399,27 +399,87 @@ final class SceneViewDemoUITests: XCTestCase {
         }
     }
 
-    /// "I still struggle to see where the new things are" (02/10): the What's
-    /// new row under the hero selects the What's new chip and brings the chip
-    /// row up under the header, with only the New / Updated demos below it.
-    func testWhatsNewRowOpensTheFilter() {
+    /// "I still struggle to see where the new things are" (02/10), then "the
+    /// app only has these samples" (#4304, #4312): the What's new row under the
+    /// hero opens the What's new sheet over a catalogue left whole — it never
+    /// selects the chip. The chip is the opt-in filter: it cuts the list down,
+    /// a second tap or "Show all N samples" at the end of the list brings the
+    /// whole catalogue back.
+    func testWhatsNewRowOpensTheSheetAndTheChipFiltersWithAWayOut() {
         let app = Self.makeApp()
         app.launch()
         let row = app.descendants(matching: .any)["home-whats-new-row"]
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
         Thread.sleep(forTimeInterval: 2)
         capture(app, "whats-new-01-home")
+
+        // The row sits between the hero and Featured, as on Android.
+        let featuredHeader = app.descendants(matching: .any)["home-section-featured"]
+        XCTAssertTrue(featuredHeader.exists, "the Featured group is missing")
+        XCTAssertLessThan(row.frame.minY, featuredHeader.frame.minY,
+                          "the What's new row is not above Featured")
+
         row.tap()
-        Thread.sleep(forTimeInterval: 2)
-        capture(app, "whats-new-02-filtered")
+        let sheet = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier IN %@", ["whats-new-sheet", "whats-new-title"]))
+            .firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the What's new sheet never opened")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, "whats-new-02-sheet")
+
+        // Out by the scrim, then by a swipe if the scrim did not take the tap.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.08)).tap()
+        if !waitForDisappearance(of: sheet, timeout: 4) {
+            sheet.swipeDown(velocity: .fast)
+            XCTAssertTrue(waitForDisappearance(of: sheet, timeout: 6), "the What's new sheet did not close")
+        }
 
         let chip = app.buttons["home-chip-whats-new"]
-        XCTAssertTrue(chip.exists && chip.isHittable, "the What's new chip is not on screen")
-        XCTAssertTrue(chip.isSelected, "the What's new chip is not selected")
+        let showAll = app.descendants(matching: .any)["home-show-all"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "the What's new chip is missing")
+        XCTAssertFalse(chip.isSelected, "the What's new row selected the chip")
+        XCTAssertFalse(showAll.exists, "\"Show all\" is offered over the whole catalogue")
+
+        // The chip is the filter, and its own off switch.
+        scroll(app, to: chip)
+        chip.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, "whats-new-03-filtered")
+        XCTAssertTrue(chip.isSelected, "the What's new chip did not select")
         XCTAssertFalse(app.descendants(matching: .any)["home-row-lines-paths"].exists,
                        "a demo with nothing new is still listed")
-        XCTAssertTrue(app.descendants(matching: .any)["home-row-lighting-lab"].waitForExistence(timeout: 5),
-                      "the new Lighting Lab is not listed")
+        XCTAssertTrue(showAll.waitForExistence(timeout: 5), "a filtered list has no \"Show all\"")
+        chip.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertFalse(chip.isSelected, "a second tap did not clear the What's new chip")
+        XCTAssertFalse(showAll.exists, "\"Show all\" outlived the filter")
+
+        // "Show all N samples" ends the filtered list and clears it.
+        chip.tap()
+        XCTAssertTrue(showAll.waitForExistence(timeout: 5), "a filtered list has no \"Show all\"")
+        scroll(app, to: showAll)
+        capture(app, "whats-new-04-show-all")
+        XCTAssertTrue(showAll.label.hasPrefix("Show all ") && showAll.label.hasSuffix(" samples"),
+                      "unexpected \"Show all\" label: \(showAll.label)")
+        showAll.tap()
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "whats-new-05-all-again")
+        XCTAssertFalse(showAll.exists, "\"Show all\" is still there over the whole catalogue")
+        XCTAssertTrue(chip.exists && !chip.isSelected, "\"Show all\" did not clear the What's new chip")
+    }
+
+    /// Swipes the page up until `element` can take a tap.
+    private func scroll(_ app: XCUIApplication, to element: XCUIElement) {
+        for _ in 0..<10 where !(element.exists && element.isHittable) {
+            app.swipeUp(velocity: .slow)
+        }
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertTrue(element.isHittable, "\(element) never came on screen")
+    }
+
+    private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {

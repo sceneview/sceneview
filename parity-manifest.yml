@@ -1315,15 +1315,20 @@ shell:
       captures (12 imagesets shared with Android, tools/demo-previews/README.md).
       The header turns to glass once scrolled (ShowcaseTab.swift
       HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
-      #4208. Still diverges: single HomeHero instead of the pager; the hero
-      (heroDemoId model-viewer, ShowcaseTab.swift) comes back as a Featured
-      banner because `featured` draws every HomeCatalogue.featuredIds, and
-      the banners are listed again in the sections, where Android shows a
-      demo once (#4312); the What's-new row (no picture on iOS) still
-      selects the filter (openWhatsNew) instead of opening the sheet
-      (#4312); the What's-new chip toggles but a section chip does not, and
-      a filtered list has no "Show all N samples" (#4312); and six broken
-      demos are kept off the home (HomeCatalogue.hiddenFromHome)
+      #4208. Since #4312, HomeTopSections in HomeFilter.swift assigns each
+      picture once, hero then Featured then fresh ids; All omits banner rows,
+      while a chip or search lists every match. On screen the order is
+      Android's: hero, What's-new row, Featured. The What's-new row opens
+      WhatsNewSheet over the Home as it stands (a chosen chip stays chosen;
+      the sheet waits for the release notes, Android's contentReady), every
+      selected filter chip toggles back to All, and a chip-filtered list ends
+      on "Show all N samples" (whole catalogue count, clears the chip, hidden
+      while searching as on Android; iOS also returns to the top of Home).
+      HomeFilterTests.swift mirrors Android's decision tests. Remaining
+      differences: a single Models HomeHero instead of the two-page pager
+      (Cosmos remains a banner); the What's-new row has no picture and retains
+      the total fresh count even when all fresh pictures appeared above;
+      Android Back handling has no iOS equivalent.
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
