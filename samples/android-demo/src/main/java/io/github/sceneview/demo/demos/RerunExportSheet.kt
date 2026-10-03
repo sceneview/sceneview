@@ -233,9 +233,9 @@ private val RerunExportFormat.icon: ImageVector
         RerunExportFormat.Ply -> Icons.Rounded.ScatterPlot
     }
 
-/** A fresh directory under the share root; only the latest export or scan file is kept there. */
+/** A fresh directory under the exports' own share directory; only the latest export is kept there. */
 private fun freshExportDirectory(context: Context): File {
-    val root = File(context.cacheDir, RERUN_SHARE_DIR)
+    val root = rerunShareDirectory(context, RERUN_SHARE_EXPORT)
     root.deleteRecursively()
     return File(root, UUID.randomUUID().toString()).apply { mkdirs() }
 }

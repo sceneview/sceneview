@@ -65,6 +65,61 @@ class RerunEnglishFormatsTest {
         assertEquals("4.7 MB", formatFileSize(4_700_000))
     }
 
+    @Test
+    fun `share sizes stay English across unit boundaries`() {
+        assertEquals("0 B", formatFileSize(0))
+        assertEquals("999 B", formatFileSize(999))
+        assertEquals("1 kB", formatFileSize(1_000))
+        assertEquals("1.0 MB", formatFileSize(1_000_000))
+        assertEquals("12.4 MB", formatFileSize(12_400_000))
+        assertEquals("1.0 GB", formatFileSize(1_000_000_000))
+    }
+
+    @Test
+    fun `a size rounds before it picks its unit`() {
+        assertEquals("999 kB", formatFileSize(999_499))
+        assertEquals("1.0 MB", formatFileSize(999_500))
+        assertEquals("1.0 MB", formatFileSize(999_999))
+        assertEquals("999.9 MB", formatFileSize(999_949_999))
+        assertEquals("1.0 GB", formatFileSize(999_950_000))
+    }
+
+    @Test
+    fun `share and placement actions use the agreed English vocabulary`() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val labels = mapOf(
+            io.github.sceneview.demo.R.string.room_scan_place to "Place",
+            io.github.sceneview.demo.R.string.room_scan_share to "Share",
+            io.github.sceneview.demo.R.string.room_scan_close to "Close",
+            io.github.sceneview.demo.R.string.room_scan_include_photos to "Include photos",
+            io.github.sceneview.demo.R.string.ar_place_view_in_3d to "3D",
+            io.github.sceneview.demo.R.string.ar_place_keep_scanning to "Try again",
+            io.github.sceneview.demo.R.string.ar_place_scan_again to "Try again",
+            io.github.sceneview.demo.R.string.ar_place_show_in_3d to "Show in 3D",
+            io.github.sceneview.demo.R.string.ar_place_tracking_paused to "Move slowly",
+            io.github.sceneview.demo.R.string.ar_place_tracking_paused_low_light to
+                "Move slowly. Try a brighter area.",
+        )
+        for ((id, expected) in labels) assertEquals(expected, context.getString(id))
+        assertEquals(
+            "This file contains photos of your room and the path you walked. " +
+                "Anyone you send it to can see them.",
+            context.getString(io.github.sceneview.demo.R.string.room_scan_share_privacy),
+        )
+    }
+
+    @Test
+    fun `a scan shared without photos still says it shows the room`() {
+        // The baked surfaces are camera pixels and the points carry their colours: the sentence
+        // may not promise a file free of images.
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        assertEquals(
+            "The surfaces and points in this file are still images of your room, " +
+                "with the path you walked. Anyone you send it to can see them.",
+            context.getString(io.github.sceneview.demo.R.string.room_scan_share_privacy_without_photos),
+        )
+    }
+
     /**
      * A French Pixel 9 showed "3,3 × 3,7 m · 24k triangles" under "Room 3.2 × 6.3 m": the figures
      * card, the measures in the room and the surface's caption all keep the English point.

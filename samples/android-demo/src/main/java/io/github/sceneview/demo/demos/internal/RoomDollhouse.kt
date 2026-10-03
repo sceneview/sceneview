@@ -582,8 +582,6 @@ data class DollhouseScaleToggle(val label: String, val selected: Boolean)
 
 /** The dollhouse screen's words, in one place (English, like the rest of the Rerun demo). */
 object DollhouseCopy {
-    const val VIEW_IN_AR = "View in AR"
-    const val VIEW_IN_AR_CAPTION = "AR"
     const val OPENING = "Opening your room…"
     const val OPEN_FAILED = "This room could not be opened. Record it again, or pick another session."
 

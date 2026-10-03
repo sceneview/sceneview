@@ -350,7 +350,6 @@ object ScanCopy {
     const val SESSIONS_EMPTY = "Rooms you record are kept here, on this phone, until you delete them. " +
         "You can also open a .svscan scan file."
     const val OPENING_FILE = "Opening file…"
-    const val SHARE_SCAN = "Share scan file"
     const val DELETE = "Delete"
     const val DELETE_DETAIL = "It is removed from this phone. Files you already shared are not affected."
     const val OPEN_FAILED = "This session could not be opened."

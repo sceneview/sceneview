@@ -339,8 +339,8 @@ internal fun RoomDollhouseScreen(
                         ScanRoomStatus.MoveSlowly -> DollhouseCopy.PLACE_HINT
                         ScanRoomStatus.KeepOnSurface -> stringResource(R.string.ar_place_keep_on_surface)
                         ScanRoomStatus.TrackingPaused -> stringResource(R.string.ar_place_tracking_paused)
-                        ScanRoomStatus.TrackingPausedLowLight -> stringResource(R.string.ar_place_tracking_paused) +
-                            " " + stringResource(R.string.ar_place_try_brighter_area)
+                        ScanRoomStatus.TrackingPausedLowLight ->
+                            stringResource(R.string.ar_place_tracking_paused_low_light)
                         ScanRoomStatus.FindingPlacement -> stringResource(R.string.ar_place_finding_placement)
                         ScanRoomStatus.GestureHint -> DollhouseCopy.GESTURE_HINT
                         ScanRoomStatus.Scale -> fit?.let { DollhouseCopy.pinched(it, state.scaleFactor, realSize) }

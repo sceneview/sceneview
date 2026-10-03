@@ -80,6 +80,20 @@ class RerunReplayTest {
         assertEquals(ReplayLens(0.5f, 1f), ReplayLens.of(400f, 800f, 400f, 400f))
     }
 
+    @Test
+    fun `photo references missing from the manifest are optional and do not enter the replay`() {
+        val log = ArDebugLogWriter.write(listOf(
+            ArDebugEvent.CameraPose(1_000_000_000L, DebugPose(0f, 0f, 0f)),
+            ArDebugEvent.Image(1_000_000_000L, "missing.jpg"),
+            ArDebugEvent.CameraPose(2_000_000_000L, DebugPose(1f, 0f, 0f)),
+        ))
+        val opened = RerunCapturePack("{}".toByteArray(), log.toByteArray(), byteArrayOf()).open()!!
+        assertEquals(0, opened.trace.imageCount)
+        assertNull(opened.firstPhoto())
+        assertFalse(opened.trace.isEmpty)
+        assertEquals(1f, opened.trace.duration, 0f)
+    }
+
     // ── Photo mapping ─────────────────────────────────────────────────────────
 
     @Test
