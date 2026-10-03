@@ -873,7 +873,7 @@ ferrari_f40.glb
     sv.loadModel('https://sceneview.github.io/models/platforms/Fox.glb');
     sv.setAutoRotate(true);
     sv.setBloom({ strength: 0.3, threshold: 0.8 });
-    sv.setBackgroundColor(0.05, 0.05, 0.12);
+    sv.setBackgroundColor(0.2, 0.2, 0.38);  // the colour as displayed: sRGB 0-1, here #333361
     sv.addLight({ type: 'point', position: [3, 5, 3], intensity: 50000, color: [1, 0.9, 0.8] });
     sv.createText({ text: '3D Fox', fontSize: 48, color: '#ffffff', position: [0, 2.5, 0], billboard: true });
   });
@@ -916,6 +916,7 @@ off();                               // unsubscribe; dispose() also drops the li
 - `'onDemand'` parks the loop once nothing moves (no auto-rotate, drag, inertia, playing animation or pending texture decode). Input, camera calls, scene changes, video frames and `requestRender()` wake it.
 - Both modes draw nothing off-screen or in a hidden tab. A camera or scene call made off-screen still draws one frame, so the canvas is current when it scrolls back in; a playing video does not.
 - `onFrame` only observes frames: it never keeps the loop awake by itself.
+- Background: the `backgroundColor: [r, g, b, a]` option and `sv.setBackgroundColor(r, g, b, a)` take the colour as displayed — sRGB 0-1, a hex byte / 255, so `sv.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)` shows `#EEF0F3` (the same contract as `sceneview-web`). Default: the dark slate `#333C57`, or a clear canvas with `transparent: true`.
 
 ---
 

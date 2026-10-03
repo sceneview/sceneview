@@ -655,11 +655,11 @@
     }
 
     // ── Theme-aware stage colour ──────────────────────────────────────
-    // DESIGN.md `stage-background-embedded`, in the linear space Filament clears with.
+    // DESIGN.md `stage-background-embedded`, as displayed (sRGB).
     function stageClearColor() {
       return document.documentElement.getAttribute('data-theme') === 'dark'
-        ? [0.0160, 0.0222, 0.0482, 1.0]   // #22293E
-        : [0.0033, 0.0047, 0.0074, 1.0];  // #0B0F16
+        ? [0x22 / 255, 0x29 / 255, 0x3E / 255, 1.0]   // #22293E
+        : [0x0B / 255, 0x0F / 255, 0x16 / 255, 1.0];  // #0B0F16
     }
 
     // ── Script loading ────────────────────────────────────────────────

@@ -446,6 +446,40 @@
   }
 
   // ---------------------------------------------------------------
+  // Background colour
+  // ---------------------------------------------------------------
+
+  // The opaque dark slate the viewer has always displayed when a page sets no background.
+  var _DEFAULT_BACKGROUND = [0x33 / 255, 0x3C / 255, 0x57 / 255, 1.0];
+
+  function _srgbToLinear(c) {
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+
+  /** Exact inverse of Filament's Filmic tone mapper (Narkowicz 2015), one linear channel. */
+  function _inverseFilmic(y) {
+    return (0.03 - 0.59 * y - Math.sqrt(0.0009 + 1.3702 * y - 1.0127 * y * y)) / (-5.02 + 4.86 * y);
+  }
+
+  /**
+   * The clear colour that puts the background [r, g, b, a] (sRGB as displayed, 0-1) on screen.
+   *
+   * An opaque view clears inside the HDR pass, so its clear colour goes through the Filmic
+   * tone mapper and the sRGB transfer before it reaches the canvas: both are undone here, the
+   * way the Android demo paints its backdrop. A transparent view is composited over the raw
+   * clear, which is already the colour on screen.
+   */
+  function _clearColorFor(color, transparent) {
+    if (transparent) return color;
+    function channel(c) {
+      c = Math.min(Math.max(+c || 0, 0), 1);
+      return _inverseFilmic(_srgbToLinear(c)) || 0;
+    }
+    var alpha = color[3] !== undefined ? color[3] : 1;
+    return [channel(color[0]), channel(color[1]), channel(color[2]), alpha];
+  }
+
+  // ---------------------------------------------------------------
   // Chroma key processing (green screen removal on CPU)
   // ---------------------------------------------------------------
 
@@ -971,8 +1005,15 @@
       return this.requestRender();
     }
 
+    /**
+     * Set the background colour, as displayed: sRGB components 0-1 (a hex byte / 255), so
+     * `setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)` shows `#EEF0F3`.
+     */
     setBackgroundColor(r, g, b, a) {
-      this._renderer.setClearOptions({ clearColor: [r, g, b, a !== undefined ? a : 1], clear: true });
+      this._renderer.setClearOptions({
+        clearColor: _clearColorFor([r, g, b, a !== undefined ? a : 1], this._transparent),
+        clear: true
+      });
       return this.requestRender();
     }
 
@@ -2646,8 +2687,8 @@
       try { view.setDithering(Filament.View$Dithering.NONE); } catch (_e) { /* older Filament */ }
     }
 
-    var bg = options.backgroundColor || (transparent ? [0, 0, 0, 0] : [0.05, 0.06, 0.1, 1.0]);
-    renderer.setClearOptions({ clearColor: bg, clear: true });
+    var bg = options.backgroundColor || (transparent ? [0, 0, 0, 0] : _DEFAULT_BACKGROUND);
+    renderer.setClearOptions({ clearColor: _clearColorFor(bg, transparent), clear: true });
 
     var fov = options.fov || 45;
     camera.setProjectionFov(fov, canvas.width / canvas.height, 0.1, 1000, Filament.Camera$Fov.VERTICAL);
@@ -2722,6 +2763,7 @@
     instance._baseLights = [sun, fill, back];
     // Owned by the instance: dispose() destroys it before the engine.
     instance._colorGrading = colorGrading;
+    instance._transparent = transparent;
 
     if (options.autoRotate === false) instance.setAutoRotate(false);
     if (options.renderMode !== undefined) instance.setRenderMode(options.renderMode);
@@ -2759,7 +2801,8 @@
    * @param {Object} [options]
    * @param {boolean} [options.transparent=false] - alpha canvas: cleared pixels show the
    *   page behind it (backgroundColor defaults to [0, 0, 0, 0])
-   * @param {number[]} [options.backgroundColor] - clear colour [r, g, b, a], 0-1
+   * @param {number[]} [options.backgroundColor] - background [r, g, b, a] as displayed:
+   *   sRGB 0-1, a hex byte / 255 (default: the dark slate #333C57)
    * @param {'continuous'|'onDemand'} [options.renderMode='continuous'] - see setRenderMode()
    * @param {boolean} [options.autoRotate=true] - orbit slowly until the user drags
    * @param {number} [options.fov=45] - vertical field of view in degrees
