@@ -62,7 +62,7 @@ fun main() {
                 intensity(10_000.0)   // lux — read under the photometric
                                       // default exposure (f/12, 1/200s, ISO 200)
             }
-            model("models/DamagedHelmet.glb")
+            model("models/ToyCar.glb")
         },
         onError = { error ->
             // Init runs async — a thrown error can't propagate to the caller.
@@ -102,7 +102,7 @@ sceneview.createViewer("scene-canvas").then(function (sv) {
   cube.setRotation(0, 45, 0);              // Euler degrees (ZYX)
   cube.setScaleUniform(1.5);
 
-  sv.addModelNode("models/DamagedHelmet.glb").then(function (model) {
+  sv.addModelNode("models/ToyCar.glb").then(function (model) {
     model.addChild(cube);                  // cube now follows the model
   });
 });

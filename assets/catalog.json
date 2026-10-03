@@ -88,8 +88,11 @@
       "name": "Toy Car",
       "source": "khronos",
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar",
-      "author": "KhronosGroup",
-      "license": "CC-BY-4.0",
+      "author": "Guido Odendahl (model); Eric Chadwick (extensions and scene composition)",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "ToyCar.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_toy_car.glb",
@@ -987,9 +990,6 @@
       "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet",
       "author": "theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0)",
       "license": "CC-BY-NC-4.0",
-      "shippedAs": [
-        "DamagedHelmet.glb"
-      ],
       "formats": {
         "glb": {
           "file": "models/glb/khronos_damaged_helmet.glb",

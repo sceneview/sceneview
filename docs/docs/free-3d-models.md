@@ -104,7 +104,7 @@ Models for car configurators, dealership apps, and EV showcases.
 |---|---|---|---|---|
 | [CarConcept](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept) | ~8 MB | CC0/CC-BY | Concept car with material variants. Car configurator demo. | Product Viewer |
 | [ClearCoatCarPaint](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ClearCoatCarPaint) | ~2 MB | CC0/CC-BY | Automotive paint clearcoat material. Paint finish comparison tool. | 3D Viewer |
-| [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar) | 5.17 MB | CC0/CC-BY | Detailed toy car with PBR, clearcoat, transmission. Shows material quality. | 3D Viewer |
+| [ToyCar](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar) | 2.15 MB | CC0 | Detailed toy car with PBR, clearcoat, transmission. Shows material quality. | 3D Viewer |
 
 ---
 

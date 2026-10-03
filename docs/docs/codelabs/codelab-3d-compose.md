@@ -41,9 +41,9 @@ Sync Gradle.
 
 Create `app/src/main/assets/models/` and put a `.glb` file inside it.
 
-For this codelab, use the **Damaged Helmet** from the Khronos glTF sample assets:
-- Download: https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb
-- Save as: `app/src/main/assets/models/damaged_helmet.glb`
+For this codelab, use the **Toy Car** from the Khronos glTF sample assets (CC0):
+- Download: https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/ToyCar/glTF-Binary/ToyCar.glb
+- Save as: `app/src/main/assets/models/toy_car.glb`
 
 ### Add an HDR environment
 
@@ -105,7 +105,7 @@ fun ModelViewerScreen() {
 
     // Loads asynchronously on IO, creates Filament assets on Main.
     // Returns null while loading, non-null when ready.
-    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     SceneView(
         modifier = Modifier.fillMaxSize(),
@@ -266,7 +266,7 @@ fun ModelViewerScreen() {
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
     val environment = rememberEnvironment(environmentLoader) {
         environmentLoader.createHDREnvironment("environments/sky_2k.hdr")
             ?: createEnvironment(environmentLoader)

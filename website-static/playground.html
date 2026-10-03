@@ -1926,7 +1926,7 @@
                   <option value="school_backpack">School Backpack</option>
                 </optgroup>
                 <optgroup label="Featured">
-                  <option value="DamagedHelmet">Damaged Helmet</option>
+                  <option value="ToyCar">Toy Car</option>
                   <option value="MosquitoInAmber">Mosquito in Amber</option>
                   <option value="AntiqueCamera">Antique Camera</option>
                 </optgroup>
@@ -2101,7 +2101,7 @@
         icon: 'view_in_ar',
         level: 'beginner',
         tags: ['3D', 'Compose', 'Beginner'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'model',
         description: 'A basic 3D model viewer with orbit controls and environment lighting.',
         android: {
@@ -2183,7 +2183,7 @@
         icon: 'light_mode',
         level: 'intermediate',
         tags: ['3D', 'Lighting', 'Intermediate'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'lighting-custom',
         description: 'Add directional, point, and spot lights with shadows and color control.',
         android: {
@@ -2227,7 +2227,7 @@
         icon: 'face',
         level: 'advanced',
         tags: ['AR', 'Face', 'Advanced'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'ar',
         description: 'Track face landmarks and apply augmented overlays with ARCore Augmented Faces.',
         android: {
@@ -2271,7 +2271,7 @@
         icon: 'insights',
         level: 'advanced',
         tags: ['AR', 'Debug', 'Rerun', 'Advanced'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'rerun-debug',
         description: 'Stream an ARCore / ARKit session (camera pose, planes, point cloud, anchors) to the Rerun viewer for scrub-and-inspect debugging. The preview pane embeds the official Rerun Web Viewer.',
         android: {
@@ -2377,7 +2377,7 @@
         icon: 'texture',
         level: 'intermediate',
         tags: ['3D', 'Materials', 'Intermediate'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'model',
         description: 'Physically-based rendering materials with metallic, roughness, and emission control.',
         android: {
@@ -2421,7 +2421,7 @@
         icon: 'auto_awesome',
         level: 'advanced',
         tags: ['3D', 'Effects', 'Advanced'],
-        defaultModel: 'DamagedHelmet',
+        defaultModel: 'ToyCar',
         previewType: 'post-processing',
         description: 'Enable bloom, ambient occlusion, and anti-aliasing for cinematic-quality rendering.',
         android: {
@@ -2894,10 +2894,10 @@
         } catch (e) { /* ignore */ }
       },
 
-      // Custom lighting: load the helmet + add 2 explicit directional lights
+      // Custom lighting: load the toy car + add 2 explicit directional lights
       // (warm key + cool fill) so the user sees that addLight() works.
       'lighting-custom': function(sv) {
-        sv.loadModel(getModelUrl('DamagedHelmet')).then(function() {
+        sv.loadModel(getModelUrl('ToyCar')).then(function() {
           // Warm key light — strong, from upper-right
           var key = sv.addLight({
             type: 'directional',
@@ -2935,10 +2935,10 @@
         }).catch(function(e) { console.warn(e); });
       },
 
-      // Post-processing: load helmet with bloom forced ON so the user sees the
+      // Post-processing: load the toy car with bloom forced ON so the user sees the
       // cinematic look of the sample.
       'post-processing': function(sv) {
-        sv.loadModel(getModelUrl('DamagedHelmet')).then(function() {
+        sv.loadModel(getModelUrl('ToyCar')).then(function() {
           if (sv.setBloom) {
             sv.setBloom({ strength: 0.25, resolution: 512 });
           }
@@ -2972,6 +2972,7 @@
           // Keep the model picker in sync for UX clarity
           if (ex.defaultModel && modelSelect.querySelector('option[value="' + ex.defaultModel + '"]')) {
             modelSelect.value = ex.defaultModel;
+            syncModelPicker();
           }
         });
         return;
@@ -2981,6 +2982,7 @@
       if (ex.defaultModel) {
         if (modelSelect.querySelector('option[value="' + ex.defaultModel + '"]')) {
           modelSelect.value = ex.defaultModel;
+          syncModelPicker();
         }
         _ensureSceneViewReady().then(function(sv) {
           cleanupPreviousPreview();
@@ -3615,6 +3617,7 @@
 
       if (model) {
         modelSelect.value = model;
+        syncModelPicker();
         initSceneView(getModelUrl(model));
       }
     })();
