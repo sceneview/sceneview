@@ -1,31 +1,27 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script>
-    (function() {
+    (function () {
+      var d = document.documentElement; d.classList.add('js');
       try {
-        var t = localStorage.getItem('sceneview-theme');
-        if (t !== 'dark' && t !== 'light') {
-          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        document.documentElement.setAttribute('data-theme', t);
-      } catch(e) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
+        var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('sceneview-theme');
+        if (t === 'light' || t === 'dark') d.dataset.theme = t;
+      } catch (e) {}
     })();
   </script>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
-       Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
+  <!-- Site analytics: GA4 loader shared by every static page. Synchronous on purpose. -->
   <script src="/assets/analytics.js"></script>
-  <title>SceneView — 3D & AR SDK for Android, iOS, Web, and more</title>
-  <meta name="description" content="SceneView is an open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI and the web, plus Flutter and React Native bridges. Built so AI assistants write working code on the first try. Powered by Filament and RealityKit.">
-  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, Augmented Reality, Jetpack Compose, SwiftUI, Kotlin Multiplatform, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, 3D file viewer, glTF, GLB, 3MF, STL, OBJ, PLY, USDZ, AR Model Viewer, Will It Fit, 3D printing, visionOS, cross-platform 3D, AI-first SDK, MCP server, model context protocol, AI coding assistant, AI code generation, LLM 3D development, AI 3D development, AI AR development">
+  <title>SceneView — 3D and AR for Compose, SwiftUI and the web</title>
+  <meta name="description" content="SceneView is an open-source SDK that makes 3D and AR declarative: Jetpack Compose and Filament on Android, SwiftUI and RealityKit on Apple, Filament on the web.">
+  <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, SwiftUI, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, GLB, USDZ, Sceneform, visionOS, Compose Multiplatform, Flutter, React Native, MCP server, llms.txt">
   <meta name="author" content="SceneView">
   <meta name="robots" content="index, follow">
-  <meta name="theme-color" content="#005bc1">
+  <meta name="theme-color" content="#07090D" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#E9ECF1" media="(prefers-color-scheme: light)">
 
   <link rel="canonical" href="https://sceneview.github.io/">
   <link rel="alternate" hreflang="en" href="https://sceneview.github.io/">
@@ -38,56 +34,48 @@
   <meta name="mcp-server" content="npx -y sceneview-mcp">
   <meta name="llms-txt" content="https://sceneview.github.io/llms.txt">
 
-  <!-- Open Graph -->
-  <meta property="og:title" content="SceneView — 3D & AR SDK for every platform">
-  <meta property="og:description" content="Open-source, AI-first SDK for 3D and AR on Android, iOS, macOS, visionOS, Web, Desktop, TV, Flutter, and React Native. Declarative API with Jetpack Compose and SwiftUI.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://sceneview.github.io/">
   <meta property="og:site_name" content="SceneView">
   <meta property="og:locale" content="en_US">
+  <meta property="og:title" content="SceneView — 3D and AR, written like UI">
+  <meta property="og:description" content="Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. Open source, Apache 2.0.">
+  <meta property="og:url" content="https://sceneview.github.io/">
   <meta property="og:image" content="https://sceneview.github.io/og-image.png">
   <meta property="og:image:alt" content="SceneView — 3D and AR SDK for every platform">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-
-  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="SceneView — 3D & AR SDK for every platform">
-  <meta name="twitter:description" content="Open-source, AI-first SDK for 3D and AR on Android, iOS, Web, Desktop, TV, Flutter, and React Native. Declarative API with Jetpack Compose and SwiftUI.">
+  <meta name="twitter:title" content="SceneView — 3D and AR, written like UI">
+  <meta name="twitter:description" content="Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. Open source, Apache 2.0.">
   <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
   <meta name="twitter:image:alt" content="SceneView — 3D and AR SDK for every platform">
-
-  <!-- Preconnect hints -->
-  <!-- Preload critical resources -->
-  <link rel="preload" href="styles.css" as="style">
-  <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js" as="script">
-
-  <!-- Fonts -->
-  <!-- Filament.js v1.72.1 WASM engine (required by SceneView Web) — version pinned by
-       gradle/libs.versions.toml `filamentWebsite` + js/filament/RUNTIME.json (#2783) -->
-  <script src="js/filament/filament.js"></script>
-  <!-- SceneView Web library -->
-  <script src="js/sceneview.js"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css">
 
-  <!-- Structured Data -->
+  <!-- Geist and JetBrains Mono are self-hosted (OFL). Only the latin Geist file is needed for the first paint. -->
+  <link rel="preload" href="/assets/fonts/geist/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" as="image" href="assets/home/hero-car-1600.webp" imagesrcset="assets/home/hero-car-800.webp 800w, assets/home/hero-car-1200.webp 1200w, assets/home/hero-car-1600.webp 1600w" imagesizes="(min-width: 960px) 742px, 100vw" fetchpriority="high">
+  <link rel="stylesheet" href="assets/fonts/site-fonts.css">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/fit.js" defer></script>
+  <script src="assets/site.js" defer></script>
+  <script src="assets/adoption-orgs.js" defer></script>
+
+  <!-- Structured data. "softwareVersion" is kept in step by .claude/scripts/sync-versions.sh. -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "SceneView",
-    "description": "Open-source, AI-first SDK for building 3D and AR applications with Jetpack Compose, SwiftUI, Kotlin/JS, Flutter, and React Native.",
+    "description": "Open-source SDK for declarative 3D and AR with Jetpack Compose, SwiftUI and the web, plus Flutter and React Native bridges.",
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
     "softwareVersion": "4.52.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
     "codeRepository": "https://github.com/sceneview/sceneview",
     "programmingLanguage": ["Kotlin", "Swift", "JavaScript", "TypeScript", "Dart"]
@@ -96,1554 +84,501 @@
   <script type="application/ld+json">
   { "@context": "https://schema.org", "@type": "WebSite", "name": "SceneView", "url": "https://sceneview.github.io/" }
   </script>
+  <!-- The FAQ below mirrors the visible FAQ section word for word. -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "How do I add 3D to my Android Jetpack Compose app?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Use SceneView SDK — the only Compose-native 3D library for Android. Add implementation(\"io.github.sceneview:sceneview:4.52.0\") to your build.gradle, then use SceneView { ModelNode(...) } composable. SceneView wraps Google Filament with a declarative API, supports 48+ node types, and adds only ~5MB to your APK."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What is the best AR SDK for Android with Jetpack Compose?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SceneView's ARSceneView is the only Compose-native AR SDK for Android. It wraps ARCore with a declarative API: add implementation(\"io.github.sceneview:arsceneview:4.52.0\"), then use ARSceneView { AnchorNode(...) } composable. Supports plane detection, image tracking, cloud anchors, geospatial anchors, and depth."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How do I build a 3D app for iOS with SwiftUI?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Use SceneViewSwift via Swift Package Manager. Add https://github.com/sceneview/sceneview.git as a dependency. It provides SceneView and ARSceneView SwiftUI views powered by RealityKit, supporting iOS, macOS, and visionOS."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Is there an MCP server for 3D and AR development?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes — sceneview-mcp is a Model Context Protocol server for AI-assisted 3D and AR development. Install with npx -y sceneview-mcp. It provides 32 tools including code generation, validation, samples, and guides for Android, iOS, and Web. Works with Claude Code, Cline, Codex, Cursor, GitHub Copilot, JetBrains AI Assistant and any other MCP-compatible client."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "How do I open a .3mf file on Android?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SceneView reads 3MF — the format ChatGPT, slicers and image-to-print flows emit. There is no separate API: ModelLoader detects the payload by its ZIP magic and converts it to GLB in memory, so rememberModelInstance(modelLoader, uri) opens a .3mf exactly like a .glb, in 3D and in AR. Millimetres are scaled to metres and the printer's Z-up is rotated to Y-up, so a 60 mm print is life-size and upright."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "Is there a SceneView plugin for AI coding assistants?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "Yes — the same three skills (Jetpack Compose, SwiftUI, web) and the sceneview-mcp server ship as a plugin for Claude Code and for Codex. In Claude Code, run /plugin marketplace add sceneview/claude-marketplace, then /plugin install sceneview@sceneview. For Codex, the SceneView repository is itself the plugin: its local marketplace catalog is .agents/plugins/marketplace.json (.codex-plugin/plugin.json is kept as the compatibility fallback). From a checkout, run codex plugin marketplace add with the checkout's absolute path, then codex plugin add sceneview@sceneview-local. For ChatGPT, npx -y sceneview-mcp --http serves the MCP Streamable HTTP transport plus an inline 3D model viewer widget."
-        }
-      },
-      {
-        "@type": "Question",
-        "name": "What is the difference between SceneView and Unity/Unreal for mobile 3D?",
-        "acceptedAnswer": {
-          "@type": "Answer",
-          "text": "SceneView is purpose-built for mobile apps (not games). It adds ~5MB vs 50-100MB+ for Unity/Unreal, uses native UI frameworks (Jetpack Compose, SwiftUI), and integrates with the Android/iOS ecosystem. Unity/Unreal are better for complex games; SceneView is better for 3D features in regular apps (product viewers, AR, data visualization)."
-        }
-      }
+      { "@type": "Question", "name": "Is SceneView the successor of Sceneform?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. When Google archived Sceneform, the community kept it going as com.gorisse.thomas.sceneform, and SceneView grew out of that line with a Compose-first API on Filament. The migration guide covers the move from Sceneform." } },
+      { "@type": "Question", "name": "How is SceneView different from Unity or a game engine?",
+        "acceptedAnswer": { "@type": "Answer", "text": "SceneView is a UI library, not an engine you embed. A 3D scene is a composable or a SwiftUI view inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app's own UI." } },
+      { "@type": "Question", "name": "Which 3D formats does SceneView support?",
+        "acceptedAnswer": { "@type": "Answer", "text": "glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ, rendered by RealityKit on Apple platforms. STL, OBJ, PLY and 3MF files are converted on load." } },
+      { "@type": "Question", "name": "Can AI coding assistants use SceneView?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. SceneView publishes an MCP server (sceneview-mcp) and an llms.txt file, so any assistant that supports the Model Context Protocol can read the current API instead of guessing it. The docs give the setup for each client." } },
+      { "@type": "Question", "name": "What is SceneView's license?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Apache 2.0. The sample 3D models keep their own licenses, listed on the credits page." } }
     ]
   }
   </script>
-  <link href="assets/fonts/fonts.css" rel="stylesheet">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
-  <!-- ===== NAVIGATION ===== -->
-  <nav class="nav" id="nav">
-    <div class="nav__container">
-      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
-          <defs>
-            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
-            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
-            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
-          </defs>
-          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
-          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
-          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
-          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>SceneView SDK</span>
-      </a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 32 32">
+    <polygon points="16,18 7,13 7,22 16,27" fill="#0B4FA8"/>
+    <polygon points="16,18 25,13 25,22 16,27" fill="#2F7BEA"/>
+    <polygon points="16,9 25,14 16,19 7,14" fill="#8AB4FF"/>
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+      <polyline points="4,8 4,4 8,4"/><polyline points="28,8 28,4 24,4"/><polyline points="4,24 4,28 8,28"/><polyline points="28,24 28,28 24,28"/>
+    </g>
+  </symbol>
+  <symbol id="i-gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.33-1.76-1.33-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.6 4.6 0 0 1 1.23 3.22c0 4.61-2.8 5.62-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></g></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 8h16M4 16h16"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></g></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+  <symbol id="i-cube" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></g></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 20s-7.5-4.4-7.5-10.1A4.4 4.4 0 0 1 12 7.3a4.4 4.4 0 0 1 7.5 2.6C19.5 15.6 12 20 12 20Z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13l10.5-6.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></symbol>
+  <symbol id="i-discord" viewBox="0 0 24 24"><path fill="currentColor" d="M19.6 5.3A16.6 16.6 0 0 0 15.5 4l-.5 1a15.3 15.3 0 0 0-6 0l-.5-1a16.6 16.6 0 0 0-4.1 1.3C1.8 9.2 1.1 13 1.4 16.7a16.7 16.7 0 0 0 5 2.5l1.1-1.7a10.8 10.8 0 0 1-1.7-.8l.4-.3a11.9 11.9 0 0 0 11.6 0l.4.3c-.5.3-1.1.6-1.7.8l1.1 1.7a16.7 16.7 0 0 0 5-2.5c.4-4.3-.7-8-2.9-11.4ZM8.5 14.5c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm7 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"/></symbol>
+</svg>
 
-      <div class="nav__links" id="navLinks">
-        <a href="#features" class="nav__link">Features</a>
-        <a href="/showcase.html" class="nav__link">Showcase</a>
-        <a href="/playground.html" class="nav__link">Playground</a>
-        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
-        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
-        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
-          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-        </button>
+<header class="nav is-over-stage">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="SceneView home"><svg class="brand__mark"><use href="#i-logo"/></svg>SceneView</a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="/docs/">Docs</a>
+      <a href="/docs/samples/">Samples</a>
+      <a href="/docs/showcase/">Showcase</a>
+      <a href="/playground.html">Playground</a>
+    </nav>
+    <div class="nav__end">
+      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars></span></a>
+      <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
+      <a class="btn btn--primary btn--sm" href="/docs/quickstart/" data-start>Get started</a>
+      <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open menu"><svg><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<div class="sheet" id="menu" aria-hidden="true">
+  <div class="sheet__scrim" data-close-sheet></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-label="Menu">
+    <div class="sheet__grip"></div>
+    <ul class="sheet__links">
+      <li><a href="/docs/">Docs <span>quickstarts, API</span></a></li>
+      <li><a href="/docs/samples/">Samples <span>Android, Apple, web</span></a></li>
+      <li><a href="/docs/showcase/">Showcase</a></li>
+      <li><a href="/playground.html">Playground <span>in the browser</span></a></li>
+      <li><a href="https://github.com/sceneview/sceneview">GitHub <span data-stars data-stars-prefix="★ "></span></a></li>
+      <li><a href="https://discord.gg/UbNDDBTNqb">Discord <span>community</span></a></li>
+    </ul>
+    <div class="sheet__row">
+      <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started</a>
+      <button class="btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg>Theme</button>
+    </div>
+  </div>
+</div>
+
+<main id="main">
+
+  <!-- 1 · HERO — a studio that follows the theme: wall, floor, contact shadow, reflection.
+       Phone: full-bleed model, poster first, live 3D on tap. Desktop ≥ 960 (no reduced motion):
+       the hero is pinned for one extra screen; scrolling turns the car and walks through what it shows. -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero__pin">
+      <div class="stage hero__stage" id="hero-stage" data-stage data-src="/models/platforms/ToyCar.glb" data-bbox="-0.035,-0.0162,-0.037,0.0384,0.0126,0.037"
+           data-autoload="idle" data-mobile="tap" data-elev="0.38" data-angle="0.75" data-fill="0.86" data-top="0.7" data-hull="ellipse">
+        <div class="stage__controls">
+          <span class="badge"><span class="dot"></span><span class="when-poster">Still</span><b class="when-live">Live</b> · SceneView Web</span>
+          <span class="stage__actions">
+            <button class="stage__load" type="button"><svg><use href="#i-cube"/></svg>View in 3D <small>6.6&nbsp;MB</small></button>
+            <button class="stage__pause" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+          </span>
+        </div>
+        <div class="stage__box" style="--sx:.5;--sy:.6971;--sw:.7003;--sh:.4269">
+          <div class="studio" aria-hidden="true"><div class="studio__back"></div><div class="studio__floor"></div><div class="studio__grid"></div><div class="studio__pool"></div></div>
+          <div class="stage__shadow" aria-hidden="true"></div>
+          <div class="stage__frame">
+            <img class="stage__poster" src="assets/home/hero-car-1600.webp" srcset="assets/home/hero-car-800.webp 800w, assets/home/hero-car-1200.webp 1200w, assets/home/hero-car-1600.webp 1600w"
+                 sizes="(min-width: 960px) 742px, 100vw" width="1600" height="1280" fetchpriority="high"
+                 alt="A toy car rendered by SceneView, on a draped red cloth: clear-coated paint, glass windows and fabric seats.">
+            <canvas class="stage__canvas" role="img" aria-label="Interactive 3D toy car. Drag sideways to turn it."></canvas>
+          </div>
+        </div>
+        <p class="stage__credit credit">Toy Car · Guido Odendahl · CC0</p>
       </div>
 
-      <div class="nav__actions">
-        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-        </a>
-        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
-          <span></span><span></span><span></span>
-        </button>
+      <div class="container hero__inner">
+        <div class="hero__copy">
+          <p class="eyebrow">Open source · Apache 2.0 · <a href="https://github.com/sceneview/sceneview/releases/latest" data-release>latest release</a></p>
+          <h1 class="display" id="hero-title">3D and AR, <em>written like UI.</em></h1>
+          <p class="lead">Declarative 3D and AR for Jetpack Compose, SwiftUI and the web. A scene is a view; a model is a node.</p>
+          <div class="hero__ctas">
+            <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+            <a class="btn btn--ghost" href="/playground.html">Try it in the browser</a>
+          </div>
+          <div class="install">
+            <div class="seg" role="tablist" aria-label="Install for" data-install>
+              <button type="button" role="tab" id="it-android" aria-controls="ins-android" aria-selected="true" data-key="android" data-label="Android" data-href="/docs/quickstart/">Android</button>
+              <button type="button" role="tab" id="it-apple" aria-controls="ins-apple" aria-selected="false" tabindex="-1" data-key="apple" data-label="Apple" data-href="/docs/quickstart-ios/">Apple</button>
+              <button type="button" role="tab" id="it-web" aria-controls="ins-web" aria-selected="false" tabindex="-1" data-key="web" data-label="Web" data-href="/docs/quickstart-web/">Web</button>
+              <button type="button" role="tab" id="it-flutter" aria-controls="ins-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-label="Flutter" data-href="/docs/quickstart-flutter/">Flutter</button>
+              <button type="button" role="tab" id="it-rn" aria-controls="ins-rn" aria-selected="false" tabindex="-1" data-key="rn" data-label="React Native" data-href="/docs/quickstart-react-native/">React Native</button>
+              <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
+            </div>
+            <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code>implementation(<span class="str">"io.github.sceneview:sceneview:4.52.0"</span>)</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.52.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode › Add Package Dependencies</span><br><span class="str">https://github.com/sceneview/sceneview.git</span><br><span class="pfx">// Version: 4.52.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code><span class="pfx">&lt;script src=</span><span class="str">"https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/filament/filament.js"</span><span class="pfx">&gt;&lt;/script&gt;</span><br><span class="pfx">&lt;script src=</span><span class="str">"https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/sceneview.js"</span><span class="pfx">&gt;&lt;/script&gt;</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code>implementation(<span class="str">"io.github.sceneview:sceneview-compose:4.52.0"</span>)</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.52.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <a class="install__next" href="/docs/quickstart/" data-start><span data-start-label>Quickstart · Android</span> <svg><use href="#i-arrow"/></svg></a>
+          </div>
+        </div>
+
+        <ol class="hero__specs" aria-label="What the toy car shows">
+          <li><b>Clear-coat paint</b><code>KHR_materials_clearcoat</code></li>
+          <li><b>Glass</b><code>KHR_materials_transmission</code></li>
+          <li><b>Fabric seats</b><code>KHR_materials_sheen</code></li>
+        </ol>
       </div>
     </div>
-  </nav>
+  </section>
 
-  <main>
-
-  <!-- ===== HERO ===== -->
-  <section class="hero">
-    <div class="hero__bg-effects">
-      <div class="hero__glow hero__glow--left"></div>
-      <div class="hero__glow hero__glow--right"></div>
-    </div>
-    <div class="hero__container">
-      <div class="hero__content">
-        <h1 class="hero__title">The 3D &amp; AR SDK that AI gets right on the first try</h1>
-        <p class="hero__description">SceneView is designed so any AI coding assistant can produce correct 3D &amp; AR code on the first try — for Jetpack Compose, SwiftUI, the Web, and beyond. It opens glTF/GLB, 3MF, STL, OBJ and PLY on Android and USDZ on Apple, and shows them at real size in AR.</p>
-        <div class="hero__actions">
-          <a href="/docs.html" class="hero__btn hero__btn--primary" target="_blank" rel="noopener">Get Started</a>
-          <a href="https://github.com/sceneview/sceneview" class="hero__btn hero__btn--outline" target="_blank" rel="noopener">View on GitHub</a>
-        </div>
-
-        <!--
-          Store badges — pointing at the published demo apps so visitors
-          can preview SceneView capabilities in a few taps. Cf.
-          project_demo_apps_publication.md for the iOS track id details.
-        -->
-        <div class="hero__store-badges">
-          <span class="hero__store-badges-label">Try the demo:</span>
-          <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo"
-             class="hero__store-badge"
-             target="_blank" rel="noopener"
-             aria-label="Get SceneView Demo on Google Play">
-            <img src="assets/brand/stores/google-play-badge.png"
-                 alt="Get it on Google Play"
-                 width="155" height="60" loading="lazy">
-          </a>
-          <a href="https://apps.apple.com/us/app/sceneview/id6761329763"
-             class="hero__store-badge"
-             target="_blank" rel="noopener"
-             aria-label="Download SceneView on the App Store">
-            <img src="assets/brand/stores/app-store.svg"
-                 alt="Download on the App Store"
-                 width="240" height="80" loading="lazy">
-          </a>
-          <a href="/playground.html"
-             class="hero__store-badge hero__store-badge--web"
-             aria-label="Open the SceneView Web Playground">
-            Web Playground
-          </a>
-        </div>
-        <div class="hero__platforms">
-          <div class="hero__platform">
-            <img src="assets/brand/android.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>Android</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/apple.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>iOS</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/html5.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>Web</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/apple.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>visionOS</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/apple.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>macOS</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/android.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>TV</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/flutter.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>Flutter</span>
-          </div>
-          <div class="hero__platform">
-            <img src="assets/brand/react.svg" alt="" width="24" height="24" class="hero__platform-logo">
-            <span>React Native</span>
-          </div>
-        </div>
+  <!-- 2 · THE CODE IS THE SCENE — the literal, scaleToUnits and autoAnimate are live. -->
+  <section class="section" id="code" aria-labelledby="code-title">
+    <div class="container">
+      <div class="section__head">
+        <p class="eyebrow reveal">Declarative</p>
+        <h2 class="h2 reveal" id="code-title">The code is the scene.</h2>
+        <p class="lead reveal">Pick a model: the string in the code and the scene beside it change together. In the Compose tab, drag the value of <code>scaleToUnits</code> and watch the model follow.</p>
       </div>
-      <div class="hero__visual">
-        <div class="hero__model-wrapper">
-          <div class="hero__fallback-img" style="width:100%;aspect-ratio:16/9;border-radius:var(--radius-lg,16px);background:linear-gradient(135deg,var(--color-primary,#005bc1),var(--color-primary-container,#d4e3ff));display:flex;align-items:center;justify-content:center;color:var(--color-on-primary,#fff);font-size:1.25rem;font-weight:600" aria-label="3D Scene Preview">3D Scene Preview</div>
-          <canvas id="hero-canvas" class="hero__canvas" aria-label="3D toy car rendered by SceneView Web (Filament.js)"></canvas>
-          <div id="hero-loader" class="hero__loader">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2" style="animation:spin 1.2s linear infinite"><circle cx="12" cy="12" r="10" stroke-dasharray="50 20"/></svg>
-            <span>Loading 3D engine&hellip;</span>
+
+      <div class="cs">
+        <div class="codecard reveal">
+          <div class="tabs" role="tablist" aria-label="Code for" data-sync="platform">
+            <button class="tab" role="tab" id="t-compose" aria-controls="p-compose" aria-selected="true" data-key="compose" data-status="stable" data-status-label="Android · Stable" data-href="/docs/quickstart/">Compose</button>
+            <button class="tab" role="tab" id="t-swift" aria-controls="p-swift" aria-selected="false" tabindex="-1" data-key="swiftui" data-status="alpha" data-status-label="iOS · macOS · visionOS · Alpha" data-href="/docs/quickstart-ios/">SwiftUI</button>
+            <button class="tab" role="tab" id="t-web" aria-controls="p-web" aria-selected="false" tabindex="-1" data-key="web" data-status="alpha" data-status-label="Web · Alpha" data-href="/docs/quickstart-web/">Web</button>
+            <button class="tab" role="tab" id="t-flutter" aria-controls="p-flutter" aria-selected="false" tabindex="-1" data-key="flutter" data-status="alpha" data-status-label="Flutter · Alpha" data-href="/docs/quickstart-flutter/">Flutter</button>
+            <button class="tab" role="tab" id="t-rn" aria-controls="p-rn" aria-selected="false" tabindex="-1" data-key="rn" data-status="alpha" data-status-label="React Native · Alpha" data-href="/docs/quickstart-react-native/">React Native</button>
           </div>
-          <style>
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .hero__drag-hint {
-      position: absolute;
-      bottom: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: rgba(0,0,0,0.45);
-      backdrop-filter: blur(8px);
-      color: rgba(255,255,255,0.75);
-      font-size: 0.78rem;
-      font-weight: 500;
-      letter-spacing: 0.02em;
-      pointer-events: none;
-      opacity: 1;
-      transition: opacity 0.6s ease;
-      z-index: 10;
-      white-space: nowrap;
+<div role="tabpanel" id="p-compose" aria-labelledby="t-compose"><pre><code><span class="c">// Android · Jetpack Compose</span>
+<span class="k">@Composable</span>
+<span class="k">fun</span> <span class="f">ModelScreen</span>() {
+    <span class="f">SceneView</span>(modifier = Modifier.<span class="f">fillMaxSize</span>()) {
+        <span class="f">rememberModelInstance</span>(modelLoader, <span class="s" data-literal="glb">"models/sheen_chair.glb"</span>)
+            ?.<span class="f">let</span> { instance <span class="k">-&gt;</span>
+                <span class="f">ModelNode</span>(
+                    modelInstance = instance,
+                    scaleToUnits = <span class="n tok" role="slider" tabindex="0" aria-label="scaleToUnits" aria-valuemin="0.5" aria-valuemax="1.4" aria-valuenow="1" data-scale-token="code-stage">1.0f</span>,<span data-anim-line hidden>
+                    autoAnimate = <span class="k tok" role="switch" tabindex="0" aria-checked="true" aria-label="autoAnimate" data-anim-token="code-stage">true</span>,</span>
+                )
+            }
     }
-    .hero__drag-hint.is-hidden { opacity: 0; }
-    .cta__btn { display: inline-flex; align-items: center; gap: 8px; }
-  </style>
-          <div id="hero-badge" class="hero__badge">Rendered live by SceneView Web (Filament.js WASM)</div>
-          <div id="hero-drag-hint" class="hero__drag-hint" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M15 3l3 3-3 3M9 21l-3-3 3-3"/>
-              <path d="M18 6H9a4 4 0 0 0-4 4v1M6 18h9a4 4 0 0 0 4-4v-1"/>
-            </svg>
-            <span>Drag to rotate</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+}</code></pre><p class="codecard__hint">Drag <b>1.0f</b> sideways, or focus it and use the arrow keys.</p></div>
+<div role="tabpanel" id="p-swift" aria-labelledby="t-swift" hidden><pre><code><span class="c">// iOS · macOS · visionOS · SwiftUI</span>
+<span class="k">struct</span> <span class="f">ModelScreen</span>: View {
+    <span class="k">@State private var</span> model: ModelNode?
 
-  <!-- ===== STATS ===== -->
-  <section class="stats" id="stats">
-    <div class="stats__container">
-      <div class="stats__grid reveal">
-        <div class="stat">
-          <div class="stat__number">9</div>
-          <div class="stat__label">Platforms</div>
-        </div>
-        <div class="stat">
-          <div class="stat__number">48+</div>
-          <div class="stat__label">3D node types</div>
-        </div>
-        <div class="stat">
-          <div class="stat__number">5</div>
-          <div class="stat__label">Lines for 3D</div>
-        </div>
-        <div class="stat">
-          <div class="stat__number">60fps</div>
-          <div class="stat__label">PBR on mobile</div>
-        </div>
-        <div class="stat">
-          <div class="stat__number">1</div>
-          <div class="stat__label">MCP server</div>
-        </div>
-        <div class="stat">
-          <div class="stat__number">~3MB</div>
-          <div class="stat__label">APK overhead</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== INSTALL ===== -->
-  <section class="install" id="install">
-    <div class="install__container">
-      <h2 class="install__title reveal">Get started in seconds</h2>
-      <p class="install__subtitle reveal">Pick your platform, paste one line, and you are running 3D.</p>
-
-      <div class="tabs reveal" data-tabs="install">
-        <div class="tabs__nav">
-          <button class="tabs__btn tabs__btn--active" data-tab="android">Android</button>
-          <button class="tabs__btn" data-tab="ios">iOS</button>
-          <button class="tabs__btn" data-tab="web">Web</button>
-          <button class="tabs__btn" data-tab="flutter">Flutter</button>
-          <button class="tabs__btn" data-tab="reactnative">React Native</button>
-          <button class="tabs__btn" data-tab="desktop">Desktop</button>
-        </div>
-        <div class="tabs__panels">
-          <div class="tabs__panel tabs__panel--active" data-panel="android">
-            <pre class="code-block"><code><span class="syn-green">// build.gradle.kts</span>
-<span class="syn-purple">dependencies</span> {
-    <span class="syn-green">// 3D only</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview:4.52.0"</span>)
-    <span class="syn-green">// 3D + AR</span>
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:arsceneview:4.52.0"</span>)
-}</code></pre>
-          </div>
-          <div class="tabs__panel" data-panel="ios">
-            <pre class="code-block"><code><span class="syn-green">// Swift Package Manager</span>
-<span class="syn-green">// Add in Xcode: File &rarr; Add Package Dependencies</span>
-
-<span class="syn-green-light">"https://github.com/sceneview/sceneview"</span>
-<span class="syn-green">// Version: 4.52.0</span>
-
-<span class="syn-purple">import</span> SceneViewSwift</code></pre>
-          </div>
-          <div class="tabs__panel" data-panel="web">
-            <pre class="code-block"><code><span class="syn-green">// One line in your HTML:</span>
-<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"https://cdn.jsdelivr.net/npm/sceneview-web@4/sceneview-web.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
-
-<span class="syn-green">// Then use the API:</span>
-<span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>)</code></pre>
-          </div>
-          <div class="tabs__panel" data-panel="flutter">
-            <pre class="code-block"><code><span class="syn-green"># pubspec.yaml</span>
-<span class="syn-purple">dependencies</span>:
-  <span class="syn-blue">flutter_sceneview</span>: <span class="syn-green-light">^4.39.0</span></code></pre>
-          </div>
-          <div class="tabs__panel" data-panel="reactnative">
-            <pre class="code-block"><code><span class="syn-purple">npm</span> install <span class="syn-green-light">@sceneview-sdk/react-native</span>
-<span class="syn-purple">npx</span> pod-install <span class="syn-green">// iOS only</span></code></pre>
-          </div>
-          <div class="tabs__panel" data-panel="desktop">
-            <pre class="code-block"><code><span class="syn-green">// Compose Desktop &mdash; SceneViewer, Filament via filament-kmp (JDK 22+)</span>
-<span class="syn-purple">dependencies</span> {
-    <span class="syn-blue">implementation</span>(<span class="syn-green-light">"io.github.sceneview:sceneview-compose:4.52.0"</span>)
-}</code></pre>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ===== AI / MCP ===== -->
-  <section class="ai-section" id="ai">
-    <div class="ai-section__container">
-      <div class="ai-section__inner">
-        <div class="ai-section__content reveal">
-          <div class="ai-section__badge">AI-first SDK</div>
-          <h2 class="ai-section__title">Built for AI assistants</h2>
-          <p class="ai-section__text">One MCP server, and your assistant stops guessing at the SceneView API. It compile-checks the Kotlin or Swift it just wrote, looks up the exact node API instead of inventing one, and starts you from a sample that already builds &mdash; plus AR setup, gestures, and troubleshooting when you get stuck. Its three skills ship as a plugin for Claude Code and Codex too, so the same API contract travels wherever you work.</p>
-
-          <div class="feature-card__chips ai-tools-strip">
-            <span class="feature-card__chip">Claude Code</span>
-            <span class="feature-card__chip">Cline</span>
-            <span class="feature-card__chip">Codex</span>
-            <span class="feature-card__chip">Cursor</span>
-            <span class="feature-card__chip">Gemini in Android Studio</span>
-            <span class="feature-card__chip">GitHub Copilot</span>
-            <span class="feature-card__chip">JetBrains AI Assistant</span>
-            <span class="feature-card__chip">Any MCP client</span>
-          </div>
-
-          <div class="ai-section__actions">
-            <a href="#ai-setup" class="ai-section__btn ai-section__btn--primary">
-              <span class="material-symbols-outlined">auto_awesome</span>
-              Set up your assistant
-            </a>
-            <a href="https://www.npmjs.com/package/sceneview-mcp" class="ai-section__btn ai-section__btn--secondary" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined">package_2</span>
-              View on npm
-            </a>
-          </div>
-        </div>
-        <div class="ai-section__graphic reveal">
-          <div class="terminal-mockup">
-            <div class="terminal-mockup__titlebar">
-              <div class="terminal-mockup__dots">
-                <span class="terminal-mockup__dot terminal-mockup__dot--red"></span>
-                <span class="terminal-mockup__dot terminal-mockup__dot--yellow"></span>
-                <span class="terminal-mockup__dot terminal-mockup__dot--green"></span>
-              </div>
-              <span class="terminal-mockup__title">AI assistant &mdash; SceneView Project</span>
-            </div>
-            <div class="terminal-mockup__body">
-              <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__user">You</span>
-                <span>Build me a 3D product viewer with AR try-on for shoes</span>
-              </div>
-              <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__ai">Assistant</span>
-                <div>
-                  <p class="terminal-mockup__status">Using SceneView MCP to generate your app&hellip;</p>
-                  <div class="terminal-mockup__code">
-                    <p class="terminal-mockup__file">// MainActivity.kt</p>
-                    <p class="terminal-mockup__line"><span class="terminal-mockup__kw">ARScene</span>(</p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;planeRenderer = <span class="terminal-mockup__val">true</span>,</p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;onTapAR = { hitResult <span class="terminal-mockup__kw">-&gt;</span></p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="terminal-mockup__fn">AnchorNode</span>(hitResult) {</p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="terminal-mockup__fn">ModelNode</span>(<span class="terminal-mockup__str">"shoe.glb"</span>)</p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;&nbsp;&nbsp;}</p>
-                    <p class="terminal-mockup__line">&nbsp;&nbsp;}</p>
-                    <p class="terminal-mockup__line">)</p>
-                  </div>
-                  <p class="terminal-mockup__success">&#10003; Compiles on first try. Tap the floor to place the shoe.</p>
-                </div>
-              </div>
-              <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__user">You</span>
-                <span>Add a hotspot on the laces that opens a size selector</span>
-              </div>
-              <div class="terminal-mockup__msg">
-                <span class="terminal-mockup__ai">Assistant</span>
-                <div>
-                  <p class="terminal-mockup__status">Reading SceneView hotspot &amp; gesture docs via MCP&hellip;</p>
-                  <p class="terminal-mockup__success">&#10003; Hotspot added. Preview updated in Android emulator.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== AI ASSISTANT SETUP ===== -->
-  <section class="aiset" id="ai-setup">
-    <div class="aiset__container">
-      <h2 class="aiset__title reveal">Use SceneView with your AI coding assistant</h2>
-      <p class="aiset__subtitle reveal">One MCP server, every assistant. Pick yours, copy one line, and it can read the full SceneView API reference, the samples and the best practices before it writes a line of 3D code.</p>
-
-      <div class="aiset__tabs reveal" data-aitabs>
-        <div class="aiset__nav" role="tablist" aria-label="AI coding assistants">
-          <button class="aiset__btn aiset__btn--active" role="tab" id="ait-any" aria-controls="aip-any" aria-selected="true" tabindex="0">Any MCP client</button>
-          <button class="aiset__btn" role="tab" id="ait-claude" aria-controls="aip-claude" aria-selected="false" tabindex="-1">Claude Code</button>
-          <button class="aiset__btn" role="tab" id="ait-cline" aria-controls="aip-cline" aria-selected="false" tabindex="-1">Cline</button>
-          <button class="aiset__btn" role="tab" id="ait-codex" aria-controls="aip-codex" aria-selected="false" tabindex="-1">Codex</button>
-          <button class="aiset__btn" role="tab" id="ait-cursor" aria-controls="aip-cursor" aria-selected="false" tabindex="-1">Cursor</button>
-          <button class="aiset__btn" role="tab" id="ait-gemini" aria-controls="aip-gemini" aria-selected="false" tabindex="-1">Gemini in Android Studio</button>
-          <button class="aiset__btn" role="tab" id="ait-copilot" aria-controls="aip-copilot" aria-selected="false" tabindex="-1">GitHub Copilot</button>
-          <button class="aiset__btn" role="tab" id="ait-jetbrains" aria-controls="aip-jetbrains" aria-selected="false" tabindex="-1">JetBrains AI Assistant</button>
-          <button class="aiset__btn" role="tab" id="ait-xcode" aria-controls="aip-xcode" aria-selected="false" tabindex="-1">Xcode</button>
-          <button class="aiset__btn" role="tab" id="ait-nomcp" aria-controls="aip-nomcp" aria-selected="false" tabindex="-1">No MCP?</button>
-        </div>
-
-        <div class="aiset__panels">
-
-          <div class="aiset__panel aiset__panel--active" role="tabpanel" id="aip-any" aria-labelledby="ait-any" tabindex="0">
-            <div class="aiset__step-label">Locally, over stdio</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code><span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <div class="aiset__step-label">Remotely, over Streamable HTTP &mdash; already hosted, nothing to run</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>https://mcp.sceneview.dev/mcp</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy URL"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Config shapes differ across the ecosystem, the command and its arguments never do. The common one is <code class="aiset__file">mcpServers</code>; VS Code uses <code class="aiset__file">servers</code> with <code>"type": "stdio"</code>, Codex a <code class="aiset__file">[mcp_servers.*]</code> TOML table, Copilot CLI <code>"type": "local"</code>, and Kilo Code a <code class="aiset__file">mcp</code> key in <code class="aiset__file">kilo.jsonc</code> where <code>command</code> is an array and the environment block is called <code>environment</code>. When in doubt, paste the command above into whatever field your client offers.</p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-claude" aria-labelledby="ait-claude" tabindex="0" hidden>
-            <div class="aiset__step-label">Run in your terminal</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code><span class="syn-purple">claude</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <div class="aiset__step-label">Or commit it for the whole team &mdash; <code class="aiset__file">.mcp.json</code></div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"type"</span>: <span class="syn-green-light">"stdio"</span>,
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Reference: <a href="https://code.claude.com/docs/en/mcp" target="_blank" rel="noopener">code.claude.com/docs/en/mcp</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-cline" aria-labelledby="ait-cline" tabindex="0" hidden>
-            <div class="aiset__step-label">MCP Servers icon &rarr; Configure &rarr; Configure MCP Servers &mdash; or <code class="aiset__file">~/.cline/mcp.json</code></div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>],
-  <span class="syn-green-light">"disabled"</span>: <span class="syn-blue">false</span>, <span class="syn-green-light">"autoApprove"</span>: []
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Reference: <a href="https://docs.cline.bot/mcp/configuring-mcp-servers" target="_blank" rel="noopener">docs.cline.bot/mcp/configuring-mcp-servers</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-codex" aria-labelledby="ait-codex" tabindex="0" hidden>
-            <div class="aiset__step-label">Run in your terminal</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code><span class="syn-purple">codex</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <div class="aiset__step-label">Or edit <code class="aiset__file">~/.codex/config.toml</code> &mdash; same config for the CLI, the IDE extension and the app</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>[<span class="syn-green-light">mcp_servers.sceneview</span>]
-<span class="syn-blue">command</span> = <span class="syn-green-light">"npx"</span>
-<span class="syn-blue">args</span> = [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Reference: <a href="https://learn.chatgpt.com/docs/extend/mcp" target="_blank" rel="noopener">learn.chatgpt.com/docs/extend/mcp</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-cursor" aria-labelledby="ait-cursor" tabindex="0" hidden>
-            <div class="aiset__step-label">Add to <code class="aiset__file">.cursor/mcp.json</code> (project) or <code class="aiset__file">~/.cursor/mcp.json</code> (global)</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Cursor also accepts an install link: <a class="aiset__link" href="cursor://anysphere.cursor-deeplink/mcp/install?name=sceneview&amp;config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInNjZW5ldmlldy1tY3AiXX0=">open in Cursor</a> (requires Cursor installed). Reference: <a href="https://cursor.com/docs/mcp/install-links" target="_blank" rel="noopener">cursor.com/docs/mcp/install-links</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-gemini" aria-labelledby="ait-gemini" tabindex="0" hidden>
-            <div class="aiset__step-label">Settings &rarr; Tools &rarr; AI &rarr; MCP Servers &mdash; Android Studio connects over HTTP, not stdio</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"httpUrl"</span>: <span class="syn-green-light">"https://mcp.sceneview.dev/mcp"</span>,
-  <span class="syn-green-light">"enabled"</span>: <span class="syn-blue">true</span>
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Gemini in Android Studio accepts <code>httpUrl</code> only &mdash; the local <code>npx -y sceneview-mcp</code> stdio command cannot be registered here, so this entry points at the hosted server instead. If you would rather run it locally inside the same IDE, use Junie: put the <strong>Any MCP client</strong> snippet in <code>.junie/mcp/mcp.json</code>. Reference: <a href="https://developer.android.com/studio/gemini/add-mcp-server" target="_blank" rel="noopener">developer.android.com/studio/gemini/add-mcp-server</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-copilot" aria-labelledby="ait-copilot" tabindex="0" hidden>
-            <div class="aiset__step-label">Add to <code class="aiset__file">.vscode/mcp.json</code> &mdash; note the <code class="aiset__file">servers</code> key, not <code class="aiset__file">mcpServers</code></div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"servers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"type"</span>: <span class="syn-green-light">"stdio"</span>,
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <div class="aiset__step-label">Copilot CLI</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code><span class="syn-purple">copilot</span> mcp add sceneview -- <span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy command"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Writing the CLI's file by hand takes a third shape: <code>~/.copilot/mcp-config.json</code> uses <code>mcpServers</code> like most clients, but each server needs <code>"type": "local"</code> instead of <code>"stdio"</code>. VS Code also accepts an install link: <a class="aiset__link" href="vscode:mcp/install?%7B%22name%22%3A%22sceneview%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22sceneview-mcp%22%5D%7D">open in VS Code</a> (requires VS Code installed). References: <a href="https://code.visualstudio.com/docs/agents/reference/mcp-configuration" target="_blank" rel="noopener">code.visualstudio.com/docs/agents/reference/mcp-configuration</a> and <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers" target="_blank" rel="noopener">docs.github.com &mdash; add MCP servers to Copilot CLI</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-jetbrains" aria-labelledby="ait-jetbrains" tabindex="0" hidden>
-            <div class="aiset__step-label">Settings &rarr; Tools &rarr; AI Assistant &rarr; Model Context Protocol (MCP) &rarr; Add, then paste</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>{ <span class="syn-green-light">"mcpServers"</span>: { <span class="syn-green-light">"sceneview"</span>: {
-  <span class="syn-green-light">"command"</span>: <span class="syn-green-light">"npx"</span>, <span class="syn-green-light">"args"</span>: [<span class="syn-green-light">"-y"</span>, <span class="syn-green-light">"sceneview-mcp"</span>]
-} } }</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy configuration"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Works for AI Assistant and Junie, in IntelliJ IDEA, Android Studio and the other JetBrains IDEs. Junie also reads the same JSON straight from a file &mdash; <code>.junie/mcp/mcp.json</code> for one project, <code>~/.junie/mcp/mcp.json</code> for every project. Reference: <a href="https://www.jetbrains.com/help/ai-assistant/mcp.html" target="_blank" rel="noopener">jetbrains.com/help/ai-assistant/mcp.html</a></p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-xcode" aria-labelledby="ait-xcode" tabindex="0" hidden>
-            <div class="aiset__step-label">Agents running inside Xcode read the rules files at your project root</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code><span class="syn-green"># at your project root</span>
-AGENTS.md
-CLAUDE.md</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy file names"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">Apple recommends putting your project guidance in these files, and the agents running inside Xcode read them. Xcode 26.3 itself exposes <em>its own</em> tools to external agents rather than hosting this server: turn it on under Settings &rarr; Intelligence &rarr; Model Context Protocol, then run your CLI alongside Xcode with both servers &mdash; <code class="aiset__file">claude mcp add --transport stdio xcode -- xcrun mcpbridge</code> or <code class="aiset__file">codex mcp add xcode -- xcrun mcpbridge</code> &mdash; plus SceneView from the Claude Code or Codex tab. Reference: <a href="https://developer.apple.com/documentation/xcode/giving-external-agents-access-to-xcode" target="_blank" rel="noopener">developer.apple.com &mdash; external agents</a>.</p>
-          </div>
-
-          <div class="aiset__panel" role="tabpanel" id="aip-nomcp" aria-labelledby="ait-nomcp" tabindex="0" hidden>
-            <div class="aiset__step-label">No MCP support? Point your assistant at the plain-text reference</div>
-            <div class="aiset__snippet">
-              <pre class="code-block aiset__code"><code>https://sceneview.github.io/llms.txt</code></pre>
-              <button class="aiset__copy" type="button" aria-label="Copy URL"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span><span class="aiset__copy-text">Copy</span></button>
-            </div>
-            <p class="aiset__note">It is the whole SDK &mdash; API surface, samples and best practices &mdash; in one file any assistant can read. The repository also ships <code class="aiset__file">AGENTS.md</code>, <code class="aiset__file">CLAUDE.md</code>, <code class="aiset__file">.github/copilot-instructions.md</code> and <code class="aiset__file">.cursorrules</code>, so whichever rules file your tool reads, it finds the same guidance. Full docs: <a href="docs.html">SceneView documentation</a>.</p>
-          </div>
-
-        </div>
-      </div>
-
-      <p class="aiset__also reveal">Also works with Antigravity, Continue, Devin Desktop, Goose, Kilo Code, Kiro, OpenCode, OpenHands, Qwen Code, Windsurf, Zed &mdash; and any MCP-compatible client.</p>
-    </div>
-  </section>
-
-  <!-- ===== CODE COMPARISON ===== -->
-  <section class="code-section" id="code">
-    <div class="code-section__container">
-      <div class="code-section__header">
-        <h2 class="code-section__title">Write once, render everywhere</h2>
-        <p class="code-section__subtitle">Native performance with a unified API philosophy.</p>
-      </div>
-      <div class="code-section__grid">
-        <!-- Kotlin Card -->
-        <div class="code-card code-card--kotlin">
-          <div class="code-card__header">
-            <div class="code-card__lang-wrap">
-              <img src="assets/brand/kotlin.svg" alt="" width="16" height="16" class="code-card__lang-logo">
-              <span class="code-card__lang">Kotlin (Jetpack Compose)</span>
-            </div>
-            <div class="code-card__dots">
-              <span class="code-card__dot code-card__dot--red"></span>
-              <span class="code-card__dot code-card__dot--yellow"></span>
-              <span class="code-card__dot code-card__dot--green"></span>
-            </div>
-          </div>
-          <div class="code-card__body">
-            <pre><code><span class="syn-purple">Scene</span>(
-    modifier = Modifier.fillMaxSize(),
-    nodes = <span class="syn-blue">listOf</span>(
-        <span class="syn-purple">ModelNode</span>(
-            model = <span class="syn-green">"models/drone.glb"</span>,
-            autoAnimate = <span class="syn-orange">true</span>,
-            scale = <span class="syn-orange">0.5f</span>
-        )
-    ),
-    environment = <span class="syn-purple">Environment</span>(
-        hdr = <span class="syn-green">"skybox.hdr"</span>
-    )
-)</code></pre>
-          </div>
-        </div>
-        <!-- Swift Card -->
-        <div class="code-card code-card--swift">
-          <div class="code-card__header">
-            <div class="code-card__lang-wrap">
-              <img src="assets/brand/swift.svg" alt="" width="16" height="16" class="code-card__lang-logo">
-              <span class="code-card__lang">Swift (SwiftUI)</span>
-            </div>
-            <div class="code-card__dots">
-              <span class="code-card__dot code-card__dot--grey"></span>
-              <span class="code-card__dot code-card__dot--grey"></span>
-              <span class="code-card__dot code-card__dot--grey"></span>
-            </div>
-          </div>
-          <div class="code-card__body">
-            <pre><code><span class="syn-pink">SceneView</span> {
-    <span class="syn-pink">Model</span>(named: <span class="syn-green-light">"drone"</span>)
-        .rotation(x: .pi/4)
-        .scale(0.5)
-        .onTap {
-            <span class="syn-blue-light">print</span>(<span class="syn-green-light">"Drone selected"</span>)
+    <span class="k">var</span> body: <span class="k">some</span> View {
+        <span class="f">SceneView</span> { root <span class="k">in</span>
+            <span class="k">if let</span> model { root.<span class="f">addChild</span>(model.entity) }
         }
-}
-.environment(named: <span class="syn-green-light">"outdoor"</span>)
-.edgesIgnoringSafeArea(.all)</code></pre>
+        .<span class="f">contentID</span>(model != <span class="k">nil</span>)
+        .<span class="f">environment</span>(.studio)
+        .<span class="f">cameraControls</span>(.orbit)
+        .<span class="f">task</span> { model = <span class="k">try?</span> <span class="k">await</span> ModelNode.<span class="f">load</span>(<span class="s" data-literal="usdz" data-dir="">"sheen_chair.usdz"</span>) }
+    }
+}</code></pre></div>
+<div role="tabpanel" id="p-web" aria-labelledby="t-web" hidden><pre><code><span class="c">&lt;!-- Web · Filament compiled to WebAssembly --&gt;</span>
+<span class="k">&lt;canvas</span> id=<span class="s">"viewer"</span><span class="k">&gt;&lt;/canvas&gt;</span>
+<span class="k">&lt;script</span> src=<span class="s">"…/filament/filament.js"</span><span class="k">&gt;&lt;/script&gt;</span>
+<span class="k">&lt;script</span> src=<span class="s">"…/sceneview.js"</span><span class="k">&gt;&lt;/script&gt;</span>
+<span class="k">&lt;script&gt;</span>
+  SceneView.<span class="f">modelViewer</span>(<span class="s">"viewer"</span>, <span class="s" data-literal="glb">"models/sheen_chair.glb"</span>)
+<span class="k">&lt;/script&gt;</span></code></pre></div>
+<div role="tabpanel" id="p-flutter" aria-labelledby="t-flutter" hidden><pre><code><span class="c">// Flutter · Android and iOS</span>
+<span class="k">final</span> controller = <span class="f">SceneViewController</span>();
+
+<span class="f">SceneView</span>(
+  controller: controller,
+  onViewCreated: () =&gt; controller.<span class="f">loadModel</span>(
+    <span class="k">const</span> <span class="f">ModelNode</span>(modelPath: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>),
+  ),
+)</code></pre></div>
+<div role="tabpanel" id="p-rn" aria-labelledby="t-rn" hidden><pre><code><span class="c">// React Native · Android and iOS</span>
+<span class="k">&lt;</span><span class="f">SceneView</span>
+  style={{ flex: <span class="n">1</span> }}
+  modelNodes={[{ src: <span class="s" data-literal="glb" data-q="'">'models/sheen_chair.glb'</span>, position: [<span class="n">0</span>, <span class="n">0</span>, <span class="n">-2</span>] }]}
+  cameraControlMode=<span class="s">"orbit"</span>
+<span class="k">/&gt;</span></code></pre></div>
+          <div class="codecard__foot">
+            <span class="status status--stable" data-status>Android · Stable</span>
+            <a class="codecard__link" href="/docs/quickstart/" data-quickstart>Quickstart · Compose →</a>
           </div>
         </div>
-        <!-- JavaScript Card -->
-        <div class="code-card code-card--js">
-          <div class="code-card__header">
-            <div class="code-card__lang-wrap">
-              <img src="assets/brand/javascript.svg" alt="" width="16" height="16" class="code-card__lang-logo">
-              <span class="code-card__lang">JavaScript (Web)</span>
-            </div>
-            <div class="code-card__dots">
-              <span class="code-card__dot code-card__dot--red"></span>
-              <span class="code-card__dot code-card__dot--yellow"></span>
-              <span class="code-card__dot code-card__dot--green"></span>
+
+        <div class="viewport reveal" style="--i:1" data-stage-wrap>
+          <div class="viewport__top">
+            <span class="badge"><span class="dot"></span><span class="when-poster">Still</span><b class="when-live">Live</b><span class="badge__more"> · same renderer as the code</span></span>
+            <span class="stage__actions">
+              <button class="stage__load" type="button"><svg><use href="#i-play"/></svg>Run it live <small>≈ 8&nbsp;MB</small></button>
+              <button class="stage__pause" type="button" aria-pressed="false" aria-label="Pause the rotation"><svg class="i-pause"><use href="#i-pause"/></svg><svg class="i-play"><use href="#i-play"/></svg></button>
+            </span>
+          </div>
+          <div class="stage stage--fit" id="code-stage" data-stage data-src="/models/platforms/SheenChair.glb" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935"
+               data-autoload="visible" data-mobile="tap" data-elev="0.26" data-angle="0.6" data-fill="0.7" data-top="0.42">
+            <div class="stage__box" style="--sx:.5;--sy:.8103;--sw:.3553;--sh:.1911">
+              <div class="studio" aria-hidden="true"><div class="studio__back"></div><div class="studio__floor"></div><div class="studio__grid"></div><div class="studio__pool"></div></div>
+              <div class="stage__shadow" aria-hidden="true"></div>
+              <div class="stage__frame">
+                <img class="stage__poster" src="assets/home/vp-chair.webp" width="1200" height="960" loading="lazy"
+                     alt="A velvet armchair with sheen fabric, rendered by SceneView.">
+                <canvas class="stage__canvas" role="img" aria-label="Interactive 3D preview of the selected model. Drag sideways to turn it."></canvas>
+              </div>
             </div>
           </div>
-          <div class="code-card__body">
-            <pre><code><span class="syn-green">// One line in your HTML:</span>
-<span class="syn-purple">&lt;script</span> <span class="syn-blue">src</span>=<span class="syn-green-light">"sceneview.js"</span><span class="syn-purple">&gt;&lt;/script&gt;</span>
-
-<span class="syn-green">// Render a 3D model:</span>
-<span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>, {
-  backgroundColor: [<span class="syn-orange">0.05</span>, <span class="syn-orange">0.05</span>, <span class="syn-orange">0.08</span>, <span class="syn-orange">1</span>],
-  lightIntensity: <span class="syn-orange">150000</span>,
-  fov: <span class="syn-orange">35</span>
-})</code></pre>
-          </div>
-        </div>
-        <!-- AI assistant card -->
-        <div class="code-card code-card--ai">
-          <div class="code-card__header">
-            <div class="code-card__lang-wrap">
-              <span class="material-symbols-outlined code-card__lang-glyph" aria-hidden="true">smart_toy</span>
-              <span class="code-card__lang">AI assistant (MCP)</span>
+          <div class="viewport__bottom">
+            <div class="chips chips--stage" data-models="code-stage" role="group" aria-label="Swap the model">
+              <button class="chip" type="button" aria-pressed="true" data-file="SheenChair.glb" data-name="sheen_chair" data-bbox="-0.414,-0.0001,-0.2767,0.4125,0.6862,0.2935" data-elev="0.26" data-angle="0.6" data-hull="box" data-poster="assets/home/vp-chair.webp" data-shadow=".5,.8103,.3553,.1911" data-credit="Sheen Chair · © 2020 Wayfair LLC · CC0"><img src="assets/home/thumb-chair.webp" alt="" width="28" height="28">Sheen chair</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="Fox.glb" data-name="fox" data-bbox="-12.5927,-0.1217,-88.095,12.5927,78.9072,66.6249" data-anim="1" data-elev="0.2" data-angle="0.9" data-hull="box" data-poster="assets/home/vp-fox.webp" data-shadow=".5,.8008,.3424,.1586" data-credit='Fox · mesh PixelMannen (CC0) · rig &amp; animation tomkranis, glTF AsoboStudio &amp; scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)'><img src="assets/home/thumb-fox.webp" alt="" width="28" height="28">Fox, animated</button>
+              <button class="chip" type="button" aria-pressed="false" data-file="ToyCar.glb" data-name="toy_car" data-bbox="-0.035,-0.0162,-0.037,0.0384,0.0126,0.037" data-elev="0.38" data-angle="0.75" data-hull="ellipse" data-poster="assets/home/vp-car.webp" data-shadow=".5,.7456,.5852,.3704" data-credit="Toy Car · Guido Odendahl · CC0"><img src="assets/home/thumb-car.webp" alt="" width="28" height="28">Toy car</button>
             </div>
-            <div class="code-card__dots">
-              <span class="code-card__dot code-card__dot--red"></span>
-              <span class="code-card__dot code-card__dot--yellow"></span>
-              <span class="code-card__dot code-card__dot--green"></span>
-            </div>
-          </div>
-          <div class="code-card__body">
-            <pre><code><span class="syn-green">// Ask your AI assistant, with SceneView MCP:</span>
-
-<span class="syn-green-light">"Build me an AR app that lets users
- place 3D furniture in their room"</span>
-
-<span class="syn-green">// It generates correct, working SceneView</span>
-<span class="syn-green">// code on the first try.</span>
-
-<span class="syn-green">// Setup, in any MCP client:</span>
-<span class="syn-blue">npx</span> -y <span class="syn-green-light">sceneview-mcp</span></code></pre>
+            <p class="credit" data-credit>Sheen Chair · © 2020 Wayfair LLC · CC0</p>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===== PLATFORMS ===== -->
-  <section class="platforms" id="platforms">
-    <div class="platforms__container">
-      <div class="platforms__header">
-        <h2 class="platforms__title">Every platform, native performance</h2>
+  <!-- 3 · WHAT YOU CAN BUILD — every tile opens a demo or its docs. -->
+  <section class="section" id="build" aria-labelledby="build-title">
+    <div class="container">
+      <div class="section__head">
+        <p class="eyebrow reveal">What you can build</p>
+        <h2 class="h2 reveal" id="build-title">From a product viewer to a galaxy.</h2>
       </div>
-      <div class="platforms__grid-v2">
-        <a href="https://github.com/sceneview/sceneview/tree/main/sceneview" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--stable">Stable</span>
-          <img src="assets/brand/android.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">Android</h4>
-          <p class="platform-card-v2__desc">Jetpack Compose + Filament + ARCore</p>
-          <span class="platform-card-v2__renderer">Filament (Vulkan/OpenGL)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/SceneViewSwift" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/apple.svg" alt="" class="platform-card-v2__icon-img platform-card-v2__icon-img--apple">
-          <h4 class="platform-card-v2__name">iOS</h4>
-          <p class="platform-card-v2__desc">SwiftUI + RealityKit + ARKit</p>
-          <span class="platform-card-v2__renderer">RealityKit (Metal)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/SceneViewSwift" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/apple.svg" alt="" class="platform-card-v2__icon-img platform-card-v2__icon-img--apple">
-          <h4 class="platform-card-v2__name">macOS</h4>
-          <p class="platform-card-v2__desc">SwiftUI + RealityKit</p>
-          <span class="platform-card-v2__renderer">RealityKit (Metal)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/SceneViewSwift" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/apple.svg" alt="" class="platform-card-v2__icon-img platform-card-v2__icon-img--apple">
-          <h4 class="platform-card-v2__name">visionOS</h4>
-          <p class="platform-card-v2__desc">SwiftUI + RealityKit Spatial</p>
-          <span class="platform-card-v2__renderer">RealityKit (Metal)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/sceneview-web" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/html5.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">Web</h4>
-          <p class="platform-card-v2__desc">Kotlin/JS + Filament.js WASM</p>
-          <span class="platform-card-v2__renderer">Filament (WebGL2)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/samples/android-tv-demo" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/android.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">Android TV</h4>
-          <p class="platform-card-v2__desc">Compose TV + D-pad controls</p>
-          <span class="platform-card-v2__renderer">Filament (Vulkan)</span>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/tree/main/samples/desktop-demo" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/jetbrains.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">Desktop</h4>
-          <p class="platform-card-v2__desc">Compose Desktop &middot; <code>SceneViewer</code> viewer</p>
-          <span class="platform-card-v2__renderer">Filament (filament-kmp, JDK 22+)</span>
-        </a>
-        <div class="platform-card-v2 platform-card-v2--soon reveal">
-          <span class="platform-card-v2__badge platform-card-v2__badge--soon">Coming Soon</span>
-          <img src="assets/brand/android.svg" alt="" class="platform-card-v2__icon-img platform-card-v2__icon-img--muted">
-          <h4 class="platform-card-v2__name">Android XR</h4>
-          <p class="platform-card-v2__desc">Jetpack XR SceneCore</p>
-          <span class="platform-card-v2__renderer">Compose XR</span>
-        </div>
-        <a href="https://pub.dev/packages/flutter_sceneview" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/flutter.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">Flutter</h4>
-          <p class="platform-card-v2__desc">PlatformView bridge</p>
-          <span class="platform-card-v2__renderer">Native (Android + iOS)</span>
-        </a>
-        <a href="https://www.npmjs.com/package/@sceneview-sdk/react-native" class="platform-card-v2 reveal" target="_blank" rel="noopener">
-          <span class="platform-card-v2__badge platform-card-v2__badge--alpha">Alpha</span>
-          <img src="assets/brand/react.svg" alt="" class="platform-card-v2__icon-img">
-          <h4 class="platform-card-v2__name">React Native</h4>
-          <p class="platform-card-v2__desc">Fabric bridge</p>
-          <span class="platform-card-v2__renderer">Native (Android + iOS)</span>
-        </a>
+      <div class="bento">
+        <article class="card tile tile--a tile--media reveal">
+          <div class="tile__media ar-scene" aria-hidden="true">
+            <div class="ar-scene__plane"></div>
+            <div class="ar-scene__ring"></div>
+            <img class="ar-scene__obj" src="assets/home/vp-chair.webp" alt="" loading="lazy">
+            <div class="ar-scene__measure"><span>plane · horizontal</span><span>scale 1 : 1</span></div>
+          </div>
+          <span class="tile__tag">AR</span>
+          <div class="tile__body">
+            <h3 class="h3"><a class="tile__link" href="/open?demo=ar-placement">Place it in the room, at real size.</a></h3>
+            <p>Plane detection, anchors, depth occlusion and real-world scale: ARCore on Android, ARKit on iOS, written as composables and views.</p>
+            <span class="tile__go">Open the AR demo <svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </article>
+        <article class="card tile tile--b reveal" style="--i:1">
+          <svg class="wire" viewBox="0 0 200 200" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M100 20 170 60v80l-70 40-70-40V60z"/><path d="m30 60 70 40 70-40M100 100v80"/><path d="m65 40 70 40M135 40 65 80M30 100l70 40 70-40" opacity=".5"/></g></svg>
+          <span class="tile__tag">Formats</span>
+          <div class="tile__body">
+            <h3 class="h3"><a class="tile__link" href="/docs/formats/">Bring the files you already have.</a></h3>
+            <p>glTF and GLB on Filament, USDZ on RealityKit. STL, OBJ, PLY and 3MF are converted on load.</p>
+            <div class="formats"><span>glTF</span><span>GLB</span><span>USDZ</span><span>STL</span><span>OBJ</span><span>PLY</span><span>3MF</span></div>
+            <span class="tile__go">Formats guide <svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </article>
+        <article class="card tile tile--c tile--media reveal">
+          <div class="tile__media cosmos" role="img" aria-label="A spiral galaxy of 60,000 stars, from the SceneView iOS demo."></div>
+          <span class="tile__tag">Procedural</span>
+          <div class="tile__body">
+            <h3 class="h3"><a class="tile__link" href="/docs/samples-ios/">60,000 stars, built in code.</a></h3>
+            <p>The Cosmos demo generates a spiral galaxy in real time. No mesh file to ship.</p>
+            <span class="tile__go">Apple samples <svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </article>
+        <article class="card tile tile--d reveal" style="--i:1">
+          <div class="tile__media uiscene" aria-hidden="true">
+            <div class="uiscene__card">
+              <div class="uiscene__row">
+                <div class="uiscene__thumb" style="background-image:url(assets/home/thumb-chair.webp)"></div>
+                <div><div class="uiscene__title">Sheen chair</div><div class="uiscene__sub">Velvet · view in your room</div></div>
+              </div>
+              <div class="uiscene__btn">View in AR</div>
+            </div>
+          </div>
+          <span class="tile__tag">Compose in 3D</span>
+          <div class="tile__body">
+            <h3 class="h3"><a class="tile__link" href="/open?demo=view-node">Your UI, inside the scene.</a></h3>
+            <p>ViewNode renders real Compose content on a node: labels, cards and controls placed in 3D space.</p>
+            <span class="tile__go">Open the ViewNode demo <svg><use href="#i-arrow"/></svg></span>
+          </div>
+        </article>
       </div>
+      <p class="try reveal"><span class="try__label">Try every demo on your phone:</span>
+        <a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo">Google Play</a> ·
+        <a href="https://apps.apple.com/us/app/sceneview/id6761329763">App Store</a> ·
+        <a href="/web-demo/">Web demo</a></p>
+    </div>
+  </section>
 
-      <div class="runs-on" id="runs-on">
-        <div class="runs-on__header">
-          <h3 class="runs-on__title">Runs on</h3>
-          <p class="runs-on__lede">A published package plus an app or page you can open today, each backed by a real capture. Other platforms join here once a capture backs them.</p>
+  <!-- 4 · PLATFORMS — what actually ships, and how mature it is. -->
+  <section class="section" id="platforms" aria-labelledby="platforms-title">
+    <div class="container">
+      <div class="section__head">
+        <p class="eyebrow reveal">Platforms</p>
+        <h2 class="h2 reveal" id="platforms-title">Stable on Android. Alpha everywhere else, and labelled that way.</h2>
+        <p class="lead reveal">Native renderers underneath: Filament on Android, desktop and the web, RealityKit on Apple.</p>
+      </div>
+      <ul class="plat reveal">
+        <li><b>Android</b><small>Jetpack Compose · Filament · ARCore</small><span class="status status--stable">Stable</span></li>
+        <li><b>Apple</b><small>iOS, macOS, visionOS · one SwiftUI package · RealityKit · AR on iOS · USDZ, no glTF</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Web</b><small>Filament WASM · WebGL2 · glTF</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Desktop</b><small>Compose Desktop · Filament · JDK 22+</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Android TV</b><small>Same artifact as Android · D-pad input</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Flutter</b><small>Platform view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>React Native</b><small>Fabric view over the native SDKs</small><span class="status status--alpha">Alpha</span></li>
+        <li><b>Android XR</b><small>Jetpack XR SceneCore</small><span class="status status--planned">Planned</span></li>
+      </ul>
+      <p class="plat-note reveal">Compose Multiplatform: one <code>SceneViewer</code> for Android, iOS and desktop — a viewer subset, without AR. <a href="/docs/platforms/">Feature matrix per platform</a></p>
+    </div>
+  </section>
+
+  <!-- 5 · AI ASSISTANTS — neutral: equal buttons, none selected, order sourced (footnote). -->
+  <section class="section" id="ai" aria-labelledby="ai-title">
+    <div class="container ai">
+      <div>
+        <p class="eyebrow reveal">AI-ready</p>
+        <h2 class="h2 reveal" id="ai-title">Works with the assistant you already use.</h2>
+        <p class="lead reveal">SceneView ships an MCP server and an <code>llms.txt</code>, so any assistant that speaks MCP reads the real API instead of guessing it.</p>
+        <div class="ai__links reveal">
+          <a href="/docs/ai-context/">Setup for each client <svg width="16" height="16"><use href="#i-arrow"/></svg></a>
+          <a href="/llms.txt">Read llms.txt <svg width="16" height="16"><use href="#i-arrow"/></svg></a>
         </div>
-        <div class="runs-on__grid">
-          <article class="runs-on__card reveal">
-            <div class="runs-on__shot">
-              <img src="assets/demos/runs-on-android.jpg" alt="SceneView Android demo: Model Viewer rendering a helmet with Filament" width="450" height="960" loading="lazy">
-            </div>
-            <div class="runs-on__body">
-              <div class="runs-on__meta">
-                <h4 class="runs-on__name">Android</h4>
-                <span class="runs-on__status">Shipped</span>
-                <span class="runs-on__maturity runs-on__maturity--stable">Stable</span>
-              </div>
-              <ul class="runs-on__links">
-                <li><a href="https://central.sonatype.com/artifact/io.github.sceneview/sceneview" target="_blank" rel="noopener">Maven Central</a></li>
-                <li><a href="https://play.google.com/store/apps/details?id=io.github.sceneview.demo" target="_blank" rel="noopener">Google Play</a></li>
-              </ul>
-            </div>
-          </article>
-          <article class="runs-on__card reveal">
-            <div class="runs-on__shot">
-              <img src="assets/demos/runs-on-ios.jpg" alt="SceneView iOS demo: Model Viewer rendering a helmet with RealityKit" width="442" height="960" loading="lazy">
-            </div>
-            <div class="runs-on__body">
-              <div class="runs-on__meta">
-                <h4 class="runs-on__name">iOS</h4>
-                <span class="runs-on__status">Shipped</span>
-                <span class="runs-on__maturity runs-on__maturity--alpha">Alpha</span>
-              </div>
-              <ul class="runs-on__links">
-                <li><a href="https://github.com/sceneview/sceneview/tree/main/SceneViewSwift" target="_blank" rel="noopener">Swift Package</a></li>
-                <li><a href="https://apps.apple.com/us/app/sceneview/id6761329763" target="_blank" rel="noopener">App Store</a></li>
-              </ul>
-            </div>
-          </article>
-          <article class="runs-on__card reveal">
-            <div class="runs-on__shot">
-              <img src="assets/demos/runs-on-web.jpg" alt="SceneView web demo: Toy Car rendered by Filament.js in a browser" width="960" height="600" loading="lazy">
-            </div>
-            <div class="runs-on__body">
-              <div class="runs-on__meta">
-                <h4 class="runs-on__name">Web</h4>
-                <span class="runs-on__status">Shipped</span>
-                <span class="runs-on__maturity runs-on__maturity--alpha">Alpha</span>
-              </div>
-              <ul class="runs-on__links">
-                <li><a href="https://www.npmjs.com/package/sceneview-web" target="_blank" rel="noopener">npm</a></li>
-                <li><a href="/web-demo/">Live web demo</a></li>
-              </ul>
-            </div>
-          </article>
+      </div>
+      <div class="reveal" style="--i:1">
+        <div class="assistants" role="group" aria-label="Show the setup for" data-assistants="mcp-out">
+          <button type="button" aria-pressed="false" data-id="claude">Claude Code</button>
+          <button type="button" aria-pressed="false" data-id="copilot">GitHub Copilot</button>
+          <button type="button" aria-pressed="false" data-id="codex">OpenAI Codex</button>
+          <button type="button" aria-pressed="false" data-id="cursor">Cursor</button>
+          <button type="button" aria-pressed="false" data-id="gemini">Gemini Code Assist</button>
+          <button type="button" aria-pressed="false" data-id="jetbrains">JetBrains AI</button>
+          <button type="button" aria-pressed="false" data-id="opencode">OpenCode</button>
+          <button type="button" aria-pressed="false" data-id="antigravity">Google Antigravity</button>
         </div>
+        <div class="mcp" id="mcp-out" aria-live="polite">
+          <p class="mcp__label">Any MCP client · pick your assistant above for its exact setup</p>
+          <div class="cmd"><code><span class="pfx">$ </span>npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+        </div>
+        <p class="footnote">Ordered by the share of professional developers who use each tool at work, from the <a href="https://blog.jetbrains.com/research/2026/08/ai-coding-agent-adoption-2026/">JetBrains Developer Ecosystem Survey 2026</a> (published Aug 18, 2026). Gemini is placed using the <a href="https://stackoverflow.blog/2026/05/27/agents-on-a-leash-agentic-ai-remains-mostly-monitored-at-work/">Stack Overflow pulse survey</a> of April 2026, since JetBrains does not report it. Any MCP client works; names belong to their owners.</p>
+      </div>
+    </div>
+    <template id="mcp-any"><p class="mcp__label">Any MCP client · pick your assistant above for its exact setup</p><div class="cmd"><code><span class="pfx">$ </span>npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-claude"><p class="mcp__label">Claude Code · terminal</p><div class="cmd"><code><span class="pfx">$ </span>claude mcp add sceneview -- npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="claude mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-copilot"><p class="mcp__label">GitHub Copilot in VS Code · <code>.vscode/mcp.json</code></p><div class="cmd"><code>{"servers":{"sceneview":{"type":"stdio","command":"npx","args":["-y","<span class="str">sceneview-mcp</span>"]}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"servers":{"sceneview":{"type":"stdio","command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-codex"><p class="mcp__label">OpenAI Codex · terminal</p><div class="cmd"><code><span class="pfx">$ </span>codex mcp add sceneview -- npx -y <span class="str">sceneview-mcp</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text="codex mcp add sceneview -- npx -y sceneview-mcp"><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-cursor"><p class="mcp__label">Cursor · <code>.cursor/mcp.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{"command":"npx","args":["-y","<span class="str">sceneview-mcp</span>"]}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-gemini"><p class="mcp__label">Gemini CLI and Code Assist · <code>~/.gemini/settings.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{"command":"npx","args":["-y","<span class="str">sceneview-mcp</span>"]}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-jetbrains"><p class="mcp__label">JetBrains AI Assistant · Settings › Tools › AI Assistant › Model Context Protocol</p><div class="cmd"><code>{"mcpServers":{"sceneview":{"command":"npx","args":["-y","<span class="str">sceneview-mcp</span>"]}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-opencode"><p class="mcp__label">OpenCode · <code>opencode.json</code></p><div class="cmd"><code>{"mcp":{"sceneview":{"type":"local","command":["npx","-y","<span class="str">sceneview-mcp</span>"],"enabled":true}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcp":{"sceneview":{"type":"local","command":["npx","-y","sceneview-mcp"],"enabled":true}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+    <template id="mcp-antigravity"><p class="mcp__label">Google Antigravity · <code>mcp_config.json</code></p><div class="cmd"><code>{"mcpServers":{"sceneview":{"command":"npx","args":["-y","<span class="str">sceneview-mcp</span>"]}}}</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='{"mcpServers":{"sceneview":{"command":"npx","args":["-y","sceneview-mcp"]}}}'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div></template>
+  </section>
+
+  <!-- 6 · PROOF — numbers that anyone can re-check, each with its source. -->
+  <section class="section" id="proof" aria-labelledby="proof-title">
+    <div class="container">
+      <div class="section__head">
+        <p class="eyebrow reveal">In the open</p>
+        <h2 class="h2 reveal" id="proof-title">Public numbers anyone can re-check.</h2>
+      </div>
+      <!-- The data-metric="stars|contributors|releases|web-downloads" anchors are rewritten weekly by
+           .claude/scripts/update-site-metrics.sh: keep each one exactly once, on a text-only element.
+           The team names come from assets/adoption-orgs.js, the one place to edit that list. -->
+      <dl class="numbers reveal">
+        <div class="numbers__lead"><dt>public repositories declare SceneView or its Sceneform predecessor</dt><dd><a href="https://github.com/search?q=%22io.github.sceneview%22+OR+%22com.gorisse.thomas.sceneform%22&amp;type=code">700+</a></dd></div>
+        <div><dt>stars on GitHub</dt><dd><a href="https://github.com/sceneview/sceneview/stargazers" data-metric="stars">1.3K</a></dd></div>
+        <div><dt>contributors</dt><dd><a href="https://github.com/sceneview/sceneview/graphs/contributors" data-metric="contributors">48</a></dd></div>
+        <div><dt>releases</dt><dd><a href="https://github.com/sceneview/sceneview/releases" data-metric="releases">149</a></dd></div>
+        <div><dt>npm downloads, web, 30&nbsp;days</dt><dd><a href="https://www.npmjs.com/package/sceneview-web" data-metric="web-downloads">1.1K</a></dd></div>
+      </dl>
+      <div class="orgs reveal">
+        <p class="small muted" style="margin:0">Found in public code and posts from teams at</p>
+        <ul class="orgs__list" data-adoption-orgs></ul>
+        <p class="orgs__more"><a href="/companies.html">All teams and their evidence <svg width="16" height="16"><use href="#i-arrow"/></svg></a></p>
+        <p class="footnote">Each name links to that team’s own public code or post; a name here is not an endorsement. Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on September 26, 2026. Stars, contributors, releases and web downloads are refreshed weekly by an automated job.</p>
       </div>
     </div>
   </section>
 
-  <!-- ===== FEATURES ===== -->
-  <section class="features" id="features">
-    <div class="features__container">
-      <h2 class="features__title reveal">What you can build</h2>
-      <p class="features__subtitle reveal">48+ node types, full ARCore + ARKit coverage, physics, post-processing, and Compose UI inside a 3D scene.</p>
-
-      <div class="features__grid">
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">view_in_ar</span>
-          <h3 class="feature-card__title">48+ Node Types</h3>
-          <p class="feature-card__text">Models, primitives (cube, sphere, cone, torus, capsule), curves, shapes, text, video, billboard sprites, lights, reflection probes, dynamic sky, fog, physics, and more &mdash; every one a Composable / SwiftUI view.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Android</span>
-            <span class="feature-card__chip">iOS</span>
-            <span class="feature-card__chip">Web</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">layers</span>
-          <h3 class="feature-card__title">Compose UI in 3D</h3>
-          <p class="feature-card__text"><code>ViewNode</code> renders any <code>@Composable</code> as a textured plane in world space. Buttons, lists, animations &mdash; all interactive, all reactive. The same trick exists in SwiftUI on iOS.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Android</span>
-            <span class="feature-card__chip">iOS</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">public</span>
-          <h3 class="feature-card__title">AR Geospatial</h3>
-          <p class="feature-card__text">Streetscape city mesh, terrain anchors, rooftop anchors, Cloud Anchors for cross-device persistence. Build navigation, geofenced experiences, and scavenger hunts at planet scale.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Android</span>
-            <span class="feature-card__chip">ARCore VPS</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">face</span>
-          <h3 class="feature-card__title">Augmented Faces &amp; Images</h3>
-          <p class="feature-card__text">Face mesh overlay (front camera) with custom materials. Image tracking for posters, business cards, museum exhibits &mdash; with runtime image database building.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Android</span>
-            <span class="feature-card__chip">iOS</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">videocam</span>
-          <h3 class="feature-card__title">AR Record &amp; Replay</h3>
-          <p class="feature-card__text">Capture an outdoor ARCore session once with <code>ARRecorder</code>, replay it 1:1 at the desk via <code>ARSceneView(playbackDataset = file)</code>. Debug AR scenes without a phone in your hand.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Android</span>
-            <span class="feature-card__chip">EIS &mdash; image stabilization</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">animation</span>
-          <h3 class="feature-card__title">Physics &amp; Gestures</h3>
-          <p class="feature-card__text">Rigid-body physics (gravity, collisions, impulses), ray vs box/sphere collision, drag-rotate-scale-elevate gestures &mdash; all opt-in per node via <code>isEditable</code>.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">All platforms</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">brightness_high</span>
-          <h3 class="feature-card__title">PBR Lighting &amp; Post-FX</h3>
-          <p class="feature-card__text">Image-based lighting from <code>.hdr</code> / <code>.ktx</code>, dynamic time-of-day sky, atmospheric fog, reflection probes, plus bloom, depth of field, SSAO, vignette, color grading, and tone mapping.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Filament</span>
-            <span class="feature-card__chip">RealityKit</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">vrpano</span>
-          <h3 class="feature-card__title">WebXR &mdash; AR &amp; VR</h3>
-          <p class="feature-card__text">Same engine on the web. From Kotlin/JS, <code>ARSceneView.create(…)</code> starts phone passthrough AR with hit-test, anchors and light estimation; <code>VRSceneView.create(…)</code> starts headset VR with controllers and reference spaces.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Web</span>
-            <span class="feature-card__chip">immersive-ar</span>
-            <span class="feature-card__chip">immersive-vr</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">smart_toy</span>
-          <h3 class="feature-card__title">AI-First MCP Server</h3>
-          <p class="feature-card__text"><code>validate_code</code> compile-checks what your assistant wrote, <code>get_node_reference</code> resolves the exact node API, <code>get_setup</code> and <code>get_ar_setup</code> wire up the project, and <code>list_samples</code> starts you from code that builds. 38 compilable samples + full <code>llms.txt</code> reference.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">Claude Code</span>
-            <span class="feature-card__chip">Cline</span>
-            <span class="feature-card__chip">Codex</span>
-            <span class="feature-card__chip">Cursor</span>
-            <span class="feature-card__chip">Gemini in Android Studio</span>
-            <span class="feature-card__chip">GitHub Copilot</span>
-            <span class="feature-card__chip">JetBrains AI Assistant</span>
-            <span class="feature-card__chip">Any MCP client</span>
-          </div>
-        </div>
-
-        <div class="feature-card reveal">
-          <span class="feature-card__icon material-symbols-outlined">deployed_code</span>
-          <h3 class="feature-card__title">Any 3D file, at real size</h3>
-          <p class="feature-card__text">glTF/GLB, OBJ, STL, PLY and 3MF on Android, USDZ on Apple &mdash; all loaded through the same <code>rememberModelInstance</code> call, with units converted so a model shows at real size in AR. The Android demo registers for these types, so a shared file opens straight from the chooser.</p>
-          <div class="feature-card__chips">
-            <span class="feature-card__chip">3MF</span>
-            <span class="feature-card__chip">glTF / GLB</span>
-            <span class="feature-card__chip">USDZ</span>
-          </div>
-        </div>
+  <!-- 7 · HOW IT COMPARES + FAQ (the FAQ is visible and mirrored exactly in the JSON-LD above). -->
+  <section class="section" id="faq" aria-labelledby="faq-title">
+    <div class="container">
+      <div class="section__head">
+        <p class="eyebrow reveal">Questions</p>
+        <h2 class="h2 reveal" id="faq-title">Where SceneView fits.</h2>
       </div>
-    </div>
-  </section>
-
-  <!-- ===== COMPARISON TABLE ===== -->
-  <section class="comparison" id="comparison">
-    <div class="comparison__container">
-      <h2 class="comparison__title reveal">How SceneView compares</h2>
-      <p class="comparison__subtitle reveal">The lightweight alternative to heavy game engines for 3D in native apps.</p>
-      <div class="comparison__wrapper reveal">
-        <table class="comparison__table">
-          <thead>
-            <tr>
-              <th></th>
-              <th class="comparison__highlight">SceneView</th>
-              <th>Unity</th>
-              <th>Filament (direct)</th>
-              <th>Three.js</th>
-              <th>Babylon.js</th>
-              <th>RealityKit SDK</th>
-            </tr>
-          </thead>
+      <div class="compare reveal" role="region" aria-label="Comparison table, scrolls sideways" tabindex="0">
+        <table>
+          <caption class="sr-only">SceneView compared with Unity, Filament used directly, Three.js and RealityKit</caption>
+          <thead><tr><th scope="col"></th><th scope="col">SceneView</th><th scope="col">Unity</th><th scope="col">Filament, direct</th><th scope="col">Three.js</th><th scope="col">RealityKit</th></tr></thead>
           <tbody>
-            <tr>
-              <td class="comparison__label">Setup time</td>
-              <td class="comparison__highlight"><strong>2 min</strong> (1 dep)</td>
-              <td>30+ min</td>
-              <td>15 min (C++ build)</td>
-              <td>5 min (npm)</td>
-              <td>5 min (npm)</td>
-              <td>10 min (Xcode)</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">Binary overhead</td>
-              <td class="comparison__highlight"><strong>~3 MB</strong></td>
-              <td>~30 MB+</td>
-              <td>~2 MB</td>
-              <td>~600 KB (JS)</td>
-              <td>~800 KB (JS)</td>
-              <td>Built-in</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">Compose / SwiftUI</td>
-              <td class="comparison__highlight"><strong>Native</strong> (first-class)</td>
-              <td>None</td>
-              <td>None (imperative C++)</td>
-              <td>N/A (web only)</td>
-              <td>N/A (web only)</td>
-              <td>SwiftUI native</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">Platforms</td>
-              <td class="comparison__highlight"><strong>9</strong> (mobile + web + XR)</td>
-              <td>20+ (game focus)</td>
-              <td>Android, web, desktop</td>
-              <td>Web only</td>
-              <td>Web only</td>
-              <td>Apple only</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">Learning curve</td>
-              <td class="comparison__highlight"><strong>Low</strong> (Compose/SwiftUI)</td>
-              <td>High (C#, ECS)</td>
-              <td>High (C++/JNI)</td>
-              <td>Medium (JS)</td>
-              <td>Medium (JS)</td>
-              <td>Medium (Swift)</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">AI code gen</td>
-              <td class="comparison__highlight"><strong>MCP server</strong></td>
-              <td>No MCP</td>
-              <td>No MCP</td>
-              <td>No MCP</td>
-              <td>No MCP</td>
-              <td>No MCP</td>
-            </tr>
-            <tr>
-              <td class="comparison__label">Renderer</td>
-              <td class="comparison__highlight"><strong>Filament + RealityKit</strong></td>
-              <td>Custom (proprietary)</td>
-              <td>Filament</td>
-              <td>WebGL/WebGPU</td>
-              <td>WebGL/WebGPU</td>
-              <td>Metal</td>
-            </tr>
+            <tr><th scope="row">Declarative UI</th><td>Compose, SwiftUI</td><td>No — editor and C#</td><td>No — imperative</td><td>No — imperative</td><td>SwiftUI</td></tr>
+            <tr><th scope="row">Setup</th><td>One Gradle or SwiftPM dependency</td><td>Separate engine, embedded as a library</td><td>Engine, materials and loaders wired by hand</td><td>One npm package</td><td>Part of the Apple SDKs</td></tr>
+            <tr><th scope="row">Platforms</th><td>Android stable; Apple, web, desktop, Flutter, React Native alpha</td><td>Most platforms</td><td>Android, Apple, desktop, web</td><td>Web</td><td>Apple only</td></tr>
+            <tr><th scope="row">AR</th><td>ARCore, ARKit</td><td>AR Foundation</td><td>Bring your own</td><td>WebXR</td><td>ARKit</td></tr>
+            <tr><th scope="row">Renderer</th><td>Filament, RealityKit</td><td>Unity</td><td>Filament</td><td>WebGL, WebGPU</td><td>RealityKit</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="comparison__note reveal">Filament is SceneView's rendering engine on Android and Web. SceneView adds the declarative API, scene graph, AR integration, and cross-platform abstractions on top.</p>
-    </div>
-  </section>
-
-  <!-- ===== DEVELOPER TOOLS ===== -->
-  <section class="devtools" id="devtools">
-    <div class="devtools__container">
-      <h2 class="devtools__title reveal">Developer tools</h2>
-      <p class="devtools__subtitle reveal">Debug, inspect, and replay your 3D and AR scenes in real time.</p>
-      <div class="devtools__grid">
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">bug_report</span>
-            <span class="devtools__card-badge">New in v4</span>
-          </div>
-          <h3 class="devtools__card-title">AR Debug &mdash; Rerun.io</h3>
-          <p class="devtools__card-text">Stream ARCore and ARKit frame data to the <a href="https://rerun.io" target="_blank" rel="noopener">Rerun</a> viewer. Inspect camera poses, tracked planes, point clouds, and anchors &mdash; then scrub the timeline to replay any moment. Hit <strong>Save &amp; Share</strong> in the demo to attach a fully-replayable session to a bug report.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">Android</span>
-            <span class="devtools__card-platform">iOS</span>
-            <span class="devtools__card-platform">Python sidecar</span>
-          </div>
-          <a href="/rerun/" class="devtools__card-link">Open hosted viewer &rarr;</a>
-          <a href="/open/?demo=ar-rerun" class="devtools__card-link" target="_blank" rel="noopener">Open AR Rerun in the demo app &rarr;</a>
-        </div>
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">videocam</span>
-            <span class="devtools__card-badge">v4</span>
-          </div>
-          <h3 class="devtools__card-title">AR Record &amp; Replay</h3>
-          <p class="devtools__card-text">Capture an outdoor ARCore session once with <code>rememberARRecorder()</code>. Replay it 1:1 at the desk via <code>ARSceneView(playbackDataset = file)</code>. Iterate on AR demos without leaving your chair.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">Android</span>
-            <span class="devtools__card-platform">21 unit tests</span>
-          </div>
-        </div>
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">straighten</span>
-            <span class="devtools__card-badge">v4</span>
-          </div>
-          <h3 class="devtools__card-title">Image Stabilization (EIS)</h3>
-          <p class="devtools__card-text">One-line opt-in to ARCore Electronic Image Stabilization for shake-free AR previews on supported devices. <code>ARSceneView(imageStabilizationMode = EIS)</code>.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">Android</span>
-          </div>
-        </div>
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">cloud_sync</span>
-          </div>
-          <h3 class="devtools__card-title">Cloud Anchors</h3>
-          <p class="devtools__card-text">Persistent AR experiences across devices, sessions, and OSes. <code>CloudAnchorNode.host(ttlDays = N)</code> and <code>.resolve(id)</code>. Build multi-user AR by passing a string.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">Android</span>
-            <span class="devtools__card-platform">iOS</span>
-          </div>
-        </div>
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">analytics</span>
-          </div>
-          <h3 class="devtools__card-title">Anonymous telemetry</h3>
-          <p class="devtools__card-text">Usage analytics for MCP tool calls. No PII &mdash; just tool names, versions, and timestamps. Fully opt-out via <code>SCENEVIEW_TELEMETRY=off</code>.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">MCP server</span>
-            <span class="devtools__card-platform">Cloudflare Workers</span>
-            <span class="devtools__card-platform">D1 + KV</span>
-          </div>
-          <a href="https://sceneview-telemetry.mcp-tools-lab.workers.dev/health" class="devtools__card-link" target="_blank" rel="noopener">View live worker health &rarr;</a>
-        </div>
-        <div class="devtools__card reveal">
-          <div class="devtools__card-header">
-            <span class="devtools__card-icon material-symbols-outlined">visibility</span>
-          </div>
-          <h3 class="devtools__card-title">Render tests</h3>
-          <p class="devtools__card-text">Pixel-perfect golden-image regression suite. Filament render goldens plus Compose snapshot tests catch UI and rendering drift on every PR.</p>
-          <div class="devtools__card-platforms">
-            <span class="devtools__card-platform">Android</span>
-            <span class="devtools__card-platform">iOS</span>
-            <span class="devtools__card-platform">Web (Playwright)</span>
-          </div>
-          <a href="https://github.com/sceneview/sceneview/tree/main/samples/android-demo/src/androidTest/assets/render-goldens" class="devtools__card-link" target="_blank" rel="noopener">Browse golden suite &rarr;</a>
-        </div>
+      <div class="faq reveal">
+        <details><summary>Is SceneView the successor of Sceneform?</summary><p>Yes. When Google archived Sceneform, the community kept it going as <code>com.gorisse.thomas.sceneform</code>, and SceneView grew out of that line with a Compose-first API on Filament. The <a href="/docs/migration/">migration guide</a> covers the move from Sceneform.</p></details>
+        <details><summary>How is SceneView different from Unity or a game engine?</summary><p>SceneView is a UI library, not an engine you embed. A 3D scene is a composable or a SwiftUI view inside your existing app, with the same state, navigation and build. A game engine fits full games and editor-driven content; SceneView fits product viewers, AR placement and 3D inside an app’s own UI.</p></details>
+        <details><summary>Which 3D formats does SceneView support?</summary><p>glTF and GLB, rendered by Filament on Android, desktop and the web. USDZ, rendered by RealityKit on Apple platforms. STL, OBJ, PLY and 3MF files are converted on load.</p></details>
+        <details><summary>Can AI coding assistants use SceneView?</summary><p>Yes. SceneView publishes an MCP server (<code>sceneview-mcp</code>) and an <code>llms.txt</code> file, so any assistant that supports the Model Context Protocol can read the current API instead of guessing it. The <a href="/docs/ai-context/">docs</a> give the setup for each client.</p></details>
+        <details><summary>What is SceneView’s license?</summary><p>Apache 2.0. The sample 3D models keep their own licenses, listed on the <a href="/credits.html">credits page</a>.</p></details>
       </div>
     </div>
   </section>
 
-  <!-- ===== COMMUNITY & ADOPTION ===== -->
-  <!-- Every figure in this section can be re-checked with a public command; the small print
-       under the cards names the source and the date. The data-metric="stars|contributors|
-       releases|web-downloads" anchors are rewritten weekly by
-       .claude/scripts/update-site-metrics.sh (site-metrics.yml): keep each data-metric
-       anchor exactly once and keep its element text-only. The named teams live in
-       assets/adoption-orgs.js, the one place to edit that list. -->
-  <section class="metrics" id="metrics">
-    <div class="metrics__container">
-      <h2 class="metrics__title reveal">Community &amp; adoption</h2>
-      <p class="metrics__subtitle reveal">Public numbers anyone can re-check. Sources and dates are in the small print below.</p>
-
-      <div class="adoption reveal">
-        <div class="adoption__lead">
-          <div class="adoption__value">700+</div>
-          <p class="adoption__label">public GitHub repositories declare a SceneView dependency</p>
-          <p class="adoption__detail">Gradle build files and version catalogs that pull <code>io.github.sceneview</code>, or the maintained Sceneform line SceneView grew from. Private code is invisible to this search.</p>
-        </div>
-        <div class="adoption__orgs">
-          <h3 class="adoption__orgs-title">Found in public code and posts from teams at</h3>
-          <ul class="adoption__org-list" data-adoption-orgs></ul>
-          <p class="adoption__orgs-note">Each name links to that team&rsquo;s own public repository, library or blog post. A name here is not an endorsement.</p>
+  <!-- 8 · FINAL CTA + SPONSOR (Open Collective first, GitHub Sponsors second, nothing else) -->
+  <section class="section" id="start" aria-labelledby="start-title">
+    <div class="container">
+      <div class="finale reveal">
+        <h2 class="h2" id="start-title">Your first scene is ten lines away.</h2>
+        <p class="lead">Follow the quickstart for your platform, or open the playground and edit a live scene in the browser.</p>
+        <div class="finale__ctas">
+          <a class="btn btn--primary" href="/docs/quickstart/" data-start>Get started <svg><use href="#i-arrow"/></svg></a>
+          <a class="btn btn--ghost" href="/playground.html">Open the playground</a>
         </div>
       </div>
-
-      <!-- MAVEN CENTRAL SLOT — keep commented out until the figure is re-checked in Sonatype
-           Central Publisher Insights and the maintainer decides to publish it. That figure counts
-           networks attributed by IP, not users: never turn it into "used by N companies",
-           "customers" or "in production".
-      <p class="adoption__maven reveal"></p>
-      -->
-
-      <div class="metrics__grid">
-        <a href="https://github.com/sceneview/sceneview/stargazers" class="metric-card reveal" target="_blank" rel="noopener" aria-label="GitHub stars on sceneview/sceneview">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--github">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="stars">1.3K</div>
-          <div class="metric-card__label">GitHub stars</div>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/network/members" class="metric-card reveal" target="_blank" rel="noopener" aria-label="GitHub forks on sceneview/sceneview">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--forks">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M7 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 9a4 4 0 0 0 3 3.874V13a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-.126A4 4 0 0 0 17 9h-2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2H7z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="forks">246</div>
-          <div class="metric-card__label">GitHub forks</div>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/graphs/contributors" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Contributors to sceneview/sceneview">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--contributors">
-            <span class="material-symbols-outlined" aria-hidden="true">group</span>
-          </div>
-          <div class="metric-card__value" data-metric="contributors">48</div>
-          <div class="metric-card__label">Contributors</div>
-        </a>
-        <a href="https://github.com/sceneview/sceneview/releases" class="metric-card reveal" target="_blank" rel="noopener" aria-label="Releases of sceneview/sceneview on GitHub">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--maven">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm2 2h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="releases">149</div>
-          <div class="metric-card__label">GitHub releases</div>
-        </a>
-        <a href="https://www.npmjs.com/package/sceneview-web" class="metric-card reveal" target="_blank" rel="noopener" aria-label="sceneview-web package on npm">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm2">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="web-downloads">1.1K</div>
-          <div class="metric-card__label">npm downloads (Web, 30&nbsp;d)</div>
-        </a>
-        <a href="https://www.npmjs.com/package/@sceneview-sdk/react-native" class="metric-card reveal" target="_blank" rel="noopener" aria-label="@sceneview-sdk/react-native package on npm">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="rn-downloads">367</div>
-          <div class="metric-card__label">npm downloads (React&nbsp;Native, 30&nbsp;d)</div>
-        </a>
-        <a href="https://pub.dev/packages/flutter_sceneview" class="metric-card reveal" target="_blank" rel="noopener" aria-label="flutter_sceneview package on pub.dev">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--flutter">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M14.314 0L2.3 12 6 15.7 21.684.013h-7.357L14.314 0zm.014 11.072L7.857 17.53l6.47 6.47H21.7l-6.46-6.468 6.46-6.46h-7.37z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="flutter-downloads">472</div>
-          <div class="metric-card__label">pub.dev downloads (Flutter, 30&nbsp;d)</div>
-        </a>
-        <a href="https://www.npmjs.com/package/sceneview-mcp" class="metric-card reveal" target="_blank" rel="noopener" aria-label="sceneview-mcp package on npm">
-          <div class="metric-card__icon-wrap metric-card__icon-wrap--npm">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323h13.74v13.354h-3.328V8.665h-3.564v4.012H5.13z"/></svg>
-          </div>
-          <div class="metric-card__value" data-metric="mcp-downloads">648</div>
-          <div class="metric-card__label">npm downloads (MCP, 30&nbsp;d)</div>
-        </a>
-      </div>
-
-      <div class="adoption__sources reveal">
-        <p><strong>Sources, checked on September&nbsp;26,&nbsp;2026.</strong>
-          Stars, forks, contributors (bots and anonymous commits included) and releases: the GitHub REST API for <code>sceneview/sceneview</code>.
-          Downloads over the last 30 days: <code>api.npmjs.org</code> and the pub.dev package API.
-          Public repositories: GitHub code search for <code>io.github.sceneview</code> and <code>com.gorisse.thomas.sceneform</code>, 738 distinct repositories with a match in a Gradle build file or version catalog, default branches only, SceneView&rsquo;s own repositories excluded; the search returns at most 1,000 results per query.
-          Stars, contributors, releases and the Web downloads are refreshed weekly by an automated job, so they can be newer than this date.</p>
-      </div>
-
-      <a class="adoption__companies reveal" href="/companies.html">
-        <span class="material-symbols-outlined adoption__companies-icon" aria-hidden="true">apartment</span>
-        <span class="adoption__companies-text">
-          <span class="adoption__companies-title">Evaluating SceneView for your company?</span>
-          <span class="adoption__companies-desc">License, data collection, platform maturity, release cadence and security reporting, on one page.</span>
-        </span>
-        <span class="material-symbols-outlined adoption__companies-arrow" aria-hidden="true">arrow_forward</span>
-      </a>
-    </div>
-  </section>
-
-  <!-- ===== BUILT WITH SCENEVIEW ===== -->
-  <section class="showcase-link" id="showcase">
-    <div class="showcase-link__container">
-      <a href="/showcase.html" class="showcase-link__cta reveal">
-        <span class="material-symbols-outlined">auto_awesome</span>
-        <span>See projects built with SceneView</span>
-        <span class="material-symbols-outlined">arrow_forward</span>
-      </a>
-    </div>
-  </section>
-
-  <!-- ===== TRY SCENEVIEW ===== -->
-  <section class="try-sv" id="demos">
-    <div class="try-sv__container">
-      <h2 class="try-sv__title reveal">Try SceneView</h2>
-      <p class="try-sv__subtitle reveal">Interactive demos, sample apps, and documentation.</p>
-
-      <div class="try-sv__grid">
-        <!-- 3D Playground -->
-        <a href="/playground.html" class="try-card try-card--featured reveal">
-          <div class="try-card__visual">
-            <img src="assets/demos/playground.jpg" alt="SceneView 3D Playground rendering a model" class="try-card__img" loading="lazy">
-          </div>
-          <div class="try-card__body">
-            <span class="try-card__badge">Interactive</span>
-            <h3 class="try-card__title">3D Playground</h3>
-            <p class="try-card__text">Write code, see it render live. Orbit, zoom, switch models.</p>
-          </div>
-          <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
-        </a>
-
-        <!-- Android Demo -->
-        <a href="https://github.com/sceneview/sceneview/tree/main/samples/android-demo" class="try-card reveal" target="_blank" rel="noopener">
-          <div class="try-card__visual">
-            <img src="assets/demos/android-demo-1.jpg" alt="SceneView Android demo on Play Store" class="try-card__img" loading="lazy">
-          </div>
-          <div class="try-card__body">
-            <span class="try-card__badge try-card__badge--android">Android</span>
-            <h3 class="try-card__title">Android Demo</h3>
-            <p class="try-card__text">Material 3 Expressive, 48 demos (18 non-AR + 30 AR)</p>
-          </div>
-          <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
-        </a>
-
-        <!-- iOS Demo -->
-        <a href="https://github.com/sceneview/sceneview/tree/main/samples/ios-demo" class="try-card reveal" target="_blank" rel="noopener">
-          <div class="try-card__visual">
-            <img src="assets/demos/ios-demo-1.jpg" alt="SceneView iOS demo - explore tab with 3D models" class="try-card__img" loading="lazy">
-          </div>
-          <div class="try-card__body">
-            <span class="try-card__badge try-card__badge--ios">iOS</span>
-            <h3 class="try-card__title">iOS Demo</h3>
-            <p class="try-card__text">SwiftUI 3-tab app, 3D + AR samples</p>
-          </div>
-          <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
-        </a>
-
-        <!-- Web Demo -->
-        <a href="/web-demo/" class="try-card reveal" target="_blank" rel="noopener">
-          <div class="try-card__visual">
-            <img src="assets/demos/runs-on-web.jpg" alt="SceneView web demo: Toy Car rendered by Filament.js in a browser" class="try-card__img" loading="lazy">
-          </div>
-          <div class="try-card__body">
-            <span class="try-card__badge try-card__badge--web">Web</span>
-            <h3 class="try-card__title">Web Demo</h3>
-            <p class="try-card__text">Filament.js WASM + WebXR in the browser</p>
-          </div>
-          <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
-        </a>
-
-        <!-- Procedural Geometry -->
-        <a href="/geometry-demo.html" class="try-card reveal">
-          <div class="try-card__visual">
-            <img src="assets/demos/geometry.jpg" alt="Procedural geometry rendered with SceneView" class="try-card__img" loading="lazy">
-          </div>
-          <div class="try-card__body">
-            <span class="try-card__badge try-card__badge--geo">Geometry</span>
-            <h3 class="try-card__title">Procedural Geometry</h3>
-            <p class="try-card__text">Runtime shapes, buildings, and scenes</p>
-          </div>
-          <span class="material-symbols-outlined try-card__arrow">arrow_forward</span>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== GET INVOLVED ===== -->
-  <section class="get-involved" id="get-involved">
-    <div class="get-involved__container">
-      <h2 class="get-involved__title reveal">Get involved</h2>
-      <p class="get-involved__subtitle reveal">SceneView is open source and community-driven.</p>
-
-      <div class="get-involved__grid">
-        <a href="https://github.com/sceneview/sceneview" class="involved-card reveal" target="_blank" rel="noopener">
-          <span class="material-symbols-outlined involved-card__icon">star</span>
-          <h3 class="involved-card__name">Star on GitHub</h3>
-          <p class="involved-card__text">Show your support and help others discover SceneView.</p>
-        </a>
-
-        <a href="https://discord.gg/UbNDDBTNqb" class="involved-card reveal" target="_blank" rel="noopener">
-          <span class="material-symbols-outlined involved-card__icon">forum</span>
-          <h3 class="involved-card__name">Join Discord</h3>
-          <p class="involved-card__text">Chat with developers, get help, share your projects.</p>
-        </a>
-
-        <a href="https://opencollective.com/sceneview" class="involved-card reveal" target="_blank" rel="noopener">
-          <span class="material-symbols-outlined involved-card__icon">favorite</span>
-          <h3 class="involved-card__name">Donate</h3>
-          <p class="involved-card__text">Support development on Open Collective, or GitHub Sponsors.</p>
-        </a>
-
-        <a href="https://github.com/sceneview/sceneview/blob/main/CONTRIBUTING.md" class="involved-card reveal" target="_blank" rel="noopener">
-          <span class="material-symbols-outlined involved-card__icon">group_add</span>
-          <h3 class="involved-card__name">Contribute</h3>
-          <p class="involved-card__text">Fix bugs, add features, improve docs. All contributions welcome.</p>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== CTA ===== -->
-  <section class="cta" id="cta">
-    <div class="cta__container">
-      <div class="cta__card">
-        <div class="cta__glow"></div>
-        <div class="cta__left">
-          <h2 class="cta__title">Start building in 5 minutes</h2>
-          <div class="cta__actions">
-            <a href="#ai-setup" class="cta__btn cta__btn--white">
-              <span class="material-symbols-outlined" style="font-size:18px">smart_toy</span>
-              Set up your AI assistant
-            </a>
-            <a href="/docs.html" class="cta__btn cta__btn--glass" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="font-size:18px">menu_book</span>
-              Docs
-            </a>
-            <a href="https://discord.gg/UbNDDBTNqb" class="cta__btn cta__btn--glass" target="_blank" rel="noopener">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" style="flex-shrink:0"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
-              Discord
-            </a>
-          </div>
+      <div class="card sponsor reveal">
+        <div>
+          <h3 class="h3">Keep SceneView free and open.</h3>
+          <p>SceneView is built in the open by its contributors. If it saves you time, a donation helps keep it moving.</p>
         </div>
-        <div class="cta__right">
-          <div class="cta__terminal">
-            <div class="cta__terminal-header">
-              <div class="cta__terminal-dots">
-                <span class="cta__terminal-dot cta__terminal-dot--red"></span>
-                <span class="cta__terminal-dot cta__terminal-dot--yellow"></span>
-                <span class="cta__terminal-dot cta__terminal-dot--green"></span>
-              </div>
-              <span class="cta__terminal-title">bash &mdash; 80x24</span>
-            </div>
-            <div class="cta__terminal-body">
-              <div class="cta__terminal-line">
-                <span class="cta__terminal-prompt">$</span>
-                <span class="cta__terminal-cmd">npm install sceneview-mcp</span>
-              </div>
-              <div class="cta__terminal-output">
-                + sceneview-mcp@4.0.16<br>
-                added 12 packages from 8 contributors and audited 42 packages in 1.2s<br>
-                <br>
-                <span class="cta__terminal-success">Success!</span> Ready to use SceneView in your project.
-              </div>
-            </div>
-          </div>
+        <div class="sponsor__ctas">
+          <a class="btn" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Donate on Open Collective</a>
+          <a class="link" href="https://github.com/sponsors/sceneview">or sponsor on GitHub</a>
         </div>
       </div>
     </div>
   </section>
+</main>
 
-  </main>
-
-  <!-- ===== FOOTER ===== -->
-  <footer class="footer">
-    <div class="footer__container">
-      <div class="footer__grid">
-        <div class="footer__brand-col">
-          <div class="footer__brand-name">SceneView SDK</div>
-          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
-          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
-        </div>
-        <div class="footer__col">
-          <h4 class="footer__col-title">Documentation</h4>
-          <ul class="footer__col-list">
-            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
-            <li><a href="/showcase.html">Showcase</a></li>
-            <li><a href="/view.html">3D Viewer</a></li>
-          </ul>
-        </div>
-        <div class="footer__col">
-          <h4 class="footer__col-title">Community</h4>
-          <ul class="footer__col-list">
-            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
-            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
-            <li><a href="/companies.html">For companies</a></li>
-          </ul>
-        </div>
-        <div class="footer__col">
-          <h4 class="footer__col-title">Legal</h4>
-          <ul class="footer__col-list">
-            <li><a href="/privacy.html">Privacy</a></li>
-            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
-            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
-            <li><a href="/credits.html">3D asset credits</a></li>
-          </ul>
-        </div>
+<footer class="footer">
+  <div class="container">
+    <div class="footer__grid">
+      <div class="footer__brand">
+        <a class="brand" href="/"><svg class="brand__mark"><use href="#i-logo"/></svg>SceneView</a>
+        <p>3D and AR for Jetpack Compose, SwiftUI and the web. Open source under Apache 2.0.</p>
       </div>
+      <div><h2 class="footer__h">Product</h2><ul>
+        <li><a href="/docs/">Docs</a></li><li><a href="/docs/samples/">Samples</a></li>
+        <li><a href="/docs/showcase/">Showcase</a></li><li><a href="/playground.html">Playground</a></li>
+        <li><a href="/api/sceneview/latest/sceneview/">API reference</a></li></ul></div>
+      <div><h2 class="footer__h">Platforms</h2><ul>
+        <li><a href="/docs/quickstart/">Android</a></li><li><a href="/docs/quickstart-ios/">Apple</a></li>
+        <li><a href="/docs/quickstart-web/">Web</a></li><li><a href="/docs/quickstart-flutter/">Flutter</a></li>
+        <li><a href="/docs/quickstart-react-native/">React Native</a></li><li><a href="/docs/compose-multiplatform/">Desktop</a></li></ul></div>
+      <div><h2 class="footer__h">Resources</h2><ul>
+        <li><a href="/docs/changelog/">Changelog</a></li><li><a href="/docs/migration/">Migration guide</a></li>
+        <li><a href="/llms.txt">llms.txt</a></li><li><a href="/credits.html">Credits</a></li></ul></div>
+      <div><h2 class="footer__h">Community</h2><ul>
+        <li><a href="https://github.com/sceneview/sceneview">GitHub</a></li><li><a href="https://discord.gg/UbNDDBTNqb">Discord</a></li>
+        <li><a href="https://github.com/sceneview/sceneview/discussions">Discussions</a></li>
+        <li><a href="/docs/contributing/">Contributing</a></li><li><a href="https://opencollective.com/sceneview">Donate</a></li></ul></div>
     </div>
-  </footer>
-
-  <script src="assets/adoption-orgs.js"></script>
-  <script src="script.js"></script>
-
-  <!-- Hero drag hint auto-hide -->
-  <script>
-  (function() {
-    var hint = document.getElementById('hero-drag-hint');
-    var canvas = document.getElementById('hero-canvas');
-    if (!hint || !canvas) return;
-    function hideHint() {
-      hint.classList.add('is-hidden');
-      canvas.removeEventListener('mousedown', hideHint);
-      canvas.removeEventListener('touchstart', hideHint);
-    }
-    canvas.addEventListener('mousedown', hideHint, { passive: true });
-    canvas.addEventListener('touchstart', hideHint, { passive: true });
-    // Also hide after 5s automatically
-    setTimeout(function() { hint.classList.add('is-hidden'); }, 5000);
-  })();
-  </script>
-
-  <!-- Hero 3D renderer -->
-  <script>
-  (function() {
-    var canvas = document.getElementById('hero-canvas');
-    if (!canvas) return;
-    var loader = document.getElementById('hero-loader');
-    var fallback = document.querySelector('.hero__fallback-img');
-
-    SceneView.modelViewer('hero-canvas', 'models/platforms/ToyCar.glb', {
-      backgroundColor: [0, 0, 0, 0],
-      lightIntensity: 150000,
-      fov: 35
-    }).then(function(viewer) {
-      canvas.style.opacity = '1';
-      if (fallback) { fallback.style.opacity = '0'; }
-      if (loader) { loader.style.opacity = '0'; setTimeout(function() { loader.style.display = 'none'; }, 500); }
-      var badge = document.getElementById('hero-badge');
-      if (badge) setTimeout(function() { badge.style.opacity = '1'; }, 800);
-    }).catch(function(e) {
-      console.error('SceneView hero error:', e);
-      if (loader) loader.style.display = 'none';
-      // Keep fallback image visible
-    });
-  })();
-  </script>
-
-  <!-- Lazy-load 3D viewers with IntersectionObserver -->
-  <script>
-  (function() {
-    var lazyCanvases = document.querySelectorAll('.sv-lazy-canvas');
-    if (!lazyCanvases.length) return;
-
-    function getThemeBg() {
-      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      return isDark ? [0.09, 0.09, 0.13, 1.0] : [0.94, 0.95, 0.96, 1.0];
-    }
-
-    var loaded = new Set();
-    var viewers = [];
-
-    var observer = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting && !loaded.has(entry.target)) {
-          loaded.add(entry.target);
-          var canvas = entry.target;
-          var model = canvas.getAttribute('data-model');
-          if (!model) return;
-          SceneView.modelViewer(canvas, model, {
-            backgroundColor: getThemeBg(),
-            lightIntensity: 120000,
-            fov: 38
-          }).then(function(v) {
-            canvas.style.opacity = '1';
-            viewers.push(v);
-          }).catch(function(e) { console.warn('Lazy 3D load error:', e); });
-        }
-      });
-    }, { rootMargin: '200px' });
-
-    lazyCanvases.forEach(function(c) {
-      c.style.width = '100%';
-      c.style.height = '100%';
-      c.style.display = 'block';
-      c.style.opacity = '0';
-      c.style.transition = 'opacity 0.6s ease';
-      c.style.cursor = 'grab';
-      observer.observe(c);
-    });
-
-    // Update background on theme change
-    new MutationObserver(function() {
-      var bg = getThemeBg();
-      viewers.forEach(function(v) { v.setBackgroundColor(bg[0], bg[1], bg[2], bg[3]); });
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  })();
-  </script>
-
+    <p class="footer__credits">3D models from <a href="https://github.com/KhronosGroup/glTF-Sample-Assets">Khronos glTF-Sample-Assets</a>: Toy Car by Guido Odendahl, materials by Eric Chadwick (CC0). Sheen Chair © 2020 Wayfair LLC, by Eric Chadwick (CC0). Fox: mesh by PixelMannen (CC0); rigging and animation by tomkranis, glTF conversion by AsoboStudio and scurest (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). Galaxy: rendered by the SceneView iOS demo.</p>
+    <div class="footer__legal">
+      <span>© 2026 SceneView contributors</span>
+      <span class="footer__legal-links"><a href="/privacy.html">Privacy</a><a href="/credits.html">Credits</a></span>
+    </div>
+  </div>
+</footer>
 </body>
 </html>
-<!-- deployed 2026-04-02T08:55:56Z -->
