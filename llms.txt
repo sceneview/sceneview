@@ -2191,6 +2191,27 @@ fun Frame.semanticLabelFraction(label: SemanticLabel): Float   // 0f..1f — pix
 // pipelines. (#1733)
 fun Frame.cameraImage(): Image?
 
+// Snapshot the current camera-image -> view geometry next to image acquisition. Vision APIs
+// report points in the image after `inputRotationDegrees`; mapPixel/mapNormalized undo that
+// rotation and preserve ARCore's exact centered crop. The returned object is pure Kotlin and
+// safe to retain after the Frame becomes stale.
+data class CameraImageSize(val width: Int, val height: Int)
+data class CameraImagePoint(val x: Float, val y: Float)
+fun Frame.cameraImageToViewMapping(
+    imageSize: CameraImageSize,
+    viewSize: CameraImageSize,
+    inputRotationDegrees: Int,
+): CameraImageToViewMapping
+fun CameraImageToViewMapping.mapPixel(x: Float, y: Float): CameraImagePoint
+fun CameraImageToViewMapping.mapNormalized(x: Float, y: Float): CameraImagePoint
+// MediaPipe-style outputs that remain normalized to the unrotated source image:
+fun CameraImageToViewMapping.mapImageNormalized(x: Float, y: Float): CameraImagePoint
+fun CameraImageToViewMapping.Companion.centerCrop(
+    imageSize: CameraImageSize,
+    viewSize: CameraImageSize,
+    inputRotationDegrees: Int,
+): CameraImageToViewMapping
+
 // ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
 suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
 ```

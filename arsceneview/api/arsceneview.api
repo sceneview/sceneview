@@ -1580,6 +1580,81 @@ public final class io/github/sceneview/ar/camera/ARCameraStreamKt {
 	public static final field kUVTransformParameter Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/camera/ArCoreCameraImageToViewMappingKt {
+	public static final fun cameraImageToViewMapping (Lcom/google/ar/core/Frame;Lio/github/sceneview/ar/camera/CameraImageSize;Lio/github/sceneview/ar/camera/CameraImageSize;I)Lio/github/sceneview/ar/camera/CameraImageToViewMapping;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImagePoint {
+	public static final field $stable I
+	public fun <init> (FF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun copy (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/camera/CameraImagePoint;FFILjava/lang/Object;)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getX ()F
+	public final fun getY ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImageSize {
+	public static final field $stable I
+	public fun <init> (II)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun copy (II)Lio/github/sceneview/ar/camera/CameraImageSize;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/camera/CameraImageSize;IIILjava/lang/Object;)Lio/github/sceneview/ar/camera/CameraImageSize;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()I
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImageToViewMapping {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/ar/camera/CameraImageToViewMapping$Companion;
+	public fun <init> (Lio/github/sceneview/ar/camera/CameraImageSize;Lio/github/sceneview/ar/camera/CameraImageSize;ILio/github/sceneview/ar/camera/CameraImageToViewTransform;)V
+	public final fun getDetectorHeight ()I
+	public final fun getDetectorWidth ()I
+	public final fun getImagePixelsToView ()Lio/github/sceneview/ar/camera/CameraImageToViewTransform;
+	public final fun getImageSize ()Lio/github/sceneview/ar/camera/CameraImageSize;
+	public final fun getInputRotationDegrees ()I
+	public final fun getViewSize ()Lio/github/sceneview/ar/camera/CameraImageSize;
+	public final fun mapImageNormalized (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public final fun mapImagePixel (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public final fun mapNormalized (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public final fun mapPixel (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImageToViewMapping$Companion {
+	public final fun centerCrop (Lio/github/sceneview/ar/camera/CameraImageSize;Lio/github/sceneview/ar/camera/CameraImageSize;I)Lio/github/sceneview/ar/camera/CameraImageToViewMapping;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImageToViewTransform {
+	public static final field $stable I
+	public fun <init> (FFFFFF)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun component5 ()F
+	public final fun component6 ()F
+	public final fun copy (FFFFFF)Lio/github/sceneview/ar/camera/CameraImageToViewTransform;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/camera/CameraImageToViewTransform;FFFFFFILjava/lang/Object;)Lio/github/sceneview/ar/camera/CameraImageToViewTransform;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getM00 ()F
+	public final fun getM01 ()F
+	public final fun getM02 ()F
+	public final fun getM10 ()F
+	public final fun getM11 ()F
+	public final fun getM12 ()F
+	public fun hashCode ()I
+	public final fun map (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public fun toString ()Ljava/lang/String;
+}
+
 public abstract interface class io/github/sceneview/ar/collaborative/CollaborativeMessage {
 	public abstract fun getPeerId ()Ljava/lang/String;
 }
