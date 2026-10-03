@@ -9,7 +9,6 @@ import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.max
 import dev.romainguy.kotlin.math.min
-import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
@@ -64,35 +63,30 @@ open class Geometry internal constructor(
         fun rebind()
     }
 
-    private val consumers = mutableSetOf<Consumer>()
-    private var destroyed = false
-    private val retiredBuffers = mutableListOf<Pair<VertexBuffer, IndexBuffer>>()
+    private val lifetime = GeometryBufferLifetime<Pair<VertexBuffer, IndexBuffer>>()
 
-    internal fun attach(consumer: Consumer) {
-        check(!destroyed) { "Geometry has been destroyed" }
-        consumers += consumer
-    }
+    internal fun attach(consumer: Consumer) = lifetime.attach(consumer)
 
-    internal fun detach(consumer: Consumer) { consumers -= consumer }
+    internal fun detach(consumer: Consumer) = lifetime.detach(consumer)
 
-    /** Releases buffers after the last node has stopped referencing them. Main-thread only. */
+    /**
+     * Releases the buffers, immediately, unless a node is still bound to this geometry — in which
+     * case this is a no-op and the last node to go releases them. Main-thread only.
+     *
+     * Nodes are the only references counted. A raw renderable that was lent [vertexBuffer] and
+     * [indexBuffer] (a `MeshNode`) is not: destroy it before, or in the same pass as, this call.
+     */
     internal fun destroy(engine: Engine) {
-        if (destroyed || consumers.isNotEmpty()) return
-        destroyed = true
-        deferBuffers(engine, vertexBuffer, indexBuffer)
-        retiredBuffers.forEach { (vertices, indices) -> deferBuffers(engine, vertices, indices) }
-        retiredBuffers.clear()
+        lifetime.destroy(vertexBuffer to indexBuffer) { engine.release(it) }
     }
 
-    private fun deferBuffers(engine: Engine, vertices: VertexBuffer, indices: IndexBuffer) {
-        EngineDestroyQueue.of(engine).enqueueVertexBuffer(vertices)
-        EngineDestroyQueue.of(engine).enqueueIndexBuffer(indices)
-    }
+    private fun rebindConsumers(engine: Engine) = lifetime.rebind { engine.release(it) }
 
-    private fun rebindConsumers(engine: Engine) {
-        consumers.toList().forEach { it.rebind() }
-        retiredBuffers.forEach { (vertices, indices) -> deferBuffers(engine, vertices, indices) }
-        retiredBuffers.clear()
+    // Immediate, not frame-deferred: by the time a pair gets here every bound renderable has been
+    // destroyed or re-pointed at other buffers, and Filament runs driver commands in order.
+    private fun Engine.release(buffers: Pair<VertexBuffer, IndexBuffer>) {
+        safeDestroyVertexBuffer(buffers.first)
+        safeDestroyIndexBuffer(buffers.second)
     }
 
     /**
@@ -195,6 +189,8 @@ open class Geometry internal constructor(
                 offsets: List<IntRange>, boundingBox: Box
             ) -> T
         ): T {
+            // Filament aborts on a zero-sized VertexBuffer; fail before allocating anything.
+            require(vertices.isNotEmpty()) { "Geometry requires at least one vertex" }
             val vertexBuffer = vertexBuilder.build(engine)
             var indexBuffer: IndexBuffer? = null
             try {
@@ -241,46 +237,54 @@ open class Geometry internal constructor(
      * Updates this geometry on the main thread. Equal vertex counts, per-primitive index counts
      * and attribute layouts reuse the buffers; any change to these rebuilds both buffers.
      * All nodes bound through GeometryNode or RenderableNode.setGeometry are synchronously
-     * rebound (including bounds and primitive ranges) before old buffers enter the engine's
-     * frame-deferred destruction queue. A shared geometry stays alive until its last node dies.
-     * Raw Filament renderables/buffer consumers must manage their own binding and lifetime;
-     * do not borrow these buffers for an independently managed renderable.
+     * rebound (including bounds and primitive ranges), and the replaced buffers are destroyed
+     * right after — no node draws from them any more. A shared geometry stays alive until its
+     * last node dies.
+     *
+     * [vertexBuffer] and [indexBuffer] may be lent to a raw renderable (a `MeshNode`) as long as
+     * every update keeps the counts and the attribute layout: the buffers are then never
+     * replaced. A raw renderable is not rebound by a rebuild and would be left drawing from
+     * destroyed buffers — bind a `GeometryNode` instead when the topology can change.
+     *
+     * @throws IllegalArgumentException if [vertices] is empty.
+     * @throws IllegalStateException if this geometry has been destroyed.
      */
     fun update(
         engine: Engine,
         vertices: List<Vertex> = this.vertices,
         primitivesIndices: List<List<Int>> = this.primitivesIndices
     ) = apply {
-        check(!destroyed) { "Geometry has been destroyed" }
-        if (this.vertices == vertices && this.primitivesIndices == primitivesIndices) {
-            if (retiredBuffers.isNotEmpty()) rebindConsumers(engine)
+        check(!lifetime.isDestroyed) { "Geometry has been destroyed" }
+        // Filament aborts on a zero-sized VertexBuffer; fail before allocating anything.
+        require(vertices.isNotEmpty()) { "Geometry requires at least one vertex" }
+        // Identity first: the default arguments are this geometry's own lists.
+        val verticesChanged = this.vertices !== vertices && this.vertices != vertices
+        val indicesChanged = this.primitivesIndices !== primitivesIndices &&
+            this.primitivesIndices != primitivesIndices
+        if (!verticesChanged && !indicesChanged) {
+            // A consumer that failed its last rebind still holds the retired buffers: retry.
+            if (lifetime.retiredCount > 0) rebindConsumers(engine)
             return@apply
         }
-        consumers.forEach { it.validate(primitivesIndices.size) }
+        lifetime.validate(primitivesIndices.size)
         if (requiresBufferRebuild(this.vertices, this.primitivesIndices, vertices, primitivesIndices)) {
             val replacement = Builder(primitiveType).vertices(vertices)
                 .primitivesIndices(primitivesIndices).build(engine)
-            val oldVertices = vertexBuffer
-            val oldIndices = indexBuffer
+            // Retired, not destroyed: consumers reference them until rebindConsumers succeeds.
+            lifetime.retire(vertexBuffer to indexBuffer)
             vertexBuffer = replacement.vertexBuffer
             indexBuffer = replacement.indexBuffer
             boundingBox = replacement.boundingBox
-            this.vertices = vertices.toList()
-            this.primitivesIndices = primitivesIndices.map { it.toList() }
             primitivesOffsets = primitivesIndices.getOffsets()
-            // Retain on failure, and retry on the next update: a consumer may still reference them.
-            retiredBuffers += oldVertices to oldIndices
-            rebindConsumers(engine)
         } else {
-            if (this.vertices != vertices) boundingBox = vertexBuffer.setVertices(engine, vertices)
-            if (this.primitivesIndices != primitivesIndices) {
-                indexBuffer.setIndices(engine, primitivesIndices.flatten())
-            }
-            this.vertices = vertices.toList()
-            this.primitivesIndices = primitivesIndices.map { it.toList() }
-            primitivesOffsets = primitivesIndices.getOffsets()
-            rebindConsumers(engine)
+            // Same counts, same layout: rewrite in place. The offsets cannot have moved.
+            if (verticesChanged) boundingBox = vertexBuffer.setVertices(engine, vertices)
+            if (indicesChanged) indexBuffer.setIndices(engine, primitivesIndices.flatten())
         }
+        // Copy only what changed, so a list the caller mutates later still compares as different.
+        if (verticesChanged) this.vertices = vertices.toList()
+        if (indicesChanged) this.primitivesIndices = primitivesIndices.map { it.toList() }
+        rebindConsumers(engine)
     }
 }
 

@@ -104,6 +104,12 @@ open class ModelNode(
             permanentlyValidEntities -= entity
         }
 
+        // A bound geometry also changes through `Geometry.update`, which rebinds this renderable
+        // — new bounding box included — without going through `setGeometry` (#4344).
+        override fun onGeometryApplied() {
+            permanentlyValidEntities -= entity
+        }
+
         override fun setGeometryAt(
             primitiveIndex: Int,
             type: RenderableManager.PrimitiveType,

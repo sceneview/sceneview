@@ -37,7 +37,11 @@ open class RenderableNode(
     private var boundGeometry: Geometry? = null
     private var mergeGeometryPrimitives = false
     private var replayGeometryBuilder: RenderableManager.Builder.() -> Unit = {}
-    private var geometryLayerMask: Int? = null
+    // Every setLayerMask call folded into one (select, value) pair, replayed on a rebuild. Bits
+    // never selected keep whatever the builder gives them (Filament's 0x01 default, or the
+    // node's own builderApply) instead of being guessed here.
+    private var layerMaskSelect = 0
+    private var layerMaskValue = 0
 
     private val geometryConsumer = object : Geometry.Consumer {
         override fun validate(primitiveCount: Int) {
@@ -61,7 +65,8 @@ open class RenderableNode(
         offsets: List<IntRange>,
         merged: Boolean = false
     ) {
-        require((merged && offsets == listOf(0 until geometry.indices.size)) ||
+        val indexCount = geometry.primitivesIndices.sumOf { it.size }
+        require((merged && offsets == listOf(0 until indexCount)) ||
             (!merged && offsets == geometry.primitivesOffsets)) {
             "Dynamic geometry requires natural primitive offsets or one range covering all indices"
         }
@@ -92,13 +97,27 @@ open class RenderableNode(
         geometryConsumer.validate(geometry.primitivesOffsets.size)
         if (primitiveCount != offsets.size) rebuildGeometryRenderable(geometry, offsets)
         renderableManager.setGeometry(renderableInstance, geometry, offsets)
+        onGeometryApplied()
         onComponentChanged()
         if (!hasCustomCollisionShape) updateCollisionShape()
     }
 
+    /**
+     * Called each time the bound geometry has been (re)applied to the renderable — by
+     * [setGeometry] or by a `Geometry.update` on a geometry this node is bound to — with the new
+     * bounding box already pushed to Filament.
+     */
+    internal open fun onGeometryApplied() {}
+
     // Filament cannot resize a renderable's primitive array with setGeometryAt. Rebuild only
     // when that array changes, keeping the entity, live materials and accessible render flags.
     // New submeshes inherit the last material; removed submeshes cease drawing.
+    //
+    // What survives is what Filament lets us read back (priority, channel, culling, fog, shadow
+    // flags, light channels, instance count, materials, blend orders), the layer mask tracked by
+    // setLayerMask, and whatever GeometryNode's builderApply sets. A skinning buffer, bone
+    // matrices, an InstanceBuffer or morph targets configured any other way have no getter and
+    // are NOT carried over: set them in builderApply, or re-apply them after the update.
     private fun rebuildGeometryRenderable(geometry: Geometry, offsets: List<IntRange>) {
         val manager = renderableManager
         val instance = renderableInstance
@@ -121,7 +140,7 @@ open class RenderableNode(
             .castShadows(cast).receiveShadows(receive).screenSpaceContactShadows(contact)
             .instances(instanceCount)
         lightChannels.forEachIndexed { index, enabled -> builder.lightChannel(index, enabled) }
-        geometryLayerMask?.let { builder.layerMask(0xff, it) }
+        if (layerMaskSelect != 0) builder.layerMask(layerMaskSelect, layerMaskValue)
         offsets.indices.forEach { index ->
             val source = index.coerceAtMost(materials.lastIndex)
             materials[source]?.let { builder.material(index, it) }
@@ -138,7 +157,8 @@ open class RenderableNode(
     }
 
     override fun setLayerMask(select: Int, value: Int) {
-        geometryLayerMask = ((geometryLayerMask ?: 0xff) and select.inv()) or (value and select)
+        layerMaskSelect = layerMaskSelect or select
+        layerMaskValue = (layerMaskValue and select.inv()) or (value and select)
         super.setLayerMask(select, value)
     }
 
@@ -254,16 +274,23 @@ open class RenderableNode(
     /**
      * Changes the geometry and re-derives the collision shape from the new bounding box.
      *
-     * This is the single choke point every geometry mutation goes through: all eleven
-     * `updateGeometry` overloads ([GeometryNode], [PlaneNode], [CubeNode], [SphereNode],
-     * [CylinderNode], [ConeNode], [TorusNode], [CapsuleNode], [LineNode], [PathNode],
-     * [ShapeNode]) end in a `setGeometry(...)` call, as does [ViewNode]'s
-     * `updateGeometrySize()`. Refreshing here rather than in `GeometryNode.updateGeometry`
-     * is what makes the fix complete: the shape-specific overloads call `setGeometry`
-     * directly and never route through `GeometryNode.updateGeometry`, so hoisting it there
-     * would have left `CubeNode` — the issue's own repro — still mis-picking.
+     * Binding registers this node with [geometry], and every later change to it — this call, or
+     * a `Geometry.update(...)` from any of the `updateGeometry` overloads ([GeometryNode],
+     * [PlaneNode], [CubeNode], [SphereNode], [CylinderNode], [ConeNode], [TorusNode],
+     * [CapsuleNode], [LineNode], [PathNode], [ShapeNode], [TubeNode]), from [ViewNode]'s
+     * `updateGeometrySize()`, from another node sharing the geometry, or from the app directly —
+     * lands in the same private `applyBoundGeometry()`. That is the single choke point, and it
+     * runs exactly once per change: the overloads call `geometry.update(...)` and nothing else.
+     * Refreshing the collider there rather than in `GeometryNode.updateGeometry` is what makes
+     * the fix complete: the shape-specific overloads never route through
+     * `GeometryNode.updateGeometry`, so hoisting it there would have left `CubeNode` — the
+     * issue's own repro — still mis-picking.
      *
-     * `setGeometry` pushes the new AABB to Filament, which is what culling and rendering use;
+     * The binding also transfers the buffers' lifetime: the geometry previously bound, if any,
+     * is destroyed once no other node references it, and [geometry] is destroyed with the last
+     * node bound to it.
+     *
+     * Rebinding pushes the new AABB to Filament, which is what culling and rendering use;
      * [collisionShape] is separate state that used to keep whatever box the node was built
      * with. A node resized after construction therefore rendered at its new size and picked at
      * its old one (#3194) — most visibly on [ViewNode], whose quad is sized from the measured

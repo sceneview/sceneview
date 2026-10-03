@@ -264,7 +264,7 @@ class ViewNode(
 
     fun updateGeometrySize() {
         // The collider follows the geometry on its own: `updateGeometry` reaches
-        // `RenderableNode.setGeometry`, which re-derives `collisionShape` from the new AABB
+        // `RenderableNode.applyBoundGeometry`, which re-derives `collisionShape` from the new AABB
         // (#3194). ViewNode needed an explicit `updateCollisionShape()` here while that refresh
         // was scoped to this one call site (#2845); it is now redundant, and removing it also
         // removes a second AABB read per resize.

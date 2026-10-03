@@ -87,7 +87,9 @@ open class GeometryNode(
     fun updateGeometry(
         vertices: List<Geometry.Vertex> = geometry.vertices,
         indices: List<List<Int>> = geometry.primitivesIndices
-    ) = setGeometry(geometry.update(engine, vertices, indices))
+    ) {
+        geometry.update(engine, vertices, indices)
+    }
 
     /**
      * Rebinds this node's fixed geometry with its natural or merged primitive policy.
@@ -97,7 +99,11 @@ open class GeometryNode(
         require(geometry === this.geometry) { "GeometryNode owns a fixed geometry object" }
         setGeometry(
             geometry,
-            if (mergePrimitives) listOf(0 until geometry.indices.size) else geometry.primitivesOffsets,
+            if (mergePrimitives) {
+                listOf(0 until geometry.primitivesIndices.sumOf { it.size })
+            } else {
+                geometry.primitivesOffsets
+            },
             mergePrimitives
         )
     }

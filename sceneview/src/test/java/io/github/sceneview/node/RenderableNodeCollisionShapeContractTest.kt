@@ -25,12 +25,15 @@ import org.junit.Test
  *
  *  1. **The refresh sits at the choke point.** The obvious hoist — `GeometryNode.updateGeometry`
  *     — would have fixed almost nothing: the shape-specific overloads (`CubeNode`, `SphereNode`,
- *     `PlaneNode`, …) do not delegate to it, they call `setGeometry(...)` themselves. The one
- *     point all eleven overloads share is `RenderableNode.setGeometry`.
- *  2. **That choke point stays the only route.** [everyUpdateGeometryOverloadRoutesThroughSetGeometry]
- *     is the guard: a twelfth node type whose `updateGeometry` bypassed `setGeometry` would
- *     silently reintroduce the bug for that type only, which is exactly how this defect survived
- *     #2845/#3169.
+ *     `PlaneNode`, …) do not delegate to it, they call `geometry.update(...)` themselves. The
+ *     one point they all share is `RenderableNode.applyBoundGeometry`, which the bound
+ *     [io.github.sceneview.geometries.Geometry] calls back on every change — and which
+ *     `RenderableNode.setGeometry` runs too.
+ *  2. **That choke point stays the only route.**
+ *     [everyUpdateGeometryOverloadRoutesThroughTheBoundGeometry] is the guard: a node type whose
+ *     `updateGeometry` bypassed `geometry.update` would silently reintroduce the bug for that
+ *     type only, which is exactly how this defect survived #2845/#3169. Since #4344 it also pins
+ *     that the rebind happens once, not twice.
  *
  * These are source/bytecode assertions, so they prove the wiring exists, not that Filament
  * reports the extents we expect — that is the instrumented test's job. Both are needed; neither
@@ -140,21 +143,55 @@ class RenderableNodeCollisionShapeContractTest {
     // ── 2. The choke point stays the only route ──────────────────────────────
 
     @Test
-    fun everyUpdateGeometryOverloadRoutesThroughSetGeometry() {
+    fun everyUpdateGeometryOverloadRoutesThroughTheBoundGeometry() {
         updateGeometryNodes.forEach { type ->
             val source = File(nodeDir, "$type.kt").readText()
             val overload = source
                 .substringAfter("fun updateGeometry(", missingDelimiterValue = "")
-                .substringBefore("\n\n")
+                .substringBefore("\n    }")
 
             assertTrue("$type.kt must declare an updateGeometry overload", overload.isNotEmpty())
             assertTrue(
-                "$type.updateGeometry must terminate in setGeometry(...): that call is what " +
-                    "refreshes the collider, so an overload reaching Filament by another route " +
-                    "would silently pick at its old size again (#3194)",
-                overload.contains("setGeometry(")
+                "$type.updateGeometry must go through geometry.update(...): the bound geometry " +
+                    "rebinds every node that draws it, and that rebind is what refreshes the " +
+                    "collider, so an overload reaching Filament by another route would " +
+                    "silently pick at its old size again (#3194)",
+                overload.contains("geometry.update(engine")
+            )
+            assertTrue(
+                "$type.updateGeometry must not rebind a second time: Geometry.update already " +
+                    "re-points this node, so a trailing setGeometry(...) pays every " +
+                    "setGeometryAt and the collider refresh twice per update (#4344)",
+                !overload.contains("setGeometry(")
             )
         }
+    }
+
+    @Test
+    fun `GeometryNode registers with its geometry so updates reach the choke point`() {
+        // The rebind above only reaches a node that attached itself. GeometryNode does it once,
+        // at construction; every shape node inherits that.
+        val init = File(nodeDir, "GeometryNode.kt").readText()
+            .substringAfter("init {", missingDelimiterValue = "")
+            .substringBefore("\n    }")
+        assertTrue(
+            "GeometryNode's init must bind its geometry",
+            init.contains("setGeometry(geometry, primitivesOffsets, mergePrimitives)")
+        )
+        val bind = renderableNodeSource
+            .substringAfter("private fun bindGeometry(", missingDelimiterValue = "")
+            .substringBefore("\n    }")
+        assertTrue(
+            "binding must register the node as a consumer of the geometry",
+            bind.contains("geometry.attach(geometryConsumer)")
+        )
+        val consumer = renderableNodeSource
+            .substringAfter("private val geometryConsumer", missingDelimiterValue = "")
+            .substringBefore("\n    }")
+        assertTrue(
+            "a geometry change must land in applyBoundGeometry",
+            consumer.contains("override fun rebind() { applyBoundGeometry() }")
+        )
     }
 
     @Test
