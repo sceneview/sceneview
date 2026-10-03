@@ -6,7 +6,7 @@ import SceneViewSwift
 import simd
 import SwiftUI
 
-// The "Record your own" screen of the Rerun showcase: the live AR camera, one Record / Stop
+// The "Record your own" screen of Room Scan: the live AR camera, one Record / Stop
 // control and the capture's figures. Every frame goes through `RerunCaptureRecorder`; on
 // Stop the finished pack is handed to the host, which replays it like the bundled room.
 //

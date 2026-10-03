@@ -5,7 +5,7 @@ SceneView is an open-source 3D and augmented reality SDK for SwiftUI, built on R
 START HERE
 
 - Cosmos — a galaxy, a star with a ringed planet, and particle storms that glow in real time. Tap the planet and the camera flies there.
-- Rerun AR Replay — watch a real AR session rebuild itself in 3D.
+- Room Scan — scan your room, then replay it in 3D.
 
 WHAT THE SAMPLES SHOW
 

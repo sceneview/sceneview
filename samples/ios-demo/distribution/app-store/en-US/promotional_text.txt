@@ -1,1 +1,1 @@
-New: Cosmos, a galaxy and a ringed star system in real time, and Rerun, a real AR session rebuilt in 3D. Nearly 50 live screens, each linked to the code that draws it.
+New: Cosmos, a galaxy and a ringed star system in real time, and Room Scan, scan your room and replay it in 3D. Nearly 50 live screens, each linked to the code that draws it.
