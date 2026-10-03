@@ -591,7 +591,8 @@ struct ModelViewerDemo: View {
                 .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
                 .contentID(loadedNode == nil ? nil : "\(loadCount)")
                 .recenterCamera(recenterGeneration),
-                entrance: entrance
+                entrance: entrance,
+                pickerPresented: sheet != nil
             )
 
             if loadedNode == nil, let posterModel, let thumb = posterModel.thumbnailName {
@@ -1106,9 +1107,23 @@ struct ViewerLighting {
 private struct EntranceStage: View {
     let scene: SceneView
     let entrance: ViewerEntranceDriver
+    /// Whether the Models or Lighting sheet is up, at its medium detent.
+    let pickerPresented: Bool
+    /// How much of the stage the controls sheet covers (``DemoControlsCover``).
+    @Environment(\.demoControlsCover) private var controlsCover
 
     var body: some View {
+        GeometryReader { proxy in
+            stage(cover: max(controlsCover, pickerPresented ? proxy.size.height / 2 : 0))
+        }
+        .ignoresSafeArea()
+    }
+
+    private func stage(cover: CGFloat) -> some View {
         scene
+            // The model re-centres in what the sheet leaves visible; the scene
+            // keeps rendering under the glass.
+            .contentInsets(EdgeInsets(top: 0, leading: 0, bottom: cover, trailing: 0))
             .cameraPose(entrance.pose)
             .onCameraChanged { [entrance] pose in
                 // Called from inside RealityKit's update pass: hop before the
@@ -1119,6 +1134,6 @@ private struct EntranceStage: View {
                 let attached = MainActor.assumeIsolated { entrance.isEntityInScene }
                 Task { @MainActor in entrance.cameraChanged(pose, entityInScene: attached) }
             }
-            .ignoresSafeArea()
+            .animation(DemoControlsCover<EmptyView>.animation, value: cover)
     }
 }

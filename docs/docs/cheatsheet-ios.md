@@ -49,6 +49,7 @@ SceneView { root in
 .autoRotate(speed: spinning ? 0.2 : 0)  // turntable auto-rotation; REACTIVE since v4.31.0 — a spin toggle changes this value and nothing else (0 = freeze)
 .autoCenterContent(true)           // v4.3.0+ — library translates content centroid to orbit pivot (default true; pass false to keep explicit placements)
 .framingMargin(0.95)               // v4.26.0+ — padding on the auto-fit distance (default 1.15; 1.0 = bounding sphere tangent; < 1 fills the frame)
+.contentInsets(EdgeInsets(top: 0, leading: 0, bottom: sheetHeight, trailing: 0))  // keeps the subject in what your sheet or side panel leaves visible: the visible rectangle is the camera's viewport, the view is not resized, the pose is untouched (works with autoCenterContent(false)); animates with the transaction
 .cameraOrbit(azimuth: .pi / 5, elevation: .pi / 15)  // v4.26.0+ — seeds the INITIAL orbit pose in radians; elevation is positive ABOVE the target (defaults: 0, 30°)
 .cameraPose(pose)                  // v4.27.0+ — drives the camera CONTINUOUSLY (SceneCameraPose, radians). Applied only when the value changes, so it coexists with a live drag
 .onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — fires after EVERY camera change (drag, pinch, auto-rotate, re-frame). The hop is required: it fires inside RealityKit's update pass

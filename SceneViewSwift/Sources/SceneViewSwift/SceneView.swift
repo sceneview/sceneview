@@ -108,6 +108,12 @@ public struct SceneView: View {
     // the bounding sphere for a tighter subject. Set via `.framingMargin(_:)`.
     var framingMargin: Float = CameraControls.defaultFitMargin
 
+    // The part of the view covered by the host's own chrome — a controls
+    // sheet, a side panel. The projection is shifted and scaled so the camera
+    // projects into what stays visible; the view is not resized. Set via
+    // `.contentInsets(_:)`.
+    var contentInsets: EdgeInsets = EdgeInsets()
+
     // Initial orbit pose, seeded once during scene setup. `nil` keeps
     // `CameraControls`' own defaults (azimuth 0, elevation 30°). Set via
     // `.cameraOrbit(azimuth:elevation:)`.
@@ -216,6 +222,7 @@ public struct SceneView: View {
             renderQualityPreset: renderQualityPreset,
             autoCenterContentEnabled: autoCenterContentEnabled,
             framingMargin: framingMargin,
+            contentInsets: contentInsets,
             initialOrbitAzimuth: initialOrbitAzimuth,
             initialOrbitElevation: initialOrbitElevation,
             immersiveSpace: immersiveSpace,
@@ -543,6 +550,61 @@ public struct SceneView: View {
         return copy
     }
 
+    /// Keeps the subject inside the part of the view your own chrome leaves
+    /// visible — a controls sheet rising over the scene, a side panel.
+    ///
+    /// Pass how far each edge is covered, in points. The scene keeps rendering
+    /// edge to edge, under the panel: the view is **not** resized, so there is
+    /// no empty band behind a translucent sheet and no surface reallocation
+    /// while it moves. Only the projection changes:
+    ///
+    /// - the optical centre — where the camera looks — moves to the centre of
+    ///   the visible rectangle;
+    /// - the field of view spans the visible rectangle: the image is scaled
+    ///   by `visibleHeight / viewHeight`. A side panel leaves the height
+    ///   alone and the subject only slides; a bottom sheet shrinks it by the
+    ///   height it takes.
+    ///
+    /// In short, **the visible rectangle is the camera's viewport**: it
+    /// behaves exactly as a view of that size would. This is the contract of
+    /// `contentPadding` on Android.
+    ///
+    /// The camera pose is untouched — ``onCameraChanged(_:)`` reports nothing
+    /// and ``cameraPose(_:)`` keeps meaning what it meant — so this works
+    /// **with ``autoCenterContent(_:)`` off**, on a camera the host drives.
+    /// With auto-framing on, the fit-to-bounds pass fits the content to the
+    /// visible rectangle instead of the whole view, and a camera the user has
+    /// pinched or orbited keeps its target, its angles and its zoom relative
+    /// to that fit.
+    ///
+    /// Taps hit what is drawn under the finger.
+    ///
+    /// The insets animate with the transaction that changes them, so a panel
+    /// and the subject it pushes aside move on the same curve:
+    ///
+    /// ```swift
+    /// SceneView { root in
+    ///     root.addChild(model.entity)
+    /// }
+    /// .contentInsets(EdgeInsets(top: 0, leading: 0, bottom: panelHeight, trailing: 0))
+    /// .animation(.smooth(duration: 0.3), value: panelHeight)
+    /// ```
+    ///
+    /// Negative insets count as zero, and insets that would leave less than a
+    /// tenth of the view visible on an axis are scaled back. `leading` and
+    /// `trailing` follow the layout direction.
+    ///
+    /// Applies to the cameras SceneView drives — ``CameraControlMode/orbit``,
+    /// ``CameraControlMode/pan`` and ``CameraControlMode/firstPerson``. No
+    /// effect on visionOS, where the headset is the camera.
+    ///
+    /// - Parameter insets: How far each edge of the view is covered, in points.
+    public func contentInsets(_ insets: EdgeInsets) -> SceneView {
+        var copy = self
+        copy.contentInsets = insets
+        return copy
+    }
+
     /// Seeds the orbit camera's initial pose.
     ///
     /// The defaults (`azimuth: 0`, `elevation: 30°`) look *down* on the
@@ -777,6 +839,23 @@ private final class SceneEntities: ObservableObject {
     /// pinch — see #1034. visionOS renders through the headset, no manual
     /// camera entity exists.
     let perspCamera = PerspectiveCamera()
+    /// The perspective lens, set aside while `.contentInsets(_:)` renders
+    /// through a `ProjectiveTransformCameraComponent`. RealityKit keeps
+    /// rendering through the perspective component when an entity carries
+    /// both, so only one of the two is ever on ``perspCamera``.
+    var shelvedLens: PerspectiveCameraComponent?
+    /// The perspective lens SceneView configures — field of view, near plane —
+    /// wherever it currently lives: on ``perspCamera``, or shelved.
+    var lens: PerspectiveCameraComponent {
+        get { shelvedLens ?? perspCamera.camera }
+        set {
+            if shelvedLens != nil {
+                shelvedLens = newValue
+            } else {
+                perspCamera.camera = newValue
+            }
+        }
+    }
     #endif
 
     #if os(iOS) && targetEnvironment(simulator)
@@ -842,6 +921,11 @@ private struct SceneViewRepresentation: View {
     /// radius. Provided by ``SceneView/framingMargin(_:)``; defaults to
     /// ``CameraControls/defaultFitMargin``. Closes #2896.
     let framingMargin: Float
+    /// How far each edge of the view is covered by the host's chrome. Provided
+    /// by ``SceneView/contentInsets(_:)``; animated by ``ContentInsetsDriver``.
+    let contentInsets: EdgeInsets
+    /// Resolves the leading / trailing content insets to physical edges.
+    @Environment(\.layoutDirection) private var layoutDirection
     /// Initial orbit pose seeded once in `setupScene`, from
     /// ``SceneView/cameraOrbit(azimuth:elevation:)``. `nil` keeps the
     /// `CameraControls` defaults. Closes #2896.
@@ -1124,6 +1208,41 @@ private struct SceneViewRepresentation: View {
         /// Union diagonal of the last fit applied, the baseline for "grew
         /// materially" above.
         var fittedDiagonal: Float = 0
+
+        // MARK: Viewport (content insets, rotation)
+        //
+        // In this reference box for the same reason as the latch above: they
+        // are written from `onChange` closures and read back in the same turn
+        // by `applyCamera()`.
+
+        /// Extents of the content the last fit was computed for. With
+        /// ``fittedFrustum``, lets a rotation or an inset change rescale the
+        /// radius by the ratio of the two fits instead of re-running the fit
+        /// and discarding the user's zoom. `nil` until the first fit and after
+        /// every re-arm.
+        var fittedExtents: SIMD3<Float>? = nil
+        /// The frustum the current orbit radius was chosen in.
+        var fittedFrustum: ViewFrustum? = nil
+        /// What the last frustum change asked of the radius, so the zoom
+        /// limits clamping it in one orientation do not skew the way back.
+        var frustumRadius: FrustumRadius? = nil
+        /// Live view size in points; mirrors `viewportSize`.
+        var viewSize: CGSize? = nil
+        /// ``SceneView/contentInsets(_:)`` as last delivered by the driver —
+        /// mid-animation, the interpolated value of the current frame.
+        /// Physical edges: `leading` holds the left inset.
+        var contentInsets = EdgeInsets()
+        /// What `applyContentInsetsProjection()` last wrote, so an unchanged
+        /// projection is not rewritten every frame.
+        var projection: AppliedProjection? = nil
+    }
+
+    /// Diff-guard key of the custom projection.
+    private struct AppliedProjection: Equatable {
+        var projection: ContentInsetsProjection
+        var fovYDegrees: Float
+        var aspect: Float
+        var near: Float
     }
     @State private var appliedCache = AppliedCache()
 
@@ -1427,6 +1546,13 @@ private struct SceneViewRepresentation: View {
                     updateViewportAspect(newSize)
                 }
                 .onAppear { updateViewportAspect(proxy.size) }
+                // `.contentInsets(_:)`: the driver is `Animatable`, so SwiftUI
+                // hands it every interpolated frame of the transaction that
+                // changed the insets and the projection follows the panel on
+                // its own curve — without re-evaluating this view per frame.
+                .modifier(ContentInsetsDriver(insets: physicalContentInsets) { insets in
+                    contentInsetsChanged(insets)
+                })
                 // The framing-driver task bumps `framingTick` every ~33 ms
                 // until the content is framed. `onChange` is a guaranteed
                 // delivery point (unlike relying on the RealityView
@@ -1458,16 +1584,16 @@ private struct SceneViewRepresentation: View {
         guard let scene = camera.scene else { return }
         // A resize while an earlier refresh is pending keeps that refresh's base value, so
         // back-to-back rotations can never leave the near plane drifted.
-        let baseNear = entities.projectionRefresh?.baseNear ?? camera.camera.near
+        let baseNear = entities.projectionRefresh?.baseNear ?? entities.lens.near
         entities.projectionRefresh?.subscription.cancel()
         let nudged = baseNear * 1.0001
-        camera.camera.near = nudged
+        entities.lens.near = nudged
         var updates = 0
         let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak entities] _ in
             updates += 1
             guard updates >= 3, let entities else { return }
-            if entities.perspCamera.camera.near == nudged {
-                entities.perspCamera.camera.near = baseNear
+            if entities.lens.near == nudged {
+                entities.lens.near = baseNear
             }
             entities.projectionRefresh?.subscription.cancel()
             entities.projectionRefresh = nil
@@ -1487,15 +1613,136 @@ private struct SceneViewRepresentation: View {
         #if !os(visionOS)
         viewportSize = size
         #endif
-        // A rotation / resize after the initial fit invalidates the framing.
-        // Re-arm the one-shot pass so the next frame re-fits to the new
-        // frustum. Threshold avoids re-framing on sub-pixel layout jitter.
+        appliedCache.viewSize = size
+        // A rotation / resize changes the frustum the radius was fitted in.
+        // The radius follows by the ratio of the two fits, so a camera the
+        // user pinched or orbited keeps its target, its angles and its zoom
+        // relative to the fit. It used to be handed back to the fit pass
+        // (`userMovedCamera = false` and a re-arm), which threw the user's
+        // zoom away on every rotation. Threshold avoids churn on sub-pixel
+        // layout jitter.
         if let previous, abs(previous - aspect) > 0.01 {
-            appliedCache.didCenterContent = false
-            appliedCache.userMovedCamera = false
-            framingEpoch &+= 1
+            viewportFrustumChanged()
+        } else {
+            #if os(iOS) || os(macOS)
+            // Same aspect, new size: the content insets are in points, so the
+            // shift they resolve to moved all the same.
+            applyContentInsetsProjection()
+            #endif
         }
     }
+
+    /// ``contentInsets`` with `leading` / `trailing` resolved to left / right.
+    private var physicalContentInsets: EdgeInsets {
+        guard layoutDirection == .rightToLeft else { return contentInsets }
+        return EdgeInsets(top: contentInsets.top, leading: contentInsets.trailing,
+                          bottom: contentInsets.bottom, trailing: contentInsets.leading)
+    }
+
+    /// Receives each frame of an animated ``SceneView/contentInsets(_:)`` change.
+    private func contentInsetsChanged(_ insets: EdgeInsets) {
+        guard appliedCache.contentInsets != insets else { return }
+        appliedCache.contentInsets = insets
+        viewportFrustumChanged()
+    }
+
+    /// The projection change the current insets ask for; identity until the
+    /// view has a size, and wherever SceneView does not own the projection:
+    /// the camera modes handed to `realityViewCameraControls(_:)`, and
+    /// visionOS, which has no virtual camera. Framing and hit-testing read
+    /// this, so they always agree with what is drawn.
+    private var contentInsetsProjection: ContentInsetsProjection {
+        #if os(visionOS)
+        return .identity
+        #else
+        guard cameraControlMode.isCustom, let size = appliedCache.viewSize else { return .identity }
+        let insets = appliedCache.contentInsets
+        return ContentInsetsProjection(
+            viewWidth: Float(size.width), viewHeight: Float(size.height),
+            top: Float(insets.top), left: Float(insets.leading),
+            bottom: Float(insets.bottom), right: Float(insets.trailing)
+        )
+        #endif
+    }
+
+    /// `width / height` of the live view, read from the reference box so it is
+    /// current in the same turn the size changed.
+    private var liveViewportAspect: Float? {
+        guard let size = appliedCache.viewSize, size.width > 0, size.height > 0 else { return nil }
+        return Float(size.width / size.height)
+    }
+
+    /// The frustum the fit-to-bounds pass fits the content to: the full view's
+    /// when nothing covers it, the visible rectangle's otherwise.
+    private var fitFrustum: ViewFrustum {
+        contentInsetsProjection.visibleFrustum(
+            fovYDegrees: Self.baselineFov,
+            aspect: liveViewportAspect ?? 0.46
+        )
+    }
+
+    /// Follows a frustum change — rotation, resize, content insets — without
+    /// re-running the fit: the orbit radius is rescaled by the ratio of the
+    /// two fits, then the camera and its projection are re-applied.
+    private func viewportFrustumChanged() {
+        let frustum = fitFrustum
+        if autoCenterContentEnabled,
+           let extents = appliedCache.fittedExtents,
+           let fitted = appliedCache.fittedFrustum, fitted != frustum {
+            let radius = camera.radiusFollowingFrustum(
+                boundsExtents: extents, from: fitted, to: frustum, margin: framingMargin,
+                previous: appliedCache.frustumRadius
+            )
+            camera.orbitRadius = radius.applied
+            appliedCache.frustumRadius = radius
+            appliedCache.fittedFrustum = frustum
+        }
+        applyCamera()
+    }
+
+    #if os(iOS) || os(macOS)
+    /// Writes the projection ``SceneView/contentInsets(_:)`` asks for.
+    ///
+    /// RealityKit's `PerspectiveCameraComponent` only describes a frustum
+    /// symmetric about the view axis, so an off-centre optical axis goes
+    /// through `ProjectiveTransformCameraComponent`, which takes the matrix
+    /// whole. It replaces the perspective component only while there are
+    /// insets — RealityKit ignores it next to one. With none, the perspective
+    /// component is put back and the camera renders exactly as before.
+    private func applyContentInsetsProjection() {
+        // Identity as well wherever SceneView does not own the projection, so
+        // leaving a custom camera mode puts the perspective lens back.
+        let projection = contentInsetsProjection
+        guard !projection.isIdentity, let aspect = liveViewportAspect else {
+            if appliedCache.projection != nil {
+                appliedCache.projection = nil
+                entities.perspCamera.components.remove(ProjectiveTransformCameraComponent.self)
+                if let lens = entities.shelvedLens {
+                    entities.shelvedLens = nil
+                    entities.perspCamera.components.set(lens)
+                }
+            }
+            return
+        }
+        // The field of view `applyCamera()` is about to write for this mode.
+        let fovYDegrees = camera.mode == .firstPerson ? camera.fov : Self.baselineFov
+        let key = AppliedProjection(
+            projection: projection, fovYDegrees: fovYDegrees, aspect: aspect,
+            near: entities.lens.near
+        )
+        guard key != appliedCache.projection else { return }
+        appliedCache.projection = key
+        if entities.shelvedLens == nil {
+            entities.shelvedLens = entities.perspCamera.camera
+            entities.perspCamera.components.remove(PerspectiveCameraComponent.self)
+        }
+        entities.perspCamera.components.set(ProjectiveTransformCameraComponent(
+            projectionMatrix: projection.matrix(
+                fovYDegrees: fovYDegrees, aspect: aspect, near: key.near
+            )
+        ))
+    }
+    #endif
 
     @ViewBuilder
     private var realityView: some View {
@@ -1656,7 +1903,7 @@ private struct SceneViewRepresentation: View {
         // entities face +Z by default so explicit orientation is required.
         // We keep a ref on the SceneEntities holder so `.firstPerson` pinch can
         // mutate the FOV at runtime (#1034).
-        entities.perspCamera.camera.fieldOfViewInDegrees = 60
+        entities.lens.fieldOfViewInDegrees = 60
         entities.perspCamera.look(at: .zero, from: [0, 0.3, 2], relativeTo: nil)
         realityContent.add(entities.perspCamera)
         #endif
@@ -2065,6 +2312,9 @@ private struct SceneViewRepresentation: View {
         )
         appliedCache.didCenterContent = false
         appliedCache.userMovedCamera = false
+        appliedCache.fittedExtents = nil
+        appliedCache.fittedFrustum = nil
+        appliedCache.frustumRadius = nil
     }
 
     /// Applies a ``SceneView/recenterCamera(_:)`` request: restores the
@@ -2167,6 +2417,12 @@ private struct SceneViewRepresentation: View {
         }
         appliedCache.userMovedCamera = false
         appliedCache.fittedDiagonal = diagonal
+        // The fit targets what `.contentInsets(_:)` leaves visible, and is
+        // remembered so a later frustum change can rescale the radius instead
+        // of re-fitting (`viewportFrustumChanged()`).
+        let frustum = fitFrustum
+        appliedCache.fittedExtents = extents
+        appliedCache.fittedFrustum = frustum
         camera.target = center
         // 3. Dolly the orbit radius so the bounding box fits the frustum
         //    with a small margin, accounting for the vertical FOV and the
@@ -2176,8 +2432,8 @@ private struct SceneViewRepresentation: View {
         //    azimuth / elevation so only the distance changes.
         camera.orbitRadius = camera.fitRadius(
             boundsExtents: extents,
-            fovYDegrees: Self.baselineFov,
-            aspect: viewportAspect ?? 0.46,
+            fovYDegrees: frustum.fovYDegrees,
+            aspect: frustum.aspect,
             margin: framingMargin
         )
         // Only latch once the union has held steady for the sustained hold
@@ -2359,6 +2615,11 @@ private struct SceneViewRepresentation: View {
             fov: camera.fov,
             firstPersonEye: camera.firstPersonEye
         )
+        #if os(iOS) || os(macOS)
+        // Before the guard: an inset or a view-size change moves the
+        // projection while the pose — all the guard looks at — stays put.
+        applyContentInsetsProjection()
+        #endif
         if let last = appliedCache.camera, last.approximatelyMatches(desired) {
             return
         }
@@ -2410,8 +2671,8 @@ private struct SceneViewRepresentation: View {
             // pinched FOV on the perspective camera (R3 MAJOR — "FOV
             // bleed"). The static-baseline write is a no-op on identical
             // values so the property doesn't churn.
-            if entities.perspCamera.camera.fieldOfViewInDegrees != Self.baselineFov {
-                entities.perspCamera.camera.fieldOfViewInDegrees = Self.baselineFov
+            if entities.lens.fieldOfViewInDegrees != Self.baselineFov {
+                entities.lens.fieldOfViewInDegrees = Self.baselineFov
             }
             #else
             // visionOS fallback: rotate the scene root since there's no
@@ -2458,8 +2719,8 @@ private struct SceneViewRepresentation: View {
             // firstPerson is the ONLY mode that mirrors `camera.fov` so
             // pinch can zoom without affecting orbit's baseline (see the
             // orbit/pan case above for the corresponding non-write).
-            if entities.perspCamera.camera.fieldOfViewInDegrees != camera.fov {
-                entities.perspCamera.camera.fieldOfViewInDegrees = camera.fov
+            if entities.lens.fieldOfViewInDegrees != camera.fov {
+                entities.lens.fieldOfViewInDegrees = camera.fov
             }
             #else
             // visionOS fallback: no manual camera entity (the headset is
@@ -2685,15 +2946,16 @@ private struct SceneViewRepresentation: View {
                 // `fieldOfViewInDegrees` is vertical (`setupScene` never overrides
                 // `fieldOfViewOrientation`, whose default is `.vertical`) — derive the
                 // horizontal half-angle from the viewport aspect rather than assume it.
-                let fovYRadians = entities.perspCamera.camera.fieldOfViewInDegrees * .pi / 180
-                let tanHalfFovY = tan(fovYRadians / 2)
+                let fovYDegrees = entities.lens.fieldOfViewInDegrees
                 let aspect = Float(viewportSize.width / viewportSize.height)
-                let tanHalfFovX = tanHalfFovY * aspect
 
                 // Camera looks down its local -Z (same convention `LightNode
                 // .lookAt` documents for a directional light's forward axis).
-                let localDirection = simd_normalize(
-                    SIMD3<Float>(ndcX * tanHalfFovX, ndcY * tanHalfFovY, -1)
+                // The ray goes through the projection `.contentInsets(_:)`
+                // shifted, so the tap lands on what is drawn under the finger.
+                let localDirection = contentInsetsProjection.viewRayDirection(
+                    throughNormalizedDeviceCoordinates: SIMD2<Float>(ndcX, ndcY),
+                    fovYDegrees: fovYDegrees, aspect: aspect
                 )
                 let cameraPosition = entities.perspCamera.position(relativeTo: nil)
                 let cameraOrientation = entities.perspCamera.orientation(relativeTo: nil)

@@ -51,6 +51,40 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Controls sheet cover
+
+/// How much of the stage's bottom the controls sheet covers, in points — `0`
+/// while it is closed. ``DemoScaffold`` publishes it to the stage, which hands
+/// it to `SceneView.contentInsets(_:)` so the subject stays in what is left.
+private struct DemoControlsCoverKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var demoControlsCover: CGFloat {
+        get { self[DemoControlsCoverKey.self] }
+        set { self[DemoControlsCoverKey.self] = newValue }
+    }
+}
+
+/// Hands its content the height the controls sheet covers.
+///
+/// A view of its own because the value is set by ``DemoScaffold`` on the
+/// stage: the demo that *applies* `demoChrome` sits outside it and cannot read
+/// it from its own environment.
+struct DemoControlsCover<Content: View>: View {
+    /// The spring a system sheet rises on, near enough that the subject and
+    /// the sheet read as one motion.
+    static var animation: Animation { .spring(duration: 0.5, bounce: 0) }
+
+    @Environment(\.demoControlsCover) private var cover
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        content(cover)
+    }
+}
+
 // MARK: - AR stage without a camera
 
 /// What an AR demo shows when there is no camera to draw on: the simulator.

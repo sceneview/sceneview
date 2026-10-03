@@ -308,7 +308,7 @@ struct RollingBallsDemo: View {
 
     var body: some View {
         GeometryReader { proxy in
-            stage
+            stage(size: proxy.size)
                 .onAppear { cameraPose = Self.framingPose(for: proxy.size) }
                 .onChange(of: proxy.size) { _, size in cameraPose = Self.framingPose(for: size) }
         }
@@ -355,26 +355,35 @@ struct RollingBallsDemo: View {
 
     // MARK: Stage
 
-    private var stage: some View {
+    private func stage(size: CGSize) -> some View {
         ZStack {
             // Themed stage sky behind a skybox-less studio IBL — never a black void.
             LinearGradient(colors: [SceneViewTokens.Stage.skyHorizon, SceneViewTokens.Stage.skyGround],
                            startPoint: .top, endPoint: .bottom)
-            SceneView { root in
-                coordinator.install(in: root)
-            }
-            .environment(Self.environment)
-            .mainLight(.custom(coordinator.keyLight))
-            .cameraControls(.orbit)
-            .autoCenterContent(false)
-            .cameraPose(cameraPose)
-            .onCameraChanged { pose in
-                Task { @MainActor in
-                    coordinator.cameraAzimuth = pose.azimuth
-                    clampElevation(pose)
+            // The pose already keeps the tray clear of the dock's scrim; the
+            // controls sheet rises higher, and only that extra is an inset. The
+            // camera is this demo's own (`autoCenterContent(false)`), so the
+            // pose stays put and the projection draws the tray in what is left.
+            DemoControlsCover { cover in
+                let insets = Self.contentInsets(cover: cover, in: size)
+                SceneView { root in
+                    coordinator.install(in: root)
                 }
+                .environment(Self.environment)
+                .mainLight(.custom(coordinator.keyLight))
+                .cameraControls(.orbit)
+                .autoCenterContent(false)
+                .cameraPose(cameraPose)
+                .onCameraChanged { pose in
+                    Task { @MainActor in
+                        coordinator.cameraAzimuth = pose.azimuth
+                        clampElevation(pose)
+                    }
+                }
+                .cameraGesturesEnabled(!tiltEnabled)
+                .contentInsets(insets)
+                .animation(DemoControlsCover<EmptyView>.animation, value: insets)
             }
-            .cameraGesturesEnabled(!tiltEnabled)
             if tiltEnabled {
                 Color.clear
                     .contentShape(Rectangle())
@@ -449,8 +458,7 @@ struct RollingBallsDemo: View {
         let width = Float(max(size.width, 1))
         let height = Float(max(size.height, 1))
         let top = Float(SceneViewTokens.Chrome.scrimTop)
-        let bottom = Float(SceneViewTokens.Chrome.scrimBottomMin)
-        let band = max(height - top - bottom, height * 0.35)
+        let band = Float(bandHeight(for: size))
         let tanV = tan(Float.pi / 6)
         let tanH = tanV * width / height
         let tanBand = tanV * band / height
@@ -469,6 +477,38 @@ struct RollingBallsDemo: View {
         let shift = bandCentreOffset / (height / 2) * distance * tanV
         return SceneCameraPose(azimuth: 0, elevation: elevation, distance: distance,
                                target: target + up * shift)
+    }
+
+    /// Height of the band the pose fits the tray in: between the two scrims,
+    /// and never less than 35 % of the stage.
+    private static func bandHeight(for size: CGSize) -> CGFloat {
+        let height = max(size.height, 1)
+        return max(height - SceneViewTokens.Chrome.scrimTop - SceneViewTokens.Chrome.scrimBottomMin,
+                   height * 0.35)
+    }
+
+    /// What ``framingPose(for:)`` already leaves free under the tray.
+    private static func reservedBottom(for size: CGSize) -> CGFloat {
+        max(size.height, 1) - SceneViewTokens.Chrome.scrimTop - bandHeight(for: size)
+    }
+
+    /// The insets that keep the tray's band under the top scrim and land its
+    /// lower edge on the top edge of a sheet covering `cover` points.
+    ///
+    /// Insets `top` and `bottom` draw the stage, scaled by
+    /// `s = (height - top - bottom) / height`, in the rectangle they leave.
+    /// The band runs from the top scrim to `reserved` above the bottom; pinning
+    /// its upper edge and sending its lower edge to `height - cover` gives
+    /// `s`, then both insets. Nothing while the sheet stays within what the
+    /// pose already reserves.
+    private static func contentInsets(cover: CGFloat, in size: CGSize) -> EdgeInsets {
+        let height = max(size.height, 1)
+        let top = SceneViewTokens.Chrome.scrimTop
+        let band = bandHeight(for: size)
+        let visibleBand = height - cover - top
+        guard cover > reservedBottom(for: size), band > 0, visibleBand > 0 else { return EdgeInsets() }
+        let shrink = 1 - visibleBand / band
+        return EdgeInsets(top: top * shrink, leading: 0, bottom: (height - top) * shrink, trailing: 0)
     }
 
     // MARK: Accessory
