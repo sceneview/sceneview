@@ -196,6 +196,55 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `a terrace-sized scan on a phone on its side stays between the cards, in 3D and on the map`() {
+        // The 20 × 9 m scan of the portrait case, in the band a phone on its side leaves: a strip
+        // 640 px wide between the two cards, 568 px tall under the status bar.
+        val terrace = floatArrayOf(-10f, -1.3f, -4.5f, 10f, 1.3f, 4.5f)
+        val aspect = 2400f / 1080f
+        val band = OrbitBand.betweenSides(
+            startCardEnd = 880f, endCardStart = 2400f - 760f, top = 72f, bottom = 640f,
+            viewWidth = 2400f, viewHeight = 1080f,
+        )!!
+        var furthest = 0f
+        for (azimuth in listOf(0f, 35f, 90f, 200f, 310f)) {
+            for (elevation in listOf(ArDebugFraming.HOME_ELEVATION, ArDebugFraming.MAP_ELEVATION)) {
+                val home = ArDebugFraming.home(terrace, azimuth, fov, aspect, elevation, band)
+                val reach = assertFramed(home, band, aspect, terrace)
+                assertTrue("the terrace fills its band ($reach at $azimuth°, $elevation°)", reach > 0.97)
+                furthest = maxOf(furthest, home.distance)
+                corners(terrace).forEach { corner ->
+                    val (x, y) = project(home, band.lift, aspect, corner)
+                    val px = (x + 1.0) / 2.0 * 2400.0
+                    val py = (1.0 - y) / 2.0 * 1080.0
+                    assertTrue("corner at $px px across ($azimuth°, $elevation°)", px > 880.0 && px < 2400.0 - 880.0)
+                    assertTrue("corner at $py px down ($azimuth°, $elevation°)", py in 72.0..640.0)
+                }
+
+                // The narrow strip asks for more distance than the upright phone did: the limits
+                // still hold the fit, and its far side still sits in front of the far plane.
+                val limits = ArDebugFraming.limits(terrace, home, floorY = terrace[1])
+                assertEquals(home.distance, ArDebugFraming.clamp(home, limits, band.lift, fov).distance, 1e-3f)
+                assertEquals(home.distance * ArDebugFraming.MAX_ZOOM_OUT, limits.maxDistance, 1e-2f)
+                assertTrue(
+                    "pinched out from ${home.distance} m, the far side passes the far plane",
+                    limits.maxDistance + home.distance < ArDebugFraming.FAR_PLANE_M,
+                )
+            }
+        }
+
+        // The camera itself rests on the furthest of those fits.
+        val camera = ArDebugOrbitCamera(drift = false, band = band)
+        camera.setViewport(2400, 1080)
+        val home = ArDebugFraming.home(terrace, 90f, fov, camera.aspect, band = band)
+        camera.home = home
+        camera.limits = ArDebugFraming.limits(terrace, home, floorY = terrace[1])
+        camera.snapTo(home)
+        assertEquals(home.distance, camera.pose.distance, 1e-3f)
+        assertFramed(camera.pose, band, camera.aspect, terrace)
+        assertTrue("the terrace is framed from $furthest m", furthest > 50f)
+    }
+
+    @Test
     fun `cards that are not measured yet, or leave no stage between them, fall back`() {
         assertNull(OrbitBand.halfWidthBeside(Float.NaN, 2400f))
         assertNull(OrbitBand.halfWidthBeside(880f, 0f))
