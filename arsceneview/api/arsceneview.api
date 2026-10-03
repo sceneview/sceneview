@@ -860,6 +860,10 @@ public final class io/github/sceneview/ar/FrameInput {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/HostLifecycleKt {
+	public static final fun rememberHostLifecycle (Landroidx/compose/runtime/Composer;I)Landroidx/lifecycle/Lifecycle;
+}
+
 public final class io/github/sceneview/ar/Ndc {
 	public static final field $stable I
 	public fun <init> (FF)V
