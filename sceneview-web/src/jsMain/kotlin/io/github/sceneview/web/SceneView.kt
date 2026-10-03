@@ -53,7 +53,9 @@ class SceneView private constructor(
     val view: View,
     val camera: Camera,
     val swapChain: SwapChain,
-    private val cameraEntity: Entity
+    private val cameraEntity: Entity,
+    /** The view's Filmic `ColorGrading`, owned here and destroyed with the view. */
+    private val colorGrading: dynamic,
 ) {
     private var animationFrameId: Int? = null
     private var isRunning = false
@@ -448,6 +450,12 @@ class SceneView private constructor(
                     view.setBlendMode(viewBlendModeTranslucent())
                     renderer.setClearOptions(backgroundClearOptions(BackgroundColor.DEFAULT))
 
+                    // Tone mapping: Filmic, as on Android (SceneFactories.createView).
+                    // Filament's default is ACES (legacy); with Filmic the same model
+                    // grades the same on both platforms.
+                    val colorGrading = filmicColorGrading(engine)
+                    view.setColorGrading(colorGrading)
+
                     // --- Quality defaults for PBR rendering ---
                     // Screen-space ambient occlusion (soft contact shadows)
                     view.setAmbientOcclusionOptions(js("""({
@@ -472,7 +480,8 @@ class SceneView private constructor(
                     })"""))
 
                     val sceneView = SceneView(
-                        canvas, engine, renderer, scene, view, camera, swapChain, cameraEntity
+                        canvas, engine, renderer, scene, view, camera, swapChain, cameraEntity,
+                        colorGrading,
                     )
 
                     // Step 7: Apply user configuration (camera, lights, models, environment)
@@ -1593,6 +1602,7 @@ class SceneView private constructor(
         // Destroy core Filament objects
         engine.destroyRenderer(renderer)
         engine.destroyView(view)
+        engine.destroyColorGrading(colorGrading)
         engine.destroyScene(scene)
         engine.destroyCameraComponent(cameraEntity)
         // Destroys the camera component. NOTE: the integer entity slot is NOT reclaimed here,
