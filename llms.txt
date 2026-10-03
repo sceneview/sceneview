@@ -7601,6 +7601,8 @@ SceneView.create(canvas, configure = {
 }) { sceneView -> /* onReady */ }
 ```
 
+Explicit `fov`, `near`, and `far` values win over automatic projection values. Unspecified or invalid values stay automatic independently; fitted content updates only the unspecified clip planes, and a custom FOV also adjusts the fit distance.
+
 ---
 
 ### OrbitCameraController

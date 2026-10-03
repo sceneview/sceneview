@@ -214,6 +214,9 @@ class SceneView private constructor(
      */
     private var clipNear: Double = ContentCentering.DEFAULT_NEAR
     private var clipFar: Double = ContentCentering.DEFAULT_FAR
+    private var explicitFov: Double? = null
+    private var explicitNear: Double? = null
+    private var explicitFar: Double? = null
 
     /**
      * The engine's [TransformManager], resolved once at construction instead of
@@ -402,13 +405,20 @@ class SceneView private constructor(
 
                     // Step 6: Default camera setup -- perspective projection
                     val aspect = if (height > 0) width.toDouble() / height.toDouble() else 1.0
+                    val projection = ContentCentering.resolveProjection(
+                        explicitFov = null,
+                        explicitNear = null,
+                        explicitFar = null,
+                        autoNear = ContentCentering.DEFAULT_NEAR,
+                        autoFar = ContentCentering.DEFAULT_FAR,
+                    )
                     camera.setProjectionFov(
-                        fovInDegrees = 45.0,
+                        fovInDegrees = projection.fovDegrees,
                         aspect = aspect,
                         // Metre-scale defaults until a fit derives them from the
                         // content (ContentCentering.clipPlanes, #3747).
-                        near = ContentCentering.DEFAULT_NEAR,
-                        far = ContentCentering.DEFAULT_FAR,
+                        near = projection.nearPlane,
+                        far = projection.farPlane,
                         // Required — embind enforces strict arity 5. See fovVertical().
                         fov = fovVertical()
                     )
@@ -495,22 +505,38 @@ class SceneView private constructor(
     }
 
     /**
-     * Re-apply the perspective projection for the canvas' current aspect and the current
-     * [clipNear] / [clipFar] — the single place outside init that sets it, so a fit and a
-     * resize can never disagree on the clip planes (#3747).
+     * Re-apply the perspective projection for the canvas' current aspect,
+     * automatic clip planes, and explicit camera DSL overrides — the
+     * single place outside init that sets it, so a fit and a resize can never
+     * disagree on the projection (#3747, #3896).
      */
     private fun applyProjection() {
         val width = canvas.width
         val height = canvas.height
         if (width <= 0 || height <= 0) return
+        val projection = ContentCentering.resolveProjection(
+            explicitFov,
+            explicitNear,
+            explicitFar,
+            autoNear = clipNear,
+            autoFar = clipFar,
+        )
         camera.setProjectionFov(
-            fovInDegrees = 45.0,
+            fovInDegrees = projection.fovDegrees,
             aspect = width.toDouble() / height.toDouble(),
-            near = clipNear,
-            far = clipFar,
+            near = projection.nearPlane,
+            far = projection.farPlane,
             // Required — embind enforces strict arity 5. See fovVertical().
             fov = fovVertical()
         )
+    }
+
+    /** Retain camera DSL projection overrides and apply them before the first content fit. */
+    internal fun applyProjection(config: CameraConfig) {
+        explicitFov = config.explicitFovDegrees
+        explicitNear = config.explicitNearPlane
+        explicitFar = config.explicitFarPlane
+        applyProjection()
     }
 
     /**
@@ -1311,7 +1337,14 @@ class SceneView private constructor(
 
         // `margin` is the iOS `framingMargin` multiplier (1.0 = the historical
         // 2.5 × radius fit) — see ContentCentering.fitDistance (#2946).
-        val distance = ContentCentering.fitDistance(radius, margin)
+        val projection = ContentCentering.resolveProjection(
+            explicitFov,
+            explicitNear,
+            explicitFar,
+            autoNear = clipNear,
+            autoFar = clipFar,
+        )
+        val distance = ContentCentering.fitDistance(radius, margin, projection.fovDegrees)
         // The zoom limits must admit the fit distance, or the controller clamps
         // it away and a requested margin silently has no effect (#3880).
         controller.minDistance = minOf(radius * 0.5, distance)
@@ -1756,7 +1789,10 @@ class SceneViewBuilder(private val sceneView: SceneView) {
 
     internal fun apply() {
         sceneView.autoCenterContent = autoCenterContentEnabled
-        cameraConfig?.applyTo(sceneView.camera)
+        cameraConfig?.let { config ->
+            config.applyTo(sceneView.camera)
+            sceneView.applyProjection(config)
+        }
 
         // If no explicit light was configured, add model-viewer-like 3-point lighting
         if (lightConfig != null) {

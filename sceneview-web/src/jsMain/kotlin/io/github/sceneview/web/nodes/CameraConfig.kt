@@ -6,6 +6,12 @@ import io.github.sceneview.web.bindings.float3
 /**
  * Camera configuration for SceneView web.
  *
+ * The default field of view and clip-plane getters report `45`, `0.1`, and
+ * `1000`, but projection values remain automatic until their corresponding
+ * DSL methods are called. Explicit valid values win over automatic projection
+ * values; after a content fit, any plane that was not explicitly configured
+ * continues to follow the fitted content bounds.
+ *
  * ```kotlin
  * camera {
  *     eye(0.0, 1.5, 5.0)
@@ -30,6 +36,9 @@ class CameraConfig {
     var fovDegrees = 45.0; private set
     var nearPlane = 0.1; private set
     var farPlane = 1000.0; private set
+    internal var explicitFovDegrees: Double? = null; private set
+    internal var explicitNearPlane: Double? = null; private set
+    internal var explicitFarPlane: Double? = null; private set
     // Exposure defaults — physically-based, mirroring Android's SceneFactories
     // default camera (f/12, 1/200s, ISO 200; "neutral, less photographic").
     // Filament's camera is PHOTOMETRIC: pairing a relative/direct exposure ≈ 1.0
@@ -52,9 +61,20 @@ class CameraConfig {
         upX = x; upY = y; upZ = z
     }
 
-    fun fov(degrees: Double) { fovDegrees = degrees }
-    fun near(value: Double) { nearPlane = value }
-    fun far(value: Double) { farPlane = value }
+    fun fov(degrees: Double) {
+        fovDegrees = degrees
+        explicitFovDegrees = degrees
+    }
+
+    fun near(value: Double) {
+        nearPlane = value
+        explicitNearPlane = value
+    }
+
+    fun far(value: Double) {
+        farPlane = value
+        explicitFarPlane = value
+    }
 
     /**
      * Set a physically-based (photometric) exposure — aperture (f-stop),
