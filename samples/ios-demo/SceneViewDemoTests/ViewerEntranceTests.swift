@@ -80,6 +80,95 @@ final class ViewerEntranceTests: XCTestCase {
     }
 
     @MainActor
+    // MARK: - A sheet moving under the flight
+
+    private func fit(distance: Float) -> SceneCameraPose {
+        SceneCameraPose(azimuth: 0, elevation: 0, distance: distance, target: .zero)
+    }
+
+    /// An entity that counts as "in the scene" for the driver.
+    private func stagedEntity() -> (stage: Entity, model: Entity) {
+        let stage = Entity()
+        let model = Entity()
+        stage.addChild(model)
+        return (stage, model)
+    }
+
+    @MainActor
+    func testAModelArrivingWhileASheetMovesWaitsForTheSettledFit() {
+        let driver = ViewerEntranceDriver()
+        let (stage, model) = stagedEntity()
+        let move = driver.viewportWillMove()
+        driver.arrive(model, azimuth: 0.4, elevation: 0.2)
+        // Fits read mid-move frame a rectangle that is still changing: the
+        // first one is twice too far for the rectangle the sheet leaves.
+        driver.cameraChanged(fit(distance: 4), entityInScene: true)
+        XCTAssertNil(driver.pose)
+        driver.cameraChanged(fit(distance: 2), entityInScene: true)
+        XCTAssertNil(driver.pose)
+        XCTAssertNotNil(model.components[OpacityComponent.self], "still hidden")
+
+        driver.viewportDidSettle(move)
+        XCTAssertEqual(driver.rest?.distance, 2)
+        XCTAssertEqual(driver.rest?.azimuth, 0.4)
+        XCTAssertNotNil(driver.pose, "the flight starts from the settled fit")
+        driver.stop(settle: true)
+        _ = stage
+    }
+
+    @MainActor
+    func testAFitOfThePreviousModelDoesNotStartTheFlightOnSettle() {
+        let driver = ViewerEntranceDriver()
+        let (stage, model) = stagedEntity()
+        let move = driver.viewportWillMove()
+        driver.arrive(model, azimuth: 0.4, elevation: 0.2)
+        // Reported before the new model was in the scene.
+        driver.cameraChanged(fit(distance: 4), entityInScene: false)
+        driver.viewportDidSettle(move)
+        XCTAssertNil(driver.pose)
+        // The next report is the new model's fit, the rectangle is still.
+        driver.cameraChanged(fit(distance: 2), entityInScene: true)
+        XCTAssertEqual(driver.rest?.distance, 2)
+        XCTAssertNotNil(driver.pose)
+        driver.stop(settle: true)
+        _ = stage
+    }
+
+    @MainActor
+    func testASheetMovingUnderAFlightLandsItAtOnce() throws {
+        let driver = ViewerEntranceDriver()
+        let (stage, model) = stagedEntity()
+        driver.arrive(model, azimuth: 0.4, elevation: 0.2)
+        driver.cameraChanged(fit(distance: 2), entityInScene: true)
+        let start = try XCTUnwrap(driver.pose)
+        XCTAssertGreaterThan(start.distance, 2, "the flight starts further out")
+
+        _ = driver.viewportWillMove()
+        XCTAssertEqual(driver.pose, driver.rest)
+        XCTAssertNil(model.components[OpacityComponent.self], "revealed")
+        // What SceneView reports next is its own rescale, not a flight to end.
+        driver.cameraChanged(fit(distance: 3), entityInScene: true)
+        XCTAssertEqual(driver.pose, driver.rest)
+        _ = stage
+    }
+
+    @MainActor
+    func testOnlyTheLastMoveSettles() {
+        let driver = ViewerEntranceDriver()
+        let (stage, model) = stagedEntity()
+        let first = driver.viewportWillMove()
+        let second = driver.viewportWillMove()
+        driver.arrive(model, azimuth: 0.4, elevation: 0.2)
+        driver.cameraChanged(fit(distance: 2), entityInScene: true)
+        driver.viewportDidSettle(first)
+        XCTAssertNil(driver.pose, "the sheet is still moving")
+        driver.viewportDidSettle(second)
+        XCTAssertNotNil(driver.pose)
+        driver.stop(settle: true)
+        _ = stage
+    }
+
+    @MainActor
     func testConstantsMatchAndroid() throws {
         let sources = ViewerAssetTests.androidDemoSources(#filePath)
         let viewer = try String(contentsOf: sources.appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
