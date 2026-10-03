@@ -7847,9 +7847,11 @@ optional (default `1`); `a < 1` makes the canvas see-through so the page behind 
 (`sv.setBackgroundColor(0, 0, 0, 0)` = transparent canvas). Default `#333443`. A skybox
 covers the background.
 
-Tone mapping: the Kotlin/JS bundle (`sceneview-web.js`) grades with Filmic, the Android default
-(`SceneFactories.createView`), so one model looks the same on both; the hand-written
-`website-static/js/sceneview.js` keeps Filament's default ACES.
+Tone mapping: the Kotlin/JS bundle (`sceneview-web.js`) and the hand-written website viewer
+(`website-static/js/sceneview.js`) grade with Filmic, the Android default
+(`SceneFactories.createView`), so one model looks the same on every platform. An opaque
+canvas tone-maps its background colour with the scene; a transparent canvas leaves the page
+behind it untouched.
 
 Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
 pixels ((0,0) = top-left). The point is unprojected through the live camera
