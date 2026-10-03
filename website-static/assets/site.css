@@ -382,6 +382,9 @@ code, pre, kbd { font-family: var(--font-mono); font-size: .875em; }
 }
 @media (max-width: 719px) {
   .tile--a, .tile--c { min-height: 460px; }
+  /* Formats: a smaller wireframe and a taller tile, so the cube stays clear of the title. */
+  .tile--b { min-height: 400px; }
+  .wire { width: 150px; right: -28px; top: -22px; }
   .tile--a .tile__media { bottom: 40%; }
   .ar-scene__obj { top: 8%; width: min(70%, 280px); }
   .ar-scene__ring { top: 74%; }
