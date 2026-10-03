@@ -216,18 +216,20 @@ extract_refs() {
         # download names dynamically, carrying only a `'model.gltf'` fallback
         # basename; it ships no bundled asset, so skipping it cannot mask a real
         # broken ref. The curated bundled catalog lives in index.html (still
-        # scanned) and the vendored engine js/ keeps its narrow model.glb filter.
+        # scanned) and the engine js/ keeps its narrow model.glb filter.
         case "$file" in
             */web-demo/site/js/model-sources.js) continue ;;
         esac
-        # The vendored Filament/SceneView engine bundled under the web demo's
-        # resources/js/ (byte-identical copies of website-static/js/, self-hosted
-        # per issue #1586) carries exactly one false-positive: the JSDoc usage
-        # example `SceneView.modelViewer("canvas", "model.glb")` in sceneview.js,
-        # where `model.glb` is a placeholder, not a real asset path. We narrowly
-        # filter that single literal (issue #1631) instead of skipping the whole
-        # tree — a real broken asset literal in a vendored js file must still be
-        # caught. The filter is applied to the extracted refs below.
+        # The engine files under the web demo's site/js/ (self-hosted per issue
+        # #1586) carry exactly one false-positive: the JSDoc usage example
+        # `SceneView.modelViewer("canvas", "model.glb")` in sceneview.js, where
+        # `model.glb` is a placeholder, not a real asset path. That file is no
+        # longer committed there: since #4316 it is staged from
+        # website-static/js/sceneview.js (gitignored), so it is only present
+        # after a local run. We narrowly filter that single literal (issue
+        # #1631) instead of skipping the whole tree — a real broken asset
+        # literal in a js file there must still be caught. The filter is
+        # applied to the extracted refs below.
         local skip_placeholder=""
         case "$file" in
             */web-demo/site/js/*) skip_placeholder="model.glb" ;;
@@ -429,8 +431,9 @@ fi
 if [ "$platforms" = "all" ] || [ "$platforms" = "web" ]; then
     # The web demo self-hosts its curated GLB catalog + IBL under
     # site/{models,environments}/ — that directory is both the static-site
-    # deliverable (copied verbatim to /web-demo/ by docs.yml) and the
-    # Playwright dev-server root (playwright.config.ts: `http-server site`).
+    # deliverable (copied to /web-demo/ by docs.yml, which then stages the
+    # website viewer into js/) and the Playwright dev-server root
+    # (playwright.config.ts: `http-server site`).
     # check_bundled_ref also probes the models/ and environments/ sub-roots,
     # so a bare `khronos_toy_car.glb` resolves.
     process_platform_refs \

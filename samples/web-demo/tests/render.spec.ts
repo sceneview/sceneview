@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test, expect, sampleCanvas, assertCanvasContextAlive } from './helpers';
 
 /**
@@ -15,6 +17,23 @@ import { test, expect, sampleCanvas, assertCanvasContextAlive } from './helpers'
  */
 
 test.describe('SceneView Web Demo Rendering', () => {
+
+  // The demo has no viewer of its own: `js/sceneview.js` is staged from
+  // website-static/ by the webServer command (#4316). `reuseExistingServer`
+  // skips that command when port 8080 is already bound, so a local run can
+  // serve a viewer staged from an older checkout. Fail loudly instead.
+  test('served viewer is the website viewer', async ({ request }) => {
+    test.skip(!!process.env.WEB_DEMO_URL, 'a remote demo serves its own deployed viewer');
+    const source = readFileSync(
+      join(__dirname, '..', '..', '..', 'website-static', 'js', 'sceneview.js'), 'utf8');
+    const response = await request.get('js/sceneview.js');
+    expect(response.status()).toBe(200);
+    expect(
+      (await response.text()) === source,
+      'samples/web-demo/site/js/sceneview.js is stale: re-run ' +
+        '`cp ../../website-static/js/sceneview.js site/js/sceneview.js` from samples/web-demo',
+    ).toBe(true);
+  });
 
   test('page loads and shows canvas', async ({ page }) => {
     await page.goto('/');

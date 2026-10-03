@@ -16,7 +16,10 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
@@ -166,6 +169,10 @@ import io.github.sceneview.node.findActivity
  *                              `CameraNode.frameToContent(padding = …)` (#2946). Not the iOS
  *                              `framingMargin` *multiplier*: `margin == 1 + padding`, so iOS
  *                              `1.15` is `0.15` here. No effect when [autoFitContent] is `false`.
+ * @param contentPadding        The part of this view covered by a sheet, a panel or a bar. The
+ *                              camera projects into what is left — optical centre and field of
+ *                              view — without resizing the surface or moving the camera, and
+ *                              hit-testing follows. Animable. See the parameter's own KDoc.
  * @param renderer              Filament [Renderer]. Use [rememberRenderer].
  * @param scene                 Filament [Scene] graph, shareable across views. Use [rememberScene].
  * @param environment           IBL + skybox environment. Use [rememberEnvironment].
@@ -348,6 +355,36 @@ fun SceneView(
      */
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
     /**
+     * The part of this view that something else covers — a bottom sheet, a side panel, a toolbar —
+     * measured inwards from its edges. **What is left is the camera's viewport**: the subject is
+     * projected into the visible area, centred on it, while the scene keeps drawing on the whole
+     * surface, under the panel too.
+     *
+     * The surface is not resized and the camera is not moved: only the projection is offset, so
+     * an orbit the user dragged to is kept and no bounds have to be known. Because the mapping is
+     * linear, animating the padding on the curve the panel slides on moves the subject on that
+     * same curve:
+     *
+     * ```kotlin
+     * val cover by animateDpAsState(if (panelOpen) panelHeight else 0.dp)
+     * SceneView(contentPadding = PaddingValues(bottom = cover)) { … }
+     * ```
+     *
+     * Hit-testing follows: `View.screenToRay`, `viewToRay`, `worldToView` and the node gestures
+     * take the offset into account, so a tap still lands on what is drawn under it. Framing
+     * follows too — [autoFitContent], `frameToBounds` and [fitCameraToBounds] fit inside the
+     * visible area.
+     *
+     * Written to [cameraNode] as [CameraNode.contentPadding], which says which projections it
+     * rebuilds, and reset to nothing when the camera leaves this view. Left at its default, the
+     * parameter writes nothing at all — a [CameraNode.contentPadding] set by hand is kept. The
+     * visible area never goes below a tenth of the view on either axis.
+     *
+     * `ARSceneView` has no such parameter: an AR camera's projection is the device camera's and
+     * is never re-framed.
+     */
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    /**
      * A [Renderer] instance represents an operating system's window.
      * Typically, applications create a [Renderer] per window.
      */
@@ -525,6 +562,25 @@ fun SceneView(
         // A different camera is a different picture — and the swap happens without anyone moving
         // the new camera, so `onTransformChanged` never fires for it.
         frameRateGate.requestRender()
+    }
+    // The visible area, in the pixels of the surface. Keyed on the pixel values so an animated
+    // padding writes the camera once per changed frame and an unrelated recomposition writes
+    // nothing — `CameraNode.contentPadding` asks for the frame that shows it by itself. An
+    // effect, not a coroutine: the write lands in the frame that composed the padding, and a
+    // padding animated every frame launches nothing.
+    val contentPaddingPx =
+        contentPadding.toViewportPadding(LocalDensity.current, LocalLayoutDirection.current)
+    val contentPaddingBinding = remember(cameraNode) {
+        ContentPaddingBinding { cameraNode.contentPadding = it }
+    }
+    DisposableEffect(contentPaddingBinding, contentPaddingPx) {
+        contentPaddingBinding.apply(contentPaddingPx)
+        onDispose { }
+    }
+    // A camera that leaves this view — swapped for another, or the view itself going away — gets
+    // back the whole viewport: the padding belonged to this view's chrome, not to the camera.
+    DisposableEffect(contentPaddingBinding) {
+        onDispose { contentPaddingBinding.release() }
     }
     LaunchedEffect(view, isOpaque) {
         // Pair with `uiHelper.isOpaque` set in SceneRenderer.attachToSurfaceView/
@@ -2284,6 +2340,7 @@ fun Scene(
     autoCenterContent: Boolean = true,
     autoFitContent: Boolean = false,
     framingPadding: Float = DEFAULT_FRAMING_PADDING,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -2315,6 +2372,7 @@ fun Scene(
     autoCenterContent = autoCenterContent,
     autoFitContent = autoFitContent,
     framingPadding = framingPadding,
+    contentPadding = contentPadding,
     renderer = renderer,
     scene = scene,
     environment = environment,

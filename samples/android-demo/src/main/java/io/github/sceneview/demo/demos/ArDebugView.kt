@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -887,10 +888,19 @@ internal class ReplaySurfaceModel(private val modelLoader: ModelLoader, private 
     /** An instance for a view entering the screen, or `null` when none can be made. */
     fun instance(): ModelInstance? {
         val model = models.lastOrNull() ?: return null
-        if (taken++ == 0) return model.instance
+        val number = ++taken
+        if (number == 1) return model.instance
+        val started = System.nanoTime()
+        val added = modelLoader.createInstance(model)
         // Should the model refuse another instance, the file is parsed again, as it used to be.
-        return modelLoader.createInstance(model)
-            ?: runCatching { parse() }.getOrNull()?.also { models += it }?.instance
+        val instance = added ?: runCatching { parse() }.getOrNull()?.also { models += it }?.instance
+        val how = when {
+            added != null -> "added to the kept model"
+            instance != null -> "the file parsed again"
+            else -> "none"
+        }
+        Log.i(SURFACE_TAG, "instance $number: $how, ${(System.nanoTime() - started) / NS_PER_MS} ms")
+        return instance
     }
 
     /** Frees the model and every instance taken from it. No order with the nodes' own disposal is relied on. */
@@ -900,9 +910,19 @@ internal class ReplaySurfaceModel(private val modelLoader: ModelLoader, private 
     }
 
     private fun parse(): Model {
+        val started = System.nanoTime()
         val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
         buffer.rewind()
-        return modelLoader.createModel(buffer, releaseSourceData = false)
+        val model = modelLoader.createModel(buffer, releaseSourceData = false)
+        val ms = (System.nanoTime() - started) / NS_PER_MS
+        Log.i(SURFACE_TAG, "parsed ${glb.size / BYTES_PER_KB} KB in $ms ms")
+        return model
+    }
+
+    private companion object {
+        const val SURFACE_TAG = "ReplaySurface"
+        const val NS_PER_MS = 1_000_000L
+        const val BYTES_PER_KB = 1024
     }
 }
 

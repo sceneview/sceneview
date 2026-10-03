@@ -48,6 +48,9 @@ on:
       # only for its own half of this list: a library PR no longer waits on
       # the 24-min web suite, and a web-only PR no longer boots the emulator.
       - 'samples/web-demo/**'
+      # The demo runs the website viewer since #4316: a viewer-only edit
+      # ships to /web-demo/ and must run the suite too.
+      - 'website-static/js/sceneview.js'
       - 'sceneview-web/**'
   push:
     branches: [main]
@@ -157,6 +160,7 @@ jobs:
             web:
               - *shared
               - 'samples/web-demo/**'
+              - 'website-static/js/sceneview.js'
               - 'sceneview-web/**'
       - name: Assert every path filter produced a real verdict
         env:

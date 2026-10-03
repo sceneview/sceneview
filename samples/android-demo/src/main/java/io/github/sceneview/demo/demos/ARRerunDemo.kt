@@ -653,6 +653,8 @@ private fun RerunReplayScreen(
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
+        // The mode pill belongs to the landing: under a replay's cards it only took room.
+        modeSwitch = null,
         topOverlay = {
             if (media != null && compact) {
                 Row(Modifier.fillMaxWidth()) {
@@ -1086,6 +1088,8 @@ private fun RerunLiveScreen(
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live.
         controls = { RerunSheet() },
+        // The mode pill belongs to the landing, not to a scan in progress.
+        modeSwitch = null,
         topOverlay = {
             if (recording && scanMedia != null) {
                 val stats = debugSession.stats
