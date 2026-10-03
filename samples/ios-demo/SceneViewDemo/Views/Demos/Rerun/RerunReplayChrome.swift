@@ -23,6 +23,9 @@ enum RerunChromeMetrics {
     static let frameAspect: CGFloat = 3.0 / 4.0
     static let stripHeight: CGFloat = SceneViewTokens.Layout.touchTarget + Space.sm
     static let playheadWidth: CGFloat = Space.xs - Space.xs / 4
+    /// The playhead's card-coloured edge on each side. Ink and card are over 13:1 apart in both
+    /// themes, so over any photograph one of the two tones holds 3:1.
+    static let playheadEdge: CGFloat = ARChrome.borderWidth
     /// `ArOverlay.maxWidth`.
     static let maxWidth: CGFloat = 480
 }
@@ -66,7 +69,7 @@ struct RerunReplayHud: View {
                 figure("Path", RerunFormat.distance(stats.pathMetres), SceneViewTokens.HomeColor.primary, .trail)
                 figure("Planes", "\(stats.planes)", SceneViewTokens.HomeColor.primary, .planes)
                 figure("Points", RerunFormat.compactCount(stats.mapPoints), SceneViewTokens.RoomScan.point, .points)
-                figure("Anchors", "\(stats.anchors)", SceneViewTokens.HomeColor.primary, .anchors)
+                figure("Anchors", "\(stats.anchors)", SceneViewTokens.RoomScan.text, .anchors)
             }
         }
         .padding(.horizontal, Space.md)
@@ -88,10 +91,18 @@ struct RerunReplayHud: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 HStack(spacing: Space.xs) {
+                    // Hidden reads by shape, not by colour alone: a hollow ring and a struck label.
                     Circle()
-                        .fill(on ? color : SceneViewTokens.RoomScan.secondaryText)
+                        .fill(on ? color : Color.clear)
+                        .overlay {
+                            if !on {
+                                Circle().strokeBorder(SceneViewTokens.RoomScan.secondaryText,
+                                                      lineWidth: ARChrome.borderWidth)
+                            }
+                        }
                         .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
                     Text(label)
+                        .strikethrough(!on, color: SceneViewTokens.RoomScan.secondaryText)
                         .font(SceneViewTokens.TypeScale.caption)
                         .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                         .lineLimit(1)
@@ -311,6 +322,9 @@ struct RerunFilmstripCard: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 SceneViewTokens.RoomScan.text
                     .frame(width: RerunChromeMetrics.playheadWidth, height: height)
+                    .background {
+                        SceneViewTokens.RoomScan.card.padding(.horizontal, -RerunChromeMetrics.playheadEdge)
+                    }
                     .offset(x: min(max(progress * width - RerunChromeMetrics.playheadWidth / 2, 0),
                                    width - RerunChromeMetrics.playheadWidth))
             }

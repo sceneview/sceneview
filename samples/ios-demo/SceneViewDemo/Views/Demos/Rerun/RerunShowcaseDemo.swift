@@ -99,7 +99,7 @@ struct RerunShowcaseDemo: View {
         }
         .task { await boot() }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { session?.pause() }
+            if phase == .active { session?.resumeIfSuspended() } else { session?.suspend() }
         }
         .onDisappear { session?.pause() }
         .onChange(of: inbox.pending) { _, pending in

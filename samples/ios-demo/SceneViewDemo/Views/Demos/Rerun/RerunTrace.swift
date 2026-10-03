@@ -649,8 +649,8 @@ struct RerunPlayback: Equatable, Sendable {
 
     init(duration: Float) { self.duration = duration }
 
-    /// Automatic camera animation follows playback, including the end hold.
-    var cameraAdvances: Bool { playing && cursor < duration }
+    /// The automatic camera moves whenever the replay plays: the looping end hold is not a pause.
+    var cameraAdvances: Bool { playing }
 
     mutating func pause() { playing = false }
 

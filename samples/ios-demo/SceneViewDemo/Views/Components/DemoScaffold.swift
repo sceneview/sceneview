@@ -154,7 +154,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         // The chrome never rides the keyboard: a text field lives in the
         // sheet, and the sheet does its own avoidance.
         .ignoresSafeArea(.keyboard)
-        .background(SceneViewTokens.Stage.background.ignoresSafeArea())
+        // Under the stage while it fades in: the themed stage's own ground, not the dark one.
+        .background((chromeMode == .themedStage ? SceneViewTokens.RoomScan.background
+                                                : SceneViewTokens.Stage.background).ignoresSafeArea())
         .hideNavigationBar()
         .onAppear {
             withAnimation(SceneViewTokens.Spring.fade) { entered = true }

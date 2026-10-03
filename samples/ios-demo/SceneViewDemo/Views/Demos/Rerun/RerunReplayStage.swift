@@ -39,7 +39,7 @@ struct RerunReplayStage: View {
         .onChange(of: colorScheme) { _, scheme in renderer.repaint(dark: scheme == .dark) }
         .onChange(of: scenePhase) { _, phase in
             renderer.active = phase == .active
-            if phase != .active { session.pause() }
+            if phase != .active { session.suspend() }
         }
         .onAppear { renderer.active = scenePhase == .active }
         .onDisappear { renderer.active = false }
@@ -225,7 +225,12 @@ final class RerunStageRenderer {
         if orbit.following { orbit.home = home }
         if !orbit.hasFramedContent, bounds != nil {
             orbit.hasFramedContent = true
-            if orbit.drift { orbit.playIntro(from: RerunIntro.start(for: home)) } else { orbit.snap(to: home) }
+            // The entrance needs a running camera: a stage installed on a paused replay opens framed.
+            if orbit.drift && session.playback.cameraAdvances {
+                orbit.playIntro(from: RerunIntro.start(for: home))
+            } else {
+                orbit.snap(to: home)
+            }
         }
         orbit.update(delta: delta, advancing: session.playback.cameraAdvances)
         let lift = compact ? 0 : Self.mainLift
@@ -258,10 +263,7 @@ final class RerunStageRenderer {
         var out: [RerunLayer: RerunMesh] = [:]
         var touched: [RerunLayer] = []
 
-        let (lo, hi) = bounds ?? (SIMD3<Float>(-1, 0, -2), SIMD3<Float>(1, 0, 0.5))
-        let cell = RerunGeometry.gridCell
-        let stage = (SIMD3((lo.x / cell).rounded(.down) * cell, 0, (lo.z / cell).rounded(.down) * cell),
-                     SIMD3((hi.x / cell).rounded(.up) * cell, 0, (hi.z / cell).rounded(.up) * cell))
+        let stage = RerunGeometry.stageBounds(bounds)
         if changed("stage", [stage.0, stage.1, SIMD3(floorY, mpp, 0)]) {
             RerunGeometry.buildStage(bounds: stage, y: floorY, style: style, into: &out)
             touched += [.gridMinor, .gridMajor, .axisX, .axisY, .axisZ]
