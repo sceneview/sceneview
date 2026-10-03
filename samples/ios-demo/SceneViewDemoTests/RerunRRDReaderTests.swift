@@ -122,14 +122,14 @@ final class RerunRRDReaderTests: XCTestCase {
 
     // MARK: - Round-trip regressions built in code
 
-    /// N = 9 photos, K < N keyframes, three timed point clouds, and one textured plane.
+    /// N = 9 photos with bytes of their own, K < N keyframes, three timed point clouds — one
+    /// of their points has no colour — and one textured plane.
     private func recordedPack() throws -> RerunPack {
-        let photo = try rgbaPNG()
         var media = Data()
         var entries: [[String: Any]] = []
-        func store(_ path: String) {
-            entries.append(["path": path, "offset": media.count, "length": photo.count])
-            media.append(photo)
+        func store(_ bytes: Data, at path: String) {
+            entries.append(["path": path, "offset": media.count, "length": bytes.count])
+            media.append(bytes)
         }
         var log = ""
         for i in 0...8 {
@@ -138,15 +138,15 @@ final class RerunRRDReaderTests: XCTestCase {
                 log += "{\"t\":\(time),\"type\":\"camera_pose\",\"entity\":\"world/camera\",\"translation\":[\(i),1,0],\"quaternion\":[0,0,0,1]}\n"
             }
             if [0, 4, 8].contains(i) {
-                let points = i == 0 ? "[[0,0,0]]" : i == 4 ? "[[0,0,0],[1,0,0]]" : "[[1,0,0],[2,0,0]]"
-                let colors = i == 0 ? "[[255,0,0]]" : i == 4 ? "[[255,0,0],[0,255,0]]" : "[[0,255,0],[0,0,255]]"
+                let points = i == 0 ? "[[0,0,0]]" : i == 4 ? "[[0,0,0],[1,0,0],[3,0,0]]" : "[[1,0,0],[2,0,0]]"
+                let colors = i == 0 ? "[[255,0,0]]" : i == 4 ? "[[255,0,0],[0,255,0],[-1,-1,-1]]" : "[[0,255,0],[0,0,255]]"
                 log += "{\"t\":\(time),\"type\":\"point_cloud\",\"entity\":\"world/points\",\"positions\":\(points),\"colors\":\(colors)}\n"
             }
             let path = "frames/\(i).png"
-            store(path)
+            store(try framePNG(i), at: path)
             log += "{\"t\":\(time),\"type\":\"image\",\"entity\":\"world/camera/image\",\"path\":\"\(path)\"}\n"
         }
-        store("planes/plane-7.png")
+        store(try png(rgba), at: "planes/plane-7.png")
         log += "{\"t\":0,\"type\":\"plane\",\"entity\":\"world/planes/7\",\"kind\":\"horizontal_upward\",\"polygon\":[[0,0,0],[1,0,0],[1,0,1],[0,0,1]]}\n"
         let manifest: [String: Any] = [
             "frameRate": 2, "frames": 9, "media": entries,
@@ -156,10 +156,19 @@ final class RerunRRDReaderTests: XCTestCase {
                                  log: Data(log.utf8), media: media, title: "Round trip")
     }
 
-    private let rgba = Data([10, 20, 30, 255, 0, 0, 0, 0, 100, 150, 200, 51, 240, 80, 40, 255])
+    /// The plane photo: an opaque, a transparent, a translucent and an opaque texel. 77 does
+    /// not divide 255, so un-premultiplying the translucent one is not exact.
+    private let rgba = Data([10, 20, 30, 255, 0, 0, 0, 0, 100, 150, 200, 77, 240, 80, 40, 255])
+    private let uncoloured = SIMD3<Float>(3, 0, 0)
 
-    private func rgbaPNG() throws -> Data {
-        let provider = try XCTUnwrap(CGDataProvider(data: rgba as CFData))
+    /// Photo `i`: no two photos share their bytes.
+    private func framePNG(_ i: Int) throws -> Data {
+        try png(Data([UInt8(10 + 20 * i), 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 240, 80, 40, 255]))
+    }
+
+    /// `texels` as a 2 × 2 PNG with straight alpha.
+    private func png(_ texels: Data) throws -> Data {
+        let provider = try XCTUnwrap(CGDataProvider(data: texels as CFData))
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let image = try XCTUnwrap(CGImage(width: 2, height: 2, bitsPerComponent: 8, bitsPerPixel: 32,
                                         bytesPerRow: 8, space: space,
@@ -172,6 +181,12 @@ final class RerunRRDReaderTests: XCTestCase {
         return output as Data
     }
 
+    /// The exporter writes a point without a colour as white, as Android's does: that is the
+    /// one thing a round trip changes in the map.
+    private func exportedColors(_ frame: RerunFrame) -> [UInt32]? {
+        frame.mapPointColors.map { $0.map { $0 == 0 ? 0xFFFF_FFFF : $0 } }
+    }
+
     func testPointsSurviveARoundTripWithTheirTimestamps() throws {
         let original = try recordedPack().trace
         let exported = RerunExportAdapter.scene(for: try recordedPack())
@@ -182,9 +197,37 @@ final class RerunRRDReaderTests: XCTestCase {
             let a = original.frameAt(time), b = reopened.frameAt(time)
             XCTAssertEqual(Array(b.mapPoints), Array(a.mapPoints), "map at \(time)")
             XCTAssertEqual(b.livePoints, a.livePoints, "live points at \(time)")
-            XCTAssertEqual(b.mapPointColors.map(Array.init), a.mapPointColors.map(Array.init))
+            XCTAssertEqual(b.mapPointColors.map(Array.init), exportedColors(a), "colours at \(time)")
         }
         XCTAssertLessThan(reopened.frameAt(0).mapPointCount, reopened.frameAt(4).mapPointCount)
+
+        // The point no photo coloured arrives with its sighting, and comes back white.
+        func colour(of point: SIMD3<Float>, in frame: RerunFrame) throws -> UInt32? {
+            guard let index = Array(frame.mapPoints).firstIndex(of: point) else { return nil }
+            return Array(try XCTUnwrap(frame.mapPointColors))[index]
+        }
+        XCTAssertNil(try colour(of: uncoloured, in: reopened.frameAt(1.9)))
+        XCTAssertEqual(try colour(of: uncoloured, in: original.frameAt(2)), 0)
+        XCTAssertEqual(try colour(of: uncoloured, in: reopened.frameAt(2)), 0xFFFF_FFFF)
+    }
+
+    /// A map point no sighting names has no time in the file: it is there from the first
+    /// frame, with its colour, and the sighted points still arrive at their own times.
+    func testMapPointsNeverSightedAreShownFromTheStart() throws {
+        let original = try recordedPack().trace
+        var exported = RerunExportAdapter.scene(for: try recordedPack())
+        let unseen = SIMD3<Float>(9, 0, 0)
+        exported.points.append(unseen)
+        exported.pointColors.append(SIMD3(1, 2, 3))
+        let reopened = try reread(exported).pack.trace
+        for time in [Float(0), 1.6, 2, 3.6, 4] {
+            let a = original.frameAt(time), b = reopened.frameAt(time)
+            let points = Array(b.mapPoints), colors = Array(try XCTUnwrap(b.mapPointColors))
+            let index = try XCTUnwrap(points.firstIndex(of: unseen), "unseen point at \(time)")
+            XCTAssertEqual(colors[index], 0xFF01_0203)
+            XCTAssertEqual(points.filter { $0 != unseen }, Array(a.mapPoints), "sighted points at \(time)")
+            XCTAssertEqual(b.livePoints, a.livePoints, "live points at \(time)")
+        }
     }
 
     /// A sighting of a point the static map does not hold (a file from another writer) has no
@@ -212,7 +255,7 @@ final class RerunRRDReaderTests: XCTestCase {
         let frame = pack.trace.frameAt(pack.trace.duration)
         let points = Array(frame.mapPoints)
         let colors = Array(try XCTUnwrap(frame.mapPointColors))
-        XCTAssertEqual(points.count, 4)
+        XCTAssertEqual(points.count, 5, "the map's four points and the stray one")
         XCTAssertEqual(colors[try XCTUnwrap(points.firstIndex(of: stray))], 0, "no colour, not opaque black")
         XCTAssertEqual(colors[try XCTUnwrap(points.firstIndex(of: SIMD3(0, 0, 0)))], 0xFFFF_0000, "the map's own colour")
 
@@ -229,7 +272,22 @@ final class RerunRRDReaderTests: XCTestCase {
         XCTAssertEqual(pixels.channels, 4)
         XCTAssertEqual(pixels.width, 2)
         XCTAssertEqual(pixels.height, 2)
-        XCTAssertEqual(pixels.data, rgba, "opaque, transparent and translucent pixels retain their input channels")
+        let texels = [UInt8](pixels.data), input = [UInt8](rgba)
+        XCTAssertEqual(Array(texels[0..<8]), Array(input[0..<8]), "the opaque and the transparent texel, exactly")
+        XCTAssertEqual(Array(texels[12..<16]), Array(input[12..<16]), "the last opaque texel, exactly")
+
+        // The translucent texel keeps its alpha. ImageIO decodes premultiplied, 8 bits per
+        // channel, so its colour comes back within two levels of the straight input at alpha
+        // 77 — nowhere near the premultiplied (30, 45, 60), nor black.
+        XCTAssertEqual(texels[11], 77)
+        for channel in 8..<11 {
+            XCTAssertLessThanOrEqual(abs(Int(texels[channel]) - Int(input[channel])), 2, "channel \(channel - 8)")
+        }
+
+        // Decoding it once more does not drift: a second export writes the same texels.
+        let again = RerunExportAdapter.scene(for: try reread(reopened).pack)
+        let second = try XCTUnwrap(again.planes.first?.texture)
+        XCTAssertEqual(RerunImageCodec.rgbPixels(from: second.imageData, maxDimension: 512)?.data, pixels.data)
     }
 
     func testEveryRecordedPhotoIsExportedInsteadOfOnlyKeyframes() throws {
@@ -241,7 +299,12 @@ final class RerunRRDReaderTests: XCTestCase {
         let reopened = try reread(exported).pack
         XCTAssertEqual(reopened.trace.imageCount, 9)
         XCTAssertEqual(reopened.trace.imageTimes, pack.trace.imageTimes)
-        for path in reopened.trace.imagePaths { XCTAssertEqual(reopened.bytes(for: path), try rgbaPNG()) }
+
+        // Each photo comes back at its own time with its own bytes, not merely nine of them.
+        let frames = try (0...8).map(framePNG)
+        XCTAssertEqual(Set(frames).count, 9)
+        XCTAssertEqual(reopened.trace.imageTimes, (0...8).map { Float($0) * 0.5 })
+        XCTAssertEqual(reopened.trace.imagePaths.map { reopened.bytes(for: $0) }, frames)
     }
 
     // MARK: - Failures
@@ -261,6 +324,31 @@ final class RerunRRDReaderTests: XCTestCase {
         var scene = RerunExportAdapter.scene(for: try recordedPack())
         scene.points[0] = SIMD3(Float.greatestFiniteMagnitude, 0, 0)
         assertFails(try RerunRRDWriter.data(for: scene), with: .malformed("point outside voxel range"))
+    }
+
+    /// The replay floors `coordinate / voxel` into an `Int64`, which traps from 2^63 up and
+    /// below -2^63. The reader refuses exactly those coordinates: the nearest `Float` inside
+    /// the range still opens, on every axis and at both ends.
+    func testVoxelRangeEndsAtTheLastCoordinateThatConverts() throws {
+        let voxel = RerunTrace.pointVoxel
+        let limit = Float(sign: .plus, exponent: 63, significand: 1) // 2^63, one past Int64.max.
+        var above = limit * voxel
+        while above / voxel < limit { above = above.nextUp }
+        while above.nextDown / voxel >= limit { above = above.nextDown }
+        var below = -above
+        while below / voxel >= -limit { below = below.nextDown } // -2^63 is Int64.min: it converts.
+        while below.nextUp / voxel < -limit { below = below.nextUp }
+
+        for axis in 0..<3 {
+            for (refused, accepted) in [(above, above.nextDown), (below, below.nextUp)] {
+                var scene = RerunExportAdapter.scene(for: try recordedPack())
+                scene.points[0][axis] = refused
+                assertFails(try RerunRRDWriter.data(for: scene), with: .malformed("point outside voxel range"))
+                scene.points[0][axis] = accepted
+                let frame = try reread(scene).pack.trace.frameAt(4)
+                XCTAssertTrue(frame.mapPoints.contains(scene.points[0]), "axis \(axis), \(accepted)")
+            }
+        }
     }
 
     func testWrongMagicIsNotAnRRD() throws {

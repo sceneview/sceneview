@@ -124,7 +124,11 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertEqual(try self.chunks(of: recorded).first { $0.fieldNames.contains("EncodedImage:blob") }?.rowCount, 1)
     }
 
-    // MARK: - Bytes the Android writer emits
+    // MARK: - Expected bytes written by hand from the Android writer's source
+    //
+    // No file the Android writer produced is involved here: the expected bytes are assembled
+    // in this file from a reading of `RerunRrdWriter.kt` and `RerunRrdChunk.kt`. They pin the
+    // iOS layout to that reading; they do not prove the two writers agree.
 
     /// `RerunRrdWriter.kt`'s `TUID_EPOCH_NANOS`, and its `RerunTuidSequence` seed for
     /// ``recordingId``: the UUID's high 64 bits masked to 48.
@@ -139,9 +143,9 @@ final class RerunRRDWriterTests: XCTestCase {
 
     /// The stream header, the first `MessageHeader` and the whole `SetStoreInfo`, assembled
     /// here field by field from `RerunRrdWriter.kt` (`streamHeader`, `appendMessage`,
-    /// `setStoreInfo`). The store source label is the only byte run that differs between the
-    /// platforms: `SceneView Android` there.
-    func testStreamAndStoreInfoAreByteForByteWhatTheAndroidWriterEmits() throws {
+    /// `setStoreInfo`) and compared as one prefix. By that reading the store source label is
+    /// the only byte run that differs between the platforms: `SceneView Android` there.
+    func testStreamAndStoreInfoMatchBytesHandWrittenFromTheAndroidWriter() throws {
         let data = try RerunRRDWriter.data(for: scene(), recordingId: recordingId)
         let source = Array("SceneView iOS".utf8)
         var expected: [UInt8] = Array("RRF2".utf8) + [0, 38, 1, 0] + [0, 2, 0, 0]
@@ -157,10 +161,11 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertEqual(Array(data.dropFirst(expected.count).prefix(8)), Self.le64(2), "an ArrowMsg follows")
     }
 
-    /// The `world/points/live` message as Android's `arrowMessage` and `liveChunk` write it:
-    /// the envelope bytes around the IPC stream, the chunk and row ids in sequence, and each
-    /// column's values as contiguous little-endian runs.
-    func testLivePointsMessageCarriesTheBytesTheAndroidWriterEmits() throws {
+    /// The `world/points/live` message against a reading of Android's `arrowMessage` and
+    /// `liveChunk`: the envelope bytes around the IPC stream are compared in place, the chunk
+    /// and row ids and each column's values are looked for as contiguous little-endian runs
+    /// inside the IPC stream — present, not located.
+    func testLivePointsMessageContainsBytesHandWrittenFromTheAndroidWriter() throws {
         var recorded = scene()
         recorded.pointObservations = [.init(time: 1.25, points: [1, 2]), .init(time: 0.5, points: [0])]
         let messages = try Self.messages(in: RerunRRDWriter.data(for: recorded, recordingId: recordingId))
