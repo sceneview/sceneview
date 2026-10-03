@@ -5,6 +5,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import io.github.sceneview.demo.common.placement.roomPlacementModels
+import io.github.sceneview.demo.common.placement.isRoomAsset
+import io.github.sceneview.demo.common.placement.armed
+import io.github.sceneview.demo.demos.internal.RerunStoredSession
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -222,6 +230,13 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         value = StreamedPlacementThumbnails.resolve(SketchfabService.getInstance(context), placementSlugs)
     }
 
+    val recordings by produceState<List<RerunStoredSession>>(emptyList(), context) {
+        value = withContext(Dispatchers.IO) { rerunSessionStore(context).list() }
+    }
+    val demoRoomTitle = stringResource(R.string.ar_picker_demo_room)
+    val rooms = remember(recordings, demoRoomTitle) { roomPlacementModels(recordings, demoRoomTitle) }
+    var roomPlaying by remember(picker.selectedId, state.placed?.id) { mutableStateOf(true) }
+
     // The catalogue the picker offers. A streamed row that has not landed yet carries its
     // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
     // places that slug's stand-in rather than nothing — and the row is flagged `pending`
@@ -232,8 +247,12 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         armedFile,
         requestedExtraRow,
         streamedThumbnails,
+        rooms,
+        wallMode,
     ) {
-        listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
+        // A room stands on a table or the floor, never on a wall.
+        val roomRows = if (wallMode) emptyList() else rooms
+        roomRows + listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
             val isArmed = slug.uid == armedSlug?.uid
             PlacementModel(
                 id = streamedModelId(slug),
@@ -265,7 +284,9 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     // tap actually places. `loaded` is the FILE here, not a parsed `ModelInstance`: a tap
     // places whatever `armedFile` holds, so that is the moment the chip has something true
     // to say. See [AssetSourceProbe].
-    val assetSource = if (requestedExtraRow?.id == OPENED_FILE_PLACEMENT_ROW_ID &&
+    val assetSource = if (models.armed(picker)?.roomRecordingId != null) {
+        null
+    } else if (requestedExtraRow?.id == OPENED_FILE_PLACEMENT_ROW_ID &&
         picker.selectedId == requestedExtraRow.id
     ) {
         // The user's own file: neither bundled nor streamed. No chip rather than a wrong one.
@@ -358,15 +379,25 @@ fun ARPlacementDemo(onBack: () -> Unit) {
         // bottom band (and over the camera on the AR View tab): a `primaryContainer` FAB
         // and a `secondaryContainer` disc, i.e. theme colours over a camera frame that has
         // no theme. The dock's Controls item (Settings) is appended by the scaffold, so
-        // this screen's dock is Models · Reset · Settings. Models is `Category`, the same
+        // this screen's dock adds Play/Pause only for a placed room recording. Models is `Category`, the same
         // glyph as the Model Viewer's Models item: one action, one icon across the app.
-        dock = listOf(
+        dock = listOfNotNull(
             DockItem(
                 icon = Icons.Filled.Category,
                 label = stringResource(R.string.ar_dock_models_label),
                 caption = stringResource(R.string.ar_dock_models_caption),
                 onClick = picker::openSheet,
             ),
+            if (isRoomAsset(state.placed?.spec?.assetLocation)) {
+                DockItem(
+                    icon = if (roomPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    label = stringResource(if (roomPlaying) R.string.ar_room_pause else R.string.ar_room_play),
+                    caption = stringResource(
+                        if (roomPlaying) R.string.ar_room_pause_caption else R.string.ar_room_play_caption,
+                    ),
+                    onClick = { roomPlaying = !roomPlaying },
+                )
+            } else null,
             // §2.2 *Restarting placement*: removes the anchor, keeps the chosen asset,
             // scans again.
             DockItem(
@@ -386,6 +417,7 @@ fun ARPlacementDemo(onBack: () -> Unit) {
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
+                roomPlaying = roomPlaying,
                 // "View in 3D" on the no-surface card: back to the chooser, where the model
                 // is shown on a still, themed screen.
                 onViewIn3D = onBackPressed,

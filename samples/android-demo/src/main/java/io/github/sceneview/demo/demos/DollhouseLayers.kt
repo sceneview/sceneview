@@ -18,6 +18,10 @@ import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Skybox
 import com.google.android.filament.ToneMapper
+import com.google.android.filament.Texture
+import com.google.android.filament.TextureSampler
+import java.nio.ByteBuffer
+import io.github.sceneview.safeDestroyTexture
 import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.FrameRatePolicy
@@ -26,11 +30,14 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.collision.Box as CollisionBox
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
+import io.github.sceneview.demo.demos.internal.DebugPlane
+import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DollhouseRoom
 import io.github.sceneview.demo.demos.internal.PlaneLayering
@@ -68,7 +75,13 @@ import io.github.sceneview.utils.readBuffer
  * when it holds nothing, and the room's dense cloud cut open ([RoomDollhouse.cropDense]) and
  * built for drawing — the scan's own layer when the cut kept all of it.
  */
-internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRoom?, val dense: ReplayDenseLayer?) {
+internal class DollhouseBuild(
+    val media: RerunReplayMedia,
+    val room: DollhouseRoom?,
+    val dense: ReplayDenseLayer?,
+    /** Original point indices retained by the cut; same order as the uploaded surfels. */
+    val denseSourceIndices: IntArray = IntArray(0),
+) {
     companion object {
         /** Reads [media]'s last frame and cuts its room open. Seconds for a dense scan: off the main thread. */
         fun of(media: RerunReplayMedia): DollhouseBuild {
@@ -85,7 +98,16 @@ internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRo
                     atlas = DenseSurfels.atlas(cut, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
                 )
             }
-            return DollhouseBuild(media, room, dense)
+            val indices = if (source == null || cut == null) IntArray(0) else {
+                var original = 0
+                IntArray(cut.count) { kept ->
+                    while (original < source.cloud.count && (0..2).any {
+                        source.cloud.positions[original * 3 + it] != cut.positions[kept * 3 + it]
+                    }) original++
+                    original++ - 1
+                }
+            }
+            return DollhouseBuild(media, room, dense, indices)
         }
     }
 }
@@ -98,16 +120,40 @@ internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRo
 internal class DollhouseLayers(
     private val engine: Engine,
     private val materialLoader: MaterialLoader,
-    media: RerunReplayMedia,
+    private val media: RerunReplayMedia,
     private val room: DollhouseRoom,
     dense: ReplayDenseLayer?,
     palette: DebugPalette,
     base: Color,
+    private val replaying: Boolean = false,
+    private val denseSourceIndices: IntArray = IntArray(0),
 ) {
     /** The scan's dense cloud, cut open, is the room itself, in the colours the camera saw. */
     private val hasDense = dense != null
-    private val replay = ReplayLayers(engine, materialLoader, media, dense = dense)
+    private val replay = ReplayLayers(engine, materialLoader, media, dense = if (replaying) null else dense)
+    // Replay the cropped dense cloud by changing its index range, never rebuilding its mesh.
+    private val denseTexture = dense?.takeIf { replaying }?.let {
+        Texture.Builder().width(DenseSurfels.ATLAS_SIZE).height(DenseSurfels.ATLAS_SIZE)
+            .levels(1).sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.SRGB8_A8)
+            .build(engine).also { texture ->
+                texture.setImage(engine, 0, Texture.PixelBufferDescriptor(
+                    ByteBuffer.wrap(it.atlas), Texture.Format.RGBA, Texture.Type.UBYTE,
+                ))
+            }
+    }
     private val materials = ArrayList<MaterialInstance>()
+    private val denseNode = denseTexture?.let { texture ->
+        val sampler = TextureSampler(
+            TextureSampler.MinFilter.NEAREST, TextureSampler.MagFilter.NEAREST,
+            TextureSampler.WrapMode.CLAMP_TO_EDGE,
+        )
+        // Writes depth, like the replay's own dense layer: the surfels hide what is behind them.
+        val material = materialLoader.createImageInstance(texture, sampler).also {
+            it.setDepthWrite(true)
+            materials += it
+        }
+        DebugLayerNode(engine, material, DENSE_PRIORITY, textured = true).also { it.upload(dense!!.mesh) }
+    }
 
     private fun node(color: Color, priority: Int, twoSided: Boolean = color.alpha >= 1f): DebugLayerNode {
         val material = materialLoader.createUnlitColorInstance(color).also {
@@ -131,6 +177,7 @@ internal class DollhouseLayers(
         DebugLayer.OutlineWall to node(palette.wallOutline, OUTLINE_PRIORITY),
         DebugLayer.OutlineOther to node(palette.otherOutline, OUTLINE_PRIORITY),
     )
+    private val camera = if (replaying) node(palette.frustum, TRAIL_PRIORITY) else null
     private val trail = node(palette.trailNew, TRAIL_PRIORITY)
     private val plinth = node(base, BASE_PRIORITY, twoSided = true)
 
@@ -145,13 +192,23 @@ internal class DollhouseLayers(
 
     /** Every node, none of them pickable: a touch lands on [DollhouseModel]'s box instead. */
     val nodes: List<DebugLayerNode> =
-        (replay.nodes + flat.values + trail + plinth + plinthEdge + shadow).onEach {
+        (
+            replay.nodes + listOfNotNull(denseNode) + flat.values + listOfNotNull(camera) +
+                trail + plinth + plinthEdge + shadow
+            ).onEach {
             // Each layer is bounded by a 500 m box for cheap culling: as a collider it would take
             // every touch in the room.
             it.isHittable = false
         }
 
     private var synced: Triple<Float, Boolean, Boolean>? = null
+    private var syncedFrame: ArDebugFrame? = null
+
+    // What the last sync drew of a replayed frame: a mesh is rebuilt and uploaded only when
+    // its own input moved, not on every tick of the clock.
+    private var syncedPlanes: List<DebugPlane>? = null
+    private var syncedTrailSize = -1
+    private var syncedCamera: DebugPose? = null
 
     /**
      * Builds the meshes for points and paths sized as if drawn at [scale]: the miniature's own
@@ -159,38 +216,68 @@ internal class DollhouseLayers(
      * phone walked shows only on request ([showPath]): the room first, not the route through it.
      * Without [plinth] — at real size, on the real floor — the room stands bare.
      */
-    fun sync(scale: Float, showPath: Boolean, plinth: Boolean) {
+    fun sync(scale: Float, showPath: Boolean, plinth: Boolean, currentFrame: ArDebugFrame? = null) {
         val key = Triple(scale, showPath, plinth)
-        if (key == synced) return
+        if (key == synced && (currentFrame ?: room.frame) === syncedFrame) return
+        val staticChanged = key != synced
         synced = key
+        syncedFrame = currentFrame ?: room.frame
         val style = RoomDollhouse.styleFor(scale)
-        val frame = room.frame
+        val frame = currentFrame ?: room.frame
         // The dense cloud is the room, surfaces and all: the planes and their photos would only
         // cut through it. Without one, the planes' photos and the points in the colours the
         // camera saw them in — the replay's, not the live view's one-colour markers.
         replay.sync(
             frame, style, room.fit.floorY,
-            ReplayVisibility(planes = !hasDense, points = true, anchors = false, trail = false),
+            ReplayVisibility(
+                planes = !hasDense, points = !replaying || !hasDense, anchors = false, trail = currentFrame != null,
+            ),
         )
-        val meshes = flat.keys.associateWith { DebugMesh() }
-        if (!hasDense) {
-            // The flat fills are opaque, like the photos: each at its own depth, or they z-fight.
-            ArDebugGeometry.buildPlanes(
-                frame.planes, style, { meshes.getValue(it) },
-                layering = PlaneLayering.of(frame, room.fit.floorY),
-            ) { replay.isTextured(it) }
+        denseNode?.let { node ->
+            val seen = media.pointCountAt(frame.time)
+            val count = dollhouseRetainedPointCount(denseSourceIndices, seen)
+                .coerceAtMost(DenseSurfels.MAX_SURFELS)
+            node.isVisible = count > 0
+            if (count > 0) node.showIndices(count * INDICES_PER_SURFEL)
         }
-        flat.forEach { (layer, node) -> node.upload(meshes.getValue(layer)) }
-        // Every step of the replay's gradient into one mesh, in one colour: at this size a
-        // gradient reads as noise.
-        val path = DebugMesh()
-        if (showPath) ArDebugGeometry.buildTrail(frame.trail, style) { path }
-        trail.upload(path)
+        if (staticChanged || frame.planes != syncedPlanes) {
+            syncedPlanes = frame.planes
+            val meshes = flat.keys.associateWith { DebugMesh() }
+            if (!hasDense) {
+                // The flat fills are opaque, like the photos: each at its own depth, or they z-fight.
+                ArDebugGeometry.buildPlanes(
+                    frame.planes, style, { meshes.getValue(it) },
+                    layering = PlaneLayering.of(frame, room.fit.floorY),
+                ) { replay.isTextured(it) }
+            }
+            flat.forEach { (layer, node) -> node.upload(meshes.getValue(layer)) }
+        }
+        if (staticChanged || frame.trail.size != syncedTrailSize) {
+            syncedTrailSize = frame.trail.size
+            // Every step of the replay's gradient into one mesh, in one colour: at this size a
+            // gradient reads as noise.
+            val path = DebugMesh()
+            if (showPath) ArDebugGeometry.buildTrail(frame.trail, style) { path }
+            trail.upload(path)
+        }
+        if (camera != null && (staticChanged || frame.camera != syncedCamera)) {
+            syncedCamera = frame.camera
+            // The phone that recorded the room, walking its path.
+            val cameraMesh = DebugMesh()
+            ArDebugGeometry.buildCamera(frame, style, { cameraMesh }, lens = replay.lens, face = false)
+            camera.upload(cameraMesh)
+        }
+        // The finished footprint stays steady while the recording discovers the room.
+        if (staticChanged) syncBase(scale, plinth)
+    }
+
+    /** The plinth, its edge and the shadow under it, for a room drawn at [scale]. */
+    private fun syncBase(scale: Float, plinth: Boolean) {
         this.plinth.isVisible = plinth
         plinthEdge.isVisible = plinth
         shadow.isVisible = plinth
         // A dense room's plinth covers the whole cloud, not only the planes ARCore found.
-        val top = if (hasDense) RoomDollhouse.basePolygon(room.fit) else RoomDollhouse.basePolygon(frame, room.fit)
+        val top = if (hasDense) RoomDollhouse.basePolygon(room.fit) else RoomDollhouse.basePolygon(room.frame, room.fit)
         val topY = room.fit.floorY - RoomDollhouse.BASE_DROP_M
         val bottomY = topY - RoomDollhouse.plinthThickness(scale)
         this.plinth.upload(DebugMesh().also { ArDebugGeometry.addFan(it, top) })
@@ -227,13 +314,18 @@ internal class DollhouseLayers(
         replay.destroy()
         materials.forEach(materialLoader::destroyMaterialInstance)
         materials.clear()
+        denseTexture?.let { engine.safeDestroyTexture(it) }
     }
 
     private companion object {
+        const val INDICES_PER_SURFEL = 6
         const val SHADOW_PRIORITY = 0
         const val BASE_PRIORITY = 1
         const val FILL_PRIORITY = 2
         const val OUTLINE_PRIORITY = 3
+
+        /** The replay's own priority for its points and dense cloud. */
+        const val DENSE_PRIORITY = 3
         const val TRAIL_PRIORITY = 5
 
         /** How much darker the plinth's edge is than its top. */
@@ -279,13 +371,17 @@ internal fun SceneScope.DollhouseModel(
     pickable: Boolean,
     showPath: Boolean,
     plinth: Boolean = true,
+    currentFrame: ArDebugFrame? = null,
 ) {
     // Remembered before the node, so Compose releases it after the node destroyed the layers.
-    val layers = remember(engine, materialLoader, build, room, palette, base) {
-        DollhouseLayers(engine, materialLoader, build.media, room, build.dense, palette, base)
+    val layers = remember(engine, materialLoader, build, room, palette, base, currentFrame != null) {
+        DollhouseLayers(
+            engine, materialLoader, build.media, room, build.dense, palette, base,
+            replaying = currentFrame != null, denseSourceIndices = build.denseSourceIndices,
+        )
     }
     DisposableEffect(layers) { onDispose { layers.destroy() } }
-    SideEffect { layers.sync(styleScale, showPath, plinth) }
+    SideEffect { layers.sync(styleScale, showPath, plinth, currentFrame) }
     val fit = room.fit
     // On the table the plinth's foot stands on it; at real size the room's floor is the floor.
     val floor = if (plinth) {

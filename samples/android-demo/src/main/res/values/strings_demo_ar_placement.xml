@@ -63,4 +63,13 @@
     <string name="ar_adjust_rotate_right">Rotate right</string>
     <!-- Shared AR start-up scrim (ARCameraInitScrim), shown until the first camera frame. -->
     <string name="ar_starting_camera">Starting camera…</string>
+    <!-- Model picker sections: the user's Room Scan recordings (and the bundled one), then the models. -->
+    <string name="ar_picker_your_rooms">Your rooms</string>
+    <string name="ar_picker_models">Models</string>
+    <string name="ar_picker_demo_room">Demo room</string>
+    <string name="ar_picker_record_room">Record your own room in Room Scan.</string>
+    <string name="ar_room_play">Play</string>
+    <string name="ar_room_pause">Pause</string>
+    <string name="ar_room_play_caption">Play the room recording</string>
+    <string name="ar_room_pause_caption">Pause the room recording</string>
 </resources>
