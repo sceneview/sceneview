@@ -85,10 +85,11 @@ class OrbitCameraController(
          * hitch for a frame teleports the camera, mistaking a frame for a
          * hitch loses a quarter-second of turntable.
          *
-         * Kept in step with `MAX_FRAME_STEP` in the web demo's
-         * `samples/web-demo/site/js/sceneview.js` and iOS
-         * `CameraControls.maxMotionStep`: every viewer integrates a frame at or
-         * below 0.25 s in full and pauses self-driven motion above that threshold.
+         * Kept in step with iOS `CameraControls.maxMotionStep`: both integrate a
+         * frame at or below 0.25 s in full and pause self-driven motion above that
+         * threshold. The hand-written website viewer
+         * (`website-static/js/sceneview.js`) still advances by a fixed step per
+         * frame and has no such cap.
          */
         const val MAX_FRAME_STEP: Double = 0.25
 

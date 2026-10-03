@@ -315,6 +315,214 @@ fun CameraNode.frameToContent(
     padding = padding
 )
 
+/**
+ * Default share of the visible area a subject framed by [fitCameraToBounds] occupies on the axis
+ * that binds: `0.8` leaves a tenth of the area free on each side.
+ */
+const val DEFAULT_FRAMING_FILL: Float = 0.8f
+
+/**
+ * A camera pose that frames a bounding box — the result of [fitCameraToBounds].
+ *
+ * @property eye    Where the camera stands.
+ * @property target The point it looks at: on the optical axis, at the depth of the box's centre.
+ *                  It is what an orbit should turn around — pass it as `targetPosition`, and
+ *                  [eye] as `orbitHomePosition`, to `rememberCameraManipulator`.
+ */
+data class CameraFit(val eye: Position, val target: Position) {
+    /** Distance from [eye] to [target]: the orbit radius. */
+    val distance: Float
+        get() {
+            val d = eye - target
+            return sqrt(d.x * d.x + d.y * d.y + d.z * d.z)
+        }
+}
+
+/**
+ * Frames an arbitrary box **under a given angle**: where a camera looking along [direction] has to
+ * stand for [bounds] to fill the view, centred.
+ *
+ * Where [fitDistanceForBounds] answers "how far" for a subject that may turn — it frames the box's
+ * sweep about Y, on purpose — this fits the box as it is seen from [direction], corner by corner,
+ * and also answers "aimed where". After a perspective projection the centre of a box is not the
+ * centre of its picture, so the fit moves the eye sideways and vertically as well as back:
+ *
+ * - on the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`) of the
+ *   half-view — both edges touch, the picture is centred by construction;
+ * - on the other axis it is centred too, and spans less.
+ *
+ * The box needs no model behind it. A scene made of many nodes — a board, a room, a solar
+ * system — declares the volume worth framing as an [Aabb] and gets the same treatment as a single
+ * mesh measured by [computeContentBounds].
+ *
+ * To frame inside the part of a view a panel leaves free, pass the **visible area's** aspect
+ * ratio — which is what [CameraNode.fitToBounds] does once a `contentPadding` is set. The padding
+ * centres the projection on that area; this fills it.
+ *
+ * The camera is assumed upright (no roll, world `+Y` up), as every orbit manipulator and
+ * `lookAt` produce. Looking straight down or straight up, "right" is world `+X`.
+ *
+ * @param bounds             The box to frame, in world space (or in the space the camera lives in).
+ * @param direction          Look direction, **from the camera towards the subject**. Need not be
+ *                           normalised. Default: the front view, `(0, 0, -1)`.
+ * @param verticalFovDegrees Vertical field of view, `(0, 180)`. See
+ *                           [verticalFovDegreesForFocalLength].
+ * @param aspect             Width / height of the area to frame in.
+ * @param widthFill          Share of the half-width the box may span, `(0, 1]`.
+ * @param heightFill         Share of the half-height the box may span, `(0, 1]`.
+ * @return The pose, or `null` when [bounds] is empty / non-finite — nothing to frame yet.
+ */
+fun fitCameraToBounds(
+    bounds: Aabb,
+    direction: Position = Position(0f, 0f, -1f),
+    verticalFovDegrees: Double,
+    aspect: Double,
+    widthFill: Float = DEFAULT_FRAMING_FILL,
+    heightFill: Float = DEFAULT_FRAMING_FILL
+): CameraFit? {
+    if (bounds.isEmpty) return null
+    val safeAspect = if (aspect.isFinite() && aspect > 0.0) aspect else 1.0
+    val tanY = tan(Math.toRadians(verticalFovDegrees.coerceIn(1.0, 179.0)) / 2.0)
+    val slopeX = tanY * safeAspect * widthFill.toDouble().coerceIn(MIN_FRAMING_FILL, 1.0)
+    val slopeY = tanY * heightFill.toDouble().coerceIn(MIN_FRAMING_FILL, 1.0)
+
+    // Camera basis. `back` points from the subject to the camera.
+    val forward = normalizeOrDefault(direction)
+    val back = doubleArrayOf(-forward.x.toDouble(), -forward.y.toDouble(), -forward.z.toDouble())
+    // right = worldUp × back. Degenerate when looking along Y: fall back on world +X.
+    var right = doubleArrayOf(back[2], 0.0, -back[0])
+    val rightLength = sqrt(right[0] * right[0] + right[2] * right[2])
+    right = if (rightLength > 1e-6) {
+        doubleArrayOf(right[0] / rightLength, 0.0, right[2] / rightLength)
+    } else {
+        doubleArrayOf(1.0, 0.0, 0.0)
+    }
+    val up = doubleArrayOf(
+        back[1] * right[2] - back[2] * right[1],
+        back[2] * right[0] - back[0] * right[2],
+        back[0] * right[1] - back[1] * right[0]
+    )
+
+    // The eight corners, in the camera's basis: (along right, along up, along back).
+    val lowest = bounds.min
+    val highest = bounds.max
+    val xs = DoubleArray(8)
+    val ys = DoubleArray(8)
+    val zs = DoubleArray(8)
+    for (i in 0 until 8) {
+        val x = (if (i and 1 == 0) lowest.x else highest.x).toDouble()
+        val y = (if (i and 2 == 0) lowest.y else highest.y).toDouble()
+        val z = (if (i and 4 == 0) lowest.z else highest.z).toDouble()
+        if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return null
+        xs[i] = x * right[0] + y * right[1] + z * right[2]
+        ys[i] = x * up[0] + y * up[1] + z * up[2]
+        zs[i] = x * back[0] + y * back[1] + z * back[2]
+    }
+
+    // On each axis, the eye whose two frustum planes of half-slope `slope` both touch the box.
+    val tightX = tangentEye(xs, zs, slopeX)
+    val tightY = tangentEye(ys, zs, slopeY)
+    // The deeper of the two is the fit; the other axis re-centres at that depth.
+    val depth = max(tightX.depth, tightY.depth)
+    val eyeX = if (tightX.depth >= depth) tightX.offset else centredOffset(xs, zs, slopeX, depth)
+    val eyeY = if (tightY.depth >= depth) tightY.offset else centredOffset(ys, zs, slopeY, depth)
+
+    val centre = bounds.center
+    val centreDepth =
+        depth - (centre.x * back[0] + centre.y * back[1] + centre.z * back[2])
+    if (!depth.isFinite() || !centreDepth.isFinite() || centreDepth <= 0.0) return null
+
+    fun world(axis: Int) = eyeX * right[axis] + eyeY * up[axis] + depth * back[axis]
+    val eye = Position(world(0).toFloat(), world(1).toFloat(), world(2).toFloat())
+    val target = Position(
+        (world(0) - back[0] * centreDepth).toFloat(),
+        (world(1) - back[1] * centreDepth).toFloat(),
+        (world(2) - back[2] * centreDepth).toFloat()
+    )
+    return CameraFit(eye = eye, target = target)
+}
+
+/**
+ * [fitCameraToBounds] for this camera: its lens, the aspect ratio of the area it projects into —
+ * the viewport minus [CameraNode.contentPadding] — and, by default, the direction it is looking
+ * in now. Nothing is written: apply the result with [frame], or hand it to a camera manipulator.
+ *
+ * **Threading:** reads the camera's viewport and transform — main (render) thread.
+ */
+fun CameraNode.fitToBounds(
+    bounds: Aabb,
+    direction: Position = worldQuaternion * Position(0f, 0f, -1f),
+    widthFill: Float = DEFAULT_FRAMING_FILL,
+    heightFill: Float = DEFAULT_FRAMING_FILL
+): CameraFit? = fitCameraToBounds(
+    bounds = bounds,
+    direction = direction,
+    verticalFovDegrees = verticalFovDegreesForFocalLength(focalLength),
+    aspect = getViewPortAspect(),
+    widthFill = widthFill,
+    heightFill = heightFill
+)
+
+/**
+ * Moves this camera to [fit] and aims it at the fit's target.
+ *
+ * For a camera no manipulator drives. With an orbit manipulator installed, seed the manipulator
+ * with [CameraFit.eye] / [CameraFit.target] instead — it owns the pose and would overwrite this.
+ *
+ * **Threading:** writes a Filament transform — main (render) thread.
+ */
+fun CameraNode.frame(fit: CameraFit) {
+    worldPosition = fit.eye
+    lookAt(fit.target)
+}
+
+/** Smallest fill [fitCameraToBounds] honours: below it the fit distance runs away. */
+private const val MIN_FRAMING_FILL = 0.01
+
+/** An eye coordinate along one screen axis ([offset]) and how far back it stands ([depth]). */
+private class AxisFit(val depth: Double, val offset: Double)
+
+/**
+ * The eye, on one screen axis, whose two frustum planes of half-slope [slope] are both tangent to
+ * the corners. A corner `(p, z)` is inside iff `|p − e| <= slope · (depth − z)`, i.e.
+ * `e + slope·depth >= p + slope·z` and `−e + slope·depth >= −p + slope·z`; taking both with
+ * equality at their tightest corner gives the two unknowns in closed form.
+ */
+private fun tangentEye(ps: DoubleArray, zs: DoubleArray, slope: Double): AxisFit {
+    var high = Double.NEGATIVE_INFINITY
+    var low = Double.NEGATIVE_INFINITY
+    for (i in ps.indices) {
+        high = max(high, ps[i] + slope * zs[i])
+        low = max(low, -ps[i] + slope * zs[i])
+    }
+    return AxisFit(depth = (high + low) / (2.0 * slope), offset = (high - low) / 2.0)
+}
+
+/**
+ * The eye coordinate that centres the corners' projection on an axis that does *not* bind: the
+ * narrower slope whose tangent eye stands at exactly [depth]. [tangentEye]'s depth only grows as
+ * the slope shrinks, so a bisection finds it.
+ */
+private fun centredOffset(ps: DoubleArray, zs: DoubleArray, slope: Double, depth: Double): Double {
+    var wide = slope
+    var narrow = slope
+    // Find a slope narrow enough to stand at least `depth` back. A flat axis never gets there —
+    // every slope is then equally centred, and the loop simply runs out.
+    var guard = 0
+    while (tangentEye(ps, zs, narrow).depth < depth && guard < CENTRING_STEPS) {
+        wide = narrow
+        narrow /= 2.0
+        guard++
+    }
+    repeat(CENTRING_STEPS) {
+        val middle = (wide + narrow) / 2.0
+        if (tangentEye(ps, zs, middle).depth < depth) wide = middle else narrow = middle
+    }
+    return tangentEye(ps, zs, (wide + narrow) / 2.0).offset
+}
+
+private const val CENTRING_STEPS = 60
+
 /** Returns [v] normalized to unit length, or `(0, 0, -1)` when [v] is zero / non-finite. */
 private fun normalizeOrDefault(v: Position): Position {
     val length = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
@@ -360,7 +568,8 @@ class SceneAutoFitState {
     /**
      * Runs the auto-fit pass against [contentRoot] for [cameraNode]. No-op once the gate has
      * latched on a settled union, or while the content bounds are still empty / degenerate (async
-     * loads not finished). On a frame where the union diagonal materially changed the camera is
+     * loads not finished). A [CameraNode.contentPadding] that changed since the last pass un-latches
+     * it: the content is framed again, inside the new visible area. On a frame where the union diagonal materially changed the camera is
      * repositioned via [CameraNode.frameToBounds] and the computed [fitDistance] is recorded; the
      * gate latches once that diagonal settles across consecutive frames.
      *
@@ -397,6 +606,10 @@ class SceneAutoFitState {
             gate.recordNoContent()
             return false
         }
+        // The framing is computed for the camera's visible area. A padding that changed since the
+        // last pass — a panel sliding over the view — leaves the content's diagonal untouched, so
+        // the latch has to be told (#4310).
+        if (gate.rearmOnChange(cameraNode.contentPadding)) fitDistance = 0f
         if (!gate.shouldRun(hasContent = true)) return false
         // Measure each root's subtree against a shared reference: the first root. Single-root is
         // the common case (a SceneView content-root node); multi-root unions correctly because

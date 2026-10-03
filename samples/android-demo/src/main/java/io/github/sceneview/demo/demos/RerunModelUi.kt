@@ -202,6 +202,7 @@ internal enum class RerunShareNote(@StringRes val message: Int) {
 /** Builds the model of [source] — fuse (unless done), mesh, write — reporting its share done to [progress]. */
 internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit): RerunModelBuild {
     val started = System.nanoTime()
+    Log.i(TAG, "model (${source::class.simpleName}): building")
     val (tsdf, minWeight) = when (source) {
         is RerunModelSource.Live -> source.tsdf to LIVE_MIN_WEIGHT
         is RerunModelSource.Surfels -> RerunTsdf().also { t ->
@@ -399,7 +400,12 @@ internal fun rememberRerunSurface(
                     job.ensureActive()
                     progress = it
                 }
-            }.onFailure { if (it is CancellationException) throw it }
+            }.onFailure {
+                if (it is CancellationException) {
+                    Log.i(TAG, "model: build stopped at ${(progress * PERCENT).toInt()} %, its screen left")
+                    throw it
+                }
+            }
         }
         // Parsed here, once, on the main thread: not in the composition of the view that draws it,
         // where every Camera → 3D return paid for it again.
@@ -607,6 +613,7 @@ private const val LOG_EVERY_FRAMES = 30
 private const val MB = 1024L * 1024L
 private const val KB = 1024
 private const val NS_PER_MS = 1_000_000L
+private const val PERCENT = 100
 
 /** A live TSDF voxel meshes once two medium-confidence views (or one sure one) agree on it. */
 private const val LIVE_MIN_WEIGHT = 1f

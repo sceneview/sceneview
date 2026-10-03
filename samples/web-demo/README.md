@@ -46,12 +46,18 @@ Also:
 
 ## Run
 
-This demo is a **plain static site** — no Gradle, no build step. Open
-`site/index.html` directly in a browser, or serve the folder:
+This demo is a **plain static site** — no Gradle or compilation. From
+`samples/web-demo`, stage the shared viewer before serving the folder:
 
 ```bash
+cp ../../website-static/js/sceneview.js site/js/sceneview.js
 npx http-server site -p 8080
 ```
+
+Open <http://localhost:8080/>. Repeat the copy after editing the viewer.
+`site/js/sceneview.js` is an ignored local artifact; its only source is
+`website-static/js/sceneview.js`. The `docs.yml` copy step stages that same
+source under `/web-demo/js/sceneview.js` when deploying.
 
 ## Architecture
 
@@ -67,7 +73,8 @@ npx http-server site -p 8080
   `removeNode()`, `playAnimation()`, `stopAnimation()`, `createText()`,
   `setEnvironmentSH()`, etc.).
 - Engine: `filament.js`, `filament.wasm`, and `sceneview.js` are self-hosted
-  under `site/js/` and referenced by relative path, so the demo never depends
+  under `site/js/` (the viewer is staged from `website-static/js/sceneview.js`)
+  and referenced by relative path, so the demo never depends
   on a third-party CDN for its engine (issue #1586).
 - Catalog APIs: Sketchfab `GET /v3/search?type=models&downloadable=true&q={query}`
   (key-gated) · Icosa Gallery `GET api.icosa.gallery/v1/assets` (keyless;
@@ -75,19 +82,44 @@ npx http-server site -p 8080
   without CORS) · Poly Haven `api.polyhaven.com` (keyless, single-flight
   TTL index). All JSON reads are size-capped and streamed.
 - Curated models: self-hosted GLBs under `site/models/`, loaded from the
-  relative `models/` path. The whole `site/` folder is copied verbatim to the
+  relative `models/` path. The `site/` folder plus the shared viewer are copied to the
   deployed `/web-demo/` route by `docs.yml` and served by the Playwright dev
   server, so the demo never depends on a third-party CDN for its assets.
   jsDelivr's gh-proxy returns HTTP 403 for large GLB blobs under `assets/`,
   which is why the catalog is self-hosted (issue #1573).
 - IBL environment: `site/environments/neutral_ibl.ktx`, self-hosted so
-  `SceneView.js` finds it via the relative `environments/` path with no 404 —
+  the page explicitly passes `iblUrl: 'environments/neutral_ibl.ktx'` —
   works on both domain-root and subpath deploys (issues #1586, #1631).
+
+## Shared viewer (#4316)
+
+The hand-written viewer has one source: `website-static/js/sceneview.js`, the
+file sceneview.dev itself loads. The demo no longer carries its own copy (it had
+drifted to a 3.6 build); `site/js/sceneview.js` is staged from that source by
+`docs.yml` for the deployed `/web-demo/` route, by the Playwright `webServer`
+command for tests, and by the `cp` above for local runs.
+
+What the page relies on:
+
+- `SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx' })`
+  — the viewer's default IBL URL is absolute (`/environments/…`, right for the
+  website root), so the demo passes its own relative one.
+- `addLight()` and `createText()` hand back Filament.js `Entity` objects, not
+  numbers. The page keeps them and passes them to `removeNode()`.
+- The far plane follows the zoom-out limit of the framed model, so a model
+  authored in millimetres (Retro Piano, framed thousands of units away) is not
+  culled.
+
+Camera motion is the website viewer's: auto-rotation, drag inertia and wheel
+zoom advance by a fixed amount per frame. The retired demo copy integrated them
+over elapsed time (#3711, #3742); porting that to the shared viewer changes how
+every viewer on sceneview.dev moves and is left to a separate change.
 
 ## Tests
 
 Playwright tests run headless against the shipped `site/index.html` (served
-by `http-server` straight from the `site/` folder — no build step):
+by `http-server` from the `site/` folder after the configured server command
+stages the shared viewer):
 
 - `tests/render.spec.ts` — load + branding + tab-regression smoke layer.
 - `tests/catalog.spec.ts` — full per-tab / per-demo QA: exercises every Models
