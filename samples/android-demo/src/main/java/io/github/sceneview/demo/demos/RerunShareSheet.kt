@@ -19,6 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -125,7 +126,16 @@ internal fun RerunShareSheet(session: RerunStoredSession, onDismiss: () -> Unit)
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    Switch(checked = includePhotos, onCheckedChange = null)
+                    // Off, M3 draws the border and the thumb in `outline`, 1.4:1 on the light
+                    // sheet: `onSurfaceVariant` keeps the off switch above 3:1 in both themes.
+                    Switch(
+                        checked = includePhotos,
+                        onCheckedChange = null,
+                        colors = SwitchDefaults.colors(
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
                 }
                 Row(
                     modifier = Modifier
