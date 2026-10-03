@@ -1,7 +1,9 @@
 package io.github.sceneview.demo.demos.internal
 
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.*
@@ -116,7 +118,8 @@ class RerunMeshSimplifierTest {
             positions[3] = 1f
             positions[7] = 1f
             val mesh = RerunMesh(positions, FloatArray(n * 3), IntArray(n) { -1 }, intArrayOf(0,1,2))
-            val file = RerunGlbFile.parse(RerunMeshGlb.writeShared(mesh, fullResolution = true, floorOrigin = false), "width")
+            val glb = RerunMeshGlb.writeShared(mesh, fullResolution = true, floorOrigin = false)
+            val file = RerunGlbFile.parse(glb, "width")
             assertEquals(if (n == 65_535) 5123 else 5125,
                 (file.json.objects("accessors")[3]["componentType"] as Number).toInt())
             assertEquals(n, (file.json.objects("accessors")[0]["count"] as Number).toInt())
@@ -136,8 +139,54 @@ class RerunMeshSimplifierTest {
         val started = System.nanoTime()
         val result = checkReduction("400k-room", mesh, 100_000)
         println("400k simplification and GLB: ${(System.nanoTime() - started) / 1_000_000} ms; " +
-            "workspace upper bound ${112L * mesh.vertexCount + 84L * mesh.triangleCount} bytes")
+            "workspace ${RerunMeshSimplifier.workspaceBytes(mesh.vertexCount, mesh.triangleCount)} bytes")
         assertTrue(result.triangleCount in 99_999..100_000)
+    }
+
+    @Test
+    fun `progress runs from zero to one and throwing from it stops the work`() {
+        val mesh = room(60)
+        val steps = ArrayList<Float>()
+        val light = RerunMeshGlb.writeShared(mesh, targetTriangles = 4_000) { steps += it }
+        assertEquals(0f, steps.first(), 0f)
+        assertEquals(1f, steps.last(), 0f)
+        assertTrue("progress went back", steps.zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("too few steps to follow or cancel: ${steps.size}", steps.size > 4)
+        assertArrayEquals(light, RerunMeshGlb.writeShared(mesh, targetTriangles = 4_000))
+
+        class Stop : RuntimeException()
+        var calls = 0
+        assertThrows(Stop::class.java) {
+            RerunMeshSimplifier.simplify(mesh, 4_000) { if (++calls == 3) throw Stop() }
+        }
+        assertEquals(3, calls)
+        assertEquals(
+            106L * mesh.vertexCount + 84L * mesh.triangleCount,
+            RerunMeshSimplifier.workspaceBytes(mesh.vertexCount, mesh.triangleCount),
+        )
+    }
+
+    /**
+     * Not a check: writes the synthetic room's two models — world-space full resolution and the
+     * shared light one — into the directory `RERUN_GLB_DUMP_DIR` names, for a side-by-side render.
+     */
+    @Test
+    fun `dumps the full and the light room for a visual comparison`() {
+        val dir = System.getenv("RERUN_GLB_DUMP_DIR")
+        assumeTrue("set RERUN_GLB_DUMP_DIR to write the two models", !dir.isNullOrBlank())
+        val tsdf = RerunTsdf()
+        RerunSyntheticRoom.frames().forEach { tsdf.integrate(it) }
+        val mesh = RerunMarchingCubes.extract(tsdf).mesh
+        val started = System.nanoTime()
+        val light = RerunMeshSimplifier.simplify(mesh)
+        val ms = (System.nanoTime() - started) / 1_000_000
+        val out = File(dir!!).apply { mkdirs() }
+        val fullGlb = RerunMeshGlb.writeShared(mesh, fullResolution = true)
+        val lightGlb = RerunMeshGlb.writeShared(light, fullResolution = true)
+        File(out, "room-full.glb").writeBytes(fullGlb)
+        File(out, "room-light.glb").writeBytes(lightGlb)
+        println("dump: ${mesh.triangleCount} T / ${mesh.vertexCount} V / ${fullGlb.size} bytes -> " +
+            "${light.triangleCount} T / ${light.vertexCount} V / ${lightGlb.size} bytes in $ms ms")
     }
 
     private fun checkReduction(name: String, input: RerunMesh, target: Int): RerunMesh {
@@ -198,9 +247,10 @@ class RerunMeshSimplifierTest {
             bounds[axis] = min(bounds[axis], x)
             bounds[axis + 3] = max(bounds[axis + 3], x)
         }
+        fun declared(key: String, axis: Int) = ((accessors[0][key] as List<*>)[axis] as Number).toDouble()
         for (axis in 0..2) {
-            assertEquals(bounds[axis].toDouble(), ((accessors[0]["min"] as List<*>)[axis] as Number).toDouble(), 1e-6)
-            assertEquals(bounds[axis + 3].toDouble(), ((accessors[0]["max"] as List<*>)[axis] as Number).toDouble(), 1e-6)
+            assertEquals(bounds[axis].toDouble(), declared("min", axis), 1e-6)
+            assertEquals(bounds[axis + 3].toDouble(), declared("max", axis), 1e-6)
         }
         assertEquals(0f, bounds[1], 1e-6f)
         assertEquals(0f, bounds[0] + bounds[3], 1e-6f)
@@ -255,14 +305,17 @@ class RerunMeshSimplifierTest {
                 id
             }
         }
-        for (axis in 0..2) for (side in 0..1) for (u in 0 until n) for (v in 0 until n) {
-            if (axis == 1 && side == 1 && u in n/3 until n/2 && v in n/3 until n/2) continue
-            val a = vertex(axis,side,u,v)
-            val b = vertex(axis,side,u+1,v)
-            val c = vertex(axis,side,u+1,v+1)
-            val d = vertex(axis,side,u,v+1)
-            indices.addAll(if (side == 1) listOf(a,b,c, a,c,d) else listOf(a,c,b, a,d,c))
+        val hole = n / 3 until n / 2
+        fun quad(axis: Int, side: Int, u: Int, v: Int) {
+            val ceiling = axis == 1 && side == 1
+            if (ceiling && u in hole && v in hole) return
+            val a = vertex(axis, side, u, v)
+            val b = vertex(axis, side, u + 1, v)
+            val c = vertex(axis, side, u + 1, v + 1)
+            val d = vertex(axis, side, u, v + 1)
+            indices.addAll(if (side == 1) listOf(a, b, c, a, c, d) else listOf(a, c, b, a, d, c))
         }
+        for (face in 0 until 6) for (cell in 0 until n * n) quad(face / 2, face % 2, cell / n, cell % n)
         return RerunMesh(positions.toFloatArray(), FloatArray(positions.size) { if (it % 3 == 1) 1f else 0f },
             IntArray(positions.size / 3) { 0xFFB08457.toInt() }, indices.toIntArray())
     }

@@ -10,9 +10,12 @@ import kotlin.math.sqrt
  * Segment placement keeps positions and interpolated sRGB colours in their input convex hull.
  * Open boundary vertices, strong colour edges, non-manifold edge vertices and bounds extrema are locked.
  * The link condition, duplicate-face check and positive face-normal dot product protect topology.
- * Strong colour jumps (>64 in any byte channel) cannot collapse; smaller jumps add geometric cost.
+ * Strong colour jumps (>64 in any byte channel) cannot collapse; smaller jumps add geometric cost
+ * along the edge that carries them only, so a stripe still thins out along its own length. Its
+ * border does fray: the voxel staircase between two colours becomes larger teeth. Charging every
+ * vertex near a gradient instead was tried and reverted — it thinned stripes across, and lost them.
  *
- * Call on a worker (the model builder uses Dispatchers.Default). Input arrays are never mutated.
+ * Blocking CPU work: call it on a worker. Input arrays are never mutated.
  * Marching cubes shares vertices by grid edge. At an exact zero-valued grid corner, different
  * edges can still meet at identical positions: first weld only coincident endpoints connected
  * by an input edge. Separate coincident sheets are never joined. Colours carry the lower index.
@@ -21,20 +24,44 @@ import kotlin.math.sqrt
  * Costs are sorted in deterministic sweeps, then recomputed before each collapse; no stale heap
  * entries or per-edge objects. At most 64 sweeps, stopping when no legal collapse remains.
  * Target is best effort: boundaries, topology and colour take priority over the triangle budget.
- * Storage: 112V + 84T bytes of primitive working arrays, plus input/output and array headers.
- * Typical 400k-T / 200k-V scan: ~54 MiB workspace, <80 MiB live mesh/simplifier data.
+ * Storage: [workspaceBytes] of primitive working arrays, plus input/output and array headers.
+ * Typical 400k-T / 200k-V scan: ~53 MiB workspace; the extraction's cap (1.5 M triangles) would
+ * take ~200 MiB, more than a phone's heap gives — ask [workspaceBytes] before calling.
  * Time: O(S * (T log T + T d²)), S <= 64, d local vertex valence (normally ~6).
  */
 internal object RerunMeshSimplifier {
     const val DEFAULT_TARGET_TRIANGLES = 100_000
 
-    fun simplify(mesh: RerunMesh, targetTriangles: Int = DEFAULT_TARGET_TRIANGLES): RerunMesh {
+    /**
+     * [mesh] in at most [targetTriangles] triangles, where its borders and colours allow.
+     *
+     * [progress] is told the share done, 0–1, a few times a second; a caller stops the work by
+     * throwing from it (a coroutine's `ensureActive()`), which leaves nothing behind.
+     */
+    fun simplify(
+        mesh: RerunMesh,
+        targetTriangles: Int = DEFAULT_TARGET_TRIANGLES,
+        progress: (Float) -> Unit = {},
+    ): RerunMesh {
         require(targetTriangles >= 0)
         if (mesh.triangleCount == 0) return mesh
-        return Worker(mesh).run(targetTriangles)
+        return Worker(mesh, progress).run(targetTriangles)
     }
 
-    private class Worker(val input: RerunMesh) {
+    /** The working arrays [simplify] allocates for a mesh of this size, in bytes. */
+    fun workspaceBytes(vertices: Int, triangles: Int): Long =
+        BYTES_PER_VERTEX * vertices + BYTES_PER_TRIANGLE * triangles
+
+    // positions 12, colours 4, quadric 80, corner list head 4, marks 4, two flags.
+    private const val BYTES_PER_VERTEX = 106L
+
+    // indices 12, corner links 24, edge keys 24, sweep order 24.
+    private const val BYTES_PER_TRIANGLE = 84L
+
+    /** Collapses between two progress reports: a few milliseconds of work. */
+    private const val REPORT_EVERY = 2048
+
+    private class Worker(val input: RerunMesh, val progress: (Float) -> Unit) {
         val vertices = input.vertexCount
         val p = input.positions.copyOf()
         val colors = input.colors.copyOf()
@@ -71,21 +98,23 @@ internal object RerunMeshSimplifier {
             for (t in triangles.indices step 3) for (k in 0..2) {
                 val a = triangles[t + k]
                 val b = triangles[t + (k + 1) % 3]
-                if ((0..2).all { p[a * 3 + it] == p[b * 3 + it] }) {
+                if (p[a * 3] == p[b * 3] && p[a * 3 + 1] == p[b * 3 + 1] && p[a * 3 + 2] == p[b * 3 + 2]) {
                     val ra = root(a)
                     val rb = root(b)
                     weld[maxOf(ra, rb)] = minOf(ra, rb)
                 }
             }
             for (i in triangles.indices) triangles[i] = root(triangles[i])
+            progress(0f)
             for (t in 0 until count) {
                 val offset = t * 3
                 val a = triangles[offset]
                 val b = triangles[offset + 1]
                 val c = triangles[offset + 2]
                 faceNormal(a, b, c, normal)
-                val length = sqrt(normal.sumOf { it * it })
-                if (a == b || a == c || b == c || length <= 1e-15) {
+                val length = sqrt(dot(normal, normal))
+                val repeated = a == b || a == c || b == c
+                if (repeated || length <= 1e-15) {
                     triangles[offset] = -1
                     continue
                 }
@@ -121,10 +150,7 @@ internal object RerunMeshSimplifier {
                 while (end < triangles.size && edges[end] == edges[at]) end++
                 val a = (edges[at] ushr 32).toInt()
                 val b = edges[at].toInt()
-                val strongColorEdge = (0..16 step 8).any { shift ->
-                    abs(((colors[a] ushr shift) and 255) - ((colors[b] ushr shift) and 255)) > 64
-                }
-                if (end - at != 2 || strongColorEdge) {
+                if (end - at != 2 || colorStep(a, b).isInfinite()) {
                     locked[a] = true
                     locked[b] = true
                 }
@@ -148,8 +174,11 @@ internal object RerunMeshSimplifier {
         }
 
         fun run(target: Int): RerunMesh {
+            val toRemove = (count - target).coerceAtLeast(1).toFloat()
+            var sinceReport = 0
             repeat(64) {
                 if (count <= target) return compact()
+                progress(1f - (count - target) / toRemove)
                 collectEdges()
                 var unique = 0
                 var last = -1L
@@ -168,14 +197,19 @@ internal object RerunMeshSimplifier {
                 }
                 Arrays.sort(order, 0, edgeCount)
                 val before = count
-                for (i in 0 until edgeCount) {
-                    if (count <= target) break
-                    val edge = edges[order[i].toInt()]
+                var i = 0
+                while (i < edgeCount && count > target) {
+                    val edge = edges[order[i++].toInt()]
                     val a = (edge ushr 32).toInt()
                     val b = edge.toInt()
-                    if (!alive[a] || !alive[b] || !cost(a, b).isFinite()) continue
-                    if (!legal(a, b)) continue
+                    // The cost is recomputed: it also sets where on the edge the collapse lands.
+                    val gone = !alive[a] || !alive[b]
+                    if (gone || !cost(a, b).isFinite() || !legal(a, b)) continue
                     collapse(a, b)
+                    if (++sinceReport == REPORT_EVERY) {
+                        sinceReport = 0
+                        progress(1f - (count - target) / toRemove)
+                    }
                 }
                 if (before == count) return compact()
             }
@@ -198,12 +232,8 @@ internal object RerunMeshSimplifier {
 
         fun cost(a: Int, b: Int): Double {
             if (locked[a] || locked[b]) return Double.POSITIVE_INFINITY
-            var colorError = 0.0
-            for (shift in 0..16 step 8) {
-                val delta = ((colors[a] ushr shift) and 255) - ((colors[b] ushr shift) and 255)
-                if (abs(delta) > 64) return Double.POSITIVE_INFINITY
-                colorError += delta * delta / (255.0 * 255.0)
-            }
+            val colorError = colorStep(a, b)
+            if (colorError.isInfinite()) return colorError
             val ax = p[a * 3].toDouble()
             val ay = p[a * 3 + 1].toDouble()
             val az = p[a * 3 + 2].toDouble()
@@ -228,9 +258,27 @@ internal object RerunMeshSimplifier {
             return max(0.0, error) + (colorError + 1e-6) * (dx * dx + dy * dy + dz * dz)
         }
 
-        fun legal(a: Int, b: Int): Boolean {
-            // Link condition: exactly two incident faces and exactly their two opposite vertices
-            // shared by both one-rings. Boundaries were locked before any collapse.
+        /**
+         * How far apart the colours of [a] and [b] are: the squared distance of their sRGB
+         * channels, each 0–1 — infinite past the strong-edge step, which never collapses.
+         */
+        fun colorStep(a: Int, b: Int): Double {
+            var error = 0.0
+            for (shift in 0..16 step 8) {
+                val delta = ((colors[a] ushr shift) and 255) - ((colors[b] ushr shift) and 255)
+                if (abs(delta) > 64) return Double.POSITIVE_INFINITY
+                error += delta * delta / (255.0 * 255.0)
+            }
+            return error
+        }
+
+        fun legal(a: Int, b: Int): Boolean = linked(a, b) && keepsFaces(a, b, a) && keepsFaces(a, b, b)
+
+        /**
+         * The link condition: exactly two faces on the edge, and exactly their two opposite
+         * vertices shared by both one-rings. Boundaries were locked before any collapse.
+         */
+        fun linked(a: Int, b: Int): Boolean {
             stamp++
             var corner = head[a]
             while (corner >= 0) {
@@ -253,42 +301,51 @@ internal object RerunMeshSimplifier {
                 }
                 corner = next[corner]
             }
-            if (incident != 2 || shared != 2) return false
-            val x = (p[a * 3] + fraction * (p[b * 3] - p[a * 3])).toFloat()
-            val y = (p[a * 3 + 1] + fraction * (p[b * 3 + 1] - p[a * 3 + 1])).toFloat()
-            val z = (p[a * 3 + 2] + fraction * (p[b * 3 + 2] - p[a * 3 + 2])).toFloat()
-            for (side in 0..1) {
-                val v = if (side == 0) a else b
-                corner = head[v]
-                while (corner >= 0) {
-                    val t = corner / 3 * 3
-                    if (!(contains(t, a) && contains(t, b))) {
-                        // Tetrahedron / shared link edge: collapsing would duplicate a face.
-                        if (v == b) {
-                            val u = triangles[t + (corner % 3 + 1) % 3]
-                            val w = triangles[t + (corner % 3 + 2) % 3]
-                            var other = head[a]
-                            while (other >= 0) {
-                                val ot = other / 3 * 3
-                                if (contains(ot, u) && contains(ot, w)) return false
-                                other = next[other]
-                            }
-                        }
-                        faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], oldNormal)
-                        val px = p[v * 3]
-                        val py = p[v * 3 + 1]
-                        val pz = p[v * 3 + 2]
-                        p[v * 3] = x; p[v * 3 + 1] = y; p[v * 3 + 2] = z
-                        faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], normal)
-                        p[v * 3] = px; p[v * 3 + 1] = py; p[v * 3 + 2] = pz
-                        val area = normal.sumOf { it * it }
-                        val dot = (0..2).sumOf { normal[it] * oldNormal[it] }
-                        if (area <= 1e-24 || dot <= 0.1 * sqrt(area * oldNormal.sumOf { it * it })) return false
-                    }
-                    corner = next[corner]
-                }
+            return incident == 2 && shared == 2
+        }
+
+        /** No face around [v], an end of the edge [a]–[b], would double another, vanish or flip. */
+        fun keepsFaces(a: Int, b: Int, v: Int): Boolean {
+            var corner = head[v]
+            while (corner >= 0) {
+                val t = corner / 3 * 3
+                // The two faces on the edge go with it; every other one moves.
+                val moved = !(contains(t, a) && contains(t, b))
+                if (moved && v == b && doubles(corner, a)) return false
+                if (moved && flips(t, v, a, b)) return false
+                corner = next[corner]
             }
             return true
+        }
+
+        /** Tetrahedron / shared link edge: moving this [corner] to [a] would duplicate a face of [a]. */
+        fun doubles(corner: Int, a: Int): Boolean {
+            val t = corner / 3 * 3
+            val u = triangles[t + (corner % 3 + 1) % 3]
+            val w = triangles[t + (corner % 3 + 2) % 3]
+            var other = head[a]
+            while (other >= 0) {
+                val ot = other / 3 * 3
+                if (contains(ot, u) && contains(ot, w)) return true
+                other = next[other]
+            }
+            return false
+        }
+
+        /** Face [t] would lose its area or turn over with [v] moved to where [a]–[b] collapses. */
+        fun flips(t: Int, v: Int, a: Int, b: Int): Boolean {
+            faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], oldNormal)
+            val px = p[v * 3]
+            val py = p[v * 3 + 1]
+            val pz = p[v * 3 + 2]
+            for (axis in 0..2) p[v * 3 + axis] =
+                (p[a * 3 + axis] + fraction * (p[b * 3 + axis] - p[a * 3 + axis])).toFloat()
+            faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], normal)
+            p[v * 3] = px
+            p[v * 3 + 1] = py
+            p[v * 3 + 2] = pz
+            val area = dot(normal, normal)
+            return area <= 1e-24 || dot(normal, oldNormal) <= 0.1 * sqrt(area * dot(oldNormal, oldNormal))
         }
 
         fun collapse(a: Int, b: Int) {
@@ -348,7 +405,10 @@ internal object RerunMeshSimplifier {
             out[2] = ux * vy - uy * vx
         }
 
+        fun dot(u: DoubleArray, v: DoubleArray) = u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+
         fun compact(): RerunMesh {
+            progress(1f)
             val remap = IntArray(vertices) { -1 }
             var n = 0
             for (t in triangles.indices step 3) if (triangles[t] >= 0) {

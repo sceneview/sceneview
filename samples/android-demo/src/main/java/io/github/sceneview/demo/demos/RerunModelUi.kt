@@ -37,7 +37,9 @@ import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunMarchingCubes
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunMeshGlb
+import io.github.sceneview.demo.demos.internal.RerunMeshSimplifier
 import io.github.sceneview.demo.demos.internal.RerunSyntheticRoom
 import io.github.sceneview.demo.demos.internal.RerunTsdf
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -60,7 +62,8 @@ import kotlinx.coroutines.withContext
 /*
  * The scan's surface: the room as one meshed, coloured 3D model — its raw depth fused into a TSDF
  * ([RerunTsdf]) while it recorded, meshed by marching cubes ([RerunMarchingCubes]) on demand, drawn
- * by the replay's own 3D view (Points | Surface) and shared as a `.glb` ([RerunMeshGlb]).
+ * by the replay's own 3D view (Points | Surface) and shared as a lighter `.glb` ([RerunMeshGlb],
+ * [RerunMeshSimplifier]) that any viewer opens.
  */
 
 /** What a room model is built from. */
@@ -142,8 +145,9 @@ internal object RerunLiveModels {
     }
 }
 
-/** A built model: its `.glb`, its size, and what building it took. */
+/** A built model: its mesh, the `.glb` the 3D view draws, its size, and what building it took. */
 internal class RerunModelBuild(
+    val mesh: RerunMesh,
     val glb: ByteArray,
     val bounds: FloatArray,
     val triangles: Int,
@@ -151,7 +155,11 @@ internal class RerunModelBuild(
     val buildMs: Long,
     val voxelBytes: Long,
     val budgetReached: Boolean,
-)
+) {
+    /** The `.glb` a share sends ([sharedRerunModel]), kept from the first share on. */
+    @Volatile
+    var shared: ByteArray? = null
+}
 
 /** Builds the model of [source] — fuse (unless done), mesh, write — reporting its share done to [progress]. */
 internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit): RerunModelBuild {
@@ -187,6 +195,7 @@ internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit
             "glb ${glb.size / KB} KB",
     )
     return RerunModelBuild(
+        mesh = mesh,
         glb = glb,
         bounds = mesh.bounds(),
         triangles = mesh.triangleCount,
@@ -195,6 +204,29 @@ internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit
         voxelBytes = tsdf.bytes,
         budgetReached = tsdf.budgetReached,
     )
+}
+
+/**
+ * The `.glb` a share sends: [build]'s mesh simplified to [RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES]
+ * so a phone's viewer opens it, resting on its floor and centred. It is made on the first share —
+ * seconds of blocking CPU work, reported to [progress], which stops it by throwing — then kept. A
+ * mesh whose simplification would not fit in the memory left is sent whole instead.
+ */
+internal fun sharedRerunModel(build: RerunModelBuild, progress: (Float) -> Unit): ByteArray {
+    build.shared?.let { return it }
+    val started = System.nanoTime()
+    val runtime = Runtime.getRuntime()
+    val free = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
+    val workspace = RerunMeshSimplifier.workspaceBytes(build.vertices, build.triangles)
+    val whole = workspace > free / SHARE_MEMORY_DIVISOR
+    val glb = RerunMeshGlb.writeShared(build.mesh, fullResolution = whole, progress = progress)
+    Log.i(
+        TAG,
+        "shared model: ${build.triangles} triangles, ${build.glb.size / KB} KB -> ${glb.size / KB} KB " +
+            "in ${(System.nanoTime() - started) / NS_PER_MS} ms " +
+            "(workspace ${workspace / MB} MB of ${free / MB} MB free, sent whole $whole)",
+    )
+    return glb.also { build.shared = it }
 }
 
 /**
@@ -271,8 +303,9 @@ internal fun rememberRerunSurface(source: RerunModelSource?, wanted: Boolean): R
 
 /**
  * Points | Surface, the head of the replay's timeline card: what the 3D view above draws. The
- * surface builds on the first tap (its progress runs under the switch) and its `.glb` is shared
- * from the button beside it.
+ * surface builds on the first tap (its progress runs under the switch) and a lighter `.glb` of it
+ * is shared from the button beside it: the first share takes a few seconds to simplify the mesh,
+ * under the same progress line.
  *
  * With [captioned] the switch says what the surface is doing — building, failed, or its size —
  * on a line of its own: the card of a phone on its side has no caption to say it in.
@@ -288,7 +321,8 @@ internal fun RerunSurfaceSwitch(
     val chrome = LocalStageChrome.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var sharing by remember { mutableStateOf(false) }
+    // The share under way and its share done; null when there is none.
+    var sharing by remember { mutableStateOf<Float?>(null) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Space.xs)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             ConnectedChoiceRow(
@@ -309,23 +343,27 @@ internal fun RerunSurfaceSwitch(
             if (state.wanted && built != null) {
                 IconButton(
                     onClick = {
-                        if (sharing) return@IconButton
-                        sharing = true
+                        if (sharing != null) return@IconButton
+                        sharing = 0f
                         scope.launch {
-                            shareModelFile(context, title, built.glb)
-                            sharing = false
+                            try {
+                                shareModelFile(context, title, built) { sharing = it }
+                            } finally {
+                                sharing = null
+                            }
                         }
                     },
-                    enabled = !sharing,
+                    enabled = sharing == null,
                     modifier = Modifier.size(SceneViewTokens.Layout.touchTarget).testTag(RERUN_SHARE_MODEL_TAG),
                 ) {
                     Icon(Icons.Rounded.IosShare, contentDescription = ModelCopy.SHARE, tint = chrome.onCard)
                 }
             }
         }
-        if (state.building) {
+        val shareDone = sharing
+        if (state.building || shareDone != null) {
             LinearProgressIndicator(
-                progress = { state.progress },
+                progress = { shareDone ?: state.progress },
                 modifier = Modifier.fillMaxWidth(),
                 color = chrome.accent,
                 trackColor = chrome.track,
@@ -344,8 +382,23 @@ internal fun RerunSurfaceSwitch(
     }
 }
 
-/** [glb] as `<title> model.glb` in a fresh cache directory, handed to the share sheet. */
-private suspend fun shareModelFile(context: Context, title: String, glb: ByteArray) {
+/**
+ * [build]'s light model ([sharedRerunModel]) as `<title> model.glb` in a fresh cache directory,
+ * handed to the share sheet. Leaving the screen stops the simplification at its next [progress] step.
+ */
+private suspend fun shareModelFile(
+    context: Context,
+    title: String,
+    build: RerunModelBuild,
+    progress: (Float) -> Unit,
+) {
+    val glb = withContext(Dispatchers.Default) {
+        val job = coroutineContext.job
+        sharedRerunModel(build) {
+            job.ensureActive()
+            progress(it)
+        }
+    }
     val file = withContext(Dispatchers.IO) {
         val shareRoot = File(context.cacheDir, RERUN_SHARE_DIR)
         // Only the latest shared file is kept: the share sheet has read it by the next share.
@@ -407,3 +460,6 @@ private const val NS_PER_MS = 1_000_000L
 private const val LIVE_MIN_WEIGHT = 1f
 private const val FUSE_SHARE = 0.5f
 private const val MESH_SHARE = 0.95f
+
+/** The simplifier's working arrays may take half of the heap left, no more. */
+private const val SHARE_MEMORY_DIVISOR = 2

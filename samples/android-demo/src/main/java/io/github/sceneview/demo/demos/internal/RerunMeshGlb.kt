@@ -13,14 +13,16 @@ import kotlin.math.pow
 object RerunMeshGlb {
     const val MIME_TYPE = "model/gltf-binary"
 
-    /** Full world-space model for the existing preview; sharing uses [writeShared]. */
+    /** The full mesh in the session's world space: what the replay's own 3D view draws. */
     fun write(mesh: RerunMesh, generator: String = "SceneView Rerun"): ByteArray =
         writeShared(mesh, generator, fullResolution = true, floorOrigin = false)
 
     /**
-     * Shared model by default. Set [fullResolution] and disable [floorOrigin] for a world-space
-     * preview. Run on a worker: simplification is CPU work. The original mesh is not modified.
-     * [floorOrigin] uses the lowest mesh point (no plane metadata exists here), not a fitted floor.
+     * The model a share sends: [mesh] simplified to [targetTriangles] ([RerunMeshSimplifier]) unless
+     * [fullResolution], and with [floorOrigin] resting on Y=0 and centred in X/Z — what a viewer
+     * that drops a model on a table expects. The floor is the mesh's lowest point, not a fitted
+     * plane. Blocking CPU work: run it on a worker; [progress] follows the simplification and
+     * stops it by throwing. [mesh] is not modified.
      */
     fun writeShared(
         mesh: RerunMesh,
@@ -28,16 +30,19 @@ object RerunMeshGlb {
         fullResolution: Boolean = false,
         targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
         floorOrigin: Boolean = true,
+        progress: (Float) -> Unit = {},
     ): ByteArray {
         require(mesh.triangleCount > 0) { "a GLB mesh must contain triangles" }
-        val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles)
+        val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles, progress)
         require(reduced.triangleCount > 0) { "simplification must retain a surface" }
         val exported = if (floorOrigin) {
             val bounds = reduced.bounds()
             val origin = floatArrayOf((bounds[0] + bounds[3]) / 2, bounds[1], (bounds[2] + bounds[5]) / 2)
             val positions = FloatArray(reduced.positions.size) { reduced.positions[it] - origin[it % 3] }
             RerunMesh(positions, reduced.normals, reduced.colors, reduced.indices)
-        } else reduced
+        } else {
+            reduced
+        }
         return encode(exported, generator)
     }
 
