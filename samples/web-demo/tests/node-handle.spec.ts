@@ -131,7 +131,7 @@ test.describe('SceneView Kotlin/JS bundle — NodeHandle export', () => {
       }
       try {
         // Load the same local GLB the fixture uses — network-free.
-        const model = await sv.addModelNode('../models/khronos_damaged_helmet.glb');
+        const model = await sv.addModelNode('../models/sheen_chair.glb');
         if (typeof model.setPosition !== 'function') return { error: 'resolved value is not a NodeHandle' };
         model.setPosition(3, 1, 0);
         const world = model.getWorldPosition();

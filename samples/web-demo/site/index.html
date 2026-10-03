@@ -27,7 +27,7 @@
     <!-- Filament.js WASM engine — self-hosted (never an external CDN, see issue #1586).
          filament.js resolves filament.wasm relative to its own directory (js/filament/). -->
     <script src="js/filament/filament.js"></script>
-    <!-- SceneView.js — self-hosted alongside the engine. -->
+    <!-- SceneView.js — staged from website-static/js/sceneview.js (see README). -->
     <script src="js/sceneview.js"></script>
     <!-- Source-agnostic model catalog layer (Sketchfab | Icosa | Poly Haven | bundled samples). -->
     <script src="js/model-sources.js"></script>
@@ -1121,8 +1121,8 @@
       // small; the network catalog sources (Icosa, Poly Haven, Sketchfab)
       // cover the wider catalogs.
       var CDN_MODELS = [
-        { name: 'Damaged Helmet', file: 'khronos_damaged_helmet.glb', category: 'Showcase' },
         { name: 'Sheen Chair', file: 'sheen_chair.glb', category: 'Showcase' },
+        { name: 'Toy Car', file: 'khronos_toy_car.glb', category: 'Showcase' },
         { name: 'Chronograph Watch', file: 'chronograph_watch.glb', category: 'Showcase' },
         { name: 'Ferrari F40', file: 'ferrari_f40.glb', category: 'Vehicles' },
         { name: 'BMW M3 E30', file: 'bmw_m3_e30.glb', category: 'Vehicles' },
@@ -1172,7 +1172,11 @@
 
       function init() {
         setupCanvas();
-        initSceneView('khronos_damaged_helmet.glb', 'Damaged Helmet');
+        // Opening model: the Sheen Chair (CC0). It renders ~4x faster than the
+        // Toy Car on software WebGL (SwiftShader: ~17 fps vs ~4 fps at 1280x720,
+        // the Toy Car pays for transmission + clearcoat over 109k triangles),
+        // so the first frame and every tab switch stay responsive without a GPU.
+        initSceneView('sheen_chair.glb', 'Sheen Chair');
         setupTabs();
         setupExplore();
         setupSearch();
@@ -1239,7 +1243,7 @@
         // once filament.js/sceneview.js are self-hosted — so init the engine
         // first, clear the overlay, THEN load the default model as a
         // non-fatal, best-effort step.
-        SceneView.create('scene-canvas')
+        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx' })
           .then(function(instance) {
             sceneViewInstance = instance;
             // Test hook: the Playwright suite (tests/shadow-options.spec.ts)
@@ -1924,7 +1928,8 @@
           options.falloff = 12;
         }
         var handle = sceneViewInstance.addLight(options);
-        if (typeof handle === 'number') addedLights.push(handle);
+        // The handle is a Filament.js Entity object, not a number.
+        if (handle != null) addedLights.push(handle);
         showChip(type.charAt(0).toUpperCase() + type.slice(1) + ' light added');
         setTimeout(hideChip, 1500);
       }
@@ -1995,7 +2000,7 @@
             billboard: billboard,
             scale: scale
           }).then(function(handle) {
-            if (typeof handle === 'number') addedText.push(handle);
+            if (handle != null) addedText.push(handle);
           }).catch(function(err) {
             console.error('createText failed:', err);
           });
@@ -2286,7 +2291,7 @@
           sceneViewInstance.clearScene();
           geometryCount = 0;
           // Restore the default model so leaving the tab isn't a black screen.
-          loadModel(MODEL_BASE + 'khronos_damaged_helmet.glb', 'Damaged Helmet');
+          loadModel(MODEL_BASE + 'sheen_chair.glb', 'Sheen Chair');
         }
       }
 

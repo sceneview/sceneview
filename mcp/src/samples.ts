@@ -116,7 +116,7 @@ fun ModelViewerScreen() {
         mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f },
         cameraManipulator = rememberCameraManipulator()
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(
                 modelInstance = instance,
                 scaleToUnits = 1.0f,
@@ -140,7 +140,7 @@ fun ModelViewerScreen() {
 fun ARModelViewerScreen() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val modelInstance = rememberModelInstance(modelLoader, "models/damaged_helmet.glb")
+    val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
     var anchor by remember { mutableStateOf<Anchor?>(null) }
 
     ARSceneView(
@@ -395,7 +395,7 @@ fun CameraManipulatorScreen() {
             targetPosition = Position(0f)
         )
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
         }
     }
@@ -451,7 +451,7 @@ fun CameraAnimationScreen() {
             },
             mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }
         ) {
-            rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+            rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
                 ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
             }
         }
@@ -915,7 +915,7 @@ fun PostProcessingScreen() {
         modelLoader = modelLoader,
         view = view
     ) {
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
         }
     }
@@ -1088,7 +1088,7 @@ fun GestureInteractionScreen() {
                 }
             )
         ) {
-            rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+            rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
                 ModelNode(
                     modelInstance = instance,
                     scaleToUnits = 1.0f,
@@ -1151,7 +1151,7 @@ fun EnvironmentLightingScreen() {
         PlaneNode(size = Size(10f, 10f), materialInstance = floorMat)
 
         // Model
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f, position = Position(y = 0.5f))
         }
 
@@ -1286,7 +1286,7 @@ fun ComposeUI3DScreen() {
         viewNodeWindowManager = windowManager
     ) {
         // 3D model behind the UI
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f, position = Position(z = -1f))
         }
 
@@ -1947,7 +1947,7 @@ fun BillboardSpriteScreen() {
         mainLightNode = rememberMainLightNode(engine) { intensity = 100_000f }
     ) {
         // A model with billboard markers above it
-        rememberModelInstance(modelLoader, "models/damaged_helmet.glb")?.let { instance ->
+        rememberModelInstance(modelLoader, "models/toy_car.glb")?.let { instance ->
             ModelNode(modelInstance = instance, scaleToUnits = 1.0f)
         }
 

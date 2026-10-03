@@ -4601,7 +4601,7 @@ fun ModelScreen() {
     val camera = rememberCameraState(distance = 4f, elevation = 15f)
 
     SceneViewer(
-        model = ModelSource.Asset("models/damaged_helmet.glb"),
+        model = ModelSource.Asset("models/toy_car.glb"),
         modifier = Modifier.fillMaxSize(),
         camera = camera,
         lighting = Lighting(intensity = 80_000f, castShadows = true),
@@ -4746,7 +4746,7 @@ The builder DSL below stays fully supported and is the simplest path for a stati
 SceneView.create(canvas, configure = {
     camera { eye(0.0, 1.5, 5.0); target(0.0, 0.0, 0.0) }
     light  { directional(); intensity(100_000.0) }
-    model("models/damaged_helmet.glb")
+    model("models/toy_car.glb")
     geometry { cube(); size(1.0); position(2.0, 0.0, 0.0); color(1.0, 0.0, 0.0, 1.0) }
 }) { sceneView -> sceneView.startRendering() }
 ```
@@ -4861,7 +4861,7 @@ SceneView.create(canvas, configure = {
         direction(0.6f, -1.0f, -0.8f)
         // for point/spot: position(x, y, z)
     }
-    model("models/damaged_helmet.glb") {
+    model("models/toy_car.glb") {
         scale(1.0f)                // raw uniform local scale (like Android
                                    //  ModelNode(scale = Scale(value))); default 1f
         autoAnimate(true)          // play glTF animation 0 (default true);
@@ -5332,6 +5332,7 @@ View modifiers (chainable):
 .renderQuality(_ preset: RenderQuality) -> SceneView        // v4.2.0+ — .cinematic / .default / .performance
 .autoCenterContent(_ enabled: Bool) -> SceneView            // v4.3.0+ — default true; translates content so its centroid lands on the world origin
 .framingMargin(_ margin: Float) -> SceneView                // v4.26.0+ — padding on the auto-fit distance; 1.15 default, 1.0 = sphere tangent, < 1 = tighter. NO EFFECT when autoCenterContent(false)
+.contentInsets(_ insets: EdgeInsets) -> SceneView            // v4.53.0+ — 3D SceneView only, NOT ARSceneView. How far your own chrome (sheet, side panel) covers each edge, in points. The visible rectangle becomes the camera's viewport: subject re-centred and scaled by visibleHeight / viewHeight, view NOT resized. With autoCenterContent(false) the pose is untouched; with auto-framing on the orbit distance follows the visible rectangle. Orbit / pan / firstPerson only; animates with the transaction; taps stay under the finger. Android twin: SceneView(contentPadding = ...)
 .cameraOrbit(azimuth: Float? = nil, elevation: Float? = nil) -> SceneView  // v4.26.0+ — seeds the INITIAL orbit pose (radians); default elevation 30°
 .contentID(_ id: some Hashable) -> SceneView                // v4.26.0+ — re-runs the content closure IN PLACE when id changes. Use this, NEVER SwiftUI .id(), to swap the model
 .cameraPose(_ pose: SceneCameraPose?) -> SceneView          // v4.27.0+ — drives the orbit camera continuously (radians). Applied only when the VALUE changes, so it coexists with a live drag

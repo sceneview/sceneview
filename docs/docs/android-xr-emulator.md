@@ -197,7 +197,7 @@ class XRDemoActivity : ComponentActivity() {
                     val modelLoader = rememberModelLoader(engine)
                     val environmentLoader = rememberEnvironmentLoader(engine)
                     val modelInstance = rememberModelInstance(
-                        modelLoader, "models/damaged_helmet.glb"
+                        modelLoader, "models/toy_car.glb"
                     )
 
                     SceneView(
@@ -262,7 +262,7 @@ fun XRShowcase() {
                 val engine = rememberEngine()
                 val modelLoader = rememberModelLoader(engine)
                 val modelInstance = rememberModelInstance(
-                    modelLoader, "models/damaged_helmet.glb"
+                    modelLoader, "models/toy_car.glb"
                 )
 
                 SceneView(

@@ -38,7 +38,7 @@ object ArGeospatialAnchorsFragment : DemoFragment {
         icon = Icons.Filled.Explore,
         order = 19,
         addedIn = "4.35.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf(
             "ar", "geospatial", "terrain", "rooftop", "anchor", "vps", "earth",
             "streetscape", "mesh", "building", "classification",

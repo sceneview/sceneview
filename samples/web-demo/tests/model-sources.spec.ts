@@ -25,7 +25,7 @@ import {
 
 /** Absolute URL of a real GLB served by the Playwright dev server. */
 function localGlbUrl(page: import('@playwright/test').Page): string {
-  return new URL('/models/khronos_damaged_helmet.glb', page.url()).toString();
+  return new URL('/models/sheen_chair.glb', page.url()).toString();
 }
 
 /** Build one Icosa list-asset whose renderable format points at `glbUrl`. */
@@ -62,7 +62,7 @@ async function mockIcosa(
 
   // Detail endpoint: /v1/assets/<id>  (no further path segments).
   await page.route(/api\.icosa\.gallery\/v1\/assets\/[^/?]+(\?|$)/, async (route) => {
-    await route.fulfill(json(icosaAsset('helmet', 'Damaged Helmet', glbUrl)));
+    await route.fulfill(json(icosaAsset('sheen-chair', 'Sheen Chair', glbUrl)));
   });
 
   // List / feed / search endpoint: /v1/assets?<query>.
@@ -75,7 +75,7 @@ async function mockIcosa(
     await route.fulfill(
       json({
         assets: [
-          icosaAsset('helmet', 'Damaged Helmet', glbUrl),
+          icosaAsset('sheen-chair', 'Sheen Chair', glbUrl),
           icosaAsset('chair', 'Sheen Chair', glbUrl),
           icosaAsset('watch', 'Chronograph Watch', glbUrl),
         ],
@@ -271,7 +271,7 @@ test.describe('Web Demo — multi-source Explore (#2722)', () => {
     const deadGlb = 'https://web.archive.org/web/20250101010101id_/https://poly.googleusercontent.com/downloads/dead.glb';
     // Asset whose FIRST format is the dead archive .glb, followed by a live one.
     const asset = {
-      ...icosaAsset('helmet', 'Damaged Helmet', glbUrl),
+      ...icosaAsset('sheen-chair', 'Sheen Chair', glbUrl),
       formats: [
         { formatType: 'GLB', root: { url: deadGlb } },
         { formatType: 'GLTF2', root: { url: glbUrl } },

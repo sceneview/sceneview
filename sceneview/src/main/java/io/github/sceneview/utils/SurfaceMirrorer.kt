@@ -42,6 +42,12 @@ import com.google.android.filament.Viewport
  *
  * Multiple surfaces can be mirrored simultaneously — each [startMirroring] call adds one target.
  *
+ * ### Content padding is recorded as drawn
+ * The mirror draws the scene's own view with its own camera, so a `SceneView(contentPadding = …)`
+ * — or a [io.github.sceneview.node.CameraNode.contentPadding] set by hand — is in the recording
+ * too: the subject sits where it sat on screen, off-centre in the recorded frame by the padding's
+ * share of the viewport. Record with a zero padding to get a centred subject.
+ *
  * ### How a frame reaches the surface
  * Each mirrored surface gets its own Filament swap chain, and the scene is **rendered a second
  * time** into it — from a dedicated [Renderer], right after the scene's own frame has been

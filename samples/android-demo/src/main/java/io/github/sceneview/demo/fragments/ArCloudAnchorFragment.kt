@@ -30,7 +30,7 @@ object ArCloudAnchorFragment : DemoFragment {
         icon = Icons.Filled.CloudCircle,
         order = 20,
         addedIn = "4.0.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf(
             "ar", "cloud-anchor", "multi-user", "persistence", "arcore",
             "sync", "collaboration", "transport",

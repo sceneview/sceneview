@@ -51,6 +51,64 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Controls sheet cover
+
+/// How much of the stage's bottom the controls sheet covers, in points — `0`
+/// while it is closed. ``DemoScaffold`` publishes it to the stage, which hands
+/// it to `SceneView.contentInsets(_:)` so the subject stays in what is left.
+private struct DemoControlsCoverKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var demoControlsCover: CGFloat {
+        get { self[DemoControlsCoverKey.self] }
+        set { self[DemoControlsCoverKey.self] = newValue }
+    }
+}
+
+/// Hands its content the height the controls sheet covers.
+///
+/// A view of its own because the value is set by ``DemoScaffold`` on the
+/// stage: the demo that *applies* `demoChrome` sits outside it and cannot read
+/// it from its own environment.
+struct DemoControlsCover<Content: View>: View {
+    /// The spring a system sheet rises on, near enough that the subject and
+    /// the sheet read as one motion. Not a `SceneViewTokens` value on purpose:
+    /// it shadows UIKit's sheet transition, which the design system does not
+    /// set — `Spring.animation` (0.35 s) lands the subject before the sheet.
+    static var animation: Animation { .spring(duration: 0.5, bounce: 0) }
+
+    @Environment(\.demoControlsCover) private var cover
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        content(cover)
+    }
+}
+
+/// Where the system puts a sheet, which decides whether it covers the stage's
+/// bottom at all.
+enum DemoSheetPlacement {
+    /// Whether a sheet presented in this size class is attached to the bottom
+    /// edge, so that its height is what it hides of the stage.
+    ///
+    /// True at compact width — iPhone, a narrow iPad window. At regular width
+    /// it is true from iPadOS 27, where a sheet with detents was captured
+    /// resting on the bottom edge; earlier systems were not observed and may
+    /// centre it as a form sheet, so nothing is inset there. macOS shows a
+    /// sheet as a window-modal panel that leaves no rectangle above it.
+    static func coversBottom(_ horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        #if os(iOS)
+        if horizontalSizeClass == .compact { return true }
+        if #available(iOS 27.0, *) { return true }
+        return false
+        #else
+        return false
+        #endif
+    }
+}
+
 // MARK: - AR stage without a camera
 
 /// What an AR demo shows when there is no camera to draw on: the simulator.

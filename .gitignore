@@ -347,3 +347,6 @@ device-qa-report.json
 /samples/ios-demo/SceneViewDemo/Models/*.usdz
 /samples/ios-demo/SceneViewDemo/Environments/*.hdr
 /website-static/models/platforms/*.glb
+
+# Local web-demo viewer staged from the canonical website source (#4316).
+/samples/web-demo/site/js/sceneview.js

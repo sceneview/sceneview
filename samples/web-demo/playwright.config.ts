@@ -98,7 +98,7 @@ export default defineConfig({
 
   /* Dev server — start the web demo if not already running */
   webServer: process.env.WEB_DEMO_URL ? undefined : {
-    command: 'npx http-server site -p 8080 -s',
+    command: 'cp ../../website-static/js/sceneview.js site/js/sceneview.js && npx http-server site -p 8080 -s',
     port: 8080,
     timeout: 30_000,
     reuseExistingServer: true,

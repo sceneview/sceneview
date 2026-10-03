@@ -21,6 +21,7 @@ class DemoFreshnessTest {
         // Old enough to sit outside every window these tests use.
         addedIn: String = "4.0.0",
         updatedIn: String? = null,
+        status: DemoStatus = DemoStatus.Working,
     ) = DemoEntry(
         id = id,
         titleRes = 1,
@@ -31,6 +32,7 @@ class DemoFreshnessTest {
         tags = setOf("tag"),
         addedIn = addedIn,
         updatedIn = updatedIn,
+        status = status,
     )
 
     // ── The window ────────────────────────────────────────────────────────
@@ -143,7 +145,33 @@ class DemoFreshnessTest {
         assertEquals(DemoFreshness.None, stale.freshness("4.35.0"))
     }
 
-    // ── The list and its headline ─────────────────────────────────────────
+    @Test
+    fun `a coming-soon demo is never marked`() {
+        // Nothing new to try on a card that does not run yet — the iOS rule.
+        val comingSoon = DemoStatus.ComingSoon
+        assertEquals(
+            DemoFreshness.None,
+            demo(addedIn = "4.35.0", status = comingSoon).freshness("4.35.0"),
+        )
+        assertEquals(
+            DemoFreshness.None,
+            demo(updatedIn = "4.35.0", status = comingSoon).freshness("4.35.0"),
+        )
+        assertTrue(
+            freshDemos(listOf(demo(addedIn = "4.35.0", status = comingSoon)), "4.35.0").isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a known-issue demo keeps its marker`() {
+        // It runs, so a visible change is still worth pointing at.
+        assertEquals(
+            DemoFreshness.Updated,
+            demo(updatedIn = "4.35.0", status = DemoStatus.KnownIssue).freshness("4.35.0"),
+        )
+    }
+
+    // ── The list ──────────────────────────────────────────────────────────
 
     @Test
     fun `freshDemos keeps registry order and drops everything unmarked`() {
@@ -159,35 +187,6 @@ class DemoFreshnessTest {
     @Test
     fun `freshDemos is empty when no demo moved`() {
         assertTrue(freshDemos(listOf(demo(), demo(id = "b")), "4.35.0").isEmpty())
-    }
-
-    @Test
-    fun `the headline names the highest version in the window, not the build`() {
-        // Between two releases the build still reports the shipped version while
-        // the cards below the headline are badged with the next one. The honest
-        // headline is the one that matches the cards.
-        val demos = listOf(
-            demo(id = "a", updatedIn = "4.34.0"),
-            demo(id = "b", updatedIn = "4.35.0"),
-        )
-        assertEquals("4.35", freshnessHeadlineVersion(demos, buildVersion = "4.34.0"))
-    }
-
-    @Test
-    fun `the headline ignores declarations outside the window`() {
-        val demos = listOf(demo(id = "a", updatedIn = "4.35.0"), demo(id = "b", addedIn = "3.99.0"))
-        assertEquals("4.35", freshnessHeadlineVersion(demos, buildVersion = "4.35.0"))
-    }
-
-    @Test
-    fun `the headline falls back to the build version with nothing in the window`() {
-        assertEquals("4.35", freshnessHeadlineVersion(listOf(demo()), buildVersion = "4.35.0"))
-    }
-
-    @Test
-    fun `the headline never shows a patch or a build suffix`() {
-        assertEquals("4.35", shortVersionOf("4.35.2-main.abc1234"))
-        assertEquals("4.35", shortVersionOf("4.35.0"))
     }
 
     // ── The real registry ─────────────────────────────────────────────────
@@ -251,7 +250,7 @@ class DemoFreshnessTest {
     }
 
     @Test
-    fun `a release where no demo moved marks nothing and falls back to the build version`() {
+    fun `a release where no demo moved marks nothing`() {
         // The state #3927 made legal: every declaration is out of the window.
         val registry = listOf(
             demo(id = "a", updatedIn = "4.39.0"),
@@ -260,7 +259,6 @@ class DemoFreshnessTest {
         )
         assertTrue(freshDemos(registry, buildVersion = "4.43.0").isEmpty())
         assertTrue(registry.all { it.freshness("4.43.0") == DemoFreshness.None })
-        assertEquals("4.43", freshnessHeadlineVersion(registry, buildVersion = "4.43.0"))
     }
 
     @Test

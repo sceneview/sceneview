@@ -117,6 +117,8 @@ on:
       - 'samples/android-demo/**'
       - 'assets/manifest.json'
       - 'samples/web-demo/**'
+      # The demo runs the website viewer since #4316.
+      - 'website-static/js/sceneview.js'
       # NOTE: `samples/ios-demo/**` is deliberately NOT listed — the iOS leg
       # is nightly-only (see the FOUR-LEG SPLIT block above, #1601).
   workflow_dispatch:
@@ -195,6 +197,7 @@ jobs:
             web:
               - *shared
               - 'samples/web-demo/**'
+              - 'website-static/js/sceneview.js'
       - name: Assert every path filter produced a real verdict
         env:
           VERDICTS: |

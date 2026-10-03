@@ -18,7 +18,7 @@ object ArPlaneRendererV2Fragment : DemoFragment {
         icon = Icons.Filled.BorderClear,
         order = 26,
         addedIn = "4.16.0",
-        updatedIn = "4.51.0",
+        updatedIn = "4.52.0",
         tags = setOf("ar", "plane", "renderer", "depth", "pbr", "hdr"),
     )
 

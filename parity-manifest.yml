@@ -1283,10 +1283,17 @@ shell:
     contract: >-
       Header (search + What's new) that turns to frosted glass once the
       list scrolls under it (surface 72 % / 78 % over a 24dp blur, API 31+),
-      3-page featured pager (Models live, Materials, Lighting, + What's-new
-      page), then a list of picture cards: "Featured" as 2:1 banners
-      dissolving downward (FEATURED_SECTION_IDS, Cosmos then Rerun first), Browse-online
-      row, 5 chips, section headers, one card per demo with its capture
+      2-page featured pager (FEATURED_PAGER_IDS: Models live, Cosmos), then
+      a list of picture cards: "Featured" as 2:1 banners dissolving downward
+      (FEATURED_IDS minus the pager's pages: AR placement, AR Rerun,
+      Materials; a demo is pushed once above the chips, pager then Featured
+      then the What's-new row, homeTopSections, #4304), the What's-new row
+      opening the What's-new sheet over the whole catalogue (never the
+      filter chip), Browse-online row, 5 chips (the selected chip toggles
+      back to All, Back clears the filter, a filtered list ends on "Show
+      all N samples", #4304), section headers, one card per demo (under
+      "All" a Featured banner is not listed again, HomeTopSections.catalogue;
+      a chip or a search lists every match) with its capture
       over the leading half dissolving sideways into an ambient ground
       taken from the picture (HomeAmbient, luminance 0.035 dark / 0.84
       light), 20dp corners, 10dp apart, New/Updated chip on the title line,
@@ -1303,9 +1310,15 @@ shell:
       captures (12 imagesets shared with Android, tools/demo-previews/README.md).
       The header turns to glass once scrolled (ShowcaseTab.swift
       HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
-      #4208. Still diverges: single HomeHero instead of the pager, no What's
-      new, and six broken demos are kept off the home
-      (HomeCatalogue.hiddenFromHome)
+      #4208. Still diverges: single HomeHero instead of the pager; the hero
+      (heroDemoId model-viewer, ShowcaseTab.swift) comes back as a Featured
+      banner because `featured` draws every HomeCatalogue.featuredIds, and
+      the banners are listed again in the sections, where Android shows a
+      demo once (#4312); the What's-new row (no picture on iOS) still
+      selects the filter (openWhatsNew) instead of opening the sheet
+      (#4312); the What's-new chip toggles but a section chip does not, and
+      a filtered list has no "Show all N samples" (#4312); and six broken
+      demos are kept off the home (HomeCatalogue.hiddenFromHome)
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt

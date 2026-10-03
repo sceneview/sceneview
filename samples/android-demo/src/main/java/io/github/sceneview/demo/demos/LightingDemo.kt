@@ -60,13 +60,13 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.LightingStage
 import io.github.sceneview.demo.demos.internal.LightingStageFloor
 import io.github.sceneview.demo.demos.internal.StageFade
+import io.github.sceneview.demo.demos.internal.rememberResidentEnvironment
 import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
-import io.github.sceneview.environment.Environment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.DynamicSkyNode
@@ -125,17 +125,15 @@ import kotlin.math.abs
  * ## Threading
  *
  * Every Filament call here runs on the composition (main) thread, as the JNI contract requires:
- * the model comes from `rememberModelInstance`, and the HDR environment is built inside a
- * `remember` keyed on the asset path. That build is *synchronous* on purpose — the asynchronous
- * `rememberHDREnvironment` decodes off the main thread but returns null until the environment
- * lands, which on an environment **swap** means several frames of the neutral fallback, i.e. a
- * black sky flashing between two HDRs. A short hitch on a deliberate tap reads as loading; a
- * black flash reads as a bug.
+ * the model comes from `rememberModelInstance`; `rememberResidentEnvironment` decodes HDR pixels
+ * off main, then uploads and prefilters them on main. It returns null only for the first load.
+ * During every later selection it retains the current environment until the replacement skybox
+ * and IBL are both ready, swaps them together, then releases the old pair.
  *
- * The Sun rig's clock is the one exception to "one HDR at a time": while it runs, the hour
- * crosses all three skies every cycle, so the three are built once — the one on screen first, the
- * other two one per frame after the stage is up — and kept until it stops. A swap is then a
- * pointer change, not a 200 ms decode mid-animation.
+ * While the Sun clock runs, the rig's three skies are loaded once and kept resident behind the
+ * one on screen, so a sky change is a swap and not a load: a day is ~34 s and crosses four of
+ * them, the shortest for 3.3 s — less than a load takes on a slow device. They are released when
+ * the clock stops.
  */
 @Composable
 fun LightingDemo(onBack: () -> Unit) {
@@ -230,36 +228,10 @@ fun LightingDemo(onBack: () -> Unit) {
     }
 
     // ── Environment ──────────────────────────────────────────────────────────────────────────
-    // One HDR at a time, whichever the current rig asks for — except while the sun clock runs.
-    // A running day crosses four sky changes every ~34 s, and each synchronous build is a
-    // visible hitch in the middle of the animation; so for that stretch the three sky HDRs are
-    // held. They are built one per frame once the stage is up, never at composition: three
-    // builds on the frame that opens the screen kept the Sun rig behind its loading cover for
-    // three times as long. Stop the clock or leave the rig and they are released. QA mode never
-    // runs the clock, so it never holds three.
-    //
-    // The cache is a plain map, not state: the environment on screen is resolved in composition
-    // (below), and a prefetch that lands needs no recomposition — the next sky change finds it.
-    // The sky already on screen goes into the cache too, so it is decoded once, not twice.
-    val skyCache: MutableMap<String, Environment>? = remember(environmentLoader, sunClockEnabled) {
-        if (sunClockEnabled) HashMap() else null
-    }
-    DisposableEffect(skyCache) {
-        onDispose {
-            skyCache?.values?.forEach { environmentLoader.destroyEnvironment(it) }
-            skyCache?.clear()
-        }
-    }
-    LaunchedEffect(skyCache, sunClockRunning) {
-        if (skyCache == null || !sunClockRunning) return@LaunchedEffect
-        for (file in LightingStage.skyEnvironmentFiles) {
-            // A frame between builds: each is a main-thread stall, so they never stack.
-            withFrameNanos { }
-            if (file in skyCache) continue
-            environmentLoader.createHDREnvironment(assetFileLocation = file)
-                ?.let { skyCache[file] = it }
-        }
-    }
+    // One HDR on screen, whichever the current rig asks for, loaded asynchronously. The current
+    // complete environment is retained while the next one decodes and prefilters, so the scene
+    // never falls back to black or neutral between the old skybox and its replacement IBL. A
+    // running clock also keeps the Sun rig's skies resident (see `presentedEnvironment` below).
     // The clock writes `hour` every frame. Everything this scope needs from it changes a few
     // times a day, so it reads those through `derivedStateOf`: reading `hour` itself here would
     // recompose the whole screen — and re-run the `SideEffect` below — at 60 Hz. `hour` is read
@@ -285,18 +257,22 @@ fun LightingDemo(onBack: () -> Unit) {
         LightingRig.Studio -> false
         LightingRig.Sun -> true
     }
-    val loadedEnvironment: Environment? = remember(environmentLoader, environmentFile, skyCache) {
-        skyCache?.get(environmentFile)
-            ?: environmentLoader.createHDREnvironment(assetFileLocation = environmentFile)
-                ?.also { built -> skyCache?.put(environmentFile, built) }
-    }
-    // Outside the clock, the environment on screen is this screen's alone; under it, the cache
-    // owns it and releases it with the others.
-    DisposableEffect(loadedEnvironment, skyCache) {
-        onDispose {
-            if (skyCache == null) loadedEnvironment?.let { environmentLoader.destroyEnvironment(it) }
-        }
-    }
+    // The clock crosses four skies a day, the shortest for 3.3 s: loaded on demand, a slice can
+    // end before its sky is ready and never be seen. So while it runs, the three sky HDRs are
+    // loaded once and kept behind the one on screen; they are released when it stops.
+    val residentSkies = if (sunClockRunning) LightingStage.skyEnvironmentFiles else emptyList()
+    val presentedEnvironment =
+        rememberResidentEnvironment(environmentLoader, environmentFile, warm = residentSkies)
+    val loadedEnvironment = presentedEnvironment?.resource
+    // The previous environment stays on screen while the next one loads, and for that stretch
+    // `skyVisible` already describes the rig being loaded: applied at once it would draw the
+    // studio HDR as a sky on Studio → Sun. So the engine follows `skyOnScreen`, the flag of the
+    // environment actually presented, and the controls keep `skyVisible`, the one asked for.
+    // The environment is published with the file it was loaded from, so the comparison cannot
+    // pair a new instance with a request made since.
+    val presentedSky = remember { PresentedSky(skyVisible) }
+    if (presentedEnvironment?.file == environmentFile) presentedSky.visible = skyVisible
+    val skyOnScreen = presentedSky.visible
     val fallbackEnvironment = remember(environmentLoader) { createEnvironment(environmentLoader) }
     DisposableEffect(fallbackEnvironment) {
         onDispose { environmentLoader.destroyEnvironment(fallbackEnvironment) }
@@ -309,16 +285,16 @@ fun LightingDemo(onBack: () -> Unit) {
         onDispose { engine.destroySkybox(stageBackdrop) }
     }
     // `copy` shares the loaded environment's Filament handles and is never itself destroyed —
-    // only `loadedEnvironment` is, by the DisposableEffect above. Hiding the sky is therefore a
-    // free operation rather than a rebuild of the whole prefiltered chain.
-    val environment = remember(loadedEnvironment, fallbackEnvironment, skyVisible, stageBackdrop) {
-        loadedEnvironment?.let { if (skyVisible) it else it.copy(skybox = stageBackdrop) }
+    // `rememberResidentEnvironment` owns and releases `loadedEnvironment`. Hiding the sky is
+    // therefore a free operation rather than a rebuild of the whole prefiltered chain.
+    val environment = remember(loadedEnvironment, fallbackEnvironment, skyOnScreen, stageBackdrop) {
+        loadedEnvironment?.let { if (skyOnScreen) it else it.copy(skybox = stageBackdrop) }
             ?: fallbackEnvironment
     }
     // Filament rotates the *lighting* — irradiance and reflections — and leaves the skybox alone,
     // so a rotation applied while the sky is drawn would slide the reflections off the picture
     // behind them. The control is disabled in that state; this keeps the engine agreeing with it.
-    val effectiveRotation = if (skyVisible) 0f else environmentRotation
+    val effectiveRotation = if (skyOnScreen) 0f else environmentRotation
     // The IBL is dimmed for the analytic rigs: at full strength the ambient does the modelling
     // the key light is there to do, and moving the key barely changes the frame.
     val iblIntensity = when (rig) {
@@ -344,7 +320,7 @@ fun LightingDemo(onBack: () -> Unit) {
         StageFade.apply(
             view = view,
             cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
-            sky = environment.skybox.takeIf { skyVisible },
+            sky = environment.skybox.takeIf { skyOnScreen },
             skyTint = fadeSkyTint,
             ground = fadeGround,
         )
@@ -568,7 +544,7 @@ fun LightingDemo(onBack: () -> Unit) {
                         StageFade.apply(
                             view = view,
                             cameraDistance = distance,
-                            sky = environment.skybox.takeIf { skyVisible },
+                            sky = environment.skybox.takeIf { skyOnScreen },
                             skyTint = fadeSkyTint,
                             ground = fadeGround,
                         )
@@ -852,6 +828,9 @@ internal fun SwitchRow(
         Switch(checked = checked, enabled = enabled, onCheckedChange = null)
     }
 }
+
+/** Whether the environment on screen draws its sky — a plain holder, written in composition. */
+private class PresentedSky(var visible: Boolean)
 
 /** Stage right and a little above — the classic key position, and the one the card art was lit at. */
 private const val DEFAULT_KEY_AZIMUTH = 48f

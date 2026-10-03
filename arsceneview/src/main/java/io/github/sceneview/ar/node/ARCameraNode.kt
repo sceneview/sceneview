@@ -9,6 +9,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.arcore.quaternion
+import io.github.sceneview.ViewportPadding
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.utils.setCustomProjection
@@ -121,6 +122,20 @@ open class ARCameraNode(engine: Engine) : CameraNode(engine) {
      * Render-thread only. (#2950)
      */
     private var projectionInvalidated: Boolean = false
+
+    /**
+     * Always [ViewportPadding.Zero]: an AR camera ignores content padding, and writing it does
+     * nothing.
+     *
+     * The projection here is the physical camera's — ARCore's intrinsics, off-centre principal
+     * point included. Moving its optical centre into a "visible area" would draw virtual content
+     * away from the real surface it is anchored to, while the camera feed behind it stays put. To
+     * keep AR content clear of a panel, move the content or the reticle, not the projection.
+     * [getViewPortAspect] is therefore always the viewport's own ratio.
+     */
+    override var contentPadding: ViewportPadding
+        get() = ViewportPadding.Zero
+        set(@Suppress("UNUSED_PARAMETER") value) = Unit
 
     open fun update(session: Session, frame: Frame) {
         this.session = session

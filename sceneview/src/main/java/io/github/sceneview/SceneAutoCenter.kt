@@ -243,6 +243,9 @@ class FramingGate {
          * fighting the user almost immediately.
          */
         const val MAX_FRAMING_PASSES: Int = 10
+
+        /** No framing key recorded yet — distinct from a `null` key. */
+        private val UNSET = Any()
     }
 
     /** `true` once the union diagonal has stabilised and the pass has latched. */
@@ -337,6 +340,30 @@ class FramingGate {
         framingPasses++
         if (stable || framingPasses >= MAX_FRAMING_PASSES) latched = true
         isPending = !latched
+    }
+
+    /**
+     * What the last framing was computed for, besides the content itself — see [rearmOnChange].
+     * [UNSET] until the pass has been asked once.
+     */
+    private var framingKey: Any? = UNSET
+
+    /**
+     * Re-arms the gate when something the framing depends on, other than the content, changed
+     * since the last call: [key] is compared with the previous one and a different value does what
+     * [reset] does. The first call only records the key.
+     *
+     * The union diagonal says nothing about *where* the content is framed. A camera whose visible
+     * area changes — `contentPadding` following a panel — sees the same diagonal and would stay
+     * latched on a framing computed for another aspect ratio.
+     *
+     * @return `true` when the gate was re-armed.
+     */
+    internal fun rearmOnChange(key: Any?): Boolean {
+        val changed = framingKey !== UNSET && framingKey != key
+        framingKey = key
+        if (changed) reset()
+        return changed
     }
 
     /**
