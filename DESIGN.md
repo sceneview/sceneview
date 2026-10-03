@@ -922,10 +922,12 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
 - **The camera frames itself until touched.** It eases to a three-quarter view of the
   room as it grows; the first drag hands it to the user (drag orbits, two fingers pan,
   pinch zooms); double-tap or Recenter hands it back.
-- **The room never leaves the picture (#4306).** The subject is the box of everything
+- **The room is fitted into the clear band (#4306).** The subject is the box of everything
   drawn — path, planes, anchors and both point clouds, trimmed of stray points — and it is
   fitted, corner by corner, into the **clear band** of the stage: the part the figures above
-  and the timeline card below leave free. The replay **measures** that band on screen
+  and the timeline card below leave free. The camera stands as far back as the fit asks
+  (tested up to a 20 × 9 m box, some 60 m away); the box is what ARCore reported, which can
+  over-read the room itself (#4328). The replay **measures** that band on screen
   (`OrbitBand.between`), so it holds on any phone, font scale or card height; a view with
   nothing to measure takes the band of its orientation. The camera is lowered, never
   tilted, to centre the room in it. Left alone the view sways
@@ -938,22 +940,25 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
 - **One 3D view, two readings: Points | Surface (#4306).** A scan that can be meshed heads
   its timeline card with a full-width two-way switch. *Surface* draws the room's mesh in
   the same view, under the same camera, in place of its points and planes — never a second
-  screen. The switch owns the card's caption (building, then the mesh's figures) and a
-  `.glb` share button once built; it is absent over the camera's frames and for a
-  recording with nothing to mesh. The surface is the finished result: the camera card is
-  not laid over it.
+  screen. The switch owns the card's caption (building, then "Surface preview" and its
+  triangle count — no size: the figures above already measure the room) and a `.glb` share
+  button once built; it is absent over the camera's frames and for a recording with nothing
+  to mesh. The surface is a preview — a short scan gives a coarse, patchy mesh — and it is
+  what the view is there to show: the camera card is not laid over it.
 - **The room in front, the tracking aids behind it (#4306).** The glows are held low
   (trail head 2.0, live points and frustum 1.4), the history frusta are `primary` at 25 %
   on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
   photographed planes, the coloured cloud, the mesh — keeps its full strength.
 - **A phone on its side (#4306).** Under 500 dp of height the stacked cards would leave the
-  room nothing: the figures and the timeline become two 280 dp cards on either side of the
+  room nothing — provided the window is wide enough for two side cards to leave a stage
+  between them (`OrbitBand.halfWidthBeside`; a short *and* narrow window stays stacked): the
+  figures and the timeline become two 280 dp cards on either side of the
   room, under the header's line; the timeline folds onto one row (play, strip, clock), the
   camera card is dropped — the dock's *Camera* is one tap away — and the room is fitted
   between the two cards, under the status bar and `Space.lg` above the mode pill — the
   room's dimensions are written under its floor (`OrbitBand.betweenSides`). The one-row
-  card has no caption line, so the surface's own line (building, its size, or why there
-  is none) sits under the Points | Surface switch. Over the camera, the 3D
+  card has no caption line, so the surface's own line (building, its triangle count, or why
+  there is none) sits under the Points | Surface switch. Over the camera, the 3D
   picture-in-picture shrinks to 96 × 128 dp and sits under the timeline, beside the frame.
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.

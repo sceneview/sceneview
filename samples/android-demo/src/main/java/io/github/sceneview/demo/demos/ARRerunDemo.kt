@@ -68,6 +68,8 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -572,14 +574,14 @@ private fun RerunReplayScreen(
     // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
     // the built model itself each time it comes back.
     var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
-    val surface = rememberRerunSurface(surfaceSource, surfaceWanted)
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // figures above and the timeline below, whatever the phone, the font scale or the card's lines.
     // A phone on its side has no height for that stack: the figures and the timeline stand on
     // either side of the room, the timeline folds onto one row, and the camera card is dropped
     // (the 3D picture-in-picture, which runs the clock over the camera, moves under the timeline).
-    val compact = LocalConfiguration.current.screenHeightDp.dp < SceneViewTokens.DebugView.compactStageHeight
+    val compact = compactStage()
     var stage by remember { mutableStateOf(Rect.Zero) }
     var hud by remember { mutableStateOf<Rect?>(null) }
     var timeline by remember { mutableStateOf<Rect?>(null) }
@@ -618,7 +620,9 @@ private fun RerunReplayScreen(
                 media = media,
                 thumbnails = thumbnails,
                 session = session,
-                modifier = cardModifier.onGloballyPositioned { timeline = it.boundsInRoot() },
+                // Measured outside the reveal, like the HUD: where the card rests, not where it
+                // rises from.
+                modifier = Modifier.onGloballyPositioned { timeline = it.boundsInRoot() }.then(cardModifier),
                 title = title,
                 caption = surface.caption?.takeIf { switchable } ?: when (mode) {
                     RerunMode.Map -> "Top-down map of the room"
@@ -649,6 +653,8 @@ private fun RerunReplayScreen(
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
+        // The mode pill belongs to the landing: under a replay's cards it only took room.
+        modeSwitch = null,
         topOverlay = {
             if (media != null && compact) {
                 Row(Modifier.fillMaxWidth()) {
@@ -657,6 +663,7 @@ private fun RerunReplayScreen(
                         modifier = Modifier
                             .padding(start = Space.md)
                             .width(SceneViewTokens.DebugView.compactCardWidth)
+                            // Measured outside the reveal: where the card rests.
                             .onGloballyPositioned { hud = it.boundsInRoot() }
                             .reveal(hudIn, rise = -Space.md),
                     )
@@ -690,7 +697,7 @@ private fun RerunReplayScreen(
                     }
                 }
             } else if (media != null) {
-                // The surface is the finished result: nothing is laid over it.
+                // The surface is what the view is there to show: nothing is laid over it.
                 val surfaceUp = surface.wanted && !surface.failed && mode != RerunMode.Camera
                 RerunReplayHud(
                     session = session,
@@ -793,6 +800,25 @@ private fun RerunReplayScreen(
             )
         }
     }
+}
+
+/**
+ * A phone on its side: too short for the stacked cards, and wide enough for the two side cards to
+ * leave the room a stage between them — by the rule the band itself is measured with
+ * ([OrbitBand.halfWidthBeside]). A window that is short and narrow (split screen) keeps the
+ * stacked layout: beside the room, the cards would stand on it.
+ */
+@Composable
+private fun compactStage(): Boolean {
+    if (LocalConfiguration.current.screenHeightDp.dp >= SceneViewTokens.DebugView.compactStageHeight) return false
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing
+    // The room stays centred: the side a cutout pushes further in decides for both.
+    val inset = maxOf(insets.getLeft(density, direction), insets.getRight(density, direction))
+    val card = with(density) { (Space.md + SceneViewTokens.DebugView.compactCardWidth).toPx() }
+    val width = LocalWindowInfo.current.containerSize.width.toFloat()
+    return OrbitBand.halfWidthBeside(cardEnd = inset + card, viewWidth = width) != null
 }
 
 /**
@@ -1062,6 +1088,8 @@ private fun RerunLiveScreen(
         // The sheet holds what the screen must not: the connection steps a developer types
         // once. The screen itself only says what the demo does and whether it is live.
         controls = { RerunSheet() },
+        // The mode pill belongs to the landing, not to a scan in progress.
+        modeSwitch = null,
         topOverlay = {
             if (recording && scanMedia != null) {
                 val stats = debugSession.stats

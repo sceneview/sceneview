@@ -27,7 +27,7 @@
     <!-- Filament.js WASM engine — self-hosted (never an external CDN, see issue #1586).
          filament.js resolves filament.wasm relative to its own directory (js/filament/). -->
     <script src="js/filament/filament.js"></script>
-    <!-- SceneView.js — self-hosted alongside the engine. -->
+    <!-- SceneView.js — staged from website-static/js/sceneview.js (see README). -->
     <script src="js/sceneview.js"></script>
     <!-- Source-agnostic model catalog layer (Sketchfab | Icosa | Poly Haven | bundled samples). -->
     <script src="js/model-sources.js"></script>
@@ -1243,7 +1243,7 @@
         // once filament.js/sceneview.js are self-hosted — so init the engine
         // first, clear the overlay, THEN load the default model as a
         // non-fatal, best-effort step.
-        SceneView.create('scene-canvas')
+        SceneView.create('scene-canvas', { iblUrl: 'environments/neutral_ibl.ktx' })
           .then(function(instance) {
             sceneViewInstance = instance;
             // Test hook: the Playwright suite (tests/shadow-options.spec.ts)
@@ -1928,7 +1928,8 @@
           options.falloff = 12;
         }
         var handle = sceneViewInstance.addLight(options);
-        if (typeof handle === 'number') addedLights.push(handle);
+        // The handle is a Filament.js Entity object, not a number.
+        if (handle != null) addedLights.push(handle);
         showChip(type.charAt(0).toUpperCase() + type.slice(1) + ' light added');
         setTimeout(hideChip, 1500);
       }
@@ -1999,7 +2000,7 @@
             billboard: billboard,
             scale: scale
           }).then(function(handle) {
-            if (typeof handle === 'number') addedText.push(handle);
+            if (handle != null) addedText.push(handle);
           }).catch(function(err) {
             console.error('createText failed:', err);
           });

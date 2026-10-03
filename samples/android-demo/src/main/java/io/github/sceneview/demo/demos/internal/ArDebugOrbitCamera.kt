@@ -444,8 +444,8 @@ class OrbitLimits(
     val floorY: Float? = null,
 ) {
     companion object {
-        /** Before any content: only the absolute limits hold. */
-        val NONE = OrbitLimits()
+        /** Before any content: no bounds to hold, and a room-sized reach. */
+        val NONE = OrbitLimits(maxDistance = ArDebugFraming.EMPTY_MAX_DISTANCE)
     }
 }
 
@@ -453,7 +453,21 @@ class OrbitLimits(
 @Suppress("TooManyFunctions")
 object ArDebugFraming {
     const val MIN_DISTANCE = 0.25f
-    const val MAX_DISTANCE = 40f
+
+    /** The view's far plane (`CameraNode`'s default): nothing is drawn past it. */
+    const val FAR_PLANE_M = 1000f
+
+    /**
+     * The furthest the eye may stand from its pivot. It is not a framing limit: a room is framed
+     * from whatever distance shows it whole — a 20 × 9 m terrace from some 60 m, where a 40 m
+     * stop cropped it (#4306) — and a pinch stops [MAX_ZOOM_OUT] past that ([limits]). This only
+     * keeps what is framed inside [FAR_PLANE_M]: a box fitted from `d` reaches no further than
+     * `d` behind its pivot.
+     */
+    const val MAX_DISTANCE = FAR_PLANE_M / 2f
+
+    /** Before any content there is no room to keep whole: a pinch stays within a room's size. */
+    const val EMPTY_MAX_DISTANCE = 40f
 
     /** Never under the horizon: below it a room is the underside of its own floor. */
     const val MIN_ELEVATION = 4f

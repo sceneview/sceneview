@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -109,8 +111,8 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toLinearSpace
+import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
-import io.github.sceneview.model.model
 import io.github.sceneview.node.MeshNode
 import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberModelInstance
@@ -803,11 +805,18 @@ internal fun ArDebugSceneView(
             )
             // The room in its own world space, metres, Y up: the same stage as the points it replaces.
             surface?.let { room ->
-                // Created here, beside the node that draws it: when this view leaves the screen
+                // Taken here, beside the node that draws it: when this view leaves the screen
                 // (Camera mode) the node destroys the instance's renderables with itself, so an
-                // instance kept above the view came back as an empty room (#4306).
-                val instance = rememberGlbInstance(modelLoader, room.glb)
-                instance?.let { ModelNode(modelInstance = it, autoAnimate = false, isVisible = room.shown) }
+                // instance kept above the view came back as an empty room (#4306). The model it
+                // is an instance of is kept above, parsed once.
+                val instance = remember(room.model) { room.model.instance() }
+                if (instance != null) {
+                    ModelNode(modelInstance = instance, autoAnimate = false, isVisible = room.shown)
+                } else {
+                    // Nothing to draw: the caption says so, instead of naming a preview over an
+                    // empty room.
+                    SideEffect { room.model.lost = true }
+                }
             }
             if (session.isVisible(DebugGroup.Anchors) && ReplaySurface.keeps(solid, DebugGroup.Anchors)) {
                 anchors.forEach { anchor ->
@@ -830,32 +839,76 @@ internal fun ArDebugSceneView(
 }
 
 /**
- * A model instance of [glb], owned by the scene that calls it: created with the scene, destroyed
- * when the scene leaves the composition — a scene that comes back loads a fresh one.
+ * The room's `.glb`, parsed once and kept above the 3D view for as long as its owner keeps it (the
+ * replay): a view that enters the screen takes an [instance] of it — the model's own first, then
+ * a new one over the same buffers — instead of parsing the file again at every Camera → 3D return.
+ *
+ * Main thread only, like the loader it wraps. gltfio cannot give an instance back, so each return
+ * leaves one behind (a handful of entities: the mesh is one node) until [destroy] frees the lot.
+ *
+ * @throws IllegalArgumentException when the renderer cannot read [glb].
  */
-@Composable
-private fun rememberGlbInstance(modelLoader: ModelLoader, glb: ByteArray): ModelInstance? {
-    val instance = remember(modelLoader, glb) {
+internal class ReplaySurfaceModel(private val modelLoader: ModelLoader, private val glb: ByteArray) {
+    // Its source data is kept: an instance can only be added to a model that still has it.
+    private val models = mutableListOf(parse())
+    private var taken = 0
+
+    /** A view asked for an instance and none could be made: the room is not on screen. */
+    var lost by mutableStateOf(false)
+
+    /** An instance for a view entering the screen, or `null` when none can be made. */
+    fun instance(): ModelInstance? {
+        val model = models.lastOrNull() ?: return null
+        val number = ++taken
+        if (number == 1) return model.instance
+        val started = System.nanoTime()
+        val added = modelLoader.createInstance(model)
+        // Should the model refuse another instance, the file is parsed again, as it used to be.
+        val instance = added ?: runCatching { parse() }.getOrNull()?.also { models += it }?.instance
+        val how = when {
+            added != null -> "added to the kept model"
+            instance != null -> "the file parsed again"
+            else -> "none"
+        }
+        Log.i(SURFACE_TAG, "instance $number: $how, ${(System.nanoTime() - started) / NS_PER_MS} ms")
+        return instance
+    }
+
+    /** Frees the model and every instance taken from it. No order with the nodes' own disposal is relied on. */
+    fun destroy() {
+        models.forEach(modelLoader::destroyModel)
+        models.clear()
+    }
+
+    private fun parse(): Model {
+        val started = System.nanoTime()
         val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
         buffer.rewind()
-        runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+        val model = modelLoader.createModel(buffer, releaseSourceData = false)
+        val ms = (System.nanoTime() - started) / NS_PER_MS
+        Log.i(SURFACE_TAG, "parsed ${glb.size / BYTES_PER_KB} KB in $ms ms")
+        return model
     }
-    // As `rememberModelInstance` does: no order with the node's own disposal is relied on.
-    DisposableEffect(instance) { onDispose { instance?.let { modelLoader.destroyModel(it.model) } } }
-    return instance
+
+    private companion object {
+        const val SURFACE_TAG = "ReplaySurface"
+        const val NS_PER_MS = 1_000_000L
+        const val BYTES_PER_KB = 1024
+    }
 }
 
 /**
- * The room's meshed model in the replay's stage: its [glb], the [bounds] of its mesh, and
- * whether it is the reading [shown] — the surface — or waits behind the points. The view loads
- * the [glb] itself, so the model lives and dies with the scene that draws it.
+ * The room's meshed model in the replay's stage: its parsed [model], the [bounds] of its mesh,
+ * and whether it is the reading [shown] — the surface — or waits behind the points. The view
+ * takes an instance of [model] each time it enters the screen; the model itself belongs to the
+ * replay that built it.
  *
  * [aligned] is `true` for a model built from the session on screen, which shares its world: the
  * path and the anchors stay, walking through it. A model from elsewhere (QA's ray-cast room, on
  * an emulator that cannot scan) stands alone and is framed on its own bounds.
  */
 internal class ReplaySurface(
-    val glb: ByteArray,
+    val model: ReplaySurfaceModel,
     val bounds: FloatArray,
     val aligned: Boolean,
     val shown: Boolean,

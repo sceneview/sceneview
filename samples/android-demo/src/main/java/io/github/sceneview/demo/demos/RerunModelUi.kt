@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.FileProvider
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
@@ -44,13 +48,17 @@ import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.loaders.ModelLoader
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -153,6 +161,7 @@ internal class RerunModelBuild(
 /** Builds the model of [source] — fuse (unless done), mesh, write — reporting its share done to [progress]. */
 internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit): RerunModelBuild {
     val started = System.nanoTime()
+    Log.i(TAG, "model (${source::class.simpleName}): building")
     val (tsdf, minWeight) = when (source) {
         is RerunModelSource.Live -> source.tsdf to LIVE_MIN_WEIGHT
         is RerunModelSource.Surfels -> RerunTsdf().also { t ->
@@ -205,53 +214,125 @@ internal class RerunSurfaceState(
     val wanted: Boolean,
     /** The build's share done, 0–1. */
     val progress: Float,
+    /** The model on screen; `null` while it builds and when there is none to show. */
     val build: RerunModelBuild?,
-    /** The scan gave no surface: the points stay on screen. */
-    val failed: Boolean,
+    /** Why there is no surface, in the words shown: the points stay on screen. `null` while there may be one. */
+    val failure: String?,
     /** The mesh, once built; on screen while [ReplaySurface.shown]. */
     val surface: ReplaySurface?,
 ) {
+    /** There is no surface to show, and [failure] says why. */
+    val failed: Boolean get() = failure != null
+
     val building: Boolean get() = wanted && build == null && !failed
 
     /** What the timeline card says instead of its gesture hint, while Surface is asked for. */
     val caption: String?
         get() = when {
             !wanted -> null
-            failed -> ModelCopy.FAILED
+            failure != null -> failure
             build == null -> ModelCopy.BUILDING
             else -> ModelCopy.stats(build)
         }
 }
 
+/** Why a replay has no surface to show. */
+internal enum class RerunSurfaceFailure(@StringRes val message: Int) {
+    /** The scan left nothing to mesh. */
+    PoorScan(R.string.demo_ar_rerun_surface_poor_scan),
+
+    /** Building the mesh, or loading it into the 3D view, ran out of memory. */
+    OutOfMemory(R.string.demo_ar_rerun_surface_out_of_memory),
+
+    /** The build failed, or the 3D view could not load what it built. */
+    Unavailable(R.string.demo_ar_rerun_surface_unavailable);
+
+    companion object {
+        /**
+         * The failure [error] is — `null` when nothing was thrown and the mesh simply came out
+         * empty. Only that one is the scan's doing: telling someone to scan more slowly when the
+         * phone ran out of memory sends them to redo a scan that was fine.
+         */
+        fun of(error: Throwable?): RerunSurfaceFailure = when (error) {
+            null -> PoorScan
+            is OutOfMemoryError -> OutOfMemory
+            else -> Unavailable
+        }
+    }
+}
+
 /**
- * The surface of [source], built the first time it is [wanted] and once only: the build cannot be
- * cancelled, so going back to Points while it runs and asking again waits for the same build
- * instead of starting a second one beside it.
+ * The surface of [source], built the first time it is [wanted] and once only: going back to Points
+ * while it runs and asking again waits for the same build instead of starting a second one beside
+ * it. Leaving the replay stops the build at its next progress step.
  *
- * What it keeps is the model's `.glb`, not a model instance: the 3D view loads it itself
- * ([ReplaySurface]), so a view that left the screen — Camera mode — comes back with its room.
+ * What it keeps is the parsed model ([ReplaySurfaceModel]), loaded through [modelLoader] once the
+ * build is done and freed with the replay: a 3D view that left the screen — Camera mode — comes
+ * back with an instance of it instead of parsing the `.glb` again. A model instance cannot be kept
+ * that way: the node that drew it takes it along.
  */
 @Composable
-internal fun rememberRerunSurface(source: RerunModelSource?, wanted: Boolean): RerunSurfaceState {
-    var progress by remember(source) { mutableFloatStateOf(0f) }
-    var result by remember(source) { mutableStateOf<Result<RerunModelBuild>?>(null) }
+internal fun rememberRerunSurface(
+    source: RerunModelSource?,
+    wanted: Boolean,
+    modelLoader: ModelLoader,
+): RerunSurfaceState {
+    var progress by remember(source, modelLoader) { mutableFloatStateOf(0f) }
+    var result by remember(source, modelLoader) { mutableStateOf<Result<RerunModelBuild>?>(null) }
+    var loaded by remember(source, modelLoader) { mutableStateOf<Result<ReplaySurfaceModel>?>(null) }
     val asked by rememberUpdatedState(wanted)
-    LaunchedEffect(source) {
+    LaunchedEffect(source, modelLoader) {
         val from = source ?: return@LaunchedEffect
         snapshotFlow { asked }.first { it }
-        result = withContext(Dispatchers.Default) { runCatching { buildRerunModel(from) { progress = it } } }
+        val built = withContext(Dispatchers.Default) {
+            val job = coroutineContext.job
+            // The build is one blocking call. Once this screen is gone it is stopped at its next
+            // progress step, so leaving mid-build and coming back does not run two builds at once.
+            runCatching {
+                buildRerunModel(from) {
+                    job.ensureActive()
+                    progress = it
+                }
+            }.onFailure {
+                if (it is CancellationException) {
+                    Log.i(TAG, "model: build stopped at ${(progress * PERCENT).toInt()} %, its screen left")
+                    throw it
+                }
+            }
+        }
+        // Parsed here, once, on the main thread: not in the composition of the view that draws it,
+        // where every Camera → 3D return paid for it again.
+        val parsed = built.getOrNull()?.takeIf { it.triangles > 0 }?.let { build ->
+            runCatching { ReplaySurfaceModel(modelLoader, build.glb) }
+        }
+        (built.exceptionOrNull() ?: parsed?.exceptionOrNull())?.let { Log.w(TAG, "no surface", it) }
+        loaded = parsed
+        result = built
     }
-    val build = result?.getOrNull()?.takeIf { it.triangles > 0 }
+    // Keyed like the state above: a new source, or leaving the replay, frees the model it kept.
+    DisposableEffect(source, modelLoader) { onDispose { loaded?.getOrNull()?.destroy() } }
+
+    val error = result?.exceptionOrNull() ?: loaded?.exceptionOrNull()
+    val model = loaded?.getOrNull()?.takeUnless { it.lost }
+    val failure = when {
+        result == null || model != null -> null
+        error != null -> RerunSurfaceFailure.of(error)
+        // Built and parsed, yet the view could draw no instance of it.
+        loaded != null -> RerunSurfaceFailure.Unavailable
+        else -> RerunSurfaceFailure.PoorScan
+    }
+    val build = result?.getOrNull()?.takeIf { model != null }
     val shown = wanted && source != null
-    val surface = remember(build, shown) {
+    val surface = remember(build, model, shown) {
+        if (build == null || model == null) return@remember null
         // The synthetic room is not the sample's room: it stands alone, framed by its own box.
-        build?.let { ReplaySurface(it.glb, it.bounds, aligned = source !is RerunModelSource.Synthetic, shown = shown) }
+        ReplaySurface(model, build.bounds, aligned = source !is RerunModelSource.Synthetic, shown = shown)
     }
     return RerunSurfaceState(
         wanted = shown,
         progress = progress,
         build = build,
-        failed = result != null && build == null,
+        failure = failure?.let { stringResource(it.message) },
         surface = surface,
     )
 }
@@ -355,15 +436,19 @@ internal object ModelCopy {
     const val POINTS = "Points"
     const val SURFACE = "Surface"
     const val BUILDING = "Building the surface of your room…"
-    const val FAILED = "No surface yet: scan slowly, 1–3 m from the walls."
     const val SHARE = "Share"
 
+    /**
+     * What was built, on one line. It is named a preview — a short scan gives a coarse, patchy
+     * mesh — and it carries no size: the figures above measure the room squared to its walls, and
+     * the mesh's world-axis box beside them read as a second, different room.
+     */
     fun stats(model: RerunModelBuild): String {
-        val size = "%.1f × %.1f m".format(model.bounds[3] - model.bounds[0], model.bounds[5] - model.bounds[2])
         val triangles = if (model.triangles >= THOUSAND) "${model.triangles / THOUSAND}k" else "${model.triangles}"
-        // One line under the title on an upright phone: the build time went, it was cut mid-figure.
-        return if (model.budgetReached) "$size · partial, memory was full" else "$size · $triangles triangles"
+        return if (model.budgetReached) "$PREVIEW · partial, memory was full" else "$PREVIEW · $triangles triangles"
     }
+
+    private const val PREVIEW = "Surface preview"
 
     fun fileName(title: String): String {
         val safe = title.replace(Regex("[^\\p{L}\\p{N} _-]"), "").trim().ifEmpty { "Room" }
@@ -384,6 +469,7 @@ private const val LOG_EVERY_FRAMES = 30
 private const val MB = 1024L * 1024L
 private const val KB = 1024
 private const val NS_PER_MS = 1_000_000L
+private const val PERCENT = 100
 
 /** A live TSDF voxel meshes once two medium-confidence views (or one sure one) agree on it. */
 private const val LIVE_MIN_WEIGHT = 1f
