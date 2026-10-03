@@ -83,6 +83,7 @@ class RerunMeshSimplifierTest {
             input.colors[v] = if (x in 0.1f..1.2f && y in -0.1f..0.8f) 0xFF2030D0.toInt() else 0xFFB08457.toInt()
         }
         val result = checkReduction("painted-room", input, 3_000)
+        assertTrue(result.triangleCount in 2_999..3_000)
         for (shift in 0..16 step 8) {
             val low = input.colors.minOf { (it ushr shift) and 255 }
             val high = input.colors.maxOf { (it ushr shift) and 255 }
@@ -166,6 +167,34 @@ class RerunMeshSimplifierTest {
         )
     }
 
+    @Test
+    fun `a budget out of reach stops at the first sweep that gains under a hundredth`() {
+        // Metre-wide bands of two paints: every vertex on a band's border is locked, far over the budget.
+        val mesh = room(16)
+        for (v in mesh.colors.indices) {
+            if (floor(mesh.positions[v * 3]).toInt() % 2 == 0) mesh.colors[v] = 0xFF2030D0.toInt()
+        }
+        val target = 8
+        val toRemove = mesh.triangleCount - target
+        // Under 2048 collapses in all: progress is told once at the start, once per sweep, once at the end.
+        val reports = ArrayList<Float>()
+        val result = RerunMeshSimplifier.simplify(mesh, target) { reports += it }
+        valid(result)
+        // The triangles left when each sweep started, then what the last one left.
+        val left = reports.drop(1).dropLast(1).map { target + ((1f - it) * toRemove).roundToInt() } +
+            result.triangleCount
+        println("out of reach: $left")
+        assertEquals(mesh.triangleCount, left.first())
+        assertTrue("the budget was within reach: $left", result.triangleCount > target)
+        val gains = left.zipWithNext { before, after -> before - after }
+        val earned = left.zip(gains) { before, gain -> gain * 100 >= before }
+        assertTrue("a sweep that gained under 1 % was followed by another: $left", earned.dropLast(1).all { it })
+        // The last sweep still removed triangles: it is the 1 % rule that stopped the work, not a
+        // mesh with nothing left to collapse.
+        assertTrue("the last sweep removed nothing: $left", gains.last() > 0)
+        assertFalse("the last sweep earned another one: $left", earned.last())
+    }
+
     /**
      * Not a check: writes the synthetic room's two models — world-space full resolution and the
      * shared light one — into the directory `RERUN_GLB_DUMP_DIR` names, for a side-by-side render.
@@ -195,7 +224,8 @@ class RerunMeshSimplifierTest {
         valid(result)
         val before = input.bounds()
         val after = result.bounds()
-        for (i in 0..5) assertEquals("$name bounds $i", before[i], after[i], RerunTsdf.VOXEL_M)
+        // The extrema are locked: the box is the input's to the bit.
+        for (i in 0..5) assertEquals("$name bounds $i", before[i], after[i], 0f)
         assertArrayEquals(originalPositions, input.positions, 0f)
         val full = RerunMeshGlb.writeShared(input, fullResolution = true, floorOrigin = false)
         val light = RerunMeshGlb.writeShared(result, fullResolution = true)
@@ -257,9 +287,29 @@ class RerunMeshSimplifierTest {
         assertEquals(0f, bounds[2] + bounds[5], 1e-6f)
         val before = mesh.bounds()
         for (axis in 0..2) assertEquals(before[axis + 3] - before[axis], bounds[axis + 3] - bounds[axis], 1e-5f)
-        bin.position((views[3]["byteOffset"] as Number).toInt())
+        assertEquals((views[1]["byteOffset"] as Number).toInt(), bin.position())
+        val normals = FloatArray(mesh.normals.size) { bin.float }
+        assertArrayEquals(mesh.normals, normals, 0f)
+        for (v in normals.indices step 3) {
+            assertEquals(1f, sqrt(normals[v].pow(2) + normals[v + 1].pow(2) + normals[v + 2].pow(2)), 1e-4f)
+        }
+        assertEquals((views[2]["byteOffset"] as Number).toInt(), bin.position())
+        for (color in mesh.colors) {
+            for (shift in 16 downTo 0 step 8) {
+                assertEquals(linearByte((color ushr shift) and 255), bin.get().toInt() and 255)
+            }
+            assertEquals(255, bin.get().toInt() and 255)
+        }
+        assertEquals((views[3]["byteOffset"] as Number).toInt(), bin.position())
         val short = (accessors[3]["componentType"] as Number).toInt() == 5123
         for (index in mesh.indices) assertEquals(index, if (short) bin.short.toInt() and 65535 else bin.int)
+    }
+
+    /** glTF's `COLOR_0` is linear: the sRGB transfer function, on a byte. */
+    private fun linearByte(srgb: Int): Int {
+        val c = srgb / 255.0
+        val linear = if (c <= 0.04045) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
+        return (linear * 255 + 0.5).toInt()
     }
 
     private fun edges(mesh: RerunMesh): Map<Long, Int> {

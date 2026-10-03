@@ -22,7 +22,9 @@ import kotlin.math.sqrt
  * Output is compact indexed geometry with rebuilt area-weighted unit normals.
  *
  * Costs are sorted in deterministic sweeps, then recomputed before each collapse; no stale heap
- * entries or per-edge objects. At most 64 sweeps, stopping when no legal collapse remains.
+ * entries or per-edge objects. At most 64 sweeps, stopping at the first one that removes under
+ * 1 % of the triangles: past it the budget is out of reach, and each further sweep would sort
+ * every edge again for a handful of triangles.
  * Target is best effort: boundaries, topology and colour take priority over the triangle budget.
  * Storage: [workspaceBytes] of primitive working arrays, plus input/output and array headers.
  * Typical 400k-T / 200k-V scan: ~53 MiB workspace; the extraction's cap (1.5 M triangles) would
@@ -60,6 +62,9 @@ internal object RerunMeshSimplifier {
 
     /** Collapses between two progress reports: a few milliseconds of work. */
     private const val REPORT_EVERY = 2048
+
+    /** A sweep earns the next one by removing at least one triangle in this many. */
+    private const val SWEEP_GAIN_DIVISOR = 100
 
     private class Worker(val input: RerunMesh, val progress: (Float) -> Unit) {
         val vertices = input.vertexCount
@@ -211,7 +216,8 @@ internal object RerunMeshSimplifier {
                         progress(1f - (count - target) / toRemove)
                     }
                 }
-                if (before == count) return compact()
+                // Short of the budget and barely moving: what is left is locked, or would fold.
+                if ((before - count) * SWEEP_GAIN_DIVISOR < before) return compact()
             }
             return compact()
         }

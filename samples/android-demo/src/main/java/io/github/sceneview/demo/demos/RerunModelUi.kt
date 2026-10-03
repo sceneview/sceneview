@@ -161,9 +161,32 @@ internal class RerunModelBuild(
     val voxelBytes: Long,
     val budgetReached: Boolean,
 ) {
-    /** The `.glb` a share sends ([sharedRerunModel]), kept from the first share on. */
+    /** The light `.glb` a share sends ([sharedRerunModel]), kept from the first share that made it. */
     @Volatile
     var shared: ByteArray? = null
+
+    /** What the last share has to say, in place of the model's figures; `null` when the light copy went out. */
+    var shareNote: RerunShareNote? by mutableStateOf(null)
+}
+
+/** The `.glb` a share sends, and whether it is the [whole] mesh instead of the light copy. */
+internal class RerunSharedModel(val glb: ByteArray, val whole: Boolean)
+
+/** What a share says when the light copy is not what went out. */
+internal enum class RerunShareNote(@StringRes val message: Int) {
+    /** Too little memory to simplify the mesh: the whole one was shared. */
+    SentWhole(R.string.demo_ar_rerun_share_whole),
+
+    /** Too little memory to write even the whole mesh: nothing was shared. */
+    OutOfMemory(R.string.demo_ar_rerun_share_out_of_memory),
+
+    /** The file could not be written, or handed to the share sheet. */
+    Failed(R.string.demo_ar_rerun_share_failed);
+
+    companion object {
+        /** The note for a share [error] stopped. */
+        fun of(error: Throwable): RerunShareNote = if (error is OutOfMemoryError) OutOfMemory else Failed
+    }
 }
 
 /** Builds the model of [source] — fuse (unless done), mesh, write — reporting its share done to [progress]. */
@@ -214,24 +237,51 @@ internal fun buildRerunModel(source: RerunModelSource, progress: (Float) -> Unit
 /**
  * The `.glb` a share sends: [build]'s mesh simplified to [RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES]
  * so a phone's viewer opens it, resting on its floor and centred. It is made on the first share —
- * seconds of blocking CPU work, reported to [progress], which stops it by throwing — then kept. A
- * mesh whose simplification would not fit in the memory left is sent whole instead.
+ * seconds of blocking CPU work, reported to [progress], which stops it by throwing — then kept.
+ *
+ * A mesh whose simplification does not fit in the [free] heap ([lightShareFits]), or runs out of
+ * it on the way, is sent whole instead — and not kept: the next share tries the light copy again,
+ * and a phone short of memory does not hold a second full model. Writing the whole one can still
+ * run out of memory: that error is the caller's to catch.
  */
-internal fun sharedRerunModel(build: RerunModelBuild, progress: (Float) -> Unit): ByteArray {
-    build.shared?.let { return it }
+internal fun sharedRerunModel(
+    build: RerunModelBuild,
+    free: Long = freeHeapBytes(),
+    progress: (Float) -> Unit,
+): RerunSharedModel {
+    build.shared?.let { return RerunSharedModel(it, whole = false) }
     val started = System.nanoTime()
-    val runtime = Runtime.getRuntime()
-    val free = runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
-    val workspace = RerunMeshSimplifier.workspaceBytes(build.vertices, build.triangles)
-    val whole = workspace > free / SHARE_MEMORY_DIVISOR
-    val glb = RerunMeshGlb.writeShared(build.mesh, fullResolution = whole, progress = progress)
+    val light = if (lightShareFits(build.vertices, build.triangles, free)) {
+        try {
+            RerunMeshGlb.writeShared(build.mesh, progress = progress)
+        } catch (ignored: OutOfMemoryError) {
+            // The check is an estimate, and other threads allocate too.
+            null
+        }
+    } else {
+        null
+    }
+    val glb = light ?: RerunMeshGlb.writeShared(build.mesh, fullResolution = true)
     Log.i(
         TAG,
         "shared model: ${build.triangles} triangles, ${build.glb.size / KB} KB -> ${glb.size / KB} KB " +
-            "in ${(System.nanoTime() - started) / NS_PER_MS} ms " +
-            "(workspace ${workspace / MB} MB of ${free / MB} MB free, sent whole $whole)",
+            "in ${(System.nanoTime() - started) / NS_PER_MS} ms (${free / MB} MB free, sent whole ${light == null})",
     )
-    return glb.also { build.shared = it }
+    build.shared = light
+    return RerunSharedModel(glb, whole = light == null)
+}
+
+/**
+ * Whether simplifying a mesh of this size fits in [free] bytes of heap: the simplifier's working
+ * arrays may take half of it, the rest is left to the model it writes and to the 3D view.
+ */
+internal fun lightShareFits(vertices: Int, triangles: Int, free: Long): Boolean =
+    RerunMeshSimplifier.workspaceBytes(vertices, triangles) <= free / SHARE_MEMORY_DIVISOR
+
+/** The heap this process may still take. */
+private fun freeHeapBytes(): Long {
+    val runtime = Runtime.getRuntime()
+    return runtime.maxMemory() - (runtime.totalMemory() - runtime.freeMemory())
 }
 
 /**
@@ -251,6 +301,8 @@ internal class RerunSurfaceState(
     val failure: String?,
     /** The mesh, once built; on screen while [ReplaySurface.shown]. */
     val surface: ReplaySurface?,
+    /** What the last share has to say, in the words shown ([RerunShareNote]); `null` when it sent the light copy. */
+    val shareNote: String? = null,
 ) {
     /** There is no surface to show, and [failure] says why. */
     val failed: Boolean get() = failure != null
@@ -263,7 +315,7 @@ internal class RerunSurfaceState(
             !wanted -> null
             failure != null -> failure
             build == null -> ModelCopy.BUILDING
-            else -> ModelCopy.stats(build)
+            else -> shareNote ?: ModelCopy.stats(build)
         }
 }
 
@@ -360,6 +412,7 @@ internal fun rememberRerunSurface(
         build = build,
         failure = failure?.let { stringResource(it.message) },
         surface = surface,
+        shareNote = build?.shareNote?.let { stringResource(it.message) },
     )
 }
 
@@ -367,7 +420,8 @@ internal fun rememberRerunSurface(
  * Points | Surface, the head of the replay's timeline card: what the 3D view above draws. The
  * surface builds on the first tap (its progress runs under the switch) and a lighter `.glb` of it
  * is shared from the button beside it: the first share takes a few seconds to simplify the mesh,
- * under the same progress line.
+ * under the same progress line. A share that could not send that lighter copy says so in the
+ * surface's caption ([RerunShareNote]).
  *
  * With [captioned] the switch says what the surface is doing — building, failed, or its size —
  * on a line of its own: the card of a phone on its side has no caption to say it in.
@@ -408,8 +462,9 @@ internal fun RerunSurfaceSwitch(
                         if (sharing != null) return@IconButton
                         sharing = 0f
                         scope.launch {
+                            built.shareNote = null
                             try {
-                                shareModelFile(context, title, built) { sharing = it }
+                                built.shareNote = shareModelFile(context, title, built) { sharing = it }
                             } finally {
                                 sharing = null
                             }
@@ -447,14 +502,17 @@ internal fun RerunSurfaceSwitch(
 /**
  * [build]'s light model ([sharedRerunModel]) as `<title> model.glb` in a fresh cache directory,
  * handed to the share sheet. Leaving the screen stops the simplification at its next [progress] step.
+ *
+ * Returns what there is to say about it: the whole mesh went out, or — out of memory, a file that
+ * could not be written — nothing did. `null` when the light copy was shared.
  */
 private suspend fun shareModelFile(
     context: Context,
     title: String,
     build: RerunModelBuild,
     progress: (Float) -> Unit,
-) {
-    val glb = withContext(Dispatchers.Default) {
+): RerunShareNote? = runCatching {
+    val shared = withContext(Dispatchers.Default) {
         val job = coroutineContext.job
         sharedRerunModel(build) {
             job.ensureActive()
@@ -466,7 +524,7 @@ private suspend fun shareModelFile(
         // Only the latest shared file is kept: the share sheet has read it by the next share.
         shareRoot.deleteRecursively()
         val dir = File(shareRoot, UUID.randomUUID().toString()).apply { mkdirs() }
-        File(dir, ModelCopy.fileName(title)).apply { writeBytes(glb) }
+        File(dir, ModelCopy.fileName(title)).apply { writeBytes(shared.glb) }
     }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val send = Intent(Intent.ACTION_SEND).apply {
@@ -476,6 +534,11 @@ private suspend fun shareModelFile(
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    RerunShareNote.SentWhole.takeIf { shared.whole }
+}.getOrElse { error ->
+    if (error is CancellationException) throw error
+    Log.w(TAG, "model not shared", error)
+    RerunShareNote.of(error)
 }
 
 /** The surface's words. */
