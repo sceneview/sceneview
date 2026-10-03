@@ -19,6 +19,7 @@ object ArMeasureFragment : DemoFragment {
         icon = Icons.Filled.Straighten,
         order = 24,
         addedIn = "4.29.0",
+        updatedIn = "4.52.0",
         tags = setOf("ar", "measure", "distance", "hit-test", "ruler"),
         // Ships unverified on AR hardware: the accuracy figure this demo exists to be
         // honest about has not been measured on a real device yet (AR_MEASURE.md,

@@ -21,6 +21,7 @@ class DemoFreshnessTest {
         // Old enough to sit outside every window these tests use.
         addedIn: String = "4.0.0",
         updatedIn: String? = null,
+        status: DemoStatus = DemoStatus.Working,
     ) = DemoEntry(
         id = id,
         titleRes = 1,
@@ -31,6 +32,7 @@ class DemoFreshnessTest {
         tags = setOf("tag"),
         addedIn = addedIn,
         updatedIn = updatedIn,
+        status = status,
     )
 
     // ── The window ────────────────────────────────────────────────────────
@@ -141,6 +143,32 @@ class DemoFreshnessTest {
         // ever has to open a fragment to remove a marker.
         val stale = demo(addedIn = "4.20.0", updatedIn = "4.21.0")
         assertEquals(DemoFreshness.None, stale.freshness("4.35.0"))
+    }
+
+    @Test
+    fun `a coming-soon demo is never marked`() {
+        // Nothing new to try on a card that does not run yet — the iOS rule.
+        val comingSoon = DemoStatus.ComingSoon
+        assertEquals(
+            DemoFreshness.None,
+            demo(addedIn = "4.35.0", status = comingSoon).freshness("4.35.0"),
+        )
+        assertEquals(
+            DemoFreshness.None,
+            demo(updatedIn = "4.35.0", status = comingSoon).freshness("4.35.0"),
+        )
+        assertTrue(
+            freshDemos(listOf(demo(addedIn = "4.35.0", status = comingSoon)), "4.35.0").isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a known-issue demo keeps its marker`() {
+        // It runs, so a visible change is still worth pointing at.
+        assertEquals(
+            DemoFreshness.Updated,
+            demo(updatedIn = "4.35.0", status = DemoStatus.KnownIssue).freshness("4.35.0"),
+        )
     }
 
     // ── The list ──────────────────────────────────────────────────────────

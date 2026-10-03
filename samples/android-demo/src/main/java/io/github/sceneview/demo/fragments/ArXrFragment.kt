@@ -37,7 +37,6 @@ object ArXrFragment : DemoFragment {
         icon = Icons.Filled.BackHand,
         order = 50,
         addedIn = "4.13.0",
-        updatedIn = "4.51.0",
         tags = setOf("ar", "xr", "hand", "tracking", "skeleton", "face", "mesh", "headset"),
         // Live hand and face tracking need an Android XR device — none in the audit matrix and
         // no public emulator yet (#1902, #1903). Phones render static reference poses.

@@ -26,6 +26,8 @@ object ArSceneMeshFragment : DemoFragment {
         icon = Icons.Filled.GridOn,
         order = 49,
         addedIn = "4.15.2",
+        // #4282: the Streetscape mode left for `ar-geospatial-anchors`; the card is the mesh alone.
+        updatedIn = "4.52.0",
         tags = setOf("ar", "geospatial", "mesh", "building", "classification"),
         // Requires an outdoor location with Street View coverage + a Cloud API key, which
         // no CI device and no default build has, so nobody has verified it outdoors.

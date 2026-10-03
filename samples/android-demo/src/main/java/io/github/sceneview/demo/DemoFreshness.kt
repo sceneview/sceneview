@@ -109,11 +109,16 @@ internal fun isRecentVersion(
  * The marker for one demo. [DemoFreshness.New] wins over
  * [DemoFreshness.Updated]: a demo that both arrived and was then touched inside
  * the window is still, to a user, new.
+ *
+ * A [DemoStatus.ComingSoon] demo is never marked, whatever it declares: there is
+ * nothing new to try on a card that does not run yet. Same rule as iOS
+ * (`DemoFreshness` in `HomeFilter.swift`).
  */
 fun DemoEntry.freshness(
     buildVersion: String,
     window: Int = FRESHNESS_WINDOW_MINORS,
 ): DemoFreshness = when {
+    status == DemoStatus.ComingSoon -> DemoFreshness.None
     isRecentVersion(addedIn, buildVersion, window) -> DemoFreshness.New
     isRecentVersion(updatedIn, buildVersion, window) -> DemoFreshness.Updated
     else -> DemoFreshness.None
