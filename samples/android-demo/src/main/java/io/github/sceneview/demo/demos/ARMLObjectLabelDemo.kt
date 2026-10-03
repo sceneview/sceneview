@@ -31,7 +31,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
+import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
+import com.google.ar.core.Plane
+import com.google.ar.core.Point
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
@@ -43,17 +47,19 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.camera.CameraImageSize
-import io.github.sceneview.ar.camera.CameraImageToViewMapping
 import io.github.sceneview.ar.camera.cameraImageToViewMapping
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.common.cameraImageRotationDegrees
+import io.github.sceneview.demo.common.CameraImageRotation
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.CameraMappingProbe
 import io.github.sceneview.demo.demos.internal.DetectionCameraPose
+import io.github.sceneview.demo.demos.internal.DetectionCapture
+import io.github.sceneview.demo.demos.internal.DetectionIntrinsics
 import io.github.sceneview.demo.demos.internal.ObjectLabelObservation
 import io.github.sceneview.demo.demos.internal.ObjectLabelTrack
 import io.github.sceneview.demo.demos.internal.ObjectLabelTracker
-import io.github.sceneview.demo.demos.internal.isDetectionCaptureCompatible
+import io.github.sceneview.demo.demos.internal.WorldRay
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberEngine
@@ -70,9 +76,10 @@ import io.github.sceneview.rememberModelLoader
  *  2. Feed the YUV image into ML Kit's [com.google.mlkit.vision.objects.ObjectDetector]
  *     configured with [ObjectDetectorOptions] (bundled model, single-image multi-object, label
  *     classification enabled).
- *  3. For each detected object's bounding-box centre, [Frame.hitTest] in screen space to find
- *     the world pose, then create an [Anchor] and attach a [BillboardNode] showing the
- *     ML Kit category name.
+ *  3. For each detected object, cast a world ray from the pose the image was acquired at
+ *     ([DetectionCapture]) through its bounding box, pick the surface with [chooseLabelHit]
+ *     (the depth map on the object, else the support under it — never the plane behind it),
+ *     then create an [Anchor] and attach a [BillboardNode] showing the ML Kit category name.
  *
  * Empty states:
  *  - "No camera image yet" — the very first frames before ARCore has filled the CPU image
@@ -156,10 +163,14 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     }
     var statusBannerRes by remember { mutableIntStateOf(R.string.demo_ar_ml_status_warming) }
 
-    // Real pixel size of the AR surface, measured by Compose layout. It replaced a hardcoded
-    // 1000×1000 square (#3337) and is the view size the camera-image mapping is captured for.
-    // Zero until the first layout pass.
+    // Real pixel size of the AR surface, measured by Compose layout. Only compared, in one log
+    // line per orientation, with where the camera-image mapping puts the image centre (see
+    // [CameraMappingProbe]); placement itself goes through world rays and needs no view size.
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
+    val mappingProbe = remember { CameraMappingProbe() }
+
+    // Sensor mount read once per camera id, not once per detector pass.
+    val imageRotation = remember(context) { CameraImageRotation(context) }
 
     // Detector throttle — minimum gap between detector runs so we don't starve the
     // renderer. ~6 fps is plenty for "label what's in front of me".
@@ -179,6 +190,10 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // per frame (saves ~2–4 ms of canvas work per detector pass).
     val labelBitmaps = remember { mutableMapOf<String, Bitmap>() }
 
+    // Confidence each track's label currently shows, so it only changes on a real change
+    // (see [stickyConfidencePercent]).
+    val shownConfidence = remember { mutableMapOf<String, Int>() }
+
     // Result of the most recent completed ML Kit pass, waiting to be turned into anchors.
     // `onSessionUpdated` runs on the render thread that owns the ARCore session (see
     // ARRecordInterpreter's kdoc); `detector.process`'s listeners run on the main thread
@@ -192,7 +207,9 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
     // the timing skew between "frame captured" and "hit-test executed" to hit the race.
     // The fix: the listener only stashes the raw ML Kit results here; the actual hit-test runs
     // below, back on the render thread, against that frame's own *current* `frame` — always
-    // fresh, always on the right thread.
+    // fresh, always on the right thread. The rays it casts are world rays from the pose the
+    // image was acquired at, carried in the pending result, so the camera motion during the
+    // detector pass does not displace the label.
     val pendingDetection = remember {
         java.util.concurrent.atomic.AtomicReference<PendingDetection?>(null)
     }
@@ -263,11 +280,17 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
-                sessionConfiguration = { _: Session, config: Config ->
+                sessionConfiguration = { session: Session, config: Config ->
                     // Plane finding stays on so frame.hitTest has something to anchor to
                     // when the user aims at a horizontal surface (table, floor). Vertical
                     // included so walls / shelves work too.
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                    // Planes are what objects stand on or in front of, never the objects: with
+                    // planes alone the ray through an object goes on to the surface behind it.
+                    // The depth map is the only source of hits on the object itself.
+                    if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                        config.depthMode = Config.DepthMode.AUTOMATIC
+                    }
                 },
                 onSessionUpdated = { session, frame: Frame ->
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
@@ -283,40 +306,21 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // Turn the previous detector pass's results into anchors now, on the
                     // render thread, against *this* frame — see `pendingDetection` above.
                     pendingDetection.getAndSet(null)?.let { pending ->
-                        val currentMapping = if (viewSize.width > 0 && viewSize.height > 0) {
-                            runCatching {
-                                frame.cameraImageToViewMapping(
-                                    imageSize = pending.mapping.imageSize,
-                                    viewSize = CameraImageSize(viewSize.width, viewSize.height),
-                                    inputRotationDegrees = cameraImageRotationDegrees(context, session),
-                                )
-                            }.getOrNull()
-                        } else {
-                            null
-                        }
-                        val isCompatible = currentMapping != null && isDetectionCaptureCompatible(
-                            capturedPose = pending.cameraPose,
-                            currentPose = frame.camera.pose.toDetectionCameraPose(),
-                            capturedTimestampNanos = pending.frameTimestampNanos,
-                            currentTimestampNanos = frame.timestamp,
-                            capturedMapping = pending.mapping,
-                            currentMapping = currentMapping,
-                        )
-                        if (isCompatible) {
+                        // Without tracking no hit-test can succeed, and a pass that could not
+                        // be placed says nothing about which objects are still there: it is
+                        // dropped whole and does not advance track expiry. The labels already
+                        // placed are world anchors and stay on their objects meanwhile.
+                        if (isTracking) {
                             updateAnchorsFromDetections(
                                 frame = frame,
                                 results = pending.results,
-                                mapping = pending.mapping,
+                                capture = pending.capture,
                                 tracker = detectionTracker,
                                 detections = detections,
                                 labelBitmaps = labelBitmaps,
+                                shownConfidence = shownConfidence,
                             )
                         }
-                        // A rejected result is dropped whole: it must not cast stale rays, and
-                        // it says nothing about which objects are still there, so it does not
-                        // advance track expiry either. The labels already placed are world
-                        // anchors — they stay on their objects while the phone moves, and the
-                        // next pass taken from a steady camera reconciles them.
                     }
 
                     if (!isTracking) return@ARSceneView
@@ -363,7 +367,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                     // prevent, because nothing in the UI would say so.
                     var dispatched = false
                     try {
-                        val rotationDegrees = cameraImageRotationDegrees(context, session)
+                        val rotationDegrees = imageRotation.degrees(session)
 
                         // Hand the image to ML Kit. `InputImage.fromMediaImage` retains a
                         // reference until the task completes, so we close `cameraImage` in
@@ -371,16 +375,13 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                         // would throw IllegalStateException from the YUV reader inside
                         // ML Kit (caught in #1737 review pre-merge).
                         val input = InputImage.fromMediaImage(cameraImage, rotationDegrees)
-                        val imageW = cameraImage.width
-                        val imageH = cameraImage.height
-                        if (viewSize.width <= 0 || viewSize.height <= 0) return@ARSceneView
-                        val captureMapping = frame.cameraImageToViewMapping(
-                            imageSize = CameraImageSize(imageW, imageH),
-                            viewSize = CameraImageSize(viewSize.width, viewSize.height),
-                            inputRotationDegrees = rotationDegrees,
+                        // Pose and intrinsics of *this* frame, the one the image comes from:
+                        // what the result needs to be placed whenever it arrives.
+                        val capture = frame.toDetectionCapture(
+                            imageSize = CameraImageSize(cameraImage.width, cameraImage.height),
+                            rotationDegrees = rotationDegrees,
                         )
-                        val capturePose = frame.camera.pose.toDetectionCameraPose()
-                        val captureTimestamp = frame.timestamp
+                        mappingProbe.report(capture.mapping, viewSize.width, viewSize.height)
 
                         activeDetector.process(input)
                             .addOnSuccessListener { results ->
@@ -389,12 +390,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                                     // the *next* current frame — never hit-test here (see
                                     // `pendingDetection` above for why).
                                     pendingDetection.set(
-                                        PendingDetection(
-                                            results = results,
-                                            cameraPose = capturePose,
-                                            frameTimestampNanos = captureTimestamp,
-                                            mapping = captureMapping,
-                                        )
+                                        PendingDetection(results = results, capture = capture)
                                     )
                                     // Once anything is anchored, the status text switches to
                                     // the live "N objects detected" count (see `statusText`
@@ -446,9 +442,6 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
                 // recycled. Keying on the anchor gives a re-anchored label a fresh slot, so each
                 // node is built and destroyed exactly once; `updateAnchorsFromDetections` keeps
                 // the anchor of a still object, so a label is only rebuilt when it really moves.
-                // This removes the double destroy only; the "Invalid texture still bound to
-                // MaterialInstance" abort at the sixth label is a separate issue, still
-                // reproducible with this change.
                 detections.forEach { entry ->
                     key(entry.anchor) {
                         val anchor = entry.anchor
@@ -485,6 +478,7 @@ fun ARMLObjectLabelDemo(onBack: () -> Unit) {
             detectionTracker.clear()
             detections.clear()
             labelBitmaps.clear()
+            shownConfidence.clear()
         }
     }
 
@@ -501,15 +495,13 @@ private data class DetectionAnchor(
 )
 
 /**
- * One completed-but-not-yet-anchored ML Kit detector pass, captured off the render thread.
- * Camera pose, timestamp, and display geometry travel with the result so a later render frame
- * never casts an old detector point through a materially different camera ray.
+ * One completed-but-not-yet-anchored ML Kit detector pass, captured off the render thread. The
+ * [capture] of the frame its image came from travels with it, so a later render frame casts
+ * each detection along the ray the camera saw it on, wherever the phone has moved since.
  */
-private data class PendingDetection(
+private class PendingDetection(
     val results: List<DetectedObject>,
-    val cameraPose: DetectionCameraPose,
-    val frameTimestampNanos: Long,
-    val mapping: CameraImageToViewMapping,
+    val capture: DetectionCapture,
 )
 
 /**
@@ -521,13 +513,15 @@ private data class PendingDetection(
  * re-anchored once the object has moved; missing tracks expire through [ObjectLabelTracker],
  * which detaches their anchors even when the result list is empty.
  */
+@Suppress("LongParameterList")
 private fun updateAnchorsFromDetections(
     frame: Frame,
     results: List<DetectedObject>,
-    mapping: CameraImageToViewMapping,
+    capture: DetectionCapture,
     tracker: ObjectLabelTracker<Anchor>,
     detections: MutableList<DetectionAnchor>,
     labelBitmaps: MutableMap<String, Bitmap>,
+    shownConfidence: MutableMap<String, Int>,
 ) {
     val observations = results.mapNotNull { obj ->
         val label = obj.labels.firstOrNull() ?: return@mapNotNull null
@@ -537,38 +531,88 @@ private fun updateAnchorsFromDetections(
             confidence = label.confidence,
             centerX = obj.boundingBox.exactCenterX(),
             centerY = obj.boundingBox.exactCenterY(),
+            bottomY = obj.boundingBox.bottom.toFloat(),
         )
     }
     val tracks = tracker.reconcile(observations) { observation, previous ->
-        val screen = mapping.mapPixel(observation.centerX, observation.centerY)
-        val hits = runCatching { frame.hitTest(screen.x, screen.y) }.getOrNull().orEmpty()
-        val hitIndex = nearestUsableHitIndex(hits.map { it.distance }) ?: return@reconcile null
-        val hit = hits[hitIndex]
+        val hit = findLabelHit(frame, capture, observation) ?: return@reconcile null
         val keepsAnchor = previous != null &&
             previous.trackingState == TrackingState.TRACKING &&
             isWithinReanchorTolerance(previous.pose.translation, hit.hitPose.translation)
         if (keepsAnchor) previous else runCatching { hit.createAnchor() }.getOrNull()
     }
-    syncVisibleDetections(tracks, detections, labelBitmaps)
+    syncVisibleDetections(tracks, detections, labelBitmaps, shownConfidence)
+}
+
+/**
+ * The surface hit a label for [observation] is anchored on, or `null` when ARCore knows no
+ * surface on the object or under it yet. Both rays start at the pose the detector image was
+ * acquired at ([capture]) and are hit-tested against the current [frame]; [chooseLabelHit]
+ * arbitrates.
+ */
+private fun findLabelHit(
+    frame: Frame,
+    capture: DetectionCapture,
+    observation: ObjectLabelObservation,
+): HitResult? {
+    val centreHits = frame.hitTest(capture.worldRay(observation.centerX, observation.centerY))
+    val baseHits = frame.hitTest(capture.worldRay(observation.centerX, observation.bottomY))
+    val choice = chooseLabelHit(
+        centreHits = centreHits.map { it.toLabelHitCandidate() },
+        baseHits = baseHits.map { it.toLabelHitCandidate() },
+    ) ?: return null
+    return when (choice.ray) {
+        LabelRay.Centre -> centreHits[choice.index]
+        LabelRay.Base -> baseHits[choice.index]
+    }
+}
+
+private fun Frame.hitTest(ray: WorldRay): List<HitResult> =
+    runCatching { hitTest(ray.origin, 0, ray.direction, 0) }.getOrNull().orEmpty()
+
+private fun HitResult.toLabelHitCandidate(): LabelHitCandidate {
+    val trackable = trackable
+    val surface = when {
+        trackable.trackingState != TrackingState.TRACKING -> LabelSurface.Other
+        trackable is DepthPoint -> LabelSurface.Depth
+        // ARCore gives plane hits "significant geometric leeway": the ray only has to meet the
+        // plane's infinite extension. Same filter as the Measure demo.
+        trackable is Plane ->
+            if (trackable.subsumedBy == null && trackable.isPoseInPolygon(hitPose)) {
+                LabelSurface.PlaneInsidePolygon
+            } else {
+                LabelSurface.Other
+            }
+        trackable is Point -> LabelSurface.FeaturePoint
+        else -> LabelSurface.Other
+    }
+    return LabelHitCandidate(surface = surface, distanceMeters = distance)
 }
 
 /**
  * Publishes the tracker's anchors to the composition. The label bitmap comes from the track's
  * latest observation, so the confidence shown on a label stays current while its anchor is
- * kept; the list is only rewritten when it really changed, so an unchanged pass does not
- * recompose the scene.
+ * kept — through [stickyConfidencePercent], so that the text, hence the bitmap, hence the
+ * billboard node, only changes when the confidence really did. The list is only rewritten when
+ * it really changed, so an unchanged pass does not recompose the scene.
  */
 private fun syncVisibleDetections(
     tracks: List<ObjectLabelTrack<Anchor>>,
     detections: MutableList<DetectionAnchor>,
     labelBitmaps: MutableMap<String, Bitmap>,
+    shownConfidence: MutableMap<String, Int>,
 ) {
+    shownConfidence.keys.retainAll(tracks.mapTo(HashSet()) { it.key })
     val visible = tracks.mapNotNull { track ->
         val anchor = track.payload ?: return@mapNotNull null
         val label = track.observation.label
-        // Cache by label + confidence bucket so the rendered "%" stays current without
-        // re-rasterising on every sub-percent jitter (#2478 — the user asked for the score).
-        val confidencePercent = confidenceBucketPercent(track.observation.confidence)
+        // The score the user asked for (#2478), held while it only jitters: a new text is a
+        // new bitmap, and a new bitmap rebuilds the billboard node.
+        val confidencePercent = stickyConfidencePercent(
+            shownPercent = shownConfidence[track.key],
+            confidence = track.observation.confidence,
+        )
+        shownConfidence[track.key] = confidencePercent
         DetectionAnchor(
             anchor = anchor,
             bitmap = labelBitmaps.getOrPut("$label@$confidencePercent") {
@@ -582,17 +626,44 @@ private fun syncVisibleDetections(
     }
 }
 
-private fun com.google.ar.core.Pose.toDetectionCameraPose(): DetectionCameraPose {
-    val translation = translation
-    val rotation = rotationQuaternion
-    return DetectionCameraPose(
-        tx = translation[0],
-        ty = translation[1],
-        tz = translation[2],
-        qx = rotation[0],
-        qy = rotation[1],
-        qz = rotation[2],
-        qw = rotation[3],
+/**
+ * Snapshots what a detection made on this frame's CPU image needs to be placed later: the
+ * physical camera pose, the image intrinsics and the detector's input rotation. Call it while
+ * this frame is current, next to the image acquisition.
+ */
+private fun Frame.toDetectionCapture(
+    imageSize: CameraImageSize,
+    rotationDegrees: Int,
+): DetectionCapture {
+    val camera = camera
+    val translation = camera.pose.translation
+    val rotation = camera.pose.rotationQuaternion
+    val intrinsics = camera.imageIntrinsics
+    val focalLength = intrinsics.focalLength
+    val principalPoint = intrinsics.principalPoint
+    val dimensions = intrinsics.imageDimensions
+    return DetectionCapture(
+        pose = DetectionCameraPose(
+            tx = translation[0],
+            ty = translation[1],
+            tz = translation[2],
+            qx = rotation[0],
+            qy = rotation[1],
+            qz = rotation[2],
+            qw = rotation[3],
+        ),
+        intrinsics = DetectionIntrinsics(
+            focalX = focalLength[0],
+            focalY = focalLength[1],
+            principalX = principalPoint[0],
+            principalY = principalPoint[1],
+            width = dimensions[0],
+            height = dimensions[1],
+        ),
+        mapping = cameraImageToViewMapping(
+            imageSize = imageSize,
+            inputRotationDegrees = rotationDegrees,
+        ),
     )
 }
 

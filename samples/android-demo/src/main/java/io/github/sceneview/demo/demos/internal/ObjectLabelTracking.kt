@@ -2,13 +2,18 @@ package io.github.sceneview.demo.demos.internal
 
 import kotlin.math.hypot
 
-/** Detector output reduced to the fields needed for stable label association. */
+/**
+ * Detector output reduced to the fields needed for stable label association and placement.
+ * Coordinates are detector-output pixels; [bottomY] is the lower edge of the bounding box, where
+ * the object meets its support.
+ */
 internal data class ObjectLabelObservation(
     val trackingId: Int?,
     val label: String,
     val confidence: Float,
     val centerX: Float,
     val centerY: Float,
+    val bottomY: Float = centerY,
 )
 
 /** One associated detector track and its current render payload. */

@@ -1581,7 +1581,7 @@ public final class io/github/sceneview/ar/camera/ARCameraStreamKt {
 }
 
 public final class io/github/sceneview/ar/camera/ArCoreCameraImageToViewMappingKt {
-	public static final fun cameraImageToViewMapping (Lcom/google/ar/core/Frame;Lio/github/sceneview/ar/camera/CameraImageSize;Lio/github/sceneview/ar/camera/CameraImageSize;I)Lio/github/sceneview/ar/camera/CameraImageToViewMapping;
+	public static final fun cameraImageToViewMapping (Lcom/google/ar/core/Frame;Lio/github/sceneview/ar/camera/CameraImageSize;I)Lio/github/sceneview/ar/camera/CameraImageToViewMapping;
 }
 
 public final class io/github/sceneview/ar/camera/CameraImagePoint {
@@ -1615,13 +1615,13 @@ public final class io/github/sceneview/ar/camera/CameraImageSize {
 public final class io/github/sceneview/ar/camera/CameraImageToViewMapping {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/ar/camera/CameraImageToViewMapping$Companion;
-	public fun <init> (Lio/github/sceneview/ar/camera/CameraImageSize;Lio/github/sceneview/ar/camera/CameraImageSize;ILio/github/sceneview/ar/camera/CameraImageToViewTransform;)V
+	public fun <init> (Lio/github/sceneview/ar/camera/CameraImageSize;ILio/github/sceneview/ar/camera/CameraImageToViewTransform;)V
+	public final fun detectorPixelToImagePixel (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
 	public final fun getDetectorHeight ()I
 	public final fun getDetectorWidth ()I
 	public final fun getImagePixelsToView ()Lio/github/sceneview/ar/camera/CameraImageToViewTransform;
 	public final fun getImageSize ()Lio/github/sceneview/ar/camera/CameraImageSize;
 	public final fun getInputRotationDegrees ()I
-	public final fun getViewSize ()Lio/github/sceneview/ar/camera/CameraImageSize;
 	public final fun mapImageNormalized (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
 	public final fun mapImagePixel (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
 	public final fun mapNormalized (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
