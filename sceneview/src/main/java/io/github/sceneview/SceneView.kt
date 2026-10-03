@@ -937,13 +937,6 @@ fun SceneView(
         SceneRenderer(engine, view, renderer)
     }
 
-    // Deliberately NOT wired to [SceneRenderer.setPresentationState], unlike ARSceneView. The last
-    // frame of a 3D scene is a still of that scene: it is the right picture for the whole exit
-    // transition, the same as any other Compose content of the outgoing screen. Hiding the surface
-    // when the destination leaves RESUMED made the model vanish the instant back was pressed and
-    // left an empty scene under its chrome until the transition ended. Only a camera feed goes
-    // stale when it stops, so only AR opts in.
-
     // `frameRateGate` (the render-on-demand gate) is declared at the top of this function, above
     // everything that writes Filament state — see its doc comment there (#3108, #3560).
 
