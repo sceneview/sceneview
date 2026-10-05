@@ -157,7 +157,7 @@ androidxTestRunner = "1.7.0"
 androidxTestRules = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 androidxTestUiAutomator = "2.4.0"
-robolectric = "4.16.1"
+robolectric = "4.17"
 roborazzi = "1.75.0"
 
 # Code Quality
