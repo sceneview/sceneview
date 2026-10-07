@@ -41,6 +41,7 @@ import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.CalloutLayout
+import io.github.sceneview.demo.demos.internal.videoTransport
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.demoSceneFrame
@@ -156,6 +157,8 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     val ready = remember(firstFrame, rendered) { derivedStateOf {
         rendered.value && firstFrame.sceneReady.value
     } }
+    // `playing` is the request; a null or failed player leaves it true with nothing on screen.
+    val transport = videoTransport(playing, videoFailed, qa, seekFallback)
 
     DemoScaffold(
         title = title, onBack = onBack, themedStage = true,
@@ -163,10 +166,10 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
         peekHeader = if (cameraMoved || strip) null
             else stringResource(R.string.demo_two_d_in_three_d_media_hint),
         dock = listOf(
-            DockItem(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                stringResource(if (playing) R.string.demo_two_d_in_three_d_pause
+            DockItem(if (transport.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                stringResource(if (transport.playing) R.string.demo_two_d_in_three_d_pause
                     else R.string.demo_two_d_in_three_d_play),
-                { playing = !playing }, enabled = !videoFailed && (!qa || seekFallback), selected = playing),
+                { playing = !playing }, enabled = transport.enabled, selected = transport.playing),
             DockItem(Icons.Filled.Portrait, stringResource(R.string.demo_two_d_in_three_d_face_camera),
                 { faceCamera = !faceCamera }, selected = faceCamera,
                 caption = stringResource(R.string.demo_two_d_in_three_d_face_camera_caption)),
