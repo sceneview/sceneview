@@ -834,8 +834,9 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
-            // twodinthreed_default: out until re-recorded — its reference was the helmet and
-            // cards the demo no longer shows (Inspect and Media rewrite).
+            // Re-baselined after the Inspect and Media rewrite (the rocket replaces the helmet
+            // and its cards), from the first-run capture of run 37677981378.
+            "twodinthreed_default",
             // lightinglab_default: rejected — the helmet is missing from the CI capture.
             // splatpreview_default: rejected — its framing differs run to run (54.7 % of
             // pixels in run 36416690269), so no single capture is a reference.
