@@ -75,7 +75,7 @@ Assets bundled: **39**.
   Compiled from `samples/android-demo/src/main/materials/cosmos_sprite.mat` (Cosmos demo, #4152)
 - `materials/hero_terrain.filamat` — **[hero_terrain.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (567 KB)  
   Compiled from `samples/android-demo/src/main/materials/hero_terrain.mat` (#3948)
-- `materials/rerun_surfel.filamat` — **[rerun_surfel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (47 KB)  
+- `materials/rerun_surfel.filamat` — **[rerun_surfel.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (49 KB)  
   Compiled from `samples/android-demo/src/main/materials/rerun_surfel.mat` (Room Scan replay surfels)
 - `materials/studio_glass.filamat` — **[studio_glass.filamat](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (536 KB)  
   Compiled from `samples/android-demo/src/main/materials/studio_glass.mat`
