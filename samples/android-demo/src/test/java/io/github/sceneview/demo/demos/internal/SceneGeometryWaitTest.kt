@@ -8,7 +8,7 @@ import org.junit.Test
  * The order in which the Scene Geometry screens rule out why nothing is drawn. Each case
  * is a user in a different place who used to read the same sentence.
  */
-class SceneGeometryFlowTest {
+class SceneGeometryWaitTest {
 
     private fun wait(
         locationEnabled: Boolean = true,
