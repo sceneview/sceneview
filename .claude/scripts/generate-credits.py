@@ -243,6 +243,27 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
         "note": "Generated locally with ffmpeg (880 Hz sine, 0.6 s) — see `assets/audio/CREDITS.md`",
     },
+    "stage_low.wav": {
+        "name": "stage_low.wav",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized by `assets/audio/make_sound_stage_loops.py` (low pulses, 2.0 s loop) — see `assets/audio/CREDITS.md`",
+    },
+    "stage_mid.wav": {
+        "name": "stage_mid.wav",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized by `assets/audio/make_sound_stage_loops.py` (plucked figure, 2.6 s loop) — see `assets/audio/CREDITS.md`",
+    },
+    "stage_high.wav": {
+        "name": "stage_high.wav",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "sourceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "note": "Synthesized by `assets/audio/make_sound_stage_loops.py` (glassy shimmer, 3.4 s loop) — see `assets/audio/CREDITS.md`",
+    },
     "qrcode.png": {
         "name": "qrcode.png",
         "author": "SceneView project",
