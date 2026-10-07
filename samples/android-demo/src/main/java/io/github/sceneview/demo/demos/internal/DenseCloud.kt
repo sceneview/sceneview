@@ -678,9 +678,9 @@ object DenseSurfels {
  */
 object SurfelShading {
     /**
-     * Unit, world space, pointing towards the light: from above and closer to one horizontal axis
-     * than to the other, so the floor and two walls at a right angle get three different shades
-     * in a room that lies along the world's axes. The light of a cloud with no wall to go by;
+     * Unit, in the cloud's own space, pointing towards the light: from above and closer to one
+     * horizontal axis than to the other, so the floor and two walls at a right angle get three
+     * different shades in a room that lies along the scan's axes. The light of a cloud with no wall to go by;
      * [lightFor] turns it to the walls a cloud does have.
      */
     val LIGHT_DIRECTION: Vec3 = Vec3(0.23f, 0.80f, 0.55f).normalized()

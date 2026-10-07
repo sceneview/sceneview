@@ -15,7 +15,9 @@
 //   than in the unlit fallback.
 // Parameters:
 //   atlas          — sampler2d, one texel per surfel (sRGB), sampled nearest.
-//   lightDirection — float3, world space, unit length, pointing towards the light.
+//   lightDirection — float3, the cloud's own space (the scan's), unit length, pointing towards
+//                    the light. The vertex stage turns it with the node, so a dollhouse the
+//                    user twists keeps its light on the same walls.
 //   ambient        — float [0,1], the shade of a surfel that faces away from everything.
 //   headlight      — float [0,1], share of the shade that follows the viewer, not the light:
 //                    it keeps a wall readable when the fixed light grazes it.
@@ -38,7 +40,7 @@ material {
         { "type" : "float", "name" : "roundness" }
     ],
     "requires" : [ "position", "uv0" ],
-    "variables" : [ "corner" ],
+    "variables" : [ "corner", "light" ],
     "shadingModel" : "unlit",
     "blending" : "masked",
     "maskThreshold" : 0.5,
@@ -54,6 +56,9 @@ vertex {
         float x = (index == 1 || index == 2) ? 1.0 : -1.0;
         float y = (index >= 2) ? 1.0 : -1.0;
         material.corner = float4(x, y, 0.0, 0.0);
+        // The same on a surfel's four corners, so the interpolation leaves it unit length.
+        highp mat4 worldFromModel = getWorldFromModelMatrix();
+        material.light = float4(normalize(mat3(worldFromModel) * materialParams.lightDirection), 0.0);
     }
 }
 fragment {
@@ -80,7 +85,7 @@ fragment {
         float3 normal = gl_FrontFacing ? facing : -facing;
 
         // Half-Lambert: soft, and never black — the colours are photos, already lit once.
-        float lit = dot(normal, materialParams.lightDirection) * 0.5 + 0.5;
+        float lit = dot(normal, variable_light.xyz) * 0.5 + 0.5;
         float shade = mix(lit, towardsViewer, clamp(materialParams.headlight, 0.0, 1.0));
         shade = mix(clamp(materialParams.ambient, 0.0, 1.0), 1.0, shade);
         shade = mix(1.0, shade, clamp(materialParams.relief, 0.0, 1.0));

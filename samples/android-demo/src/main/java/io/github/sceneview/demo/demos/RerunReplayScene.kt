@@ -234,7 +234,10 @@ internal fun MaterialLoader.createSurfelInstance(
     setParameter("roundness", SurfelShading.ROUNDNESS)
 }
 
-/** Points a [createSurfelInstance] instance's light: [light] unit, world space, towards the light. */
+/**
+ * Points a [createSurfelInstance] instance's light: [light] unit, in the cloud's own space, towards
+ * the light. The material turns it with the node, so a dollhouse keeps its light when twisted.
+ */
 internal fun MaterialInstance.lightSurfelsFrom(light: Vec3) = setParameter("lightDirection", light.x, light.y, light.z)
 
 private const val SURFEL_MATERIAL_ASSET = "materials/rerun_surfel.filamat"
