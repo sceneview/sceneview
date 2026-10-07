@@ -45,6 +45,7 @@ import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import com.google.ar.core.VpsAvailability
+import com.google.ar.core.exceptions.ResourceExhaustedException
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.awaitVpsAvailability
@@ -503,12 +504,17 @@ private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
     LaunchedEffect(state.session, state.coverageCell) {
         val session = state.session ?: return@LaunchedEffect
         if (state.coverageCell == null) return@LaunchedEffect
-        if (state.vps == VpsCoverage.Unknown) state.vps = VpsCoverage.Checking
+        // A new cell is a new question: the previous cell's answer must not stand in for it.
+        state.vps = VpsCoverage.Checking
         while (true) {
             val answer = try {
                 session.awaitVpsAvailability(state.latitude, state.longitude)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: ResourceExhaustedException) {
+                // ARCore throttles the lookup itself by throwing, before any answer exists.
+                Log.w(tag, "Street View coverage check rate-limited", e)
+                VpsAvailability.ERROR_RESOURCE_EXHAUSTED
             } catch (e: Exception) {
                 Log.w(tag, "Street View coverage check failed", e)
                 null
