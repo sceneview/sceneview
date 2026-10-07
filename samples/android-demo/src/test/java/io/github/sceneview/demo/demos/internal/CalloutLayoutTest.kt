@@ -181,6 +181,25 @@ class CalloutLayoutTest {
     }
 
     @Test
+    fun `the card is scaled for the distance the eye is really placed at`() {
+        val freeHeight = 640f
+        // 0.05 is the smallest distance a deep link may ask for; the home never comes that close.
+        for (requested in listOf(0.05f, 0.3f, 0.6f, 2f)) {
+            val eye = layout.cameraHome(requested)
+            val applied = hypot(eye.y, eye.z)
+            assertEquals(applied, layout.homeDistance(requested), epsilon)
+            // Bounding first changes nothing to where the eye goes.
+            assertEquals(eye, layout.cameraHome(layout.homeDistance(requested)))
+            // One card dp is one screen dp at the eye's real distance, not at the requested one.
+            assertEquals(
+                layout.metersPerDp(applied, freeHeight),
+                layout.metersPerDp(layout.homeDistance(requested), freeHeight),
+                1e-7f,
+            )
+        }
+    }
+
+    @Test
     fun `home eye is the requested distance from the target`() {
         for (distance in listOf(0f, 1f, 3f, 8f)) {
             val offset = layout.cameraHome(distance)

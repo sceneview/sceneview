@@ -215,9 +215,10 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
             val aspect = sceneFrame.restingAspect
             val freeWidth = maxWidth - sceneFrame.contentPadding.calculateLeftPadding(LayoutDirection.Ltr) -
                 sceneFrame.contentPadding.calculateRightPadding(LayoutDirection.Ltr)
+            // Bounded once, here: the eye and the card's scale then share the distance really applied.
             val distance = remember(aspect, freeWidth, DemoSettings.cameraDistance) {
-                DemoSettings.cameraDistance ?: layout.inspectDistance(
-                    aspect, freeWidth.value, cardWidth.value, SceneViewTokens.Space.md.value)
+                layout.homeDistance(DemoSettings.cameraDistance ?: layout.inspectDistance(
+                    aspect, freeWidth.value, cardWidth.value, SceneViewTokens.Space.md.value))
             }
             val home = remember(distance) { layout.cameraHome(distance) + layout.INSPECT_TARGET }
             // One dp of card is one dp of screen at the home distance, in either orientation.

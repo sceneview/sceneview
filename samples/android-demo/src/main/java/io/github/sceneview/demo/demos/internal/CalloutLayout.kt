@@ -47,6 +47,8 @@ internal object CalloutLayout {
     val FIN_YAWS = listOf(60f, 180f, 300f)
     const val CARD_GAP = 0.02f
     const val MAX_CARD_RETREAT = 1.8f
+    /** Nearest the home eye comes to its target: closer, the lens is inside the subject. */
+    const val MIN_HOME_DISTANCE = 0.6f
     val PICTURE_SIZE = Size(0.64f, 0.512f, 0f)
     val SCREEN_SIZE = Size(0.64f, 0.36f, 0f)
     val BADGE_SIZE = Size(0.3f, 0.3f, 0f)
@@ -155,10 +157,17 @@ internal object CalloutLayout {
         azimuthInvariant = false, focalLengthMm = FOCAL_LENGTH_MM,
     )
 
+    /**
+     * Distance the eye is really placed at for a [requested] one. A deep link may ask for less
+     * than [MIN_HOME_DISTANCE]; whatever is sized for the home — the card's dp scale — takes this
+     * value, never the request, or it is sized for an eye that is not there.
+     */
+    fun homeDistance(requested: Float): Float = requested.coerceAtLeast(MIN_HOME_DISTANCE)
+
     /** Eye offset from the orbit target; add the target before passing it to the manipulator. */
     fun cameraHome(distance: Float): Position {
         val radians = Math.toRadians(ELEVATION_DEGREES.toDouble())
-        val radius = distance.coerceAtLeast(0.6f)
+        val radius = homeDistance(distance)
         return Position(y = radius * sin(radians).toFloat(), z = radius * cos(radians).toFloat())
     }
 
