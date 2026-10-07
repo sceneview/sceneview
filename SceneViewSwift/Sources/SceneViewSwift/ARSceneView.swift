@@ -517,6 +517,9 @@ public struct ARSceneView: UIViewRepresentable {
     public func makeUIView(context: Context) -> ARView {
         let arView = Self.makeARView()
         let coordinator = context.coordinator
+        // An AR session is used without touching the screen: the display must
+        // not dim in the middle of a scan (#4392). Handed back at teardown.
+        coordinator.keepDisplayAwake()
         // Every callback is wired BEFORE the session runs, so the first
         // delegate message (a failure, the first frame) is never lost between
         // `session.run` and the assignment that used to follow it.
@@ -972,6 +975,24 @@ public struct ARSceneView: UIViewRepresentable {
         /// requested configuration is unsupported: the view then installs no
         /// overlays and never calls `onSessionStarted`.
         var sessionDidStart = false
+
+        /// The app's idle-timer setting as this view found it, restored when
+        /// the view goes away. `nil` while this view does not hold the display.
+        private var idleTimerWasDisabled: Bool?
+
+        /// Keeps the display awake for as long as this AR view is on screen.
+        func keepDisplayAwake() {
+            guard idleTimerWasDisabled == nil else { return }
+            idleTimerWasDisabled = UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+
+        /// Hands the idle timer back as `keepDisplayAwake` found it.
+        func releaseDisplay() {
+            guard let wasDisabled = idleTimerWasDisabled else { return }
+            UIApplication.shared.isIdleTimerDisabled = wasDisabled
+            idleTimerWasDisabled = nil
+        }
 
         /// The configuration this view last asked ARKit to run. Retained so
         /// an interruption resumes with exactly it (image database, mesh,
@@ -1456,6 +1477,7 @@ public struct ARSceneView: UIViewRepresentable {
             arView.session.pause()
             arView.session.delegate = nil
             sessionDidStart = false
+            releaseDisplay()
             awaitingFirstFrame = false
             disarmStartWatchdog()
         }
@@ -1481,6 +1503,9 @@ public struct ARSceneView: UIViewRepresentable {
             mainLightAnchor = nil
             fillLightAnchor = nil
             reticleAnchor = nil
+            // Same safety net for the display: never leave the app's idle timer
+            // disabled behind a view that is gone (#4392).
+            if Thread.isMainThread { releaseDisplay() }
             guard let arView = arView,
                   !overlayAnchors.isEmpty || main != nil || fill != nil
                     || reticle != nil else { return }
