@@ -14,6 +14,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.arcore.ARSession
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
@@ -110,6 +111,7 @@ internal class ScanCapture private constructor(
     // The same depth copies, kept for [refuse] with an anchor each, and ARCore's anchors by id.
     private val kept = if (rawDepth) RerunAnchoredFrames() else null
     private val anchors = HashMap<Int, Anchor>()
+    private var anchorSession: Session? = null
     private var anchorRefused = false
     private var lastDepthNanos: Long? = null
     private var loggedSizes = false
@@ -336,6 +338,7 @@ internal class ScanCapture private constructor(
      */
     private fun keep(frame: DepthFrame, session: Session?) {
         val kept = kept ?: return
+        if (session != null) forgetDeadAnchors(session)
         refreshAnchors(kept)
         val lost = anchors[kept.latestAnchor]?.trackingState == TrackingState.STOPPED
         if (session != null && (lost || kept.anchorDue(frame.pose))) {
@@ -346,6 +349,7 @@ internal class ScanCapture private constructor(
                     // At the cap the store lets every other anchor go: ARCore is told at once.
                     val id = kept.addAnchor(at) { gone -> anchors.remove(gone)?.detach() }
                     anchors[id] = anchor
+                    anchorSession = session
                 }
                 .onFailure {
                     // Said once: a refusal is asked again at every frame an anchor is due.
@@ -355,6 +359,19 @@ internal class ScanCapture private constructor(
                 }
         }
         kept.offer(frame)
+    }
+
+    /**
+     * Forgets, untouched, the anchors of a session that is closed or is no longer the [current]
+     * one: they went with it, and a call on such a handle is a native use-after-free, not an
+     * exception (#4026). Their frames keep the last pose read from them.
+     */
+    private fun forgetDeadAnchors(current: Session? = anchorSession) {
+        val owner = anchorSession ?: return
+        if (owner !== current || (owner as? ARSession)?.isClosed == true) {
+            anchors.clear()
+            anchorSession = null
+        }
     }
 
     /** ARCore's latest pose of each anchor it tracks; one it has paused keeps its last good pose. */
@@ -395,9 +412,11 @@ internal class ScanCapture private constructor(
      */
     private suspend fun refuse() {
         val kept = kept ?: return
+        forgetDeadAnchors()
         refreshAnchors(kept)
         anchors.values.forEach { it.detach() }
         anchors.clear()
+        anchorSession = null
         if (kept.frameCount == 0) {
             finishProgress = 1f
             return
