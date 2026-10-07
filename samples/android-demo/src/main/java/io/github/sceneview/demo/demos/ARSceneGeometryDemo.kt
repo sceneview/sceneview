@@ -44,8 +44,10 @@ import com.google.ar.core.Session
 import com.google.ar.core.StreetscapeGeometry
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
+import com.google.ar.core.VpsAvailability
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.awaitVpsAvailability
 import io.github.sceneview.ar.node.MeshClassification
 import io.github.sceneview.ar.node.toMeshClassification
 import io.github.sceneview.demo.ARCameraInitScrim
@@ -61,10 +63,16 @@ import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.common.rememberHasArcoreApiKey
+import io.github.sceneview.demo.common.rememberIsLocationEnabled
 import io.github.sceneview.demo.common.rememberIsNetworkAvailable
 import io.github.sceneview.demo.common.toCloudServiceStatus
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.SceneGeometryWait
+import io.github.sceneview.demo.demos.internal.VpsCoverage
+import io.github.sceneview.demo.demos.internal.earthErrorMessage
 import io.github.sceneview.demo.demos.internal.friendlyArSessionError
+import io.github.sceneview.demo.demos.internal.sceneGeometryWait
+import io.github.sceneview.demo.demos.internal.vpsCell
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
@@ -72,6 +80,8 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.sample.rememberMaterialInstance
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 private const val TAG_MESH = "ARSceneGeometryDemo/Mesh"
 private const val TAG_STREETSCAPE = "ARSceneGeometryDemo/Streetscape"
@@ -81,6 +91,11 @@ private const val TAG_STREETSCAPE = "ARSceneGeometryDemo/Streetscape"
 // 15 s is long enough for a genuine outdoor VPS lookup to start returning meshes,
 // short enough that an indoor QA pass isn't left guessing for a full minute.
 private const val NO_GEOMETRY_HINT_DELAY_MS = 15_000L
+
+// How long to wait before asking again when the Street View coverage request failed for a
+// reason that can clear on its own (network blip, rate limit, a key restriction that was
+// just fixed in the Cloud Console). Long enough not to feed a rate limit.
+private const val VPS_RETRY_DELAY_MS = 30_000L
 
 /**
  * Overlay opacity for both modes' meshes — semi-transparent so the camera feed and the
@@ -156,7 +171,10 @@ private fun MeshSection(onBack: () -> Unit) = GeospatialPermissionGate(
 
     val state = rememberSceneGeometryState()
     val cloudStatus = rememberCloudStatus(state)
+    val locationEnabled = rememberIsLocationEnabled()
     NoGeometryGuidanceEffect(state, cloudStatus)
+    VpsCoverageEffect(TAG_MESH, state)
+    SceneGeometryStatusLogEffect(TAG_MESH, state, cloudStatus, locationEnabled)
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_scene_mesh_title),
@@ -185,6 +203,7 @@ private fun MeshSection(onBack: () -> Unit) = GeospatialPermissionGate(
             SceneGeometryStatusBanner(
                 state = state,
                 cloudStatus = cloudStatus,
+                locationEnabled = locationEnabled,
                 renderingText = stringResource(
                     R.string.demo_ar_scene_mesh_rendering,
                     state.geometryCount,
@@ -266,7 +285,10 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
 
     val state = rememberSceneGeometryState()
     val cloudStatus = rememberCloudStatus(state)
+    val locationEnabled = rememberIsLocationEnabled()
     NoGeometryGuidanceEffect(state, cloudStatus)
+    VpsCoverageEffect(TAG_STREETSCAPE, state)
+    SceneGeometryStatusLogEffect(TAG_STREETSCAPE, state, cloudStatus, locationEnabled)
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_geospatial_anchors_title),
@@ -285,6 +307,7 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
             SceneGeometryStatusBanner(
                 state = state,
                 cloudStatus = cloudStatus,
+                locationEnabled = locationEnabled,
                 renderingText = stringResource(
                     R.string.demo_ar_scene_mesh_streetscape_rendering,
                     state.geometryCount,
@@ -384,11 +407,51 @@ private class SceneGeometryState {
      */
     var earthState by mutableStateOf<Earth.EarthState?>(null)
 
+    /**
+     * Whether Earth has a position. `earthState == ENABLED` only says Geospatial is
+     * allowed to run; no geometry can arrive before Earth also *tracks*, and a phone
+     * indoors or with Location switched off sits at `ENABLED` + not tracking forever.
+     */
+    var earthTracking by mutableStateOf(false)
+
+    /** The running session, for the one call made outside a frame: the coverage check. */
+    var session by mutableStateOf<Session?>(null)
+
+    /**
+     * The ~100 m cell Earth's position falls in, `null` until Earth tracks. The coverage
+     * check is keyed on it; [latitude] / [longitude] are the position it was derived from
+     * and are deliberately not Compose state — they change on every frame.
+     */
+    var coverageCell by mutableStateOf<Pair<Int, Int>?>(null)
+    var latitude = 0.0
+    var longitude = 0.0
+
+    /** Google's answer to "is there Street View imagery where Earth says we are". */
+    var vps by mutableStateOf(VpsCoverage.Unknown)
+
+    /**
+     * Set when the coverage request itself was refused (key rejected, quota, network).
+     * It is the first Geospatial round-trip the session makes with a position in hand, so
+     * a rejected key can show up here while [earthState] still reads `ENABLED`.
+     */
+    var vpsCloudStatus by mutableStateOf<CloudServiceStatus?>(null)
+
     /** The one per-frame update both modes run — identical trackable bookkeeping. */
     fun onFrame(session: Session, frame: Frame) {
         cameraReady = true
+        this.session = session
         isTracking = frame.camera.trackingState == TrackingState.TRACKING
-        earthState = session.earth?.earthState
+        val earth = session.earth
+        earthState = earth?.earthState
+        val pose = earth
+            ?.takeIf { it.trackingState == TrackingState.TRACKING }
+            ?.let { runCatching { it.cameraGeospatialPose }.getOrNull() }
+        earthTracking = pose != null
+        if (pose != null) {
+            latitude = pose.latitude
+            longitude = pose.longitude
+            coverageCell = vpsCell(pose.latitude, pose.longitude)
+        }
         frame.getUpdatedTrackables(StreetscapeGeometry::class.java).forEach { geo ->
             if (geo.trackingState == TrackingState.TRACKING && geometries.none { it == geo }) {
                 geometries.add(geo)
@@ -421,8 +484,92 @@ private fun rememberCloudStatus(state: SceneGeometryState): CloudServiceStatus {
     return when {
         !hasArcoreApiKey -> CloudServiceStatus.ApiKeyMissing
         !isNetworkAvailable -> CloudServiceStatus.NoNetwork
-        else -> state.earthState.toCloudServiceStatus("Geospatial") ?: CloudServiceStatus.Available
+        else -> state.earthState.toCloudServiceStatus("Geospatial")
+            ?: state.vpsCloudStatus
+            ?: CloudServiceStatus.Available
     }
+}
+
+/**
+ * Asks Google whether Street View imagery covers Earth's position, once per ~100 m cell.
+ *
+ * Without it "no coverage in this street" and "covered, but you are indoors" were one
+ * sentence. A request the service refused is retried, so a network blip or a key
+ * restriction fixed in the Cloud Console clears without leaving the demo; a coverage
+ * answer is final for the cell.
+ */
+@Composable
+private fun VpsCoverageEffect(tag: String, state: SceneGeometryState) {
+    LaunchedEffect(state.session, state.coverageCell) {
+        val session = state.session ?: return@LaunchedEffect
+        if (state.coverageCell == null) return@LaunchedEffect
+        if (state.vps == VpsCoverage.Unknown) state.vps = VpsCoverage.Checking
+        while (true) {
+            val answer = try {
+                session.awaitVpsAvailability(state.latitude, state.longitude)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(tag, "Street View coverage check failed", e)
+                null
+            }
+            state.vpsCloudStatus = answer.toCloudServiceStatus("Geospatial")
+            state.vps = when (answer) {
+                VpsAvailability.AVAILABLE -> VpsCoverage.Available
+                VpsAvailability.UNAVAILABLE -> VpsCoverage.Unavailable
+                else -> VpsCoverage.Error
+            }
+            if (state.vps != VpsCoverage.Error) break
+            delay(VPS_RETRY_DELAY_MS)
+        }
+    }
+}
+
+/**
+ * One logcat line per change of the inputs the status banner is derived from — never a
+ * position. A report of "Streetscape shows nothing" can then be read off `adb logcat -s`
+ * instead of guessed: which link of key / Earth / coverage / geometry did not hold.
+ */
+@Composable
+private fun SceneGeometryStatusLogEffect(
+    tag: String,
+    state: SceneGeometryState,
+    cloudStatus: CloudServiceStatus,
+    locationEnabled: Boolean,
+) {
+    LaunchedEffect(
+        state.isTracking,
+        state.earthState,
+        state.earthTracking,
+        state.vps,
+        state.geometryCount,
+        state.noGeometryGuidance,
+        cloudStatus,
+        locationEnabled,
+    ) {
+        if (!state.cameraReady) return@LaunchedEffect
+        Log.i(
+            tag,
+            "status: camera=${if (state.isTracking) "TRACKING" else "NOT_TRACKING"}" +
+                " earth=${state.earthState}" +
+                " earthTracking=${state.earthTracking}" +
+                " locationSwitch=${if (locationEnabled) "on" else "off"}" +
+                " cloud=${cloudStatus.logName()}" +
+                " coverage=${state.vps}" +
+                " geometries=${state.geometryCount}" +
+                " waitedLong=${state.noGeometryGuidance}",
+        )
+    }
+}
+
+/** Spelled out rather than reflected: R8 renames the classes in the store build. */
+private fun CloudServiceStatus.logName(): String = when (this) {
+    CloudServiceStatus.Available -> "Available"
+    CloudServiceStatus.ApiKeyMissing -> "ApiKeyMissing"
+    is CloudServiceStatus.ApiKeyRejected -> "ApiKeyRejected"
+    is CloudServiceStatus.QuotaExhausted -> "QuotaExhausted"
+    CloudServiceStatus.NoNetwork -> "NoNetwork"
+    CloudServiceStatus.EarthLocalizing -> "EarthLocalizing"
 }
 
 /**
@@ -433,6 +580,9 @@ private fun rememberCloudStatus(state: SceneGeometryState): CloudServiceStatus {
 private fun NoGeometryGuidanceEffect(state: SceneGeometryState, cloudStatus: CloudServiceStatus) {
     LaunchedEffect(
         state.isTracking,
+        // Re-armed when Earth gains or loses its position: "still no location fix" and
+        // "localized, still no geometry" each get their own grace period.
+        state.earthTracking,
         state.geometryCount,
         state.geospatialUnavailable,
         state.sessionError,
@@ -445,7 +595,7 @@ private fun NoGeometryGuidanceEffect(state: SceneGeometryState, cloudStatus: Clo
             state.sessionError == null &&
             !cloudStatus.isUnavailable
         if (shouldShowNoGeometryHint) {
-            kotlinx.coroutines.delay(NO_GEOMETRY_HINT_DELAY_MS)
+            delay(NO_GEOMETRY_HINT_DELAY_MS)
             state.noGeometryGuidance = true
         }
     }
@@ -459,10 +609,15 @@ private fun NoGeometryGuidanceEffect(state: SceneGeometryState, cloudStatus: Clo
 private fun DemoBottomOverlayScope.SceneGeometryStatusBanner(
     state: SceneGeometryState,
     cloudStatus: CloudServiceStatus,
+    locationEnabled: Boolean,
     renderingText: String,
     lookingText: String,
     noGeometryHint: String,
 ) {
+    // Earth states that are neither `ENABLED` nor one of the shared Cloud failures: an
+    // outdated Google Play Services for AR, an internal error. They used to leave this
+    // screen on "Looking for…" and then on the outdoor hint, as if the place were at fault.
+    val earthError = earthErrorMessage(state.earthState?.name)
     // ForcedTrackingFailure.override shadows the real ARCore-reported reason when a
     // developer has picked one in the debug menu (#1881). Read it here so flipping the
     // override re-renders the overlay immediately.
@@ -483,6 +638,7 @@ private fun DemoBottomOverlayScope.SceneGeometryStatusBanner(
                 ),
                 tone = DemoStatusTone.Blocked,
             )
+        earthError != null -> DemoStatusBanner(earthError, tone = DemoStatusTone.Blocked)
         else -> {
             // The tone is derived from the same branches as the text: a tracking failure
             // asks the user to move the phone (Guidance), everything else is a normal
@@ -501,11 +657,36 @@ private fun DemoBottomOverlayScope.SceneGeometryStatusBanner(
                         scanning to DemoStatusTone.Progress
                     }
                 }
-                // Supported device, no VPS coverage / indoors (#1615): after a timeout
-                // the perpetual spinner is replaced with explicit guidance to step
-                // outside and point at buildings.
-                state.noGeometryGuidance -> noGeometryHint to DemoStatusTone.Guidance
-                else -> lookingText to DemoStatusTone.Progress
+                // Camera tracking, nothing to draw: name the first link that does not
+                // hold instead of one sentence for every cause (#1615 gave the timeout;
+                // this tells Location off, not localized, no Street View imagery here and
+                // "covered, but nothing in view" apart).
+                else -> when (
+                    sceneGeometryWait(
+                        locationEnabled = locationEnabled,
+                        earthTracking = state.earthTracking,
+                        vps = state.vps,
+                        waitedLong = state.noGeometryGuidance,
+                    )
+                ) {
+                    SceneGeometryWait.LocationOff ->
+                        stringResource(R.string.demo_ar_scene_mesh_location_off) to
+                            DemoStatusTone.Blocked
+                    SceneGeometryWait.Localizing ->
+                        stringResource(R.string.demo_ar_scene_mesh_localizing) to
+                            DemoStatusTone.Progress
+                    SceneGeometryWait.NotLocalized ->
+                        stringResource(R.string.demo_ar_scene_mesh_not_localized) to
+                            DemoStatusTone.Guidance
+                    SceneGeometryWait.NoCoverage ->
+                        stringResource(R.string.demo_ar_scene_mesh_no_coverage) to
+                            DemoStatusTone.Guidance
+                    SceneGeometryWait.Looking -> lookingText to DemoStatusTone.Progress
+                    SceneGeometryWait.CoveredNothingInView ->
+                        stringResource(R.string.demo_ar_scene_mesh_covered_nothing_in_view) to
+                            DemoStatusTone.Guidance
+                    SceneGeometryWait.NothingFound -> noGeometryHint to DemoStatusTone.Guidance
+                }
             }
             DemoStatusBanner(statusText, tone = statusTone)
         }
