@@ -5,7 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -14,7 +16,6 @@ import androidx.compose.material.icons.filled.Portrait
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -23,7 +24,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -41,6 +41,8 @@ import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.CalloutLayout
+import io.github.sceneview.demo.demos.internal.StreamPhase
+import io.github.sceneview.demo.demos.internal.fitInside
 import io.github.sceneview.demo.demos.internal.videoTransport
 import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
@@ -54,7 +56,6 @@ import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberMediaPlayer
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
@@ -63,11 +64,12 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 
 /**
- * Media: a framed drawable, a muted video and a floating sprite, each named by a TextNode.
+ * Media: a framed drawable, a muted streamed video and a floating sprite, each named by a TextNode.
  * Orbit to see fixed surfaces go edge-on while captions and the badge face the camera.
  * TextNode and BillboardNode require cameraPositionProvider; their provider is construction-only,
- * so key those nodes on Face camera. VideoNode(player) needs a prepared, owned MediaPlayer:
- * rememberMediaPlayer prepares synchronously and returns null on failure. Never wait on null.
+ * so key those nodes on Face camera. VideoNode(player) needs a prepared, owned MediaPlayer: a URL
+ * is prepared off the main thread by [rememberStreamedVideo], and until it is, or when it cannot
+ * be, the screen says so on a still. It never plays a stand-in.
  * QA seeks the attached video to one second while paused; a decoder that cannot finish that seek
  * falls back to muted playback after a bounded wait, so the rest of the gallery remains usable.
  */
@@ -110,54 +112,63 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     val frame = rememberMaterialInstance(materials, SceneViewColors.SurfaceDim, 0.2f, 0.45f)
     var eye by remember { mutableStateOf(Position()) }
     val badge = rememberGallerySprite()
-    val poster = rememberGallerySprite(layout.SCREEN_SIZE.x / layout.SCREEN_SIZE.y, SceneViewColors.SurfaceLight)
+    val screenAspect = layout.SCREEN_SIZE.x / layout.SCREEN_SIZE.y
+    val loadingStill = rememberVideoStatusStill(
+        stringResource(R.string.demo_two_d_in_three_d_video_loading), null, screenAspect)
+    val unavailableStill = rememberVideoStatusStill(
+        stringResource(R.string.demo_two_d_in_three_d_video_unavailable),
+        stringResource(R.string.demo_two_d_in_three_d_video_unavailable_detail), screenAspect)
     val captions = listOf(R.string.demo_two_d_in_three_d_image_node,
         R.string.demo_two_d_in_three_d_video_node, R.string.demo_two_d_in_three_d_billboard_node)
     // TextNode's bitmap is 512 x 128 px. Twice the headline size is the largest that keeps the
     // longest name, "BillboardNode", inside it in monospace.
     val fontSize = MaterialTheme.typography.headlineMedium.fontSize.value * 2f
-    val player = rememberMediaPlayer(assetFileLocation = "videos/sample.mp4", autoStart = false,
-        isLooping = true)
-    var videoFailed by remember { mutableStateOf(player == null) }
+    val video = rememberStreamedVideo(MEDIA_VIDEO_URL)
+    val player = video.player
+    val videoFailed = video.phase == StreamPhase.Failed
     var attached by remember { mutableStateOf(false) }
     var seekFinished by remember { mutableStateOf(!qa) }
     var seekFallback by remember { mutableStateOf(false) }
-    DisposableEffect(player) {
-        player?.setVolume(0f, 0f)
-        player?.setOnErrorListener { _, _, _ -> videoFailed = true; playing = false; true }
-        onDispose { player?.setOnErrorListener(null) }
-    }
+    // A video paused before it ever played has no picture yet: one seek gives it its first frame.
+    val pictured = remember { booleanArrayOf(false) }
     LaunchedEffect(player, attached) {
-        val seekable = attached && qa && !videoFailed
+        val seekable = attached && qa && video.phase == StreamPhase.Ready
         if (player != null && seekable) {
             player.setOnSeekCompleteListener { seekFinished = true; invalidator.requestRender() }
             runCatching { player.seekTo(QA_FRAME_MILLIS) }.onFailure { seekFallback = true }
             delay(SEEK_TIMEOUT_MILLIS)
-            if (!seekFinished && !videoFailed) seekFallback = true
-            if (seekFallback && !videoFailed) playing = true
+            val failed = video.phase == StreamPhase.Failed
+            if (!seekFinished && !failed) seekFallback = true
+            if (seekFallback && !failed) playing = true
             player.setOnSeekCompleteListener(null)
         }
     }
     LifecycleAwareLaunchedEffect(player, attached, playing, videoFailed) {
         if (player == null || !attached || videoFailed) return@LifecycleAwareLaunchedEffect
         try {
-            runCatching { if (playing) player.start() else if (player.isPlaying) player.pause() }
-                .onFailure { videoFailed = true }
+            runCatching {
+                if (playing) player.start()
+                else if (player.isPlaying) player.pause()
+                else if (!qa && !pictured[0]) player.seekTo(0)
+                pictured[0] = true
+            }.onFailure { video.fail() }
             invalidator.requestRender()
             awaitCancellation()
         } finally {
             runCatching { if (player.isPlaying) player.pause() }
         }
     }
-    // Preparation has already completed (or failed) before this composition. QA also waits for
-    // its paused seek; errors and a decoder timeout must never leave the loading cover up.
-    val rendered = remember(firstFrame, player) { derivedStateOf {
-        firstFrame.rendered.value && (videoFailed || !qa || seekFinished || seekFallback)
+    // The scene never waits for the network: the screen shows where the stream stands. QA does
+    // wait, for its paused seek; a stream that fails, a preparation or a decoder that times out
+    // must never leave the loading cover up.
+    val rendered = remember(firstFrame, video) { derivedStateOf {
+        firstFrame.rendered.value &&
+            (!qa || video.phase == StreamPhase.Failed || seekFinished || seekFallback)
     } }
     val ready = remember(firstFrame, rendered) { derivedStateOf {
         rendered.value && firstFrame.sceneReady.value
     } }
-    // `playing` is the request; a null or failed player leaves it true with nothing on screen.
+    // `playing` is the request; a failed stream leaves it true with nothing playing on screen.
     val transport = videoTransport(playing, videoFailed, qa, seekFallback)
 
     DemoScaffold(
@@ -175,8 +186,14 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
                 caption = stringResource(R.string.demo_two_d_in_three_d_face_camera_caption)),
         ),
         controls = {
-            Text(stringResource(R.string.demo_two_d_in_three_d_media_explainer),
-                style = MaterialTheme.typography.bodyMedium)
+            Column(verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+                Text(stringResource(R.string.demo_two_d_in_three_d_media_explainer),
+                    style = MaterialTheme.typography.bodyMedium)
+                // CC BY asks for the title, the author and the licence wherever the work is shown.
+                Text(stringResource(R.string.demo_two_d_in_three_d_video_credit),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -225,12 +242,15 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
                         if (index == 0) {
                             ImageNode(imageResId = R.drawable.preview_geometry_light,
                                 size = exhibit.size, position = layout.CONTENT_OFFSET)
-                        } else if (player != null && !videoFailed) {
-                            VideoNode(player = player, size = exhibit.size, position = layout.CONTENT_OFFSET,
+                        } else if (player != null && video.phase == StreamPhase.Ready) {
+                            // Construction-only size: the picture fits the screen, never stretched.
+                            VideoNode(player = player, position = layout.CONTENT_OFFSET,
+                                size = fitInside(exhibit.size, player.videoWidth, player.videoHeight),
                                 apply = { attached = true })
                         } else {
-                            // No decoder, no file: the screen shows a still, never an empty frame.
-                            ImageNode(bitmap = poster, size = exhibit.size, position = layout.CONTENT_OFFSET)
+                            // Not there yet, or not coming: the screen says which.
+                            ImageNode(bitmap = if (videoFailed) unavailableStill else loadingStill,
+                                size = exhibit.size, position = layout.CONTENT_OFFSET)
                         }
                     }
                 } }
@@ -254,24 +274,19 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     }
 }
 
-/**
- * A remembered Canvas sprite made entirely from the existing palette and sizing tokens: the badge,
- * and with a [ground] and a [widthOverHeight] the still a video that cannot play leaves behind.
- */
+/** A remembered Canvas sprite made entirely from the existing palette and sizing tokens. */
 @Composable
-private fun rememberGallerySprite(widthOverHeight: Float = 1f, ground: Color? = null): Bitmap {
+private fun rememberGallerySprite(): Bitmap {
     val density = LocalDensity.current
     val size = with(density) { SceneViewTokens.Space.x4l.roundToPx() }
     val radius = with(density) { SceneViewTokens.Space.x3l.toPx() / 2f }
     val inset = with(density) { SceneViewTokens.Space.lg.toPx() }
-    return remember(size, radius, inset, widthOverHeight, ground) {
-        val width = (size * widthOverHeight).toInt()
-        Bitmap.createBitmap(width, size, Bitmap.Config.ARGB_8888).also { bitmap ->
+    return remember(size, radius, inset) {
+        Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val centerX = width / 2f
+            val centerX = size / 2f
             val centerY = size / 2f
-            ground?.let { canvas.drawColor(it.toArgb()) }
             paint.color = SceneViewColors.Primary.toArgb()
             canvas.drawCircle(centerX, centerY, radius, paint)
             canvas.rotate(45f, centerX, centerY)

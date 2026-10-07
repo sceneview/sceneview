@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.theme.SceneViewTokens
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -218,23 +219,82 @@ class DemoSubjectFramingTest {
     }
 
     @Test
-    fun `held sideways the top scrim covers the status bar and is gone where the chips start`() {
+    fun `held sideways the top scrim grounds the status bar and fades out well past it`() {
         val statusBar = 24.dp
         val scrim = demoTopScrim(compactHeight = true, statusBarInset = statusBar)
-        // It ends with the identity row's gutter: the chips, which carry their own ground, start there.
-        assertEquals(statusBar + SceneViewTokens.Space.md, scrim.height)
-        // Flat over the status bar, whose icons have no ground of their own.
-        assertEquals(statusBar, scrim.height * scrim.plateau)
-        // A phone held sideways is 411 dp tall: the band is a tenth of it, not the token's 39 %.
-        assertTrue(scrim.height < height * 0.1f)
+        // Whole where the clock and the battery start, eased from there on.
+        assertEquals(statusBar / 2, scrim.height * scrim.plateau)
+        assertTrue(scrim.eased)
+        // The fade runs twice the bar past the bar: a band that stopped at the bar drew a line.
+        assertEquals(statusBar + SceneViewTokens.Space.x2l, scrim.height)
+        // A phone held sideways is 411 dp tall: the band is under a fifth of it, most of that
+        // nearly clear, where the token band is 39 % with more than half of it flat.
+        assertTrue(scrim.height < height * 0.2f)
         assertTrue(SceneViewTokens.Glass.scrimTopHeight > height * 0.38f)
-        // The subject is framed from the status bar down ([demoContentPadding]); the flat part
-        // of the scrim stops where it starts.
-        val padding = demoContentPadding(
-            cover = PaddingValues(top = chromeTop + statusBar, bottom = 104.dp),
-            sceneHeight = height, statusBar = statusBar, compactHeight = true,
+    }
+
+    @Test
+    fun `upright the bottom scrim is the token band, or the measured stack when that is taller`() {
+        val low = demoBottomScrim(
+            compactHeight = false, dockReserve = 104.dp, overlayBand = 56.dp,
+            dockBand = 80.dp, navigationBarInset = 24.dp,
         )
-        assertEquals(padding.calculateTopPadding(), scrim.height * scrim.plateau)
+        assertEquals(SceneViewTokens.Glass.scrimBottomHeight, low.height)
+        assertEquals(SceneViewTokens.Glass.scrimPlateau, low.plateau, 0f)
+        assertFalse(low.eased)
+        val tall = demoBottomScrim(
+            compactHeight = false, dockReserve = 104.dp, overlayBand = 180.dp,
+            dockBand = 80.dp, navigationBarInset = 24.dp,
+        )
+        assertEquals(284.dp, tall.height)
+    }
+
+    @Test
+    fun `held sideways the bottom scrim keeps to the dock, whatever is stacked above it`() {
+        val dockBand = 80.dp
+        val navigationBar = 24.dp
+        val heights = listOf(0.dp, 56.dp, 180.dp).map { overlay ->
+            demoBottomScrim(
+                compactHeight = true, dockReserve = 104.dp, overlayBand = overlay,
+                dockBand = dockBand, navigationBarInset = navigationBar,
+            )
+        }
+        // The stack above the dock no longer sizes it.
+        assertEquals(1, heights.toSet().size)
+        val scrim = heights.first()
+        assertTrue(scrim.eased)
+        // Whole under the system bar and the lower half of the dock, gone a little above the dock.
+        assertEquals(navigationBar + dockBand / 2, scrim.height * scrim.plateau)
+        assertEquals(navigationBar + dockBand + SceneViewTokens.Space.lg, scrim.height)
+        // Under a third of a 411 dp screen, where the token floor alone was more than half.
+        assertTrue(scrim.height < height * 0.33f)
+        assertTrue(SceneViewTokens.Glass.scrimBottomHeight > height * 0.5f)
+    }
+
+    @Test
+    fun `a straight scrim is the flat part and one ramp`() {
+        val stops = DemoScrim(height = 160.dp, plateau = 0.55f).stops()
+        assertEquals(listOf(0f to 1f, 0.55f to 1f, 1f to 0f), stops)
+    }
+
+    @Test
+    fun `an eased scrim leaves its flat part and lands without a bend`() {
+        val scrim = DemoScrim(height = 72.dp, plateau = 0.25f, eased = true)
+        val stops = scrim.stops()
+        assertEquals(0f to 1f, stops.first())
+        assertEquals(1f, stops.last().first, 0f)
+        assertEquals(0f, stops.last().second, 0f)
+        // Never darker further in, never out of order.
+        stops.zipWithNext { a, b ->
+            assertTrue(b.first >= a.first)
+            assertTrue(b.second <= a.second)
+        }
+        // Whole up to the plateau.
+        assertTrue(stops.filter { it.first <= scrim.plateau }.all { it.second == 1f })
+        // The first and the last step of the ramp are the shallowest: it bends in, not at an angle.
+        val ramp = stops.filter { it.first >= scrim.plateau }.map { it.second }.zipWithNext { a, b -> a - b }
+        assertTrue(ramp.first() < ramp[ramp.size / 2])
+        assertTrue(ramp.last() < ramp[ramp.size / 2])
     }
 
     @Test

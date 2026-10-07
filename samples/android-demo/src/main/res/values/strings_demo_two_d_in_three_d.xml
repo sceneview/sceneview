@@ -5,7 +5,7 @@
     <string name="demo_two_d_in_three_d_inspect_hint">Tap a part</string>
     <string name="demo_two_d_in_three_d_media_hint">Drag to look around</string>
     <string name="demo_two_d_in_three_d_inspect_explainer">The card is real Compose UI on a flat surface in the scene. A tap picks a part or reaches a swatch through the scene’s picking ray.</string>
-    <string name="demo_two_d_in_three_d_media_explainer">TextNode adds text, ImageNode a bitmap or drawable, VideoNode a video from a MediaPlayer, and BillboardNode a sprite that faces you. Inspect shows live Compose UI.</string>
+    <string name="demo_two_d_in_three_d_media_explainer">TextNode adds text, ImageNode a bitmap or drawable, VideoNode a video a MediaPlayer streams, and BillboardNode a sprite that faces you. Inspect shows live Compose UI.</string>
     <string name="demo_two_d_in_three_d_nose">Nose</string>
     <string name="demo_two_d_in_three_d_body">Body</string>
     <string name="demo_two_d_in_three_d_window">Window</string>
@@ -25,4 +25,8 @@
     <string name="demo_two_d_in_three_d_image_node">ImageNode</string>
     <string name="demo_two_d_in_three_d_video_node">VideoNode</string>
     <string name="demo_two_d_in_three_d_billboard_node">BillboardNode</string>
+    <string name="demo_two_d_in_three_d_video_loading">Loading video…</string>
+    <string name="demo_two_d_in_three_d_video_unavailable">Video unavailable</string>
+    <string name="demo_two_d_in_three_d_video_unavailable_detail">Check your connection</string>
+    <string name="demo_two_d_in_three_d_video_credit">Video: Big Buck Bunny (excerpt) © 2008 Blender Foundation · www.bigbuckbunny.org · CC BY 3.0</string>
 </resources>

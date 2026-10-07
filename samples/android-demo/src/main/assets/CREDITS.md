@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **39**.
+Assets bundled: **38**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -95,8 +95,6 @@ Assets bundled: **39**.
   Real phone capture shipped with the SPZ format; cropped to the subject (932 560 → 233 808 splats) by `tools/crop-spz.py` for `SplatPreviewDemo`
 - `textures/sceneview_logo.png` — **[sceneview_logo.png](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (45 KB)  
   SceneView brand mark, exported from `branding/exports/logo/logo-1024.png`
-- `videos/sample.mp4` — **[sample.mp4](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (529 KB)  
-  Generated with ffmpeg — 10 s / 1280×720 / H.264 brand animation for `TwoDInThreeDDemo`
 
 ## Poly Haven — blanket CC0-1.0
 
@@ -120,4 +118,11 @@ Listed from [`assets/hd-pack/android.json`](../../../../../assets/hd-pack/androi
 - `flight-helmet` — **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (48.4 MB)
 - `perseverance` — **[Perseverance Rover](https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Mars%202020%20Perseverance%20Rover)** by NASA/JPL-Caltech — [NASA Media Usage Guidelines (no endorsement implied; insignia removed)](https://www.nasa.gov/nasa-brand-center/images-and-media/) (4.9 MB)
 - `woolly-mammoth` — **[Woolly Mammoth](http://n2t.net/ark:/65665/3a0f8f423-9320-45fc-93c0-6f5cabd957bf)** by Smithsonian National Museum of Natural History — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (5.1 MB)
+
+## Streamed media (played from a URL, never stored)
+
+Not bundled: the app reads each file from the `assets-v1` GitHub Release while the demo that plays it is open.
+
+- `big_buck_bunny_excerpt_720p.mp4` — **[Big Buck Bunny (excerpt)](https://www.bigbuckbunny.org)** by Blender Foundation (© 2008 Blender Foundation) — [CC-BY-3.0](https://creativecommons.org/licenses/by/3.0/) (3.3 MB)
+  - 16 s cut from the film (1:48–2:04), resized to 1280×720, sound removed — played by `TwoDInThreeDDemo` (Media).
 
