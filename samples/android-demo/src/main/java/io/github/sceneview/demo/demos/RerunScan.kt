@@ -5,9 +5,15 @@ import android.media.Image
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import com.google.ar.core.Anchor
 import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Frame
 import com.google.ar.core.Pose
+import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugPose
@@ -24,6 +30,7 @@ import io.github.sceneview.demo.demos.internal.MediaSpan
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
+import io.github.sceneview.demo.demos.internal.RerunAnchoredFrames
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
@@ -59,7 +66,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * With [rawDepth] (ARCore's `RAW_DEPTH_ONLY` on this phone: Rerun v2 tier `depth`) each new
  * raw-depth image is also back-projected and fused into a 2 cm surfel map ([DenseFusion]), which
- * [finish] saves as the scan's dense cloud. Without it the scan is the sparse v1 one.
+ * the scan shows as it grows. The images are kept, each tied to an ARCore anchor, and [finish]
+ * fuses them all again with the poses ARCore holds by then ([RerunAnchoredFrames]): that map is
+ * the scan's dense cloud, and the model's TSDF. Without raw depth the scan is the sparse v1 one.
  *
  * Main thread, like the recorder, except the photo encoding and the depth fusion it launches in
  * [scope].
@@ -92,11 +101,16 @@ internal class ScanCapture private constructor(
 
     // The dense map: one fusion at a time on Dispatchers.Default; a depth image that arrives while
     // one runs is skipped, never queued, so a slow phone thins the depth instead of lagging.
-    private val fusion = if (rawDepth) DenseFusion() else null
+    // This one is what the scan shows while it runs; [refuse] replaces it when the scan stops.
+    private var fusion = if (rawDepth) DenseFusion() else null
     private val fusing = AtomicBoolean(false)
     private var fuseJob: Job? = null
-    // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
+    // The final model's TSDF, which [refuse] builds when the scan stops (RerunModelUi.kt).
     private val model = if (rawDepth) RerunLiveModel() else null
+    // The same depth copies, kept for [refuse] with an anchor each, and ARCore's anchors by id.
+    private val kept = if (rawDepth) RerunAnchoredFrames() else null
+    private val anchors = HashMap<Int, Anchor>()
+    private var anchorRefused = false
     private var lastDepthNanos: Long? = null
     private var loggedSizes = false
     private val logGate = IntervalGate(LOG_INTERVAL_NS)
@@ -120,6 +134,10 @@ internal class ScanCapture private constructor(
 
     /** Surfels in the dense map so far: the HUD's "N surfaces" count. `0` without raw depth. */
     val denseCount: Int get() = denseTotal.get()
+
+    /** The share of the final fusion done, 0 to 1, while [finish] runs it: the bar of the Stop wait. */
+    var finishProgress: Float by mutableFloatStateOf(0f)
+        private set
 
     /**
      * The dense map as the live 3D card draws it: a snapshot taken after a fusion at most every
@@ -272,9 +290,10 @@ internal class ScanCapture private constructor(
      * Fuses [depth] into the dense map, coloured from [image] (the same frame's camera image):
      * the depth, its confidence and one colour per kept pixel are copied here, on the main thread,
      * then back-projected and merged on [Dispatchers.Default]. Without an [image] this frame, the
-     * depth is let go, and counted as such.
+     * depth is let go, and counted as such. The copy is also kept for the final fusion ([keep]),
+     * tied to an anchor of [session] when there is one.
      */
-    fun fuseDepth(depth: ScanDepth, image: ScanImage?) {
+    fun fuseDepth(depth: ScanDepth, image: ScanImage?, session: Session? = null) {
         val fusion = fusion ?: return
         if (image == null) {
             intake.count(Outcome.NoImage)
@@ -285,7 +304,7 @@ internal class ScanCapture private constructor(
             intake.count(Outcome.Unreadable)
             return
         }
-        model?.offer(frame, scope)
+        keep(frame, session)
         fusing.set(true)
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
@@ -305,6 +324,43 @@ internal class ScanCapture private constructor(
             } finally {
                 fusing.set(false)
             }
+        }
+    }
+
+    /**
+     * Keeps [frame] for the final fusion ([refuse]), tied to an ARCore anchor: ARCore corrects an
+     * anchor's pose as its map improves, never a camera pose it has already given. A new anchor
+     * is dropped where the camera stands once it has moved or turned enough since the last one
+     * ([RerunAnchoredFrames.anchorDue]), or when ARCore has stopped tracking that one; an anchor
+     * ARCore refuses leaves the frame on the previous one. Main thread.
+     */
+    private fun keep(frame: DepthFrame, session: Session?) {
+        val kept = kept ?: return
+        refreshAnchors(kept)
+        val lost = anchors[kept.latestAnchor]?.trackingState == TrackingState.STOPPED
+        if (session != null && (lost || kept.anchorDue(frame.pose))) {
+            val at = frame.pose
+            val pose = Pose(floatArrayOf(at.x, at.y, at.z), floatArrayOf(at.qx, at.qy, at.qz, at.qw))
+            runCatching { session.createAnchor(pose) }
+                .onSuccess { anchor ->
+                    // At the cap the store lets every other anchor go: ARCore is told at once.
+                    val id = kept.addAnchor(at) { gone -> anchors.remove(gone)?.detach() }
+                    anchors[id] = anchor
+                }
+                .onFailure {
+                    // Said once: a refusal is asked again at every frame an anchor is due.
+                    val why = it.javaClass.simpleName
+                    if (!anchorRefused) Log.w(LOG_TAG, "anchor refused, ${anchors.size} live: $why")
+                    anchorRefused = true
+                }
+        }
+        kept.offer(frame)
+    }
+
+    /** ARCore's latest pose of each anchor it tracks; one it has paused keeps its last good pose. */
+    private fun refreshAnchors(kept: RerunAnchoredFrames) {
+        for ((id, anchor) in anchors) {
+            if (anchor.trackingState == TrackingState.TRACKING) kept.moveAnchor(id, anchor.pose.toScanPose())
         }
     }
 
@@ -331,14 +387,51 @@ internal class ScanCapture private constructor(
     }
 
     /**
+     * The final fusion: every kept depth frame fused again, off the main thread, into a new surfel
+     * map and into the model's TSDF, each with the camera pose its anchor gives it now — ARCore's
+     * map as the whole scan corrected it, where the live map fused each frame with the pose of its
+     * moment and showed twice a wall the scan came back to. The anchors are read one last time,
+     * then let go. [finishProgress] follows it. Main thread, like [finish].
+     */
+    private suspend fun refuse() {
+        val kept = kept ?: return
+        refreshAnchors(kept)
+        anchors.values.forEach { it.detach() }
+        anchors.clear()
+        if (kept.frameCount == 0) {
+            finishProgress = 1f
+            return
+        }
+        val live = denseTotal.get()
+        val started = System.nanoTime()
+        // The live map is let go before the new one grows: only its last snapshot is still drawn.
+        val fresh = DenseFusion().also { fusion = it }
+        val done = withContext(Dispatchers.Default) {
+            kept.drainInto(fresh, model?.tsdf) { finishProgress = it }
+        }
+        denseTotal.set(fresh.count)
+        val tsdf = model?.tsdf
+        Log.i(
+            LOG_TAG,
+            "final fusion: ${done.frames} frames (one in ${kept.frameStride}) on ${done.anchors} anchors " +
+                "(spacing x${kept.anchorSpacing}) in ${(System.nanoTime() - started) / NANOS_PER_MS} ms; " +
+                "cameras moved ${(done.meanShiftM * MM_PER_M).toInt()} mm on average, " +
+                "${(done.maxShiftM * MM_PER_M).toInt()} mm at most; surfels $live -> ${fresh.count}; " +
+                "tsdf ${tsdf?.blockCount} blocks, ${tsdf?.bytes?.div(BYTES_PER_MB)} MB, " +
+                "dropped ${tsdf?.droppedBlocks}",
+        )
+    }
+
+    /**
      * Stops the scan, waits for the last photos, and builds it into the capture the sessions list
      * keeps — its planes painted from its photos. `null` for a scan that caught nothing. Call it
      * on the main thread, where the recorder writes: the journal is taken there, then let go.
      */
     suspend fun finish(): RerunCapturePack? {
-        // The fusion under way finishes first, and its last growth goes on the timeline.
+        // The fusion under way finishes first; the final one then redoes the map on ARCore's
+        // corrected poses, and what it comes to goes on the timeline.
         fuseJob?.join()
-        model?.join()
+        refuse()
         trace.journal?.lastOrNull()?.let { recordDepthStats(it.nanos) }
         val events = trace.journal?.toList().orEmpty()
         trace.journal = null
@@ -400,6 +493,8 @@ internal class ScanCapture private constructor(
         private const val LOG_INTERVAL_NS = 1_000_000_000L
         private const val NANOS_PER_MS = 1_000_000L
         private const val NANOS_PER_SECOND = 1e9
+        private const val MM_PER_M = 1000f
+        private const val BYTES_PER_MB = 1024 * 1024
 
         /** A second between two snapshots of the dense map for the live 3D card. */
         const val LIVE_DENSE_INTERVAL_NS = 1_000_000_000L
