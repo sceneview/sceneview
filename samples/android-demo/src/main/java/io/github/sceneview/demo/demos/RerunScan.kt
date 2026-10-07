@@ -14,6 +14,7 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.ResourceExhaustedException
 import io.github.sceneview.ar.arcore.ARSession
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
@@ -113,6 +114,8 @@ internal class ScanCapture private constructor(
     private val anchors = HashMap<Int, Anchor>()
     private var anchorSession: Session? = null
     private var anchorRefused = false
+    // Room was made for an anchor ARCore still refused: not again until it grants one.
+    private var roomMadeInVain = false
     private var lastDepthNanos: Long? = null
     private var loggedSizes = false
     private val logGate = IntervalGate(LOG_INTERVAL_NS)
@@ -333,8 +336,9 @@ internal class ScanCapture private constructor(
      * Keeps [frame] for the final fusion ([refuse]), tied to an ARCore anchor: ARCore corrects an
      * anchor's pose as its map improves, never a camera pose it has already given. A new anchor
      * is dropped where the camera stands once it has moved or turned enough since the last one
-     * ([RerunAnchoredFrames.anchorDue]), or when ARCore has stopped tracking that one; an anchor
-     * ARCore refuses leaves the frame on the previous one. Main thread.
+     * ([RerunAnchoredFrames.anchorDue]), or when ARCore has stopped tracking that one. When
+     * ARCore has no room for it, every other anchor is let go and it is asked once more; an
+     * anchor still refused leaves the frame on the previous one. Main thread.
      */
     private fun keep(frame: DepthFrame, session: Session?) {
         val kept = kept ?: return
@@ -344,12 +348,24 @@ internal class ScanCapture private constructor(
         if (session != null && (lost || kept.anchorDue(frame.pose))) {
             val at = frame.pose
             val pose = Pose(floatArrayOf(at.x, at.y, at.z), floatArrayOf(at.qx, at.qy, at.qz, at.qw))
+            // An anchor the store lets go is handed back to ARCore at once.
+            val release: (Int) -> Unit = { gone -> anchors.remove(gone)?.detach() }
             runCatching { session.createAnchor(pose) }
+                .recoverCatching { refusal ->
+                    // ARCore's ceiling came before the store's: without room made here no anchor
+                    // would ever be granted again, and the rest of the scan would hang from the
+                    // last one. Once per refusal — room that does not cure it must not cost the
+                    // anchors one half at a time.
+                    val full = refusal is ResourceExhaustedException && !roomMadeInVain
+                    if (!full || !kept.makeRoom(release)) throw refusal
+                    roomMadeInVain = true
+                    session.createAnchor(pose)
+                }
                 .onSuccess { anchor ->
-                    // At the cap the store lets every other anchor go: ARCore is told at once.
-                    val id = kept.addAnchor(at) { gone -> anchors.remove(gone)?.detach() }
+                    val id = kept.addAnchor(at, release)
                     anchors[id] = anchor
                     anchorSession = session
+                    roomMadeInVain = false
                 }
                 .onFailure {
                     // Said once: a refusal is asked again at every frame an anchor is due.
@@ -371,6 +387,7 @@ internal class ScanCapture private constructor(
         if (owner !== current || (owner as? ARSession)?.isClosed == true) {
             anchors.clear()
             anchorSession = null
+            roomMadeInVain = false
         }
     }
 

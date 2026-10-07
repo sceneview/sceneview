@@ -103,6 +103,18 @@ class RerunAnchoredFrames(
         return id
     }
 
+    /**
+     * Lets every other anchor go before [maxAnchors] is reached, for when ARCore itself has no
+     * room for one more: its own ceiling is not ours to read. [detach] gets each of their ids,
+     * frames stay where they are, and the next anchors are spaced twice as far. Returns whether
+     * any was let go — none is while fewer than two are held.
+     */
+    fun makeRoom(detach: (Int) -> Unit = {}): Boolean {
+        if (anchors.size < 2) return false
+        thinAnchors(detach)
+        return true
+    }
+
     /** ARCore's latest [pose] for anchor [id]. An id already let go is ignored. */
     fun moveAnchor(id: Int, pose: DebugPose) {
         slot(id)?.pose = pose

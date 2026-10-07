@@ -117,6 +117,41 @@ class RerunAnchoredFramesTest {
     }
 
     @Test
+    fun `room made before the cap lets every other anchor go, moves no frame, and spaces the next ones`() {
+        val store = RerunAnchoredFrames(maxAnchors = 40)
+        // ARCore is the one out of room here: the store holds 6 anchors of the 40 it allows.
+        val captured = ArrayList<DebugPose>()
+        val ids = ArrayList<Int>()
+        for (i in 0 until 6) {
+            val camera = RerunSyntheticRoom.lookPose(Vec3(i * 0.7f, 1.4f, 0f), i * 0.2f, 0f)
+            ids += store.addAnchor(camera)
+            store.offer(FRAME.at(camera))
+            captured += camera
+        }
+        val detached = ArrayList<Int>()
+        assertTrue(store.makeRoom { detached += it })
+        assertEquals(listOf(ids[1], ids[3], ids[5]), detached)
+        assertEquals(3, store.anchorCount)
+        assertEquals(2, store.anchorSpacing)
+        store.poses().forEachIndexed { i, pose -> assertPose(captured[i], pose) }
+        // The anchor ARCore now grants is one more, and the frames after it are tied to it.
+        val next = store.addAnchor(DebugPose(5f, 1.4f, 0f)) { detached += it }
+        assertEquals(3, detached.size)
+        assertEquals(4, store.anchorCount)
+        assertEquals(next, store.latestAnchor)
+    }
+
+    @Test
+    fun `no room is made out of a single anchor`() {
+        val store = RerunAnchoredFrames()
+        assertFalse(store.makeRoom { error("nothing to let go") })
+        val only = store.addAnchor(DebugPose(0f, 1.4f, 0f))
+        assertFalse(store.makeRoom { error("the only anchor stays") })
+        assertEquals(only, store.latestAnchor)
+        assertEquals(1, store.anchorSpacing)
+    }
+
+    @Test
     fun `a frame whose anchor the cap let go keeps the correction it had earned, then follows its heir`() {
         val store = RerunAnchoredFrames(maxAnchors = 2)
         val p0 = DebugPose(0f, 1.4f, 0f)
