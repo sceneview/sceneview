@@ -2990,7 +2990,7 @@ val hub = LoopbackCollaborativeTransport.LoopbackHub()
 val transport = hub.join("my-peer-id")               // join one per simulated device
 
 // Orchestrator over CloudAnchorNode + the transport. Mirrors RerunBridge:
-// supervisor IO scope, CONFLATED outbox, lifecycle-bound remember* helper.
+// supervisor IO scope, non-blocking outbox, lifecycle-bound remember* helper.
 @Composable fun rememberCollaborativeSession(
     transport: CollaborativeTransport,
     displayName: String = transport.localPeerId,
@@ -3037,8 +3037,8 @@ fun MultiplayerARScreen() {
 ```
 
 - **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — last-writer-wins per node key (`PlacedNode`); stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` are non-blocking (conflated channel) so they are safe in the AR render callback. All merge work runs on a supervisor IO scope.
+- **Conflict policy** — a node key holds the last write the device has seen (`PlacedNode`), a peer's or its own: `placeNode` on an existing key moves that node, including one a peer placed. Messages carry no logical clock, so two peers writing the *same* key at the same moment are not ordered — prefix node keys with the peer id when several users may move things at once. Stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` never block, so they are safe in the AR render callback: only camera poses are conflated (the newest wins), while a placement, the anchor id and the hello are never dropped by a later line. `broadcastLocalPose(Pose)` is not rate-limited — only `onFrame` honours `poseRateHz`. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.

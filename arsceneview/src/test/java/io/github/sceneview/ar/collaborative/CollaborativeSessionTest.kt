@@ -224,6 +224,88 @@ class CollaborativeSessionTest {
         assertEquals(3f, node.scale[0], 1e-5f)
     }
 
+    // ── Delivery and local re-placement ───────────────────────────────────
+
+    @Test
+    fun `two placements made back to back both reach the peer`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        // No advance between the two: the writer has not drained the first
+        // line yet. A single conflated outbox dropped it.
+        alice.placeNode("a", "chair", floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f))
+        alice.placeNode("b", "lamp", floatArrayOf(2f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f))
+        advanceUntilIdle()
+
+        assertEquals(setOf("a", "b"), bob.placedNodes.map { it.nodeKey }.toSet())
+    }
+
+    @Test
+    fun `a placement made right after start does not drop the hello`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        bob.start()
+        alice.start()
+        alice.placeNode("a", "chair", floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f))
+        advanceUntilIdle()
+
+        assertEquals("Alice", bob.participants.first { it.id == "alice" }.displayName)
+        assertEquals(listOf("a"), bob.placedNodes.map { it.nodeKey })
+    }
+
+    @Test
+    fun `re-placing a key a peer placed first shows locally and reaches the peer`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        alice.placeNode("k", "chair", floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f))
+        advanceUntilIdle()
+        assertEquals("alice", bob.placedNodes.single().ownerPeerId)
+
+        // Bob moves the node Alice placed. His own view must show his write at
+        // once — the copy received from Alice used to keep shadowing it.
+        bob.placeNode("k", "lamp", floatArrayOf(5f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f))
+        val bobView = bob.placedNodes.single()
+        assertEquals("bob", bobView.ownerPeerId)
+        assertEquals("lamp", bobView.modelKey)
+        assertEquals(5f, bobView.translation[0], 1e-6f)
+
+        advanceUntilIdle()
+        val aliceView = alice.placedNodes.single()
+        assertEquals("bob", aliceView.ownerPeerId)
+        assertEquals(5f, aliceView.translation[0], 1e-6f)
+        // Both devices converge, and Bob's view was not rolled back.
+        assertEquals("bob", bob.placedNodes.single().ownerPeerId)
+    }
+
+    @Test
+    fun `inbound writes to one key apply in arrival order`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val carol = session(hub.join("carol"), "Carol")
+        carol.start()
+
+        repeat(20) { i ->
+            carol.testOnlyReceive(
+                "alice",
+                CollaborativeWireFormat.node(
+                    "alice", "k", "chair",
+                    floatArrayOf(i.toFloat(), 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+                    floatArrayOf(1f, 1f, 1f),
+                ),
+            )
+        }
+        advanceUntilIdle()
+
+        assertEquals(19f, carol.placedNodes.single().translation[0], 1e-6f)
+    }
+
     // ── Authenticated peer-id binding (#2569) ─────────────────────────────
 
     @Test

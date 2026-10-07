@@ -703,7 +703,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `geometry` — Geometry Primitives. Show, hide and restyle the seven built-in shapes.
 
 ### Developer tools
 
