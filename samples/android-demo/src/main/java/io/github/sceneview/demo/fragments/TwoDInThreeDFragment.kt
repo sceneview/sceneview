@@ -29,7 +29,6 @@ object TwoDInThreeDFragment : DemoFragment {
         icon = Icons.Filled.WebAsset,
         order = 9,
         addedIn = "4.17.0",
-        updatedIn = "4.52.0",
         tags = setOf(
             "2d", "viewnode", "compose", "billboard", "quad", "label", "annotation",
             "text", "image", "video", "occlusion", "picking", "material",

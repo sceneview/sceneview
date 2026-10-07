@@ -162,15 +162,12 @@ class DemoRenderingScreenshotTest {
 
     @Test
     fun twoDInThreeDDemo_default_state() {
-        // #3424 rebuilt this demo around `ViewNode` Compose cards on a turntable, so the
-        // old golden (three `TextNode` labels) was deleted with the scene it depicted.
-        // Re-baselined from the rebuilt scene on the shared Pixel_7a AVD.
+        // The demo opens on Inspect: a procedural rocket on the themed stage, no card until a
+        // part is tapped, so the golden is the rocket alone under the "Tap a part" hint. The
+        // helmet-and-cards golden of #3424 went with the scene it depicted.
         //
-        // 14 s settle, not 3: the demo loads a 2 048² PBR GLB and a studio HDR, and each of the
-        // four `ViewNode`s then needs several more frames for its off-screen `ComposeView` to
-        // draw into a `SurfaceTexture` that starts out empty. Measured on the shared AVD, the
-        // scene took ~12 s from deep link to a settled frame with all four cards present; a
-        // shorter wait captures a black or half-populated scene.
+        // 14 s settle, the budget of every demo that loads the studio HDR: its light lands
+        // after the first frame, and a rocket caught before it is not the scene.
         captureAndCompare(demoSlug = "two-d-in-three-d", goldenName = "twodinthreed_default", settleSeconds = 14,
             pixelDiffTolerancePercent = 8.0f, maxChannelDiff = 16)
     }
@@ -247,9 +244,9 @@ class DemoRenderingScreenshotTest {
             pixelDiffTolerancePercent = 15.0f, maxChannelDiff = 24)
     }
 
-    // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d`, whose #3424 rebuild
-    // then dropped the segmented tabs entirely. There is one scene now, covered by
-    // `twoDInThreeDDemo_default_state` above.
+    // #2239 Batch 1 — `billboard` consolidated into `two-d-in-three-d`, where it is now the
+    // Media mode (`?tab=media`). `twoDInThreeDDemo_default_state` above covers the mode the demo
+    // opens on, Inspect; Media plays a video, which a pixel golden cannot hold still.
 
     // #2239 Batch 1 — `view-node` consolidated into `picking-collision` (covered by
     // `pickingCollisionDemo_default_state` above). The View Node sub-mode is reachable
@@ -837,7 +834,8 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
-            "twodinthreed_default",
+            // twodinthreed_default: out until re-recorded — its reference was the helmet and
+            // cards the demo no longer shows (Inspect and Media rewrite).
             // lightinglab_default: rejected — the helmet is missing from the CI capture.
             // splatpreview_default: rejected — its framing differs run to run (54.7 % of
             // pixels in run 36416690269), so no single capture is a reference.

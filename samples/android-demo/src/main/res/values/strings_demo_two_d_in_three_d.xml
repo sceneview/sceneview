@@ -21,6 +21,7 @@
     <string name="demo_two_d_in_three_d_play">Play</string>
     <string name="demo_two_d_in_three_d_pause">Pause</string>
     <string name="demo_two_d_in_three_d_face_camera">Face camera</string>
+    <string name="demo_two_d_in_three_d_face_camera_caption">Face</string>
     <string name="demo_two_d_in_three_d_image_node">ImageNode</string>
     <string name="demo_two_d_in_three_d_video_node">VideoNode</string>
     <string name="demo_two_d_in_three_d_billboard_node">BillboardNode</string>

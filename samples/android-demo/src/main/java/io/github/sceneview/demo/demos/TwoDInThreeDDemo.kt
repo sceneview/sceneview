@@ -7,8 +7,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -43,9 +44,11 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.LayoutDirection
 import io.github.sceneview.SceneView
 import io.github.sceneview.components.PRIORITY_DEFAULT
 import io.github.sceneview.components.PRIORITY_LAST
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -58,6 +61,7 @@ import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.CalloutLayout
 import io.github.sceneview.demo.demos.internal.RocketPart
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -67,7 +71,6 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.node.ViewNode
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
@@ -162,12 +165,13 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
     }
     LaunchedEffect(cardNode, selected) { cardNode?.isHittable = selected != null }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val cardWidth = SceneViewTokens.Layout.touchTarget * 4 + SceneViewTokens.Space.sm * 3 +
-        SceneViewTokens.Space.md * 2
-    val cardHeight = SceneViewTokens.Space.x4l + SceneViewTokens.Space.md
-    val cardScale = with(LocalDensity.current) {
-        layout.CARD_WIDTH_METERS * layout.VIEW_PIXELS_PER_UNIT / cardWidth.toPx()
-    }
+    // Two rows of two full-size touch targets under the part's name: narrow enough to stand
+    // beside the rocket on a portrait phone.
+    val density = LocalDensity.current
+    val cardPadding = SceneViewTokens.Space.md - SceneViewTokens.Space.xs
+    val cardWidth = SceneViewTokens.Layout.touchTarget * 2 + SceneViewTokens.Space.sm + cardPadding * 2
+    val cardHeight = with(density) { MaterialTheme.typography.titleMedium.lineHeight.toDp() } +
+        SceneViewTokens.Layout.touchTarget * 2 + SceneViewTokens.Space.sm * 2 + cardPadding * 2
     val names = mapOf(RocketPart.Nose to R.string.demo_two_d_in_three_d_nose,
         RocketPart.Body to R.string.demo_two_d_in_three_d_body,
         RocketPart.Window to R.string.demo_two_d_in_three_d_window,
@@ -179,7 +183,9 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = title, onBack = onBack, themedStage = true,
         firstFrameRendered = firstFrame.rendered, sceneReady = firstFrame.sceneReady,
-        peekHeader = if (hasSelected) null else stringResource(R.string.demo_two_d_in_three_d_inspect_hint),
+        // A phone held sideways leaves a strip above the controls: no line of it goes to a hint.
+        peekHeader = if (hasSelected || isDemoCompactHeight()) null
+            else stringResource(R.string.demo_two_d_in_three_d_inspect_hint),
         dock = listOf(
             DockItem(Icons.Filled.RotateRight, stringResource(R.string.demo_two_d_in_three_d_spin),
                 { spinning = !spinning }, selected = spinning, enabled = !DemoSettings.qaMode),
@@ -199,12 +205,30 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val sceneFrame = demoSceneFrame()
-            val home = remember(sceneFrame.restingAspect, DemoSettings.cameraDistance) {
-                val distance = DemoSettings.cameraDistance ?: layout.cameraDistance(
-                    layout.INSPECT_EXTENT, sceneFrame.restingAspect,
-                )
-                layout.cameraHome(distance) + layout.INSPECT_TARGET
+            // The hint leaving frees a band under the scene. Keep the frame made with it: a new
+            // home rebuilds the manipulator, so the tap that picks a part would undo the user's
+            // orbit, and a new padding would slide the rocket from under the finger.
+            val liveFrame = demoSceneFrame()
+            val heldFrame = remember(maxWidth, maxHeight) { arrayOf(liveFrame) }
+            if (!hasSelected) heldFrame[0] = liveFrame
+            val sceneFrame = heldFrame[0]
+            val aspect = sceneFrame.restingAspect
+            val freeWidth = maxWidth - sceneFrame.contentPadding.calculateLeftPadding(LayoutDirection.Ltr) -
+                sceneFrame.contentPadding.calculateRightPadding(LayoutDirection.Ltr)
+            val distance = remember(aspect, freeWidth, DemoSettings.cameraDistance) {
+                DemoSettings.cameraDistance ?: layout.inspectDistance(
+                    aspect, freeWidth.value, cardWidth.value, SceneViewTokens.Space.md.value)
+            }
+            val home = remember(distance) { layout.cameraHome(distance) + layout.INSPECT_TARGET }
+            // One dp of card is one dp of screen at the home distance, in either orientation.
+            val metersPerDp = layout.metersPerDp(distance, freeWidth.value / aspect)
+            val cardMeters by rememberUpdatedState(
+                Size(cardWidth.value * metersPerDp, cardHeight.value * metersPerDp, 0f))
+            val cardScale = metersPerDp * layout.VIEW_PIXELS_PER_UNIT / density.density
+            // Keyed on the home: the eye-position `rememberCameraManipulator` builds once and keeps
+            // the frame of the first composition, made before the sheet has reported its height.
+            val manipulator = remember(home) {
+                createDefaultCameraManipulator(eyePosition = home, targetPosition = layout.INSPECT_TARGET)
             }
             SceneView(
                 contentPadding = sceneFrame.contentPadding,
@@ -212,7 +236,7 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                 materialLoader = materials, environmentLoader = environments, environment = environment,
                 cameraNode = camera, collisionSystem = collisions, viewNodeWindowManager = manager,
                 renderInvalidator = invalidator, autoCenterContent = false,
-                cameraManipulator = rememberCameraManipulator(home, layout.INSPECT_TARGET),
+                cameraManipulator = manipulator,
                 onFrame = { nanos ->
                     firstFrame.onFrame(nanos)
                     if (layout.movedPerceptibly(eye, camera.worldPosition)) eye = camera.worldPosition
@@ -242,7 +266,7 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                         selected = part
                         if (part != null) {
                             hasSelected = true
-                            anchor = layout.cardAnchor(part, eye, yaw)
+                            anchor = layout.cardAnchor(part, eye, yaw, cardMeters)
                             pulseRequest++
                         }
                     }
@@ -266,43 +290,53 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                                 scale = scale * layout.WINDOW_SCALE, materialInstance = material,
                                 apply = { name = part.name })
                             RocketPart.Fins -> layout.FIN_YAWS.forEach { finYaw -> key(finYaw) {
-                                CubeNode(size = layout.FIN_SIZE, position = layout.finPosition(finYaw),
-                                    rotation = Rotation(y = finYaw), scale = scale, materialInstance = material,
-                                    apply = { name = part.name })
+                                Node(rotation = Rotation(y = finYaw)) {
+                                    CubeNode(size = layout.FIN_SIZE, position = layout.FIN_CENTER,
+                                        rotation = Rotation(x = layout.FIN_TILT_DEGREES), scale = scale,
+                                        materialInstance = material, apply = { name = part.name })
+                                }
                             } }
-                            RocketPart.Engine -> CylinderNode(radius = layout.ENGINE_RADIUS, height = layout.ENGINE_HEIGHT,
+                            RocketPart.Engine -> ConeNode(radius = layout.ENGINE_RADIUS, height = layout.ENGINE_HEIGHT,
                                 position = position, scale = scale, materialInstance = material,
                                 apply = { name = part.name })
                         }
                     } }
                     // Keep the same quad alive while selection moves; an invisible card cannot pick.
+                    // It turns with the eye's bearing on the rocket and leans back to its height, not
+                    // towards the eye itself: the card stays parallel to the screen, a rectangle.
                     ViewNode(windowManager = manager, unlit = false, position = anchor,
-                        rotation = Rotation(y = layout.billboardYawDegrees(layout.rotateY(anchor, yaw), eye, yaw)),
+                        rotation = Rotation(x = layout.billboardPitchDegrees(layout.INSPECT_TARGET, eye),
+                            y = layout.billboardYawDegrees(Position(), eye, yaw)),
                         scale = Scale(cardScale), isVisible = selected != null,
                         apply = { cardNode = this; isHittable = false; isTouchForwardingEnabled = true },
                     ) {
                         SceneViewDemoTheme(darkTheme = dark) {
                             Card(Modifier.size(cardWidth, cardHeight), shape = MaterialTheme.shapes.large) {
-                                Column(Modifier.fillMaxSize().padding(SceneViewTokens.Space.md),
+                                Column(Modifier.fillMaxSize().padding(cardPadding),
                                     verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
                                     Text(selected?.let { stringResource(names.getValue(it)) }.orEmpty(),
-                                        style = MaterialTheme.typography.titleMedium)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
-                                        finishNames.forEachIndexed { index, labelRes ->
-                                            val label = stringResource(labelRes)
-                                            val chosen = selected?.let { choices[it] == index } == true
-                                            Surface(selected = chosen, onClick = {
-                                                selected?.let { choices = choices + (it to index) }
-                                            }, modifier = Modifier.size(SceneViewTokens.Layout.touchTarget)
-                                                .semantics { contentDescription = label },
-                                                shape = CircleShape, color = swatchColors[index],
-                                                border = BorderStroke(SceneViewTokens.Space.xs / 2,
-                                                    if (chosen) MaterialTheme.colorScheme.onSurface
-                                                    else MaterialTheme.colorScheme.outlineVariant)) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    if (chosen) Icon(Icons.Filled.Check, null, tint =
-                                                        if (swatchColors[index].luminance() > 0.5f)
-                                                            SceneViewColors.SurfaceDim else SceneViewColors.SurfaceLight)
+                                        style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                    finishNames.indices.chunked(2).forEach { row ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+                                            row.forEach { index ->
+                                                val label = stringResource(finishNames[index])
+                                                val chosen = selected?.let { choices[it] == index } == true
+                                                // `outline`, not its variant: the matte swatch is the
+                                                // card's own white and must still read as a button.
+                                                Surface(selected = chosen, onClick = {
+                                                    selected?.let { choices = choices + (it to index) }
+                                                }, modifier = Modifier.size(SceneViewTokens.Layout.touchTarget)
+                                                    .semantics { contentDescription = label },
+                                                    shape = CircleShape, color = swatchColors[index],
+                                                    border = BorderStroke(SceneViewTokens.Space.xs / 2,
+                                                        if (chosen) MaterialTheme.colorScheme.onSurface
+                                                        else MaterialTheme.colorScheme.outline)) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        if (chosen) Icon(Icons.Filled.Check, null, tint =
+                                                            if (swatchColors[index].luminance() > 0.5f)
+                                                                SceneViewColors.SurfaceDim
+                                                            else SceneViewColors.SurfaceLight)
+                                                    }
                                                 }
                                             }
                                         }

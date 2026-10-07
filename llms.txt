@@ -5656,35 +5656,38 @@ the model. Priority alone does not defeat a depth test; depth alone leaves two o
 cards resolving in submission order.
 
 `SceneScope.ViewNode`'s `apply` lambda runs **once**, at construction, and the composable
-never hands the node back — so read a reactive toggle through a `State` from inside a
-per-frame hook, and compare against the last applied value so it costs two JNI calls per
-*change*, not per frame.
+never hands the node back — so keep the node it receives and apply the toggle from an effect
+keyed on both. It costs two JNI calls per *change* and no per-frame hook: a node-level
+`onFrame` is a standing request to keep rendering, so it would stop an idle scene from parking.
 
 ```kotlin
 val windowManager = rememberViewNodeManager()
-var alwaysOnTop by remember { mutableStateOf(false) }
-val onTop = rememberUpdatedState(alwaysOnTop)
+var alwaysOnTop by remember { mutableStateOf(true) }
+var card by remember { mutableStateOf<ViewNode?>(null) }
+
+LaunchedEffect(card, alwaysOnTop) {
+    card?.let {
+        it.materialInstance.setDepthCulling(!alwaysOnTop)
+        it.setPriority(if (alwaysOnTop) PRIORITY_LAST else PRIORITY_DEFAULT)
+        it.requestRender()             // an on-demand scene will not redraw by itself
+    }
+}
 
 ViewNode(
     windowManager = windowManager,
-    unlit = true,                      // a label that dims in shadow is a legibility bug
-    apply = {
-        isTouchForwardingEnabled = false   // decorative: never steal a camera drag
-        var applied: Boolean? = null
-        onFrame = {
-            val wanted = onTop.value
-            if (applied != wanted) {
-                applied = wanted
-                materialInstance.setDepthCulling(!wanted)
-                setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
-            }
-        }
-    },
+    apply = { card = this },
 ) { Card { Text("Always readable") } }
 ```
 
-Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
-arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`.
+Drawing last is visual only: picking still returns the nearest collider, so an interactive
+card drawn over the model has to be looked up in `collisionSystem.hitTest(event)` before the
+geometry behind it.
+
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`, Inspect mode), with
+the arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`. Its one card stands beside
+the object under a camera that looks down, so it also leans back by the camera's elevation on
+the orbit target — `Rotation(x = -elevation, y = yaw)`, parallel to the screen rather than
+pitched at the eye — which keeps its edges upright on a phone held sideways.
 
 ### Animated model with play/pause
 
@@ -6000,7 +6003,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `lines-paths` — Lines & Paths. Follow animated curves and paths.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `two-d-in-three-d` — 2D in 3D. Live UI, text, images and video in a 3D scene.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
 - `geometry` — Geometry Primitives. Show, hide and restyle the seven built-in shapes.
 

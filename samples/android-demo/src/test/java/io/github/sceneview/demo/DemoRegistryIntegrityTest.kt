@@ -272,9 +272,8 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
-    fun `2D in 3D exposes Inspect and Media on one updated searchable card`() {
+    fun `2D in 3D exposes Inspect and Media on one searchable card`() {
         val demo = ALL_DEMOS.single { it.id == "two-d-in-three-d" }
-        assertEquals("4.52.0", demo.updatedIn)
         assertTrue(demo.tags.containsAll(setOf("picking", "material", "text", "image", "video", "billboard")))
         assertEquals(listOf("inspect", "media"), TwoDInThreeDFragment.modes.map { it.key })
         assertEquals(listOf(R.string.demo_mode_inspect, R.string.demo_mode_media),

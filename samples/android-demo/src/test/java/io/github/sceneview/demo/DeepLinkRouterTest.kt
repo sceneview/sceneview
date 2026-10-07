@@ -597,6 +597,23 @@ class DeepLinkRouterTest {
     }
 
     @Test
+    fun `a named tab on a retired id names a mode of the demo it lands on`() {
+        fun launch(id: String, tab: String? = null) =
+            DeepLinkRouter.resolveLaunch(
+                demoId = DeepLinkRouter.validate(id, ALL_DEMOS), rawId = id, tabParam = tab)
+        // `video` alone opens Media; `?tab=inspect` is a mode of `two-d-in-three-d`, the demo
+        // the link lands on, so it wins over the alias default instead of being unrecognised.
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch(alias, "inspect"))
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias, "media"))
+            // A name that belongs to another demo is still unrecognised: the alias default holds.
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias, "spacetime"))
+        }
+        // A retired id that names no mode of its new home still drops any tab, named or not.
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", null), launch("physics", "pendulum"))
+    }
+
+    @Test
     fun `explicit tab param wins over the alias default`() {
         // `?tab=0` forces the default tab even when launched via the `movable-light` alias.
         assertEquals(0, DeepLinkRouter.resolveInitialTab("movable-light", "0"))

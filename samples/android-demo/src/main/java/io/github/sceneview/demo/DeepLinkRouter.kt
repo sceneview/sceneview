@@ -349,7 +349,13 @@ internal object DeepLinkRouter {
     fun resolveLaunch(demoId: String?, rawId: String?, tabParam: String?): Launch {
         if (demoId == null) return Launch(null, null)
         val retiredWithoutMode = rawId != demoId && rawId in DEMO_ID_ALIASES && rawId !in ALIAS_INITIAL_TAB
-        val tab = if (retiredWithoutMode) null else resolveInitialTab(rawId, tabParam)
+        // A named tab belongs to the demo the link lands on, not to the retired id it came
+        // through: `video?tab=inspect` names a mode of `two-d-in-three-d`.
+        val tab = if (retiredWithoutMode) {
+            null
+        } else {
+            parseTabValue(tabParam, demoId) ?: resolveInitialTab(rawId, tabParam)
+        }
         if (tab != null) SPLIT_OUT_TABS[demoId to tab]?.let { return Launch(it, null) }
         return Launch(
             demoId = demoId,

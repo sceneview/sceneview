@@ -722,24 +722,29 @@ class DemoInteractionTest {
     fun twoDInThreeD_inspectMaterialsAndDepth() {
         openDemo("two-d-in-three-d")
         val reset = context.getString(R.string.demo_two_d_in_three_d_reset)
-        check(!requireNotNull(device.findObject(By.desc(reset))).isEnabled)
+        // A dock item's label and its click target are two nodes with the same bounds: the
+        // enabled state is on the clickable parent, the label node always reports enabled.
+        fun resetEnabled() = requireNotNull(device.findObject(By.desc(reset))).parent.isEnabled
+        check(!resetEnabled()) { "Reset must start disabled" }
         screenshot("49_twoDInThreeD_inspect")
 
-        // The rocket body is central. Swatches live on a texture, outside the accessibility
-        // tree: tap their projected screen positions, never invoke a semantics click on the view.
-        device.click((device.displayWidth * 0.5f).toInt(), (device.displayHeight * 0.44f).toInt())
+        // Swatches live on a texture, outside the accessibility tree: tap their projected screen
+        // positions, never invoke a semantics click on the view. Both points are measured on the
+        // shared Pixel_7a AVD (1280 x 2856, portrait): the middle of the body, then the Gold
+        // swatch, bottom right of the card that stands to the body's right.
+        device.click((device.displayWidth * 0.5f).toInt(), (device.displayHeight * 0.525f).toInt())
         Thread.sleep(800)
         screenshot("50_twoDInThreeD_part_selected")
-        device.click((device.displayWidth * 0.72f).toInt(), (device.displayHeight * 0.47f).toInt())
+        device.click((device.displayWidth * 0.857f).toInt(), (device.displayHeight * 0.468f).toInt())
         Thread.sleep(800)
-        check(requireNotNull(device.findObject(By.desc(reset))).isEnabled) { "Swatch tap must change a part" }
+        check(resetEnabled()) { "Swatch tap must change a part" }
         screenshot("51_twoDInThreeD_restyled")
 
         tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
         screenshot("52_twoDInThreeD_spinning")
         tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
         tapByDesc(reset)
-        check(!requireNotNull(device.findObject(By.desc(reset))).isEnabled)
+        check(!resetEnabled()) { "Reset must restore the original materials" }
         tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))
         screenshot("52a_twoDInThreeD_depth_tested")
         tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))

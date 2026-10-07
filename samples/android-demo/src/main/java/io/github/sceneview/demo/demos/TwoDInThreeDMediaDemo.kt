@@ -23,11 +23,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.SceneView
+import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -39,6 +41,7 @@ import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.demo.demos.internal.CalloutLayout
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.demoSceneFrame
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -46,7 +49,6 @@ import io.github.sceneview.demo.theme.themedStageChrome
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Size
-import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
@@ -77,6 +79,11 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     }
     val layout = CalloutLayout
     val qa = DemoSettings.qaMode
+    // A phone held sideways: the strip above the controls is too thin to give a line to a hint,
+    // and the gallery hangs on one line there.
+    val strip = isDemoCompactHeight()
+    val gallery = layout.gallery(strip)
+    val target = layout.mediaTarget(strip)
     var playing by remember { mutableStateOf(!qa) }
     var faceCamera by remember { mutableStateOf(true) }
     var cameraMoved by remember { mutableStateOf(false) }
@@ -101,12 +108,13 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     val floor = rememberMaterialInstance(materials, sky.floor, 0f, 0.62f)
     val frame = rememberMaterialInstance(materials, SceneViewColors.SurfaceDim, 0.2f, 0.45f)
     var eye by remember { mutableStateOf(Position()) }
-    val badge = rememberGalleryBadge()
+    val badge = rememberGallerySprite()
+    val poster = rememberGallerySprite(layout.SCREEN_SIZE.x / layout.SCREEN_SIZE.y, SceneViewColors.SurfaceLight)
     val captions = listOf(R.string.demo_two_d_in_three_d_image_node,
         R.string.demo_two_d_in_three_d_video_node, R.string.demo_two_d_in_three_d_billboard_node)
-    // TextNode's bitmap is 128 px high; derive its type size from the theme at that raster scale.
-    val fontSize = MaterialTheme.typography.titleLarge.fontSize.value *
-        (128f / SceneViewTokens.Space.x3l.value)
+    // TextNode's bitmap is 512 x 128 px. Twice the headline size is the largest that keeps the
+    // longest name, "BillboardNode", inside it in monospace.
+    val fontSize = MaterialTheme.typography.headlineMedium.fontSize.value * 2f
     val player = rememberMediaPlayer(assetFileLocation = "videos/sample.mp4", autoStart = false,
         isLooping = true)
     var videoFailed by remember { mutableStateOf(player == null) }
@@ -119,7 +127,8 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
         onDispose { player?.setOnErrorListener(null) }
     }
     LaunchedEffect(player, attached) {
-        if (player != null && attached && qa && !videoFailed) {
+        val seekable = attached && qa && !videoFailed
+        if (player != null && seekable) {
             player.setOnSeekCompleteListener { seekFinished = true; invalidator.requestRender() }
             runCatching { player.seekTo(QA_FRAME_MILLIS) }.onFailure { seekFallback = true }
             delay(SEEK_TIMEOUT_MILLIS)
@@ -151,14 +160,16 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     DemoScaffold(
         title = title, onBack = onBack, themedStage = true,
         firstFrameRendered = rendered, sceneReady = ready,
-        peekHeader = if (cameraMoved) null else stringResource(R.string.demo_two_d_in_three_d_media_hint),
+        peekHeader = if (cameraMoved || strip) null
+            else stringResource(R.string.demo_two_d_in_three_d_media_hint),
         dock = listOf(
             DockItem(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 stringResource(if (playing) R.string.demo_two_d_in_three_d_pause
                     else R.string.demo_two_d_in_three_d_play),
                 { playing = !playing }, enabled = !videoFailed && (!qa || seekFallback), selected = playing),
             DockItem(Icons.Filled.Portrait, stringResource(R.string.demo_two_d_in_three_d_face_camera),
-                { faceCamera = !faceCamera }, selected = faceCamera),
+                { faceCamera = !faceCamera }, selected = faceCamera,
+                caption = stringResource(R.string.demo_two_d_in_three_d_face_camera_caption)),
         ),
         controls = {
             Text(stringResource(R.string.demo_two_d_in_three_d_media_explainer),
@@ -166,19 +177,29 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val sceneFrame = demoSceneFrame()
-            val home = remember(sceneFrame.restingAspect, DemoSettings.cameraDistance) {
-                val distance = DemoSettings.cameraDistance ?: layout.cameraDistance(
-                    layout.MEDIA_EXTENT, sceneFrame.restingAspect,
-                )
-                layout.cameraHome(distance) + layout.MEDIA_TARGET
+            // The hint leaves while the user drags. Keep the frame made with it: a new home rebuilds
+            // the manipulator and cuts the camera back in the middle of that drag, a new padding
+            // slides the gallery under the finger.
+            val liveFrame = demoSceneFrame()
+            val heldFrame = remember(maxWidth, maxHeight) { arrayOf(liveFrame) }
+            if (!cameraMoved) heldFrame[0] = liveFrame
+            val sceneFrame = heldFrame[0]
+            val aspect = sceneFrame.restingAspect
+            val home = remember(aspect, strip, DemoSettings.cameraDistance) {
+                val fit = layout.cameraDistance(layout.mediaExtent(strip), aspect)
+                layout.cameraHome(DemoSettings.cameraDistance ?: fit) + target
+            }
+            // Keyed on the home: the eye-position `rememberCameraManipulator` builds once and keeps
+            // the frame of the first composition, made before the sheet has reported its height.
+            val manipulator = remember(home) {
+                createDefaultCameraManipulator(eyePosition = home, targetPosition = target)
             }
             SceneView(
                 contentPadding = sceneFrame.contentPadding,
                 modifier = Modifier.fillMaxSize(), engine = engine, view = view,
                 materialLoader = materials, environmentLoader = environments, environment = environment,
                 cameraNode = camera, renderInvalidator = invalidator, autoCenterContent = false,
-                cameraManipulator = rememberCameraManipulator(home, layout.MEDIA_TARGET),
+                cameraManipulator = manipulator,
                 onTouchEvent = { event, _ ->
                     if (event.actionMasked == MotionEvent.ACTION_MOVE) touchedCamera[0] = true
                     false
@@ -195,7 +216,7 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
                 PlaneNode(size = Size(layout.FLOOR_SIZE, layout.FLOOR_SIZE, 0f),
                     rotation = Rotation(x = -90f), materialInstance = floor,
                     apply = { isHittable = false })
-                layout.GALLERY.take(2).forEachIndexed { index, exhibit -> key(index) {
+                gallery.take(2).forEachIndexed { index, exhibit -> key(index) {
                     Node(position = exhibit.position, rotation = Rotation(y = exhibit.yaw)) {
                         CubeNode(size = layout.frameSize(exhibit.size), materialInstance = frame)
                         if (index == 0) {
@@ -204,21 +225,24 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
                         } else if (player != null && !videoFailed) {
                             VideoNode(player = player, size = exhibit.size, position = layout.CONTENT_OFFSET,
                                 apply = { attached = true })
+                        } else {
+                            // No decoder, no file: the screen shows a still, never an empty frame.
+                            ImageNode(bitmap = poster, size = exhibit.size, position = layout.CONTENT_OFFSET)
                         }
                     }
                 } }
                 // Only these nodes are recreated: their immutable provider cannot be swapped in place.
                 key(faceCamera) {
                     val provider: (() -> Position)? = if (faceCamera) ({ eye }) else null
-                    val exhibit = layout.GALLERY[2]
+                    val exhibit = gallery[2]
                     BillboardNode(bitmap = badge, widthMeters = exhibit.size.x, heightMeters = exhibit.size.y,
                         position = exhibit.position, cameraPositionProvider = provider)
-                    layout.GALLERY.forEachIndexed { index, item -> key(index) {
+                    gallery.forEachIndexed { index, item -> key(index) {
                         TextNode(text = stringResource(captions[index]), fontSize = fontSize,
                             textColor = chrome.onCard.toArgb(), backgroundColor = chrome.card.toArgb(),
-                            typeface = Typeface.MONOSPACE,
+                            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD),
                             widthMeters = layout.CAPTION_SIZE.x, heightMeters = layout.CAPTION_SIZE.y,
-                            position = layout.captionPosition(item), cameraPositionProvider = provider,
+                            position = item.caption, cameraPositionProvider = provider,
                             apply = { rotation = Rotation(y = item.yaw) })
                     } }
                 }
@@ -227,24 +251,30 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
     }
 }
 
-/** A remembered Canvas sprite made entirely from the existing palette and sizing tokens. */
+/**
+ * A remembered Canvas sprite made entirely from the existing palette and sizing tokens: the badge,
+ * and with a [ground] and a [widthOverHeight] the still a video that cannot play leaves behind.
+ */
 @Composable
-private fun rememberGalleryBadge(): Bitmap {
+private fun rememberGallerySprite(widthOverHeight: Float = 1f, ground: Color? = null): Bitmap {
     val density = LocalDensity.current
     val size = with(density) { SceneViewTokens.Space.x4l.roundToPx() }
     val radius = with(density) { SceneViewTokens.Space.x3l.toPx() / 2f }
     val inset = with(density) { SceneViewTokens.Space.lg.toPx() }
-    return remember(size, radius, inset) {
-        Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { bitmap ->
+    return remember(size, radius, inset, widthOverHeight, ground) {
+        val width = (size * widthOverHeight).toInt()
+        Bitmap.createBitmap(width, size, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val center = size / 2f
+            val centerX = width / 2f
+            val centerY = size / 2f
+            ground?.let { canvas.drawColor(it.toArgb()) }
             paint.color = SceneViewColors.Primary.toArgb()
-            canvas.drawCircle(center, center, radius, paint)
-            canvas.rotate(45f, center, center)
+            canvas.drawCircle(centerX, centerY, radius, paint)
+            canvas.rotate(45f, centerX, centerY)
             paint.color = SceneViewColors.Highlight.toArgb()
-            canvas.drawRect(center - inset / 2, center - inset / 2,
-                center + inset / 2, center + inset / 2, paint)
+            canvas.drawRect(centerX - inset / 2, centerY - inset / 2,
+                centerX + inset / 2, centerY + inset / 2, paint)
         }
     }
 }
