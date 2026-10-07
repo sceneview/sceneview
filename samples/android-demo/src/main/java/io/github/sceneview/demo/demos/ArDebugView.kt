@@ -77,7 +77,6 @@ import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
-import io.github.sceneview.demo.demos.internal.ArDebugStats
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugAnchor
@@ -89,7 +88,6 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
-import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
@@ -728,7 +726,7 @@ internal fun ArDebugSceneView(
                 }
                 // A surface built elsewhere than this session's own world is framed on its own.
                 val bounds = solid?.takeIf { !it.aligned }?.bounds ?: subject.bounds
-                val floorY = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
+                val floorY = stageFloorY(whole)
                 orbit.roomYawDegrees = subject.roomYawDegrees
                 val firstContent = !orbit.hasFramedContent && bounds != null
                 if (firstContent) {
@@ -774,12 +772,10 @@ internal fun ArDebugSceneView(
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
-                    // A replay with a dense cloud counts its surfels, as the sessions list does.
+                    // A replay with a dense cloud counts its surfels, as the sessions list does,
+                    // and names the room it found, as a floor plan would.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
-                    session.stats = ArDebugStats.of(frame, trace.duration, points).let { stats ->
-                        // A replay names the room it found, as a floor plan would.
-                        if (replay == null) stats else stats.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
-                    }
+                    session.count(frame, points, floorY.takeIf { replay != null })
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.
@@ -991,7 +987,10 @@ internal fun com.google.android.filament.View.configureForDebug(colorGrading: Co
 private const val PIP_FPS = 30
 private const val PIP_POINT_SCALE = 0.55f
 private const val FRAME_INTERVAL_NS = 50_000_000L // rebuild the frame at most at 20 Hz
-private const val STATS_INTERVAL_NS = 250_000_000L
+internal const val STATS_INTERVAL_NS = 250_000_000L
+
+/** The floor the stage stands on, to the centimetre. [whole] is the frame the scene is framed on. */
+internal fun stageFloorY(whole: ArDebugFrame): Float = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
 private const val BLOOM_STRENGTH = 0.28f
 private const val ANCHOR_MODEL_SIZE_M = 0.3f
 

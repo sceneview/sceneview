@@ -49,6 +49,18 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
     var stats: ArDebugStats by mutableStateOf(ArDebugStats.Empty)
 
     /**
+     * Counts [frame] into [stats], the figures the timeline and the layer rows read. The 3D view
+     * does it while it draws; a screen that plays the session without the view has to as well,
+     * or they stand still on the last frame the view drew — on nothing, if it never drew one.
+     * [points] is what is drawn as points ([ArDebugStats.of]); a replay gives its [floorY], and
+     * the room its planes outline over it is named.
+     */
+    fun count(frame: ArDebugFrame, points: Int = frame.mapPointCount, floorY: Float? = null) {
+        val counted = ArDebugStats.of(frame, trace.duration, points)
+        stats = if (floorY == null) counted else counted.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
+    }
+
+    /**
      * A recorded session with no live head to catch up to (the bundled replay): reaching the end
      * holds the last frame for [LOOP_HOLD_S], then plays again from the start, instead of going
      * live.

@@ -605,13 +605,22 @@ private fun RerunReplayScreen(
     val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
     // The 3D view runs the session's clock while it draws. Over the camera's frames there is
     // none on screen (the corner picture-in-picture that ran it is gone, #4379): the screen does.
+    // It counts for the view too: the sheet's layer rows and the timeline read those figures.
     if (media != null && mode == RerunMode.Camera) {
-        LaunchedEffect(session) {
+        LaunchedEffect(session, media) {
+            // A finished recording stands on the floor of the whole recording, as in the 3D view.
+            val whole = if (media.growing) null else session.trace.let { it.frameAt(it.duration) }
             var last = withFrameNanos { it }
+            var countedAt = last - STATS_INTERVAL_NS
             while (true) {
                 val now = withFrameNanos { it }
                 session.tick((now - last) / NANOS_PER_SECOND)
                 last = now
+                if (now - countedAt >= STATS_INTERVAL_NS) {
+                    countedAt = now
+                    val frame = session.trace.frameAt(session.time)
+                    session.count(frame, media.pointCountAt(frame.time), stageFloorY(whole ?: frame))
+                }
             }
         }
     }
