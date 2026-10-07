@@ -135,10 +135,12 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
         val seekable = attached && qa && video.phase == StreamPhase.Ready
         if (player != null && seekable) {
             player.setOnSeekCompleteListener { seekFinished = true; invalidator.requestRender() }
-            runCatching { player.seekTo(QA_FRAME_MILLIS) }.onFailure { seekFallback = true }
-            delay(SEEK_TIMEOUT_MILLIS)
+            // A seek that throws has nothing to wait for: the fallback plays at once, so the
+            // scene is never announced ready over a screen that has no picture coming.
+            val refused = runCatching { player.seekTo(QA_FRAME_MILLIS) }.isFailure
+            if (!refused) delay(SEEK_TIMEOUT_MILLIS)
             val failed = video.phase == StreamPhase.Failed
-            if (!seekFinished && !failed) seekFallback = true
+            if ((refused || !seekFinished) && !failed) seekFallback = true
             if (seekFallback && !failed) playing = true
             player.setOnSeekCompleteListener(null)
         }
