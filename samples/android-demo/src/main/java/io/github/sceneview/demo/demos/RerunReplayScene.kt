@@ -117,9 +117,16 @@ internal class RerunReplayMedia(
 /**
  * A `.svscan` v2's dense cloud as the replay draws it — the design's zero-shader parity fallback:
  * [mesh] one square surfel per point in the plane of its normal, [atlas] its colours
- * ([DenseSurfels.ATLAS_SIZE]² RGBA), both built off the main thread.
+ * ([DenseSurfels.ATLAS_SIZE]² RGBA), [light] where the shaded material lights it from
+ * ([SurfelShading.lightFor]) — all built off the main thread.
  */
-internal class ReplayDenseLayer(val cloud: DenseCloud, val voxelM: Float, val mesh: DebugMesh, val atlas: ByteArray) {
+internal class ReplayDenseLayer(
+    val cloud: DenseCloud,
+    val voxelM: Float,
+    val mesh: DebugMesh,
+    val atlas: ByteArray,
+    val light: Vec3,
+) {
     companion object {
         /** The dense cloud [manifest] indexes in [archive], built for drawing; `null` without one. */
         fun of(manifest: ReplayManifest, archive: ByteArray): ReplayDenseLayer? {
@@ -136,6 +143,7 @@ internal class ReplayDenseLayer(val cloud: DenseCloud, val voxelM: Float, val me
             voxelM = voxelM,
             mesh = DenseSurfels.mesh(cloud, voxelM),
             atlas = DenseSurfels.atlas(cloud, fallback = DENSE_FALLBACK_COLOR),
+            light = SurfelShading.lightFor(cloud),
         )
 
         /** A surfel the camera never coloured: the sparse points' own neutral. */
@@ -210,7 +218,8 @@ internal fun MaterialLoader.createSurfelMaterial(): Material? =
 
 /**
  * An instance of [material] (`rerun_surfel.mat`) reading the surfels' colours from [atlas], lit
- * as [SurfelShading] says. The caller destroys it, through this loader.
+ * as [SurfelShading] says, from its default direction until a cloud brings its own
+ * ([lightSurfelsFrom]). The caller destroys it, through this loader.
  */
 internal fun MaterialLoader.createSurfelInstance(
     material: Material,
@@ -218,13 +227,15 @@ internal fun MaterialLoader.createSurfelInstance(
     sampler: TextureSampler,
 ): MaterialInstance = createInstance(material).apply {
     setTexture("atlas", atlas, sampler)
-    val light = SurfelShading.LIGHT_DIRECTION
-    setParameter("lightDirection", light.x, light.y, light.z)
+    lightSurfelsFrom(SurfelShading.LIGHT_DIRECTION)
     setParameter("ambient", SurfelShading.AMBIENT)
     setParameter("headlight", SurfelShading.HEADLIGHT)
     setParameter("relief", SurfelShading.RELIEF)
     setParameter("roundness", SurfelShading.ROUNDNESS)
 }
+
+/** Points a [createSurfelInstance] instance's light: [light] unit, world space, towards the light. */
+internal fun MaterialInstance.lightSurfelsFrom(light: Vec3) = setParameter("lightDirection", light.x, light.y, light.z)
 
 private const val SURFEL_MATERIAL_ASSET = "materials/rerun_surfel.filamat"
 
@@ -376,10 +387,11 @@ internal class ReplayLayers(
             .build(engine)
             .also(textures::add)
     }
+    private val denseShaded: MaterialInstance? = denseAtlas?.let { atlas ->
+        surfelMaterial?.let { materialLoader.createSurfelInstance(it, atlas, nearest) }?.also { materials += it }
+    }
     private val denseNode: DebugLayerNode? = denseAtlas?.let { atlas ->
-        val shaded = surfelMaterial?.let { materialLoader.createSurfelInstance(it, atlas, nearest) }
-            ?.also { materials += it }
-        DebugLayerNode(engine, shaded ?: material(atlas, nearest), POINTS_PRIORITY, textured = true)
+        DebugLayerNode(engine, denseShaded ?: material(atlas, nearest), POINTS_PRIORITY, textured = true)
             .also { node -> dense?.let { uploadDense(atlas, node, it) } }
     }
 
@@ -585,6 +597,7 @@ internal class ReplayLayers(
             Texture.PixelBufferDescriptor(ByteBuffer.wrap(dense.atlas), Texture.Format.RGBA, Texture.Type.UBYTE),
         )
         node.upload(dense.mesh)
+        denseShaded?.lightSurfelsFrom(dense.light)
     }
 
     private fun syncShadows(frame: ArDebugFrame, shown: Boolean) {

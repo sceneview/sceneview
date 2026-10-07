@@ -83,6 +83,8 @@ internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRo
                     voxelM = source.voxelM,
                     mesh = DenseSurfels.mesh(cut, source.voxelM),
                     atlas = DenseSurfels.atlas(cut, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+                    // The same room, cut open: lit as in the replay a tap away.
+                    light = source.light,
                 )
             }
             return DollhouseBuild(media, room, dense)

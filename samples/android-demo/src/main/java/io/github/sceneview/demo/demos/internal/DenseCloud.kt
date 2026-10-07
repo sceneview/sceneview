@@ -2,8 +2,13 @@ package io.github.sceneview.demo.demos.internal
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.hypot
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /*
@@ -673,10 +678,62 @@ object DenseSurfels {
  */
 object SurfelShading {
     /**
-     * Unit, world space, pointing towards the light: from above, off to one side and to the
-     * front, so the floor and two walls at a right angle get three different shades.
+     * Unit, world space, pointing towards the light: from above and closer to one horizontal axis
+     * than to the other, so the floor and two walls at a right angle get three different shades
+     * in a room that lies along the world's axes. The light of a cloud with no wall to go by;
+     * [lightFor] turns it to the walls a cloud does have.
      */
-    val LIGHT_DIRECTION: Vec3 = Vec3(0.35f, 0.85f, 0.40f).normalized()
+    val LIGHT_DIRECTION: Vec3 = Vec3(0.23f, 0.80f, 0.55f).normalized()
+
+    /**
+     * The light for [cloud]: [LIGHT_DIRECTION]'s height, turned about the vertical to sit
+     * [WALL_OFFSET_DEGREES] off the walls' own direction. A fixed light is blind to the corner
+     * whose two walls it lights alike — and a scan started facing a wall puts the room on the
+     * world's axes, or anywhere else; the walls say where. Of the four turns that fit, the one
+     * nearest [LIGHT_DIRECTION], so a growing scan's light does not swing. A cloud without
+     * normals, with too few wall surfels, or whose walls agree on no direction keeps
+     * [LIGHT_DIRECTION]. Linear in the cloud, no allocation; off the main thread.
+     */
+    fun lightFor(cloud: DenseCloud?): Vec3 {
+        val normals = cloud?.normals ?: return LIGHT_DIRECTION
+        // Walls meet at right angles: four times a wall's heading is the same angle for the four
+        // of them. Summed as a unit complex number raised to the fourth power, without trigonometry.
+        var re = 0.0
+        var im = 0.0
+        var walls = 0
+        for (i in 0 until cloud.count) {
+            val x = normals[i * 3]
+            val z = normals[i * 3 + 2]
+            val h2 = x * x + z * z
+            if (h2 < WALL_MIN_HORIZONTAL * WALL_MIN_HORIZONTAL) continue
+            val c2 = (x * x - z * z) / h2
+            val s2 = 2f * x * z / h2
+            re += c2 * c2 - s2 * s2
+            im += 2f * c2 * s2
+            walls++
+        }
+        if (walls < MIN_WALL_SURFELS || hypot(re, im) < walls * MIN_WALL_AGREEMENT) return LIGHT_DIRECTION
+        val wall = atan2(im, re) / 4 + Math.toRadians(WALL_OFFSET_DEGREES.toDouble())
+        val rest = atan2(LIGHT_DIRECTION.z.toDouble(), LIGHT_DIRECTION.x.toDouble())
+        val heading = wall + (PI / 2) * Math.rint((rest - wall) / (PI / 2))
+        val horizontal = hypot(LIGHT_DIRECTION.x, LIGHT_DIRECTION.z)
+        return Vec3(horizontal * cos(heading).toFloat(), LIGHT_DIRECTION.y, horizontal * sin(heading).toFloat())
+    }
+
+    /** A surfel is a wall's when its normal is at least this horizontal (about 30° off level). */
+    private const val WALL_MIN_HORIZONTAL = 0.85f
+
+    /** Fewer wall surfels than this say nothing about the room. */
+    private const val MIN_WALL_SURFELS = 200
+
+    /** 1 when every wall surfel agrees on the room's direction, 0 for none: furniture, noise. */
+    private const val MIN_WALL_AGREEMENT = 0.3
+
+    /**
+     * How far off the walls the light sits. 0 shades the four corners alike but leaves two
+     * facing walls the same; 45 loses two corners. 12 keeps the four walls apart.
+     */
+    const val WALL_OFFSET_DEGREES = 12f
 
     /** The shade of a surfel facing away from everything: 1 would be the flat photo colour. */
     const val AMBIENT = 0.35f
