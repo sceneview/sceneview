@@ -108,10 +108,16 @@ fun Modifier.overMediaEdge(
     }
 }
 
+/**
+ * [ground] is painted under the glass, inside the same shape. Glass is see-through and counts on
+ * a scrim behind it; where no band of scrim runs under the element — the identity row of a phone
+ * held sideways — the element carries that scrim itself, cut to its own outline.
+ */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+    ground: Color = Color.Transparent,
     content: @Composable () -> Unit,
 ) {
     val chrome = LocalStageChrome.current
@@ -119,6 +125,7 @@ fun GlassSurface(
         modifier = modifier
             .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             .clip(shape)
+            .background(ground)
             .background(chrome.glass),
         // Centred, not the Box default of top-start (#3835). A caller that raises the
         // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
@@ -145,6 +152,7 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    ground: Color = Color.Transparent,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -171,6 +179,7 @@ fun GlassIconButton(
                 .size(SceneViewTokens.Glass.iconButtonSize)
                 .graphicsLayer { scaleX = scale; scaleY = scale },
             shape = CircleShape,
+            ground = ground,
         ) {
             Box(Modifier.size(SceneViewTokens.Glass.iconButtonSize), contentAlignment = Alignment.Center) {
                 Icon(
@@ -190,9 +199,10 @@ fun GlassIconButton(
 @Composable
 fun GlassPill(
     modifier: Modifier = Modifier,
+    ground: Color = Color.Transparent,
     content: @Composable RowScope.() -> Unit,
 ) {
-    GlassSurface(modifier = modifier) {
+    GlassSurface(modifier = modifier, ground = ground) {
         Row(
             modifier = Modifier
                 .heightIn(min = SceneViewTokens.Glass.pillHeight)

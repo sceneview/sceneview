@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlin.math.cos
 
 /**
@@ -105,6 +106,36 @@ internal fun demoContentPadding(
     val wanted = if (compactHeight) minOf(chromeTop, statusBar) else chromeTop
     val top = minOf(wanted, room.coerceAtLeast(0.dp))
     return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
+}
+
+/**
+ * The scrim that runs under the top of the screen: its [height], and the fraction of it, from the
+ * top edge, that is flat before it fades out.
+ */
+internal data class DemoTopScrim(val height: Dp, val plateau: Float)
+
+/**
+ * The top scrim is the ground of what stands on it, and is sized by that — the same rule
+ * [demoContentPadding] frames the subject by.
+ *
+ * - **Upright**, the identity row is a band nothing else occupies: the scrim is the token band,
+ *   flat under the row and the status bar.
+ * - **A phone held sideways** ([compactHeight]): the row is two chips in a corner and the subject
+ *   is framed right up to the status bar. The token band would be more than a third of the
+ *   picture, flat over the top of the subject. Only the [statusBarInset] keeps a full-width
+ *   ground — the clock and the battery are drawn on the scene with nothing of their own — and
+ *   the scrim is gone by the end of the row's gutter, where the chips start. The chips carry
+ *   their own (`GlassSurface(ground = …)`). No status bar, no scrim.
+ */
+internal fun demoTopScrim(compactHeight: Boolean, statusBarInset: Dp): DemoTopScrim = when {
+    !compactHeight -> DemoTopScrim(
+        height = SceneViewTokens.Glass.scrimTopHeight,
+        plateau = SceneViewTokens.Glass.scrimPlateau,
+    )
+    statusBarInset <= 0.dp -> DemoTopScrim(height = 0.dp, plateau = 0f)
+    else -> (statusBarInset + SceneViewTokens.Space.md).let { height ->
+        DemoTopScrim(height = height, plateau = statusBarInset / height)
+    }
 }
 
 /**

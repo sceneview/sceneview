@@ -3,6 +3,7 @@ package io.github.sceneview.demo
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.theme.SceneViewTokens
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -205,5 +206,40 @@ class DemoSubjectFramingTest {
         assertEquals(330.dp, settledSheetCover(measured = 330.dp, windowHeight = 914.dp, expanded = true))
         // A window not measured yet takes nothing away.
         assertEquals(330.dp, settledSheetCover(measured = 330.dp, windowHeight = 0.dp, expanded = false))
+    }
+
+    @Test
+    fun `upright the top scrim is the token band, whatever the status bar`() {
+        for (statusBar in listOf(0.dp, 24.dp, 48.dp)) {
+            val scrim = demoTopScrim(compactHeight = false, statusBarInset = statusBar)
+            assertEquals(SceneViewTokens.Glass.scrimTopHeight, scrim.height)
+            assertEquals(SceneViewTokens.Glass.scrimPlateau, scrim.plateau, 0f)
+        }
+    }
+
+    @Test
+    fun `held sideways the top scrim covers the status bar and is gone where the chips start`() {
+        val statusBar = 24.dp
+        val scrim = demoTopScrim(compactHeight = true, statusBarInset = statusBar)
+        // It ends with the identity row's gutter: the chips, which carry their own ground, start there.
+        assertEquals(statusBar + SceneViewTokens.Space.md, scrim.height)
+        // Flat over the status bar, whose icons have no ground of their own.
+        assertEquals(statusBar, scrim.height * scrim.plateau)
+        // A phone held sideways is 411 dp tall: the band is a tenth of it, not the token's 39 %.
+        assertTrue(scrim.height < height * 0.1f)
+        assertTrue(SceneViewTokens.Glass.scrimTopHeight > height * 0.38f)
+        // The subject is framed from the status bar down ([demoContentPadding]); the flat part
+        // of the scrim stops where it starts.
+        val padding = demoContentPadding(
+            cover = PaddingValues(top = chromeTop + statusBar, bottom = 104.dp),
+            sceneHeight = height, statusBar = statusBar, compactHeight = true,
+        )
+        assertEquals(padding.calculateTopPadding(), scrim.height * scrim.plateau)
+    }
+
+    @Test
+    fun `held sideways with no status bar there is nothing to ground`() {
+        val scrim = demoTopScrim(compactHeight = true, statusBarInset = 0.dp)
+        assertEquals(0.dp, scrim.height)
     }
 }

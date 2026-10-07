@@ -863,8 +863,12 @@ fun DemoScaffold(
                 // inside the chrome greys out, because the chrome is composed after the
                 // overlay slots. It still fades with the chrome, which is the only thing
                 // standing on it.
+                //
+                // Sized by [demoTopScrim]: the whole row upright, the status bar alone on a
+                // phone held sideways, where a band that tall is a third of the picture.
+                val topScrim = demoTopScrim(isDemoCompactHeight(), statusBarInset)
                 AnimatedVisibility(
-                    visible = chromeVisible,
+                    visible = chromeVisible && topScrim.height > 0.dp,
                     enter = fadeIn(SceneViewTokens.Motion.fade()),
                     exit = fadeOut(SceneViewTokens.Motion.fade()),
                     modifier = Modifier.align(Alignment.TopCenter),
@@ -872,12 +876,11 @@ fun DemoScaffold(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(SceneViewTokens.Glass.scrimTopHeight)
+                            .height(topScrim.height)
                             .background(
                                 Brush.verticalGradient(
                                     0f to chrome.scrim,
-                                    SceneViewTokens.Glass.scrimPlateau to
-                                        chrome.scrim,
+                                    topScrim.plateau to chrome.scrim,
                                     1f to Color.Transparent,
                                 )
                             ),
@@ -1121,6 +1124,9 @@ private fun BoxScope.DemoIdentityRow(
     haptic: SceneViewHaptic,
     onHeightChanged: (Int) -> Unit,
 ) {
+    // A phone held sideways has no band of scrim under this row ([demoTopScrim]): each element
+    // then stands on its own piece of it, so the title reads the same and the scene stays clear.
+    val ground = if (isDemoCompactHeight()) LocalStageChrome.current.scrim else Color.Transparent
     Row(
         modifier = Modifier
             .align(Alignment.TopCenter)
@@ -1143,6 +1149,7 @@ private fun BoxScope.DemoIdentityRow(
             icon = Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = stringResource(R.string.cd_back_button),
             onClick = onBack,
+            ground = ground,
         )
         // The identity pill: full title in the tree, one line on screen.
         val sourceLabel = assetSource?.let {
@@ -1164,6 +1171,7 @@ private fun BoxScope.DemoIdentityRow(
                             .semantics { contentDescription = "Asset source: $sourceLabel" }
                     } else Modifier
                 ),
+            ground = ground,
         ) {
             Text(
                 text = title,
@@ -1197,6 +1205,7 @@ private fun BoxScope.DemoIdentityRow(
                         DemoSettings.qaMode = false
                     }
                     .testTag(DemoScaffoldTestTags.QA_PILL),
+                ground = ground,
             ) {
                 Text(
                     text = " QA ×",

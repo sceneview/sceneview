@@ -581,6 +581,15 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   top scrim fades with the chrome; the bottom one grows to the measured overlay
   band and outlives the fade, because a status pill or legend stays on screen
   after a scene tap has hidden the dock.
+
+  **A phone held sideways (compact height) has no top band.** 160dp is more than
+  a third of a 411dp window, flat over the top of a subject that is framed right
+  up to the status bar there. The scrim keeps to what it grounds: flat under the
+  status bar, gone by the end of the identity row's `space-md` gutter. The back
+  button and the title pill then carry `chrome-scrim` themselves, under their
+  glass and cut to their own outline — same stack (scene, scrim, glass, glyph),
+  same contrast, on the chip instead of across the picture. The bottom band is
+  unchanged.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
 - **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
