@@ -64,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import com.google.android.filament.Engine
+import com.google.android.filament.Material
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -170,8 +171,11 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // The dense cloud's own material, once for the whole demo: every view below draws with the
+    // program the warm-up compiles. The loader destroys it; null draws the cloud flat.
+    val surfelMaterial = remember(materialLoader) { materialLoader.createSurfelMaterial() }
     // The replay's shaders compile while the landing is read, not behind its loading cover.
-    LaunchedEffect(engine, materialLoader) { warmUpReplay(engine, materialLoader) }
+    LaunchedEffect(engine, materialLoader) { warmUpReplay(engine, materialLoader, surfelMaterial) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
@@ -432,6 +436,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            surfelMaterial = surfelMaterial,
             arPlaybackDataset = arPlaybackDataset,
             qaState = qaState,
         )
@@ -461,6 +466,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             engine = engine,
             modelLoader = modelLoader,
             materialLoader = materialLoader,
+            surfelMaterial = surfelMaterial,
         )
         RerunScreen.Dollhouse -> RoomDollhouseScreen(
             onBack = leaveDollhouse,
@@ -481,6 +487,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             materialLoader = materialLoader,
             arPlaybackDataset = arPlaybackDataset,
             startIn3d = qaState == QA_STATE_DOLLHOUSE_3D,
+            surfelMaterial = surfelMaterial,
         )
         RerunScreen.Model -> modelSource?.let { source ->
             RerunModelScreen(
@@ -559,6 +566,7 @@ private fun RerunReplayScreen(
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
+    surfelMaterial: Material?,
     onBuildModel: (() -> Unit)? = null,
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
@@ -613,6 +621,7 @@ private fun RerunReplayScreen(
                         onExpand = { onMode(RerunMode.Scene) },
                         modifier = corner,
                         replay = media,
+                        surfelMaterial = surfelMaterial,
                     )
                     RerunMode.Scene -> RerunCameraCard(
                         media = media,
@@ -693,6 +702,7 @@ private fun RerunReplayScreen(
                 materialLoader = materialLoader,
                 modifier = Modifier.fillMaxSize(),
                 replay = media,
+                surfelMaterial = surfelMaterial,
                 onShown = onRevealed,
             )
         }
@@ -736,6 +746,7 @@ private fun RerunLiveScreen(
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
+    surfelMaterial: Material?,
     arPlaybackDataset: File?,
     qaState: String?,
 ) {
@@ -969,6 +980,7 @@ private fun RerunLiveScreen(
                     engine = engine,
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
+                    surfelMaterial = surfelMaterial,
                 )
             } else if (debugFullScreen) {
                 ArDebugLegend(debugSession)

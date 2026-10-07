@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import com.google.android.filament.Engine
+import com.google.android.filament.Material
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
@@ -117,6 +118,7 @@ internal fun ScanStage(
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
+    surfelMaterial: Material? = null,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
     // The scaffold stacks top overlays Space.sm apart; one more brings the card to the Space.md
@@ -141,6 +143,7 @@ internal fun ScanStage(
                 materialLoader = materialLoader,
                 modifier = Modifier.fillMaxSize(),
                 replay = media,
+                surfelMaterial = surfelMaterial,
             )
             Box(Modifier.fillMaxSize().overMediaEdge(shape))
         }

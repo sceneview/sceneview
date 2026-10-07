@@ -13,6 +13,7 @@ import androidx.annotation.ColorInt
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
+import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Skybox
 import com.google.android.filament.SwapChainFlags
@@ -37,6 +38,7 @@ import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.SurfelShading
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -197,15 +199,45 @@ internal suspend fun decodeFrame(media: RerunReplayMedia, path: String): Bitmap?
 }
 
 /**
+ * `rerun_surfel.mat`, which shades the dense cloud's surfels by which way they face — or `null`
+ * when the APK does not carry its blob, and [ReplayLayers] then draws the cloud flat, through the
+ * image material. One [Material] for the whole demo: the warm-up compiles its program
+ * ([warmUpReplay]) and every view draws with it. The loader keeps it and destroys it with
+ * itself, after every instance — nobody else does. Main thread.
+ */
+internal fun MaterialLoader.createSurfelMaterial(): Material? =
+    runCatching { createMaterial(SURFEL_MATERIAL_ASSET) }.getOrNull()
+
+/**
+ * An instance of [material] (`rerun_surfel.mat`) reading the surfels' colours from [atlas], lit
+ * as [SurfelShading] says. The caller destroys it, through this loader.
+ */
+internal fun MaterialLoader.createSurfelInstance(
+    material: Material,
+    atlas: Texture,
+    sampler: TextureSampler,
+): MaterialInstance = createInstance(material).apply {
+    setTexture("atlas", atlas, sampler)
+    val light = SurfelShading.LIGHT_DIRECTION
+    setParameter("lightDirection", light.x, light.y, light.z)
+    setParameter("ambient", SurfelShading.AMBIENT)
+    setParameter("headlight", SurfelShading.HEADLIGHT)
+    setParameter("relief", SurfelShading.RELIEF)
+    setParameter("roundness", SurfelShading.ROUNDNESS)
+}
+
+private const val SURFEL_MATERIAL_ASSET = "materials/rerun_surfel.filamat"
+
+/**
  * Draws the replay's materials once, off screen, while the landing is read: the unlit layers,
- * opaque and translucent, the photos, the stage's skybox, and the view's bloom, 4× MSAA and
- * colour grading. A GL driver without parallel shader compilation — the emulator's, most
+ * opaque and translucent, the photos, the dense cloud's surfels ([surfelMaterial], when the APK
+ * has it), the stage's skybox, and the view's bloom, 4× MSAA and colour grading. A GL driver without parallel shader compilation — the emulator's, most
  * low-end phones' — compiles a program on its first draw, so the first replay opened in a
  * process waited ~2 s behind its loading cover, where the second one took 0.2 s (#4080).
  * Filament keeps the programs once compiled; everything drawn here is released right after, in
  * command order, so the main thread never waits on the driver. Main thread.
  */
-internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
+internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader, surfelMaterial: Material? = null) {
     val texture = Texture.Builder()
         .width(1)
         .height(1)
@@ -213,10 +245,11 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
         .sampler(Texture.Sampler.SAMPLER_2D)
         .format(Texture.InternalFormat.SRGB8_A8)
         .build(engine)
-    val instances = listOf(
+    val instances = listOfNotNull(
         materialLoader.createUnlitColorInstance(Color.WHITE),
         materialLoader.createUnlitColorInstance(Color.TRANSPARENT),
         materialLoader.createImageInstance(texture),
+        surfelMaterial?.let { materialLoader.createSurfelInstance(it, texture, TextureSampler()) },
     )
     // Each draws one degenerate triangle: enough to bind, and so compile, its program.
     val nodes = instances.mapIndexed { i, instance -> DebugLayerNode(engine, instance, i, textured = true) }
@@ -277,6 +310,11 @@ internal class ReplayLayers(
      * ceiling ([io.github.sceneview.demo.demos.internal.RoomDollhouse.cropDense]) — drawn whole.
      */
     private val dense: ReplayDenseLayer? = media.dense,
+    /**
+     * `rerun_surfel.mat` ([createSurfelMaterial]), which shades the dense cloud; `null` draws
+     * the same mesh and the same atlas flat, through the image material. Not owned here.
+     */
+    private val surfelMaterial: Material? = null,
 ) {
     private val textures = ArrayList<Texture>()
     private val materials = ArrayList<MaterialInstance>()
@@ -325,7 +363,8 @@ internal class ReplayLayers(
     /**
      * A v2 scan's dense cloud: surfels coloured from their own texel of a 1024² atlas, uploaded
      * once here and revealed as the timeline reaches them ([syncDense]). Writes depth, so the
-     * surfels hide what is behind them, like a surface.
+     * surfels hide what is behind them, like a surface. Shaded by which way each surfel faces
+     * when [surfelMaterial] is there, flat otherwise.
      */
     private val denseAtlas: Texture? = if (dense == null && media.liveDense == null) null else {
         Texture.Builder()
@@ -338,7 +377,9 @@ internal class ReplayLayers(
             .also(textures::add)
     }
     private val denseNode: DebugLayerNode? = denseAtlas?.let { atlas ->
-        DebugLayerNode(engine, material(atlas, nearest), POINTS_PRIORITY, textured = true)
+        val shaded = surfelMaterial?.let { materialLoader.createSurfelInstance(it, atlas, nearest) }
+            ?.also { materials += it }
+        DebugLayerNode(engine, shaded ?: material(atlas, nearest), POINTS_PRIORITY, textured = true)
             .also { node -> dense?.let { uploadDense(atlas, node, it) } }
     }
 

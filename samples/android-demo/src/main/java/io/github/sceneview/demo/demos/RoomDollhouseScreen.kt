@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
+import com.google.android.filament.Material
 import com.google.ar.core.TrackingFailureReason
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARHapticFeedback
@@ -114,6 +115,7 @@ import java.io.File
  * @param hasSession whether there is a recording to open.
  * @param openFailed the recording could not be read.
  * @param startIn3d open on the 3D view rather than in AR (QA captures).
+ * @param surfelMaterial shades the room's dense cloud; without it the cloud is drawn flat.
  */
 @Composable
 @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod") // one screen, five stages
@@ -133,6 +135,7 @@ internal fun RoomDollhouseScreen(
     materialLoader: MaterialLoader,
     arPlaybackDataset: File?,
     startIn3d: Boolean = false,
+    surfelMaterial: Material? = null,
 ) {
     // The whole room, cut open: read once per recording, off the main thread — a dense cloud
     // takes its floor, its cut and its surfels rebuilt.
@@ -390,6 +393,7 @@ internal fun RoomDollhouseScreen(
                     modelLoader = modelLoader,
                     materialLoader = materialLoader,
                     modifier = Modifier.fillMaxSize().testTag(DOLLHOUSE_PREVIEW_TAG),
+                    surfelMaterial = surfelMaterial,
                     onShown = { previewShown = true },
                 )
             }
@@ -434,6 +438,7 @@ internal fun RoomDollhouseScreen(
                                 showPath = showPath,
                                 // At real size the room's floor goes on the real one, no plinth.
                                 plinth = !realSize,
+                                surfelMaterial = surfelMaterial,
                             )
                         }
                     }

@@ -599,9 +599,10 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
 }
 
 /**
- * The replay's dense layer without a custom shader — the design's zero-shader parity fallback:
- * each surfel a square quad pre-expanded on the CPU, lying in the plane its normal gives, its
- * colour one texel of a [ATLAS_SIZE]² atlas read through the unlit image material.
+ * The replay's dense layer: each surfel a square quad pre-expanded on the CPU, lying in the plane
+ * its normal gives, its colour one texel of a [ATLAS_SIZE]² atlas. `rerun_surfel.mat` shades it
+ * by which way it faces ([SurfelShading]); without that material the unlit image material draws
+ * the same mesh and the same atlas flat — the design's zero-shader parity fallback.
  */
 object DenseSurfels {
     /** 1024² = 1 048 576 texels: one per surfel, past [DenseFusion.MAX_POINTS]. */
@@ -616,7 +617,15 @@ object DenseSurfels {
     /** Surfels [ATLAS_SIZE]² can colour. */
     const val MAX_SURFELS = ATLAS_SIZE * ATLAS_SIZE
 
-    /** Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`. */
+    /**
+     * Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`.
+     *
+     * `rerun_surfel.mat` carries no normal attribute and reads two facts off this layout instead,
+     * so they are a contract (`DenseCloudTest`): surfel `i` owns vertices `4i..4i + 3`, its corners
+     * (−,−) (+,−) (+,+) (−,+) along its two tangents — the shader takes the corner from the vertex
+     * index — and the quad is wound counter-clockwise seen from the side its normal points to,
+     * which is how the shader tells the surfel's own side from its back.
+     */
     fun mesh(cloud: DenseCloud, voxelM: Float): DebugMesh {
         val n = minOf(cloud.count, MAX_SURFELS)
         val mesh = DebugMesh(maxOf(n * 4, 1))
@@ -655,4 +664,35 @@ object DenseSurfels {
 
     /** The atlas's RGBA bytes: surfel `i` is texel `i`, row-major; no colour → [fallback]. */
     fun atlas(cloud: DenseCloud, fallback: Int): ByteArray = PointColorAtlas.pixels(cloud.colors, fallback, ATLAS_SIZE)
+}
+
+/**
+ * How `rerun_surfel.mat` shades the replay's dense cloud — its parameters, in one place. The
+ * colours are photos, lit once already by the room: the shade only has to tell a wall from the
+ * ceiling it meets, so it stays soft (half-Lambert, never black) and the same in both themes.
+ */
+object SurfelShading {
+    /**
+     * Unit, world space, pointing towards the light: from above, off to one side and to the
+     * front, so the floor and two walls at a right angle get three different shades.
+     */
+    val LIGHT_DIRECTION: Vec3 = Vec3(0.35f, 0.85f, 0.40f).normalized()
+
+    /** The shade of a surfel facing away from everything: 1 would be the flat photo colour. */
+    const val AMBIENT = 0.35f
+
+    /**
+     * The share of the shade that follows the viewer rather than the light: it keeps a wall
+     * readable when the fixed light grazes it, at the price of some relief.
+     */
+    const val HEADLIGHT = 0.30f
+
+    /** 0 draws the photo colour flat — the fallback's look — 1 the full shading. */
+    const val RELIEF = 1f
+
+    /**
+     * 0 keeps the quad square, 1 cuts a disc. At [DenseSurfels.HALF_SIDE_VOXELS] a disc leaves
+     * gaps between neighbours on the voxel grid; half-rounded corners still cover it.
+     */
+    const val ROUNDNESS = 0.5f
 }
