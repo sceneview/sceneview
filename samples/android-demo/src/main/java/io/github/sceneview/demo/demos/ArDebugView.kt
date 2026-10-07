@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,9 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -1004,68 +1001,6 @@ private const val SHOWN_AFTER_FRAMES = 3
 // ─── Chrome ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * The picture-in-picture over the camera: the live 3D view in a portrait glass card. A tap
- * opens the full view; the view itself takes no touch here, so the tap is never an orbit.
- */
-@Composable
-internal fun ArDebugPip(
-    session: ArDebugSession,
-    orbit: ArDebugOrbitCamera,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-    onExpand: () -> Unit,
-    modifier: Modifier = Modifier,
-    replay: RerunReplayMedia? = null,
-) {
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    val chrome = LocalStageChrome.current
-    Box(
-        modifier = modifier
-            .size(DebugView.pipWidth, DebugView.pipHeight)
-            .shadow(elevation = SceneViewTokens.Elevation.md, shape = shape, clip = false)
-            .clip(shape)
-            .background(chrome.ground)
-            .testTag(AR_DEBUG_PIP_TAG),
-    ) {
-        ArDebugSceneView(
-            session = session,
-            orbit = orbit,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            modifier = Modifier.fillMaxSize(),
-            compact = true,
-            replay = replay,
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
-                .clickable(role = Role.Button, onClick = onExpand)
-                .semantics { contentDescription = "Open the 3D view" },
-        )
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(Space.sm)
-                .background(chrome.card, CircleShape)
-                .padding(horizontal = Space.sm, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("3D", style = SceneViewTokens.Type.caption.copy(color = chrome.onCard))
-            Spacer(Modifier.width(Space.xs))
-            Icon(
-                Icons.Rounded.OpenInFull,
-                contentDescription = null,
-                tint = chrome.onCard,
-                modifier = Modifier.size(Space.md - Space.xs / 2),
-            )
-        }
-    }
-}
-
-/**
  * The layer toggles of the full view — the Rerun viewer's entity list, as a 2×2 grid of equal
  * pills: a colour dot (the layer's own colour), a name, and what it holds. A grid rather than a
  * row: four labelled counts do not fit a phone's width, and a scrolling row hid the last one.
@@ -1229,7 +1164,6 @@ private fun LiveChip(live: Boolean, onClick: () -> Unit) {
 
 private const val LIVE_FILL_ALPHA = 0.22f
 
-internal const val AR_DEBUG_PIP_TAG = "ar_debug_pip"
 internal const val AR_DEBUG_LEGEND_TAG = "ar_debug_legend"
 internal const val AR_DEBUG_TIMELINE_TAG = "ar_debug_timeline"
 internal const val AR_DEBUG_LIVE_TAG = "ar_debug_live"

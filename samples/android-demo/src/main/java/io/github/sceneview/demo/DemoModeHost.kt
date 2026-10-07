@@ -39,12 +39,16 @@ data class DemoMode(val key: String, @StringRes val labelRes: Int)
  * The mode switch a [DemoModeHost] hands to the [DemoScaffold] of whichever demo it is
  * showing. The scaffold draws it as the shared mode pill at the foot of its bottom band, just
  * above the dock, so every consolidated card switches modes in the same place.
+ *
+ * [inSheet] — the host folded the switch away (#4379): the scaffold draws no pill over the
+ * scene and heads its settings sheet with the modes instead ([DemoModeRow]).
  */
 @Immutable
 class DemoModeSwitch internal constructor(
     val modes: List<DemoMode>,
     val selected: Int,
     val onSelect: (Int) -> Unit,
+    val inSheet: Boolean = false,
 )
 
 /** The switch of the [DemoModeHost] around the current demo, or `null` outside one. */
@@ -61,12 +65,18 @@ val LocalDemoModeSwitch = compositionLocalOf<DemoModeSwitch?> { null }
  * [DemoSettings.initialTab] for mode 0's own demo when [defaultModeReadsTab] is set — so
  * `ar-placement?tab=1` still opens the wall inside the Place mode — and is dropped otherwise,
  * so it cannot pre-select a tab of the next demo opened.
+ *
+ * **Where the switch is drawn.** By default, as the mode pill over the scene. A card whose
+ * second mode is an option of the first rather than an experience of its own — Room Scan's
+ * "Session MP4" — sets [switchInSheet]: the scene keeps the pill's row, and the modes are the
+ * first row of the settings sheet (#4379).
  */
 @Composable
 fun DemoModeHost(
     modes: List<DemoMode>,
     tabToMode: Map<Int, Int>,
     defaultModeReadsTab: Boolean = false,
+    switchInSheet: Boolean = false,
     content: @Composable (mode: Int) -> Unit,
 ) {
     val sampleId = LocalSampleId.current
@@ -82,6 +92,7 @@ fun DemoModeHost(
                 logSampleModeChange(sampleId, modes[selected].key)
             }
         },
+        inSheet = switchInSheet,
     )
     CompositionLocalProvider(LocalDemoModeSwitch provides switch) {
         key(mode) { content(mode) }
@@ -138,5 +149,25 @@ fun DemoModePill(switch: DemoModeSwitch, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The same switch as a row of the settings sheet (#4379), for a host that set `switchInSheet`:
+ * the sheet's own segmented row, full width, in the theme's colours. The options keep the
+ * pill's test tags (`demo_mode_<key>`), so a flow that picks a mode names it the same way.
+ */
+@Composable
+internal fun DemoModeRow(switch: DemoModeSwitch, modifier: Modifier = Modifier) {
+    ConnectedChoiceRow(
+        options = switch.modes.indices.toList(),
+        selected = switch.selected,
+        onSelect = switch.onSelect,
+        label = { stringResource(switch.modes[it].labelRes) },
+        modifier = modifier.testTag(DEMO_MODE_ROW_TAG),
+        optionTestTag = { "demo_mode_${switch.modes[it].key}" },
+    )
+}
+
 /** Test tag of the shared [DemoModePill]. */
 const val DEMO_MODE_PILL_TAG = "demo-mode-pill"
+
+/** Test tag of [DemoModeRow], the mode switch inside the settings sheet. */
+const val DEMO_MODE_ROW_TAG = "demo-mode-row"

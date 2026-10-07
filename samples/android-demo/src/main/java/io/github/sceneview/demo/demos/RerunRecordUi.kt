@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import com.google.android.filament.Engine
@@ -39,20 +41,21 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 
 /*
- * The Record screen of the Rerun demo: a room scanned live, over the camera. It is meant to be
- * read over the shoulder, a metre away — so the figures are in the display size, white on the
- * dark scrim, and the scan itself grows in a large 3D card right under them.
+ * The Record screen of the Rerun demo: a room scanned live, over the camera. The camera is what
+ * the scan is made with, so it keeps the screen (#4379): one line says a scan is running and for
+ * how long, the scan itself grows in a 3D card under it, and the counts — never read while
+ * walking a room — are rows of the settings sheet.
  */
 
 /**
- * The live figures of a scan: the red recording dot and the clock, then the points, surfaces
- * and photos taken so far — each counted off the scan itself, never estimated.
+ * A scan in progress, on one line: the red recording dot, "Scanning", and the clock.
  *
- * A [depthScan] (ARCore raw depth, Rerun v2 tier `depth`) counts its dense map's points, and
- * says so beside "Scanning"; a sparse scan counts ARCore's feature points and says that too.
+ * A [depthScan] (ARCore raw depth, Rerun v2 tier `depth`) says so beside "Scanning"; a sparse
+ * scan says that too. A second line appears only at the photo limit — the one thing to know
+ * mid-scan. The counts are in the settings sheet ([ScanFiguresSection]).
  */
 @Composable
-internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Boolean, depthScan: Boolean = false) {
+internal fun ScanHud(seconds: Float, photoLimitReached: Boolean, depthScan: Boolean = false) {
     OverlayCard(testTag = SCAN_HUD_TAG) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -76,11 +79,6 @@ internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Bo
                 modifier = Modifier.semantics { contentDescription = "Recording for $clock" },
             )
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            ScanFigure(if (depthScan) figures.dense else figures.points, "point", "points", Modifier.weight(1f))
-            ScanFigure(figures.surfaces, "surface", "surfaces", Modifier.weight(1f))
-            ScanFigure(figures.photos, "photo", "photos", Modifier.weight(1f))
-        }
         if (photoLimitReached) {
             Text(
                 text = ScanCopy.FULL,
@@ -90,16 +88,25 @@ internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Bo
     }
 }
 
+/**
+ * What the scan has taken so far, as rows of the settings sheet: its points (the dense map's
+ * for a [depthScan], ARCore's feature points otherwise), its surfaces and its photos — each
+ * counted off the scan itself, never estimated.
+ *
+ * They were three display-size figures over the camera for the whole scan (#4379).
+ */
 @Composable
-private fun ScanFigure(value: Int, one: String, many: String, modifier: Modifier) {
-    val label = ScanCopy.label(value, one, many)
-    Column(modifier = modifier.semantics(mergeDescendants = true) {}) {
+internal fun ScanFiguresSection(figures: ScanFigures, depthScan: Boolean, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().testTag(SCAN_FIGURES_TAG)) {
         Text(
-            text = ScanCopy.figure(value),
-            style = SceneViewTokens.Type.display.copy(color = ArOverlay.onScrim),
-            maxLines = 1,
+            text = SCAN_FIGURES_TITLE,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = Space.xs).semantics { heading() },
         )
-        Text(text = label, style = OnScrimTitle.copy(color = ArOverlay.onScrimMuted), maxLines = 1)
+        SheetFigureRow("Points", ScanCopy.figure(if (depthScan) figures.dense else figures.points))
+        SheetFigureRow("Surfaces", ScanCopy.figure(figures.surfaces))
+        SheetFigureRow("Photos", ScanCopy.figure(figures.photos))
     }
 }
 
@@ -199,5 +206,10 @@ private const val SCAN_STAGE_ASPECT = 1.35f
 /** A notch above the capture card's 10 dp dot: this one is read from a metre away. */
 private val ScanDotSize = Space.md - Space.xs / 2
 
+private const val SCAN_FIGURES_TITLE = "This scan"
+
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
+
+/** The scan's counts in the settings sheet. */
+internal const val SCAN_FIGURES_TAG = "ar_rerun_scan_figures"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"

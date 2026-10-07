@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -18,16 +17,20 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,7 +46,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -56,182 +58,114 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
-import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.filmstripFrames
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
-import io.github.sceneview.demo.theme.SceneViewTokens.DebugView
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.demo.ui.overMediaEdge
 
 /*
- * The chrome of the Rerun demo's bundled replay: a glass HUD with what ARCore knew at this
- * instant, the camera's own picture in a corner card, and a filmstrip of the recorded frames that
- * scrubs the 3D view. The replay is a themed stage (#4080): every overlay takes its card, text and
- * edge from [LocalStageChrome] — the dark scrim of the other AR demos in dark theme, `glass-sheet`
- * over the light stage in light theme.
+ * The chrome of the Room Scan replay (#4379): the room has the screen. One thin glass bar over
+ * the dock carries the timeline — play, a filmstrip of the recorded frames that scrubs the 3D
+ * view, the clock — and everything that is read once, the figures and the layer toggles, lives
+ * in the settings sheet. The replay is a themed stage (#4080): the bar takes its card, text and
+ * edge from [LocalStageChrome] — the dark scrim of the other AR demos in dark theme,
+ * `glass-sheet` over the light stage in light theme.
  */
 
 /**
- * The HUD: tracking state, the replay clock and the view's frame rate on one line, then the four
- * figures of the session so far. Each figure is also its layer's toggle.
+ * The replay's layers and what each one holds, as rows of the settings sheet: the path walked,
+ * the planes, the points and the anchors, each with its figure and a switch that shows or hides
+ * it in the 3D view, then the room's measured floor plan.
+ *
+ * These were a card over the stage, on screen all the time, for figures that are read once.
  */
 @Composable
-internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifier) {
+internal fun RerunLayersSection(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    val chrome = LocalStageChrome.current
-    Column(
-        modifier = modifier
-            // No drop shadow: the card is translucent, and on the light stage its shadow showed
-            // through as a grey frame (#4306). The edge ring separates it, as on the timeline card.
-            .clip(shape)
-            .background(chrome.card, shape)
-            .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
-            .padding(horizontal = Space.md, vertical = Space.sm + Space.xs)
-            .testTag(RERUN_REPLAY_HUD_TAG),
-        verticalArrangement = Arrangement.spacedBy(Space.sm),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val dot = if (stats.tracking) ArOverlay.accentSuccess else chrome.onCardMuted
-            Box(Modifier.size(Space.sm).background(dot, CircleShape))
-            Spacer(Modifier.width(Space.sm))
-            Text(
-                text = if (stats.tracking) "Tracking" else "Initializing",
-                style = SceneViewTokens.Type.caption.copy(color = chrome.onCard, fontWeight = FontWeight.SemiBold),
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                // No "0 fps" while the view's first frames are still being measured.
-                text = listOfNotNull(ArDebugFormat.clock(stats.time), session.fps.takeIf { it > 0 }?.let { "$it fps" })
-                    .joinToString(" · "),
-                style = HudCaption,
-                maxLines = 1,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
-            val figure = Modifier.weight(1f)
-            val path = ArDebugFormat.distance(stats.pathMetres)
-            val planes = ArDebugFormat.count(stats.planes)
-            val points = ArDebugFormat.compactCount(stats.mapPoints)
-            val anchors = ArDebugFormat.count(stats.anchors)
-            HudFigure("Path", path, chrome.debug.trailNew, session, DebugGroup.Trail, figure)
-            HudFigure("Planes", planes, chrome.debug.floorOutline, session, DebugGroup.Planes, figure)
-            HudFigure("Points", points, chrome.debug.mapPoint, session, DebugGroup.Points, figure)
-            HudFigure("Anchors", anchors, chrome.debug.anchor, session, DebugGroup.Anchors, figure)
-        }
-        // The room the planes outline, measured as a floor plan: drawn on the floor with them.
-        stats.room?.takeIf { session.isVisible(DebugGroup.Planes) }?.let { room ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(Space.xs + Space.xs / 2).background(chrome.debug.floorOutline, CircleShape))
-                Spacer(Modifier.width(Space.xs))
-                Text(
-                    text = "Room $room",
-                    style = HudCaption.copy(fontFeatureSettings = "tnum"),
-                    maxLines = 1,
-                    modifier = Modifier.semantics { contentDescription = "Room $room" },
-                )
-            }
-        }
+    val debug = LocalStageChrome.current.debug
+    Column(modifier = modifier.fillMaxWidth().testTag(RERUN_LAYERS_TAG)) {
+        Text(
+            text = LAYERS_TITLE,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = Space.xs).semantics { heading() },
+        )
+        LayerRow("Path", ArDebugFormat.distance(stats.pathMetres), debug.trailNew, session, DebugGroup.Trail)
+        LayerRow("Planes", ArDebugFormat.count(stats.planes), debug.floorOutline, session, DebugGroup.Planes)
+        LayerRow("Points", ArDebugFormat.compactCount(stats.mapPoints), debug.mapPoint, session, DebugGroup.Points)
+        LayerRow("Anchors", ArDebugFormat.count(stats.anchors), debug.anchor, session, DebugGroup.Anchors)
+        // The room the planes outline, measured as a floor plan.
+        stats.room?.let { room -> SheetFigureRow("Room", room) }
     }
 }
 
+/** One figure of the settings sheet: what it counts, and the count in tabular digits. */
 @Composable
-private fun HudFigure(
-    label: String,
-    value: String,
-    dot: Color,
-    session: ArDebugSession,
-    group: DebugGroup,
-    modifier: Modifier = Modifier,
-) {
-    val on = session.isVisible(group)
-    val chrome = LocalStageChrome.current
-    Column(
+internal fun SheetFigureRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(SceneViewTokens.Radius.xs))
-            .clickable(role = Role.Switch) { session.toggle(group) }
-            .semantics {
-                contentDescription = "$label $value"
-                stateDescription = if (on) "Shown" else "Hidden"
-            }
-            .alpha(if (on) 1f else HIDDEN_ALPHA)
-            .padding(vertical = Space.xs),
+            .fillMaxWidth()
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
             text = value,
-            style = SceneViewTokens.Type.card.copy(color = chrome.onCard, fontFeatureSettings = "tnum"),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Clip,
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(Space.xs + Space.xs / 2).background(if (on) dot else chrome.track, CircleShape))
-            Spacer(Modifier.width(Space.xs))
-            Text(label, style = HudCaption, maxLines = 1)
-        }
     }
 }
 
-/**
- * The camera's own picture at this instant, in a portrait card at the top end: the proof the 3D
- * view is a real room. A tap opens the camera view.
- */
+/** One layer: its colour in the 3D view, its name, its figure, and the switch — the whole row toggles. */
 @Composable
-internal fun RerunCameraCard(
-    media: RerunReplayMedia,
-    thumbnails: Map<String, ImageBitmap>,
-    session: ArDebugSession,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val index by remember(media) { derivedStateOf { media.trace.imageIndexAt(session.time) } }
-    val image = if (index < 0) null else thumbnails[media.trace.imagePath(index)]
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    val chrome = LocalStageChrome.current
-    Box(
-        modifier = modifier
-            .size(DebugView.pipWidth, DebugView.pipHeight)
-            .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
-            .clip(shape)
-            .background(chrome.ground)
-            .testTag(RERUN_CAMERA_CARD_TAG),
+private fun LayerRow(label: String, value: String, dot: Color, session: ArDebugSession, group: DebugGroup) {
+    val on = session.isVisible(group)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = on, role = Role.Switch) { session.toggle(group) }
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            .semantics { contentDescription = "$label $value" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        image?.let {
-            Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        }
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
-                .clickable(role = Role.Button, onClick = onOpen)
-                .semantics { contentDescription = "Open the camera view" },
+            Modifier
+                .size(Space.sm + Space.xs / 2)
+                .background(if (on) dot else MaterialTheme.colorScheme.outlineVariant, CircleShape),
         )
-        CardLabel("Camera", Modifier.align(Alignment.BottomStart))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        // Decorative: the row is the toggle, so the switch takes no second focus stop.
+        Switch(checked = on, onCheckedChange = null)
     }
-}
-
-/** The small pill in a card's corner, in the stage's card colours: what the card shows. */
-@Composable
-internal fun CardLabel(text: String, modifier: Modifier = Modifier) {
-    val chrome = LocalStageChrome.current
-    Text(
-        text = text,
-        style = SceneViewTokens.Type.caption.copy(color = chrome.onCard),
-        modifier = modifier
-            .padding(Space.sm)
-            .background(chrome.card, CircleShape)
-            .padding(horizontal = Space.sm, vertical = Space.xs / 2),
-    )
 }
 
 /**
@@ -276,59 +210,55 @@ internal fun RerunCameraView(
 }
 
 /**
- * The replay's timeline: play/pause and the clock over a filmstrip of the recorded frames. The
- * strip is the scrubber — tap or drag anywhere on it — with the part still to come dimmed and a
- * playhead on the current instant. Dragging pauses; letting go plays on if it was playing.
+ * The replay's timeline, on one row: play/pause, a filmstrip of the recorded frames, the clock.
+ * The strip is the scrubber — tap or drag anywhere on it — with the part still to come dimmed and
+ * a playhead on the current instant. Dragging pauses; letting go plays on if it was playing.
  *
- * [compact] — a phone on its side (#4306): play, strip and clock share one row, without the title.
+ * One touch target tall (#4379): it used to be a card with a title, a caption and a taller strip,
+ * and with the figures above it left the room under half of the screen.
  */
 @Composable
-internal fun RerunFilmstripCard(
+internal fun RerunTimelineBar(
     media: RerunReplayMedia,
     thumbnails: Map<String, ImageBitmap>,
     session: ArDebugSession,
-    caption: String,
     modifier: Modifier = Modifier,
-    title: String = ScanCopy.SAMPLE_TITLE,
-    header: (@Composable () -> Unit)? = null,
-    compact: Boolean = false,
 ) {
     val duration = media.trace.duration
-    OverlayCard(testTag = RERUN_FILMSTRIP_TAG, modifier = modifier) {
-        header?.invoke()
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val playing = session.playing && !session.live
-            IconButton(
-                onClick = session::togglePlay,
-                modifier = Modifier.size(SceneViewTokens.Layout.touchTarget),
-            ) {
-                Icon(
-                    if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (playing) "Pause" else "Play",
-                    tint = LocalStageChrome.current.onCard,
-                )
-            }
-            Spacer(Modifier.width(Space.xs))
-            if (compact) {
-                // One row: the strip takes the title's place, and the room keeps the height.
-                Filmstrip(
-                    media, thumbnails, session, duration,
-                    height = SceneViewTokens.Layout.touchTarget,
-                    modifier = Modifier.weight(1f),
-                )
-            } else {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = OnScrimTitle, maxLines = 1)
-                    Text(caption, style = OnScrimCaption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            Spacer(Modifier.width(Space.sm))
-            Text(
-                "${ArDebugFormat.clock(session.stats.time)} / ${ArDebugFormat.clock(duration)}",
-                style = HudCaption,
+    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
+    val chrome = LocalStageChrome.current
+    // The session's own clock, not the 3D view's figures: it runs over the camera's frames too.
+    val clock by remember(session, duration) {
+        derivedStateOf { "${ArDebugFormat.clock(session.time)} / ${ArDebugFormat.clock(duration)}" }
+    }
+    Row(
+        modifier = modifier
+            .height(SceneViewTokens.Layout.touchTarget)
+            // No drop shadow: the bar is translucent, and on the light stage a shadow shows
+            // through as a grey frame (#4306). The edge ring separates it.
+            .clip(shape)
+            .background(chrome.card, shape)
+            .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
+            // The bar is chrome: a tap on its glass is not a tap on the stage, which hides it.
+            .pointerInput(Unit) {}
+            .padding(end = Space.md)
+            .testTag(RERUN_FILMSTRIP_TAG),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val playing = session.playing && !session.live
+        IconButton(
+            onClick = session::togglePlay,
+            modifier = Modifier.size(SceneViewTokens.Layout.touchTarget),
+        ) {
+            Icon(
+                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (playing) "Pause" else "Play",
+                tint = chrome.onCard,
             )
         }
-        if (!compact) Filmstrip(media, thumbnails, session, duration, FilmstripHeight, Modifier.fillMaxWidth())
+        Filmstrip(media, thumbnails, session, duration, FilmstripHeight, Modifier.weight(1f))
+        Spacer(Modifier.width(Space.sm))
+        Text(clock, style = HudCaption, maxLines = 1)
     }
 }
 
@@ -414,13 +344,13 @@ private fun Filmstrip(
 /** What the stage's cover says while the bundled session decodes and the 3D view warms up. */
 internal const val RERUN_REPLAY_LOADING = "Loading the recorded session…"
 
-// The chrome follows the stage in, one beat apart: status first, then the corner card and the filmstrip.
+// The timeline follows the stage in, one beat late.
 internal const val REVEAL_STAGGER_MS = 100
 
 /**
  * How far one piece of the replay's chrome has arrived: 0 until the stage is [revealed], then 1
- * over the medium duration, [delayMillis] late — the HUD, the corner card and the filmstrip land
- * one after the other while the camera cranes in, instead of sitting over an empty stage.
+ * over the medium duration, [delayMillis] late — the timeline lands while the camera cranes in,
+ * instead of sitting over an empty stage.
  */
 @Composable
 internal fun rememberReveal(revealed: Boolean, delayMillis: Int): State<Float> = animateFloatAsState(
@@ -443,17 +373,17 @@ internal fun Modifier.reveal(progress: State<Float>, rise: Dp): Modifier = graph
 private val HudCaption @Composable get() =
     SceneViewTokens.Type.caption.copy(color = LocalStageChrome.current.onCardMuted, fontFeatureSettings = "tnum")
 
-/** Filmstrip height: a touch target and a half-step, so the frames read as pictures. */
-private val FilmstripHeight: Dp = SceneViewTokens.Layout.touchTarget + Space.sm
+/** Filmstrip height: the bar's touch target less a half-step of air above and below. */
+private val FilmstripHeight: Dp = SceneViewTokens.Layout.touchTarget - Space.sm
 private const val FRAME_ASPECT = 0.75f // the recorded frames are portrait 3:4
 private val PlayheadWidth: Dp = Space.xs - Space.xs / 4
 private const val FILMSTRIP_DIM_ALPHA = 0.55f
 private val BACKDROP_BLUR: Dp = Space.lg + Space.sm
 private const val BACKDROP_ALPHA = 0.55f
-private const val HIDDEN_ALPHA = 0.45f
+private const val LAYERS_TITLE = "Layers"
 
-internal const val RERUN_REPLAY_HUD_TAG = "rerun_replay_hud"
-internal const val RERUN_CAMERA_CARD_TAG = "rerun_camera_card"
+/** The layers section of the replay's settings sheet. */
+internal const val RERUN_LAYERS_TAG = "rerun_replay_layers"
 internal const val RERUN_CAMERA_VIEW_TAG = "rerun_camera_view"
 internal const val RERUN_FILMSTRIP_TAG = "rerun_filmstrip"
 internal const val RERUN_FILMSTRIP_STRIP_TAG = "rerun_filmstrip_strip"

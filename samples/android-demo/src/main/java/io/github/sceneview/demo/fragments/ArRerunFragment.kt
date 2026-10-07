@@ -46,6 +46,9 @@ object ArRerunFragment : DemoFragment {
         DemoModeHost(
             modes = modes,
             tabToMode = mapOf(0 to 0, 1 to 1),
+            // Session MP4 is an option of the scan, not a second experience: its switch lives
+            // in Settings, and the camera keeps the row a pill would stand on (#4379).
+            switchInSheet = true,
         ) { mode ->
             when (mode) {
                 1 -> ARRecordPlaybackDemo(onBack)

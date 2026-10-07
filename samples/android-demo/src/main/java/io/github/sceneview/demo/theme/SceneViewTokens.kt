@@ -677,20 +677,14 @@ object SceneViewTokens {
             axisZ = Color(0xFF005BC1),
         )
 
-        /** Picture-in-picture over the camera: portrait 3:4, like the phone it shows. */
-        val pipWidth = 128.dp
-        val pipHeight = 170.dp
-
         /**
-         * A phone on its side (#4306): under [compactStageHeight] the replay's stacked cards leave
-         * the room no height, so the figures and the timeline stand on either side of it,
-         * [compactCardWidth] wide each — as narrow as the four figures allow. Over the camera the
-         * picture-in-picture shrinks to fit under the timeline, the same 3:4.
+         * A phone on its side (#4306, #4379): under [compactStageHeight] the window has no height
+         * to give a row above or under the room. The replay's timeline bar stands in the top
+         * corner, [compactCardWidth] wide; a scan in progress puts its 3D card on one side and
+         * its line on the other, the same width, and the shutter keeps the middle.
          */
         val compactStageHeight = 500.dp
         val compactCardWidth = 280.dp
-        val compactPipWidth = 96.dp
-        val compactPipHeight = 128.dp
     }
 
     /** `DESIGN.md` — Spacing scale (`space-*`). */
