@@ -241,5 +241,20 @@ subprojects {
             exceptionFormat = "full"
         }
         timeout.set(java.time.Duration.ofMinutes(15))
+        // Robolectric 4.17 reaches into JDK internals (its FileDescriptor
+        // interceptor reads `jdk.internal.access.SharedSecrets`) and fails every
+        // Robolectric test on JDK 17+ without these — the list is the one from
+        // https://robolectric.org/getting-started/.
+        jvmArgs += [
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--add-opens=java.base/java.util=ALL-UNNAMED",
+            "--add-opens=java.base/java.io=ALL-UNNAMED",
+            "--add-opens=java.base/java.net=ALL-UNNAMED",
+            "--add-opens=java.base/java.security=ALL-UNNAMED",
+            "--add-opens=java.base/java.text=ALL-UNNAMED",
+            "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+            "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED",
+            "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+        ]
     }
 }
