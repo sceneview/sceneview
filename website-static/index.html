@@ -760,7 +760,7 @@ CLAUDE.md</code></pre>
 
 <span class="syn-green">// Render a 3D model:</span>
 <span class="syn-blue">SceneView</span>.<span class="syn-blue">modelViewer</span>(<span class="syn-green-light">"canvas"</span>, <span class="syn-green-light">"model.glb"</span>, {
-  backgroundColor: [<span class="syn-orange">0.05</span>, <span class="syn-orange">0.05</span>, <span class="syn-orange">0.08</span>, <span class="syn-orange">1</span>],
+  backgroundColor: [<span class="syn-orange">0.2</span>, <span class="syn-orange">0.2</span>, <span class="syn-orange">0.29</span>, <span class="syn-orange">1</span>],
   lightIntensity: <span class="syn-orange">150000</span>,
   fov: <span class="syn-orange">35</span>
 })</code></pre>
@@ -1601,7 +1601,7 @@ CLAUDE.md</code></pre>
 
     function getThemeBg() {
       var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      return isDark ? [0.09, 0.09, 0.13, 1.0] : [0.94, 0.95, 0.96, 1.0];
+      return isDark ? [0x50 / 255, 0x51 / 255, 0x69 / 255, 1.0] : [0xE4 / 255, 0xE0 / 255, 0xDA / 255, 1.0];
     }
 
     var loaded = new Set();

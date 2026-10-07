@@ -651,10 +651,9 @@
         try {
           await SceneView.modelViewer('viewer-canvas', viewableUrl, {
             autoRotate: true,
-            // DESIGN.md `stage-background` (#0B0F16), in the linear space
-            // Filament clears with — so the canvas matches the stage frame
-            // around it in both themes.
-            backgroundColor: [0.0033, 0.0047, 0.0074, 1.0],
+            // DESIGN.md `stage-background` (#0B0F16), as displayed — so the
+            // canvas matches the stage frame around it in both themes.
+            backgroundColor: [0x0B / 255, 0x0F / 255, 0x16 / 255, 1.0],
           });
         } catch (renderError) {
           console.error('open: the renderer refused the model', renderError);
