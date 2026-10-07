@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import com.google.android.filament.Engine
 import com.google.ar.core.Pose
 import dev.romainguy.kotlin.math.Quaternion
@@ -56,8 +57,9 @@ import io.github.sceneview.demo.DemoPreviewPlaceholder
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.FirstFrameState
-import io.github.sceneview.demo.LocalDemoChromeBottomInset
-import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.LocalDemoSceneCover
+import io.github.sceneview.demo.LocalDemoSceneRestingCover
+import io.github.sceneview.demo.LocalDemoSheetCover
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.common.StageSkyFog
@@ -141,14 +143,24 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
         ),
         controls = {
             Text(stringResource(R.string.demo_ar_collaborative_local), style = SceneViewTokens.Type.body)
+            Spacer(Modifier.height(SceneViewTokens.Space.sm))
             Text(stringResource(R.string.demo_ar_collaborative_devices), style = SceneViewTokens.Type.body)
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth > maxHeight
-            val safe = WindowInsets.safeDrawing.asPaddingValues()
-            val top = LocalDemoChromeTopInset.current + safe.calculateTopPadding()
-            val bottom = LocalDemoChromeBottomInset.current + safe.calculateBottomPadding()
+            // What the scaffold's chrome covers of the slot: identity row and status bar on top;
+            // hint, mode pill, dock and navigation bar at the bottom, or the settings sheet.
+            val top = LocalDemoSceneCover.current.calculateTopPadding()
+            // Eased: the hint leaving the band does not make the view above it jump.
+            val band by animateDpAsState(
+                LocalDemoSceneRestingCover.current.calculateBottomPadding(),
+                SceneViewTokens.Motion.fade(), label = "band",
+            )
+            val sheet by animateDpAsState(
+                LocalDemoSheetCover.current, SceneViewTokens.Motion.fade(), label = "sheet",
+            )
+            val bottom = max(band, sheet)
             val pane: @Composable (Int, Modifier) -> Unit = { index, modifier ->
                 SharedSpacePane(
                     modifier = modifier,
@@ -161,6 +173,7 @@ fun ARCollaborativeDemo(onBack: () -> Unit) {
                     peerId = if (index == 0) "alice" else "bob",
                     name = if (index == 0) aliceName else bobName,
                     index = index,
+                    wide = wide,
                     firstFrame = firstFrames[index],
                     chromePadding = PaddingValues(
                         top = if (wide || index == 0) top else 0.dp,
@@ -209,6 +222,7 @@ private fun SharedSpacePane(
     peerId: String,
     name: String,
     index: Int,
+    wide: Boolean,
     firstFrame: FirstFrameState,
     chromePadding: PaddingValues,
     onPlace: (Position) -> Unit,
@@ -222,10 +236,24 @@ private fun SharedSpacePane(
     val floor = rememberMaterialInstance(materials, sky.floor, metallic = 0f, roughness = 0.7f)
     val aliceMaterial = rememberMaterialInstance(materials, SceneViewColors.Ramp4[0])
     val bobMaterial = rememberMaterialInstance(materials, SceneViewColors.Ramp4[1])
-    val home = remember(index) {
-        if (index == 0) Position(2.4f, 2.8f, 3.2f) else Position(-2.4f, 2.8f, -3.2f)
+    // A low orbit and a wide lens: the viewer across the floor is inside the frame from the start.
+    // Side by side the chrome leaves each view a strip: a lower orbit and a longer lens fill it.
+    val home = remember(index, wide) {
+        val side = if (index == 0) 1f else -1f
+        Position(1.45f * side, if (wide) STRIP_ORBIT_HEIGHT else ORBIT_HEIGHT, 1.9f * side)
     }
-    val camera = rememberCameraNode(engine) { position = home; lookAt(Position(0f)) }
+    val focalLength = if (wide) STRIP_FOCAL_LENGTH_MM else WIDE_FOCAL_LENGTH_MM
+    val camera = rememberCameraNode(engine) {
+        position = home
+        lookAt(Position(0f))
+        this.focalLength = focalLength
+    }
+    // A rotation keeps both sessions and this camera: aim it again for the new frame.
+    LaunchedEffect(camera, home, focalLength) {
+        camera.position = home
+        camera.lookAt(Position(0f))
+        camera.focalLength = focalLength
+    }
     // broadcastLocalPose has NO throttle. Sample cached camera values on the main thread;
     // polling also sends the final pose after a short drag, even if rendering has parked.
     LaunchedEffect(session, camera) {
@@ -265,15 +293,19 @@ private fun SharedSpacePane(
                 }
             }),
         ) {
-            CylinderNode(radius = FLOOR_RADIUS, height = 0.08f,
+            CylinderNode(radius = FLOOR_RADIUS, height = 0.08f, sideCount = FLOOR_SIDES,
                 position = Position(y = -0.04f), materialInstance = floor)
+            // Owner ids arrive from a peer: an unknown one draws nothing.
+            val materialOf = { id: String ->
+                when (id) {
+                    "alice" -> aliceMaterial
+                    "bob" -> bobMaterial
+                    else -> null
+                }
+            }
             session.placedNodes.forEach { placed ->
-                key(placed.nodeKey, placed.modelKey) {
-                    val material = when (placed.ownerPeerId) {
-                        "alice" -> aliceMaterial
-                        "bob" -> bobMaterial
-                        else -> return@key
-                    }
+                val material = materialOf(placed.ownerPeerId)
+                if (material != null) key(placed.nodeKey, placed.modelKey) {
                     val t = placed.translation
                     val q = placed.quaternion
                     val s = placed.scale
@@ -292,18 +324,14 @@ private fun SharedSpacePane(
                 }
             }
             session.participants.forEach { participant ->
-                if (participant.hasPose) key(participant.id) {
-                    val t = participant.translation ?: return@key
-                    val q = participant.quaternion ?: return@key
-                    val material = when (participant.id) {
-                        "alice" -> aliceMaterial
-                        "bob" -> bobMaterial
-                        else -> return@key
-                    }
+                val t = participant.translation
+                val q = participant.quaternion
+                val material = materialOf(participant.id)
+                if (t != null && q != null && material != null) key(participant.id) {
                     Node(position = Position(t[0], t[1], t[2]),
                         rotation = Quaternion(q[0], q[1], q[2], q[3]).toEulerAngles()) {
                         // Camera forward is -Z; a cone's apex is +Y. Rotate it into -Z.
-                        ConeNode(radius = 0.12f, height = 0.36f,
+                        ConeNode(radius = MARKER_RADIUS, height = MARKER_HEIGHT,
                             rotation = Rotation(x = -90f), materialInstance = material)
                     }
                 }
@@ -340,5 +368,12 @@ private fun PeerTag(
 }
 
 private const val OBJECTS_PER_PEER = 4
-private const val OBJECT_SIZE = 0.36f
-private const val FLOOR_RADIUS = 1.8f
+private const val OBJECT_SIZE = 0.28f
+private const val FLOOR_RADIUS = 1.2f
+private const val FLOOR_SIDES = 72
+private const val MARKER_RADIUS = 0.2f
+private const val MARKER_HEIGHT = 0.5f
+private const val ORBIT_HEIGHT = 1f
+private const val STRIP_ORBIT_HEIGHT = 0.6f
+private const val WIDE_FOCAL_LENGTH_MM = 20.0
+private const val STRIP_FOCAL_LENGTH_MM = 45.0
