@@ -283,6 +283,11 @@ fun ARSceneView(
 )
 ```
 
+**Note — the display stays on while `ARSceneView` is composed (#4392).** An AR session is used
+without touching the screen, so the composable sets `keepScreenOn` on its host view and hands
+the previous value back when it leaves the composition. Nothing to add in app code; a 3D
+`SceneView` leaves the display timeout alone.
+
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
