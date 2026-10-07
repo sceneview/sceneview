@@ -69,6 +69,18 @@ class DemoModeHostTest {
     }
 
     @Test
+    fun `Inspect is the default and Media consumes its launch tab`() {
+        val tabs = mapOf(0 to 0, 1 to 1)
+        assertEquals(0, initialHostMode(tabs, defaultModeReadsTab = false, modeCount = 2))
+        DemoSettings.initialTab = DeepLinkRouter.resolveInitialTab("video", null)
+        assertEquals(1, initialHostMode(tabs, defaultModeReadsTab = false, modeCount = 2))
+        assertNull(DemoSettings.initialTab)
+        DemoSettings.initialTab = 99
+        assertEquals(0, initialHostMode(tabs, defaultModeReadsTab = false, modeCount = 2))
+        assertNull(DemoSettings.initialTab)
+    }
+
+    @Test
     fun `the Record link flag is read once`() {
         DemoSettings.openRecordAction = true
         assertTrue(DemoSettings.consumeOpenRecordAction())

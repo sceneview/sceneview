@@ -565,15 +565,9 @@ class DeepLinkRouterTest {
     fun `resolveInitialTab returns null for a default-tab alias or a plain id`() {
         // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("text", null))
         // `shape` joined them in #3423: `custom-geometry` was rebuilt around a single
         // runtime-generated mesh and has no tabs left to pre-select.
         assertNull(DeepLinkRouter.resolveInitialTab("shape", null))
-        // `image`, `video` and `billboard` joined them in #3424: `two-d-in-three-d` was
-        // rebuilt around a single annotated scene and has no tabs left to pre-select.
-        assertNull(DeepLinkRouter.resolveInitialTab("image", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("video", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("billboard", null))
         // `scene-gallery` joined them in #4039: the Models demo lost its Gallery section, and
         // the old link opens the Single Model section (a stale index 2 would fall to the
         // default anyway, but only through the composable's clamp).
@@ -586,6 +580,20 @@ class DeepLinkRouterTest {
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
+    }
+
+    @Test
+    fun `2D in 3D routes named modes and every retired media id`() {
+        fun launch(id: String, tab: String? = null) =
+            DeepLinkRouter.resolveLaunch(
+                demoId = DeepLinkRouter.validate(id, ALL_DEMOS), rawId = id, tabParam = tab)
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", null), launch("two-d-in-three-d"))
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch("two-d-in-three-d", "inspect"))
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch("two-d-in-three-d", "media"))
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias))
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch(alias, "0"))
+        }
     }
 
     @Test
