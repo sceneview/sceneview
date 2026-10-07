@@ -1,310 +1,301 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Pins the `2D in 3D` demo's framing and its billboard solution (#3424).
- *
- * The demo it replaced hid the same arithmetic in magic literals inside the composable, where
- * nothing could check it and where a wrong sign shows up only as a card facing backwards on a
- * device. Everything here runs in pure JVM: no Filament engine, no Android framework.
- */
+/** Picking anchors, scale-independent geometry and camera-facing rotations, without Filament. */
 class CalloutLayoutTest {
+    private val layout = CalloutLayout
+    private val epsilon = 1e-4f
 
-    private val eps = 1e-3f
-
-    // ── Placement ────────────────────────────────────────────────────────────────────────
+    /** The card on a portrait phone: 128 x 160 dp at about 300 dp to the metre. */
+    private val portraitCard = Size(0.43f, 0.53f, 0f)
 
     @Test
-    fun `a callout sits on the spread circle at its own bearing`() {
-        val callout = Callout("t", "T", "b", angleDegrees = 0f, height = 0.1f)
-        val position = CalloutLayout.localPosition(callout, spread = 0.5f)
-
-        // Bearing 0 means "between the model and the camera's home", i.e. straight down +Z.
-        assertEquals(0f, position.x, eps)
-        assertEquals(0.1f, position.y, eps)
-        assertEquals(0.5f, position.z, eps)
+    fun `rocket stands on the floor and is one metre tall`() {
+        val engine = layout.partPosition(RocketPart.Engine)
+        val body = layout.partPosition(RocketPart.Body)
+        val nose = layout.partPosition(RocketPart.Nose)
+        assertEquals(0f, engine.y - layout.ENGINE_HEIGHT / 2f, epsilon)
+        // The nozzle is a cone: its tip is buried in the body, its flare is narrower than the body.
+        assertTrue(engine.y + layout.ENGINE_HEIGHT / 2f > body.y - layout.BODY_HEIGHT / 2f)
+        assertTrue(layout.ENGINE_RADIUS < layout.BODY_RADIUS)
+        assertEquals(body.y + layout.BODY_HEIGHT / 2f, nose.y - layout.NOSE_HEIGHT / 2f, epsilon)
+        assertEquals(1f, nose.y + layout.NOSE_HEIGHT / 2f, epsilon)
+        assertEquals(5, RocketPart.entries.size)
+        assertTrue(RocketPart.entries.all { it.originalMaterial in 0..3 })
     }
 
     @Test
-    fun `bearing grows counter-clockwise seen from above`() {
-        val callout = Callout("t", "T", "b", angleDegrees = 90f, height = 0f)
-        val position = CalloutLayout.localPosition(callout, spread = 0.5f)
-
-        // +90° is +X — the same convention `billboardYawDegrees` measures headings in.
-        assertEquals(0.5f, position.x, eps)
-        assertEquals(0f, position.z, eps)
-    }
-
-    @Test
-    fun `spread is clamped, so a wild slider cannot put a card inside the model`() {
-        val callout = CalloutLayout.CALLOUTS.first()
-
-        val tooClose = CalloutLayout.localPosition(callout, spread = 0f)
-        assertEquals(CalloutLayout.MIN_SPREAD, radius(tooClose), eps)
-
-        val tooFar = CalloutLayout.localPosition(callout, spread = 99f)
-        assertEquals(CalloutLayout.MAX_SPREAD, radius(tooFar), eps)
-    }
-
-    @Test
-    fun `the turntable carries a card round without changing its radius or height`() {
-        val callout = CalloutLayout.CALLOUTS.first()
-        val spread = CalloutLayout.DEFAULT_SPREAD
-
-        val home = CalloutLayout.worldPosition(callout, spread, turntableYawDegrees = 0f)
-        listOf(37f, 128f, 270f, 359f).forEach { yaw ->
-            val spun = CalloutLayout.worldPosition(callout, spread, yaw)
-            assertEquals("radius at $yaw°", radius(home), radius(spun), eps)
-            assertEquals("height at $yaw°", home.y, spun.y, eps)
+    fun `three fins have equal spacing, lean on the body and leave the front clear`() {
+        val fins = layout.FIN_YAWS.map(layout::finPosition)
+        assertEquals(3, fins.size)
+        val distances = fins.indices.map { i ->
+            val a = fins[i]
+            val b = fins[(i + 1) % fins.size]
+            hypot(a.x - b.x, a.z - b.z)
         }
-    }
-
-    @Test
-    fun `a quarter turn of the turntable moves a card a quarter of the way round`() {
-        val callout = Callout("t", "T", "b", angleDegrees = 0f, height = 0f)
-        val spun = CalloutLayout.worldPosition(callout, spread = 0.5f, turntableYawDegrees = 90f)
-
-        // Started on +Z, ends on +X.
-        assertEquals(0.5f, spun.x, eps)
-        assertEquals(0f, spun.z, eps)
-    }
-
-    // ── Billboarding ─────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `a card in front of a camera on the Z axis needs no rotation`() {
-        val callout = Callout("t", "T", "b", angleDegrees = 0f, height = 0f)
-
-        val yaw = CalloutLayout.billboardYawDegrees(
-            callout = callout,
-            spread = 0.5f,
-            turntableYawDegrees = 0f,
-            cameraWorldPosition = Position(0f, 0f, 3f),
-        )
-
-        assertEquals(0f, yaw, eps)
-    }
-
-    @Test
-    fun `the local yaw undoes the turntable, so the card faces the same way in world space`() {
-        val callout = CalloutLayout.CALLOUTS[1]
-        val spread = CalloutLayout.DEFAULT_SPREAD
-        val camera = CalloutLayout.cameraHomePosition()
-
-        listOf(0f, 45f, 137f, 265f, 359f).forEach { turntableYaw ->
-            val localYaw = CalloutLayout.billboardYawDegrees(callout, spread, turntableYaw, camera)
-            // World heading = parent yaw + local yaw. It must point from the card at the camera.
-            val card = CalloutLayout.worldPosition(callout, spread, turntableYaw)
-            val expected = CalloutLayout.normalizeDegrees(
-                Math.toDegrees(
-                    kotlin.math.atan2(
-                        (camera.x - card.x).toDouble(),
-                        (camera.z - card.z).toDouble(),
-                    )
-                ).toFloat()
-            )
-            assertEquals(
-                "world heading at turntable $turntableYaw°",
-                0f,
-                CalloutLayout.normalizeDegrees(turntableYaw + localYaw - expected),
-                1e-2f,
-            )
+        distances.forEach { assertEquals(distances.first(), it, epsilon) }
+        // In the fin's own frame: Y up the slab, Z out from the body, tilted about X.
+        val tilt = Math.toRadians(layout.FIN_TILT_DEGREES.toDouble())
+        fun corner(up: Float, out: Float): Pair<Float, Float> {
+            val y = up * layout.FIN_SIZE.y / 2f
+            val z = out * layout.FIN_SIZE.z / 2f
+            return (layout.FIN_CENTER.y + y * cos(tilt) - z * sin(tilt)).toFloat() to
+                (layout.FIN_CENTER.z + y * sin(tilt) + z * cos(tilt)).toFloat()
         }
+        val (rootY, rootZ) = corner(up = 1f, out = -1f)
+        val (tipY, tipZ) = corner(up = -1f, out = 1f)
+        assertTrue("the root is inside the body", rootZ < layout.BODY_RADIUS)
+        assertTrue("the root is on the body, above the nozzle", rootY > layout.ENGINE_HEIGHT)
+        assertTrue("the tip sweeps out past the root", tipZ > rootZ + layout.FIN_SIZE.z)
+        assertTrue("the tip rests on the floor", tipY in 0f..0.05f)
+        // The window is at yaw 0: no fin within 45 degrees of it.
+        assertTrue(layout.FIN_YAWS.all { abs(layout.normalizeDegrees(it)) >= 45f })
     }
 
     @Test
-    fun `billboarding actually differs from the fixed orientation`() {
-        // Guards against a regression where both branches returned the same angle and the dock
-        // toggle silently did nothing — the exact defect the demo this replaced shipped with.
-        val callout = CalloutLayout.CALLOUTS[1]
-        val camera = CalloutLayout.cameraHomePosition()
-
-        val billboarded = CalloutLayout.billboardYawDegrees(
-            callout = callout,
-            spread = CalloutLayout.DEFAULT_SPREAD,
-            turntableYawDegrees = 0f,
-            cameraWorldPosition = camera,
-        )
-        val fixed = CalloutLayout.fixedYawDegrees(callout)
-
-        assertTrue(
-            "billboard $billboarded° vs fixed $fixed° should differ by more than a degree",
-            abs(CalloutLayout.normalizeDegrees(billboarded - fixed)) > 1f,
-        )
+    fun `window protrudes from the front of the body`() {
+        val window = layout.partPosition(RocketPart.Window)
+        val depth = layout.WINDOW_RADIUS * layout.WINDOW_SCALE.z
+        assertTrue(window.z - depth < layout.BODY_RADIUS)
+        assertTrue(window.z + depth > layout.BODY_RADIUS)
     }
 
     @Test
-    fun `a camera sitting on the card yields no rotation instead of NaN`() {
-        val position = CalloutLayout.CONTROL_CARD_POSITION
-
-        val yaw = CalloutLayout.billboardYawDegrees(
-            cardWorldPosition = position,
-            cameraWorldPosition = position,
-        )
-
-        assertEquals(0f, yaw, 0f)
-        assertTrue(yaw.isFinite())
-    }
-
-    @Test
-    fun `the control card faces the camera without any parent to undo`() {
-        val yaw = CalloutLayout.billboardYawDegrees(
-            cardWorldPosition = CalloutLayout.CONTROL_CARD_POSITION,
-            cameraWorldPosition = CalloutLayout.cameraHomePosition(),
-        )
-
-        // The card and the camera home both sit on the +Z axis, so it needs no turn at all.
-        assertEquals(0f, yaw, eps)
-    }
-
-    // ── Angle wrapping ───────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `normalizeDegrees wraps into the half-open turn`() {
-        assertEquals(0f, CalloutLayout.normalizeDegrees(0f), 0f)
-        assertEquals(0f, CalloutLayout.normalizeDegrees(360f), eps)
-        assertEquals(0f, CalloutLayout.normalizeDegrees(-720f), eps)
-        assertEquals(180f, CalloutLayout.normalizeDegrees(180f), eps)
-        assertEquals(180f, CalloutLayout.normalizeDegrees(-180f), eps)
-        assertEquals(-90f, CalloutLayout.normalizeDegrees(270f), eps)
-        assertEquals(10f, CalloutLayout.normalizeDegrees(730f), eps)
-    }
-
-    @Test
-    fun `normalizeDegrees never returns negative zero`() {
-        // `-0f == 0f` is true, so only the raw bits catch this — and "-0.0°" in a readout is the
-        // kind of thing that gets reported as a bug.
-        assertEquals(0, CalloutLayout.normalizeDegrees(-0f).toRawBits())
-        assertEquals(0, CalloutLayout.normalizeDegrees(-360f).toRawBits())
-    }
-
-    // ── Turntable ────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `the turntable advances at the declared rate`() {
-        val oneSecond = 1_000_000_000L
-        assertEquals(
-            CalloutLayout.SPIN_DEGREES_PER_SECOND,
-            CalloutLayout.nextTurntableYaw(previousDegrees = 0f, deltaNanos = oneSecond),
-            eps,
-        )
-    }
-
-    @Test
-    fun `the turntable wraps instead of growing without bound`() {
-        val hour = 3_600_000_000_000L
-        val yaw = CalloutLayout.nextTurntableYaw(previousDegrees = 350f, deltaNanos = hour)
-
-        assertTrue("yaw was $yaw", yaw >= 0f && yaw < 360f)
-    }
-
-    @Test
-    fun `a non-advancing frame leaves the turntable where it was`() {
-        assertEquals(42f, CalloutLayout.nextTurntableYaw(42f, deltaNanos = 0L), 0f)
-        assertEquals(42f, CalloutLayout.nextTurntableYaw(42f, deltaNanos = -5L), 0f)
-    }
-
-    // ── Camera framing ───────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `the camera home vector's length is the orbit distance`() {
-        // `rememberCameraManipulator` reads the LENGTH of orbitHomePosition as the distance
-        // (#2930), so this is the property the framing actually depends on.
-        val home = CalloutLayout.cameraHomePosition()
-        val offset = hypot(home.x, hypot(home.y - CalloutLayout.TARGET_Y, home.z))
-
-        assertEquals(CalloutLayout.CAMERA_DISTANCE, offset, eps)
-    }
-
-    @Test
-    fun `an explicit camera_distance is honoured, and the look-down angle survives it`() {
-        val near = CalloutLayout.cameraHomePosition(1.2f)
-        val far = CalloutLayout.cameraHomePosition(4f)
-
-        assertEquals(
-            1.2f,
-            hypot(near.x, hypot(near.y - CalloutLayout.TARGET_Y, near.z)),
-            eps,
-        )
-        // Same pitch at both distances: height / distance is constant.
-        assertEquals(
-            (near.y - CalloutLayout.TARGET_Y) / 1.2f,
-            (far.y - CalloutLayout.TARGET_Y) / 4f,
-            eps,
-        )
-    }
-
-    @Test
-    fun `a zero camera_distance is clamped instead of collapsing the scene`() {
-        val degenerate = CalloutLayout.cameraHomePosition(0f)
-
-        assertTrue(degenerate.z > 0f)
-        assertTrue(degenerate.y.isFinite())
-    }
-
-    // ── The scene's own invariants ───────────────────────────────────────────────────────
-
-    @Test
-    fun `every callout is distinct, described, and clear of the model`() {
-        val callouts = CalloutLayout.CALLOUTS
-        assertEquals(callouts.size, callouts.map { it.id }.toSet().size)
-
-        callouts.forEach { callout ->
-            assertTrue("blank title on ${callout.id}", callout.title.isNotBlank())
-            assertTrue("blank body on ${callout.id}", callout.body.isNotBlank())
-        }
-        // The far end of the slider has to clear the model's own half-extent, or "move the
-        // cards off the subject" does not actually reach off the subject. The near end is
-        // deliberately inside it — see MIN_SPREAD.
-        assertTrue(
-            "MAX_SPREAD never clears the model",
-            CalloutLayout.MAX_SPREAD > CalloutLayout.MODEL_SIZE_METERS,
-        )
-        assertTrue(
-            "MIN_SPREAD should reach inside the silhouette, so the depth toggle has work to do",
-            CalloutLayout.MIN_SPREAD < CalloutLayout.MODEL_SIZE_METERS / 2f,
-        )
-    }
-
-    @Test
-    fun `no two callouts land on top of each other at the default spread`() {
-        val positions = CalloutLayout.CALLOUTS.map {
-            CalloutLayout.localPosition(it, CalloutLayout.DEFAULT_SPREAD)
-        }
-        positions.forEachIndexed { i, a ->
-            positions.drop(i + 1).forEach { b ->
-                val separation = hypot(a.x - b.x, hypot(a.y - b.y, a.z - b.z))
-                assertTrue("cards $a and $b are $separation m apart", separation > 0.2f)
+    fun `selection anchors to the viewer's right at every object yaw and camera bearing`() {
+        val reach = layout.BODY_RADIUS + layout.CARD_GAP + portraitCard.x / 2f
+        for (yaw in listOf(0f, 90f, 180f, 270f)) {
+            for (bearing in listOf(0f, 60f, 180f, 240f)) {
+                val camera = layout.rotateY(Position(0f, 1f, 3f), bearing)
+                val right = layout.rotateY(Position(x = 1f), bearing)
+                RocketPart.entries.forEach { part ->
+                    val local = layout.cardAnchor(part, camera, yaw, portraitCard)
+                    val world = layout.rotateY(local, yaw)
+                    // Beside the rocket as the viewer sees it, at the rocket's own depth.
+                    assertEquals(reach, world.x * right.x + world.z * right.z, epsilon)
+                    assertEquals(0f, world.x * camera.x + world.z * camera.z, epsilon)
+                }
             }
         }
     }
 
     @Test
-    fun `the control card is in front of the model and below it, out of the callouts' way`() {
-        val control = CalloutLayout.CONTROL_CARD_POSITION
+    fun `card clears the body and the fins and stays under the nose while it can`() {
+        val camera = Position(0f, 1f, 3f)
+        val room = 1f + layout.CARD_GAP - layout.FIN_TOP
+        for (card in listOf(portraitCard, Size(0.46f, 0.58f, 0f))) {
+            assertTrue(card.y < room)
+            RocketPart.entries.forEach { part ->
+                val anchor = layout.cardAnchor(part, camera, 0f, card)
+                assertTrue(anchor.x - card.x / 2f > layout.BODY_RADIUS)
+                assertTrue(anchor.y - card.y / 2f >= layout.FIN_TOP - epsilon)
+                assertTrue(anchor.y + card.y / 2f <= 1f + layout.CARD_GAP + epsilon)
+            }
+            // A low part and a high part keep distinct anchors while the card leaves them room.
+            val low = layout.cardAnchor(RocketPart.Engine, camera, 0f, card).y
+            val high = layout.cardAnchor(RocketPart.Nose, camera, 0f, card).y
+            assertTrue(high > low)
+        }
+        // Sideways the card is as tall as the rocket: it stands outside the fins, centred on it,
+        // instead of climbing over the nose and out of the strip.
+        for (card in listOf(Size(0.71f, 0.89f, 0f), Size(0.9f, 1.4f, 0f))) {
+            RocketPart.entries.forEach { part ->
+                val anchor = layout.cardAnchor(part, camera, 0f, card)
+                assertTrue(anchor.x - card.x / 2f > layout.INSPECT_EXTENT.x / 2f)
+                assertEquals(layout.INSPECT_TARGET.y, anchor.y, epsilon)
+            }
+        }
+        // The slab's top corner really is under that line.
+        val tilt = Math.toRadians(layout.FIN_TILT_DEGREES.toDouble())
+        val finTop = layout.FIN_CENTER.y + layout.FIN_SIZE.y / 2f * cos(tilt) +
+            layout.FIN_SIZE.z / 2f * abs(sin(tilt))
+        assertTrue(finTop <= layout.FIN_TOP)
+    }
 
-        assertTrue("control card must be toward the camera", control.z > 0f)
-        assertTrue("control card must sit below the model", control.y < 0f)
-        CalloutLayout.CALLOUTS.forEach { callout ->
-            val card = CalloutLayout.localPosition(callout, CalloutLayout.DEFAULT_SPREAD)
-            val separation = hypot(control.x - card.x, hypot(control.y - card.y, control.z - card.z))
-            assertTrue("${callout.id} overlaps the control card", separation > 0.2f)
+    @Test
+    fun `a card dp is a screen dp at the home distance, in both orientations`() {
+        val cardDp = 128f
+        val marginDp = 16f
+        // Free areas: a Pixel 7a upright and sideways, then a 360 dp phone upright.
+        for ((width, height) in listOf(427f to 640f, 900f to 300f, 360f to 560f)) {
+            val distance = layout.inspectDistance(width / height, width, cardDp, marginDp)
+            val metersPerDp = layout.metersPerDp(distance, height)
+            // The rocket is inside the free area.
+            assertTrue(layout.INSPECT_EXTENT.x / metersPerDp <= width)
+            assertTrue(layout.INSPECT_EXTENT.y / metersPerDp <= height)
+            // The card, one dp for one dp, ends before the screen does.
+            val cardStart = width / 2f + (layout.BODY_RADIUS + layout.CARD_GAP) / metersPerDp
+            assertTrue(cardStart + cardDp + marginDp <= width + 0.5f)
+            // Twice the distance, twice the metres under one dp.
+            assertEquals(metersPerDp * 2f, layout.metersPerDp(distance * 2f, height), epsilon)
+        }
+        // Upright on a Pixel 7a, the one-metre rocket is at least 350 dp of a 952 dp screen.
+        val upright = layout.inspectDistance(427f / 640f, 427f, cardDp, marginDp)
+        assertTrue(1f / layout.metersPerDp(upright, 640f) > 350f)
+        assertEquals(0f, layout.metersPerDp(upright, 0f), 0f)
+        // The card beside the nose is nearer to the lowered eye, so drawn larger: it still fits.
+        val lift = (1f + layout.CARD_GAP - layout.INSPECT_TARGET.y) *
+            sin(Math.toRadians(layout.ELEVATION_DEGREES.toDouble())).toFloat()
+        val nearer = upright / (upright - lift)
+        val reach = (layout.BODY_RADIUS + layout.CARD_GAP) / layout.metersPerDp(upright, 640f) + cardDp
+        assertTrue(reach * nearer + marginDp <= 427f / 2f + 0.5f)
+        // Sideways, there is room to spare: the rocket alone decides.
+        assertEquals(layout.cameraDistance(layout.INSPECT_EXTENT, 3f),
+            layout.inspectDistance(3f, 900f, cardDp, marginDp), epsilon)
+        // Too narrow for a card beside the body: the retreat is capped, the card overlaps.
+        val fit = layout.cameraDistance(layout.INSPECT_EXTENT, 0.5f)
+        assertEquals(fit * layout.MAX_CARD_RETREAT, layout.inspectDistance(0.5f, 300f, cardDp, marginDp), epsilon)
+        assertEquals(fit * layout.MAX_CARD_RETREAT, layout.inspectDistance(0.5f, 240f, cardDp, marginDp), epsilon)
+    }
+
+    @Test
+    fun `attached card rides its parent but its front still faces the camera`() {
+        val camera = Position(0f, 1f, 3f)
+        val anchor = layout.cardAnchor(RocketPart.Body, camera, 0f, portraitCard)
+        for (yaw in listOf(0f, 45f, 90f, 180f, 270f)) {
+            val world = layout.rotateY(anchor, yaw)
+            assertEquals(hypot(anchor.x, anchor.z), hypot(world.x, world.z), epsilon)
+            val facing = layout.billboardYawDegrees(world, camera, yaw) + yaw
+            val radians = Math.toRadians(facing.toDouble())
+            val dx = camera.x - world.x
+            val dz = camera.z - world.z
+            val length = hypot(dx, dz)
+            assertEquals(dx / length, sin(radians).toFloat(), epsilon)
+            assertEquals(dz / length, cos(radians).toFloat(), epsilon)
+        }
+        assertEquals(0f, layout.billboardYawDegrees(camera, camera, 90f), epsilon)
+        // Leaning back by the eye's elevation makes the card parallel to the image plane.
+        val home = layout.cameraHome(3f) + layout.INSPECT_TARGET
+        assertEquals(-layout.ELEVATION_DEGREES, layout.billboardPitchDegrees(layout.INSPECT_TARGET, home), 0.01f)
+        assertEquals(0f, layout.billboardPitchDegrees(layout.INSPECT_TARGET, Position(0f, 0.5f, 3f)), epsilon)
+        assertEquals(0f, layout.billboardPitchDegrees(layout.INSPECT_TARGET, Position(0f, 4f, 0f)), epsilon)
+    }
+
+    @Test
+    fun `the card is scaled for the distance the eye is really placed at`() {
+        val freeHeight = 640f
+        // 0.05 is the smallest distance a deep link may ask for; the home never comes that close.
+        for (requested in listOf(0.05f, 0.3f, 0.6f, 2f)) {
+            val eye = layout.cameraHome(requested)
+            val applied = hypot(eye.y, eye.z)
+            assertEquals(applied, layout.homeDistance(requested), epsilon)
+            // Bounding first changes nothing to where the eye goes.
+            assertEquals(eye, layout.cameraHome(layout.homeDistance(requested)))
+            // One card dp is one screen dp at the eye's real distance, not at the requested one.
+            assertEquals(
+                layout.metersPerDp(applied, freeHeight),
+                layout.metersPerDp(layout.homeDistance(requested), freeHeight),
+                1e-7f,
+            )
         }
     }
 
     @Test
-    fun `the card scale range brackets its default`() {
-        assertTrue(CalloutLayout.MIN_CARD_SCALE < CalloutLayout.DEFAULT_CARD_SCALE)
-        assertTrue(CalloutLayout.DEFAULT_CARD_SCALE < CalloutLayout.MAX_CARD_SCALE)
-        assertTrue(CalloutLayout.MIN_SPREAD < CalloutLayout.DEFAULT_SPREAD)
-        assertTrue(CalloutLayout.DEFAULT_SPREAD < CalloutLayout.MAX_SPREAD)
+    fun `home eye is the requested distance from the target`() {
+        for (distance in listOf(0f, 1f, 3f, 8f)) {
+            val offset = layout.cameraHome(distance)
+            assertEquals(distance.coerceAtLeast(0.6f), hypot(offset.y, offset.z), epsilon)
+            assertTrue(offset.y > 0f)
+            assertTrue(offset.z > 0f)
+        }
     }
 
-    private fun radius(position: Position) = hypot(position.x, position.z)
+    @Test
+    fun `portrait camera retreats to keep the whole gallery inside the narrow viewport`() {
+        val portrait = layout.cameraDistance(layout.MEDIA_EXTENT, aspect = 0.5f)
+        val landscape = layout.cameraDistance(layout.MEDIA_EXTENT, aspect = 2.4f)
+        assertTrue(portrait.isFinite() && landscape.isFinite())
+        assertTrue(portrait > landscape && landscape > 0f)
+    }
+
+    @Test
+    fun `gallery surfaces face inward and captions clear their exhibits`() {
+        val gallery = layout.GALLERY
+        assertEquals(3, gallery.size)
+        assertTrue(gallery[0].position.x < 0f && gallery[0].yaw > 0f)
+        assertTrue(gallery[1].position.x > 0f && gallery[1].yaw < 0f)
+        gallery.forEach {
+            val frame = layout.frameSize(it.size)
+            val captionTop = it.caption.y + layout.CAPTION_SIZE.y / 2f
+            assertTrue(captionTop < it.position.y - frame.y / 2f)
+            assertTrue(it.caption.y - layout.CAPTION_SIZE.y / 2f > 0f)
+            assertEquals(it.position.x, it.caption.x, epsilon)
+            assertTrue(frame.x > it.size.x && frame.y > it.size.y)
+            assertTrue(layout.CONTENT_OFFSET.z > frame.z / 2f)
+        }
+        // The two wall captions share a line and do not touch; neither do the two frames.
+        assertEquals(gallery[0].caption.y, gallery[1].caption.y, epsilon)
+        assertTrue(gallery[1].caption.x - gallery[0].caption.x > layout.CAPTION_SIZE.x)
+        val frames = gallery.take(2).map { layout.frameSize(it.size) }
+        assertTrue(gallery[0].position.x + frames[0].x / 2f < gallery[1].position.x - frames[1].x / 2f)
+        // TextNode rasters 4:1; any other quad stretches the glyphs.
+        assertEquals(4f, layout.CAPTION_SIZE.x / layout.CAPTION_SIZE.y, epsilon)
+        val badgeCaptionBottom = gallery[2].caption.y - layout.CAPTION_SIZE.y / 2f
+        assertTrue(gallery.take(2).indices.all {
+            gallery[it].position.y + frames[it].y / 2f < badgeCaptionBottom
+        })
+        // Top to bottom, everything hung is inside the box the camera fits.
+        val top = gallery[2].position.y + gallery[2].size.y / 2f
+        val bottom = gallery[0].caption.y - layout.CAPTION_SIZE.y / 2f
+        assertTrue(top <= layout.MEDIA_TARGET.y + layout.MEDIA_EXTENT.y / 2f + epsilon)
+        assertTrue(bottom >= layout.MEDIA_TARGET.y - layout.MEDIA_EXTENT.y / 2f - epsilon)
+    }
+
+    @Test
+    fun `sideways the gallery hangs on one line and its captions stay readable`() {
+        val gallery = layout.gallery(strip = true)
+        assertEquals(layout.GALLERY, layout.gallery(strip = false))
+        assertEquals(layout.GALLERY.map { it.size }, gallery.map { it.size })
+        assertEquals(layout.GALLERY.map { it.yaw }, gallery.map { it.yaw })
+        // One line of exhibits, one line of captions, each caption under its exhibit.
+        gallery.forEach {
+            assertEquals(gallery[0].position.y, it.position.y, epsilon)
+            assertEquals(gallery[0].caption.y, it.caption.y, epsilon)
+            assertEquals(it.position.x, it.caption.x, epsilon)
+            val captionTop = it.caption.y + layout.CAPTION_SIZE.y / 2f
+            assertTrue(captionTop < it.position.y - layout.frameSize(it.size).y / 2f)
+        }
+        // Left to right: picture, sprite, screen; no caption touches its neighbour.
+        val line = gallery.sortedBy { it.position.x }
+        assertEquals(listOf(gallery[0], gallery[2], gallery[1]), line)
+        line.zipWithNext { a, b -> assertTrue(b.caption.x - a.caption.x > layout.CAPTION_SIZE.x) }
+        // Everything hung is inside the box the camera fits.
+        val extent = layout.mediaExtent(strip = true)
+        val target = layout.mediaTarget(strip = true)
+        val top = gallery.maxOf { it.position.y + layout.frameSize(it.size).y / 2f }
+        val bottom = gallery.minOf { it.caption.y - layout.CAPTION_SIZE.y / 2f }
+        val right = gallery.maxOf { it.caption.x + layout.CAPTION_SIZE.x / 2f }
+        assertTrue(top <= target.y + extent.y / 2f + epsilon)
+        assertTrue(bottom >= target.y - extent.y / 2f - epsilon)
+        assertTrue(right <= extent.x / 2f + epsilon)
+        // A Pixel 7a sideways leaves about 900 x 195 dp; upright, 427 x 640 dp. A caption in the
+        // strip is over 100 dp wide, and half as large again as the upright wall would make it there.
+        fun captionDp(strip: Boolean, width: Float, height: Float): Float {
+            val distance = layout.cameraDistance(layout.mediaExtent(strip), width / height)
+            return layout.CAPTION_SIZE.x / layout.metersPerDp(distance, height)
+        }
+        assertTrue(captionDp(true, 900f, 195f) > 100f)
+        assertTrue(captionDp(true, 900f, 195f) > 0.6f * captionDp(false, 427f, 640f))
+        assertTrue(captionDp(true, 900f, 195f) > 1.5f * captionDp(false, 900f, 195f))
+    }
+
+    @Test
+    fun `stationary camera and nonpositive time never advance state`() {
+        val eye = Position(0f, 1f, 3f)
+        assertFalse(layout.movedPerceptibly(eye, eye.copy(x = 0.0005f)))
+        assertTrue(layout.movedPerceptibly(eye, eye.copy(x = 0.002f)))
+        assertEquals(42f, layout.nextTurntableYaw(42f, 0L), 0f)
+        assertEquals(42f, layout.nextTurntableYaw(42f, -1L), 0f)
+        assertEquals(15f, layout.nextTurntableYaw(0f, 1_000_000_000L), epsilon)
+        assertEquals(-175f, layout.nextTurntableYaw(170f, 1_000_000_000L), epsilon)
+    }
 }

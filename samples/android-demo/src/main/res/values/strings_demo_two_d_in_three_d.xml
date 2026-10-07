@@ -1,11 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `two-d-in-three-d` demo (registered by `TwoDInThreeDFragment.kt`).
-     Rebuilt from scratch in #3424 around `ViewNode` — Compose UI rendered onto quads in
-     world space. It absorbed the retired `text`, `image`, `video` and `billboard` demos
-     (#2239 Batch 1); those ids still deep-link here through
-     `DeepLinkRouter.DEMO_ID_ALIASES`. -->
 <resources>
     <string name="demo_two_d_in_three_d_title">2D in 3D</string>
-    <string name="demo_two_d_in_three_d_subtitle">Interact with a card attached to a 3D model</string>
-    <string name="demo_two_d_in_three_d_explainer">Each card is a ViewNode: real Compose UI rendered to a texture on a quad. Tap the button in the scene — it works. Billboard is in the dock.</string>
+    <string name="demo_two_d_in_three_d_subtitle">Live UI, text, images and video in a 3D scene</string>
+    <string name="demo_two_d_in_three_d_inspect_hint">Tap a part</string>
+    <string name="demo_two_d_in_three_d_media_hint">Drag to look around</string>
+    <string name="demo_two_d_in_three_d_inspect_explainer">The card is real Compose UI on a flat surface in the scene. A tap picks a part or reaches a swatch through the scene’s picking ray.</string>
+    <string name="demo_two_d_in_three_d_media_explainer">TextNode adds text, ImageNode a bitmap or drawable, VideoNode a video a MediaPlayer streams, and BillboardNode a sprite that faces you. Inspect shows live Compose UI.</string>
+    <string name="demo_two_d_in_three_d_nose">Nose</string>
+    <string name="demo_two_d_in_three_d_body">Body</string>
+    <string name="demo_two_d_in_three_d_window">Window</string>
+    <string name="demo_two_d_in_three_d_fins">Fins</string>
+    <string name="demo_two_d_in_three_d_engine">Engine</string>
+    <string name="demo_two_d_in_three_d_matte">Matte</string>
+    <string name="demo_two_d_in_three_d_gloss">Gloss</string>
+    <string name="demo_two_d_in_three_d_metal">Brushed metal</string>
+    <string name="demo_two_d_in_three_d_gold">Gold</string>
+    <string name="demo_two_d_in_three_d_spin">Spin</string>
+    <string name="demo_two_d_in_three_d_reset">Reset</string>
+    <string name="demo_two_d_in_three_d_always_on_top">Always on top</string>
+    <string name="demo_two_d_in_three_d_play">Play</string>
+    <string name="demo_two_d_in_three_d_pause">Pause</string>
+    <string name="demo_two_d_in_three_d_face_camera">Face camera</string>
+    <string name="demo_two_d_in_three_d_face_camera_caption">Face</string>
+    <string name="demo_two_d_in_three_d_image_node">ImageNode</string>
+    <string name="demo_two_d_in_three_d_video_node">VideoNode</string>
+    <string name="demo_two_d_in_three_d_billboard_node">BillboardNode</string>
+    <string name="demo_two_d_in_three_d_video_loading">Loading video…</string>
+    <string name="demo_two_d_in_three_d_video_unavailable">Video unavailable</string>
+    <string name="demo_two_d_in_three_d_video_unavailable_detail">Check your connection</string>
+    <string name="demo_two_d_in_three_d_video_credit">Video: Big Buck Bunny (excerpt) © 2008 Blender Foundation · www.bigbuckbunny.org · CC BY 3.0</string>
 </resources>

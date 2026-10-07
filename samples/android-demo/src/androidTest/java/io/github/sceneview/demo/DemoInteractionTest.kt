@@ -137,13 +137,14 @@ class DemoInteractionTest {
      * rather than passed as a literal — so the `By.text(...)` match stays in sync with
      * the string resources and never drifts when a demo title is renamed.
      */
-    private fun openDemo(demoId: String) {
+    private fun openDemo(demoId: String, tab: String? = null) {
         val titleRes = ALL_DEMOS.firstOrNull { it.id == demoId }?.titleRes
             ?: error("openDemo: demo id '$demoId' is not registered in ALL_DEMOS")
         val expectedTitle = context.getString(titleRes)
         val intent = Intent().apply {
             setClassName(pkg, DemoHostActivity::class.java.name)
             putExtra(DemoHostActivity.EXTRA_DEMO_ID, demoId)
+            tab?.let { putExtra(DeepLinkRouter.QUERY_PARAM_TAB, it) }
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
@@ -715,62 +716,57 @@ class DemoInteractionTest {
     // lands. Covered by `lighting_allThreeRigs`, which cycles the environment
     // swatches.
 
-    // ── 12. 2D in 3D — Compose cards on ViewNode quads ────────────────────
-    //
-    // #3424 rebuilt this demo from scratch around `ViewNode`, so the four
-    // segmented tabs (Text / Image / Video / Billboard) that used to be driven
-    // from sections 20, 21 and 22b below are gone; the retired `text`, `image`,
-    // `video` and `billboard` deep-link ids still resolve here through
-    // `DEMO_ID_ALIASES`, but none of them pre-selects anything any more.
-    //
-    // What replaced them: one turntable scene with three world-anchored call-out
-    // cards and one live control card, plus the dock's Billboard toggle, the
-    // Always-on-top switch and two sliders.
-    //
-    // The retired Billboard tab was also the home of the `@Ignore`d
-    // `billboard_visibilityChips`, parked since 2026-04-23 on a Filament UAF
-    // (`Invalid texture still bound to MaterialInstance`, SIGABRT — #887) that
-    // fired when Compose dropped a `BillboardNode`/`ImageNode` and its
-    // `MaterialInstance` was destroyed with a texture still bound. Neither node
-    // type is in this demo any more, so the test goes with the scene it drove;
-    // #887 stays open on `sceneview/` and is not claimed fixed here.
+    // ── 12. 2D in 3D — Inspect picking and Media playback ─────────────────────
 
     @Test
-    fun twoDInThreeD_billboardAndDepth() {
+    fun twoDInThreeD_inspectMaterialsAndDepth() {
         openDemo("two-d-in-three-d")
-        screenshot("49_twoDInThreeD_default")
+        val reset = context.getString(R.string.demo_two_d_in_three_d_reset)
+        // A dock item's label and its click target are two nodes with the same bounds: the
+        // enabled state is on the clickable parent, the label node always reports enabled.
+        fun resetEnabled() = requireNotNull(device.findObject(By.desc(reset))).parent.isEnabled
+        check(!resetEnabled()) { "Reset must start disabled" }
+        screenshot("49_twoDInThreeD_inspect")
 
-        // Billboard is a DockItem, not a sheet control — it lives in the bottom
-        // floating toolbar and is reached by its content description.
-        tapByDesc("Billboard")
-        screenshot("50_twoDInThreeD_fixed_orientation")
+        // Swatches live on a texture, outside the accessibility tree: tap their projected screen
+        // positions, never invoke a semantics click on the view. Both points are measured on the
+        // shared Pixel_7a AVD (1280 x 2856, portrait): the middle of the body, then the Gold
+        // swatch, bottom right of the card that stands to the body's right.
+        device.click((device.displayWidth * 0.5f).toInt(), (device.displayHeight * 0.525f).toInt())
+        Thread.sleep(800)
+        screenshot("50_twoDInThreeD_part_selected")
+        device.click((device.displayWidth * 0.857f).toInt(), (device.displayHeight * 0.468f).toInt())
+        Thread.sleep(800)
+        check(resetEnabled()) { "Swatch tap must change a part" }
+        screenshot("51_twoDInThreeD_restyled")
 
-        tapByDesc("Billboard")
-        screenshot("51_twoDInThreeD_billboarded_again")
-
-        // Depth: off, the model swallows the far card; on, the card floats over it.
-        tap("Always on top")
-        screenshot("52_twoDInThreeD_always_on_top")
-
-        tap("Always on top")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
+        screenshot("52_twoDInThreeD_spinning")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
+        tapByDesc(reset)
+        check(!resetEnabled()) { "Reset must restore the original materials" }
+        tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))
         screenshot("52a_twoDInThreeD_depth_tested")
+        tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))
+        device.pressBack()
+        device.click((device.displayWidth * 0.1f).toInt(), (device.displayHeight * 0.35f).toInt())
+        screenshot("52b_twoDInThreeD_dismissed")
     }
 
     @Test
-    fun twoDInThreeD_cardSizeAndDistance() {
-        openDemo("two-d-in-three-d")
-
-        // Both sliders are LabeledSliders, so they are driven by contentDescription.
-        dragSliderByDesc("Card size", fraction = 1.0f)
-        screenshot("52b_twoDInThreeD_cards_max")
-        dragSliderByDesc("Card size", fraction = 0.0f)
-        screenshot("52c_twoDInThreeD_cards_min")
-        dragSliderByDesc("Card size", fraction = 0.5f)
-
-        dragSliderByDesc("Card distance", fraction = 1.0f)
-        screenshot("52d_twoDInThreeD_cards_far")
-        dragSliderByDesc("Card distance", fraction = 0.0f)
-        screenshot("52e_twoDInThreeD_cards_near")
+    fun twoDInThreeD_mediaPlaybackAndFacing() {
+        // Same tab token as sceneview://demo/two-d-in-three-d?tab=media.
+        openDemo("two-d-in-three-d", tab = "media")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_pause))
+        screenshot("52c_twoDInThreeD_media_paused")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_play))
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_face_camera))
+        device.swipe((device.displayWidth * 0.75f).toInt(), (device.displayHeight * 0.4f).toInt(),
+            (device.displayWidth * 0.25f).toInt(), (device.displayHeight * 0.4f).toInt(), 30)
+        Thread.sleep(800)
+        screenshot("52d_twoDInThreeD_media_fixed")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_face_camera))
+        screenshot("52e_twoDInThreeD_media_facing")
     }
 
     // ── 13. Secondary Camera — 4 PiP angle chips ──────────────────────────────
@@ -883,10 +879,7 @@ class DemoInteractionTest {
     // Covered by `lightingLab_benchControls` above.
 
     // ── 20/21. Image + Text Labels ─────────────────────────────
-    // #2239 Batch 1 consolidated `image` and `text` into `two-d-in-three-d`;
-    // #3424 then rebuilt that demo from scratch, so its Image and Text tabs — and
-    // the `Scale:` / `Font Size:` sliders and the "Display Text" field these two
-    // tests drove — no longer exist. Covered by `twoDInThreeD_*` in section 12.
+    // Retired image/text links open the Media gallery, covered in section 12.
 
     // ── 22a. ViewNode — visible toggle + coord-tap on the in-scene card ──────
 
@@ -923,9 +916,7 @@ class DemoInteractionTest {
     }
 
     // ── 22b. Video ─────────────────────────────────────
-    // #2239 Batch 1 consolidated `video` into `two-d-in-three-d`; #3424's rebuild
-    // dropped the `VideoNode` tab along with the rest of them. `VideoNode` itself
-    // is unchanged and still shipped — it simply has no demo driving it here.
+    // The retired video link opens Media, whose playback is covered in section 12.
 
     // ── 22c. Model Viewer — just verify the scaffold + initial render ────────
 

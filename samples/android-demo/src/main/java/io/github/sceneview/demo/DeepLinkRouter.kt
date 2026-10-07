@@ -108,12 +108,8 @@ internal object DeepLinkRouter {
         // carries an [ALIAS_INITIAL_TAB] entry. The deep links keep working.
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
-        // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
-        // `video`, and `billboard` demos merged into `two-d-in-three-d`.
-        // #3424 then rebuilt that demo from scratch around one annotated model
-        // and a set of `ViewNode` cards, so its four tabs are gone: all four
-        // aliases now land on the same (only) view and none of them carries an
-        // [ALIAS_INITIAL_TAB] entry. The deep links keep working.
+        // 2D in 3D — Inspect is the default; all four retired flat-content demos
+        // open its Media gallery through [ALIAS_INITIAL_TAB].
         "text" to "two-d-in-three-d",
         "image" to "two-d-in-three-d",
         "video" to "two-d-in-three-d",
@@ -236,15 +232,17 @@ internal object DeepLinkRouter {
      * tab instead of falling back to its default first tab (#2315).
      *
      * The index is 0-based and matches the order of the demo's segmented-button modes.
-     * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
-     * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
-     * and `billboard` since #3424; `gesture-editing` and `gesture-feedback-preview` since
-     * #3500; `environment`, `reflection-probes`, `post-processing` and `fog` since #3496)
-     * are intentionally omitted: they already land correctly, so an absent entry
-     * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
+     * Aliases for the default mode or a demo without modes are omitted: an absent entry
+     * means "no pre-selection". The retired text/image/video/billboard ids all open Media,
+     * index 1 of 2D in 3D. `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
+        // two-d-in-three-d — [Inspect, Media].
+        "text" to 1,
+        "image" to 1,
+        "video" to 1,
+        "billboard" to 1,
         "wall-placement" to 1,
         // lighting — [Image, Studio, Sun] since #3496. `environment` is deliberately
         // absent: the Image rig is index 0, the rig the demo already opens on.
@@ -287,6 +285,7 @@ internal object DeepLinkRouter {
      * own demo only, so `?tab=spacetime` on any other demo is unrecognised.
      */
     val TAB_NAMES: Map<String, Map<String, Int>> = mapOf(
+        "two-d-in-three-d" to mapOf("inspect" to 0, "media" to 1),
         // cosmos — [Starlight, Spacetime], the Star scene's two views.
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
         // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
@@ -317,6 +316,7 @@ internal object DeepLinkRouter {
      * opening on Streaming).
      */
     val TABBED_DEMOS: Set<String> = setOf(
+        "two-d-in-three-d", // DemoModeHost consumes Inspect / Media.
         "materials",
         "ar-placement",
         "model-viewer",
@@ -349,7 +349,13 @@ internal object DeepLinkRouter {
     fun resolveLaunch(demoId: String?, rawId: String?, tabParam: String?): Launch {
         if (demoId == null) return Launch(null, null)
         val retiredWithoutMode = rawId != demoId && rawId in DEMO_ID_ALIASES && rawId !in ALIAS_INITIAL_TAB
-        val tab = if (retiredWithoutMode) null else resolveInitialTab(rawId, tabParam)
+        // A named tab belongs to the demo the link lands on, not to the retired id it came
+        // through: `video?tab=inspect` names a mode of `two-d-in-three-d`.
+        val tab = if (retiredWithoutMode) {
+            null
+        } else {
+            parseTabValue(tabParam, demoId) ?: resolveInitialTab(rawId, tabParam)
+        }
         if (tab != null) SPLIT_OUT_TABS[demoId to tab]?.let { return Launch(it, null) }
         return Launch(
             demoId = demoId,

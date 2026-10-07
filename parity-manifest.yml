@@ -977,14 +977,20 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/VideoTextureDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/BillboardDemo.swift
     contract: >-
-      Live UI cards orbit the Damaged Helmet on a turntable, one of them
-      interactive; Billboard and Always-on-top toggles, card size and distance
-      sliders.
+      Two modes behind the mode pill. Inspect: tap a part of a procedural
+      rocket and a live Compose card (ViewNode) stands beside it, restyling
+      that part through four material swatches; Spin and Reset in the dock,
+      Always on top in the sheet. Media: a picture (ImageNode), a muted
+      looping video (VideoNode), a camera-facing badge (BillboardNode) and
+      TextNode captions naming each node; Play/Pause and Face camera in the
+      dock.
     parity: diverges
     evidence: >-
-      Four separate iOS cards (text/image/video/billboard), no live UI;
+      iOS keeps four separate cards (text/image/video/billboard) where
+      Android's Media mode is one scene, and has nothing for Inspect:
       SceneViewSwift Nodes/ViewNode.swift is a white-plane placeholder
-      (#1035); Android TwoDInThreeDDemo.kt:4-53 (#3424)
+      (#1035), so no live UI can ride a model there. Android
+      TwoDInThreeDDemo.kt (Inspect) and TwoDInThreeDMediaDemo.kt (Media)
   - id: contact-shadow-preview
     androidStatus: InReview
     iosStatus: working

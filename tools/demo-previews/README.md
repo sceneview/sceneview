@@ -43,7 +43,7 @@ an evening room. `backdrops.py` still crops QA backdrop 3 from the old fox card,
 git history (`b1dc1dc59`), so the backdrop does not change.
 
 `damaged_helmet.webp` is the reference for the helmet cards that are still generated:
-`model-viewer`, `two-d-in-three-d` and `fog` (iOS-only since #3464, see below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
+`model-viewer` and `fog` (iOS-only since #3464, see below). The original stylised `hero.webp` render — a helmet the GLB does not look like — fed
 eight of these cards until #3454 and the store listings until #3461; it is deleted, so
 nothing can be generated from it again.
 
@@ -111,6 +111,16 @@ does not follow the theme and the crop holds no chrome: the two crops came out p
 pixel the same, so `preview_geometry_dark.webp` and `preview_geometry_light.webp` are the
 same bytes (same MD5), like `cosmos` above. The iOS `preview_geometry`
 imageset is not replaced: its scene is not this one yet.
+
+`two-d-in-three-d` showed a generated helmet with three floating cards, a scene the demo no
+longer has: it now opens on a procedural rocket whose tapped part gets a live Compose card.
+Its card is an emulator capture (Pixel_7a, 1280×2856) of
+`sceneview://demo/two-d-in-three-d?cameraDistance=2.5` with `--ez qa_mode true`, after a tap
+on the body (640, 1450) and one on the Gold swatch of the card that opens (1097, 1340) — the
+default framing fills a portrait band, hence the distance. Crop: the full-width 1280×1024
+band from y = 794, resized to 800×640, WebP q85 (`cwebp -crop 0 794 1280 1024 -resize 800
+640`). One capture per theme: the stage and the card both follow the app theme, so the dark
+card is the dark stage with the dark card surface. Its prompt is gone from `prompts.json`.
 
 ### Cards generated from real captures (2026-09-30)
 
