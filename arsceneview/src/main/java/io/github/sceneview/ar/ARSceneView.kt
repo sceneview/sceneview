@@ -823,9 +823,8 @@ fun ARSceneView(
     // middle of a scan (#4392). Held for as long as the scene is composed, then handed back.
     val hostView = LocalView.current
     DisposableEffect(hostView) {
-        val keptScreenOn = hostView.keepScreenOn
-        hostView.keepScreenOn = true
-        onDispose { hostView.keepScreenOn = keptScreenOn }
+        KeepScreenOnLeases.acquire(hostView)
+        onDispose { KeepScreenOnLeases.release(hostView) }
     }
 
     // ── AR subsystems ─────────────────────────────────────────────────────────────────────────────

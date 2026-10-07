@@ -976,22 +976,21 @@ public struct ARSceneView: UIViewRepresentable {
         /// overlays and never calls `onSessionStarted`.
         var sessionDidStart = false
 
-        /// The app's idle-timer setting as this view found it, restored when
-        /// the view goes away. `nil` while this view does not hold the display.
-        private var idleTimerWasDisabled: Bool?
+        /// Whether this view currently holds a `DisplayAwakeLease`.
+        private var holdsDisplay = false
 
         /// Keeps the display awake for as long as this AR view is on screen.
         func keepDisplayAwake() {
-            guard idleTimerWasDisabled == nil else { return }
-            idleTimerWasDisabled = UIApplication.shared.isIdleTimerDisabled
-            UIApplication.shared.isIdleTimerDisabled = true
+            guard !holdsDisplay else { return }
+            holdsDisplay = true
+            DisplayAwakeLease.acquire()
         }
 
-        /// Hands the idle timer back as `keepDisplayAwake` found it.
+        /// Gives this view's hold on the display back.
         func releaseDisplay() {
-            guard let wasDisabled = idleTimerWasDisabled else { return }
-            UIApplication.shared.isIdleTimerDisabled = wasDisabled
-            idleTimerWasDisabled = nil
+            guard holdsDisplay else { return }
+            holdsDisplay = false
+            DisplayAwakeLease.release()
         }
 
         /// The configuration this view last asked ARKit to run. Retained so
@@ -1505,7 +1504,14 @@ public struct ARSceneView: UIViewRepresentable {
             reticleAnchor = nil
             // Same safety net for the display: never leave the app's idle timer
             // disabled behind a view that is gone (#4392).
-            if Thread.isMainThread { releaseDisplay() }
+            if holdsDisplay {
+                holdsDisplay = false
+                if Thread.isMainThread {
+                    DisplayAwakeLease.release()
+                } else {
+                    DispatchQueue.main.async { DisplayAwakeLease.release() }
+                }
+            }
             guard let arView = arView,
                   !overlayAnchors.isEmpty || main != nil || fill != nil
                     || reticle != nil else { return }
@@ -2041,4 +2047,30 @@ public struct AnchorNode: Sendable {
         case vertical
     }
 }
+// MARK: - Display awake (#4392)
+
+/// Counts the AR views that hold the display awake.
+///
+/// The idle timer is one setting for the whole app, and two AR views are alive
+/// at once during a navigation transition. Each restoring what it found would
+/// let the display dim under the view that stays, then leave the timer disabled
+/// for good. It is handed back once, by the last view to leave, as the first
+/// one found it. Main thread only.
+enum DisplayAwakeLease {
+    private static var holders = 0
+    private static var wasDisabled = false
+
+    static func acquire() {
+        if holders == 0 { wasDisabled = UIApplication.shared.isIdleTimerDisabled }
+        holders += 1
+        UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    static func release() {
+        guard holders > 0 else { return }
+        holders -= 1
+        if holders == 0 { UIApplication.shared.isIdleTimerDisabled = wasDisabled }
+    }
+}
+
 #endif // os(iOS)
