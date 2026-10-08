@@ -70,23 +70,73 @@
         ]
       },
       {
-        "guid": "company-sponsor-year",
+        "guid": "gold-sponsor",
         "status": "active",
-        "name": "Annual company sponsor",
-        "description": "For companies that ship SceneView. Logo and link in the README and on the website. No support contract, no private features, no priority on issues.",
-        "amount": 1000,
+        "name": "Gold sponsor (3 places)",
+        "description": "For companies that ship SceneView. Everything in Silver, plus your logo in the documentation sidebar and at the top of the README, and a thank-you line in the notes of each major release. Also 5,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 500,
         "currency": "USD",
-        "frequency": "yearly",
+        "frequency": "monthly",
         "channels": [
           "open-collective",
           "osc-invoice"
         ]
       },
       {
+        "guid": "silver-sponsor",
+        "status": "active",
+        "name": "Silver sponsor",
+        "description": "Everything in Bronze, plus your logo on the website home page and on the Sponsors screen of the SceneView demo apps. Also 2,500 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 250,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "bronze-sponsor",
+        "status": "active",
+        "name": "Bronze sponsor",
+        "description": "Your logo and link on the sponsors page of the website and in the README. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 100,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "supporter",
+        "status": "active",
+        "name": "Supporter",
+        "description": "Your name and a link on the sponsors page of the website.",
+        "amount": 25,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective"
+        ]
+      },
+      {
         "guid": "backer",
         "status": "active",
         "name": "Backer",
-        "description": "Any amount, one-time or recurring.",
+        "description": "Thank you. Your name appears in the list of backers.",
+        "amount": 5,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective"
+        ]
+      },
+      {
+        "guid": "donation",
+        "status": "active",
+        "name": "One-time donation",
+        "description": "Any amount, once.",
         "amount": 0,
         "currency": "USD",
         "frequency": "one-time",
