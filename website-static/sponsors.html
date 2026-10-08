@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Same policy as companies.html, plus connect-src https://opencollective.com:
+       the names of supporters and sponsors are read from Open Collective's public
+       per-tier JSON (see the script at the end of this page). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://opencollective.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH). -->
+  <script src="/assets/analytics.js"></script>
+  <title>Sponsor SceneView — tiers, what they include, who sponsors</title>
+  <meta name="description" content="SceneView is free and open source, funded by the people and companies who use it. The sponsor tiers, what each one includes, where the money goes and who sponsors today.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://sceneview.github.io/sponsors.html">
+  <meta property="og:title" content="Sponsor SceneView">
+  <meta property="og:description" content="Free and open source, funded by the people and companies who use it. Tiers, what each one includes, and a public ledger on Open Collective.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/sponsors.html">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Sponsor SceneView">
+  <meta name="twitter:description" content="The sponsor tiers, what each one includes, where the money goes and who sponsors today.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
+  <meta name="theme-color" content="#005bc1">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ===== SPONSORS PAGE ===== */
+    .sponsors-page {
+      /* DESIGN.md spacing and radius scales. styles.css carries the colour, shadow
+         and motion tokens as variables but not these two, so they are named here
+         once and every rule below uses the names. */
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+      --space-3xl: 64px;
+      --radius-xs: 8px;
+      --radius-md: 16px;
+      --radius-full: 9999px;
+      padding-top: var(--nav-height);
+    }
+
+    .sponsors-hero {
+      padding: var(--space-3xl) 0 var(--space-xl);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sponsors-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .sponsors-hero__container {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+      position: relative;
+    }
+
+    .sponsors-hero__title {
+      font-size: clamp(2.25rem, 6vw, 3.75rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: var(--space-md);
+    }
+
+    .sponsors-hero__lead {
+      font-size: 1.125rem;
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+    }
+
+    .sponsors-cta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-sm) var(--space-lg);
+    }
+
+    .sponsors-hero .sponsors-cta {
+      justify-content: center;
+      margin-top: var(--space-lg);
+    }
+
+    .sponsors-button {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 12px 22px;
+      border-radius: var(--radius-full);
+      background: var(--color-primary);
+      color: var(--color-on-primary);
+      font-weight: 700;
+      font-size: 0.95rem;
+      transition: transform var(--duration-short) var(--ease-spring), opacity var(--duration-short);
+    }
+
+    .sponsors-button:hover,
+    .sponsors-button:focus-visible {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    .sponsors-link {
+      color: var(--color-primary);
+      font-size: 0.95rem;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    /* Content */
+    .sponsors-content {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: var(--space-xl) var(--container-padding) var(--space-3xl);
+    }
+
+    .sponsors-content section + section {
+      margin-top: var(--space-2xl);
+    }
+
+    .sponsors-content h2 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--color-outline-variant);
+      color: var(--color-on-surface);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .sponsors-content h2 .material-symbols-outlined {
+      font-size: 24px;
+      color: var(--color-primary);
+    }
+
+    .sponsors-content p,
+    .sponsors-content li {
+      font-size: 0.975rem;
+      color: var(--color-on-surface-variant);
+      line-height: 1.7;
+    }
+
+    .sponsors-content p {
+      margin-bottom: var(--space-md);
+    }
+
+    .sponsors-content strong {
+      color: var(--color-on-surface);
+      font-weight: 600;
+    }
+
+    .sponsors-content ul.sponsors-list {
+      padding-left: var(--space-lg);
+      list-style: disc;
+    }
+
+    .sponsors-content ul.sponsors-list li {
+      margin-bottom: var(--space-sm);
+    }
+
+    .sponsors-content p a,
+    .sponsors-names a {
+      color: var(--color-primary);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    .sponsors-content code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      padding: 1px 6px;
+      border-radius: var(--radius-xs);
+      background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+      color: var(--color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    .sponsors-note {
+      font-size: 0.8125rem !important;
+      line-height: 1.6 !important;
+    }
+
+    /* Tiers */
+    .sponsors-group-title {
+      font-size: 0.8125rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--color-on-surface-variant);
+      margin: var(--space-lg) 0 var(--space-sm);
+    }
+
+    .sponsors-tiers {
+      display: grid;
+      gap: var(--space-sm);
+    }
+
+    .sponsors-tier {
+      display: grid;
+      grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+      gap: var(--space-sm) var(--space-lg);
+      align-items: start;
+      padding: var(--space-lg);
+      background: var(--color-surface-container-lowest);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-card);
+    }
+
+    .sponsors-tier__name {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-xs) var(--space-sm);
+      font-size: 1.0625rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--color-on-surface);
+    }
+
+    .sponsors-tier__limit {
+      padding: 2px 10px;
+      border-radius: var(--radius-full);
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .sponsors-content p.sponsors-tier__price {
+      margin: var(--space-xs) 0 0;
+      line-height: 1.4;
+    }
+
+    .sponsors-tier__amount {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--color-on-surface);
+    }
+
+    .sponsors-content p.sponsors-tier__yearly {
+      margin: 0;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+
+    .sponsors-content p.sponsors-tier__includes {
+      margin: 0;
+    }
+
+    .sponsors-content p.sponsors-tier__choose {
+      margin: var(--space-sm) 0 0;
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    /* What sponsorship is, and is not */
+    .sponsors-terms {
+      padding: var(--space-lg);
+      border-radius: var(--radius-md);
+      background: var(--color-surface-container-low);
+      border-left: var(--space-xs) solid var(--color-primary);
+    }
+
+    .sponsors-content .sponsors-terms p {
+      margin: 0;
+      color: var(--color-on-surface);
+    }
+
+    /* Open Collective's contributor images. They are transparent SVGs drawn for a
+       light page, so they sit on a card: the page surface in light, and in dark the
+       lightest container, which keeps avatars and logos legible without a white box. */
+    .sponsors-wall {
+      display: block;
+      padding: var(--space-md);
+      border-radius: var(--radius-md);
+      background: var(--color-surface-container-lowest);
+      box-shadow: var(--shadow-card);
+      transition: transform var(--duration-short) var(--ease-expressive);
+    }
+
+    .sponsors-wall:hover,
+    .sponsors-wall:focus-visible {
+      transform: translateY(-2px);
+    }
+
+    .sponsors-wall img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .sponsors-names[hidden] {
+      display: none;
+    }
+
+    .sponsors-names {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-md) 0 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+    }
+
+    .sponsors-content .sponsors-names li {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+      padding: var(--space-xs) 12px;
+      border-radius: var(--radius-full);
+      background: var(--color-surface-container-low);
+      font-size: 0.9rem;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .sponsors-names__tier {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-on-surface-variant);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 768px) {
+      .sponsors-hero { padding: var(--space-2xl) 0 var(--space-lg); }
+      .sponsors-content { padding: var(--space-lg) var(--container-padding) var(--space-3xl); }
+    }
+
+    @media (max-width: 600px) {
+      .sponsors-tier { grid-template-columns: minmax(0, 1fr); padding: var(--space-md); }
+      .sponsors-terms { padding: var(--space-md); }
+      .sponsors-wall { padding: var(--space-sm); }
+    }
+
+    @media (max-width: 480px) {
+      .sponsors-hero { padding: var(--space-xl) 0 var(--space-lg); }
+      .sponsors-hero__lead { font-size: 1rem; }
+      .sponsors-content h2 { font-size: 1.2rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sponsors-button, .sponsors-wall { transition: none; }
+      .sponsors-button:hover, .sponsors-button:focus-visible,
+      .sponsors-wall:hover, .sponsors-wall:focus-visible { transform: none; }
+    }
+  </style>
+  <link href="assets/fonts/fonts.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="sponsors-page">
+
+    <!-- ===== HERO ===== -->
+    <section class="sponsors-hero">
+      <div class="sponsors-hero__container">
+        <h1 class="sponsors-hero__title reveal">Sponsor SceneView</h1>
+        <p class="sponsors-hero__lead reveal">SceneView is free and open source, funded by the people and companies who use it. The ledger is public on Open Collective: every contribution and every expense, visible to anyone.</p>
+        <!-- Exactly two funding links on this site, in this order: Open Collective
+             (the button), GitHub Sponsors (the text link). Never a third. -->
+        <div class="sponsors-cta reveal">
+          <a class="sponsors-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Sponsor on Open Collective</a>
+          <a class="sponsors-link" href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== CONTENT ===== -->
+    <div class="sponsors-content">
+
+      <!-- The tier names, amounts and "includes" sentences mirror the tiers on
+           opencollective.com/sceneview. Edit both together. -->
+      <section id="tiers" aria-labelledby="tiers-title">
+        <h2 id="tiers-title"><span class="material-symbols-outlined" aria-hidden="true">volunteer_activism</span>Tiers</h2>
+        <p>Amounts are in US dollars, per month. The company tiers can also be paid once a year, by invoice.</p>
+
+        <h3 class="sponsors-group-title" id="tiers-individuals">For individuals</h3>
+        <div class="sponsors-tiers" role="list" aria-labelledby="tiers-individuals">
+          <article class="sponsors-tier" role="listitem">
+            <div>
+              <h4 class="sponsors-tier__name">Backer</h4>
+              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$5</span> / month</p>
+            </div>
+            <div>
+              <p class="sponsors-tier__includes">Thank you. Your name appears in the list of backers.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/backer-100414" target="_blank" rel="noopener" aria-label="Choose this tier: Backer, on Open Collective">Choose this tier</a></p>
+            </div>
+          </article>
+          <article class="sponsors-tier" role="listitem">
+            <div>
+              <h4 class="sponsors-tier__name">Supporter</h4>
+              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$25</span> / month</p>
+            </div>
+            <div>
+              <p class="sponsors-tier__includes">Your name and a link on the sponsors page of the website.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/supporter-106410" target="_blank" rel="noopener" aria-label="Choose this tier: Supporter, on Open Collective">Choose this tier</a></p>
+            </div>
+          </article>
+        </div>
+
+        <h3 class="sponsors-group-title" id="tiers-companies">For companies</h3>
+        <div class="sponsors-tiers" role="list" aria-labelledby="tiers-companies">
+          <article class="sponsors-tier" role="listitem">
+            <div>
+              <h4 class="sponsors-tier__name">Bronze sponsor</h4>
+              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$100</span> / month</p>
+              <p class="sponsors-tier__yearly">or $1,000 / year by invoice</p>
+            </div>
+            <div>
+              <p class="sponsors-tier__includes">Your logo and link on the sponsors page and in the README.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/sponsor-100415" target="_blank" rel="noopener" aria-label="Choose this tier: Bronze sponsor, on Open Collective">Choose this tier</a></p>
+            </div>
+          </article>
+          <article class="sponsors-tier" role="listitem">
+            <div>
+              <h4 class="sponsors-tier__name">Silver sponsor</h4>
+              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$250</span> / month</p>
+              <p class="sponsors-tier__yearly">or $2,500 / year by invoice</p>
+            </div>
+            <div>
+              <p class="sponsors-tier__includes">Bronze, plus your logo on the website home page and on the Sponsors screen of the SceneView demo apps.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/silver-sponsor-106411" target="_blank" rel="noopener" aria-label="Choose this tier: Silver sponsor, on Open Collective">Choose this tier</a></p>
+            </div>
+          </article>
+          <article class="sponsors-tier" role="listitem">
+            <div>
+              <h4 class="sponsors-tier__name">Gold sponsor <span class="sponsors-tier__limit">3 places</span></h4>
+              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$500</span> / month</p>
+              <p class="sponsors-tier__yearly">or $5,000 / year by invoice</p>
+            </div>
+            <div>
+              <p class="sponsors-tier__includes">Silver, plus your logo in the documentation sidebar and at the top of the README, and a thank-you line in the notes of each major release.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/gold-sponsor-100430" target="_blank" rel="noopener" aria-label="Choose this tier: Gold sponsor, on Open Collective">Choose this tier</a></p>
+            </div>
+          </article>
+        </div>
+
+        <p class="sponsors-note" style="margin-top:var(--space-md)">Yearly invoices are issued by Open Source Collective, the fiscal host that holds SceneView&rsquo;s funds. Pick a tier, or ask for an invoice, on Open Collective.</p>
+        <div class="sponsors-cta">
+          <a class="sponsors-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Choose a tier on Open Collective</a>
+          <a class="sponsors-link" href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
+        </div>
+      </section>
+
+      <!-- This paragraph is the same, word for word, in .github/SPONSORS.md. -->
+      <section id="terms" aria-label="What sponsorship is, and is not">
+        <div class="sponsors-terms">
+          <p><strong>What sponsorship is, and is not.</strong> Sponsoring SceneView is a contribution to an open source project and a public thank-you. It does not buy support, private features, early access or priority on issues: everything we build is public, for everyone, at the same time. A sponsor&rsquo;s logo is an acknowledgement, not an endorsement, and it never changes which tools and services the documentation recommends. We do not accept sponsorships whose purpose is a link for search ranking, and we do not place sponsor messages in the SDK, in the MCP server&rsquo;s output, in install scripts or in <code>llms.txt</code>.</p>
+        </div>
+      </section>
+
+      <!-- Same list as "Where the money goes" in .github/SPONSORS.md. -->
+      <section id="money" aria-labelledby="money-title">
+        <h2 id="money-title"><span class="material-symbols-outlined" aria-hidden="true">account_balance</span>Where the money goes</h2>
+        <p>SceneView uses donations to pay for:</p>
+        <ul class="sponsors-list">
+          <li><strong>AI tooling</strong> &mdash; subscriptions to the AI coding assistants used for development</li>
+          <li><strong>Infrastructure</strong> &mdash; Hosting, domains, CI/CD</li>
+          <li><strong>3D assets</strong> &mdash; Models and environments for demo apps</li>
+          <li><strong>Marketing</strong> &mdash; Reaching more developers</li>
+          <li><strong>Hardware</strong> &mdash; Devices for testing across platforms</li>
+        </ul>
+      </section>
+
+      <!-- The two walls below are images drawn by Open Collective from its ledger:
+           nobody maintains a list by hand. <picture> asks for a narrower image on a
+           phone so the avatars keep their size instead of being scaled down. -->
+      <section id="sponsors" aria-labelledby="sponsors-title">
+        <h2 id="sponsors-title"><span class="material-symbols-outlined" aria-hidden="true">apartment</span>Sponsors</h2>
+        <p>Companies that sponsor SceneView on Open Collective appear here.</p>
+        <a class="sponsors-wall" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">
+          <picture>
+            <source media="(max-width: 600px)" srcset="https://opencollective.com/sceneview/organizations.svg?avatarHeight=48&amp;width=320">
+            <img src="https://opencollective.com/sceneview/organizations.svg?avatarHeight=56&amp;width=660" alt="Logos of the companies sponsoring SceneView on Open Collective" loading="lazy">
+          </picture>
+        </a>
+        <ul class="sponsors-names" data-oc-tiers="gold-sponsor silver-sponsor sponsor" aria-label="Sponsors, by name" hidden></ul>
+      </section>
+
+      <section id="backers" aria-labelledby="backers-title">
+        <h2 id="backers-title"><span class="material-symbols-outlined" aria-hidden="true">favorite</span>Backers</h2>
+        <p>The people who back SceneView on Open Collective. Thank you.</p>
+        <a class="sponsors-wall" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">
+          <picture>
+            <source media="(max-width: 600px)" srcset="https://opencollective.com/sceneview/individuals.svg?avatarHeight=40&amp;width=320&amp;button=false">
+            <img src="https://opencollective.com/sceneview/individuals.svg?avatarHeight=48&amp;width=660&amp;button=false" alt="Avatars of the people backing SceneView on Open Collective" loading="lazy">
+          </picture>
+        </a>
+        <ul class="sponsors-names" data-oc-tiers="supporter" aria-label="Supporters, by name" hidden></ul>
+        <p class="sponsors-note" style="margin-top:var(--space-md)">Both lists are served by Open Collective and update on their own when a contribution clears.</p>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+            <li><a href="/companies.html">For companies</a></li>
+            <li><a href="/sponsors.html">Sponsors</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="/credits.html">3D asset credits</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Names and links of the Supporter, Bronze, Silver and Gold tiers.
+    //
+    // Open Collective's images show an avatar or a logo, not a name, and an image
+    // cannot carry one link per contributor. Those tiers include "your name and a
+    // link", so each list is read from the collective's public per-tier JSON, by tier
+    // slug, and written as text. If the request fails or a tier is empty, the list
+    // stays hidden and the image above it is the whole section.
+    //
+    // Everything in the response is typed by a contributor: it only ever reaches the
+    // page through textContent, and a link is kept only if it parses as http(s).
+    // rel="sponsored nofollow": a sponsor link is an acknowledgement, never a
+    // ranking signal.
+    (function () {
+      var lists = document.querySelectorAll('[data-oc-tiers]');
+      if (!lists.length || !window.fetch) return;
+
+      // Tier slugs as they exist on the collective. The Bronze tier's slug is
+      // "sponsor": it predates the Silver and Gold tiers.
+      var LABELS = {
+        'gold-sponsor': 'Gold sponsor',
+        'silver-sponsor': 'Silver sponsor',
+        'sponsor': 'Bronze sponsor',
+        'supporter': 'Supporter'
+      };
+
+      function httpUrl(value) {
+        try {
+          var url = new URL(String(value));
+          return (url.protocol === 'https:' || url.protocol === 'http:') ? url.href : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function members(slug) {
+        return fetch('https://opencollective.com/sceneview/tiers/' + slug + '/all.json')
+          .then(function (response) { return response.ok ? response.json() : []; })
+          .then(function (rows) {
+            return (Array.isArray(rows) ? rows : []).filter(function (row) {
+              return row && row.isActive !== false && typeof row.name === 'string' && row.name.trim();
+            });
+          })
+          .catch(function () { return []; });
+      }
+
+      Array.prototype.forEach.call(lists, function (list) {
+        var slugs = list.getAttribute('data-oc-tiers').split(/\s+/).filter(Boolean);
+        Promise.all(slugs.map(members)).then(function (perTier) {
+          var seen = {};
+          perTier.forEach(function (rows, index) {
+            rows.forEach(function (row) {
+              var key = row.profile || row.name;
+              if (seen[key]) return;
+              seen[key] = true;
+
+              var item = document.createElement('li');
+              var href = httpUrl(row.website) || httpUrl(row.profile);
+              var name = document.createElement(href ? 'a' : 'span');
+              name.textContent = row.name.trim();
+              if (href) {
+                name.href = href;
+                name.target = '_blank';
+                name.rel = 'sponsored nofollow noopener';
+              }
+              item.appendChild(name);
+
+              if (slugs.length > 1) {
+                var tier = document.createElement('span');
+                tier.className = 'sponsors-names__tier';
+                tier.textContent = LABELS[slugs[index]] || '';
+                item.appendChild(tier);
+              }
+              list.appendChild(item);
+            });
+          });
+          if (list.children.length) list.hidden = false;
+        });
+      });
+    })();
+  </script>
+  <script src="script.js"></script>
+</body>
+</html>
