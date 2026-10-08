@@ -748,6 +748,12 @@ internal fun ArDebugSceneView(
                         if (replayLayers == null) stats else stats.copy(room = replayLayers.measure?.summary)
                     }
                 }
+                // The floor redraws its dimensions on the frame they change; the bar follows on
+                // that frame too, rather than a stats tick later.
+                if (replayLayers != null) {
+                    val room = replayLayers.measure?.summary
+                    if (session.stats.room != room) session.stats = session.stats.copy(room = room)
+                }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.
                 if (bounds != null && !clock.shown) {
