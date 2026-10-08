@@ -573,13 +573,14 @@ sceneview-core (Kotlin Multiplatform)
 - [Website](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [Documentation](https://sceneview.github.io/docs/)
 - [Discord](https://discord.gg/UbNDDBTNqb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Migration v2 → v3](MIGRATION.md)
 
-## Support
+## Sponsors
 
-SceneView is free and open source. Donations keep it maintained across every platform above.
+SceneView is free and open source, funded by its users.
 
-| | Platform | Link |
-|---|---|---|
-| :heart: | **Open Collective** — transparent ledger, one-off or monthly | [Donate on Open Collective](https://opencollective.com/sceneview) |
-| :star: | **GitHub Sponsors** | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
+**[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
-See [SPONSORS.md](.github/SPONSORS.md) for how sponsorship works here.
+<a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/organizations.svg?avatarHeight=56&width=830" alt="Logos of the companies sponsoring SceneView on Open Collective"></a>
+
+<a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/individuals.svg?avatarHeight=40&width=830&button=false" alt="Avatars of the people backing SceneView on Open Collective"></a>
+
+[How sponsorship works](.github/SPONSORS.md)

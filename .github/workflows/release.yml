@@ -524,6 +524,10 @@ jobs:
               "url": "https://github.com/sceneview/sceneview.git",
               "directory": "sceneview-web"
             },
+            "funding": [
+              { "type": "opencollective", "url": "https://opencollective.com/sceneview" },
+              { "type": "github", "url": "https://github.com/sponsors/sceneview" }
+            ],
             "license": "Apache-2.0"
           }
           EOF

@@ -1,7 +1,10 @@
 # Sponsors & Supporters
 
-SceneView is free and open source. Sponsorship helps fund its upkeep across all
-9 platforms — test devices, CI, hosting, assets.
+SceneView is free and open source. Sponsorship pays for what the project
+consumes: build and test infrastructure, test devices, maintenance tooling and
+security work.
+
+**What sponsorship is, and is not.** Sponsoring SceneView is a contribution to an open source project and a public thank-you. It does not buy support, private features, early access or priority on issues: everything we build is public, for everyone, at the same time. A sponsor's logo is an acknowledgement, not an endorsement, and it never changes which tools and services the documentation recommends. We do not accept sponsorships whose purpose is a link for search ranking, and we do not place sponsor messages in the SDK, in the MCP server's output, in install scripts or in `llms.txt`.
 
 ---
 
@@ -16,18 +19,19 @@ Open Collective comes first because its ledger is public: every contribution and
 every expense is visible to anyone, without an account. GitHub Sponsors is there
 for people who would rather stay inside GitHub.
 
-The tiers, what each one costs and what each one says it includes are defined on
-those two pages, and they are maintained there. This file deliberately does not
-restate any of it. A copy here would go stale the day a tier is edited, and a
-file that describes benefits the platforms do not offer — or denies ones they
-do — is worse than a file that says nothing.
+The tiers, and what each one includes, are listed on the sponsors page of the
+website: [sceneview.github.io/sponsors.html](https://sceneview.github.io/sponsors.html).
+That page is the one place where they are written down. This file does not
+restate them, so that the two cannot drift apart. Company tiers can also be paid
+once a year by invoice, issued by Open Source Collective, the fiscal host that
+holds SceneView's funds.
 
 ## Who is sponsoring
 
-Both platforms publish their own list, and this file does not mirror it, for the
-same reason as the tiers: the
-[Open Collective page](https://opencollective.com/sceneview) shows every
-financial contributor as soon as a contribution clears, and the
+The [sponsors page](https://sceneview.github.io/sponsors.html#sponsors) and the
+[README](../README.md#sponsors) show the companies and people who sponsor
+SceneView on Open Collective. Both lists are served by Open Collective and update
+on their own as soon as a contribution clears, so nobody has to edit a file. The
 [GitHub Sponsors page](https://github.com/sponsors/sceneview) shows the sponsors
 who give through GitHub.
 
@@ -35,10 +39,11 @@ who give through GitHub.
 
 ## Where the money goes
 
-SceneView uses donations to pay for:
+SceneView's funds are held by Open Source Collective, the fiscal host. They pay for what the project consumes:
 
-- **AI tooling** — subscriptions to the AI coding assistants used for development
-- **Infrastructure** — Hosting, domains, CI/CD
-- **3D assets** — Models and environments for demo apps
-- **Marketing** — Reaching more developers
-- **Hardware** — Devices for testing across platforms
+- **Infrastructure** — release, build and device-test infrastructure
+- **Test devices** — for ARCore and ARKit
+- **Maintenance tooling**
+- **Security work** — a security pass on the code that parses untrusted 3D files (glTF/GLB, USDZ, 3MF), and signed, provenance-attested releases on Maven Central, npm and Swift Package Manager
+
+Every contribution and every expense is on the [public ledger on Open Collective](https://opencollective.com/sceneview).
