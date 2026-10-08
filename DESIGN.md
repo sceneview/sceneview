@@ -901,9 +901,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
 - **The scene first (#4379).** The room or the camera keeps the screen — 70 % of the
   window clear of chrome at rest in the replay. What is read once is a row of the settings
   sheet, never a card over the scene: the layers and their figures, the room's size,
-  Points | Surface, a scan's counts, the computer stream's status, and the Room Scan |
-  Session MP4 switch. There is no picture-in-picture and no corner card: the other view is
-  one dock cell away.
+  Points | Surface, a scan's counts and the computer stream's status. There is no
+  picture-in-picture and no corner card: the other view is one dock cell away.
 - **Two modes, one dock toggle.** *Camera*: the AR camera, bare. *3D view*: the debug view
   full screen, entity toggles on top, the timeline card at the bottom. Recenter is the
   dock's third item.
