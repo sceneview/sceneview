@@ -836,10 +836,16 @@ internal fun ArDebugSceneView(
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
-                    // A replay with a dense cloud counts its surfels, as the sessions list does,
-                    // and names the room it found, as a floor plan would.
+                    // A replay with a dense cloud counts its surfels, as the sessions list does.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
-                    session.count(frame, points, floorY.takeIf { replay != null })
+                    session.count(frame, points)
+                }
+                // A replay names the room it found, as a floor plan would: the one its dimensions
+                // draw ([ReplayLayers.measure]), so the two never disagree — and on the frame the
+                // floor redraws them, rather than a stats tick later.
+                if (replayLayers != null) {
+                    val room = replayLayers.measure?.summary
+                    if (session.stats.room != room) session.stats = session.stats.copy(room = room)
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.
