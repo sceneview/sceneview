@@ -70,39 +70,10 @@ import type { DispatchContext, ToolResult, ToolTextContent } from "./types.js";
 const DISCLAIMER =
   "\n\n---\n*Generated code suggestion. Review before use in production. See [TERMS.md](https://github.com/sceneview/sceneview/blob/main/mcp/TERMS.md).*";
 
-// ─── Sponsor CTA (shown every N tool calls, opt-out via env var) ────────────
-//
-// One line, every `SPONSOR_CTA_INTERVAL` tool calls, pointing at the donation
-// page. Disabled by setting `SCENEVIEW_SPONSOR_CTA=0`. The counter is
-// module-scoped (per MCP process lifetime), not persisted.
-//
-// One link only: an assistant's answer is a bad place for a menu, and Open
-// Collective is the channel that actually receives donations. GitHub Sponsors
-// stays listed in the README and on the site.
-
-const SPONSOR_CTA_INTERVAL = 10;
-
-const SPONSOR_CTA =
-  "\n\n💙 *Building SceneView is a one-dev labor of love. If it saved you time, consider [supporting it on Open Collective](https://opencollective.com/sceneview).*";
-
-let toolCallCount = 0;
-
-/** Test-only: reset the module-scoped counter between test cases. */
-export function __resetSponsorCounter(): void {
-  toolCallCount = 0;
-}
-
-function shouldShowSponsorCta(): boolean {
-  if (process.env.SCENEVIEW_SPONSOR_CTA === "0") return false;
-  toolCallCount += 1;
-  return toolCallCount % SPONSOR_CTA_INTERVAL === 0;
-}
-
 function withDisclaimer<T extends ToolTextContent>(content: T[]): T[] {
   if (content.length === 0) return content;
   const last = content[content.length - 1];
-  const suffix = DISCLAIMER + (shouldShowSponsorCta() ? SPONSOR_CTA : "");
-  return [...content.slice(0, -1), { ...last, text: last.text + suffix }];
+  return [...content.slice(0, -1), { ...last, text: last.text + DISCLAIMER }];
 }
 
 // ─── llms.txt-derived state ──────────────────────────────────────────────────
