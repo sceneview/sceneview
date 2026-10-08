@@ -42,7 +42,7 @@ Add the dependency to your app's build.gradle:
 ```gradle
 dependencies {
     // Sceneview for 3D capabilities
-    implementation("io.github.sceneview:sceneview:2.3.3")
+    implementation("io.github.sceneview:sceneview:2.3.4")
 }
 ```
 
@@ -169,7 +169,7 @@ Add the dependency to your app's build.gradle:
 ```gradle
 dependencies {
     // ARSceneview for augmented reality capabilities
-    implementation 'io.github.sceneview:arsceneview:2.3.3'
+    implementation 'io.github.sceneview:arsceneview:2.3.4'
 }
 ```
 
