@@ -720,7 +720,8 @@ indicator; every value follows the safe area, none is a constant offset from the
 
 The iOS counterpart of the Android Room Scan screen (#4379): the scanned room owns the
 window, and whatever is read once lives in the settings sheet. It stands in `DemoScaffold`
-and adds no token of its own — every value below is an existing one.
+and every value in the table is an existing token; the scan's glass card adds the three
+`DebugView.live…` values Android's has.
 
 | Element | Value |
 |---|---|
@@ -750,9 +751,31 @@ and adds no token of its own — every value below is an existing one.
   so through a turn of the turntable the camera eases nearer or farther with the room's
   outline. Stray points far from the room do not set the framing — they may leave the
   picture.
-- **Scanning.** While ARKit records, the screen is the camera: one status line in the title
-  row (the red dot, "Scanning", the clock) and the shutter. The scan's counts are in the
-  sheet. Proven on a device only: the simulator has no ARKit session.
+- **Scanning: the camera is the screen, the room is rebuilt on glass.** The Android scan
+  screen's layout and copy ("AR Debug View" below), with what iOS does differently. *The
+  line* — the `danger` dot, the clock in `type-card`, the point count in `type-caption` —
+  is a 36pt pill on the AR scrim, under the title row; on its side it rides the title row's
+  trailing slot. *The live 3D card* stands at the end of that row, `liveCardShare` (44 %)
+  of it wide, `liveCardAspect` (1.35), `radius-lg`, no shadow: the replay's own geometry
+  with no ground and no grid, on **real glass** — the system glass (`.ultraThinMaterial`
+  before iOS 26) under `liveGlass`, the stage ground at 60 %, so the camera shows through
+  and the points keep a dark ground. It carries no text, which is what lets it be glass
+  where the pill and the notice, read over a moving camera, stay on the scrim. A tap grows
+  the card to the whole row, under the line, where a drag turns the room; its corner button
+  shrinks it back. On its side the card keeps the leading edge at `compactCardWidth`, at
+  that one size.
+- **A scan says what it can hold before it stops.** The pill counts "4.8k points"; from
+  80 % of the budget it counts against it, "9.6k / 12k"; at the limit "12k · full" in
+  `warning`, with one line in the same colour beside the card until the scan ends ("Point
+  limit reached — new areas add no more points."). The budget is the recorder's own:
+  12,000 points, the 3 cm cells ARKit's feature points fill (Android's depth scan holds
+  500,000), 300 photos, and five minutes — a limit Android does not have, announced the
+  same way from 4:00 ("Time limit at 5:00 — the scan stops recording there.") and ending
+  on "Time limit reached — tap stop to open your scan." with an amber clock. The stop hint
+  over the shutter leaves after 8 s; on its side, where the card reaches that spot, the
+  hint and the notice stand in the trailing column under the line. The sheet holds what is
+  read once: points and photos against their budgets, surfaces found as an area, the
+  scan's kind. Proven on a device only: the simulator has no ARKit session.
 - **The stage stays dark in both schemes**, as every `DemoScaffold` stage does; only the
   landscape sheet follows the theme.
 

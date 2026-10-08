@@ -166,14 +166,24 @@ enum RerunCaptureMath {
         }
     }
 
-    /// Area of a planar polygon, square metres.
+    /// Area of a planar polygon, square metres — whatever its tilt and winding. Fewer than
+    /// three corners, or a corner that is not a number, is no surface: `0` (Android's
+    /// `ArDebugStats.polygonArea`).
     static func area(of polygon: [SIMD3<Float>]) -> Float {
         guard polygon.count >= 3 else { return 0 }
         var sum = SIMD3<Float>(repeating: 0)
         for i in 0..<polygon.count {
             sum += simd_cross(polygon[i], polygon[(i + 1) % polygon.count])
         }
-        return simd_length(sum) / 2
+        let area = simd_length(sum) / 2
+        return area.isFinite ? area : 0
+    }
+
+    /// How much surface `polygons` cover together, square metres. An area, not a count:
+    /// ARKit's planes are born, merge and are dropped, so their number goes up and down over
+    /// one room while what they cover only grows.
+    static func surfaceArea(_ polygons: [[SIMD3<Float>]]) -> Float {
+        polygons.reduce(0) { $0 + area(of: $1) }
     }
 }
 
@@ -444,10 +454,14 @@ struct RerunPixelBufferFrame: RerunCaptureFrame {
 /// - **Photos** on the first frame, then every 15 cm of travel or 10° of turn, portrait
 ///   480 px wide, JPEG 0.6: at most 300 photos or 24 MB, then the path goes on without them.
 /// - **Feature points** every 0.2 s, coloured from the camera image, at most 400 per
-///   observation and 150 000 in all. ``Stats/points`` counts the 3 cm voxels they fill.
+///   observation and 150 000 in all. ``Stats/points`` counts the 3 cm voxels they fill, up
+///   to the 12 000 the opened scan keeps (``RerunTrace/maxMapPoints``): the figure on screen
+///   is the scan's, and ``Stats/pointBudget`` is what it counts against.
 /// - **Planes** re-logged every 0.5 s when their boundary moved 2 cm or changed shape; a
 ///   plane ARKit drops is logged with an empty polygon.
 /// - A capture stops growing at 5 minutes (``isFull``).
+///
+/// Every bound is announced before it is hit: ``RerunScanFigures`` reads them off ``stats``.
 ///
 /// LiDAR scene meshes are not recorded: the wire format has no mesh event.
 struct RerunCaptureRecorder: Sendable {
@@ -468,7 +482,9 @@ struct RerunCaptureRecorder: Sendable {
         var maxPointsPerObservation = 400
         var maxPoints = 150_000
         var pointVoxel: Float = 0.03
-        var maxVoxels = 60_000
+        /// The points the live count and the live cloud run to: what the opened scan keeps.
+        /// More would be a figure on screen the replay never shows.
+        var maxVoxels = RerunTrace.maxMapPoints
         var planeInterval: TimeInterval = 0.5
         var planeMinChange: Float = 0.02
         var maxDuration: TimeInterval = 300
@@ -484,6 +500,16 @@ struct RerunCaptureRecorder: Sendable {
         var planes = 0
         /// Distinct 3 cm voxels the feature points filled.
         var points = 0
+        /// The most points this scan can hold: ``Configuration/maxVoxels``, or fewer once
+        /// the observation cap (``Configuration/maxPoints``) leaves no room to reach it.
+        var pointBudget = RerunScanLimits.pointBudget
+        /// Square metres the planes tracked now cover.
+        var surfaceArea: Float = 0
+        /// The most photos this scan can hold: ``Configuration/maxKeyframes``, or the
+        /// photos taken once the media cap stopped them first.
+        var photoBudget = RerunScanLimits.photoBudget
+        /// Where the whole scan stops (``Configuration/maxDuration``), seconds.
+        var durationBudget: TimeInterval = RerunScanLimits.duration
         var anchors = 0
         /// The photo cap was reached; poses, points and planes go on.
         var isPhotoLimitReached = false
@@ -521,6 +547,8 @@ struct RerunCaptureRecorder: Sendable {
     private var voxels = Set<Int64>()
     /// The first point that filled each voxel, for the live view to draw the cloud growing.
     private(set) var voxelPoints: [SIMD3<Float>] = []
+    /// The camera's colour under each of ``voxelPoints``, `0xFFRRGGBB`, same order.
+    private(set) var voxelColors: [UInt32] = []
     private var lastPlanesTime: TimeInterval = -.infinity
     private var planeIds: [UUID: Int] = [:]
     private var livePlanes: [UUID: RerunCapturePlane] = [:]
@@ -528,6 +556,9 @@ struct RerunCaptureRecorder: Sendable {
 
     init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
+        stats.pointBudget = configuration.maxVoxels
+        stats.photoBudget = configuration.maxKeyframes
+        stats.durationBudget = configuration.maxDuration
     }
 
     /// The capture reached ``Configuration/maxDuration``; frames are ignored from here on.
@@ -542,6 +573,34 @@ struct RerunCaptureRecorder: Sendable {
     /// The planes tracked now, in their stable id order.
     var currentPlanes: [RerunCapturePlane] {
         livePlanes.values.sorted { (planeIds[$0.identifier] ?? 0) < (planeIds[$1.identifier] ?? 0) }
+    }
+
+    /// The scan as it stands, in the shape the replay draws: the path walked, the camera
+    /// where it is now and where it took each photo, the points kept with their colours and
+    /// the surfaces tracked. What
+    /// the recording screen rebuilds on glass — the recorder's own state, nothing estimated.
+    var liveFrame: RerunFrame {
+        RerunFrame(
+            time: Float(stats.duration),
+            trail: pathPositions,
+            camera: poses.last.map { RerunPose(position: $0.position, rotation: $0.orientation) },
+            mapPoints: voxelPoints[...],
+            mapPointColors: voxelColors[...],
+            livePoints: [],
+            liveKey: -1,
+            planes: currentPlanes.map {
+                RerunPlane(
+                    id: planeIds[$0.identifier] ?? 0,
+                    kind: RerunPlaneKind(wire: $0.kind.rawValue),
+                    polygon: $0.polygon
+                )
+            },
+            anchors: [],
+            // A pose is pinned when a photo was taken from it.
+            keyframes: poses.filter(\.pinned).map { RerunPose(position: $0.position, rotation: $0.orientation) },
+            keyframeImages: [],
+            image: nil
+        )
     }
 
     // MARK: Frames
@@ -623,6 +682,8 @@ struct RerunCaptureRecorder: Sendable {
         guard mediaEntries.count < configuration.maxKeyframes,
               media.count + jpeg.count <= configuration.maxMediaBytes else {
             stats.isPhotoLimitReached = true
+            // Stopped by the media cap: the photos taken are all this scan will hold.
+            stats.photoBudget = mediaEntries.count
             return
         }
         addPose(t: t, position: position, orientation: orientation, force: true)
@@ -659,10 +720,18 @@ struct RerunCaptureRecorder: Sendable {
         }
         guard !positions.isEmpty else { return }
         pointsLogged += positions.count
-        for p in positions where voxels.count < configuration.maxVoxels {
-            if voxels.insert(Self.voxelKey(p, size: configuration.pointVoxel)).inserted { voxelPoints.append(p) }
+        for (p, c) in zip(positions, colors) where voxels.count < configuration.maxVoxels {
+            if voxels.insert(Self.voxelKey(p, size: configuration.pointVoxel)).inserted {
+                voxelPoints.append(p)
+                voxelColors.append(0xFF00_0000 | UInt32(c.x) << 16 | UInt32(c.y) << 8 | UInt32(c.z))
+            }
         }
         stats.points = voxels.count
+        // Every observation still to come fills one new voxel at most.
+        stats.pointBudget = min(
+            configuration.maxVoxels,
+            voxels.count + max(0, configuration.maxPoints - pointsLogged)
+        )
         appendEvent(t: t, RerunCaptureJSON.pointCloud(t: t, positions: positions, colors: colors))
     }
 
@@ -700,6 +769,7 @@ struct RerunCaptureRecorder: Sendable {
             appendEvent(t: t, RerunCaptureJSON.plane(t: t, id: id, kind: plane.kind.rawValue, polygon: plane.polygon))
         }
         stats.planes = livePlanes.count
+        stats.surfaceArea = RerunCaptureMath.surfaceArea(livePlanes.values.map(\.polygon))
     }
 
     /// A plane is re-logged when its kind or vertex count changed, or a vertex moved more
@@ -780,6 +850,148 @@ struct RerunCaptureRecorder: Sendable {
             .joined(separator: ",")
         s += "]}"
         return s
+    }
+}
+
+// MARK: - Scan figures
+
+/// The budgets a scan counts against, and when one is in sight (Android's `ScanLimits`).
+///
+/// iOS records one kind of scan — ARKit's feature points, the "sparse" tier — so its point
+/// budget is the sparse one on both platforms: the 12 000 points of 3 cm the opened scan keeps
+/// (``RerunTrace/maxMapPoints``, Android's `ArDebugTrace.MAX_MAP_POINTS`). Android's 500 000
+/// belongs to its depth tier, which iOS does not record.
+enum RerunScanLimits {
+    /// A budget is announced once this much of it is spent.
+    static let nearShare: Float = 0.8
+
+    /// The points a scan can hold.
+    static let pointBudget = RerunTrace.maxMapPoints
+
+    /// The photos a scan can hold (Android's `KeyframeGate.MAX_PHOTOS`).
+    static let photoBudget = 300
+
+    /// Where a scan stops recording, seconds. iOS only: Android's scan has no time limit.
+    static let duration: TimeInterval = 300
+
+    /// `count` has spent `budget`. No budget, nothing to spend.
+    static func isFull(_ count: Int, _ budget: Int) -> Bool { budget > 0 && count >= budget }
+
+    /// `count` is within sight of `budget`: from ``nearShare`` of it on, full included.
+    static func isNear(_ count: Int, _ budget: Int) -> Bool {
+        budget > 0 && Float(count) >= Float(budget) * nearShare
+    }
+}
+
+/// What a scan in progress holds, each figure with the budget it counts against (Android's
+/// `ScanFigures`). Read off the recorder, never estimated.
+struct RerunScanFigures: Equatable, Sendable {
+    var points: Int
+    var pointBudget: Int
+    /// Square metres of surface found.
+    var surfaceMetres2: Float
+    var photos: Int
+    var photoBudget = RerunScanLimits.photoBudget
+    /// Seconds recorded, and where the scan stops. iOS only.
+    var duration: TimeInterval = 0
+    var durationBudget: TimeInterval = RerunScanLimits.duration
+
+    var pointsFull: Bool { RerunScanLimits.isFull(points, pointBudget) }
+    var photosFull: Bool { RerunScanLimits.isFull(photos, photoBudget) }
+    var timeFull: Bool { durationBudget > 0 && duration >= durationBudget }
+    var timeNear: Bool {
+        durationBudget > 0 && Float(duration) >= Float(durationBudget) * RerunScanLimits.nearShare
+    }
+
+    /// The one thing to know mid-scan, `nil` while no limit is in play.
+    var notice: String? {
+        RerunScanCopy.limitNotice(
+            pointsFull: pointsFull, photosFull: photosFull,
+            timeNear: timeNear, timeFull: timeFull, durationBudget: durationBudget
+        )
+    }
+}
+
+extension RerunScanFigures {
+    init(_ stats: RerunCaptureRecorder.Stats) {
+        self.init(
+            points: stats.points,
+            pointBudget: stats.pointBudget,
+            surfaceMetres2: stats.surfaceArea,
+            photos: stats.keyframes,
+            photoBudget: stats.photoBudget,
+            duration: stats.duration,
+            durationBudget: stats.durationBudget
+        )
+    }
+}
+
+/// The recording screen's words, as plain values so the wording is testable. The same
+/// strings as Android's `ScanCopy`, where Android has them.
+enum RerunScanCopy {
+    static let stopHint = "Tap to stop and open your scan in 3D"
+    static let finishing = "Building your scan…"
+    static let photosFull = "Photo limit reached — points and path keep recording."
+    static let pointsFull = "Point limit reached — new areas add no more points."
+    static let scanFull = "Point and photo limits reached — tap stop to open your scan."
+    /// iOS only: the scan stops recording at its time limit.
+    static let timeFull = "Time limit reached — tap stop to open your scan."
+    static let tierSparse = "Sparse scan"
+    /// The settings sheet's heading over the scan's figures.
+    static let figuresTitle = "This scan"
+    /// The 3D card, and the two things a tap does to it.
+    static let stageLabel = "Your scan in 3D"
+    static let stageExpand = "Enlarge"
+    static let stageCollapse = "Shrink the 3D view"
+
+    /// iOS only: said from ``RerunScanLimits/nearShare`` of the time limit on.
+    static func timeNear(_ budget: TimeInterval) -> String {
+        "Time limit at \(RerunFormat.clock(Float(budget))) — the scan stops recording there."
+    }
+
+    /// What to say under the line that counts the scan. A scan that stopped says so before
+    /// anything else; a spent budget comes before one that is only in sight.
+    static func limitNotice(
+        pointsFull: Bool, photosFull: Bool,
+        timeNear: Bool = false, timeFull: Bool = false,
+        durationBudget: TimeInterval = RerunScanLimits.duration
+    ) -> String? {
+        if timeFull { return Self.timeFull }
+        if pointsFull && photosFull { return scanFull }
+        if pointsFull { return Self.pointsFull }
+        if photosFull { return Self.photosFull }
+        if timeNear { return Self.timeNear(durationBudget) }
+        return nil
+    }
+
+    /// The points on the recording line: `4.8k points`, then `9.6k / 12k` once the budget is
+    /// in sight, then `12k · full` — a count that stopped must not read as a frozen screen.
+    static func pointsLine(_ points: Int, _ budget: Int) -> String {
+        if RerunScanLimits.isFull(points, budget) { return "\(RerunFormat.compactCount(budget)) · full" }
+        if RerunScanLimits.isNear(points, budget) {
+            return "\(RerunFormat.compactCount(points)) / \(RerunFormat.compactCount(budget))"
+        }
+        return "\(RerunFormat.compactCount(points)) \(points == 1 ? "point" : "points")"
+    }
+
+    /// The same, for VoiceOver: whole figures, whole words.
+    static func pointsSpoken(_ points: Int, _ budget: Int) -> String {
+        if RerunScanLimits.isFull(points, budget) { return "point limit of \(RerunFormat.count(budget)) reached" }
+        if RerunScanLimits.isNear(points, budget) {
+            return "\(RerunFormat.count(points)) of \(RerunFormat.count(budget)) points"
+        }
+        return "\(RerunFormat.count(points)) \(points == 1 ? "point" : "points")"
+    }
+
+    /// A settings row's figure against its budget: `42 of 300`, `12k of 12k · full`.
+    static func budgeted(_ count: Int, _ budget: Int) -> String {
+        let line = "\(figure(min(count, budget))) of \(figure(budget))"
+        return RerunScanLimits.isFull(count, budget) ? line + " · full" : line
+    }
+
+    /// `3,812` while it fits a row, `246k` beyond.
+    static func figure(_ value: Int) -> String {
+        value < 10_000 ? RerunFormat.count(max(value, 0)) : RerunFormat.compactCount(value)
     }
 }
 

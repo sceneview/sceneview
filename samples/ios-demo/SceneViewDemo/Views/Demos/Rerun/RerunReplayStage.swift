@@ -107,7 +107,7 @@ private struct OrbitGestures: ViewModifier {
 @MainActor
 final class RerunStageRenderer {
     /// Photos under the grid; flat layers by Android's paint priorities; photos over frustums.
-    private enum Order {
+    enum Order {
         static let planePhoto: Int32 = 0
         static let grid: Int32 = 10
         static let fill: Int32 = 11

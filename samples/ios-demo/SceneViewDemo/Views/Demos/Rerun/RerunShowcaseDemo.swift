@@ -37,6 +37,14 @@ struct RerunShowcaseDemo: View {
         /// The replay as a tap on the room leaves it: no chrome at all.
         case replayImmersive = "replay-immersive"
         case live
+        #if DEBUG
+        /// The Record screen as a scan in progress leaves it (``RerunLiveQAScene``): steady,
+        /// a limit in sight, a limit reached. Debug builds only.
+        case record
+        case recordNear = "record-near"
+        case recordFull = "record-full"
+        case recordTime = "record-time"
+        #endif
     }
 
     static let qaFraction: Float = 0.62
@@ -77,7 +85,13 @@ struct RerunShowcaseDemo: View {
         switch state {
         case nil, .landing: _screen = State(initialValue: .landing)
         case .live: _screen = State(initialValue: .record)
-        default: _screen = State(initialValue: .replay)
+        default:
+            #if DEBUG
+            let scanning = state.flatMap { RerunLiveQAScene(rawValue: $0.rawValue) } != nil
+            #else
+            let scanning = false
+            #endif
+            _screen = State(initialValue: scanning ? .record : .replay)
         }
         switch state {
         case .replayMap: _mode = State(initialValue: .map)
@@ -106,7 +120,8 @@ struct RerunShowcaseDemo: View {
                 chromeMode: screen == .record ? .ar : .stage,
                 chromeHidden: immersive
             ) {
-                stage(top: top, bottom: bottom)
+                stage(top: top, bottom: bottom,
+                      side: max(proxy.safeAreaInsets.leading, proxy.safeAreaInsets.trailing))
             } accessory: {
                 if !wide, let replaying {
                     RerunTimelineBar(session: replaying)
@@ -161,10 +176,11 @@ struct RerunShowcaseDemo: View {
         wide ? 0 : SceneViewTokens.Chrome.clusterGap + RerunChromeMetrics.barHeight
     }
 
-    /// The title row's trailing end: a scan in progress, or the timeline on a wide window.
+    /// The title row's trailing end on a wide window: a scan in progress, or the timeline.
+    /// Upright, the scan's line stands under the row, beside its 3D card.
     @ViewBuilder
     private var status: some View {
-        if screen == .record, recording {
+        if screen == .record, recording, wide {
             RerunCaptureStatusLine(status: live)
         } else if wide, let replaying {
             RerunTimelineBar(session: replaying)
@@ -174,9 +190,24 @@ struct RerunShowcaseDemo: View {
 
     // MARK: Stage
 
-    /// `top` and `bottom` are what the title row and the dock take of the window.
+    /// The Record screen, inside what the title row, the dock and the window's sides leave.
+    private func capture(top: CGFloat, bottom: CGFloat, side: CGFloat) -> some View {
+        var view = RerunLiveCaptureView(topInset: top + SceneViewTokens.Space.sm,
+                                        bottomInset: bottom + SceneViewTokens.Space.md,
+                                        sideInset: side,
+                                        onStatusChange: { live = $0 }) { capture in
+            Task { await finishCapture(capture) }
+        }
+        #if DEBUG
+        view.qa = qa.flatMap { RerunLiveQAScene(rawValue: $0.rawValue) }
+        #endif
+        return view
+    }
+
+    /// `top` and `bottom` are what the title row and the dock take of the window, `side` what
+    /// it keeps clear on its sides.
     @ViewBuilder
-    private func stage(top: CGFloat, bottom: CGFloat) -> some View {
+    private func stage(top: CGFloat, bottom: CGFloat, side: CGFloat = 0) -> some View {
         ZStack(alignment: .top) {
             switch screen {
             case .landing:
@@ -190,11 +221,7 @@ struct RerunShowcaseDemo: View {
                     onDelete: delete
                 )
             case .record:
-                RerunLiveCaptureView(topInset: top + SceneViewTokens.Space.sm,
-                                     bottomInset: bottom + SceneViewTokens.Space.md,
-                                     onStatusChange: { live = $0 }) { capture in
-                    Task { await finishCapture(capture) }
-                }
+                capture(top: top, bottom: bottom, side: side)
             case .replay:
                 replay(top: top, bottom: bottom + timelineRise)
             }

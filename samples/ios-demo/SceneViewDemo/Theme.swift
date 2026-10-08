@@ -934,6 +934,15 @@ enum SceneViewTokens {
         static let liveWallFill: UInt32 = 0x66D2_A8FF
         static let liveFloorOutline: UInt32 = 0xFFA4_C1FF
         static let liveWallOutline: UInt32 = 0xFFD2_A8FF
+        /// The tint of the card a scan is rebuilt on while it records: `Stage.background`
+        /// at 60 %, laid over the material so the camera still shows through and the
+        /// points keep the dark ground they are coloured for. Android's `liveGlass`.
+        static let liveGlass: UInt32 = 0x990B_0F16
+        /// That card's share of the row it stands in beside the scan line, until a tap
+        /// gives it the whole row. Android's `liveCardShare`.
+        static let liveCardShare: CGFloat = 0.44
+        /// That card's width over its height, at either size.
+        static let liveCardAspect: CGFloat = 1.35
         /// A card that shares a row with something else on a compact-height window — the
         /// replay timeline beside the title in landscape. Android's `compactCardWidth`.
         static let compactCardWidth: CGFloat = 280
