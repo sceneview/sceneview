@@ -71,16 +71,34 @@ internal const val BACKEND_IDLE_WARN_MS = 10_000L
 internal const val BACKEND_IDLE_BUDGET_MS = 120_000L
 
 /**
- * How long a surface detach waits for the backend to finish with the surface, in nanoseconds.
- * Long enough for the frames in flight, far below the 5 s after which Android reports an ANR.
+ * How long a surface detach waits for the backend to finish with the surface, in nanoseconds, in
+ * a view that owns its engine — see [surfaceWaitNanos]. Long enough for the frames in flight, far
+ * below the 5 s after which Android reports an ANR.
  */
 internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
 
 /**
- * How long a surface resize waits for the frames already queued, in nanoseconds. Half the detach
- * bound: the surface stays, so a frame that misses it only reaches the surface at its former size.
+ * How long a surface resize waits for the frames already queued, in nanoseconds, in a view that
+ * owns its engine — see [surfaceWaitNanos]. Half the detach bound: the surface stays, so a frame
+ * that misses it only reaches the surface at its former size.
  */
 internal const val SURFACE_RESIZE_WAIT_NANOS = 500_000_000L
+
+/**
+ * How long a surface callback waits for the backend, in nanoseconds: [boundNanos] in a view that
+ * owns its engine, [Fence.WAIT_FOR_EVER] — what `Engine.flushAndWait()` passes — in a view that
+ * was given one.
+ *
+ * Giving up on the wait does not make the backlog go away, it leaves it for whoever destroys the
+ * engine. A view that owns its engine waits for that backlog off the thread, see
+ * [whenBackendIdle], so its callbacks can be bounded. A shared engine is destroyed by its owner,
+ * synchronously — `rememberEngine` does it as soon as the composition leaves: bounded callbacks
+ * there only moved the whole wait into that destroy, still on the main thread, and let Android
+ * take the surface back before the backend had even created its swap chain (`EGL_BAD_ALLOC` in
+ * the log). Those views keep the unbounded waits they always had.
+ */
+internal fun surfaceWaitNanos(ownsEngine: Boolean, boundNanos: Long): Long =
+    if (ownsEngine) boundNanos else Fence.WAIT_FOR_EVER
 
 /**
  * The delay before the next check of a teardown deferred by [whenBackendIdle] that has already

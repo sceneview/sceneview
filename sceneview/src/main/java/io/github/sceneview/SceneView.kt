@@ -1003,10 +1003,15 @@ open class SceneView @JvmOverloads constructor(
             swapChain?.let {
                 runCatching { engine.destroySwapChain(it) }
                 // Android takes the surface back when this returns, so the backend is given the
-                // time to finish with it - but not forever: this is the main thread, and a backend
-                // that needs longer than the bound is an ANR. Past it the queued commands still
-                // run, in order; a frame that reaches a surface already gone is dropped by EGL.
-                if (!engine.flushAndWait(SURFACE_DETACH_WAIT_NANOS)) {
+                // time to finish with it. With its own engine the view does not wait forever: this
+                // is the main thread, and a backend that needs longer than the bound is an ANR.
+                // Past it the queued commands still run, in order; what reaches a surface already
+                // gone is refused by EGL and logged. A shared engine is waited for as before.
+                val ownsEngine = defaultEngine != null
+                val drained = engine.flushAndWait(
+                    surfaceWaitNanos(ownsEngine, SURFACE_DETACH_WAIT_NANOS)
+                )
+                if (!drained && ownsEngine) {
                     Log.w(
                         "Sceneview",
                         "Surface detached, backend still busy after " +
@@ -1021,11 +1026,14 @@ open class SceneView @JvmOverloads constructor(
             this@SceneView.onResized(width, height)
 
             // Wait for the pending frames to be processed before returning, to avoid a race
-            // between the surface being resized and the frames still to be rendered into it — but
-            // not forever: this is the main thread. A frame that is later than the bound reaches
-            // the surface at its former size; the next one is rendered at the new one.
+            // between the surface being resized and the frames still to be rendered into it. With
+            // its own engine the view does not wait forever: this is the main thread. A frame that
+            // is later than the bound reaches the surface at its former size; the next one is
+            // rendered at the new one. A shared engine is waited for as before.
+            val ownsEngine = defaultEngine != null
             val fence = engine.createFence()
-            if (isFenceBusy(fence, SURFACE_RESIZE_WAIT_NANOS)) {
+            val busy = isFenceBusy(fence, surfaceWaitNanos(ownsEngine, SURFACE_RESIZE_WAIT_NANOS))
+            if (busy && ownsEngine) {
                 Log.w(
                     "Sceneview",
                     "Surface resized, backend still busy after " +
