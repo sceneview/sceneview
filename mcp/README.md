@@ -510,7 +510,7 @@ The only network calls are to the GitHub API (for known issues), Sketchfab (when
 
 ## Sponsor
 
-If sceneview-mcp saves you time, consider [donating on Open Collective](https://opencollective.com/sceneview), or [GitHub Sponsors](https://github.com/sponsors/sceneview) if you prefer. Building this is a one-dev labor of love; every tool is free with or without a donation.
+If sceneview-mcp saves you time, you can [sponsor SceneView on Open Collective](https://opencollective.com/sceneview), or through [GitHub Sponsors](https://github.com/sponsors/sceneview). Every tool is free with or without a contribution, and a sponsorship changes nothing in what the server returns. [How sponsorship works](https://sceneview.github.io/sponsors.html).
 
 ---
 

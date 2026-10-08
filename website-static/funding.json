@@ -6,7 +6,7 @@
     "role": "maintainer",
     "name": "SceneView",
     "email": "maintainers@sceneview.dev",
-    "description": "SceneView is a community-maintained open source project, started in 2021 as the successor of Google's discontinued Sceneform. It has no legal entity of its own: it is fiscally hosted by Open Source Collective, a US 501(c)(6) non-profit that holds the project's funds, signs agreements, issues invoices and publishes every incoming contribution and every expense on a public ledger. Funds are never paid to an individual maintainer; they pay for what the project consumes (build and test infrastructure, test devices, maintenance tooling, security work).",
+    "description": "SceneView is a community-maintained open source project, started in 2021 as the successor of Google's discontinued Sceneform. It has no legal entity of its own: it is fiscally hosted by Open Source Collective, a US 501(c)(6) non-profit that holds the project's funds, signs agreements, issues invoices and publishes every incoming contribution and every expense on a public ledger. Funds pay for what the project consumes (build and test infrastructure, test devices, maintenance tooling, security work); when a maintainer has paid such a cost out of pocket, it is reimbursed against a receipt, and the reimbursement is on the public ledger like every other expense.",
     "webpageUrl": {
       "url": "https://sceneview.github.io"
     }
