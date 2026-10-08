@@ -45,9 +45,9 @@ struct RerunReplayMedia: @unchecked Sendable {
     }
 }
 
-/// One replay on screen: the pack, its clock, what the HUD shows and which groups are hidden.
-/// Shared by the full stage, the picture-in-picture and the chrome; only one stage drives the
-/// clock at a time (the camera view shows the inset instead of the full stage).
+/// One replay on screen: the pack, its clock, the figures the settings sheet reads out and which
+/// layers are hidden. Shared by the stage, the camera view and the chrome; whichever of the stage
+/// and the camera view is up drives the clock.
 @MainActor
 @Observable
 final class RerunReplaySession {
@@ -55,14 +55,18 @@ final class RerunReplaySession {
     let media: RerunReplayMedia
     /// The whole take at its last instant — what the camera frames and the grid covers.
     let whole: RerunFrame
+    /// The floor's height over the whole take: what the room's planes are measured against.
+    let floorY: Float
+    /// The room the take has outlined at the playhead, or `nil` while its walls and floor do
+    /// not give one. Refreshed with ``stats``.
+    private(set) var room: RerunRoomMeasure?
 
     private(set) var playback: RerunPlayback
     /// The playhead, seconds. Read by the filmstrip and the camera view.
     private(set) var time: Float = 0
     private(set) var playing = false
-    /// The HUD's figures, refreshed four times a second.
-    var stats = RerunStats()
-    var fps = 0
+    /// The layers' figures at the playhead, refreshed four times a second.
+    private(set) var stats = RerunStats()
     private(set) var hidden: Set<RerunGroup> = []
 
     var duration: Float { pack.trace.duration }
@@ -70,9 +74,20 @@ final class RerunReplaySession {
     init(pack: RerunPack, media: RerunReplayMedia) {
         self.pack = pack
         self.media = media
-        self.whole = pack.trace.frameAt(pack.trace.duration)
+        let whole = pack.trace.frameAt(pack.trace.duration)
+        self.whole = whole
+        self.floorY = RerunGeometry.floorHeight(whole)
         self.playback = RerunPlayback(duration: pack.trace.duration)
-        self.stats = RerunStats(frame: pack.trace.frameAt(0))
+        count(pack.trace.frameAt(0))
+    }
+
+    /// Counts `frame` into the figures the settings sheet reads: the layers, and the room its
+    /// planes outline so far. Whoever drives the clock calls it a few times a second.
+    func count(_ frame: RerunFrame) {
+        let counted = RerunStats(frame: frame)
+        if counted != stats { stats = counted }
+        let measured = RerunRoomMeasure.of(frame.planes, floorY: floorY)
+        if measured != room { room = measured }
     }
 
     static func load(_ pack: RerunPack) async -> RerunReplaySession {

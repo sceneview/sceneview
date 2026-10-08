@@ -2,9 +2,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Rerun AR Replay demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's
-/// `ARRerunDemo`: record a room with ARKit and replay it in 3D — the camera's path and photos,
-/// the surfaces with their photos, the room's coloured points and the models placed in it.
+/// The Room Scan demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's `ARRerunDemo`:
+/// record a room with ARKit and replay it in 3D — the camera's path and photos, the surfaces
+/// with their photos, the room's coloured points and the models placed in it.
 ///
 /// It opens on "Your sessions" (``RerunSessionsLanding``): Record your room, a sample session,
 /// Open file, and every session kept on this iPhone. Stopping a recording saves it and opens
@@ -13,6 +13,12 @@ import UniformTypeIdentifiers
 ///
 /// The sample is the very pack Android ships (`rerun/showcase/`), read from the same files, so
 /// both apps replay it to the same figures.
+///
+/// The scene keeps the screen (#4379). The replay floats one glass timeline bar over the room —
+/// above the dock on a tall window, in the title row on a wide one — and a tap on the room puts
+/// title, timeline and dock away. A scan in progress says one line in the title row. Everything
+/// read once (the layers and their figures, the room's size, a scan's counts) is a row of the
+/// settings sheet.
 struct RerunShowcaseDemo: View {
     enum Screen: Equatable { case landing, replay, record }
     enum Mode: Equatable { case scene, map, camera }
@@ -28,6 +34,8 @@ struct RerunShowcaseDemo: View {
         case replayMap = "replay-map"
         case replayCamera = "replay-camera"
         case replayExport = "replay-export"
+        /// The replay as a tap on the room leaves it: no chrome at all.
+        case replayImmersive = "replay-immersive"
         case live
     }
 
@@ -47,7 +55,10 @@ struct RerunShowcaseDemo: View {
     @State private var sessions: [RerunStoredSession] = []
     @State private var importing = false
     @State private var notice: String?
-    @State private var recording = false
+    /// The scan on the Record screen: its phase and the recorder's counts.
+    @State private var live = RerunLiveStatus()
+    /// A tap on the replay put the chrome away.
+    @State private var chromeHidden = false
     @State private var importerPresented = false
     @State private var recenterToken = 0
     @State private var exportPresented = false
@@ -58,6 +69,7 @@ struct RerunShowcaseDemo: View {
     @MainActor private static var consumedQAImport = false
     private let store = RerunSessionStore.standard
     private let inbox = RerunInbox.shared
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     init() {
         let state = UserDefaults.standard.string(forKey: Self.qaStateKey).flatMap(QAState.init(rawValue:))
@@ -75,27 +87,39 @@ struct RerunShowcaseDemo: View {
     }
 
     private var drift: Bool { qa == nil }
+    private var recording: Bool { live.phase != .idle }
+    /// The session on screen, once its replay is up.
+    private var replaying: RerunReplaySession? { screen == .replay ? session : nil }
+    /// Nothing but the room: the replay is up and a tap put the chrome away.
+    private var immersive: Bool { chromeHidden && replaying != nil }
+    /// A window too short to stack the timeline above the dock (a phone on its side).
+    private var wide: Bool { verticalSizeClass == .compact }
 
     var body: some View {
         GeometryReader { proxy in
+            let top = Self.chromeTop(safeTop: proxy.safeAreaInsets.top)
+            let bottom = Self.chromeBottom(safeBottom: proxy.safeAreaInsets.bottom)
             DemoScaffold(
-                "Rerun AR Replay",
+                "Room Scan",
                 dock: dock,
                 accent: accent,
-                chromeMode: screen == .record ? .ar : .stage
+                chromeMode: screen == .record ? .ar : .stage,
+                chromeHidden: immersive
             ) {
-                stage(topInset: Self.topReserve(safeTop: proxy.safeAreaInsets.top),
-                      bottomInset: Self.bottomReserve(safeBottom: proxy.safeAreaInsets.bottom))
+                stage(top: top, bottom: bottom)
             } accessory: {
-                if screen == .replay, let session {
-                    RerunFilmstripCard(session: session, title: session.pack.isShowcase ? "Sample session" : session.pack.title,
-                                       caption: caption)
+                if !wide, let replaying {
+                    RerunTimelineBar(session: replaying)
                         .transition(.opacity)
                 }
+            } status: {
+                status
             } controls: {
                 controls
             }
         }
+        .statusBarHidden(immersive)
+        .persistentSystemOverlays(immersive ? .hidden : .automatic)
         .task { await boot() }
         .onChange(of: inbox.pending) { _, pending in
             if pending != nil { Task { await importPending() } }
@@ -121,37 +145,44 @@ struct RerunShowcaseDemo: View {
         UTType(importedAs: "io.rerun.rrd"),
     ]
 
-    /// The identity row's bottom edge, then a gap: where the HUD starts.
-    private static func topReserve(safeTop: CGFloat) -> CGFloat {
+    /// The title row's bottom edge, from the top of the window.
+    private static func chromeTop(safeTop: CGFloat) -> CGFloat {
         let slop = (SceneViewTokens.Layout.touchTarget - SceneViewTokens.Glass.iconButtonSize) / 2
         return safeTop + SceneViewTokens.Chrome.topGap - slop + SceneViewTokens.Layout.touchTarget
-            + SceneViewTokens.Space.sm
     }
 
-    /// The dock's top edge, then a gap: where the landing's list stops scrolling.
-    private static func bottomReserve(safeBottom: CGFloat) -> CGFloat {
+    /// The dock's top edge, from the bottom of the window.
+    private static func chromeBottom(safeBottom: CGFloat) -> CGFloat {
         SceneViewTokens.Chrome.dockBottom(safeArea: safeBottom) + SceneViewTokens.Layout.dockHeight
-            + SceneViewTokens.Space.md
     }
 
-    private var caption: String {
-        switch mode {
-        case .map: "Top-down map of the room"
-        case .camera: "What the camera saw"
-        case .scene: "Drag to orbit · pinch to zoom"
+    /// What the timeline adds above the dock, where it stands there.
+    private var timelineRise: CGFloat {
+        wide ? 0 : SceneViewTokens.Chrome.clusterGap + RerunChromeMetrics.barHeight
+    }
+
+    /// The title row's trailing end: a scan in progress, or the timeline on a wide window.
+    @ViewBuilder
+    private var status: some View {
+        if screen == .record, recording {
+            RerunCaptureStatusLine(status: live)
+        } else if wide, let replaying {
+            RerunTimelineBar(session: replaying)
+                .frame(width: SceneViewTokens.DebugView.compactCardWidth)
         }
     }
 
     // MARK: Stage
 
+    /// `top` and `bottom` are what the title row and the dock take of the window.
     @ViewBuilder
-    private func stage(topInset: CGFloat, bottomInset: CGFloat) -> some View {
+    private func stage(top: CGFloat, bottom: CGFloat) -> some View {
         ZStack(alignment: .top) {
             switch screen {
             case .landing:
                 RerunSessionsLanding(
                     sessions: sessions, store: store, importing: importing, notice: notice,
-                    topInset: topInset, bottomInset: bottomInset,
+                    topInset: top + SceneViewTokens.Space.sm, bottomInset: bottom + SceneViewTokens.Space.md,
                     onRecord: { show(.record) },
                     onSample: { Task { await watchSample() } },
                     onOpenFile: { importerPresented = true },
@@ -159,11 +190,13 @@ struct RerunShowcaseDemo: View {
                     onDelete: delete
                 )
             case .record:
-                RerunLiveCaptureView(onRecordingChange: { recording = $0 }) { capture in
+                RerunLiveCaptureView(topInset: top + SceneViewTokens.Space.sm,
+                                     bottomInset: bottom + SceneViewTokens.Space.md,
+                                     onStatusChange: { live = $0 }) { capture in
                     Task { await finishCapture(capture) }
                 }
             case .replay:
-                replay(topInset: topInset)
+                replay(top: top, bottom: bottom + timelineRise)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -171,26 +204,19 @@ struct RerunShowcaseDemo: View {
         .animation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.medium), value: mode)
     }
 
+    /// The room, or the camera's frames, edge to edge. It is framed against the chrome at rest
+    /// and stays put when a tap puts that chrome away: the room does not jump.
     @ViewBuilder
-    private func replay(topInset: CGFloat) -> some View {
+    private func replay(top: CGFloat, bottom: CGFloat) -> some View {
         if let session {
             if mode == .camera {
-                RerunCameraView(session: session)
+                RerunCameraView(session: session, chromeHidden: chromeHidden) { chromeHidden.toggle() }
             } else {
-                RerunReplayStage(session: session, overhead: mode == .map, recenterToken: recenterToken, drift: drift)
-            }
-            VStack(alignment: .trailing, spacing: SceneViewTokens.Space.sm) {
-                RerunReplayHud(session: session)
-                    .frame(maxWidth: RerunChromeMetrics.maxWidth)
-                    .frame(maxWidth: .infinity)
-                if mode == .camera {
-                    RerunPipCard(session: session, drift: drift) { select(.scene) }
-                } else {
-                    RerunCameraCard(session: session) { select(.camera) }
+                RerunReplayStage(session: session, overhead: mode == .map, recenterToken: recenterToken, drift: drift,
+                                 chromeTop: top, chromeBottom: bottom, chromeHidden: chromeHidden) {
+                    chromeHidden.toggle()
                 }
             }
-            .padding(.horizontal, SceneViewTokens.Chrome.margin)
-            .padding(.top, topInset)
         } else if loadFailed {
             failure
         } else {
@@ -252,16 +278,25 @@ struct RerunShowcaseDemo: View {
         guard next != screen else { return }
         if next == .landing { reload() }
         notice = next == .landing ? notice : nil
+        chromeHidden = false
         screen = next
     }
 
     // MARK: Settings
 
+    /// The sheet reads out what the screen no longer wears: the replay's layers and the room's
+    /// size, a scan's counts; anywhere else, what the demo does.
     @ViewBuilder
     private var controls: some View {
-        Text(Self.intro)
-            .font(SceneViewTokens.TypeScale.body)
-            .foregroundStyle(.secondary)
+        if let replaying {
+            RerunReplaySettings(session: replaying)
+        } else if screen == .record, recording {
+            RerunCaptureSettings(status: live)
+        } else {
+            Text(Self.intro)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(.secondary)
+        }
         Label("Everything stays on your iPhone.", systemImage: "lock.fill")
             .font(SceneViewTokens.TypeScale.captionRegular)
             .foregroundStyle(.secondary)
@@ -329,6 +364,7 @@ struct RerunShowcaseDemo: View {
         let token = UUID()
         openToken = token
         mode = .scene
+        chromeHidden = false
         loadFailed = false
         screen = .replay
         if let showcase {
@@ -351,11 +387,12 @@ struct RerunShowcaseDemo: View {
         start(loaded)
     }
 
-    /// The replay of a kept session — the same stage, HUD, filmstrip and export as the sample.
+    /// The replay of a kept session — the same stage, timeline, sheet and export as the sample.
     private func open(_ stored: RerunStoredSession) async {
         let token = UUID()
         openToken = token
         mode = .scene
+        chromeHidden = false
         loadFailed = false
         session = nil
         screen = .replay
@@ -384,7 +421,10 @@ struct RerunShowcaseDemo: View {
         session.scrub(to: session.duration * Self.qaFraction)
         switch qa {
         case .replayPlay: session.resume()
+        case .replayMap: mode = .map
+        case .replayCamera: mode = .camera
         case .replayExport: exportPresented = true
+        case .replayImmersive: chromeHidden = true
         default: break
         }
     }

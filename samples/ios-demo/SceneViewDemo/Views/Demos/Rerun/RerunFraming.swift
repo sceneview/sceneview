@@ -73,8 +73,11 @@ enum RerunFraming {
     /// The map's near-vertical view: a floor plan, with just enough tilt to keep depth.
     static let mapElevation: Float = 84
     static let homeMargin: Float = 0.92
-    /// A recording's bounds are known up front: it fills the stage between HUD and filmstrip.
+    /// A recording's bounds are known up front: it fills the clear band the chrome leaves.
     static let replayMargin: Float = 0.66
+    /// The least of the view's height a chrome may leave to the room before the framing stops
+    /// backing away from it.
+    static let minBand: Float = 0.3
     /// Exponential approach to home, per second: ~95 % in one second.
     static let approachRate: Float = 3
     /// The SDK's default lens — 28 mm on a 24 mm-tall sensor, ~46.4° vertical.
@@ -91,9 +94,14 @@ enum RerunFraming {
     }
 
     /// The pose that frames `bounds` (min, max) at `azimuth`: the bounding sphere fits the
-    /// narrower field of view, so a tall phone and a small inset both see everything.
+    /// narrower field of view, so a tall phone and a wide one both see everything.
+    ///
+    /// `band` is the share of the view's height no chrome stands on. The room is framed in that
+    /// band, not in the whole view: on a wide window, where the height is what limits the
+    /// picture, the camera backs away until the room clears the title row and the dock.
     static func home(bounds: (SIMD3<Float>, SIMD3<Float>)?, azimuth: Float, verticalFov: Float = verticalFov,
-                     aspect: Float, elevation: Float = homeElevation, margin: Float = homeMargin) -> RerunOrbitPose {
+                     aspect: Float, band: Float = 1, elevation: Float = homeElevation,
+                     margin: Float = homeMargin) -> RerunOrbitPose {
         guard let (lo, hi) = bounds else {
             var pose = defaultPose
             pose.azimuth = azimuth
@@ -105,9 +113,42 @@ enum RerunFraming {
         let radius = max(0.8, simd_length(extent) / 2)
         let halfVertical = verticalFov * .pi / 360
         let halfHorizontal = atan(tan(halfVertical) * min(max(aspect, 0.2), 5))
-        let halfFov = min(halfVertical, halfHorizontal)
+        let halfBand = atan(tan(halfVertical) * min(max(band, minBand), 1))
+        let halfFov = min(halfBand, halfHorizontal)
         return clamp(RerunOrbitPose(target: (lo + hi) / 2, azimuth: azimuth, elevation: elevation,
                                     distance: radius / sin(halfFov) * margin))
+    }
+
+    /// The most of the view's height a room's sag may lift the picture by.
+    static let maxSag: Float = 0.2
+
+    /// How far under the picture's middle the middle of `bounds` falls as `pose` sees it, a
+    /// share of the view's height. A room seen from above shows more of its near floor than of
+    /// its far ceiling: looked at through its centre, it sits low. Lifting the picture by this
+    /// puts what is drawn of the room, not its centre, in the middle of the clear band.
+    static func sag(bounds: (SIMD3<Float>, SIMD3<Float>)?, pose: RerunOrbitPose,
+                    verticalFov: Float = verticalFov) -> Float {
+        guard let (lo, hi) = bounds else { return 0 }
+        let eye = pose.eye
+        let forward = simd_normalize(pose.target - eye)
+        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let halfHeight = tan(verticalFov * .pi / 360)
+        var top = -Float.greatestFiniteMagnitude
+        var bottom = Float.greatestFiniteMagnitude
+        for corner in 0..<8 {
+            let point = SIMD3(corner & 1 == 0 ? lo.x : hi.x, corner & 2 == 0 ? lo.y : hi.y, corner & 4 == 0 ? lo.z : hi.z)
+            let ray = point - eye
+            let depth = simd_dot(ray, forward)
+            // A camera inside the room has no whole room to centre.
+            guard depth > 1e-3 else { return 0 }
+            // -1 at the view's bottom edge, 1 at its top.
+            let y = simd_dot(ray, up) / (depth * halfHeight)
+            top = max(top, y)
+            bottom = min(bottom, y)
+        }
+        let sag = -(top + bottom) / 4
+        return sag.isFinite ? min(max(sag, -maxSag), maxSag) : 0
     }
 
     /// One frame of the ease from `pose` to `home`, snapping once close.
@@ -347,7 +388,7 @@ struct RerunOrbitController: Sendable {
     }
 
     /// Eye and look-at target with the picture lifted by `lift` of the view's height — a pedestal
-    /// move along the camera's own up, so the room sits in the clear band between HUD and strip.
+    /// move along the camera's own up, so the room sits in the middle of the clear band.
     func eyeAndTarget(lift: Float, heightPixels: Float, verticalFov: Float = RerunFraming.verticalFov)
         -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
         let eye = pose.eye

@@ -54,7 +54,7 @@ struct RerunMesh: Sendable {
     }
 }
 
-/// What the HUD's figures toggle. The stage (grid, axes) is always on.
+/// What the settings sheet's layer rows toggle. The stage (grid, axes) is always on.
 enum RerunGroup: Hashable, Sendable, CaseIterable { case trail, points, planes, anchors }
 
 /// Every flat-colour layer the stage draws; each is one mesh with one colour.

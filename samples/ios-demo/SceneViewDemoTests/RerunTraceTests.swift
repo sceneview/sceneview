@@ -148,6 +148,138 @@ final class RerunTraceTests: XCTestCase {
         XCTAssertTrue(rerunFilmstripFrames(count: 0, slots: 5).isEmpty)
         XCTAssertTrue(rerunFilmstripFrames(count: 10, slots: 0).isEmpty)
     }
+
+    // MARK: Room measure (the cases of Android's `RoomMeasureTest`)
+
+    private static let floorY: Float = -1.4
+    private static let wallHeight: Float = 2.4
+
+    /// A wall from (x0, z0) to (x1, z1), standing on the floor, turned `degrees` about +Y.
+    private func wall(_ id: Int, _ x0: Float, _ z0: Float, _ x1: Float, _ z1: Float, turned degrees: Float) -> RerunPlane {
+        let ends = [turn(x0, z0, degrees), turn(x1, z1, degrees)]
+        let low = Self.floorY
+        let high = Self.floorY + Self.wallHeight
+        return RerunPlane(id: id, kind: .wall, polygon: [
+            SIMD3(ends[0].x, low, ends[0].y), SIMD3(ends[1].x, low, ends[1].y),
+            SIMD3(ends[1].x, high, ends[1].y), SIMD3(ends[0].x, high, ends[0].y),
+        ])
+    }
+
+    private func turn(_ x: Float, _ z: Float, _ degrees: Float) -> SIMD2<Float> {
+        let angle = degrees * .pi / 180
+        return SIMD2(x * cos(angle) - z * sin(angle), x * sin(angle) + z * cos(angle))
+    }
+
+    /// Four walls of a 3.4 × 4.1 m room, none of them reaching its corners.
+    private func room(turned degrees: Float) -> [RerunPlane] {
+        [
+            wall(1, 0.2, 0, 3.2, 0, turned: degrees),
+            wall(2, 3.4, 0.3, 3.4, 3.9, turned: degrees),
+            wall(3, 0, 4.1, 3.4, 4.1, turned: degrees),
+            wall(4, 0, 0.1, 0, 4, turned: degrees),
+        ]
+    }
+
+    func testRoomIsMeasuredSquareToItsWalls() throws {
+        let measure = try XCTUnwrap(RerunRoomMeasure.of(room(turned: 30), floorY: Self.floorY))
+        XCTAssertEqual(measure.yaw * 180 / .pi, 30, accuracy: 0.5)
+        XCTAssertEqual(measure.width, 3.4, accuracy: 0.02)
+        XCTAssertEqual(measure.depth, 4.1, accuracy: 0.02)
+        XCTAssertEqual(measure.summary, "3.4 × 4.1 m · 14 m²")
+    }
+
+    /// Walls a quarter turn apart agree on the room's direction: 70° reads as −20°.
+    func testRoomYawIsModuloAQuarterTurn() throws {
+        let measure = try XCTUnwrap(RerunRoomMeasure.of(room(turned: 70), floorY: Self.floorY))
+        XCTAssertEqual(measure.yaw * 180 / .pi, -20, accuracy: 0.5)
+        XCTAssertEqual(measure.area, 13.94, accuracy: 0.15)
+    }
+
+    func testRoomNeedsTheFloorOrAWall() {
+        let height = Self.floorY + 0.45
+        let table = RerunPlane(id: 1, kind: .floor, polygon: [
+            SIMD3(0, height, 0), SIMD3(1.2, height, 0), SIMD3(1.2, height, 0.8), SIMD3(0, height, 0.8),
+        ])
+        XCTAssertNil(RerunRoomMeasure.of([table], floorY: Self.floorY), "A table top is not the room's floor")
+        XCTAssertNil(RerunRoomMeasure.of([], floorY: Self.floorY))
+    }
+
+    func testAStripIsNotARoom() {
+        let y = Self.floorY
+        let strip = RerunPlane(id: 1, kind: .floor, polygon: [
+            SIMD3(0, y, 0), SIMD3(2, y, 0), SIMD3(2, y, 0.4), SIMD3(0, y, 0.4),
+        ])
+        XCTAssertNil(RerunRoomMeasure.of([strip], floorY: y))
+    }
+
+    func testRoomWording() {
+        XCTAssertEqual(RerunRoomMeasure.metres(3.43), "3.4 m")
+        XCTAssertEqual(RerunRoomMeasure.metres(12.4), "12 m")
+        XCTAssertEqual(RerunRoomMeasure.squareMetres(2.5), "2.5 m²")
+        XCTAssertEqual(RerunRoomMeasure.squareMetres(13.94), "14 m²")
+    }
+
+    /// The sample's room size is read from its own planes, never typed in — and at the instant
+    /// both apps' captures stop on, it is the room Android names for the same recording.
+    func testShowcaseRoomComesFromItsPlanes() throws {
+        let pack = try showcase()
+        let whole = pack.trace.frameAt(pack.trace.duration)
+        let floorY = RerunGeometry.floorHeight(whole)
+        let measure = try XCTUnwrap(RerunRoomMeasure.of(whole.planes, floorY: floorY))
+        XCTAssertGreaterThan(measure.width, RerunRoomMeasure.minSide)
+        XCTAssertGreaterThan(measure.depth, RerunRoomMeasure.minSide)
+        XCTAssertEqual(measure.area, measure.width * measure.depth, accuracy: 0.001)
+
+        let paused = pack.trace.frameAt(pack.trace.duration * RerunShowcaseDemo.qaFraction)
+        XCTAssertEqual(RerunRoomMeasure.of(paused.planes, floorY: floorY)?.summary, "3.9 × 3.8 m · 15 m²")
+    }
+
+    // MARK: Framing
+
+    private static let box: (SIMD3<Float>, SIMD3<Float>) = (SIMD3(-2, -1.4, -2), SIMD3(2, 1, 2))
+
+    /// On a wide window the height limits the picture: a chrome that takes some of it sends the
+    /// camera back until the room fits the band that is left.
+    func testAWideWindowFramesTheRoomInItsClearBand() {
+        let whole = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17)
+        let banded = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: 0.63)
+        XCTAssertGreaterThan(banded.distance, whole.distance * 1.3)
+    }
+
+    /// On a tall window the width limits it: the chrome's band changes nothing.
+    func testATallWindowIsFramedByItsWidth() {
+        let whole = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46)
+        let banded = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46, band: 0.68)
+        XCTAssertEqual(banded.distance, whole.distance, accuracy: 0.001)
+    }
+
+    /// Seen from above, a room shows more of its near floor than of its far ceiling: it sits
+    /// under the picture's middle, and the more so the closer the camera stands.
+    func testARoomSeenFromAboveSags() {
+        let home = RerunFraming.home(bounds: Self.box, azimuth: RerunFraming.homeAzimuth, aspect: 0.46)
+        let sag = RerunFraming.sag(bounds: Self.box, pose: home)
+        XCTAssertGreaterThan(sag, 0)
+        XCTAssertLessThanOrEqual(sag, RerunFraming.maxSag)
+
+        var far = home
+        far.distance *= 4
+        XCTAssertLessThan(RerunFraming.sag(bounds: Self.box, pose: far), sag)
+        XCTAssertEqual(RerunFraming.sag(bounds: nil, pose: home), 0)
+    }
+
+    /// A camera inside the room has no whole room to centre.
+    func testNoSagFromInsideTheRoom() {
+        var inside = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46)
+        inside.distance = RerunFraming.minDistance
+        XCTAssertEqual(RerunFraming.sag(bounds: Self.box, pose: inside), 0)
+    }
+
+    /// A chrome that leaves almost nothing does not send the camera out of the room's reach.
+    func testTheBandHasAFloor() {
+        let least = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: RerunFraming.minBand)
+        let none = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: 0)
+        XCTAssertEqual(none.distance, least.distance, accuracy: 0.001)
+    }
 }
 
 #endif

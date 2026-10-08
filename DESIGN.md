@@ -716,6 +716,41 @@ indicator; every value follows the safe area, none is a constant offset from the
   fade stays.
 - **VoiceOver order** is back, title, scene, accessory, dock — Settings last.
 
+### Room Scan replay (iOS demo)
+
+The iOS counterpart of the Android Room Scan screen (#4379): the scanned room owns the
+window, and whatever is read once lives in the settings sheet. It stands in `DemoScaffold`
+and adds no token of its own — every value below is an existing one.
+
+| Element | Value |
+|---|---|
+| Timeline bar | one glass capsule, `touch-target` (48pt) tall: play/pause · filmstrip with playhead · `0:11 / 0:18` |
+| Timeline, portrait | the scaffold's accessory slot, 12pt above the dock |
+| Timeline, landscape | the title row's trailing slot, `compactCardWidth` (280pt) wide — the dock keeps the bottom edge to itself |
+| Filmstrip | bar height − `space-sm`; frames still to come dimmed |
+| Layer dot (sheet) | 10pt, layer colour, 1pt `control-outline` ring so a near-white layer reads on a light sheet |
+| Clear band, floor | 30 % of the view's height — under it the room is framed for the whole view instead |
+| Sag lift, cap | 20 % of the view's height |
+
+- **One bar, no card.** No status card, no figures row and no live-camera picture-in-picture
+  stand on the scene. Path, Planes, Points and Anchors are toggles in the sheet, each with
+  its figure at the playhead; the room's size (`3.9 × 3.8 m · 15 m²`) sits under them, with
+  the privacy line. Every figure is counted from the recording — a room the planes do not
+  outline shows no size rather than a guess.
+- **A tap gives the scene everything.** A tap on the stage hides the title row, the timeline,
+  the dock, the status bar and the home indicator; another tap brings them back. A drag or a
+  pinch never toggles.
+- **The room is framed in what the chrome leaves.** The stage knows the band no chrome
+  stands on — the title row above, the timeline and dock below, the open sheet — and frames
+  the room in its middle, easing when the band changes, so opening the sheet lifts the room
+  above it instead of covering it. A room seen from above shows more near floor than far
+  ceiling and sits low: the picture is lifted by that sag as well.
+- **Scanning.** While ARKit records, the screen is the camera: one status line in the title
+  row (the red dot, "Scanning", the clock) and the shutter. The scan's counts are in the
+  sheet. Proven on a device only: the simulator has no ARKit session.
+- **The stage stays dark in both schemes**, as every `DemoScaffold` stage does; only the
+  landscape sheet follows the theme.
+
 ---
 
 ## Breakpoints

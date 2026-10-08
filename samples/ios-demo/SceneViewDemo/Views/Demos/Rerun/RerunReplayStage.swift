@@ -10,25 +10,36 @@ import UIKit
 /// both — the room is rebuilt as the playhead moves and the camera cranes in then drifts — so
 /// it hosts its own `RealityView`, the same way the library does under the hood.
 ///
-/// `compact` is the camera view's picture-in-picture: no touch, smaller points, no lift.
+/// The view is full-bleed and the chrome floats over it: `chromeTop` and `chromeBottom` say how
+/// much of the view the chrome stands on at rest, and the room is framed in the band between.
+/// An open settings sheet narrows that band from below, so the room stays in view above it
+/// while its layers are switched.
 struct RerunReplayStage: View {
     let session: RerunReplaySession
-    var compact = false
     /// The map's near-vertical view.
     var overhead = false
     /// Bumped to hand the camera back to the automatic framing (the 3D button tapped again).
     var recenterToken = 0
     /// The slow turntable drift and the crane-in intro. Off in QA so captures are deterministic.
     var drift = true
+    /// Points of the view under the title row, and under the timeline and the dock.
+    var chromeTop: CGFloat = 0
+    var chromeBottom: CGFloat = 0
+    var chromeHidden = false
+    /// A tap on the room: the host hides or shows its chrome.
+    var onTap: () -> Void = {}
 
     @Environment(\.displayScale) private var displayScale
+    /// What the settings sheet hides of the view's bottom, 0 while it is closed.
+    @Environment(\.demoControlsCover) private var sheetCover
     @State private var renderer = RerunStageRenderer()
 
     var body: some View {
         GeometryReader { proxy in
             RealityView { content in
                 content.camera = .virtual
-                renderer.install(in: &content, session: session, compact: compact, drift: drift, overhead: overhead)
+                renderer.setChrome(top: chromeTop, bottom: max(chromeBottom, sheetCover))
+                renderer.install(in: &content, session: session, drift: drift, overhead: overhead)
             }
             .onAppear { renderer.resize(proxy.size, scale: displayScale) }
             .onChange(of: proxy.size) { _, size in renderer.resize(size, scale: displayScale) }
@@ -36,47 +47,51 @@ struct RerunReplayStage: View {
         .background(SceneViewTokens.Stage.background)
         .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
         .onChange(of: recenterToken) { _, _ in renderer.recenter() }
-        .modifier(OrbitGestures(enabled: !compact, renderer: renderer, displayScale: displayScale))
+        .onChange(of: [chromeTop, chromeBottom, sheetCover]) { _, _ in
+            renderer.setChrome(top: chromeTop, bottom: max(chromeBottom, sheetCover))
+        }
+        // With the sheet up, a tap on the room is not a request to put the chrome away.
+        .modifier(OrbitGestures(renderer: renderer, displayScale: displayScale) {
+            if sheetCover == 0 { onTap() }
+        })
         .accessibilityElement()
         .accessibilityLabel("Recorded room in 3D")
-        .accessibilityHint(compact ? "" : "Drag to orbit, pinch to zoom, double-tap to recenter.")
+        .accessibilityHint("Drag to orbit, pinch to zoom, double-tap to recenter.")
+        .accessibilityAction(named: chromeHidden ? "Show controls" : "Hide controls", onTap)
     }
 }
 
-/// One finger orbits (with inertia), a pinch zooms, a double tap recenters.
+/// One finger orbits (with inertia), a pinch zooms, a double tap recenters, a tap is the host's.
 private struct OrbitGestures: ViewModifier {
-    let enabled: Bool
     let renderer: RerunStageRenderer
     let displayScale: CGFloat
+    let onTap: () -> Void
     @State private var lastTranslation: CGSize?
 
     func body(content: Content) -> some View {
-        if enabled {
-            content
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { value in
-                            let last = lastTranslation ?? .zero
-                            if lastTranslation == nil { renderer.orbit.dragBegan() }
-                            lastTranslation = value.translation
-                            renderer.orbit.dragged(dx: Float((value.translation.width - last.width) * displayScale),
-                                                   dy: Float((value.translation.height - last.height) * displayScale))
-                        }
-                        .onEnded { _ in
-                            lastTranslation = nil
-                            renderer.orbit.dragEnded()
-                        }
-                )
-                .simultaneousGesture(
-                    MagnifyGesture()
-                        .onChanged { value in renderer.orbit.pinched(magnification: Float(value.magnification)) }
-                        .onEnded { _ in renderer.orbit.pinchEnded() }
-                )
-                .onTapGesture(count: 2) { renderer.recenter() }
-        } else {
-            content.allowsHitTesting(false)
-        }
+        content
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        let last = lastTranslation ?? .zero
+                        if lastTranslation == nil { renderer.orbit.dragBegan() }
+                        lastTranslation = value.translation
+                        renderer.orbit.dragged(dx: Float((value.translation.width - last.width) * displayScale),
+                                               dy: Float((value.translation.height - last.height) * displayScale))
+                    }
+                    .onEnded { _ in
+                        lastTranslation = nil
+                        renderer.orbit.dragEnded()
+                    }
+            )
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in renderer.orbit.pinched(magnification: Float(value.magnification)) }
+                    .onEnded { _ in renderer.orbit.pinchEnded() }
+            )
+            .onTapGesture(count: 2) { renderer.recenter() }
+            .onTapGesture(perform: onTap)
     }
 }
 
@@ -101,16 +116,19 @@ final class RerunStageRenderer {
     static let frameInterval: Double = 0.05
     static let statsInterval: Double = 0.25
     static let anchorModelSize: Float = 0.3
-    /// The main stage lifts the room into the clear band between the HUD and the filmstrip.
-    static let mainLift: Float = 0.07
-    /// The picture-in-picture packs the room into a few hundred pixels: points shrink there.
-    static let pipPointScale: Float = 0.55
+    /// How fast the framing follows a chrome that grows or shrinks (the settings sheet), per second.
+    static let chromeEase: Float = 8
 
     var orbit = RerunOrbitController()
 
     private weak var session: RerunReplaySession?
-    private var compact = false
     private var viewport = CGSize(width: 1, height: 1)
+    private var chromeTop: CGFloat = 0
+    private var chromeBottom: CGFloat = 0
+    /// The chrome the room is framed against now: it eases toward `chromeTop` / `chromeBottom`.
+    private var framedChrome: (top: CGFloat, bottom: CGFloat)?
+    /// The sag the picture is lifted by now: it eases toward the home pose's.
+    private var framedSag: Float?
     private var scale: CGFloat = 3
     private lazy var root = Entity()
     private lazy var camera = PerspectiveCamera()
@@ -132,14 +150,12 @@ final class RerunStageRenderer {
     private var clock: Double = 0
     private var frameAt: Double = -1
     private var statsAt: Double = -1
-    private var fpsMeter = RerunFpsMeter()
 
     // MARK: Lifecycle
 
     func install(in content: inout RealityViewCameraContent, session: RerunReplaySession,
-                 compact: Bool, drift: Bool, overhead: Bool) {
+                 drift: Bool, overhead: Bool) {
         self.session = session
-        self.compact = compact
         orbit = RerunOrbitController(drift: drift)
         orbit.overhead = overhead
 
@@ -168,6 +184,30 @@ final class RerunStageRenderer {
 
     func setOverhead(_ value: Bool) { orbit.overhead = value }
 
+    func setChrome(top: CGFloat, bottom: CGFloat) {
+        chromeTop = max(top, 0)
+        chromeBottom = max(bottom, 0)
+    }
+
+    /// The share of the view's height the chrome leaves clear, and how far that band's middle
+    /// sits above the view's own, as a share of that height.
+    private func clearBand(_ delta: Float) -> (share: Float, lift: Float) {
+        let ease = CGFloat(min(delta * Self.chromeEase, 1))
+        let from = framedChrome ?? (chromeTop, chromeBottom)
+        let chrome = (top: from.top + (chromeTop - from.top) * ease,
+                      bottom: from.bottom + (chromeBottom - from.bottom) * ease)
+        framedChrome = chrome
+        let height = max(viewport.height, 1)
+        return (Float((height - chrome.top - chrome.bottom) / height), Float((chrome.bottom - chrome.top) / (2 * height)))
+    }
+
+    /// `sag` eased like the chrome, so switching to the map does not jolt the picture.
+    private func settled(_ sag: Float, _ delta: Float) -> Float {
+        let next = framedSag.map { $0 + (sag - $0) * min(delta * Self.chromeEase, 1) } ?? sag
+        framedSag = next
+        return next
+    }
+
     func recenter() { orbit.recenter() }
 
     private var heightPixels: Float { Float(viewport.height * scale) }
@@ -178,7 +218,6 @@ final class RerunStageRenderer {
         guard let session else { return }
         clock += Double(delta)
         session.tick(delta)
-        if fpsMeter.tick(clock) { session.fps = fpsMeter.fps }
 
         let time = session.time
         let current: RerunFrame
@@ -195,28 +234,28 @@ final class RerunStageRenderer {
         let whole = session.whole
         let bounds = RerunGeometry.contentBounds(whole)
         let aspect = Float(viewport.width / max(viewport.height, 1))
+        let band = clearBand(delta)
         let home = RerunFraming.home(bounds: bounds, azimuth: orbit.home.azimuth, aspect: aspect,
-                                     elevation: orbit.homeElevation, margin: RerunFraming.replayMargin)
+                                     band: band.share, elevation: orbit.homeElevation,
+                                     margin: RerunFraming.replayMargin)
         if orbit.following { orbit.home = home }
         if !orbit.hasFramedContent, bounds != nil {
             orbit.hasFramedContent = true
             if orbit.drift { orbit.playIntro(from: RerunIntro.start(for: home)) } else { orbit.snap(to: home) }
         }
         orbit.update(delta: delta)
-        let lift = compact ? 0 : Self.mainLift
-        let (eye, target) = orbit.eyeAndTarget(lift: lift, heightPixels: heightPixels)
+        let sag = settled(RerunFraming.sag(bounds: bounds, pose: home), delta)
+        let (eye, target) = orbit.eyeAndTarget(lift: band.lift + sag, heightPixels: heightPixels)
         camera.look(at: target, from: eye, relativeTo: nil)
 
         let style = RerunStyle.forOrbit(distance: orbit.pose.distance, verticalFov: RerunFraming.verticalFov,
                                         heightPixels: heightPixels)
-        let pointStyle = compact ? RerunStyle(metresPerPixel: style.metresPerPixel * Self.pipPointScale) : style
         let floorY = RerunGeometry.floorHeight(whole)
-        sync(current, whole: whole, style: style, pointStyle: pointStyle, floorY: floorY, session: session)
+        sync(current, whole: whole, style: style, pointStyle: style, floorY: floorY, session: session)
 
         if clock - statsAt >= Self.statsInterval {
             statsAt = clock
-            let stats = RerunStats(frame: current)
-            if stats != session.stats { session.stats = stats }
+            session.count(current)
         }
     }
 

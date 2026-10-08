@@ -934,8 +934,9 @@ enum SceneViewTokens {
         static let liveWallFill: UInt32 = 0x66D2_A8FF
         static let liveFloorOutline: UInt32 = 0xFFA4_C1FF
         static let liveWallOutline: UInt32 = 0xFFD2_A8FF
-        /// The picture-in-picture: a portrait 3:4 card.
-        static let pipSize = CGSize(width: 128, height: 170)
+        /// A card that shares a row with something else on a compact-height window — the
+        /// replay timeline beside the title in landscape. Android's `compactCardWidth`.
+        static let compactCardWidth: CGFloat = 280
 
         static func color(_ argb: UInt32) -> Color {
             Color(.sRGB,
