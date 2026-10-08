@@ -1312,12 +1312,23 @@ fun ARSceneView(
     // frame in demos that surface `latestFrame` / `isTracking` to UI state) and
     // collapse the scene back to the neutral baseline — which on KTX1-loaded IBLs
     // is reflections-mostly with limited diffuse SH, producing visible-but-dim
-    // metals at best and flat-black models at worst. `LaunchedEffect(environment)`
+    // metals at best and flat-black models at worst. Keying the effect on `environment`
     // restores the baseline only when the env instance actually changes (initial
     // composition, environment swap by the caller).
-    LaunchedEffect(environment, scene) {
+    //
+    // A `DisposableEffect`, not a `LaunchedEffect` (#4330): the scene lets go of an
+    // environment before its owner destroys it. `rememberEnvironment(key = …)` destroys the
+    // previous environment in the same pass that hands over the next one, and Filament's
+    // `Scene.setSkybox` reads the skybox it replaces. This effect is remembered after the
+    // caller's, so its `onDispose` runs first. A light-estimation IBL built since is not this
+    // effect's to clear — `builtIndirectLightRef` owns that one.
+    DisposableEffect(environment, scene) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
+        onDispose {
+            if (scene.skybox === environment.skybox) scene.skybox = null
+            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+        }
     }
 
     SideEffect {
