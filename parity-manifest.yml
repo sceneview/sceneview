@@ -1373,14 +1373,19 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/AboutTab.swift
     contract: >-
       Identity (mark, version, tagline), Support card (Open Collective, GitHub
-      Sponsors), groups More apps (3D AR Model Viewer, Will It Fit — Google
-      Play listings) / Learn / App (Send feedback, Release notes) / Legal
-      (License, Credits), footer
+      Sponsors), groups More apps (each app's own store listing: Google Play
+      on Android, App Store on iOS — only apps live on that store) / Learn /
+      App (Send feedback, Release notes) / Legal (License, Credits), footer
     parity: diverges
     evidence: >-
-      iOS: 5 flat cards, no groups, no Send feedback, no Release notes, no
-      More apps group (Android-only so far; it links Google Play listings);
-      AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
+      iOS: 5 flat cards, no Learn / App / Legal groups, no Send feedback, no
+      Release notes; AboutTab.swift `aboutCards`; other tagline in `identity`;
+      Android RootScreen.kt:381-440.
+      More apps group on both: Android lists 3D AR Model Viewer and Will It
+      Fit (Google Play); iOS lists 3D AR Model Viewer only (`MoreApp.all`,
+      App Store id 6790808866) — Will It Fit has no App Store release, and an
+      iOS app does not link another store. On iOS the group sits under the
+      identity block, where Android has it under the support card;
       no Support card on iOS by design: App Review rejected 4.48.0 under
       guideline 3.1.1 (donation links outside In-App Purchase), #4197.
       The identity mark is a 3D stage since #4215 (`AboutTab.swift`'s
