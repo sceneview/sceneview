@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo: the room scan no longer shows a "Session MP4" switch.** The pill that sat above the action bar of Rerun AR Replay — on its landing, its replay and its live camera — is gone, so the demo opens straight on the room scan and nothing covers the scene. The ARCore session recorder behind it is a developer tool and stays reachable by deep link (`sceneview://demo/ar-rerun?tab=session-mp4`).
