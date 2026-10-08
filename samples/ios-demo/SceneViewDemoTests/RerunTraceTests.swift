@@ -236,49 +236,160 @@ final class RerunTraceTests: XCTestCase {
 
     // MARK: Framing
 
-    private static let box: (SIMD3<Float>, SIMD3<Float>) = (SIMD3(-2, -1.4, -2), SIMD3(2, 1, 2))
+    /// A room that is not square to the world, with one tall wall on a side and a path inside.
+    private static let room: RerunSubject = {
+        let floor: [SIMD3<Float>] = [SIMD3(-2.4, -1.3, -1), SIMD3(1.9, -1.3, -2.2), SIMD3(2.3, -1.3, 1.6), SIMD3(-1.5, -1.3, 2)]
+        let wall: [SIMD3<Float>] = [SIMD3(1.9, 1.1, -2.2), SIMD3(2.3, 1.1, 1.6)]
+        let path: [SIMD3<Float>] = [SIMD3(0, 0.1, 0), SIMD3(-1, 0.2, 0.6)]
+        return RerunSubject(centre: SIMD3(-0.05, -0.1, -0.1), points: floor + wall + path)
+    }()
+    /// An iPhone held upright and one held sideways.
+    private static let tall: Float = 402.0 / 874
+    private static let wide: Float = 874.0 / 402
+    /// `chrome-margin` as shares of an upright iPhone's width and height.
+    private static let inset = SIMD2<Float>(16.0 / 402, 16.0 / 874)
+    private static let slack: Float = 0.002
 
-    /// On a wide window the height limits the picture: a chrome that takes some of it sends the
-    /// camera back until the room fits the band that is left.
-    func testAWideWindowFramesTheRoomInItsClearBand() {
-        let whole = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17)
-        let banded = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: 0.63)
-        XCTAssertGreaterThan(banded.distance, whole.distance * 1.3)
+    /// The rectangle `points` take in the picture `fit` shoots, -1 to 1 across the view each way.
+    private static func picture(_ points: [SIMD3<Float>], _ fit: (pose: RerunOrbitPose, lift: Float),
+                                aspect: Float) -> (left: Float, right: Float, bottom: Float, top: Float) {
+        let (eye, target) = RerunOrbitController(pose: fit.pose).eyeAndTarget(lift: fit.lift, heightPixels: 1000)
+        let forward = simd_normalize(target - eye)
+        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let tanVertical = tan(RerunFraming.verticalFov * .pi / 360)
+        var box = (left: Float.greatestFiniteMagnitude, right: -Float.greatestFiniteMagnitude,
+                   bottom: Float.greatestFiniteMagnitude, top: -Float.greatestFiniteMagnitude)
+        for point in points {
+            let ray = point - eye
+            let depth = simd_dot(ray, forward)
+            let x = simd_dot(ray, right) / (depth * tanVertical * aspect)
+            let y = simd_dot(ray, up) / (depth * tanVertical)
+            box = (min(box.left, x), max(box.right, x), min(box.bottom, y), max(box.top, y))
+        }
+        return box
     }
 
-    /// On a tall window the width limits it: the chrome's band changes nothing.
-    func testATallWindowIsFramedByItsWidth() {
-        let whole = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46)
-        let banded = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46, band: 0.68)
-        XCTAssertEqual(banded.distance, whole.distance, accuracy: 0.001)
+    /// On a tall window the room's sides are what the camera backs away for: it runs from one
+    /// margin to the other, cuts nothing, and sits midway up the band the chrome leaves.
+    func testATallWindowFitsTheRoomBetweenItsSides() {
+        let fit = RerunFraming.fit(Self.room, azimuth: RerunFraming.homeAzimuth, aspect: Self.tall,
+                                   band: 0.68, bandLift: 0.03, inset: Self.inset)
+        let box = Self.picture(Self.room.points, fit, aspect: Self.tall)
+        let side = 1 - 2 * Self.inset.x
+        XCTAssertEqual(box.right, side, accuracy: Self.slack)
+        XCTAssertEqual(box.left, -side, accuracy: Self.slack)
+        XCTAssertLessThan(box.top, 0.06 + 0.68 - 2 * Self.inset.y)
+        XCTAssertGreaterThan(box.bottom, 0.06 - 0.68 + 2 * Self.inset.y)
+        XCTAssertEqual((box.top + box.bottom) / 2, 0.06, accuracy: Self.slack)
     }
 
-    /// Seen from above, a room shows more of its near floor than of its far ceiling: it sits
-    /// under the picture's middle, and the more so the closer the camera stands.
-    func testARoomSeenFromAboveSags() {
-        let home = RerunFraming.home(bounds: Self.box, azimuth: RerunFraming.homeAzimuth, aspect: 0.46)
-        let sag = RerunFraming.sag(bounds: Self.box, pose: home)
-        XCTAssertGreaterThan(sag, 0)
-        XCTAssertLessThanOrEqual(sag, RerunFraming.maxSag)
+    /// On a wide window the band is what limits the picture: the room runs from its bottom to
+    /// its top less the margin, midway between the sides, which have room to spare.
+    func testAWideWindowFitsTheRoomInItsClearBand() {
+        let inset = SIMD2<Float>(16.0 / 874, 16.0 / 402)
+        let fit = RerunFraming.fit(Self.room, azimuth: RerunFraming.homeAzimuth, aspect: Self.wide,
+                                   band: 0.64, bandLift: 0.05, inset: inset)
+        let box = Self.picture(Self.room.points, fit, aspect: Self.wide)
+        let half = 0.64 - 2 * inset.y
+        XCTAssertEqual(box.top, 0.1 + half, accuracy: Self.slack)
+        XCTAssertEqual(box.bottom, 0.1 - half, accuracy: Self.slack)
+        XCTAssertLessThan(box.right, 1 - 2 * inset.x)
+        XCTAssertEqual((box.left + box.right) / 2, 0, accuracy: Self.slack)
 
-        var far = home
-        far.distance *= 4
-        XCTAssertLessThan(RerunFraming.sag(bounds: Self.box, pose: far), sag)
-        XCTAssertEqual(RerunFraming.sag(bounds: nil, pose: home), 0)
+        // With the chrome put away the whole height is the room's: the camera comes closer.
+        let whole = RerunFraming.fit(Self.room, azimuth: RerunFraming.homeAzimuth, aspect: Self.wide, inset: inset)
+        XCTAssertLessThan(whole.pose.distance, fit.pose.distance)
+        let all = Self.picture(Self.room.points, whole, aspect: Self.wide)
+        XCTAssertEqual(all.top, 1 - 2 * inset.y, accuracy: Self.slack)
+        XCTAssertEqual(all.bottom, -(1 - 2 * inset.y), accuracy: Self.slack)
     }
 
-    /// A camera inside the room has no whole room to centre.
-    func testNoSagFromInsideTheRoom() {
-        var inside = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 0.46)
-        inside.distance = RerunFraming.minDistance
-        XCTAssertEqual(RerunFraming.sag(bounds: Self.box, pose: inside), 0)
+    /// An open settings sheet leaves the top of the view: the room is shot whole above it.
+    func testAnOpenSheetLiftsTheRoomAboveIt() {
+        let fit = RerunFraming.fit(Self.room, azimuth: RerunFraming.homeAzimuth, aspect: Self.tall,
+                                   band: 0.41, bandLift: 0.23, inset: Self.inset)
+        let box = Self.picture(Self.room.points, fit, aspect: Self.tall)
+        XCTAssertLessThanOrEqual(box.top, 0.46 + 0.41 - 2 * Self.inset.y + Self.slack)
+        XCTAssertGreaterThanOrEqual(box.bottom, 0.46 - 0.41 + 2 * Self.inset.y - Self.slack)
+        XCTAssertLessThanOrEqual(box.right, 1 - 2 * Self.inset.x + Self.slack)
+        XCTAssertGreaterThanOrEqual(box.left, -(1 - 2 * Self.inset.x) - Self.slack)
+    }
+
+    /// The turntable shows the room from every side, and the map from above: nothing is ever
+    /// cut, and the room always reaches one pair of the rectangle's edges.
+    func testTheRoomIsHeldWholeFromEverySide() {
+        let side = 1 - 2 * Self.inset.x
+        let half = 0.68 - 2 * Self.inset.y
+        for elevation in [RerunFraming.homeElevation, RerunFraming.mapElevation] {
+            for azimuth in stride(from: Float(0), to: 360, by: 15) {
+                let fit = RerunFraming.fit(Self.room, azimuth: azimuth, elevation: elevation, aspect: Self.tall,
+                                           band: 0.68, bandLift: 0.03, inset: Self.inset)
+                let box = Self.picture(Self.room.points, fit, aspect: Self.tall)
+                let across = (box.right - box.left) / (2 * side)
+                let upward = (box.top - box.bottom) / (2 * half)
+                XCTAssertLessThanOrEqual(max(across, upward), 1 + Self.slack, "azimuth \(azimuth), elevation \(elevation)")
+                XCTAssertEqual(max(across, upward), 1, accuracy: Self.slack, "azimuth \(azimuth), elevation \(elevation)")
+                XCTAssertEqual((box.left + box.right) / 2, 0, accuracy: Self.slack, "azimuth \(azimuth)")
+                XCTAssertEqual((box.top + box.bottom) / 2, 0.06, accuracy: Self.slack, "azimuth \(azimuth)")
+            }
+        }
     }
 
     /// A chrome that leaves almost nothing does not send the camera out of the room's reach.
     func testTheBandHasAFloor() {
-        let least = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: RerunFraming.minBand)
-        let none = RerunFraming.home(bounds: Self.box, azimuth: 0, aspect: 2.17, band: 0)
-        XCTAssertEqual(none.distance, least.distance, accuracy: 0.001)
+        let least = RerunFraming.fit(Self.room, azimuth: 0, aspect: Self.wide, band: RerunFraming.minBand)
+        let none = RerunFraming.fit(Self.room, azimuth: 0, aspect: Self.wide, band: 0)
+        XCTAssertEqual(none.pose.distance, least.pose.distance, accuracy: 0.001)
+    }
+
+    /// A take where the phone barely moved is framed as a room would be, not from a hand away.
+    func testASmallTakeKeepsARoomSizedView() {
+        let dot = RerunSubject(centre: .zero, points: [.zero, SIMD3(0.05, 0, 0)])
+        let fit = RerunFraming.fit(dot, azimuth: 0, aspect: Self.tall, inset: Self.inset)
+        let side = (1 - 2 * Self.inset.x) * tan(RerunFraming.verticalFov * .pi / 360) * Self.tall
+        XCTAssertEqual(fit.pose.distance, RerunFraming.minSubjectRadius / side, accuracy: 0.01)
+    }
+
+    /// Before anything is known of the room, the default pose stands, lifted into the band.
+    func testNothingToFrameKeepsTheDefaultPose() {
+        let fit = RerunFraming.fit(nil, azimuth: 10, aspect: Self.tall, band: 0.68, bandLift: 0.03)
+        XCTAssertEqual(fit.pose.distance, RerunFraming.defaultPose.distance)
+        XCTAssertEqual(fit.pose.azimuth, 10)
+        XCTAssertEqual(fit.lift, 0.03)
+    }
+
+    /// The sample session on an iPhone held upright: every wall, the floor and the whole path
+    /// land inside the margins — under the title row and above the timeline, above the open
+    /// sheet, and in the whole view once the chrome is put away — and fill the width.
+    func testTheShowcaseRoomIsFramedWhole() throws {
+        let pack = try showcase()
+        let subject = try XCTUnwrap(RerunGeometry.subject(pack.trace.frameAt(pack.trace.duration)))
+        XCTAssertGreaterThan(subject.points.count, 10)
+        let paused = pack.trace.frameAt(pack.trace.duration * RerunShowcaseDemo.qaFraction)
+        let drawn = paused.trail + paused.planes.flatMap(\.polygon) + paused.anchors.map(\.pose.position)
+        let side = 1 - 2 * Self.inset.x
+        for (band, bandLift) in [(Float(0.68), Float(0.03)), (0.41, 0.23), (1, 0)] {
+            let fit = RerunFraming.fit(subject, azimuth: RerunFraming.homeAzimuth, aspect: Self.tall,
+                                       band: band, bandLift: bandLift, inset: Self.inset)
+            let half = band - 2 * Self.inset.y
+            for points in [subject.points, drawn] {
+                let box = Self.picture(points, fit, aspect: Self.tall)
+                XCTAssertLessThanOrEqual(box.right, side + Self.slack, "band \(band)")
+                XCTAssertGreaterThanOrEqual(box.left, -side - Self.slack, "band \(band)")
+                XCTAssertLessThanOrEqual(box.top, 2 * bandLift + half + Self.slack, "band \(band)")
+                XCTAssertGreaterThanOrEqual(box.bottom, 2 * bandLift - half - Self.slack, "band \(band)")
+            }
+            // The take reaches one pair of the rectangle's edges: it fills it, it does not float.
+            let box = Self.picture(subject.points, fit, aspect: Self.tall)
+            let filled = max((box.right - box.left) / (2 * side), (box.top - box.bottom) / (2 * half))
+            XCTAssertEqual(filled, 1, accuracy: Self.slack, "band \(band)")
+        }
+        // Paused where the capture is taken, the room already runs across most of the width.
+        let fit = RerunFraming.fit(subject, azimuth: RerunFraming.homeAzimuth, aspect: Self.tall,
+                                   band: 0.68, bandLift: 0.03, inset: Self.inset)
+        let now = Self.picture(drawn, fit, aspect: Self.tall)
+        XCTAssertGreaterThan((now.right - now.left) / (2 * side), 0.8)
     }
 }
 

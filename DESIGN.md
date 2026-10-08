@@ -729,8 +729,8 @@ and adds no token of its own — every value below is an existing one.
 | Timeline, landscape | the title row's trailing slot, `compactCardWidth` (280pt) wide — the dock keeps the bottom edge to itself |
 | Filmstrip | bar height − `space-sm`; frames still to come dimmed |
 | Layer dot (sheet) | 10pt, layer colour, 1pt `control-outline` ring so a near-white layer reads on a light sheet |
-| Clear band, floor | 30 % of the view's height — under it the room is framed for the whole view instead |
-| Sag lift, cap | 20 % of the view's height |
+| Room margin | `chrome-margin` (16pt) between the room and the view's sides, the title row, and the timeline or the open sheet |
+| Clear band, floor | 30 % of the view's height — a chrome that leaves less does not send the camera farther |
 
 - **One bar, no card.** No status card, no figures row and no live-camera picture-in-picture
   stand on the scene. Path, Planes, Points and Anchors are toggles in the sheet, each with
@@ -738,13 +738,18 @@ and adds no token of its own — every value below is an existing one.
   the privacy line. Every figure is counted from the recording — a room the planes do not
   outline shows no size rather than a guess.
 - **A tap gives the scene everything.** A tap on the stage hides the title row, the timeline,
-  the dock, the status bar and the home indicator; another tap brings them back. A drag or a
-  pinch never toggles.
-- **The room is framed in what the chrome leaves.** The stage knows the band no chrome
-  stands on — the title row above, the timeline and dock below, the open sheet — and frames
-  the room in its middle, easing when the band changes, so opening the sheet lifts the room
-  above it instead of covering it. A room seen from above shows more near floor than far
-  ceiling and sits low: the picture is lifted by that sag as well.
+  the dock, the status bar and the home indicator, and the room is framed again in the whole
+  view; another tap brings them back. A drag or a pinch never toggles.
+- **The whole room, in what the chrome leaves.** The stage knows the band no chrome stands
+  on — the title row above, the timeline and dock below, the open sheet — and fits the room
+  in it: its planes, walls, path and anchors, every one inside the margin, upright or
+  sideways. The camera stands as close as the first edge the room reaches allows (the sides
+  on an upright phone, the band on a sideways one), so the room fills the band rather than
+  floating in it, and the picture eases when the band changes: opening the sheet lifts the
+  room above it instead of covering it. The fit is made for the side the room is seen from,
+  so through a turn of the turntable the camera eases nearer or farther with the room's
+  outline. Stray points far from the room do not set the framing — they may leave the
+  picture.
 - **Scanning.** While ARKit records, the screen is the camera: one status line in the title
   row (the red dot, "Scanning", the clock) and the shutter. The scan's counts are in the
   sheet. Proven on a device only: the simulator has no ARKit session.

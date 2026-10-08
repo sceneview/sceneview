@@ -463,6 +463,14 @@ enum RerunGeometry {
         return any ? (lo, hi) : nil
     }
 
+    /// What the camera frames, point by point: the path, the planes' outlines and the anchors
+    /// that ``contentBounds(_:)`` bounds.
+    static func subject(_ frame: RerunFrame) -> RerunSubject? {
+        guard let (lo, hi) = contentBounds(frame) else { return nil }
+        let points = frame.trail + frame.planes.flatMap(\.polygon) + frame.anchors.map(\.pose.position)
+        return RerunSubject(centre: (lo + hi) / 2, points: points)
+    }
+
     /// Grid extent: the content bounds snapped to the grid.
     static func stageBounds(_ frame: RerunFrame) -> (SIMD3<Float>, SIMD3<Float>) {
         let (lo, hi) = contentBounds(frame) ?? (SIMD3(-1, 0, -2), SIMD3(1, 0, 0.5))

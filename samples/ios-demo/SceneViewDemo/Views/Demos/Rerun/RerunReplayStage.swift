@@ -11,9 +11,10 @@ import UIKit
 /// it hosts its own `RealityView`, the same way the library does under the hood.
 ///
 /// The view is full-bleed and the chrome floats over it: `chromeTop` and `chromeBottom` say how
-/// much of the view the chrome stands on at rest, and the room is framed in the band between.
-/// An open settings sheet narrows that band from below, so the room stays in view above it
-/// while its layers are switched.
+/// much of the view the chrome stands on, and the whole room is fitted in the band between,
+/// `chrome-margin` clear of the view's sides and of that chrome. An open settings sheet narrows
+/// the band from below, so the room stays in view above it while its layers are switched; a
+/// chrome put away gives the room the whole view.
 struct RerunReplayStage: View {
     let session: RerunReplaySession
     /// The map's near-vertical view.
@@ -25,6 +26,7 @@ struct RerunReplayStage: View {
     /// Points of the view under the title row, and under the timeline and the dock.
     var chromeTop: CGFloat = 0
     var chromeBottom: CGFloat = 0
+    /// The chrome is put away: nothing stands on the view.
     var chromeHidden = false
     /// A tap on the room: the host hides or shows its chrome.
     var onTap: () -> Void = {}
@@ -38,7 +40,7 @@ struct RerunReplayStage: View {
         GeometryReader { proxy in
             RealityView { content in
                 content.camera = .virtual
-                renderer.setChrome(top: chromeTop, bottom: max(chromeBottom, sheetCover))
+                renderer.setChrome(top: covered.top, bottom: covered.bottom)
                 renderer.install(in: &content, session: session, drift: drift, overhead: overhead)
             }
             .onAppear { renderer.resize(proxy.size, scale: displayScale) }
@@ -47,8 +49,8 @@ struct RerunReplayStage: View {
         .background(SceneViewTokens.Stage.background)
         .onChange(of: overhead) { _, value in renderer.setOverhead(value) }
         .onChange(of: recenterToken) { _, _ in renderer.recenter() }
-        .onChange(of: [chromeTop, chromeBottom, sheetCover]) { _, _ in
-            renderer.setChrome(top: chromeTop, bottom: max(chromeBottom, sheetCover))
+        .onChange(of: [covered.top, covered.bottom]) { _, _ in
+            renderer.setChrome(top: covered.top, bottom: covered.bottom)
         }
         // With the sheet up, a tap on the room is not a request to put the chrome away.
         .modifier(OrbitGestures(renderer: renderer, displayScale: displayScale) {
@@ -58,6 +60,11 @@ struct RerunReplayStage: View {
         .accessibilityLabel("Recorded room in 3D")
         .accessibilityHint("Drag to orbit, pinch to zoom, double-tap to recenter.")
         .accessibilityAction(named: chromeHidden ? "Show controls" : "Hide controls", onTap)
+    }
+
+    /// What stands on the view's top and bottom now.
+    private var covered: (top: CGFloat, bottom: CGFloat) {
+        chromeHidden ? (0, sheetCover) : (chromeTop, max(chromeBottom, sheetCover))
     }
 }
 
@@ -127,8 +134,10 @@ final class RerunStageRenderer {
     private var chromeBottom: CGFloat = 0
     /// The chrome the room is framed against now: it eases toward `chromeTop` / `chromeBottom`.
     private var framedChrome: (top: CGFloat, bottom: CGFloat)?
-    /// The sag the picture is lifted by now: it eases toward the home pose's.
-    private var framedSag: Float?
+    /// The lift the picture is shot with now: it eases toward the framing's.
+    private var framedLift: Float?
+    /// What the camera frames: the whole take, worked out once.
+    private var subject: RerunSubject?
     private var scale: CGFloat = 3
     private lazy var root = Entity()
     private lazy var camera = PerspectiveCamera()
@@ -156,6 +165,7 @@ final class RerunStageRenderer {
     func install(in content: inout RealityViewCameraContent, session: RerunReplaySession,
                  drift: Bool, overhead: Bool) {
         self.session = session
+        subject = RerunGeometry.subject(session.whole)
         orbit = RerunOrbitController(drift: drift)
         orbit.overhead = overhead
 
@@ -201,11 +211,17 @@ final class RerunStageRenderer {
         return (Float((height - chrome.top - chrome.bottom) / height), Float((chrome.bottom - chrome.top) / (2 * height)))
     }
 
-    /// `sag` eased like the chrome, so switching to the map does not jolt the picture.
-    private func settled(_ sag: Float, _ delta: Float) -> Float {
-        let next = framedSag.map { $0 + (sag - $0) * min(delta * Self.chromeEase, 1) } ?? sag
-        framedSag = next
+    /// `lift` eased like the chrome, so switching to the map does not jolt the picture.
+    private func settled(_ lift: Float, _ delta: Float) -> Float {
+        let next = framedLift.map { $0 + (lift - $0) * min(delta * Self.chromeEase, 1) } ?? lift
+        framedLift = next
         return next
+    }
+
+    /// The margin the room keeps to the view's sides and to the chrome, as shares of the view.
+    private var inset: SIMD2<Float> {
+        let margin = SceneViewTokens.Chrome.margin
+        return SIMD2(Float(margin / max(viewport.width, 1)), Float(margin / max(viewport.height, 1)))
     }
 
     func recenter() { orbit.recenter() }
@@ -232,20 +248,18 @@ final class RerunStageRenderer {
         // A recording is framed whole from its first frame: the camera and the grid hold still
         // while it plays.
         let whole = session.whole
-        let bounds = RerunGeometry.contentBounds(whole)
         let aspect = Float(viewport.width / max(viewport.height, 1))
         let band = clearBand(delta)
-        let home = RerunFraming.home(bounds: bounds, azimuth: orbit.home.azimuth, aspect: aspect,
-                                     band: band.share, elevation: orbit.homeElevation,
-                                     margin: RerunFraming.replayMargin)
+        let fit = RerunFraming.fit(subject, azimuth: orbit.home.azimuth, elevation: orbit.homeElevation,
+                                   aspect: aspect, band: band.share, bandLift: band.lift, inset: inset)
+        let home = fit.pose
         if orbit.following { orbit.home = home }
-        if !orbit.hasFramedContent, bounds != nil {
+        if !orbit.hasFramedContent, subject != nil {
             orbit.hasFramedContent = true
             if orbit.drift { orbit.playIntro(from: RerunIntro.start(for: home)) } else { orbit.snap(to: home) }
         }
         orbit.update(delta: delta)
-        let sag = settled(RerunFraming.sag(bounds: bounds, pose: home), delta)
-        let (eye, target) = orbit.eyeAndTarget(lift: band.lift + sag, heightPixels: heightPixels)
+        let (eye, target) = orbit.eyeAndTarget(lift: settled(fit.lift, delta), heightPixels: heightPixels)
         camera.look(at: target, from: eye, relativeTo: nil)
 
         let style = RerunStyle.forOrbit(distance: orbit.pose.distance, verticalFov: RerunFraming.verticalFov,

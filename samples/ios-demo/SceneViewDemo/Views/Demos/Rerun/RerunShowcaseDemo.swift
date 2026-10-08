@@ -204,8 +204,8 @@ struct RerunShowcaseDemo: View {
         .animation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.medium), value: mode)
     }
 
-    /// The room, or the camera's frames, edge to edge. It is framed against the chrome at rest
-    /// and stays put when a tap puts that chrome away: the room does not jump.
+    /// The room, or the camera's frames, edge to edge. The room is framed in what the chrome
+    /// leaves, and in the whole view once a tap puts that chrome away.
     @ViewBuilder
     private func replay(top: CGFloat, bottom: CGFloat) -> some View {
         if let session {
