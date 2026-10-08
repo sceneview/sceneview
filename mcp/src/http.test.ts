@@ -24,7 +24,6 @@ beforeAll(async () => {
       ...process.env,
       OPENAI_APPS_CHALLENGE_TOKEN: CHALLENGE_TOKEN,
       SCENEVIEW_TELEMETRY: "0",
-      SCENEVIEW_SPONSOR_CTA: "0",
     },
     log: null,
   });
