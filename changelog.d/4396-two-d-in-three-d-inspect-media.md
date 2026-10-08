@@ -1,4 +1,0 @@
-<!-- category: Changed -->
-- **Android demo: 2D in 3D now has Inspect and Media modes.** Tap a rocket part to restyle it from a live card attached to the object, or orbit a gallery of a picture, a video and camera-facing labels.
-- **Android demo: the VideoNode of 2D in 3D plays a real film.** It streams a 16-second excerpt of Big Buck Bunny (© 2008 Blender Foundation, CC BY 3.0) instead of a colour gradient, keeps the picture's proportions, and says "Video unavailable" on its screen when the stream cannot be reached.
-- **Android demo: a phone held sideways keeps the scene clear.** In every demo the bands behind the title and behind the action bar covered more than half of the picture in landscape; the top one now fades out just under the status bar, the bottom one stops above the action bar, and the buttons, the title and the pills carry their own backing.
