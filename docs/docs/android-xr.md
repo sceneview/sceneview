@@ -60,7 +60,7 @@ in XR space.
 // build.gradle.kts
 dependencies {
     // SceneView
-    implementation("io.github.sceneview:sceneview:4.52.0")
+    implementation("io.github.sceneview:sceneview:4.53.0")
 
     // Jetpack XR
     implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")
@@ -336,9 +336,9 @@ Using SceneView inside Android XR provides advantages over SceneCore alone:
 // build.gradle.kts (app module)
 dependencies {
     // SceneView 3D
-    implementation("io.github.sceneview:sceneview:4.52.0")
+    implementation("io.github.sceneview:sceneview:4.53.0")
     // — or for AR —
-    implementation("io.github.sceneview:arsceneview:4.52.0")
+    implementation("io.github.sceneview:arsceneview:4.53.0")
 
     // Jetpack XR SDK
     implementation("androidx.xr.scenecore:scenecore:1.0.0-beta02")

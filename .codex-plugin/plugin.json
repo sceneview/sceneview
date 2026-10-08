@@ -1,6 +1,6 @@
 {
   "name": "sceneview",
-  "version": "4.52.0",
+  "version": "4.53.0",
   "description": "Build 3D and AR apps with the SceneView SDK \u2014 Jetpack Compose + Filament + ARCore, SwiftUI + RealityKit, and Filament.js on the web. Three skills plus the sceneview-mcp server.",
   "author": {
     "name": "SceneView",

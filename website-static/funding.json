@@ -1,0 +1,193 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.0.0",
+  "entity": {
+    "type": "group",
+    "role": "maintainer",
+    "name": "SceneView",
+    "email": "maintainers@sceneview.dev",
+    "description": "SceneView is a community-maintained open source project, started in 2021 as the successor of Google's discontinued Sceneform. It has no legal entity of its own: it is fiscally hosted by Open Source Collective, a US 501(c)(6) non-profit that holds the project's funds, signs agreements, issues invoices and publishes every incoming contribution and every expense on a public ledger. Funds are never paid to an individual maintainer; they pay for what the project consumes (build and test infrastructure, test devices, maintenance tooling, security work).",
+    "webpageUrl": {
+      "url": "https://sceneview.github.io"
+    }
+  },
+  "projects": [
+    {
+      "guid": "sceneview",
+      "name": "SceneView",
+      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. 48 contributors since 2021; used in production apps and public samples by companies in payments hardware, security cameras, accessibility and spatial computing.",
+      "webpageUrl": {
+        "url": "https://sceneview.github.io"
+      },
+      "repositoryUrl": {
+        "url": "https://github.com/sceneview/sceneview",
+        "wellKnown": "https://github.com/sceneview/sceneview/blob/main/.well-known/funding-manifest-urls"
+      },
+      "licenses": [
+        "spdx:Apache-2.0"
+      ],
+      "tags": [
+        "augmented-reality",
+        "3d-modeling",
+        "graphics",
+        "android",
+        "ios",
+        "mobile",
+        "developer-tools",
+        "virtual-reality",
+        "web-development",
+        "artificial-intelligence"
+      ]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "open-collective",
+        "type": "payment-provider",
+        "address": "https://opencollective.com/sceneview",
+        "description": "Preferred channel. Fiscal host: Open Source Collective (US 501(c)(6)). Card, bank transfer, invoice and purchase order; grant agreements are signed by the fiscal host. Ledger is public."
+      },
+      {
+        "guid": "osc-invoice",
+        "type": "bank",
+        "address": "hello@oscollective.org",
+        "description": "Bank transfer against an invoice issued by Open Source Collective on behalf of the SceneView collective (reference: opencollective.com/sceneview)."
+      }
+    ],
+    "plans": [
+      {
+        "guid": "maintenance-year",
+        "status": "active",
+        "name": "One year of maintenance and security hardening",
+        "description": "Covers one year of what the project consumes: release, build and device-test infrastructure; test devices for ARCore and ARKit; maintenance tooling; and a security pass on the code that parses untrusted 3D files (glTF/GLB, USDZ, 3MF) plus signed, provenance-attested releases on Maven Central, npm and Swift Package Manager.",
+        "amount": 10000,
+        "currency": "USD",
+        "frequency": "yearly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "gold-sponsor",
+        "status": "active",
+        "name": "Gold sponsor (3 places)",
+        "description": "For companies that ship SceneView. Everything in Silver, plus your logo in the documentation sidebar and at the top of the README, and a thank-you line in the notes of each major release. Also 5,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 500,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "silver-sponsor",
+        "status": "active",
+        "name": "Silver sponsor",
+        "description": "Everything in Bronze, plus your logo on the website home page and on the Sponsors screen of the SceneView demo apps. Also 2,500 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 250,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "bronze-sponsor",
+        "status": "active",
+        "name": "Bronze sponsor",
+        "description": "Your logo and link on the sponsors page of the website and in the README. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "amount": 100,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective",
+          "osc-invoice"
+        ]
+      },
+      {
+        "guid": "supporter",
+        "status": "active",
+        "name": "Supporter",
+        "description": "Your name and a link on the sponsors page of the website.",
+        "amount": 25,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective"
+        ]
+      },
+      {
+        "guid": "backer",
+        "status": "active",
+        "name": "Backer",
+        "description": "Thank you. Your name appears in the list of backers.",
+        "amount": 5,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": [
+          "open-collective"
+        ]
+      },
+      {
+        "guid": "donation",
+        "status": "active",
+        "name": "One-time donation",
+        "description": "Any amount, once.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": [
+          "open-collective"
+        ]
+      }
+    ],
+    "history": [
+      {
+        "year": 2021,
+        "income": 1400,
+        "expenses": 0,
+        "currency": "USD",
+        "description": "Individual donations on Open Collective."
+      },
+      {
+        "year": 2022,
+        "income": 2752,
+        "expenses": 1133.06,
+        "currency": "USD",
+        "description": "Individual donations on Open Collective."
+      },
+      {
+        "year": 2023,
+        "income": 19.98,
+        "expenses": 698,
+        "currency": "USD",
+        "description": "Individual donations on Open Collective."
+      },
+      {
+        "year": 2024,
+        "income": 143.82,
+        "expenses": 0,
+        "currency": "USD",
+        "description": "Individual donations on Open Collective."
+      },
+      {
+        "year": 2025,
+        "income": 529.99,
+        "expenses": 0,
+        "currency": "USD",
+        "description": "Individual donations on Open Collective."
+      },
+      {
+        "year": 2026,
+        "income": 300,
+        "expenses": 806.33,
+        "currency": "USD",
+        "description": "January to 8 October 2026. No corporate sponsor to date."
+      }
+    ]
+  }
+}

@@ -1,2 +1,0 @@
-<!-- category: Tests -->
-- **CI render set: the Geometry reference pictures the rebuilt scene ([#4352](https://github.com/sceneview/sceneview/pull/4352)).** `render-goldens-swangle/geometry_default.png` still showed the four-shape scene the Geometry rebuild replaced, so the advisory `demo-render-goldens` job would have reported a diff on every run. It is re-recorded from a reviewed CI capture of the seven-primitive scene.
