@@ -68,6 +68,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.DEFAULT_IBL_INTENSITY
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -103,16 +104,17 @@ import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.MeshNode
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
+import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.utils.readBuffer
@@ -428,9 +430,9 @@ internal class DebugLayerNode(
 }
 
 /** Colour, glow and draw priority of each layer — all from a [SceneViewTokens.DebugView] palette. */
-private class LayerPaint(val color: Color, val glow: Float = 1f, val priority: Int = 4)
+internal class LayerPaint(val color: Color, val glow: Float = 1f, val priority: Int = 4)
 
-private fun paintOf(layer: DebugLayer, palette: DebugPalette): LayerPaint = when (layer) {
+internal fun paintOf(layer: DebugLayer, palette: DebugPalette): LayerPaint = when (layer) {
     // Priority 1, not 0: the replay's photo floor (priority 0) goes under the grid.
     DebugLayer.GridMinor -> LayerPaint(palette.gridMinor, priority = 1)
     DebugLayer.GridMajor -> LayerPaint(palette.gridMajor, priority = 1)
@@ -463,15 +465,45 @@ private fun MaterialLoader.createLayerMaterial(paint: LayerPaint): MaterialInsta
     createUnlitColorInstance(paint.color).apply {
         // The opaque unlit material culls back faces; ribbons and fans are seen from both sides.
         if (paint.color.alpha >= 1f) setCullingMode(Material.CullingMode.NONE)
-        if (paint.glow != 1f) {
-            // Past 1.0 in linear light, so the bloom pass (threshold 1.0) lifts it.
-            val linear = colorOf(paint.color).toLinearSpace()
-            setParameter(
-                "color", Colors.RgbaType.LINEAR,
-                linear.x * paint.glow, linear.y * paint.glow, linear.z * paint.glow, linear.w,
-            )
-        }
+        paint(paint)
     }
+
+/** [paint]'s colour and glow on a layer's material, in place. */
+private fun MaterialInstance.paint(paint: LayerPaint) {
+    if (paint.glow == 1f) {
+        setColor(paint.color)
+    } else {
+        // Past 1.0 in linear light, so the bloom pass (threshold 1.0) lifts it.
+        val linear = colorOf(paint.color).toLinearSpace()
+        setParameter(
+            "color", Colors.RgbaType.LINEAR,
+            linear.x * paint.glow, linear.y * paint.glow, linear.z * paint.glow, linear.w,
+        )
+    }
+}
+
+/**
+ * The flat layers' material instances, one per [DebugLayer], for as long as the view lives.
+ *
+ * A theme switch recolours them in place ([paint]). Building a second set and destroying the
+ * first, as a `remember` keyed on the palette did, freed instances the scene's nodes still drew:
+ * the scene is a composition of its own, which had not let go of them yet (#4330). A layer is
+ * opaque or translucent in every palette alike, so the material it was created on always fits.
+ */
+private class LayerMaterials(private val materialLoader: MaterialLoader, private var palette: DebugPalette) {
+    val instances: Map<DebugLayer, MaterialInstance> =
+        DebugLayer.entries.associateWith { materialLoader.createLayerMaterial(paintOf(it, palette)) }
+
+    /** Takes [palette]'s colours; nothing is done while it is the one already shown. */
+    fun paint(palette: DebugPalette) {
+        if (palette === this.palette) return
+        this.palette = palette
+        instances.forEach { (layer, instance) -> instance.paint(paintOf(layer, palette)) }
+    }
+
+    /** On the main thread, after the nodes that draw them left the scene. */
+    fun destroy() = instances.values.forEach { materialLoader.destroyMaterialInstance(it) }
+}
 
 /** The parts rebuilt independently, each when its own inputs change. */
 private enum class Part(val layers: List<DebugLayer>, val group: DebugGroup) {
@@ -582,6 +614,43 @@ private fun stageBoundsOf(subject: FloatArray?): FloatArray {
 }
 
 /**
+ * The environment of a 3D view on the themed stage: the neutral light the placed models are lit by
+ * (the debug layers are unlit and ignore it) and a skybox in the stage's [ground] — or no [skybox]
+ * at all, for a view drawn on glass over something else.
+ *
+ * Built once for the view ([skybox] is a property of the view, not something that flips under it). A theme switch repaints the skybox in place: building another
+ * environment for it destroyed the skybox and the light of a scene still on screen (#4330), and
+ * left a cubemap of the light on the GPU each time — [Engine.safeDestroyEnvironment] frees the
+ * light, not the texture it was built from. That texture is freed here, with the view, a few
+ * frames after the light that reads it ([EngineDestroyQueue]).
+ */
+@Composable
+internal fun rememberStageEnvironment(engine: Engine, ground: Color, skybox: Boolean = true): Environment {
+    val context = LocalContext.current
+    // The light is keyed with the environment that owns it: one never outlives the other.
+    val light = remember(engine, skybox) {
+        KTX1Loader.createIndirectLight(engine, context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"))
+    }
+    // Before the environment's own effect, so Compose runs it after: the light first, then its cubemap.
+    DisposableEffect(light) {
+        onDispose { light.cubemap?.let { EngineDestroyQueue.of(engine).enqueueTexture(it) } }
+    }
+    val environment = remember(light) {
+        val stage = colorOf(ground).toLinearSpace()
+        Environment(
+            indirectLight = light.indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+            skybox = if (skybox) Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine) else null,
+        )
+    }
+    DisposableEffect(environment) { onDispose { engine.safeDestroyEnvironment(environment) } }
+    SideEffect {
+        val stage = colorOf(ground).toLinearSpace()
+        environment.skybox?.setColor(stage.x, stage.y, stage.z, 1f)
+    }
+    return environment
+}
+
+/**
  * The 3D debug view: a second SceneView on the demo's [engine], drawing [session] from [orbit].
  *
  * [compact] is the picture-in-picture: a lower frame rate, and no touch (the card over it takes
@@ -612,7 +681,6 @@ internal fun ArDebugSceneView(
     onShown: (() -> Unit)? = null,
     glass: Boolean = false,
 ) {
-    val context = LocalContext.current
     val shown by rememberUpdatedState(onShown)
     // The room's surface, when it is the one shown: it stands in for the points and the photos.
     val solid by rememberUpdatedState(surface?.takeIf { it.shown })
@@ -622,45 +690,33 @@ internal fun ArDebugSceneView(
     val palette = chrome.debug
 
     // Created before the SceneView so they are released after it (Compose forgets in reverse).
-    val materials = remember(materialLoader, palette) {
-        DebugLayer.entries.associateWith { materialLoader.createLayerMaterial(paintOf(it, palette)) }
-    }
-    DisposableEffect(materials) {
-        onDispose { materials.values.forEach { materialLoader.destroyMaterialInstance(it) } }
-    }
+    // Not keyed on the palette: what a theme switch changes is repainted in place below (#4330).
+    val materials = remember(materialLoader) { LayerMaterials(materialLoader, palette) }
+    DisposableEffect(materials) { onDispose { materials.destroy() } }
     // Linear tone mapping: the unlit layers show their token colours exactly, and the stage
     // skybox is exactly the stage's ground. Values past 1.0 still bloom (bloom runs before it).
     val colorGrading = remember(engine) {
         ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
     }
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
-    val environment = rememberEnvironment(engine, key = chrome.ground to glass) {
-        val stage = colorOf(chrome.ground).toLinearSpace()
-        Environment(
-            // The placed models are lit; the debug layers are unlit and ignore it.
-            indirectLight = KTX1Loader.createIndirectLight(
-                engine,
-                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-            ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-            // On glass nothing is drawn behind the session: a skybox would be the opaque slab.
-            skybox = if (glass) null else Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
-        )
-    }
+    // On glass nothing is drawn behind the session: a skybox would be the opaque slab.
+    val environment = rememberStageEnvironment(engine, chrome.ground, skybox = !glass)
     val view = rememberView(engine)
     val renderer = rememberRenderer(engine)
 
-    val layers = remember(engine, materials) { ArDebugLayers(engine, materials) }
+    val layers = remember(engine, materials) { ArDebugLayers(engine, materials.instances) }
     // The replay's textured layers: created before the SceneView, released after its nodes.
-    val replayLayers = remember(engine, materialLoader, replay, palette, chrome.ground) {
-        replay?.let {
-            ReplayLayers(
-                engine, materialLoader, it,
-                measureInk = palette.floorOutline.toArgb(),
-                measureHalo = chrome.ground.toArgb(),
-            )
-        }
+    val measureInk = palette.floorOutline.toArgb()
+    val measureHalo = chrome.ground.toArgb()
+    val replayLayers = remember(engine, materialLoader, replay) {
+        replay?.let { ReplayLayers(engine, materialLoader, it, measureInk, measureHalo) }
     }
     DisposableEffect(replayLayers) { onDispose { replayLayers?.destroy() } }
+    // The theme's colours, on the layers the scene already draws.
+    SideEffect {
+        materials.paint(palette)
+        replayLayers?.setMeasureColors(measureInk, measureHalo)
+    }
     var anchors by remember { mutableStateOf(emptyList<DebugAnchor>()) }
     val clock = remember { FrameClock() }
 
@@ -797,13 +853,11 @@ internal fun ArDebugSceneView(
                 }
             },
         ) {
-            // The layer nodes hang off one plain node, and are destroyed with it.
-            Node(
-                apply = {
-                    layers.nodes.values.forEach { addChildNode(it) }
-                    replayLayers?.nodes?.forEach { addChildNode(it) }
-                },
-            )
+            // Each set of layer nodes hangs off one plain node, and is destroyed with it. Keyed on
+            // the set: were it ever replaced while the view stays, its nodes leave the scene before
+            // its material instances are destroyed, and the next set's nodes are attached.
+            key(layers) { Node(apply = { layers.nodes.values.forEach { addChildNode(it) } }) }
+            key(replayLayers) { Node(apply = { replayLayers?.nodes?.forEach { addChildNode(it) } }) }
             // The room in its own world space, metres, Y up: the same stage as the points it replaces.
             surface?.let { room ->
                 // Taken here, beside the node that draws it: when this view leaves the screen
