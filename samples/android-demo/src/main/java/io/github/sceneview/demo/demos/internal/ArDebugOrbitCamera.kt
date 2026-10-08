@@ -594,6 +594,26 @@ object ArDebugFraming {
         return elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
     }
 
+    /**
+     * What the camera frames while a room's surface stands in for its points: the [surface]'s own
+     * box (`[minX, minY, minZ, maxX, maxY, maxZ]`) and, when the path walked through it is still
+     * drawn, that [trail] (flat xyz, `null` when it is not). Never the scan's whole cloud: hidden
+     * then, it reaches further than the surface built from it — a phone showed that surface on a
+     * third of the screen's width, and another cut by the screen's edge.
+     */
+    fun surfaceBounds(surface: FloatArray, trail: FloatArray?): FloatArray {
+        val box = surface.copyOf()
+        trail ?: return box
+        for (i in 0 until trail.size / 3) {
+            for (axis in 0 until 3) {
+                val v = trail[i * 3 + axis]
+                if (v < box[axis]) box[axis] = v
+                if (v > box[axis + 3]) box[axis + 3] = v
+            }
+        }
+        return box
+    }
+
     /** What the gestures may do around [bounds], framed from [home], with its floor at [floorY]. */
     fun limits(bounds: FloatArray?, home: OrbitPose, floorY: Float?): OrbitLimits {
         bounds ?: return OrbitLimits.NONE
@@ -614,6 +634,9 @@ object ArDebugFraming {
      * box sits in the band's middle. A tall phone, the same phone on its side and a small card
      * all see the whole room, filling the clear part of the view. [fill] under 1 leaves room for
      * a session still growing.
+     *
+     * [also] (flat xyz) is fitted with the box: what is drawn around the room and has to be read
+     * too — its dimensions, which stand outside its walls.
      */
     @Suppress("LongParameterList")
     fun home(
@@ -624,6 +647,7 @@ object ArDebugFraming {
         elevationDegrees: Float = HOME_ELEVATION,
         band: OrbitBand = OrbitBand.CARD,
         fill: Float = 1f,
+        also: FloatArray? = null,
     ): OrbitPose {
         if (bounds == null) {
             return DEFAULT_POSE.copy(azimuthDegrees = azimuthDegrees, elevationDegrees = elevationDegrees)
@@ -646,7 +670,7 @@ object ArDebugFraming {
         var distance = 0.0
         repeat(FIT_PASSES) { pass ->
             distance = MIN_DISTANCE.toDouble()
-            forEachCorner(box, target, right, up, back) { x, y, z ->
+            forEachPoint(box, also, target, right, up, back) { x, y, z ->
                 distance = maxOf(
                     distance,
                     z + MIN_DISTANCE,
@@ -661,7 +685,7 @@ object ArDebugFraming {
             var rightmost = -Double.MAX_VALUE
             var bottom = Double.MAX_VALUE
             var top = -Double.MAX_VALUE
-            forEachCorner(box, target, right, up, back) { x, y, z ->
+            forEachPoint(box, also, target, right, up, back) { x, y, z ->
                 val depth = distance - z
                 val px = x / (depth * tanH)
                 val py = (y + centreY * distance * tanV) / (depth * tanV)
@@ -682,6 +706,41 @@ object ArDebugFraming {
                 distance = distance.toFloat(),
             )
         )
+    }
+
+    /**
+     * [home] for a room whose dimensions are written round it: [measure], drawn on the floor at
+     * [floorY] in screen pixels of a view [viewportHeightPx] tall. The figures stand outside the
+     * walls, so a fit on the room alone ran them off the screen's edge; they are fitted with it.
+     *
+     * Their size in metres follows the distance they are seen from, which they push back in
+     * turn: [MEASURE_PASSES] rounds settle it, each a tenth of the last.
+     */
+    @Suppress("LongParameterList")
+    fun homeWithMeasure(
+        bounds: FloatArray?,
+        measure: RoomMeasure?,
+        floorY: Float,
+        viewportHeightPx: Int,
+        azimuthDegrees: Float,
+        verticalFovDegrees: Double,
+        aspect: Float,
+        elevationDegrees: Float = HOME_ELEVATION,
+        band: OrbitBand = OrbitBand.CARD,
+        fill: Float = 1f,
+    ): OrbitPose {
+        var pose = home(bounds, azimuthDegrees, verticalFovDegrees, aspect, elevationDegrees, band, fill)
+        // A view not laid out yet has no pixels to size the figures in.
+        if (bounds == null || measure == null || viewportHeightPx <= 1) return pose
+        repeat(MEASURE_PASSES) {
+            val perPixel = CameraRig.worldPerPixel(pose.distance, verticalFovDegrees, viewportHeightPx)
+            val eye = CameraRig.eye(pose)
+            val reach = MeasureDrawing.reach(
+                measure, MeasureDrawing.sidesFacing(measure, eye.x, eye.z), floorY, MeasureSize.atMost(perPixel),
+            )
+            pose = home(bounds, azimuthDegrees, verticalFovDegrees, aspect, elevationDegrees, band, fill, also = reach)
+        }
+        return pose
     }
 
     /**
@@ -756,19 +815,35 @@ object ArDebugFraming {
         return out
     }
 
-    /** Each corner of [box] in the camera's frame about [target]: across, up, and towards the eye. */
-    private inline fun forEachCorner(
+    /**
+     * Each corner of [box], then each point of [also] (flat xyz), in the camera's frame about
+     * [target]: across, up, and towards the eye.
+     */
+    @Suppress("LongParameterList")
+    private inline fun forEachPoint(
         box: FloatArray,
+        also: FloatArray?,
         target: DoubleArray,
         right: DoubleArray,
         up: DoubleArray,
         back: DoubleArray,
         visit: (x: Double, y: Double, z: Double) -> Unit,
     ) {
-        for (corner in 0 until CORNERS) {
-            val px = box[if (corner and 1 == 0) 0 else 3] - target[0]
-            val py = box[if (corner and 2 == 0) 1 else 4] - target[1]
-            val pz = box[if (corner and 4 == 0) 2 else 5] - target[2]
+        val extra = (also?.size ?: 0) / 3
+        for (point in 0 until CORNERS + extra) {
+            val px: Double
+            val py: Double
+            val pz: Double
+            if (point < CORNERS) {
+                px = box[if (point and 1 == 0) 0 else 3] - target[0]
+                py = box[if (point and 2 == 0) 1 else 4] - target[1]
+                pz = box[if (point and 4 == 0) 2 else 5] - target[2]
+            } else {
+                val at = (point - CORNERS) * 3
+                px = also!![at] - target[0]
+                py = also[at + 1] - target[1]
+                pz = also[at + 2] - target[2]
+            }
             visit(
                 px * right[0] + py * right[1] + pz * right[2],
                 px * up[0] + py * up[1] + pz * up[2],
@@ -779,5 +854,6 @@ object ArDebugFraming {
 
     private const val CORNERS = 8
     private const val FIT_PASSES = 4
+    private const val MEASURE_PASSES = 3
     private const val QUARTER_TURN = 90f
 }

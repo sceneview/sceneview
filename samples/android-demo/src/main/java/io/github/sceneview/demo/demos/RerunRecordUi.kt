@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.compose.animation.AnimatedVisibility
@@ -23,7 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -111,6 +115,28 @@ internal fun ScanHud(seconds: Float, figures: ScanFigures, modifier: Modifier = 
 }
 
 /**
+ * The scan's line before there is a scan: the same glass, in the same place, saying what the
+ * screen waits for — the camera, then the room ([cameraReady]). The scan starts by itself once
+ * the room is found, so from its first frame the screen is the scan's, and nothing on it looks
+ * ready that is not: a phone showed three seconds of black under the dock of another screen.
+ */
+@Composable
+internal fun ScanStartingHud(cameraReady: Boolean, modifier: Modifier = Modifier) {
+    val text = if (cameraReady) ScanCopy.FINDING_ROOM else ScanCopy.STARTING_CAMERA
+    GlassPill(
+        modifier = modifier.testTag(SCAN_STARTING_TAG).clearAndSetSemantics { contentDescription = text },
+        ground = SceneViewTokens.Glass.scrimDock,
+    ) {
+        LoadingIndicator(
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            color = SceneViewTokens.Glass.onGlass,
+        )
+        Spacer(Modifier.width(Space.sm))
+        Text(text = text, style = SceneViewTokens.Type.card, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
  * The one thing to know mid-scan, under the line that counts it: a budget is spent, and what
  * that changes ([ScanCopy.limitNotice]). It stays as long as it is true, so it stands beside the
  * 3D card and not over the shutter, where it would cost the camera its height for the rest of
@@ -144,6 +170,9 @@ internal fun ScanNotice(text: String?, modifier: Modifier = Modifier) {
  * width the stage leaves. Tapped, the stage grows to the whole row and drops under them; its own
  * button brings it back. Line and stage arrive together when the scan starts.
  *
+ * Before the scan starts there is no [stage] yet (`null`): the line stands alone, there from the
+ * screen's first frame, and the stage arrives beside it when the scan does.
+ *
  * A line too wide to stand beside the stage (a large font, a narrow window) keeps the stage
  * under it instead of being cut.
  */
@@ -151,26 +180,30 @@ internal fun ScanNotice(text: String?, modifier: Modifier = Modifier) {
 internal fun ScanLive(
     hud: @Composable () -> Unit,
     notice: @Composable () -> Unit,
-    stage: @Composable (expanded: Boolean, onExpandedChange: (Boolean) -> Unit) -> Unit,
+    stage: (@Composable (expanded: Boolean, onExpandedChange: (Boolean) -> Unit) -> Unit)?,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val grow by animateFloatAsState(if (expanded) 1f else 0f, motionSpring(), label = "scan-stage")
     val arrival = motionSpring<Float>()
-    val enter = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { enter.animateTo(1f, arrival) }
+    val staged = stage != null
+    // A line waiting for its scan is the screen's first frame: it does not fade in.
+    val lineEnter = remember { Animatable(if (staged) 0f else 1f) }
+    val stageEnter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { lineEnter.animateTo(1f, arrival) }
+    LaunchedEffect(staged) { if (staged) stageEnter.animateTo(1f, arrival) else stageEnter.snapTo(0f) }
     Layout(
         content = {
-            Box(Modifier.graphicsLayer { alpha = enter.value.coerceIn(0f, 1f) }) { hud() }
+            Box(Modifier.graphicsLayer { alpha = lineEnter.value.coerceIn(0f, 1f) }) { hud() }
             Box(
                 Modifier.graphicsLayer {
-                    val shown = enter.value.coerceIn(0f, 1f)
+                    val shown = stageEnter.value.coerceIn(0f, 1f)
                     alpha = shown
                     // Grows out of its own corner, the way it grows when tapped.
                     transformOrigin = TransformOrigin(1f, 0f)
                     scaleX = ENTER_SCALE + (1f - ENTER_SCALE) * shown
                     scaleY = scaleX
                 },
-            ) { stage(expanded) { expanded = it } }
+            ) { stage?.invoke(expanded) { expanded = it } }
             Box { notice() }
         },
         modifier = Modifier
@@ -380,6 +413,7 @@ private const val STAGE_EXPAND = "Enlarge"
 private const val STAGE_COLLAPSE = "Shrink the 3D view"
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
+internal const val SCAN_STARTING_TAG = "ar_rerun_scan_starting"
 
 /** The line and the 3D card together, on an upright phone. */
 internal const val SCAN_LIVE_TAG = "ar_rerun_scan_live"

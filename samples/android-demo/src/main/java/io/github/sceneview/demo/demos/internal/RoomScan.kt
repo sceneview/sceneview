@@ -358,6 +358,10 @@ object ScanCopy {
     const val IDLE_DETAIL = "Tap record, then walk the phone slowly around the room. $PRIVACY"
     const val WAITING = "Move the phone slowly to find the room. Recording starts once it is found."
 
+    // What the scan's line says before there is a scan: what the screen is waiting for.
+    const val STARTING_CAMERA = "Starting camera…"
+    const val FINDING_ROOM = "Looking for the room…"
+
     // The landing, worded as the iOS demo's (#4068), "phone" for "iPhone".
     const val LANDING_TITLE = "Scan a room in 3D"
     const val LANDING_BODY = "Walk around with your phone. SceneView keeps the camera's path, its photos, " +

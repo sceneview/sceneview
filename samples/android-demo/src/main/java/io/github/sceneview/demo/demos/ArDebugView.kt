@@ -92,6 +92,7 @@ import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
+import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.ScanPlanes
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -777,20 +778,34 @@ internal fun ArDebugSceneView(
                     frame
                 }
                 val finished = replay != null && !replay.growing
+                val floorY = stageFloorY(whole)
                 // A finished recording is measured once, clouds included, and seen from the side
                 // it was scanned from; a session still growing is framed on what it has so far.
                 val subject = if (finished) {
                     clock.subject?.takeIf { clock.subjectFor === whole }
-                        ?: SceneSubject.of(whole, replay?.dense?.cloud?.positions).also {
+                        ?: SceneSubject.of(whole, replay?.dense?.cloud?.positions, floorY).also {
                             clock.subject = it
                             clock.subjectFor = whole
                         }
                 } else {
-                    SceneSubject(ArDebugGeometry.contentBounds(whole))
+                    SceneSubject(ArDebugGeometry.contentBounds(whole), room = replayLayers?.measure)
                 }
-                // A surface built elsewhere than this session's own world is framed on its own.
-                val bounds = solid?.takeIf { !it.aligned }?.bounds ?: subject.bounds
-                val floorY = stageFloorY(whole)
+                // A surface that stands in for the points is what the camera frames, with the path
+                // walked through it when that path is drawn: the scan's cloud, hidden then, reaches
+                // further than the surface built from it and would leave it small, or off-centre.
+                val bounds = solid?.let { shownSurface ->
+                    val box = shownSurface.bounds
+                    val trail = whole.trail.takeIf { shownSurface.aligned && session.isVisible(DebugGroup.Trail) }
+                    clock.surfaceBounds?.takeIf { clock.surfaceFor === box && clock.surfaceTrail === trail }
+                        ?: ArDebugFraming.surfaceBounds(box, trail).also {
+                            clock.surfaceBounds = it
+                            clock.surfaceFor = box
+                            clock.surfaceTrail = trail
+                        }
+                } ?: subject.bounds
+                // The room's dimensions are written outside its walls: where they are drawn, the
+                // framing leaves them their room, so no figure is cut by the screen's edge.
+                val measured = subject.room.takeIf { !compact && solid == null }
                 orbit.roomYawDegrees = subject.roomYawDegrees
                 val firstContent = !orbit.hasFramedContent && bounds != null
                 if (firstContent) {
@@ -798,8 +813,9 @@ internal fun ArDebugSceneView(
                     // Turns the automatic framing to the room's good side before it is first shown.
                     orbit.recenter()
                 }
-                val home = ArDebugFraming.home(
-                    bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
+                val home = ArDebugFraming.homeWithMeasure(
+                    bounds, measured, floorY, orbit.viewportHeight,
+                    orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
                     elevationDegrees = orbit.homeElevation,
                     band = orbit.band,
                     fill = if (finished) 1f else ArDebugFraming.GROWING_FILL,
@@ -986,22 +1002,28 @@ internal class ReplaySurface(
 
 /**
  * What the camera frames of a session: its [bounds], the side it is best seen from
- * ([frontAzimuth], `null` while the path names none) and the heading of its walls
- * ([roomYawDegrees], `null` without any).
+ * ([frontAzimuth], `null` while the path names none), the heading of its walls
+ * ([roomYawDegrees], `null` without any) and the [room] its dimensions are written round
+ * (`null` when it holds none).
  */
 internal class SceneSubject(
     val bounds: FloatArray?,
     val frontAzimuth: Float? = null,
     val roomYawDegrees: Float? = null,
+    val room: RoomMeasure? = null,
 ) {
     companion object {
-        /** The subject of the finished recording [whole], with its [dense] cloud (flat xyz). */
-        fun of(whole: ArDebugFrame, dense: FloatArray?): SceneSubject {
+        /**
+         * The subject of the finished recording [whole], with its [dense] cloud (flat xyz) and
+         * its floor at [floorY].
+         */
+        fun of(whole: ArDebugFrame, dense: FloatArray?, floorY: Float): SceneSubject {
             val bounds = ArDebugGeometry.subjectBounds(whole, dense)
             return SceneSubject(
                 bounds = bounds,
                 frontAzimuth = ArDebugFraming.frontAzimuth(bounds, whole.trail),
                 roomYawDegrees = ArDebugGeometry.roomYawDegrees(whole.planes),
+                room = RoomMeasure.of(whole.planes, floorY),
             )
         }
     }
@@ -1020,6 +1042,9 @@ private class FrameClock {
     var wholeFor: ArDebugTrace? = null
     var subject: SceneSubject? = null
     var subjectFor: ArDebugFrame? = null
+    var surfaceBounds: FloatArray? = null
+    var surfaceFor: FloatArray? = null
+    var surfaceTrail: FloatArray? = null
     var contentFrames = 0
     var shown = false
 

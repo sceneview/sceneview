@@ -7,11 +7,13 @@ import org.junit.Test
 
 /**
  * Pins the room figure a live scan shows: what ARCore finds for a frame or two and takes back
- * never reaches the screen, and what it keeps finding does within [SteadyRoomMeasure.CHANGE_HOLD_SECONDS].
+ * never reaches the screen, what it keeps finding does within [SteadyRoomMeasure.CHANGE_HOLD_SECONDS],
+ * and a room it shrinks for a few seconds keeps its size.
  */
 class SteadyRoomMeasureTest {
 
     private val hold = SteadyRoomMeasure.CHANGE_HOLD_SECONDS
+    private val shrinkHold = SteadyRoomMeasure.SHRINK_HOLD_SECONDS
 
     /** One camera frame at 30 fps. */
     private val frame = 1f / 30f
@@ -51,12 +53,73 @@ class SteadyRoomMeasureTest {
     @Test
     fun `a room lost for good is shown as lost`() {
         val steady = SteadyRoomMeasure()
-        steady.update(room(3.4f, 4.1f), 0f)
+        val found = room(3.4f, 4.1f)
+        steady.update(found, 0f)
         steady.update(null, 1f)
-        assertNull(steady.update(null, 1f + hold))
+        // Losing a room is the largest shrink there is: it waits as one.
+        assertSame(found, steady.update(null, 1f + hold))
+        assertNull(steady.update(null, 1f + shrinkHold))
         // And the next room found shows at once, as the first did.
         val next = room(2f, 2f)
-        assertSame(next, steady.update(next, 2f + hold))
+        assertSame(next, steady.update(next, 2f + shrinkHold))
+    }
+
+    @Test
+    fun `a room that shrinks for a few seconds and comes back keeps its size`() {
+        // The Pixel 4a's walk: 3.7 x 3.9 m, then 2.4 x 2.3 m for two and a half seconds while
+        // ARCore merged its planes, then 3.7 x 3.9 m again. The readout showed all three.
+        val steady = SteadyRoomMeasure()
+        val found = room(3.7f, 3.9f)
+        val shrunk = room(2.4f, 2.3f)
+        steady.update(found, 0f)
+        var time = 10f
+        while (time < 12.5f) {
+            assertSame(found, steady.update(shrunk, time))
+            time += frame
+        }
+        assertSame(found, steady.update(found, time))
+        // The shrink left no clock running: the next one starts its wait over.
+        assertSame(found, steady.update(shrunk, time + shrinkHold - frame))
+    }
+
+    @Test
+    fun `a room that stays smaller is believed, later than a room that grew`() {
+        val steady = SteadyRoomMeasure()
+        val found = room(3.7f, 3.9f)
+        val smaller = room(3.7f, 3.1f)
+        steady.update(found, 0f)
+        assertSame(found, steady.update(smaller, 1f))
+        assertSame(found, steady.update(smaller, 1f + hold))
+        assertSame(found, steady.update(smaller, 1f + shrinkHold - frame))
+        assertSame(smaller, steady.update(smaller, 1f + shrinkHold))
+    }
+
+    @Test
+    fun `a room named the other way round for a moment does not flip the readout`() {
+        // Near a diagonal the walls' direction flips a quarter turn: width and depth trade
+        // places, and the room is the same. Nothing grew, so it waits as a shrink does.
+        val steady = SteadyRoomMeasure()
+        val found = room(3.2f, 4.4f)
+        val turned = room(4.4f, 3.2f)
+        steady.update(found, 0f)
+        for (i in 1..30) assertSame(found, steady.update(turned, i * 0.1f))
+        assertSame(found, steady.update(found, 3.1f))
+        // Named that way for good, it is.
+        assertSame(found, steady.update(turned, 4f))
+        assertSame(turned, steady.update(turned, 4f + shrinkHold))
+    }
+
+    @Test
+    fun `a shrink that turns into a growth waits for the growth alone`() {
+        val steady = SteadyRoomMeasure()
+        val found = room(3.7f, 3.9f)
+        val grown = room(3.7f, 5.2f)
+        steady.update(found, 0f)
+        steady.update(room(2.4f, 2.3f), 1f)
+        // Two seconds into the shrink the far wall is found: its own hold starts there.
+        assertSame(found, steady.update(grown, 3f))
+        assertSame(found, steady.update(grown, 3f + hold - frame))
+        assertSame(grown, steady.update(grown, 3f + hold))
     }
 
     @Test

@@ -1065,6 +1065,11 @@ private fun RerunLiveScreen(
     } else {
         null
     }
+    // The scan has not started and will by itself, once ARCore has found the room: until then
+    // the screen is already the scan's — its line of glass, saying what it waits for, and no dock
+    // cell that leads elsewhere — instead of three seconds of another screen over a black camera.
+    val starting = !recording && !autoStarted && !debugFullScreen &&
+        arCoreAvailability == null && qaDebug == null && !qaRecord && qaState == null
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -1079,7 +1084,7 @@ private fun RerunLiveScreen(
         // Room Scan shows no mode switch on any of its screens (#4397).
         modeSwitch = null,
         topOverlay = {
-            if (scanFigures != null && scanMedia != null) {
+            if ((scanFigures != null && scanMedia != null) || starting) {
                 // The line runs on its own clock: the trace records nothing while tracking is
                 // lost ("Not enough detail"), and a line read off it froze there for seconds.
                 val now by produceState(SystemClock.elapsedRealtimeNanos(), scan) {
@@ -1089,29 +1094,38 @@ private fun RerunLiveScreen(
                     }
                 }
                 val hud: @Composable () -> Unit = {
-                    ScanHud(
-                        seconds = scan?.elapsedSeconds(now) ?: debugSession.stats.duration,
-                        figures = scanFigures,
-                    )
+                    if (scanFigures != null) {
+                        ScanHud(
+                            seconds = scan?.elapsedSeconds(now) ?: debugSession.stats.duration,
+                            figures = scanFigures,
+                        )
+                    } else {
+                        ScanStartingHud(cameraReady)
+                    }
                 }
-                val stage: @Composable (Boolean?, (Boolean) -> Unit) -> Unit = { expanded, onExpandedChange ->
-                    ScanStage(
-                        session = debugSession,
-                        orbit = scanOrbit,
-                        media = scanMedia,
-                        engine = engine,
-                        modelLoader = modelLoader,
-                        materialLoader = materialLoader,
-                        expanded = expanded,
-                        onExpandedChange = onExpandedChange,
-                    )
+                // No stage before the scan: there is nothing of the room to draw yet.
+                val stage: (@Composable (Boolean?, (Boolean) -> Unit) -> Unit)? = scanMedia?.let { media ->
+                    { expanded, onExpandedChange ->
+                        ScanStage(
+                            session = debugSession,
+                            orbit = scanOrbit,
+                            media = media,
+                            engine = engine,
+                            modelLoader = modelLoader,
+                            materialLoader = materialLoader,
+                            expanded = expanded,
+                            onExpandedChange = onExpandedChange,
+                        )
+                    }
                 }
                 // The one thing to know mid-scan: a budget is spent, and which. It stands under the
                 // line that counts it, beside the 3D card, where it costs the camera no height.
-                val limit = ScanCopy.limitNotice(
-                    pointsFull = scanFigures.pointsFull,
-                    photosFull = scanFigures.photosFull || scan?.isPhotoLimitReached == true,
-                )
+                val limit = scanFigures?.let { figures ->
+                    ScanCopy.limitNotice(
+                        pointsFull = figures.pointsFull,
+                        photosFull = figures.photosFull || scan?.isPhotoLimitReached == true,
+                    )
+                }
                 val notice: @Composable () -> Unit = { ScanNotice(limit) }
                 if (compact) {
                     // On its side the window has no height for a card that grows: the card takes
@@ -1120,7 +1134,7 @@ private fun RerunLiveScreen(
                         .width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)
                         .padding(horizontal = Space.md)
                     Row(Modifier.fillMaxWidth()) {
-                        Box(side) { stage(null) {} }
+                        Box(side) { stage?.invoke(null) {} }
                         Spacer(Modifier.weight(1f))
                         Column(
                             modifier = side,
@@ -1148,8 +1162,11 @@ private fun RerunLiveScreen(
                 ArDebugTimelineCard(debugSession)
             } else {
                 RerunCameraBottomOverlay(
-                    visible = (!isTracking && arCoreAvailability == null && qaDebug == null && !qaRecord) ||
-                        ForcedTrackingFailure.override != null,
+                    // Nothing to move the phone for while the camera itself is still starting.
+                    visible = (
+                        !isTracking && arCoreAvailability == null && qaDebug == null && !qaRecord &&
+                            (cameraReady || !starting)
+                        ) || ForcedTrackingFailure.override != null,
                     trackingFailureReason = trackingFailureReason,
                     // Before a scan, the wait is for Record; during one, ARCore's own guidance.
                     searching = if (recording) null else ScanCopy.WAITING,
@@ -1168,8 +1185,9 @@ private fun RerunLiveScreen(
                 }
             }
         },
-        // A scan in progress owns the screen: nothing in the dock may leave it half-taken.
-        dock = if (recording) emptyList() else listOf(
+        // A scan in progress owns the screen: nothing in the dock may leave it half-taken. So
+        // does one about to start by itself.
+        dock = if (recording || starting) emptyList() else listOf(
             DockItem(
                 icon = Icons.Rounded.Videocam,
                 label = "Camera view",

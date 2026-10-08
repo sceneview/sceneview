@@ -358,8 +358,11 @@ object DepthBackProjection {
     }
 }
 
-/** What one [DenseFusion.add] did: voxels created, samples merged into voxels, voxels in all. */
-data class DenseFuseStats(val added: Int, val kept: Int, val total: Int)
+/**
+ * What one [DenseFusion.add] did: voxels created, samples merged into voxels, voxels held in all,
+ * and [points] — those of them a scan counts ([DenseFusion.points]).
+ */
+data class DenseFuseStats(val added: Int, val kept: Int, val total: Int, val points: Int)
 
 /**
  * The dense map: samples merged into [voxelM] voxels, deduplicated by a primitive
@@ -368,11 +371,30 @@ data class DenseFuseStats(val added: Int, val kept: Int, val total: Int)
  * doubtful, grazing one) up to [MAX_WEIGHT] full views, so it keeps following a better view, and
  * keeps its best confidence. It also counts the [add] calls — depth frames — that saw it, so
  * [cloud] can leave out a voxel one frame alone saw: the dust a noisy depth leaves in the air.
- * Capped at [maxPoints] voxels; voxels keep their insertion order, so a prefix of the cloud is
- * the map as it stood earlier. Single-threaded: one fusion at a time, off the main thread.
+ *
+ * A scan has one figure, [points]: the voxels [MIN_VIEWS] frames have seen. It is what the scan
+ * shows while it records, what it saves, and what [maxPoints] caps — a phone once showed 32 k
+ * "points" for a scan that stored 5.6 k, the first figure counting every voxel held and the
+ * second the ones kept. The voxels seen once so far are held beside them, [maxVoxels] in all;
+ * when that fills, those no frame has seen again for [STALE_VIEWS] frames are let go.
+ *
+ * Voxels keep their insertion order, so a prefix of the cloud is the map as it stood earlier.
+ * Single-threaded: one fusion at a time, off the main thread.
  */
-class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) {
+class DenseFusion(
+    val voxelM: Float = VOXEL_M,
+    val maxPoints: Int = MAX_POINTS,
+    private val maxVoxels: Int = maxOf(MAX_VOXELS, maxPoints),
+) {
+    /** Voxels held: [points], and those one depth frame alone has seen so far. */
     var count: Int = 0
+        private set
+
+    /**
+     * Voxels [MIN_VIEWS] depth frames have seen — what [cloud] returns at [MIN_VIEWS], so what a
+     * saved scan holds. Never more than [maxPoints].
+     */
+    var points: Int = 0
         private set
 
     private var keys = LongArray(INITIAL_SLOTS) { EMPTY }
@@ -395,6 +417,9 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
     /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
     private var view = 0
 
+    /** The [add] call that last tried [dropStale]: once a call is enough. */
+    private var staleDroppedAt = 0
+
     /** Merges [samples] into the map. */
     @Suppress("LoopWithTooManyJumpStatements") // one skip per rejected sample
     fun add(samples: DenseSamples): DenseFuseStats {
@@ -409,14 +434,15 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
             val key = voxelKey(x, y, z, voxelM)
             var index = find(key)
             if (index < 0) {
-                if (count >= maxPoints) continue
+                // Full: no point more to count, or no room for a voxel that could become one.
+                if (points >= maxPoints || count >= maxVoxels && !dropStale()) continue
                 index = insert(key)
                 added++
             }
             merge(index, x, y, z, samples, i)
             kept++
         }
-        return DenseFuseStats(added, kept, count)
+        return DenseFuseStats(added, kept, count, points)
     }
 
     /**
@@ -464,7 +490,14 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
     private fun merge(index: Int, x: Float, y: Float, z: Float, samples: DenseSamples, i: Int) {
         if (lastView[index] != view) {
             lastView[index] = view
-            views[index]++
+            val seen = views[index] + 1
+            // The view that makes a voxel a point counts only while the scan has room for one.
+            if (seen != MIN_VIEWS) {
+                views[index] = seen
+            } else if (points < maxPoints) {
+                views[index] = seen
+                points++
+            }
         }
         val sw = (samples.weights?.get(i) ?: 1f).coerceAtLeast(MIN_SAMPLE_WEIGHT)
         // A running weighted mean; past MAX_WEIGHT a new sample still moves it by sw / MAX_WEIGHT.
@@ -509,9 +542,59 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         }
     }
 
+    /**
+     * Makes room by letting go of the voxels one depth frame alone saw, [STALE_VIEWS] frames ago
+     * or more — noise a saved scan leaves out anyway. The others keep their order. Tried once
+     * per [add]; `false` when nothing could go.
+     */
+    private fun dropStale(): Boolean {
+        if (staleDroppedAt == view) return false
+        staleDroppedAt = view
+        val before = count
+        val movedTo = IntArray(before)
+        var n = 0
+        for (i in 0 until before) {
+            if (views[i] < MIN_VIEWS && view - lastView[i] >= STALE_VIEWS) {
+                movedTo[i] = -1
+                continue
+            }
+            movedTo[i] = n
+            if (n != i) move(i, n)
+            n++
+        }
+        if (n == before) return false
+        val oldKeys = keys
+        val oldSlots = slots
+        keys = LongArray(oldKeys.size) { EMPTY }
+        slots = IntArray(oldSlots.size)
+        val mask = keys.size - 1
+        for (s in oldKeys.indices) {
+            val k = oldKeys[s]
+            val to = if (k == EMPTY) -1 else movedTo[oldSlots[s]]
+            if (to < 0) continue
+            var slot = mix(k) and mask
+            while (keys[slot] != EMPTY) slot = (slot + 1) and mask
+            keys[slot] = k
+            slots[slot] = to
+        }
+        count = n
+        return true
+    }
+
+    private fun move(from: Int, to: Int) {
+        px[to] = px[from]; py[to] = py[from]; pz[to] = pz[from]
+        nx[to] = nx[from]; ny[to] = ny[from]; nz[to] = nz[from]
+        r[to] = r[from]; g[to] = g[from]; b[to] = b[from]
+        weight[to] = weight[from]
+        colorWeight[to] = colorWeight[from]
+        confidence[to] = confidence[from]
+        views[to] = views[from]
+        lastView[to] = lastView[from]
+    }
+
     private fun insert(key: Long): Int {
         if ((count + 1) * 2 > keys.size) rehash(keys.size * 2)
-        if (count == px.size) grow(px.size * 2)
+        if (count == px.size) grow(minOf(px.size * 2, maxOf(maxVoxels, px.size + 1)))
         val mask = keys.size - 1
         var slot = mix(key) and mask
         while (keys[slot] != EMPTY) slot = (slot + 1) and mask
@@ -559,15 +642,27 @@ class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) 
         /** The design's surfel size: 2 cm. */
         const val VOXEL_M = 0.02f
 
-        /** 500 k surfels: a room, 6 MB of SVPC. */
+        /** 500 k surfels: a room, 6 MB of SVPC. What a scan shows, saves and is capped at. */
         const val MAX_POINTS = 500_000
+
+        /**
+         * Voxels held at most, [MAX_POINTS] and those seen once so far: 2¹⁹, what the map's
+         * arrays and its hash already held for [MAX_POINTS] — the memory of a full scan is the same.
+         */
+        const val MAX_VOXELS = 1 shl 19
+
+        /**
+         * Depth frames — three seconds of them — after which a voxel no second frame saw is let
+         * go when the map needs its room.
+         */
+        const val STALE_VIEWS = 30
 
         /** A voxel's weight stops growing at this many full-weight views. */
         const val MAX_WEIGHT = 32f
 
         /**
-         * Depth frames that must see a voxel for a saved scan to keep it: a voxel only one frame
-         * saw is most often that frame's noise.
+         * Depth frames that must see a voxel for it to be a point of the scan ([points]): a voxel
+         * only one frame saw is most often that frame's noise.
          */
         const val MIN_VIEWS = 2
 

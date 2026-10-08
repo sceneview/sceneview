@@ -31,6 +31,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.MeasureDrawing
+import io.github.sceneview.demo.demos.internal.MeasureSize
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
@@ -457,15 +458,11 @@ internal class ReplayLayers(
         // Sized in pixels, and rebuilt only past a 5 % zoom step, not on every frame of a pinch.
         val step = kotlin.math.round(kotlin.math.ln(style.metresPerPixel.coerceAtLeast(1e-6f)) / MEASURE_ZOOM_STEP)
         if (!changed(measureNode, listOf(room.summary, room.yaw, floorY, sides.toList(), step, labels))) return
-        val mpp = kotlin.math.exp(step * MEASURE_ZOOM_STEP)
-        val textHeight = (MEASURE_TEXT_PX * mpp).coerceIn(MEASURE_TEXT_MIN_M, MEASURE_TEXT_MAX_M)
-        val offset = (MEASURE_OFFSET_PX * mpp).coerceIn(MEASURE_OFFSET_MIN_M, MEASURE_OFFSET_MAX_M)
+        val size = MeasureSize.at(kotlin.math.exp(step * MEASURE_ZOOM_STEP))
         mesh.clear()
         for (side in sides) {
-            val row = side % 2
-            val textWidth = textHeight * measureLabelWidths[row] / MeasureDrawing.ROW_HEIGHT
             MeasureDrawing.addDimension(
-                mesh, room, side, floorY + MEASURE_LIFT_M, offset, style.outlineHalfWidth, textHeight, textWidth,
+                mesh, room, side, floorY + MEASURE_LIFT_M, size, style.outlineHalfWidth, measureLabelWidths[side % 2],
             )
         }
         measureNode.upload(mesh)
@@ -495,7 +492,7 @@ internal class ReplayLayers(
         val canvas = Canvas(bitmap)
         val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = measureInk
-            textSize = MEASURE_FONT_PX
+            textSize = MeasureDrawing.FONT_PX
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val halo = Paint(ink).apply {
@@ -506,9 +503,9 @@ internal class ReplayLayers(
         }
         listOf(labels.first, labels.second).forEachIndexed { index, text ->
             val baseline = index * row + (row - ink.ascent() - ink.descent()) / 2f
-            canvas.drawText(text, MEASURE_PAD_PX, baseline, halo)
-            canvas.drawText(text, MEASURE_PAD_PX, baseline, ink)
-            measureLabelWidths[index] = (ink.measureText(text) + 2 * MEASURE_PAD_PX).coerceAtMost(width.toFloat())
+            canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, halo)
+            canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, ink)
+            measureLabelWidths[index] = (ink.measureText(text) + 2 * MeasureDrawing.PAD_PX).coerceAtMost(width.toFloat())
         }
         val solid = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
         canvas.drawRect(0f, solid.toFloat(), width.toFloat(), height.toFloat(), Paint().apply { color = measureInk })
@@ -669,24 +666,12 @@ internal class ReplayLayers(
 
         /** A millimetre over the grid: the dimensions are drawn on the floor, not in it. */
         const val MEASURE_LIFT_M = 0.003f
-        /**
-         * The label's box, in pixels: its figures' capitals are ~40 % of it, and the floor seen
-         * at a slant shortens it further.
-         */
-        const val MEASURE_TEXT_PX = 72f
-        const val MEASURE_TEXT_MIN_M = 0.04f
-        const val MEASURE_TEXT_MAX_M = 0.9f
-        const val MEASURE_OFFSET_PX = 28f
-        const val MEASURE_OFFSET_MIN_M = 0.06f
-        const val MEASURE_OFFSET_MAX_M = 0.9f
 
         /** The dimensions are rebuilt at every 5 % of zoom. */
-        const val MEASURE_ZOOM_STEP = 0.05f
+        const val MEASURE_ZOOM_STEP = MeasureSize.ZOOM_STEP
 
-        /** The atlas's figures: 76 px bold in a 128 px row, a 14 px halo, 10 px of margin. */
-        const val MEASURE_FONT_PX = 76f
+        /** The halo round the atlas's figures ([MeasureDrawing.FONT_PX] bold in a 128 px row). */
         const val MEASURE_HALO_PX = 14f
-        const val MEASURE_PAD_PX = 10f
 
         /** Two triangles per surfel ([DenseSurfels.mesh]). */
         const val INDICES_PER_SURFEL = 6

@@ -672,11 +672,16 @@ object ArDebugGeometry {
      * Bounds of what a finished recording shows: [contentBounds], grown to the body of its point
      * map and of its dense cloud ([dense], flat xyz). The clouds are measured by [robustBounds],
      * so the room they draw is framed whole and a stray point a street away is not.
+     *
+     * The dense cloud is trimmed far less than the point map ([DENSE_TRIM]): it is already kept
+     * to what the depth sensor saw twice within a few metres, and a room's walls are its
+     * outermost points — the point map's trim cut the thinnest wall off the frame, and the room
+     * ran past the edge of the screen.
      */
     fun subjectBounds(frame: ArDebugFrame, dense: FloatArray? = null): FloatArray? {
         var bounds = contentBounds(frame)
-        for (cloud in listOfNotNull(frame.mapPoints, dense)) {
-            val body = robustBounds(cloud) ?: continue
+        for ((cloud, trim) in listOf(frame.mapPoints to ROBUST_TRIM, dense to DENSE_TRIM)) {
+            val body = robustBounds(cloud ?: continue, trim) ?: continue
             bounds = bounds?.let { b ->
                 FloatArray(6) { if (it < 3) min(b[it], body[it]) else max(b[it], body[it]) }
             } ?: body
@@ -686,11 +691,11 @@ object ArDebugGeometry {
 
     /**
      * The box holding the body of a point cloud ([positions], flat xyz): on each axis, from its
-     * [ROBUST_TRIM] quantile to the opposite one, read on at most [ROBUST_SAMPLES] points spread
+     * [trim] quantile to the opposite one, read on at most [ROBUST_SAMPLES] points spread
      * across the cloud. `null` under [ROBUST_MIN_POINTS] points — too few to tell a body from
      * its strays.
      */
-    fun robustBounds(positions: FloatArray): FloatArray? {
+    fun robustBounds(positions: FloatArray, trim: Float = ROBUST_TRIM): FloatArray? {
         val count = positions.size / 3
         if (count < ROBUST_MIN_POINTS) return null
         val samples = min(count, ROBUST_SAMPLES)
@@ -702,7 +707,7 @@ object ArDebugGeometry {
                 axis[i] = positions[index * 3 + a]
             }
             axis.sort()
-            val cut = (samples * ROBUST_TRIM).toInt()
+            val cut = (samples * trim).toInt()
             out[a] = axis[cut]
             out[a + 3] = axis[samples - 1 - cut]
         }
@@ -751,6 +756,9 @@ object ArDebugGeometry {
 
     /** The share of a cloud left out at each end of an axis by [robustBounds]. */
     const val ROBUST_TRIM = 0.04f
+
+    /** The same for a dense cloud, which holds few strays: a wall is more than this of a room. */
+    const val DENSE_TRIM = 0.005f
     const val ROBUST_SAMPLES = 4096
     const val ROBUST_MIN_POINTS = 32
 

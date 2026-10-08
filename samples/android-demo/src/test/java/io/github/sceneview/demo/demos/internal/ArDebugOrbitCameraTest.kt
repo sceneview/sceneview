@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Position
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -89,6 +90,77 @@ class ArDebugOrbitCameraTest {
         }
     }
 
+    /** [room]'s floor as a plan measures it, turned [yaw] radians about its middle. */
+    private fun measured(yaw: Float): RoomMeasure {
+        val cx = (room[0] + room[3]) / 2f
+        val cz = (room[2] + room[5]) / 2f
+        val width = room[3] - room[0]
+        val depth = room[5] - room[2]
+        val corners = FloatArray(8)
+        listOf(-1f to -1f, 1f to -1f, 1f to 1f, -1f to 1f).forEachIndexed { i, (a, b) ->
+            val x = a * width / 2f
+            val z = b * depth / 2f
+            corners[i * 2] = cx + x * cos(yaw) - z * sin(yaw)
+            corners[i * 2 + 1] = cz + x * sin(yaw) + z * cos(yaw)
+        }
+        return RoomMeasure(corners, width, depth, yaw)
+    }
+
+    /** How far past [band]'s edge the dimensions of [measure] are drawn from [pose]: 1 is the edge. */
+    private fun dimensionsReach(pose: OrbitPose, band: OrbitBand, aspect: Float, height: Int, measure: RoomMeasure): Double {
+        val perPixel = CameraRig.worldPerPixel(pose.distance, fov, height)
+        val eye = CameraRig.eye(pose)
+        val sides = MeasureDrawing.sidesFacing(measure, eye.x, eye.z)
+        val drawn = MeasureDrawing.reach(measure, sides, room[1], MeasureSize.atMost(perPixel))
+        var reach = 0.0
+        for (i in 0 until drawn.size / 3) {
+            val (x, y) = project(pose, band.lift, aspect, drawn.copyOfRange(i * 3, i * 3 + 3))
+            reach = maxOf(reach, abs(x) / band.halfWidth, abs(y - 2.0 * band.lift) / band.halfHeight)
+        }
+        return reach
+    }
+
+    @Test
+    fun `a room's dimensions are framed with it, none cut by the edge of the screen`() {
+        // On the Pixel 4a the fit stopped at the walls, and the figures written outside them —
+        // "3.4 m" on the right — ran off the screen.
+        val height = 2340
+        val aspect = 1080f / height
+        val bands = listOf(
+            OrbitBand.STAGE_PORTRAIT,
+            // The band the replay measures between its header and its timeline.
+            OrbitBand.between(top = 420f, bottom = 1650f, viewHeight = height.toFloat())!!,
+        )
+        var cutBefore = 0
+        for (band in bands) for (yaw in listOf(0.4f, -0.2f)) for (azimuth in listOf(10f, 35f, 120f, 200f, 310f)) {
+            for (elevation in listOf(ArDebugFraming.HOME_ELEVATION, ArDebugFraming.MAP_ELEVATION)) {
+                val measure = measured(yaw)
+                val plain = ArDebugFraming.home(room, azimuth, fov, aspect, elevation, band)
+                if (dimensionsReach(plain, band, aspect, height, measure) > 1.0) cutBefore++
+
+                val home = ArDebugFraming.homeWithMeasure(
+                    room, measure, room[1], height, azimuth, fov, aspect, elevation, band,
+                )
+                val reach = dimensionsReach(home, band, aspect, height, measure)
+                assertTrue("a figure reaches $reach of the band at $azimuth°, $elevation°, yaw $yaw", reach <= 1.005)
+                // The room is still whole, and nothing is left unused: either it or a figure
+                // touches the band's edge.
+                val filled = maxOf(reach, assertFramed(home, band, aspect))
+                assertTrue("the framing fills its band ($filled at $azimuth°)", filled > 0.97)
+                assertTrue(home.distance >= plain.distance - 1e-3f)
+            }
+        }
+        assertTrue("the fit on the room alone cut its figures ($cutBefore views)", cutBefore > 0)
+
+        // Without a room, or before the view is laid out, it is the plain fit.
+        val band = OrbitBand.STAGE_PORTRAIT
+        val plain = ArDebugFraming.home(room, 35f, fov, aspect, band = band)
+        val none = ArDebugFraming.homeWithMeasure(room, null, room[1], height, 35f, fov, aspect, band = band)
+        val early = ArDebugFraming.homeWithMeasure(room, measured(0.4f), room[1], 1, 35f, fov, aspect, band = band)
+        assertEquals(plain.distance, none.distance, 0f)
+        assertEquals(plain.distance, early.distance, 0f)
+    }
+
     @Test
     fun `a terrace-sized scan is framed whole, from as far as it takes`() {
         // 20 × 9 m, as a real outdoor scan reads (#4306): the fit stands past the 40 m the camera
@@ -123,6 +195,29 @@ class ArDebugOrbitCameraTest {
         camera.snapTo(home)
         assertEquals(home.distance, camera.pose.distance, 1e-3f)
         assertFramed(camera.pose, band, camera.aspect, terrace)
+    }
+
+    @Test
+    fun `a surface shown in the room's place is framed on its own, with the path through it`() {
+        // The surface built from a scan: one corner of the room the cloud spreads over.
+        val surface = floatArrayOf(0.5f, 0f, -2f, 1.7f, 1.2f, -0.9f)
+        // The path walked: beside the surface, at the height of a hand.
+        val trail = floatArrayOf(-0.6f, 1.4f, 0.2f, 0.1f, 1.5f, 0.4f, 0.9f, 1.3f, -0.3f)
+        val band = OrbitBand.STAGE_PORTRAIT
+
+        val alone = ArDebugFraming.surfaceBounds(surface, trail = null)
+        assertArrayEquals(surface, alone, 0f)
+        val walked = ArDebugFraming.surfaceBounds(surface, trail)
+        assertArrayEquals(floatArrayOf(-0.6f, 0f, -2f, 1.7f, 1.5f, 0.4f), walked, 0f)
+        // The surface's own box is left as it was built.
+        assertArrayEquals(floatArrayOf(0.5f, 0f, -2f, 1.7f, 1.2f, -0.9f), surface, 0f)
+
+        // Framed on the room's cloud it was small; framed on itself it is as large as the room was.
+        val onRoom = ArDebugFraming.home(room, 35f, fov, 0.46f, band = band)
+        val onSurface = ArDebugFraming.home(alone, 35f, fov, 0.46f, band = band)
+        assertTrue("closer: ${onSurface.distance} < ${onRoom.distance}", onSurface.distance < onRoom.distance)
+        assertFramed(onSurface, band, 0.46f, alone)
+        assertFramed(ArDebugFraming.home(walked, 35f, fov, 0.46f, band = band), band, 0.46f, walked)
     }
 
     @Test

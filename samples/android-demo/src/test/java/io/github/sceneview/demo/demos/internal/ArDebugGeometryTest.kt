@@ -196,6 +196,39 @@ class ArDebugGeometryTest {
     }
 
     @Test
+    fun `a dense cloud keeps its thinnest wall in the frame, and still drops its strays`() {
+        // A room seen mostly from one end: the far wall at x = 2 holds 2 % of the points.
+        val body = FloatArray(3920 * 3) { i ->
+            val p = i / 3
+            when (i % 3) {
+                0 -> -2f + 3f * (p % 40) / 39f
+                1 -> -1f + 2f * (p % 14) / 13f
+                else -> -3f + 4f * (p % 23) / 22f
+            }
+        }
+        val wall = FloatArray(80 * 3) { i ->
+            val p = i / 3
+            when (i % 3) {
+                0 -> 2f
+                1 -> -1f + 2f * (p % 8) / 7f
+                else -> -3f + 4f * (p % 10) / 9f
+            }
+        }
+        val strays = floatArrayOf(60f, 2f, 0f, -80f, 0f, 5f, 0f, 40f, 90f)
+        val cloud = body + wall + strays
+        val walk = floatArrayOf(0f, 0f, 0f)
+
+        // As a point map, the wall is trimmed with the strays: the frame stops short of it.
+        val sparse = ArDebugGeometry.subjectBounds(frame(trail = walk, mapPoints = cloud))!!
+        assertTrue("the point map's trim stops at ${sparse[3]}", sparse[3] < 1.5f)
+        // As the dense cloud, it is what the room is drawn with, and it is framed whole.
+        val dense = ArDebugGeometry.subjectBounds(frame(trail = walk), dense = cloud)!!
+        assertEquals(2f, dense[3], 1e-4f)
+        assertEquals(-2f, dense[0], 1e-4f)
+        assertTrue("the strays stay out", dense[4] < 2f && dense[5] < 2f)
+    }
+
+    @Test
     fun `the room's heading is read off its walls, whichever way each one runs`() {
         fun wall(x0: Float, z0: Float, x1: Float, z1: Float) = DebugPlane(
             1,
