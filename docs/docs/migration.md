@@ -5,6 +5,13 @@ description: "Migration guides for SceneView: 3.6.x to 4.0.0 Rerun integration, 
 
 # Migration Guide
 
+Sections run from the newest release down to the oldest. **Coming from SceneView 2.x?** Start at
+[SceneView 2.x to 3.x](#sceneview-2x-to-3x), then read the newer sections above it for anything
+your app uses.
+
+SceneView is open source and maintained by its community. If your app ships with it, you can
+support the project on [Open Collective](https://opencollective.com/sceneview).
+
 ---
 
 ## SceneView 4.37.x to 4.38.0 (Android) — `isRendering` replaced by `frameRatePolicy`
@@ -719,10 +726,6 @@ entity.onTap { print("Tapped!") }
 ---
 
 ## SceneView 2.x to 3.x
-
-SceneView 3.0 is a ground-up rewrite around Jetpack Compose. The core concepts are the same
-(Filament engine, ARCore session, node graph), but the API is fully Compose-native. This guide
-walks through every breaking change with before/after examples.
 
 SceneView 3.0 is a ground-up rewrite around Jetpack Compose. The core concepts are the same
 (Filament engine, ARCore session, node graph), but the API is fully Compose-native. This guide
