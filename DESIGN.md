@@ -249,6 +249,8 @@ so the eye lands on the one thing the screen is for.
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
 | `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
 | `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
+| `about-app-icon` | 40dp, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
+| `about-app-divider-inset` | 72dp | Hairline start inset in that group (row padding + icon + gap) |
 
 - **The identity block is not a card.** A slab there is a second emphasised surface
   competing with the support card below it, which is exactly what the pre-#3564 screen
@@ -258,6 +260,11 @@ so the eye lands on the one thing the screen is for.
   and its contrast is self-contained (light cube on `#0D2137`).
 - **Support is stated once and never pushed.** One card, on the About tab, above the
   fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+- **Other apps are listed, not advertised.** "More apps built with SceneView" is a plain
+  group of rows directly under the support card: icon, name, one line on what the app
+  does for the person holding the phone, open-in-new. No tinted surface, no price, no
+  badge, no install button — the icons are the only colour, and a tap opens the Play
+  listing.
 
 ### Text
 
