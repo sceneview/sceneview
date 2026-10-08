@@ -1,11 +1,11 @@
 name: Publish release to Maven Central
 
-# Run this workflow when a tag is pushed
+# A final 2.x tag (v2.3.4, never v2.3.4-rc1) publishes. No manual run: nothing but a tag whose
+# name is the version in the tree can reach Maven Central.
 on:
   push:
     tags:
-      - 'v2.*'
-  workflow_dispatch:
+      - 'v2.[0-9]+.[0-9]+'
 
 jobs:
   publish:
@@ -23,6 +23,17 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
+
+      - name: Tag matches the version in the tree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for module in sceneview arsceneview; do
+            version="$(sed -n 's/^VERSION_NAME=//p' "$module/gradle.properties")"
+            if [ "$version" != "$tag" ]; then
+              echo "::error::$module is at $version, the tag says $tag"
+              exit 1
+            fi
+          done
 
       # Central Portal: uploads, signs and releases in one step. Not reversible.
       - name: Publish release to Maven Central

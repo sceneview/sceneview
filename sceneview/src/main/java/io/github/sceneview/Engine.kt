@@ -3,6 +3,7 @@ package io.github.sceneview
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
@@ -53,6 +54,13 @@ internal const val BACKEND_IDLE_FIRST_WAIT_NANOS = 16_000_000L
 internal const val BACKEND_IDLE_POLL_MS = 16L
 
 /**
+ * How long a teardown deferred by [whenBackendIdle] keeps polling before it gives up. A backend
+ * that has not caught up after this long is stuck, not late: destroying the engine would then
+ * block the thread for good, so the engine is left alive instead.
+ */
+internal const val BACKEND_IDLE_GIVE_UP_MS = 10_000L
+
+/**
  * How long a surface detach waits for the backend to finish with the surface, in nanoseconds.
  * Long enough for the frames in flight, far below the 5 s after which Android reports an ANR.
  */
@@ -73,6 +81,10 @@ internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
  * idle, the engine was already destroyed, or — the old blocking behaviour — the thread has no
  * [Looper] or the fence could not be created. The engine can be destroyed by someone else while
  * the fence is pending: check [Engine.isValid] in [onIdle] before touching it.
+ *
+ * [onIdle] is **not called at all** when the backend is still busy after
+ * [BACKEND_IDLE_GIVE_UP_MS]: the engine and what hangs on it are leaked, with a warning in the
+ * log, rather than blocking the calling thread on a backend that will not drain.
  */
 internal fun Engine.whenBackendIdle(onIdle: (deferred: Boolean) -> Unit) {
     val engine = this
@@ -92,11 +104,18 @@ internal fun Engine.whenBackendIdle(onIdle: (deferred: Boolean) -> Unit) {
         return
     }
     val handler = Handler(looper)
+    val giveUpAt = SystemClock.uptimeMillis() + BACKEND_IDLE_GIVE_UP_MS
     val poll = object : Runnable {
         override fun run() {
             when {
                 // Destroyed while the fence was pending: its fences went with it, do not touch it.
                 !engine.isValid -> onIdle(true)
+                // Stuck, not late: stop polling and leave the engine alive.
+                isFenceBusy(fence) && SystemClock.uptimeMillis() >= giveUpAt -> Log.w(
+                    "Sceneview",
+                    "Filament backend still busy after $BACKEND_IDLE_GIVE_UP_MS ms: " +
+                            "engine left alive instead of blocking the thread"
+                )
                 // Still busy: look again next frame. A looper that is quitting takes no more
                 // messages; the teardown then runs now rather than never.
                 isFenceBusy(fence) && handler.postDelayed(this, BACKEND_IDLE_POLL_MS) -> Unit

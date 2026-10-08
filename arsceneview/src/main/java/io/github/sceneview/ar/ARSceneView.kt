@@ -485,19 +485,19 @@ open class ARSceneView @JvmOverloads constructor(
             // when its native side gives up, and other exceptions when the camera is taken away.
             // Uncaught, that leaves the Choreographer callback and kills the app. The AR part of
             // this frame is dropped instead, the scene is still rendered below, and the next
-            // frame tries again.
-            try {
-                session.updateOrNull()?.let { frame ->
-                    onSessionUpdated(session, frame)
-                }
-                isSessionUpdateFailing = false
+            // frame tries again. Only the ARCore call is guarded: an exception thrown by the
+            // app's own `onSessionUpdated` still reaches the app, as it did before.
+            val frame = try {
+                session.updateOrNull().also { isSessionUpdateFailing = false }
             } catch (e: Exception) {
                 // Once per failure, then quiet until an update goes through again.
                 if (!isSessionUpdateFailing) {
                     isSessionUpdateFailing = true
                     Log.e("Sceneview", "ARCore session update failed", e)
                 }
+                null
             }
+            frame?.let { onSessionUpdated(session, it) }
         }
         super.onFrame(frameTimeNanos)
     }
