@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "sceneview-mcp",
   "display_name": "SceneView",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "description": "SceneView 3D & AR SDK reference — API docs, samples, code validation and generation.",
   "long_description": "Serves the SceneView SDK's own reference to any MCP-compatible assistant: node signatures and defaults, platform setup for Android, Apple, Web, Flutter and React Native, complete compilable samples, migration guides, and a validator that checks generated Kotlin or Swift against the real public API before it reaches the reader.",
   "author": {
