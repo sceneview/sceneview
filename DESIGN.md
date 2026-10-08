@@ -89,6 +89,8 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-pip-backdrop` | #F1F3F5 | #0B0F16 | Flat backdrop of the Secondary Camera stage (iOS `Stage.pipBackdrop`, = `surface-container-high` light / `stage-background` dark). The floor texture fades into exactly this colour at its rim, so no camera angle shows the floor's edge |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
+| `ar-glass` | rgba(49,49,49,0.72) | rgba(49,49,49,0.72) | Controls on a camera screen read through its glass (Room Scan recording) — Android's `scrimDock` under `glass-surface`, as one colour |
+| `ar-glass-dense` | rgba(0,0,0,0.88) | rgba(0,0,0,0.88) | The same glass under amber copy, which `ar-glass` does not hold over a white wall |
 
 **The dark ramp is solved for ratio, not picked by eye.** Contrast ratio compresses at
 the dark end, where `(Y+0.05)` is dominated by the constant: against a `#0D1117` page a
@@ -693,7 +695,9 @@ indicator; every value follows the safe area, none is a constant offset from the
   other. The dock accent is `.glassProminent` tinted `primary`. Below 26 the floor /
   material / ceiling / border stack below still applies. Content cards inside a page
   (About, Credits) keep the stack on every version, and AR chrome keeps its `ar-scrim`
-  ground. Android keeps its own glass fill — an accepted divergence.
+  ground — but for Room Scan while it records, whose chrome is `ar-glass` under the
+  system's **clear** glass (see "Room Scan replay"). Android keeps its own glass fill — an
+  accepted divergence.
 - **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
   is a blur of what is behind it. Over dark media it resolves to nearly black (hence
   the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
@@ -720,7 +724,8 @@ indicator; every value follows the safe area, none is a constant offset from the
 
 The iOS counterpart of the Android Room Scan screen (#4379): the scanned room owns the
 window, and whatever is read once lives in the settings sheet. It stands in `DemoScaffold`
-and adds no token of its own — every value below is an existing one.
+and every value in the table is an existing token; the scan's glass card adds the three
+`DebugView.live…` values Android's has.
 
 | Element | Value |
 |---|---|
@@ -750,9 +755,41 @@ and adds no token of its own — every value below is an existing one.
   so through a turn of the turntable the camera eases nearer or farther with the room's
   outline. Stray points far from the room do not set the framing — they may leave the
   picture.
-- **Scanning.** While ARKit records, the screen is the camera: one status line in the title
-  row (the red dot, "Scanning", the clock) and the shutter. The scan's counts are in the
-  sheet. Proven on a device only: the simulator has no ARKit session.
+- **Scanning: the camera is the screen, the room is rebuilt on glass.** The Android scan
+  screen's layout and copy ("AR Debug View" below), with what iOS does differently. *The
+  line* — the `danger` dot, the clock in `type-card`, the point count in `type-caption` —
+  is a 36pt pill under the title row; on its side it rides the title row's trailing slot.
+  *The live 3D card* stands at the end of that row, `liveCardShare` (44 %) of it wide,
+  `liveCardAspect` (1.35), `radius-lg`, no shadow: the replay's own geometry with no ground
+  and no grid. A tap grows the card to the whole row, under the line, where a drag turns
+  the room; its corner button shrinks it back. On its side the card keeps the leading edge
+  at `compactCardWidth`, at that one size.
+- **One glass, and the camera is read through all of it.** Nothing on the recording screen
+  stands on the scrim. Every surface is a tint under the `glass-border`, on the system's
+  **clear** Liquid Glass from iOS 26 and with no material below it: the regular glass and
+  the materials blur a camera into one tone and darken it, which reads as a slab, not as
+  glass. *The card* is `liveGlass` — the stage ground at 50 % (Android: 60 %, a flat tint) —
+  and the room on it keeps a `stageHalo`, a 1.5pt edge of black at 50 % round every point
+  and outline, which is what holds it over a white wall where the tint alone no longer
+  does. *The controls* — back, title, Settings, the line, the hint, the shutter, the card's
+  corner button — are `ar-glass`: white on it holds 5.4:1 over a pure white wall, so all
+  their copy is `on-ar-scrim`, never the dim one. *The limit's word* is amber, a mid tone
+  that `ar-glass` does not hold, so it alone takes `ar-glass-dense`, as Android's does —
+  and it is what restates the line's figure, which turns amber on the pill at the limit. The
+  shutter's ring is white and only its glyph is `danger`. None of it follows the theme:
+  the ground is the camera, in light and in dark.
+- **A scan says what it can hold before it stops.** The pill counts "4.8k points"; from
+  80 % of the budget it counts against it, "9.6k / 12k"; at the limit "12k · full" in
+  `warning`, with one line in the same colour beside the card until the scan ends ("Point
+  limit reached — new areas add no more points."). The budget is the recorder's own:
+  12,000 points, the 3 cm cells ARKit's feature points fill (Android's depth scan holds
+  500,000), 300 photos, and five minutes — a limit Android does not have, announced the
+  same way from 4:00 ("Time limit at 5:00 — the scan stops recording there.") and ending
+  on "Time limit reached — tap stop to open your scan." with an amber clock. The stop hint
+  over the shutter leaves after 8 s; on its side, where the card reaches that spot, the
+  hint and the notice stand in the trailing column under the line. The sheet holds what is
+  read once: points and photos against their budgets, surfaces found as an area, the
+  scan's kind. Proven on a device only: the simulator has no ARKit session.
 - **The stage stays dark in both schemes**, as every `DemoScaffold` stage does; only the
   landscape sheet follows the theme.
 

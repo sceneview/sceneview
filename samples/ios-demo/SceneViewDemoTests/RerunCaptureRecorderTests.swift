@@ -794,4 +794,244 @@ extension RerunCaptureRecorderTests {
     }
 }
 
+// MARK: - Scan figures (the recording line, its limits and their words)
+//
+// The first half mirrors Android's `ScanFiguresTest` vector for vector, on Android's depth
+// budget where the vector uses it: the functions are the same on both platforms, whatever
+// budget a platform hands them. The second half is what the iOS recorder hands them.
+
+extension RerunCaptureRecorderTests {
+
+    private func polygon(_ flat: [Float]) -> [SIMD3<Float>] {
+        stride(from: 0, to: flat.count - 2, by: 3).map { SIMD3(flat[$0], flat[$0 + 1], flat[$0 + 2]) }
+    }
+
+    func testPolygonAreaWhateverTheTiltAndWinding() {
+        let floor = polygon([0, 0, 0, 3, 0, 0, 3, 0, 2, 0, 0, 2])
+        XCTAssertEqual(RerunCaptureMath.area(of: floor), 6, accuracy: 1e-4)
+        XCTAssertEqual(RerunCaptureMath.area(of: polygon([1, 0, 5, 1, 2.5, 5, 1, 2.5, 9, 1, 0, 9])), 10, accuracy: 1e-4)
+        XCTAssertEqual(RerunCaptureMath.area(of: polygon([0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1])), 1.41421, accuracy: 1e-4)
+        XCTAssertEqual(RerunCaptureMath.area(of: floor.reversed()), 6, accuracy: 1e-4)
+    }
+
+    func testAPolygonThatIsNoSurfaceHasNoArea() {
+        XCTAssertEqual(RerunCaptureMath.area(of: []), 0)
+        XCTAssertEqual(RerunCaptureMath.area(of: polygon([0, 0, 0, 1, 0, 0])), 0)
+        XCTAssertEqual(RerunCaptureMath.area(of: polygon([0, 0, 0, 1, 0, 0, .nan, 0, 1])), 0)
+    }
+
+    func testSurfaceAreaDoesNotDependOnHowTheFloorIsSplit() {
+        let patches = [SIMD3<Float>(0.5, 0, 0.5), SIMD3(1.5, 0, 0.5), SIMD3(0.5, 0, 1.5), SIMD3(1.5, 0, 1.5)]
+            .map { square(at: $0, half: 0.5) }
+        let whole = [square(at: SIMD3(1, 0, 1), half: 1)]
+        XCTAssertEqual(RerunCaptureMath.surfaceArea(patches), 4, accuracy: 1e-4)
+        XCTAssertEqual(RerunCaptureMath.surfaceArea(patches), RerunCaptureMath.surfaceArea(whole), accuracy: 1e-4)
+        XCTAssertEqual(RerunCaptureMath.surfaceArea([]), 0)
+    }
+
+    func testAreaReadsInSquareMetres() {
+        XCTAssertEqual(RerunFormat.area(0), "0 m²")
+        XCTAssertEqual(RerunFormat.area(.nan), "0 m²")
+        XCTAssertEqual(RerunFormat.area(0.42), "0.4 m²")
+        XCTAssertEqual(RerunFormat.area(9.94), "9.9 m²")
+        XCTAssertEqual(RerunFormat.area(9.96), "10 m²")
+        XCTAssertEqual(RerunFormat.area(14.236), "14 m²")
+        XCTAssertEqual(RerunFormat.area(1250.4), "1,250 m²")
+    }
+
+    /// The reason "Surfaces found" is an area: over the bundled walk the planes' count goes up
+    /// and down, what they cover does not fall back.
+    func testBundledWalkSurfaceOnlyGrows() throws {
+        let trace = try XCTUnwrap(try? RerunPack.loadShowcase(), "The shared rerun/showcase pack must ship in the app bundle").trace
+        var areas: [Float] = []
+        var mostPlanes = 0
+        var t: Float = 0
+        while t <= trace.duration {
+            let planes = trace.frameAt(t).planes
+            areas.append(RerunCaptureMath.surfaceArea(planes.map(\.polygon)))
+            mostPlanes = max(mostPlanes, planes.count)
+            t += 0.5
+        }
+        let last = try XCTUnwrap(areas.last)
+        XCTAssertTrue((10...40).contains(last), "\(last) m² for one room")
+        XCTAssertEqual(try XCTUnwrap(areas.max()), last, accuracy: 0.5)
+        let worstFall = zip(areas, areas.dropFirst()).map { $0 - $1 }.max() ?? 0
+        XCTAssertLessThan(worstFall, 1.5)
+        XCTAssertGreaterThanOrEqual(mostPlanes, 2)
+    }
+
+    func testPointsLineCountsAgainstTheBudgetOnceItIsInSight() {
+        XCTAssertEqual(RerunScanCopy.pointsLine(0, 500_000), "0 points")
+        XCTAssertEqual(RerunScanCopy.pointsLine(1, 500_000), "1 point")
+        XCTAssertEqual(RerunScanCopy.pointsLine(246_300, 500_000), "246k points")
+        XCTAssertEqual(RerunScanCopy.pointsLine(399_999, 500_000), "399k points")
+        XCTAssertEqual(RerunScanCopy.pointsLine(400_000, 500_000), "400k / 500k")
+        XCTAssertEqual(RerunScanCopy.pointsLine(499_999, 500_000), "499k / 500k")
+        XCTAssertEqual(RerunScanCopy.pointsLine(500_000, 500_000), "500k · full")
+        XCTAssertEqual(RerunScanCopy.pointsLine(512_000, 500_000), "500k · full")
+        XCTAssertEqual(RerunScanCopy.pointsLine(12_000, 12_000), "12k · full")
+    }
+
+    func testPointsAreSpokenInWholeFigures() {
+        XCTAssertEqual(RerunScanCopy.pointsSpoken(246_300, 500_000), "246,300 points")
+        XCTAssertEqual(RerunScanCopy.pointsSpoken(412_000, 500_000), "412,000 of 500,000 points")
+        XCTAssertEqual(RerunScanCopy.pointsSpoken(500_000, 500_000), "point limit of 500,000 reached")
+    }
+
+    func testSettingsRowsCountAgainstTheirBudget() {
+        XCTAssertEqual(RerunScanCopy.budgeted(246_300, 500_000), "246k of 500k")
+        XCTAssertEqual(RerunScanCopy.budgeted(500_000, 500_000), "500k of 500k · full")
+        XCTAssertEqual(RerunScanCopy.budgeted(42, 300), "42 of 300")
+        XCTAssertEqual(RerunScanCopy.budgeted(301, 300), "300 of 300 · full")
+    }
+
+    func testFiguresKnowWhenABudgetIsSpent() {
+        let scan = RerunScanFigures(points: 246_300, pointBudget: 500_000, surfaceMetres2: 14, photos: 42)
+        XCTAssertFalse(scan.pointsFull)
+        XCTAssertFalse(scan.photosFull)
+        XCTAssertEqual(scan.photoBudget, 300)
+        XCTAssertNil(scan.notice)
+        var full = scan
+        full.points = 500_000
+        XCTAssertTrue(full.pointsFull)
+        full.photos = 300
+        XCTAssertTrue(full.photosFull)
+        XCTAssertFalse(RerunScanLimits.isFull(0, 0), "no budget, nothing to spend")
+        XCTAssertFalse(RerunScanLimits.isNear(0, 0))
+        XCTAssertEqual(RerunScanLimits.nearShare, 0.8)
+    }
+
+    func testLimitNoticeNamesWhatIsSpent() {
+        XCTAssertNil(RerunScanCopy.limitNotice(pointsFull: false, photosFull: false))
+        XCTAssertEqual(RerunScanCopy.limitNotice(pointsFull: true, photosFull: false), RerunScanCopy.pointsFull)
+        XCTAssertEqual(RerunScanCopy.limitNotice(pointsFull: false, photosFull: true), RerunScanCopy.photosFull)
+        XCTAssertEqual(RerunScanCopy.limitNotice(pointsFull: true, photosFull: true), RerunScanCopy.scanFull)
+    }
+
+    func testNoticesAreShortAndInPlainWords() {
+        let notices = [
+            RerunScanCopy.photosFull, RerunScanCopy.pointsFull, RerunScanCopy.scanFull,
+            RerunScanCopy.timeFull, RerunScanCopy.timeNear(RerunScanLimits.duration),
+        ]
+        for notice in notices {
+            XCTAssertLessThanOrEqual(notice.count, 64, notice)
+            XCTAssertTrue(notice.contains("limit"), notice)
+            for jargon in ["voxel", "surfel", "TSDF", "buffer", "cap "] {
+                XCTAssertFalse(notice.contains(jargon), "\(notice) says \(jargon)")
+            }
+        }
+    }
+
+    // MARK: What the iOS recorder hands them
+
+    func testThePointBudgetIsWhatTheOpenedScanKeeps() {
+        let configuration = RerunCaptureRecorder.Configuration()
+        XCTAssertEqual(RerunScanLimits.pointBudget, 12_000)
+        XCTAssertEqual(RerunScanLimits.pointBudget, RerunTrace.maxMapPoints)
+        XCTAssertEqual(configuration.maxVoxels, RerunScanLimits.pointBudget)
+        XCTAssertEqual(configuration.maxKeyframes, RerunScanLimits.photoBudget)
+        XCTAssertEqual(configuration.maxDuration, RerunScanLimits.duration)
+        let fresh = RerunScanFigures(RerunCaptureRecorder().stats)
+        XCTAssertEqual(fresh, RerunScanFigures(points: 0, pointBudget: 12_000, surfaceMetres2: 0, photos: 0))
+        XCTAssertNil(fresh.notice)
+        XCTAssertEqual(RerunScanCopy.pointsLine(9_599, 12_000), "9.5k points")
+        XCTAssertEqual(RerunScanCopy.pointsLine(9_600, 12_000), "9.6k / 12k")
+    }
+
+    func testPointsStopCountingAtTheirBudgetAndTheFileKeepsWhatWasSeen() throws {
+        var config = RerunCaptureRecorder.Configuration()
+        config.maxVoxels = 5
+        var recorder = RerunCaptureRecorder(configuration: config)
+        let points = (0..<9).map { SIMD3<Float>(Float($0) * 0.05 - 0.2, 1.5, -2) }
+        recorder.add(FakeFrame(timestamp: 0, cameraTransform: uprightPhone(at: SIMD3(0, 1.5, 0)), points: points, jpeg: nil))
+
+        let figures = RerunScanFigures(recorder.stats)
+        XCTAssertEqual(figures.points, 5)
+        XCTAssertEqual(figures.pointBudget, 5)
+        XCTAssertTrue(figures.pointsFull)
+        XCTAssertEqual(figures.notice, RerunScanCopy.pointsFull)
+        XCTAssertEqual(recorder.voxelPoints.count, 5, "the live cloud stops where the count does")
+        let cloud = try XCTUnwrap(try events(recorder.finish()).first { $0["type"] as? String == "point_cloud" })
+        XCTAssertEqual((cloud["positions"] as? [Any])?.count, 9)
+    }
+
+    /// A phone that keeps seeing the same points spends its observations without filling the
+    /// map: the budget comes down to what the scan can still hold, so the line says `full`
+    /// when the count stops and not thousands of points later.
+    func testTheObservationCapBringsThePointBudgetDown() {
+        var config = RerunCaptureRecorder.Configuration()
+        config.maxPoints = 6
+        var recorder = RerunCaptureRecorder(configuration: config)
+        let camera = uprightPhone(at: SIMD3(0, 1.5, 0))
+        // Two points in one 3 cm voxel, one in the next.
+        let points: [SIMD3<Float>] = [SIMD3(0.001, 1.501, -2), SIMD3(0.01, 1.51, -2), SIMD3(0.2, 1.5, -2)]
+        recorder.add(FakeFrame(timestamp: 0, cameraTransform: camera, points: points, jpeg: nil))
+        XCTAssertEqual(recorder.stats.points, 2)
+        XCTAssertEqual(recorder.stats.pointBudget, 5, "three observations left: three more points at most")
+        XCTAssertFalse(RerunScanFigures(recorder.stats).pointsFull)
+
+        recorder.add(FakeFrame(timestamp: 0.25, cameraTransform: camera, points: points, jpeg: nil))
+        XCTAssertEqual(recorder.stats.points, 2)
+        XCTAssertEqual(recorder.stats.pointBudget, 2)
+        XCTAssertEqual(RerunScanFigures(recorder.stats).notice, RerunScanCopy.pointsFull)
+    }
+
+    func testPhotosCountAgainstWhicheverCapStopsThem() {
+        var byCount = RerunCaptureRecorder.Configuration()
+        byCount.maxKeyframes = 3
+        var byBytes = RerunCaptureRecorder.Configuration()
+        byBytes.maxMediaBytes = 2_500
+        for (config, photos) in [(byCount, 3), (byBytes, 2)] {
+            var recorder = RerunCaptureRecorder(configuration: config)
+            for i in 0..<30 {
+                recorder.add(FakeFrame(timestamp: Double(i) * dt, cameraTransform: uprightPhone(at: SIMD3(Float(i) * 0.2, 0, 0))))
+            }
+            let figures = RerunScanFigures(recorder.stats)
+            XCTAssertEqual(figures.photos, photos)
+            XCTAssertEqual(figures.photoBudget, photos)
+            XCTAssertTrue(figures.photosFull)
+            XCTAssertEqual(figures.notice, RerunScanCopy.photosFull)
+            XCTAssertEqual(RerunScanCopy.budgeted(figures.photos, figures.photoBudget), "\(photos) of \(photos) · full")
+        }
+    }
+
+    func testSurfacesFoundIsTheAreaOfThePlanesTrackedNow() {
+        var recorder = RerunCaptureRecorder()
+        let camera = uprightPhone(at: SIMD3(0, 1.5, 0))
+        let floor = RerunCapturePlane(identifier: UUID(), kind: .horizontalUpward, polygon: square(at: SIMD3(0, 0, -2), half: 1))
+        let wall = RerunCapturePlane(identifier: UUID(), kind: .vertical,
+                                     polygon: [SIMD3(-1, 0, -3), SIMD3(1, 0, -3), SIMD3(1, 2.5, -3), SIMD3(-1, 2.5, -3)])
+        recorder.add(FakeFrame(timestamp: 0, cameraTransform: camera, planeList: [floor, wall], jpeg: nil))
+        XCTAssertEqual(RerunScanFigures(recorder.stats).surfaceMetres2, 9, accuracy: 1e-4)
+        recorder.add(FakeFrame(timestamp: 1, cameraTransform: camera, planeList: [wall], jpeg: nil))
+        XCTAssertEqual(RerunScanFigures(recorder.stats).surfaceMetres2, 5, accuracy: 1e-4)
+        XCTAssertEqual(RerunFormat.area(RerunScanFigures(recorder.stats).surfaceMetres2), "5.0 m²")
+    }
+
+    /// iOS only: the scan stops recording at five minutes, and says so from four.
+    func testTheTimeLimitIsAnnouncedBeforeItStopsTheScan() {
+        var scan = RerunScanFigures(points: 4_000, pointBudget: 12_000, surfaceMetres2: 14, photos: 42, duration: 239.9)
+        XCTAssertFalse(scan.timeNear)
+        XCTAssertNil(scan.notice)
+        scan.duration = 240
+        XCTAssertTrue(scan.timeNear)
+        XCTAssertFalse(scan.timeFull)
+        XCTAssertEqual(scan.notice, "Time limit at 5:00 — the scan stops recording there.")
+        scan.points = 12_000
+        XCTAssertEqual(scan.notice, RerunScanCopy.pointsFull, "a spent budget comes before one in sight")
+        scan.duration = 300
+        XCTAssertTrue(scan.timeFull)
+        XCTAssertEqual(scan.notice, "Time limit reached — tap stop to open your scan.")
+
+        var config = RerunCaptureRecorder.Configuration()
+        config.maxDuration = 1
+        var recorder = RerunCaptureRecorder(configuration: config)
+        for i in 0..<40 {
+            recorder.add(FakeFrame(timestamp: Double(i) * dt, cameraTransform: uprightPhone(at: SIMD3(Float(i) * 0.01, 0, 0))))
+        }
+        XCTAssertTrue(RerunScanFigures(recorder.stats).timeFull)
+        XCTAssertEqual(RerunScanFigures(recorder.stats).notice, RerunScanCopy.timeFull)
+    }
+}
+
 #endif

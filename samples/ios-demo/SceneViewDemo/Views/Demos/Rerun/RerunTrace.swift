@@ -756,6 +756,14 @@ enum RerunFormat {
         if value < 10_000 { return String(format: "%.1fk", Float(value / 100) / 10) }
         return "\(value / 1_000)k"
     }
+
+    /// `0.42` → `0.4 m²`, `14.236` → `14 m²`, `1250.4` → `1,250 m²` (Android's
+    /// `ArDebugFormat.area`).
+    static func area(_ metres2: Float) -> String {
+        if !metres2.isFinite || metres2 <= 0 { return "0 m²" }
+        if metres2 < 9.95 { return String(format: "%.1f m²", metres2) }
+        return "\(count(Int(metres2.rounded()))) m²"
+    }
 }
 
 /// Which camera frames the filmstrip shows: `slots` evenly spread over `count`, ends included.

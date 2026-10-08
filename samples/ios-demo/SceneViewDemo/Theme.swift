@@ -833,6 +833,16 @@ enum SceneViewTokens {
             Color.white.opacity(scheme == .dark ? 0.10 : 0.16)
         }
         static let borderWidth: CGFloat = 1
+        /// `ar-glass` — the see-through ground of a control on a camera screen whose
+        /// subject is itself drawn on glass (Room Scan while it records): Android's
+        /// `scrimDock` (black at 68 %) under its `glass-surface` (white at 14 %), as the
+        /// one colour they composite to. Theme-independent. White on it holds 5.4:1
+        /// over a pure white wall; a quarter of the camera still shows through.
+        static let glass = Color(.sRGB, white: 0x31 / 255, opacity: 0.72)
+        /// `ar-glass-dense` — the same glass under a line of amber copy, which needs a
+        /// darker ground than white does: black at 88 %, Android's `scrimDark`. Amber on
+        /// it holds 7.7:1 over a pure white wall (2.5:1 on `ar-glass`).
+        static let glassDense = Color.black.opacity(0.88)
         /// `on-ar-scrim` — white in both themes; the ground is the camera.
         static let onScrim = Color.white
         /// `on-ar-scrim-dim` — secondary text on the scrim.
@@ -934,6 +944,17 @@ enum SceneViewTokens {
         static let liveWallFill: UInt32 = 0x66D2_A8FF
         static let liveFloorOutline: UInt32 = 0xFFA4_C1FF
         static let liveWallOutline: UInt32 = 0xFFD2_A8FF
+        /// The tint of the card a scan is rebuilt on while it records: `Stage.background`
+        /// at 50 %, under clear glass, so the camera is read through the card. Android's
+        /// `liveGlass` is the same ground at 60 %: there the tint alone has to hold the
+        /// room over a white wall, here a dark edge round the points does
+        /// (`CaptureTokens.stageHalo`), which lets the glass be thinner.
+        static let liveGlass: UInt32 = 0x800B_0F16
+        /// That card's share of the row it stands in beside the scan line, until a tap
+        /// gives it the whole row. Android's `liveCardShare`.
+        static let liveCardShare: CGFloat = 0.44
+        /// That card's width over its height, at either size.
+        static let liveCardAspect: CGFloat = 1.35
         /// A card that shares a row with something else on a compact-height window — the
         /// replay timeline beside the title in landscape. Android's `compactCardWidth`.
         static let compactCardWidth: CGFloat = 280
@@ -1064,6 +1085,15 @@ extension View {
         modifier(GlassBackground(shape: shape, interactive: interactive, id: id, native: true))
     }
 
+    /// Glass over a **camera feed** that the camera is still read through: `tint`
+    /// under the `glass-border`, on the system's clear Liquid Glass from iOS 26.
+    /// No blur on any OS version — see `GlassBackground.cameraGlass`.
+    func cameraGlass<S: InsettableShape>(_ tint: Color, in shape: S,
+                                         interactive: Bool = false) -> some View {
+        modifier(GlassBackground(shape: shape, interactive: interactive, id: nil, native: true))
+            .environment(\.arGlassTint, tint)
+    }
+
     /// Edge-to-edge variant for bars that have no corner radius of their own.
     func glassBackground() -> some View {
         self.glassBackground(in: Rectangle())
@@ -1102,6 +1132,7 @@ extension View {
 private struct GlassBackground<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.arChromeGround) private var arGround
+    @Environment(\.arGlassTint) private var glassTint
     @Environment(\.chromeGlassNamespace) private var glassNamespace
     let shape: S
     let interactive: Bool
@@ -1109,7 +1140,9 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
     let native: Bool
 
     func body(content: Content) -> some View {
-        if let arGround {
+        if let glassTint {
+            cameraGlass(content, tint: glassTint)
+        } else if let arGround {
             // Over a camera feed the control carries its own near-opaque
             // ground instead of standing on a screen-wide scrim band. Blur is
             // deliberately absent: `.ultraThinMaterial` samples the live feed,
@@ -1126,6 +1159,34 @@ private struct GlassBackground<S: InsettableShape>: ViewModifier {
             nativeGlass(content)
         } else {
             glass(content)
+        }
+    }
+
+    /// Glass the camera is read *through*: a tint, the `glass-border`, and on
+    /// iOS 26+ the system's **clear** Liquid Glass for the edge. The regular
+    /// variant blurs what is behind it into one tone and darkens it, which over
+    /// a camera is a slab — measured 2026-10-08, a black chair leg and the floor
+    /// beside it came out the same grey. Before 26 there is no material either,
+    /// for the reason the scrim branch gives.
+    @ViewBuilder
+    private func cameraGlass(_ content: Content, tint: Color) -> some View {
+        let grounded = content
+            .background(tint, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    SceneViewTokens.Glass.border,
+                    lineWidth: SceneViewTokens.Glass.borderWidth
+                )
+            )
+        if native, #available(iOS 26, macOS 26, visionOS 26, *) {
+            let glassed = grounded.glassEffect(interactive ? .clear.interactive() : .clear, in: shape)
+            if let id, let glassNamespace {
+                glassed.glassEffectID(id, in: glassNamespace)
+            } else {
+                glassed
+            }
+        } else {
+            grounded
         }
     }
 
@@ -1178,6 +1239,13 @@ private struct ARChromeGroundKey: EnvironmentKey {
     static let defaultValue: Color? = nil
 }
 
+/// The tint of every glass control on a camera screen that is read through its
+/// glass, or `nil` anywhere else. Set by ``DemoScaffold`` in `arGlass` mode and
+/// by `cameraGlass(_:in:interactive:)`; wins over `arChromeGround`.
+private struct ARGlassTintKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
 /// The namespace glass shapes in one ``GlassEffectContainer`` morph within —
 /// set by ``DemoScaffold`` on its bottom cluster (accessory + dock).
 private struct ChromeGlassNamespaceKey: EnvironmentKey {
@@ -1188,6 +1256,11 @@ extension EnvironmentValues {
     var arChromeGround: Color? {
         get { self[ARChromeGroundKey.self] }
         set { self[ARChromeGroundKey.self] = newValue }
+    }
+
+    var arGlassTint: Color? {
+        get { self[ARGlassTintKey.self] }
+        set { self[ARGlassTintKey.self] = newValue }
     }
 
     var chromeGlassNamespace: Namespace.ID? {
