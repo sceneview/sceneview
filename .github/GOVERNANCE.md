@@ -33,8 +33,12 @@ All participants are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Funding
 
-SceneView is funded through:
-- [Open Collective](https://opencollective.com/sceneview)
-- [GitHub Sponsors](https://github.com/sponsors/sceneview)
+SceneView is funded through [Open Collective](https://opencollective.com/sceneview),
+or through [GitHub Sponsors](https://github.com/sponsors/sceneview). Its funds are held by
+Open Source Collective, the fiscal host, and every contribution and every expense is on
+the public ledger there.
 
-Funding supports development time, infrastructure, and community management.
+Funding pays for what the project consumes: build and test infrastructure, test devices,
+maintenance tooling and security work. A sponsorship is a contribution and a public
+thank-you. It gives no say in project decisions and no priority on issues or pull
+requests. See [SPONSORS.md](SPONSORS.md).

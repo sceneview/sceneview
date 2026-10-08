@@ -59,16 +59,13 @@ AI-assisted workflow.
 
 ## Sponsor
 
-SceneView is free and open source (Apache 2.0). If it saves you time, consider
-supporting the project:
+SceneView is free and open source (Apache 2.0), funded by the people and
+companies who use it.
 
-| Platform | Link |
-|---|---|
-| Open Collective | [opencollective.com/sceneview](https://opencollective.com/sceneview) |
-| GitHub Sponsors | [github.com/sponsors/sceneview](https://github.com/sponsors/sceneview) |
+**[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
-Your sponsorship helps maintain the SDK, review PRs, write documentation, and keep
-the project alive.
+[How sponsorship works](https://sceneview.github.io/sponsors.html): the tiers, what
+each one includes, and what a sponsorship does not buy.
 
 ---
 

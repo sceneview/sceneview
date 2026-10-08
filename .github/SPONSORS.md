@@ -1,7 +1,8 @@
 # Sponsors & Supporters
 
-SceneView is free and open source. Sponsorship helps fund its upkeep across all
-9 platforms — test devices, CI, hosting, assets.
+SceneView is free and open source. Sponsorship pays for what the project
+consumes: build and test infrastructure, test devices, maintenance tooling and
+security work.
 
 **What sponsorship is, and is not.** Sponsoring SceneView is a contribution to an open source project and a public thank-you. It does not buy support, private features, early access or priority on issues: everything we build is public, for everyone, at the same time. A sponsor's logo is an acknowledgement, not an endorsement, and it never changes which tools and services the documentation recommends. We do not accept sponsorships whose purpose is a link for search ranking, and we do not place sponsor messages in the SDK, in the MCP server's output, in install scripts or in `llms.txt`.
 
@@ -38,10 +39,11 @@ who give through GitHub.
 
 ## Where the money goes
 
-SceneView uses donations to pay for:
+SceneView's funds are held by Open Source Collective, the fiscal host. They pay for what the project consumes:
 
-- **AI tooling** — subscriptions to the AI coding assistants used for development
-- **Infrastructure** — Hosting, domains, CI/CD
-- **3D assets** — Models and environments for demo apps
-- **Marketing** — Reaching more developers
-- **Hardware** — Devices for testing across platforms
+- **Infrastructure** — release, build and device-test infrastructure
+- **Test devices** — for ARCore and ARKit
+- **Maintenance tooling**
+- **Security work** — a security pass on the code that parses untrusted 3D files (glTF/GLB, USDZ, 3MF), and signed, provenance-attested releases on Maven Central, npm and Swift Package Manager
+
+Every contribution and every expense is on the [public ledger on Open Collective](https://opencollective.com/sceneview).
