@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Two public statements about sponsorship are now true ([#4409](https://github.com/sceneview/sceneview/pull/4409)).** The `sceneview-mcp` server no longer appends a donation line to every tenth tool response: tool output carries no sponsor message, and the `SCENEVIEW_SPONSOR_CTA` environment switch is gone with it. `funding.json` no longer says that funds are never paid to an individual maintainer; it now says that a cost a maintainer paid out of pocket is reimbursed against a receipt, on the public ledger like every other expense.
