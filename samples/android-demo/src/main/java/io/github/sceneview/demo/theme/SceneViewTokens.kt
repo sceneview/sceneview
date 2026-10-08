@@ -495,6 +495,13 @@ object SceneViewTokens {
         val rowAffordance = 16.dp
         /** Inset of a row divider, so it starts under the label, not under the icon. */
         val dividerInset = 48.dp
+        /**
+         * Launcher icon of an app in the "More apps" group, clipped to `radius-xs`.
+         * Half the identity mark: these are other products, named but not featured.
+         */
+        val appIcon = 40.dp
+        /** [dividerInset] for a row led by an [appIcon]: row padding + icon + gap. */
+        val appDividerInset = 72.dp
     }
 
     /** `DESIGN.md` — Spring motion: `spring(dampingRatio 0.85, stiffness 450)`, one spring for press, sheets, dock. */

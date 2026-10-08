@@ -258,6 +258,12 @@
     <string name="about_support_description">An independent open-source project. Your support pays for the time that keeps it maintained.</string>
     <string name="about_support_open_collective">Donate on Open Collective</string>
     <string name="about_support_github_sponsors">GitHub Sponsors</string>
+    <string name="about_group_more_apps">More apps built with SceneView</string>
+    <string name="about_app_ar_model_viewer_name">3D AR Model Viewer</string>
+    <string name="about_app_ar_model_viewer_description">Open any 3D file and see it at real size in your room.</string>
+    <string name="about_app_will_it_fit_name">Will It Fit</string>
+    <string name="about_app_will_it_fit_description">See furniture at its real size in your room before you buy.</string>
+    <string name="about_more_apps_open">open on Google Play</string>
     <string name="about_group_learn">Learn</string>
     <string name="about_group_app">App</string>
     <string name="about_group_legal">Legal</string>

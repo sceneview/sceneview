@@ -1373,11 +1373,13 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/AboutTab.swift
     contract: >-
       Identity (mark, version, tagline), Support card (Open Collective, GitHub
-      Sponsors), groups Learn / App (Send feedback, Release notes) / Legal
+      Sponsors), groups More apps (3D AR Model Viewer, Will It Fit — Google
+      Play listings) / Learn / App (Send feedback, Release notes) / Legal
       (License, Credits), footer
     parity: diverges
     evidence: >-
-      iOS: 5 flat cards, no groups, no Send feedback, no Release notes
+      iOS: 5 flat cards, no groups, no Send feedback, no Release notes, no
+      More apps group (Android-only so far; it links Google Play listings);
       AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
       no Support card on iOS by design: App Review rejected 4.48.0 under
       guideline 3.1.1 (donation links outside In-App Purchase), #4197.
