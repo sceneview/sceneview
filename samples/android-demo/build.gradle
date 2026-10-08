@@ -386,7 +386,7 @@ dependencies {
     // HD pack (2026-09-29): the Wi-Fi-only, resumable download of the full-resolution demo
     // models runs as a WorkManager job. Literal coordinate, like the other demo-only extras
     // kept out of the shared catalogue.
-    implementation "androidx.work:work-runtime-ktx:2.11.2"
+    implementation "androidx.work:work-runtime-ktx:2.12.0"
     // Material 3 Expressive APIs (alpha, newer than BOM's stable release)
     implementation libs.androidx.compose.material3.expressive
 

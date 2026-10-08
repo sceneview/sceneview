@@ -1,14 +1,22 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.unit.dp
+import com.dropbox.differ.SimpleImageComparator
+import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import io.github.sceneview.demo.demos.internal.GeometryDemoState
+import io.github.sceneview.demo.demos.internal.GeometryShape
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,11 +24,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Roborazzi snapshot tests for [GeometryDemoControls].
+ * Roborazzi snapshot tests for the Compose half of [GeometryDemo]: the settings sheet content
+ * ([GeometryDemoControls]) and the shape chips that float over the scene ([GeometryShapeChips]).
  *
- * The demo's controls panel is screenshot-tested in pure JVM (Robolectric +
- * Roborazzi NATIVE graphics mode) so a checkbox/slider/chip layout regression
- * fail-fast at commit time without an emulator. Pattern from issue
+ * Both are screenshot-tested in pure JVM (Robolectric + Roborazzi NATIVE graphics mode) so a
+ * layout regression fails at commit time without an emulator. Pattern from issue
  * [#880](https://github.com/sceneview/sceneview/issues/880).
  *
  * Generate the goldens (run once after a deliberate UI change):
@@ -36,65 +44,49 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GeometryDemoControlsSnapshotTest {
 
-    @Test
-    fun controls_default_state_lightMode() {
-        captureRoboImage("src/test/snapshots/geometry_controls_default_light.png") {
-            SceneViewDemoTheme(darkTheme = false) {
-                Surface {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        GeometryDemoControls(
-                            showCube = true, onShowCubeChange = {},
-                            showSphere = true, onShowSphereChange = {},
-                            showCylinder = true, onShowCylinderChange = {},
-                            showPlane = true, onShowPlaneChange = {},
-                            metallic = 0.3f, onMetallicChange = {},
-                            roughness = 0.5f, onRoughnessChange = {},
-                        )
-                    }
+    @Composable
+    private fun Controls(
+        darkTheme: Boolean = false,
+        metallic: Float = GeometryDemoState.DEFAULT_METALLIC,
+        roughness: Float = GeometryDemoState.DEFAULT_ROUGHNESS,
+    ) {
+        SceneViewDemoTheme(darkTheme = darkTheme) {
+            Surface {
+                Box(modifier = Modifier.padding(SceneViewTokens.Space.md)) {
+                    GeometryDemoControls(
+                        metallic = metallic, onMetallicChange = {},
+                        roughness = roughness, onRoughnessChange = {},
+                    )
                 }
             }
         }
+    }
+
+    /** The chips as they stand on screen: over the dark stage, whatever the theme. */
+    @Composable
+    private fun Chips(visibleShapes: Set<GeometryShape>) {
+        SceneViewDemoTheme(darkTheme = true) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SceneViewTokens.Stage.background)
+                    .padding(SceneViewTokens.Space.md),
+                contentAlignment = Alignment.Center,
+            ) {
+                GeometryShapeChips(visibleShapes = visibleShapes, onToggle = {})
+            }
+        }
+    }
+
+    @Test
+    fun controls_default_state_lightMode() {
+        captureRoboImage("src/test/snapshots/geometry_controls_default_light.png") { Controls() }
     }
 
     @Test
     fun controls_default_state_darkMode() {
         captureRoboImage("src/test/snapshots/geometry_controls_default_dark.png") {
-            SceneViewDemoTheme(darkTheme = true) {
-                Surface {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        GeometryDemoControls(
-                            showCube = true, onShowCubeChange = {},
-                            showSphere = true, onShowSphereChange = {},
-                            showCylinder = true, onShowCylinderChange = {},
-                            showPlane = true, onShowPlaneChange = {},
-                            metallic = 0.3f, onMetallicChange = {},
-                            roughness = 0.5f, onRoughnessChange = {},
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    @Test
-    fun controls_only_cube_visible() {
-        // Pin the chip-deselected appearance — verifies FilterChip styling for unselected
-        // chips matches expectations (different background, no checkmark).
-        captureRoboImage("src/test/snapshots/geometry_controls_only_cube.png") {
-            SceneViewDemoTheme(darkTheme = false) {
-                Surface {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        GeometryDemoControls(
-                            showCube = true, onShowCubeChange = {},
-                            showSphere = false, onShowSphereChange = {},
-                            showCylinder = false, onShowCylinderChange = {},
-                            showPlane = false, onShowPlaneChange = {},
-                            metallic = 0.3f, onMetallicChange = {},
-                            roughness = 0.5f, onRoughnessChange = {},
-                        )
-                    }
-                }
-            }
+            Controls(darkTheme = true)
         }
     }
 
@@ -104,20 +96,57 @@ class GeometryDemoControlsSnapshotTest {
         // slider-range change (e.g. swapping the upper bound from 1f to 100f) would
         // produce a visibly different slider thumb position and fail this snapshot.
         captureRoboImage("src/test/snapshots/geometry_controls_mirror.png") {
-            SceneViewDemoTheme(darkTheme = false) {
-                Surface {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        GeometryDemoControls(
-                            showCube = true, onShowCubeChange = {},
-                            showSphere = true, onShowSphereChange = {},
-                            showCylinder = true, onShowCylinderChange = {},
-                            showPlane = true, onShowPlaneChange = {},
-                            metallic = 1.0f, onMetallicChange = {},
-                            roughness = 0.0f, onRoughnessChange = {},
-                        )
-                    }
-                }
-            }
+            Controls(metallic = 1f, roughness = 0f)
+        }
+    }
+
+    @Test
+    fun controls_chalky_matte() {
+        // metallic=0, roughness=1 = the "chalky matte" extreme.
+        captureRoboImage("src/test/snapshots/geometry_controls_matte.png") {
+            Controls(metallic = 0f, roughness = 1f)
+        }
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w891dp-h411dp-xhdpi")
+    fun controls_landscape_sliders_side_by_side() {
+        // A landscape sheet peeks at about a third of a short window: stacked, the second
+        // slider would start below the fold.
+        captureRoboImage("src/test/snapshots/geometry_controls_landscape.png") {
+            Controls(darkTheme = true)
+        }
+    }
+
+    @Test
+    fun shapeChips_all_shown() {
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_all.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
+            Chips(GeometryDemoState.ALL_SHAPES)
+        }
+    }
+
+    @Test
+    fun shapeChips_only_cube_shown() {
+        // Pins the hidden look — hollow ring, name struck through — next to the one shown chip.
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_only_cube.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
+            Chips(setOf(GeometryShape.Cube))
+        }
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w891dp-h411dp-xhdpi")
+    fun shapeChips_landscape_single_row() {
+        captureRoboImage(
+            "src/test/snapshots/geometry_shape_chips_landscape.png",
+            roborazziOptions = HOST_TOLERANT,
+        ) {
+            Chips(GeometryDemoState.ALL_SHAPES - GeometryShape.Torus)
         }
     }
 
@@ -142,24 +171,20 @@ class GeometryDemoControlsSnapshotTest {
         }
     }
 
-    @Test
-    fun controls_chalky_matte() {
-        // metallic=0, roughness=1 = the "chalky matte" extreme.
-        captureRoboImage("src/test/snapshots/geometry_controls_matte.png") {
-            SceneViewDemoTheme(darkTheme = false) {
-                Surface {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        GeometryDemoControls(
-                            showCube = true, onShowCubeChange = {},
-                            showSphere = true, onShowSphereChange = {},
-                            showCylinder = true, onShowCylinderChange = {},
-                            showPlane = true, onShowPlaneChange = {},
-                            metallic = 0.0f, onMetallicChange = {},
-                            roughness = 1.0f, onRoughnessChange = {},
-                        )
-                    }
-                }
-            }
-        }
+    private companion object {
+        /**
+         * The chips are translucent glass over the stage, and the Linux CI host blends them a
+         * hair differently from the macOS host the goldens are recorded on. Measured on the
+         * runner's `_actual.png` files (run 37147288022): up to 30 % of pixels differ, by at
+         * most 3/255 on one channel, a distance of 0.0162 for `SimpleImageComparator`. Same
+         * bound and same reasoning as `ContactShadowControlsSnapshotTest`: every pixel is still
+         * compared, and a real change (a label, a chip's shown state) moves whole glyphs.
+         */
+        val HOST_TOLERANT = RoborazziOptions(
+            compareOptions = RoborazziOptions.CompareOptions(
+                changeThreshold = 0f,
+                imageComparator = SimpleImageComparator(maxDistance = 0.02f),
+            ),
+        )
     }
 }

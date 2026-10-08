@@ -20,10 +20,12 @@ import io.github.sceneview.web.splat.indexTypeUshort
 import io.github.sceneview.web.splat.nearestClampSampler
 import io.github.sceneview.web.splat.newSplatEntity
 import io.github.sceneview.web.splat.pixelBufferFloat
+import io.github.sceneview.web.splat.pixelBufferUbyte
 import io.github.sceneview.web.splat.primitiveTypeTriangles
 import io.github.sceneview.web.splat.renderableManagerBuilder
 import io.github.sceneview.web.splat.sampler2d
 import io.github.sceneview.web.splat.formatRgba16f
+import io.github.sceneview.web.splat.formatRgba8
 import io.github.sceneview.web.splat.textureBuilder
 import io.github.sceneview.web.splat.vertexAttributePosition
 import io.github.sceneview.web.splat.attributeTypeFloat3
@@ -37,21 +39,16 @@ import kotlin.math.max
  * Kotlin/JS + Filament.js port of Android's `io.github.sceneview.node.SplatNode`
  * (#2646 P2). Same Filament engine (WASM/WebGL2 backend), same rendering design:
  *
- * - Each gaussian is a **hardware-instanced camera-facing quad** drawn by the dedicated
- *   `splat_web.filamat` material (embedded in the bundle): the vertex shader fetches the
- *   per-splat centre / half-extent / colour / opacity from two square `RGBA16F` data
- *   textures indexed by the instance id; the fragment applies an isotropic gaussian
- *   falloff with premultiplied-alpha blending. See [SplatWebBuffers] for the texel
- *   layout contract.
- * - **View-dependent painter's sort** — when a [cameraPositionProvider] is set, the node
- *   re-sorts back-to-front whenever the camera has moved beyond ~1% of the cloud radius,
- *   then re-packs + re-uploads the data textures. JS is single-threaded, so the sort runs
- *   synchronously on the frame tick — ~1 ms at the 8k demo scale (the Android node uses a
- *   background dispatcher instead; same order semantics either way).
- * - **Draw batching** — instancing caps at [SplatWebBuffers.MAX_INSTANCES_PER_BATCH]
- *   (65535) per renderable. Larger clouds split into multiple renderable batches under
- *   this single node, sharing the two data textures via each batch's `instanceOffset`
- *   material parameter, composited in texel order via per-batch global `blendOrder` keys.
+ * Each gaussian is an oriented screen-space ellipse, projected from its 3D covariance.
+ * Four static RGBA16F attribute textures are uploaded in cloud order; a fifth, RGBA8,
+ * texture carries the draw order (one 3-byte index per slot) and is the only upload on a
+ * painter's re-sort.
+ * The shader reverses sRGB/Filmic before the View applies its display colour transform:
+ * splat colours are display-referred, and [io.github.sceneview.web.SceneView] tone-maps
+ * with Filmic (as Android does), so a 0.5 grey splat reads 0.5 on screen. A view switched
+ * to another tone mapper shows splats with shifted colours.
+ * Draws are split at 65535 instances, sharing textures and using global blend order.
+ * A cloud holds at most 2^24 splats ([SplatWebBuffers.MAX_SPLATS]).
  *
  * Construction performs Filament WASM calls and must run after `Filament.init()` —
  * always create through [io.github.sceneview.web.addSplatNode], which also registers the
@@ -67,7 +64,7 @@ class SplatNode internal constructor(
 ) : Node(filamentEngine, entity) {
 
     init {
-        require(splatCloud.count > 0) { "splatCloud must contain at least one splat" }
+        SplatWebBuffers.requireSupportedCount(splatCloud.count)
     }
 
     /**
@@ -84,7 +81,7 @@ class SplatNode internal constructor(
     /** Scene-detach hook run first on [destroy] — set by the factory. */
     internal var onDetach: ((Array<Entity>) -> Unit)? = null
 
-    /** Side of the two square RGBA16F per-splat data textures. */
+    /** Side of the five square textures. */
     val textureSize = SplatWebBuffers.textureSize(splatCloud.count)
 
     /** Contiguous instance ranges, one renderable batch each (cap 65535 instances per draw). */
@@ -108,6 +105,9 @@ class SplatNode internal constructor(
     private val material: Material = createSplatMaterial(filamentEngine)
     private val positionScaleTexture = buildDataTexture()
     private val colorOpacityTexture = buildDataTexture()
+    private val rotationTexture = buildDataTexture()
+    private val scaleTexture = buildDataTexture()
+    private val orderTexture = buildDataTexture(formatRgba8())
 
     /** One material instance per batch (distinct `instanceOffset`). */
     private val materialInstances: List<MaterialInstance> = batches.map { range ->
@@ -115,6 +115,9 @@ class SplatNode internal constructor(
             val sampler = nearestClampSampler()
             instance.setTextureParameter("splatPositionScale", positionScaleTexture, sampler)
             instance.setTextureParameter("splatColorOpacity", colorOpacityTexture, sampler)
+            instance.setTextureParameter("splatRotation", rotationTexture, sampler)
+            instance.setTextureParameter("splatScale", scaleTexture, sampler)
+            instance.setTextureParameter("splatOrder", orderTexture, sampler)
             // float parameters carrying integral values — the web runtime's embind has no
             // setIntParameter (see splat_web.mat's header for the full rationale).
             instance.setFloatParameter("texWidth", textureSize.toDouble())
@@ -139,10 +142,14 @@ class SplatNode internal constructor(
     init {
         // Initial as-loaded order; the first frame with a cameraPositionProvider re-sorts.
         val identityOrder = IntArray(splatCloud.count) { it }
-        uploadTextures(
-            SplatWebBuffers.packPositionScale(splatCloud, identityOrder, textureSize),
-            SplatWebBuffers.packColorOpacity(splatCloud, identityOrder, textureSize)
-        )
+        positionScaleTexture.setImage(filamentEngine, 0, pixelBufferFloat(
+            SplatWebBuffers.packPositionScale(splatCloud, identityOrder, textureSize)))
+        colorOpacityTexture.setImage(filamentEngine, 0, pixelBufferFloat(
+            SplatWebBuffers.packColorOpacity(splatCloud, identityOrder, textureSize)))
+        val (rotation, scale) = SplatWebBuffers.packRotationScale(splatCloud, textureSize)
+        rotationTexture.setImage(filamentEngine, 0, pixelBufferFloat(rotation))
+        scaleTexture.setImage(filamentEngine, 0, pixelBufferFloat(scale))
+        uploadOrder(identityOrder)
 
         // The shared unit quad ([-1, 1]^2 at z = 0) instanced once per splat.
         quadVertexBuffer = vertexBufferBuilder()
@@ -225,9 +232,9 @@ class SplatNode internal constructor(
      *
      * All batches share the unit quad geometry, the full-cloud bounding box (instances
      * are displaced in the vertex shader, so per-batch tight boxes would not survive
-     * re-sorts), and the two data textures. With several batches, a global `blendOrder`
+     * re-sorts), and the shared data textures. With several batches, a global `blendOrder`
      * keyed on the batch index keeps Filament compositing them in texel order — the
-     * painter's sort packs texels globally back-to-front, so batch 0 is always the
+     * painter's sort orders slots globally back-to-front, so batch 0 is always the
      * farthest slice.
      */
     private fun buildBatchRenderable(batchEntity: Entity, batchIndex: Int, instanceCount: Int) {
@@ -271,29 +278,25 @@ class SplatNode internal constructor(
             splatCloud.positions, splatCloud.count,
             cameraLocal.x, cameraLocal.y, cameraLocal.z
         )
-        uploadTextures(
-            SplatWebBuffers.packPositionScale(splatCloud, order, textureSize),
-            SplatWebBuffers.packColorOpacity(splatCloud, order, textureSize)
-        )
+        uploadOrder(order)
         onInvalidate?.invoke()
     }
 
-    private fun buildDataTexture() = textureBuilder()
+    private fun buildDataTexture(format: dynamic = formatRgba16f()) = textureBuilder()
         .width(textureSize)
         .height(textureSize)
         .levels(1)
         .sampler(sampler2d())
-        .format(formatRgba16f())
+        .format(format)
         .build(filamentEngine)
 
-    private fun uploadTextures(positionScale: Float32Array, colorOpacity: Float32Array) {
-        positionScaleTexture.setImage(filamentEngine, 0, pixelBufferFloat(positionScale))
-        colorOpacityTexture.setImage(filamentEngine, 0, pixelBufferFloat(colorOpacity))
+    private fun uploadOrder(order: IntArray) {
+        orderTexture.setImage(filamentEngine, 0, pixelBufferUbyte(SplatWebBuffers.packOrder(order, textureSize)))
     }
 
     /**
      * Destroys the batch renderables + entities, this node (via `super`), the material
-     * instances, the material, the shared quad buffers, and the two data textures —
+     * instances, the material, the shared quad buffers, and the shared data textures —
      * instances strictly before material and textures (Filament asserts on a texture
      * still bound to a live MaterialInstance), the same ordering as the Android node and
      * the light teardown's component-then-entity rule (#1700).
@@ -319,5 +322,8 @@ class SplatNode internal constructor(
         filamentEngine.destroyIndexBuffer(quadIndexBuffer)
         filamentEngine.destroyTexture(positionScaleTexture)
         filamentEngine.destroyTexture(colorOpacityTexture)
+        filamentEngine.destroyTexture(rotationTexture)
+        filamentEngine.destroyTexture(scaleTexture)
+        filamentEngine.destroyTexture(orderTexture)
     }
 }

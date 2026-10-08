@@ -283,6 +283,11 @@ fun ARSceneView(
 )
 ```
 
+**Note — the display stays on while `ARSceneView` is composed (#4392).** An AR session is used
+without touching the screen, so the composable sets `keepScreenOn` on its host view and hands
+the previous value back when it leaves the composition. Nothing to add in app code; a 3D
+`SceneView` leaves the display timeout alone.
+
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
@@ -900,8 +905,11 @@ current Niantic format) are all read, in pure Kotlin on every target.
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
 `SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
-cloud. The web still draws isotropic billboards (anisotropic port: #4046); the painter's sort re-runs on camera motion automatically (the web
-node feeds it the live camera position). iOS is tracked separately under #2646.
+cloud. Splats are oriented ellipses with the Android projection (#4046) and display the stored
+colour on the bundle's Filmic view; a cloud holds at most 2^24 splats (above that the promise
+rejects / `onError` fires with the limit in the message). The painter's sort re-runs on camera
+motion automatically (the web node feeds it the live camera position). iOS is tracked
+separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
@@ -2987,7 +2995,7 @@ val hub = LoopbackCollaborativeTransport.LoopbackHub()
 val transport = hub.join("my-peer-id")               // join one per simulated device
 
 // Orchestrator over CloudAnchorNode + the transport. Mirrors RerunBridge:
-// supervisor IO scope, CONFLATED outbox, lifecycle-bound remember* helper.
+// supervisor IO scope, non-blocking outbox, lifecycle-bound remember* helper.
 @Composable fun rememberCollaborativeSession(
     transport: CollaborativeTransport,
     displayName: String = transport.localPeerId,
@@ -3034,8 +3042,8 @@ fun MultiplayerARScreen() {
 ```
 
 - **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — last-writer-wins per node key (`PlacedNode`); stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` are non-blocking (conflated channel) so they are safe in the AR render callback. All merge work runs on a supervisor IO scope.
+- **Conflict policy** — a node key holds the last write the device has seen (`PlacedNode`), a peer's or its own: `placeNode` on an existing key moves that node, including one a peer placed. Messages carry no logical clock, so two peers writing the *same* key at the same moment are not ordered — prefix node keys with the peer id when several users may move things at once. Stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` never block, so they are safe in the AR render callback: only camera poses are conflated (the newest wins), while a placement, the anchor id and the hello are never dropped by a later line. `broadcastLocalPose(Pose)` is not rate-limited — only `onFrame` honours `poseRateHz`. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.
@@ -5648,35 +5656,38 @@ the model. Priority alone does not defeat a depth test; depth alone leaves two o
 cards resolving in submission order.
 
 `SceneScope.ViewNode`'s `apply` lambda runs **once**, at construction, and the composable
-never hands the node back — so read a reactive toggle through a `State` from inside a
-per-frame hook, and compare against the last applied value so it costs two JNI calls per
-*change*, not per frame.
+never hands the node back — so keep the node it receives and apply the toggle from an effect
+keyed on both. It costs two JNI calls per *change* and no per-frame hook: a node-level
+`onFrame` is a standing request to keep rendering, so it would stop an idle scene from parking.
 
 ```kotlin
 val windowManager = rememberViewNodeManager()
-var alwaysOnTop by remember { mutableStateOf(false) }
-val onTop = rememberUpdatedState(alwaysOnTop)
+var alwaysOnTop by remember { mutableStateOf(true) }
+var card by remember { mutableStateOf<ViewNode?>(null) }
+
+LaunchedEffect(card, alwaysOnTop) {
+    card?.let {
+        it.materialInstance.setDepthCulling(!alwaysOnTop)
+        it.setPriority(if (alwaysOnTop) PRIORITY_LAST else PRIORITY_DEFAULT)
+        it.requestRender()             // an on-demand scene will not redraw by itself
+    }
+}
 
 ViewNode(
     windowManager = windowManager,
-    unlit = true,                      // a label that dims in shadow is a legibility bug
-    apply = {
-        isTouchForwardingEnabled = false   // decorative: never steal a camera drag
-        var applied: Boolean? = null
-        onFrame = {
-            val wanted = onTop.value
-            if (applied != wanted) {
-                applied = wanted
-                materialInstance.setDepthCulling(!wanted)
-                setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
-            }
-        }
-    },
+    apply = { card = this },
 ) { Card { Text("Always readable") } }
 ```
 
-Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
-arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`.
+Drawing last is visual only: picking still returns the nearest collider, so an interactive
+card drawn over the model has to be looked up in `collisionSystem.hitTest(event)` before the
+geometry behind it.
+
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`, Inspect mode), with
+the arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`. Its one card stands beside
+the object under a camera that looks down, so it also leans back by the camera's elevation on
+the orbit target — `Rotation(x = -elevation, y = yaw)`, parallel to the screen rather than
+pitched at the eye — which keeps its edges upright on a phone held sideways.
 
 ### Animated model with play/pause
 
@@ -5992,9 +6003,9 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `lines-paths` — Lines & Paths. Follow animated curves and paths.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `two-d-in-three-d` — 2D in 3D. Live UI, text, images and video in a 3D scene.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `geometry` — Geometry Primitives. Show, hide and restyle the seven built-in shapes.
 
 ### Developer tools
 
@@ -7481,7 +7492,7 @@ ferrari_f40.glb
     sv.loadModel('https://sceneview.github.io/models/platforms/Fox.glb');
     sv.setAutoRotate(true);
     sv.setBloom({ strength: 0.3, threshold: 0.8 });
-    sv.setBackgroundColor(0.05, 0.05, 0.12);
+    sv.setBackgroundColor(0.2, 0.2, 0.38);  // the colour as displayed: sRGB 0-1, here #333361
     sv.addLight({ type: 'point', position: [3, 5, 3], intensity: 50000, color: [1, 0.9, 0.8] });
     sv.createText({ text: '3D Fox', fontSize: 48, color: '#ffffff', position: [0, 2.5, 0], billboard: true });
   });
@@ -7524,6 +7535,7 @@ off();                               // unsubscribe; dispose() also drops the li
 - `'onDemand'` parks the loop once nothing moves (no auto-rotate, drag, inertia, playing animation or pending texture decode). Input, camera calls, scene changes, video frames and `requestRender()` wake it.
 - Both modes draw nothing off-screen or in a hidden tab. A camera or scene call made off-screen still draws one frame, so the canvas is current when it scrolls back in; a playing video does not.
 - `onFrame` only observes frames: it never keeps the loop awake by itself.
+- Background: the `backgroundColor: [r, g, b, a]` option and `sv.setBackgroundColor(r, g, b, a)` take the colour as displayed — sRGB 0-1, a hex byte / 255, so `sv.setBackgroundColor(0xEE / 255, 0xF0 / 255, 0xF3 / 255)` shows `#EEF0F3` (the same contract as `sceneview-web`). Default: the dark slate `#333C57`, or a clear canvas with `transparent: true`.
 
 ---
 
@@ -7843,6 +7855,12 @@ lands on screen exactly as given — divide each hex byte by 255 to match a page
 optional (default `1`); `a < 1` makes the canvas see-through so the page behind it shows
 (`sv.setBackgroundColor(0, 0, 0, 0)` = transparent canvas). Default `#333443`. A skybox
 covers the background.
+
+Tone mapping: the Kotlin/JS bundle (`sceneview-web.js`) and the hand-written website viewer
+(`website-static/js/sceneview.js`) grade with Filmic, the Android default
+(`SceneFactories.createView`), so a model is graded the same way on Android and on the web.
+Neither grades the background: both show the colour they are given (hand-written viewer:
+sRGB 0-1, default `#333C57`), and a transparent canvas leaves the page behind it untouched.
 
 Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
 pixels ((0,0) = top-left). The point is unprojected through the live camera

@@ -651,8 +651,7 @@ private fun RerunReplayScreen(
         // the dock, and another brings them back.
         chromeToggleOnTap = true,
         overlaysFollowChrome = true,
-        // Room Scan | Session MP4 is chosen on the landing (a row of its settings sheet), not
-        // from inside a replay.
+        // Room Scan shows no mode switch on any of its screens (#4397).
         modeSwitch = null,
         topOverlay = {
             if (media != null && compact) {
@@ -1067,8 +1066,7 @@ private fun RerunLiveScreen(
                 },
             )
         },
-        // Room Scan | Session MP4 is chosen on the landing (a row of its settings sheet), not
-        // from inside a scan.
+        // Room Scan shows no mode switch on any of its screens (#4397).
         modeSwitch = null,
         topOverlay = {
             if (recording && scanMedia != null) {

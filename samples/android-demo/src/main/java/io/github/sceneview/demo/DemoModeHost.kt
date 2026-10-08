@@ -30,7 +30,8 @@ import io.github.sceneview.demo.ui.ConnectedChoiceRow
  *
  * [key] is the lowercase token used three ways — the `?tab=<key>` deep-link name
  * ([DeepLinkRouter.TAB_NAMES]), the `sample_interaction` control (`mode_<key>`) and the pill's
- * test tag (`demo_mode_<key>`) — so the three never drift apart.
+ * test tag (`demo_mode_<key>`) — so the three never drift apart. A host that draws no switch
+ * (`showSwitch = false`) has no pill, and so no such tag: its modes open by deep link only.
  */
 @Immutable
 data class DemoMode(val key: String, @StringRes val labelRes: Int)
@@ -39,19 +40,18 @@ data class DemoMode(val key: String, @StringRes val labelRes: Int)
  * The mode switch a [DemoModeHost] hands to the [DemoScaffold] of whichever demo it is
  * showing. The scaffold draws it as the shared mode pill at the foot of its bottom band, just
  * above the dock, so every consolidated card switches modes in the same place.
- *
- * [inSheet] — the host folded the switch away (#4379): the scaffold draws no pill over the
- * scene and heads its settings sheet with the modes instead ([DemoModeRow]).
  */
 @Immutable
 class DemoModeSwitch internal constructor(
     val modes: List<DemoMode>,
     val selected: Int,
     val onSelect: (Int) -> Unit,
-    val inSheet: Boolean = false,
 )
 
-/** The switch of the [DemoModeHost] around the current demo, or `null` outside one. */
+/**
+ * The switch of the [DemoModeHost] around the current demo, or `null` outside one — and inside
+ * a host that keeps its modes off the screen (`showSwitch = false`).
+ */
 val LocalDemoModeSwitch = compositionLocalOf<DemoModeSwitch?> { null }
 
 /**
@@ -66,17 +66,18 @@ val LocalDemoModeSwitch = compositionLocalOf<DemoModeSwitch?> { null }
  * `ar-placement?tab=1` still opens the wall inside the Place mode — and is dropped otherwise,
  * so it cannot pre-select a tab of the next demo opened.
  *
- * **Where the switch is drawn.** By default, as the mode pill over the scene. A card whose
- * second mode is an option of the first rather than an experience of its own — Room Scan's
- * "Session MP4" — sets [switchInSheet]: the scene keeps the pill's row, and the modes are the
- * first row of the settings sheet (#4379).
+ * **No switch on screen.** [showSwitch] `= false` publishes no [LocalDemoModeSwitch]: the
+ * card opens on its first mode and nothing on screen leads to the others, which stay
+ * reachable by deep link (`?tab=<key>`, a retired id). Room Scan does this — its
+ * "Session MP4" mode is a developer tool the QA harness opens, not a choice to put in front
+ * of whoever came to scan a room.
  */
 @Composable
 fun DemoModeHost(
     modes: List<DemoMode>,
     tabToMode: Map<Int, Int>,
     defaultModeReadsTab: Boolean = false,
-    switchInSheet: Boolean = false,
+    showSwitch: Boolean = true,
     content: @Composable (mode: Int) -> Unit,
 ) {
     val sampleId = LocalSampleId.current
@@ -92,9 +93,8 @@ fun DemoModeHost(
                 logSampleModeChange(sampleId, modes[selected].key)
             }
         },
-        inSheet = switchInSheet,
     )
-    CompositionLocalProvider(LocalDemoModeSwitch provides switch) {
+    CompositionLocalProvider(LocalDemoModeSwitch provides switch.takeIf { showSwitch }) {
         key(mode) { content(mode) }
     }
 }
@@ -149,25 +149,5 @@ fun DemoModePill(switch: DemoModeSwitch, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * The same switch as a row of the settings sheet (#4379), for a host that set `switchInSheet`:
- * the sheet's own segmented row, full width, in the theme's colours. The options keep the
- * pill's test tags (`demo_mode_<key>`), so a flow that picks a mode names it the same way.
- */
-@Composable
-internal fun DemoModeRow(switch: DemoModeSwitch, modifier: Modifier = Modifier) {
-    ConnectedChoiceRow(
-        options = switch.modes.indices.toList(),
-        selected = switch.selected,
-        onSelect = switch.onSelect,
-        label = { stringResource(switch.modes[it].labelRes) },
-        modifier = modifier.testTag(DEMO_MODE_ROW_TAG),
-        optionTestTag = { "demo_mode_${switch.modes[it].key}" },
-    )
-}
-
 /** Test tag of the shared [DemoModePill]. */
 const val DEMO_MODE_PILL_TAG = "demo-mode-pill"
-
-/** Test tag of [DemoModeRow], the mode switch inside the settings sheet. */
-const val DEMO_MODE_ROW_TAG = "demo-mode-row"

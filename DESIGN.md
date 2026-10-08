@@ -581,6 +581,20 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   top scrim fades with the chrome; the bottom one grows to the measured overlay
   band and outlives the fade, because a status pill or legend stays on screen
   after a scene tap has hidden the dock.
+
+  **A phone held sideways (compact height) has no bands, only grounds.** 160dp
+  is more than a third of a 411dp window and 220dp more than half: together they
+  leave a strip of scene. Each scrim keeps to what it grounds. The top one is
+  whole behind the upper half of the status bar, where the clock and the battery
+  are drawn with nothing of their own, and eases out over `space-2xl` past the
+  bar — smoothstep, not a straight ramp, because a ramp that ended at the bar
+  drew a line across the picture. The bottom one is whole under the system bar
+  and the lower half of the dock, gone `space-lg` above the dock, and leaves
+  with the chrome. Everything glass that floats over the scene — the back button
+  and the title pill, a status pill, a demo's own pills — then carries
+  `chrome-scrim` itself, under its glass and cut to its own outline
+  (`LocalGlassGround`): same stack (scene, scrim, glass, glyph), same contrast,
+  on the chip instead of across the picture.
 - **There is no overflow menu.** Reset, Send feedback and QA mode live in the
   settings sheet the dock's Controls item opens — one settings surface, not two.
 - **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
@@ -629,11 +643,11 @@ the scene the whole window (#4379).
 - **A thin bar goes with the dock (#4379).** The bottom overlay slot ends 24dp above the
   dock, so a card reads as stacked over it. A one-row bar that belongs *with* the dock —
   a timeline, a scrubber — sinks by `dockGap - space-sm` and rests `space-sm` above it.
-- **A mode that is an option lives in the sheet (#4379).** The mode pill is for two
-  experiences of equal weight (Cosmos "Starlight | Spacetime"). When the second mode is
-  an option of the first — Room Scan's "Session MP4" — the host sets `switchInSheet`:
-  no pill over the scene, and the modes are the first row of the settings sheet, the
-  sheet's own full-width segmented row.
+- **A mode that is a developer tool stays off the screen (#4397).** The mode pill is for
+  two experiences of equal weight (Cosmos "Starlight | Spacetime"). When the second mode
+  is a tool the QA harness opens — Room Scan's "Session MP4" — the host sets
+  `showSwitch = false`: no pill over the scene, no row in the settings sheet, and the
+  mode opens by deep link only (`?tab=<key>`).
 
 - **Every dock item is labelled.** An icon-only dock makes the user decode glyphs, and
   two actions in the same row can legitimately want the same picture — the viewer had

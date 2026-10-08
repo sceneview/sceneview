@@ -22,7 +22,9 @@ a stable real-world capture instead of needing live camera + IMU.
 ## Adding a new bundled recording
 
 1. Run the demo app on a real ARCore-capable device (Pixel 4+ recommended).
-2. Open the **AR Recording** demo, tap the red shutter, capture an AR session, tap it again.
+2. Open the Session MP4 recorder — it has no entry in the app, only a deep link
+   (`adb shell am start -a android.intent.action.VIEW -d "sceneview://demo/ar-rerun?tab=session-mp4"`) —
+   tap the red shutter, capture an AR session, tap it again.
 3. Pull the `.mp4` from the device:
    ```bash
    adb -s <SERIAL> pull /sdcard/Android/data/io.github.sceneview.demo.qa/files/ar-recordings/<filename>.mp4

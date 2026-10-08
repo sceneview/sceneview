@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import io.github.sceneview.utils.readBuffer
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -817,6 +818,14 @@ fun ARSceneView(
     }
 
     val context = LocalContext.current
+
+    // An AR session is used without touching the screen: the display must not time out in the
+    // middle of a scan (#4392). Held for as long as the scene is composed, then handed back.
+    val hostView = LocalView.current
+    DisposableEffect(hostView) {
+        KeepScreenOnLeases.acquire(hostView)
+        onDispose { KeepScreenOnLeases.release(hostView) }
+    }
 
     // ── AR subsystems ─────────────────────────────────────────────────────────────────────────────
 

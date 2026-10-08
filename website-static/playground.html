@@ -2114,7 +2114,7 @@
         },
         web: {
           file: 'model-viewer.js', lang: 'JavaScript',
-          code: '// SceneView Web — Model Viewer\nconst viewer = await SceneView.modelViewer(\n    "canvas",\n    "models/toy_car.glb",\n    {\n        autoRotate: true,\n        cameraDistance: 4.0,\n        backgroundColor: [0.07, 0.07, 0.11, 1.0]\n    }\n);\n\n// Optional: load environment for PBR reflections\nawait viewer.loadEnvironment("envs/neutral.ktx");\n\n// Orbit controls are enabled by default\n// Drag to rotate, scroll to zoom, right-drag to pan'
+          code: '// SceneView Web — Model Viewer\nconst viewer = await SceneView.modelViewer(\n    "canvas",\n    "models/toy_car.glb",\n    {\n        autoRotate: true,\n        cameraDistance: 4.0,\n        backgroundColor: [0.26, 0.27, 0.36, 1.0]\n    }\n);\n\n// Optional: load environment for PBR reflections\nawait viewer.loadEnvironment("envs/neutral.ktx");\n\n// Orbit controls are enabled by default\n// Drag to rotate, scroll to zoom, right-drag to pan'
         },
         flutter: {
           file: 'model_viewer.dart', lang: 'Dart',
@@ -2286,7 +2286,7 @@
           file: 'rerun-embed.html', lang: 'HTML',
           // NOTE: every </tag> inside this string is escaped as <\/tag> so the
           // outer <script> block isn't terminated early by the HTML parser.
-          code: '<!-- Embed the Rerun Web Viewer next to a SceneView canvas -->\n<!doctype html>\n<html>\n<head>\n    <meta charset="utf-8" />\n    <title>SceneView + Rerun<\/title>\n    <style>\n        body { margin: 0; background: #0f0f14; }\n        .split {\n            display: grid;\n            grid-template-columns: 1fr 1fr;\n            height: 100vh;\n        }\n        #sceneview-canvas, #rerun-viewer {\n            width: 100%;\n            height: 100%;\n            border: 0;\n        }\n    <\/style>\n<\/head>\n<body>\n    <div class="split">\n        <canvas id="sceneview-canvas"><\/canvas>\n        <!-- Official Rerun hosted viewer in an iframe -->\n        <iframe\n            id="rerun-viewer"\n            src="https://app.rerun.io/version/0.22.0/?url=https://example.com/your-session.rrd"\n            sandbox="allow-scripts allow-same-origin"\n            title="Rerun Web Viewer">\n        <\/iframe>\n    <\/div>\n\n    <script src="js/sceneview.js"><\/script>\n    <script>\n        SceneView.create("sceneview-canvas", {\n            backgroundColor: [0.07, 0.07, 0.11, 1.0]\n        }).then(function(sv) {\n            sv.loadModel("models/toy_car.glb");\n        });\n    <\/script>\n<\/body>\n<\/html>'
+          code: '<!-- Embed the Rerun Web Viewer next to a SceneView canvas -->\n<!doctype html>\n<html>\n<head>\n    <meta charset="utf-8" />\n    <title>SceneView + Rerun<\/title>\n    <style>\n        body { margin: 0; background: #0f0f14; }\n        .split {\n            display: grid;\n            grid-template-columns: 1fr 1fr;\n            height: 100vh;\n        }\n        #sceneview-canvas, #rerun-viewer {\n            width: 100%;\n            height: 100%;\n            border: 0;\n        }\n    <\/style>\n<\/head>\n<body>\n    <div class="split">\n        <canvas id="sceneview-canvas"><\/canvas>\n        <!-- Official Rerun hosted viewer in an iframe -->\n        <iframe\n            id="rerun-viewer"\n            src="https://app.rerun.io/version/0.22.0/?url=https://example.com/your-session.rrd"\n            sandbox="allow-scripts allow-same-origin"\n            title="Rerun Web Viewer">\n        <\/iframe>\n    <\/div>\n\n    <script src="js/sceneview.js"><\/script>\n    <script>\n        SceneView.create("sceneview-canvas", {\n            backgroundColor: [0.26, 0.27, 0.36, 1.0]\n        }).then(function(sv) {\n            sv.loadModel("models/toy_car.glb");\n        });\n    <\/script>\n<\/body>\n<\/html>'
         },
         flutter: {
           file: 'rerun_debug.md', lang: 'Markdown',
@@ -3048,10 +3048,11 @@
 
     function getBgColor() {
       var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      // The colours as displayed (sRGB): #344351 / #E3E0DB, #74818F / #E6E2DB.
       if (darkBg) {
-        return isDark ? [0.05, 0.07, 0.09, 1.0] : [0.92, 0.94, 0.97, 1.0];
+        return isDark ? [0x34 / 255, 0x43 / 255, 0x51 / 255, 1.0] : [0xE3 / 255, 0xE0 / 255, 0xDB / 255, 1.0];
       } else {
-        return isDark ? [0.15, 0.18, 0.22, 1.0] : [1.0, 1.0, 1.0, 1.0];
+        return isDark ? [0x74 / 255, 0x81 / 255, 0x8F / 255, 1.0] : [0xE6 / 255, 0xE2 / 255, 0xDB / 255, 1.0];
       }
     }
 
