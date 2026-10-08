@@ -70,3 +70,28 @@ npm test
 (`src/generated.test.ts`) and the npm tarball completeness check
 (`src/package-files.test.ts`). The `pretest` step regenerates both
 files so a stale local checkout never masks a real drift.
+
+---
+
+## Publishing
+
+`sceneview-mcp` is on its own version track: it is published from
+`mcp/package.json`'s version, never from the SDK's `VERSION_NAME`. The
+`publish-mcp` job in [`release.yml`](../.github/workflows/release.yml) is the
+only thing that can publish it — npm Trusted Publishing accepts one workflow
+per package, and that workflow is `release.yml`.
+
+To ship the MCP between SDK releases, merge the `mcp/package.json` bump
+(`manifest.json`, `server.json` and the root `gemini-extension.json` move with
+it — `src/packaging.test.ts` holds them together), then dispatch the release
+workflow on `main`:
+
+```bash
+gh workflow run release.yml --ref main
+```
+
+Every publisher job skips a version that is already on its registry, and the
+GitHub Release and API-docs deploy only run on a tag, so on a `main` whose SDK
+version is already released this publishes the MCP and nothing else. Check that
+first: a dispatch publishes every package whose version is not on its registry
+yet.

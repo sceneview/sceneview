@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 // `mcp/server.json` had already drifted four patches behind when these assertions were
 // written, which is the whole argument for them: the MCP server is on its own release
 // track and nothing bumps these files automatically (`.claude/scripts/sync-versions.sh`
-// excludes `mcp/` by design, and `mcp-publish.yml` reads `package.json` only).
+// excludes `mcp/` by design, and `release.yml`'s `publish-mcp` job reads `package.json`
+// only).
 //
 // Every assertion below compares two files against each other. An assertion that only
 // compares a file to a literal typed in the same commit proves nothing, so there are none.
