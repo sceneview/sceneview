@@ -470,6 +470,9 @@ fun DemoScaffold(
     dockAccent: DockItem? = null,
     loadingLabel: String? = null,
     chromeToggleOnTap: Boolean = false,
+    // The demo's own overlays leave with the chrome on a scene tap (#4379). Off by default: a
+    // status pill or a capture button is not chrome, and stays when the dock goes.
+    overlaysFollowChrome: Boolean = false,
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
     recorder: SceneRecorderState? = null,
@@ -536,6 +539,8 @@ fun DemoScaffold(
     }
     var chromeToggled by rememberSaveable { mutableStateOf(true) }
     val chromeVisible = chromeToggled || touchExploration || DemoSettings.qaMode
+    // A demo that opted in (#4379) loses its overlays with the chrome: the scene gets the window.
+    val overlaysShown = !overlaysFollowChrome || chromeVisible
 
     // The top scrim (#3328) puts a 60 %-black ground under the status bar, so in light
     // mode the system icons — clock, wifi, battery — turn dark-on-dark and disappear.
@@ -930,7 +935,7 @@ fun DemoScaffold(
                 val bottomStackShown = bottomOverlay != null || peekHeader != null ||
                     modeSwitch != null || recordPillShown
                 AnimatedVisibility(
-                    visible = chromeVisible || (bottomStackShown && !compactHeight),
+                    visible = chromeVisible || (overlaysShown && bottomStackShown && !compactHeight),
                     enter = fadeIn(SceneViewTokens.Motion.fade()),
                     exit = fadeOut(SceneViewTokens.Motion.fade()),
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -948,6 +953,7 @@ fun DemoScaffold(
                 if (topOverlay != null && !arSessionFailed && arOverlaysEnabled) {
                     DemoTopOverlay(
                         reservedTop = identityRow,
+                        shown = overlaysShown,
                         onBandHeightChanged = { topOverlayBandPx = it },
                         content = topOverlay,
                     )
@@ -961,9 +967,11 @@ fun DemoScaffold(
                 if (!arSessionFailed && arOverlaysEnabled && hasBottomBandContent) {
                     DemoBottomOverlay(
                         reservedBottom = dockClearance,
+                        dockGap = dockClearance - dockBandClearance,
                         // Same rule as the dock (#3827): a floating pill seen through a glass
                         // sheet reads as a live button inside it (#3985).
                         faded = settingsExpanded || dockHidden,
+                        shown = overlaysShown,
                         onBandHeightChanged = { bottomOverlayBandPx = it },
                         status = peekHeader,
                         content = bottomOverlay,
@@ -982,7 +990,9 @@ fun DemoScaffold(
                     // An AR mode whose session failed still offers the way to the other mode.
                     DemoBottomOverlay(
                         reservedBottom = dockClearance,
+                        dockGap = dockClearance - dockBandClearance,
                         faded = settingsExpanded || dockHidden,
+                        shown = true,
                         onBandHeightChanged = { bottomOverlayBandPx = it },
                         status = null,
                         content = null,
@@ -1636,6 +1646,14 @@ class DemoBottomOverlayScope internal constructor(
      * call sites keep compiling and laying out identically.
      */
     val settingsFabReservedSpace: Dp,
+    /**
+     * The air the scaffold keeps between the slot's bottom edge and the dock: the reserve under
+     * the slot is deliberately taller than the dock band, so a card reads as stacked above the
+     * dock. A thin bar that belongs *with* the dock — a timeline, a scrubber — sinks by
+     * `dockGap - Space.sm` (`Modifier.offset`) and rests one small gutter above it instead
+     * (#4379). `0.dp` once a large font has grown the dock into the reserve.
+     */
+    val dockGap: Dp = 0.dp,
 ) : ColumnScope by columnScope
 
 /**
@@ -1656,9 +1674,12 @@ class DemoBottomOverlayScope internal constructor(
  * reports does not jump while the sheet is up, and the demo's overlay state survives.
  */
 @Composable
+@Suppress("LongParameterList") // one private slot renderer, every argument named at its two call sites
 private fun BoxScope.DemoBottomOverlay(
     reservedBottom: Dp,
+    dockGap: Dp,
     faded: Boolean,
+    shown: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     status: String?,
     content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
@@ -1669,12 +1690,34 @@ private fun BoxScope.DemoBottomOverlay(
         animationSpec = SceneViewTokens.Motion.fade(),
         label = "bottom-overlay-under-sheet",
     )
+    // Hidden with the chrome (#4379), the band leaves the composition: nothing invisible takes a
+    // tap. The scaffold keeps the last height it measured, so the scene does not reflow.
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(SceneViewTokens.Motion.fade()),
+        exit = fadeOut(SceneViewTokens.Motion.fade()),
+        modifier = Modifier.align(Alignment.BottomCenter),
+    ) {
+        DemoBottomOverlayBand(reservedBottom, dockGap, { bandAlpha }, onBandHeightChanged, status, content, footer)
+    }
+}
+
+@Composable
+@Suppress("LongParameterList") // the band of [DemoBottomOverlay], split off its visibility wrapper
+private fun DemoBottomOverlayBand(
+    reservedBottom: Dp,
+    dockGap: Dp,
+    bandAlpha: () -> Float,
+    onBandHeightChanged: (Int) -> Unit,
+    status: String?,
+    content: (@Composable DemoBottomOverlayScope.() -> Unit)?,
+    footer: (@Composable ColumnScope.() -> Unit)?,
+) {
     Column(
         modifier = Modifier
-            .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .onSizeChanged { onBandHeightChanged(it.height) }
-            .graphicsLayer { alpha = bandAlpha }
+            .graphicsLayer { alpha = bandAlpha() }
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
@@ -1696,7 +1739,7 @@ private fun BoxScope.DemoBottomOverlay(
             }
         }
         if (content != null) {
-            DemoBottomOverlayScope(this, 0.dp).content()
+            DemoBottomOverlayScope(this, 0.dp, dockGap).content()
         }
         footer?.invoke(this)
     }
@@ -1771,25 +1814,32 @@ class DemoTopOverlayScope internal constructor(
 @Composable
 private fun BoxScope.DemoTopOverlay(
     reservedTop: Dp,
+    shown: Boolean,
     onBandHeightChanged: (Int) -> Unit,
     content: @Composable DemoTopOverlayScope.() -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .align(Alignment.TopCenter)
-            .fillMaxWidth()
-            .onSizeChanged { onBandHeightChanged(it.height) }
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
-                )
-            )
-            .padding(top = reservedTop)
-            .testTag(DemoScaffoldTestTags.TOP_OVERLAY),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(SceneViewTokens.Motion.fade()),
+        exit = fadeOut(SceneViewTokens.Motion.fade()),
+        modifier = Modifier.align(Alignment.TopCenter),
     ) {
-        DemoTopOverlayScope(this, 0.dp).content()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { onBandHeightChanged(it.height) }
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+                    )
+                )
+                .padding(top = reservedTop)
+                .testTag(DemoScaffoldTestTags.TOP_OVERLAY),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(OVERLAY_STACK_SPACING),
+        ) {
+            DemoTopOverlayScope(this, 0.dp).content()
+        }
     }
 }
 

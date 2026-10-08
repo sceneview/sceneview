@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,9 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -80,7 +77,6 @@ import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
-import io.github.sceneview.demo.demos.internal.ArDebugStats
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugAnchor
@@ -92,7 +88,6 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
-import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
@@ -731,7 +726,7 @@ internal fun ArDebugSceneView(
                 }
                 // A surface built elsewhere than this session's own world is framed on its own.
                 val bounds = solid?.takeIf { !it.aligned }?.bounds ?: subject.bounds
-                val floorY = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
+                val floorY = stageFloorY(whole)
                 orbit.roomYawDegrees = subject.roomYawDegrees
                 val firstContent = !orbit.hasFramedContent && bounds != null
                 if (firstContent) {
@@ -777,12 +772,10 @@ internal fun ArDebugSceneView(
                 if (frame.anchors != anchors) anchors = frame.anchors
                 if (frameTimeNanos - clock.statsAtNanos >= STATS_INTERVAL_NS) {
                     clock.statsAtNanos = frameTimeNanos
-                    // A replay with a dense cloud counts its surfels, as the sessions list does.
+                    // A replay with a dense cloud counts its surfels, as the sessions list does,
+                    // and names the room it found, as a floor plan would.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
-                    session.stats = ArDebugStats.of(frame, trace.duration, points).let { stats ->
-                        // A replay names the room it found, as a floor plan would.
-                        if (replay == null) stats else stats.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
-                    }
+                    session.count(frame, points, floorY.takeIf { replay != null })
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is
                 // counting what the user has actually seen.
@@ -994,7 +987,10 @@ internal fun com.google.android.filament.View.configureForDebug(colorGrading: Co
 private const val PIP_FPS = 30
 private const val PIP_POINT_SCALE = 0.55f
 private const val FRAME_INTERVAL_NS = 50_000_000L // rebuild the frame at most at 20 Hz
-private const val STATS_INTERVAL_NS = 250_000_000L
+internal const val STATS_INTERVAL_NS = 250_000_000L
+
+/** The floor the stage stands on, to the centimetre. [whole] is the frame the scene is framed on. */
+internal fun stageFloorY(whole: ArDebugFrame): Float = (ArDebugGeometry.floorHeight(whole) * 100f).roundToInt() / 100f
 private const val BLOOM_STRENGTH = 0.28f
 private const val ANCHOR_MODEL_SIZE_M = 0.3f
 
@@ -1002,68 +998,6 @@ private const val ANCHOR_MODEL_SIZE_M = 0.3f
 private const val SHOWN_AFTER_FRAMES = 3
 
 // ─── Chrome ──────────────────────────────────────────────────────────────────────────────────
-
-/**
- * The picture-in-picture over the camera: the live 3D view in a portrait glass card. A tap
- * opens the full view; the view itself takes no touch here, so the tap is never an orbit.
- */
-@Composable
-internal fun ArDebugPip(
-    session: ArDebugSession,
-    orbit: ArDebugOrbitCamera,
-    engine: Engine,
-    modelLoader: ModelLoader,
-    materialLoader: MaterialLoader,
-    onExpand: () -> Unit,
-    modifier: Modifier = Modifier,
-    replay: RerunReplayMedia? = null,
-) {
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    val chrome = LocalStageChrome.current
-    Box(
-        modifier = modifier
-            .size(DebugView.pipWidth, DebugView.pipHeight)
-            .shadow(elevation = SceneViewTokens.Elevation.md, shape = shape, clip = false)
-            .clip(shape)
-            .background(chrome.ground)
-            .testTag(AR_DEBUG_PIP_TAG),
-    ) {
-        ArDebugSceneView(
-            session = session,
-            orbit = orbit,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            modifier = Modifier.fillMaxSize(),
-            compact = true,
-            replay = replay,
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
-                .clickable(role = Role.Button, onClick = onExpand)
-                .semantics { contentDescription = "Open the 3D view" },
-        )
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(Space.sm)
-                .background(chrome.card, CircleShape)
-                .padding(horizontal = Space.sm, vertical = Space.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("3D", style = SceneViewTokens.Type.caption.copy(color = chrome.onCard))
-            Spacer(Modifier.width(Space.xs))
-            Icon(
-                Icons.Rounded.OpenInFull,
-                contentDescription = null,
-                tint = chrome.onCard,
-                modifier = Modifier.size(Space.md - Space.xs / 2),
-            )
-        }
-    }
-}
 
 /**
  * The layer toggles of the full view — the Rerun viewer's entity list, as a 2×2 grid of equal
@@ -1229,7 +1163,6 @@ private fun LiveChip(live: Boolean, onClick: () -> Unit) {
 
 private const val LIVE_FILL_ALPHA = 0.22f
 
-internal const val AR_DEBUG_PIP_TAG = "ar_debug_pip"
 internal const val AR_DEBUG_LEGEND_TAG = "ar_debug_legend"
 internal const val AR_DEBUG_TIMELINE_TAG = "ar_debug_timeline"
 internal const val AR_DEBUG_LIVE_TAG = "ar_debug_live"
