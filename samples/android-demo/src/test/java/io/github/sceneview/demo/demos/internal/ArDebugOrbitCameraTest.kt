@@ -106,8 +106,17 @@ class ArDebugOrbitCameraTest {
         return RoomMeasure(corners, width, depth, yaw)
     }
 
+    /** One view of the measured room: the band it is framed in, the room's yaw, the camera's angles. */
+    private data class MeasuredView(val band: OrbitBand, val yaw: Float, val azimuth: Float, val elevation: Float)
+
     /** How far past [band]'s edge the dimensions of [measure] are drawn from [pose]: 1 is the edge. */
-    private fun dimensionsReach(pose: OrbitPose, band: OrbitBand, aspect: Float, height: Int, measure: RoomMeasure): Double {
+    private fun dimensionsReach(
+        pose: OrbitPose,
+        band: OrbitBand,
+        aspect: Float,
+        height: Int,
+        measure: RoomMeasure,
+    ): Double {
         val perPixel = CameraRig.worldPerPixel(pose.distance, fov, height)
         val eye = CameraRig.eye(pose)
         val sides = MeasureDrawing.sidesFacing(measure, eye.x, eye.z)
@@ -131,24 +140,32 @@ class ArDebugOrbitCameraTest {
             // The band the replay measures between its header and its timeline.
             OrbitBand.between(top = 420f, bottom = 1650f, viewHeight = height.toFloat())!!,
         )
-        var cutBefore = 0
-        for (band in bands) for (yaw in listOf(0.4f, -0.2f)) for (azimuth in listOf(10f, 35f, 120f, 200f, 310f)) {
-            for (elevation in listOf(ArDebugFraming.HOME_ELEVATION, ArDebugFraming.MAP_ELEVATION)) {
-                val measure = measured(yaw)
-                val plain = ArDebugFraming.home(room, azimuth, fov, aspect, elevation, band)
-                if (dimensionsReach(plain, band, aspect, height, measure) > 1.0) cutBefore++
-
-                val home = ArDebugFraming.homeWithMeasure(
-                    room, measure, room[1], height, azimuth, fov, aspect, elevation, band,
-                )
-                val reach = dimensionsReach(home, band, aspect, height, measure)
-                assertTrue("a figure reaches $reach of the band at $azimuth°, $elevation°, yaw $yaw", reach <= 1.005)
-                // The room is still whole, and nothing is left unused: either it or a figure
-                // touches the band's edge.
-                val filled = maxOf(reach, assertFramed(home, band, aspect))
-                assertTrue("the framing fills its band ($filled at $azimuth°)", filled > 0.97)
-                assertTrue(home.distance >= plain.distance - 1e-3f)
+        val elevations = listOf(ArDebugFraming.HOME_ELEVATION, ArDebugFraming.MAP_ELEVATION)
+        val views = bands.flatMap { band ->
+            listOf(0.4f, -0.2f).flatMap { yaw ->
+                listOf(10f, 35f, 120f, 200f, 310f).flatMap { azimuth ->
+                    elevations.map { elevation -> MeasuredView(band, yaw, azimuth, elevation) }
+                }
             }
+        }
+        val cutBefore = views.count { view ->
+            val band = view.band
+            val yaw = view.yaw
+            val azimuth = view.azimuth
+            val elevation = view.elevation
+            val measure = measured(yaw)
+            val plain = ArDebugFraming.home(room, azimuth, fov, aspect, elevation, band)
+            val home = ArDebugFraming.homeWithMeasure(
+                room, measure, room[1], height, azimuth, fov, aspect, elevation, band,
+            )
+            val reach = dimensionsReach(home, band, aspect, height, measure)
+            assertTrue("a figure reaches $reach of the band at $azimuth°, $elevation°, yaw $yaw", reach <= 1.005)
+            // The room is still whole, and nothing is left unused: either it or a figure
+            // touches the band's edge.
+            val filled = maxOf(reach, assertFramed(home, band, aspect))
+            assertTrue("the framing fills its band ($filled at $azimuth°)", filled > 0.97)
+            assertTrue(home.distance >= plain.distance - 1e-3f)
+            dimensionsReach(plain, band, aspect, height, measure) > 1.0
         }
         assertTrue("the fit on the room alone cut its figures ($cutBefore views)", cutBefore > 0)
 

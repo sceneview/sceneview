@@ -679,14 +679,15 @@ object ArDebugGeometry {
      * ran past the edge of the screen.
      */
     fun subjectBounds(frame: ArDebugFrame, dense: FloatArray? = null): FloatArray? {
-        var bounds = contentBounds(frame)
-        for ((cloud, trim) in listOf(frame.mapPoints to ROBUST_TRIM, dense to DENSE_TRIM)) {
-            val body = robustBounds(cloud ?: continue, trim) ?: continue
-            bounds = bounds?.let { b ->
+        val bodies = listOfNotNull(
+            frame.mapPoints?.let { robustBounds(it, ROBUST_TRIM) },
+            dense?.let { robustBounds(it, DENSE_TRIM) },
+        )
+        return bodies.fold(contentBounds(frame)) { bounds, body ->
+            bounds?.let { b ->
                 FloatArray(6) { if (it < 3) min(b[it], body[it]) else max(b[it], body[it]) }
             } ?: body
         }
-        return bounds
     }
 
     /**

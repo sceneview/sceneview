@@ -505,7 +505,8 @@ internal class ReplayLayers(
             val baseline = index * row + (row - ink.ascent() - ink.descent()) / 2f
             canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, halo)
             canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, ink)
-            measureLabelWidths[index] = (ink.measureText(text) + 2 * MeasureDrawing.PAD_PX).coerceAtMost(width.toFloat())
+            val padded = ink.measureText(text) + 2 * MeasureDrawing.PAD_PX
+            measureLabelWidths[index] = padded.coerceAtMost(width.toFloat())
         }
         val solid = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
         canvas.drawRect(0f, solid.toFloat(), width.toFloat(), height.toFloat(), Paint().apply { color = measureInk })
