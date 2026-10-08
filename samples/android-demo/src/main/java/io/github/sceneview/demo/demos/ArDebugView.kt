@@ -90,7 +90,6 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.CameraRig
 import io.github.sceneview.demo.demos.internal.PlaneLayering
-import io.github.sceneview.demo.demos.internal.RoomMeasure
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayIntro
@@ -744,8 +743,9 @@ internal fun ArDebugSceneView(
                     // A replay with a dense cloud counts its surfels, as the sessions list does.
                     val points = replay?.pointCountAt(frame.time) ?: frame.mapPointCount
                     session.stats = ArDebugStats.of(frame, trace.duration, points).let { stats ->
-                        // A replay names the room it found, as a floor plan would.
-                        if (replay == null) stats else stats.copy(room = RoomMeasure.of(frame.planes, floorY)?.summary)
+                        // A replay names the room it found, as a floor plan would: the same one its
+                        // dimensions draw, so the two never disagree.
+                        if (replayLayers == null) stats else stats.copy(room = replayLayers.measure?.summary)
                     }
                 }
                 // onFrame only fires for a frame that reached the surface (#3444): counting them is

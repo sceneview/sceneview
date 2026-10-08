@@ -37,6 +37,7 @@ import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.SteadyRoomMeasure
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -367,7 +368,14 @@ internal class ReplayLayers(
     private val measureMaterial = material(atlas, solid = false)
     private val measureNode = DebugLayerNode(engine, measureMaterial, MEASURE_PRIORITY, textured = true)
     private var measurePlanes: List<DebugPlane>? = null
-    private var measure: RoomMeasure? = null
+    private var foundMeasure: RoomMeasure? = null
+
+    /** A scan still recording steadies its figure; a recording played back is exact at every frame. */
+    private val steadyMeasure = if (media.growing) SteadyRoomMeasure() else null
+
+    /** The room at the last [sync]: the one the dimensions draw, and the one the HUD names. */
+    var measure: RoomMeasure? = null
+        private set
     private var measureLabels: Pair<String, String>? = null
     private var measureLabelWidths = FloatArray(2)
 
@@ -434,9 +442,10 @@ internal class ReplayLayers(
     private fun syncMeasure(frame: ArDebugFrame, style: ArDebugStyle, floorY: Float, shown: Boolean, eye: Vec3?) {
         if (frame.planes !== measurePlanes) {
             measurePlanes = frame.planes
-            measure = RoomMeasure.of(frame.planes, floorY)
+            foundMeasure = RoomMeasure.of(frame.planes, floorY)
         }
-        val room = measure
+        val room = if (steadyMeasure != null) steadyMeasure.update(foundMeasure, frame.time) else foundMeasure
+        measure = room
         measureNode.isVisible = shown && room != null
         if (!measureNode.isVisible || room == null) return
         val labels = RoomMeasure.metres(room.width) to RoomMeasure.metres(room.depth)
