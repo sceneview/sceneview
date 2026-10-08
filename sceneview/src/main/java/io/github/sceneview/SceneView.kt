@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.MediaRecorder
 import android.opengl.EGLContext
+import android.os.SystemClock
 import android.util.AttributeSet
+import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.Surface
@@ -696,17 +698,65 @@ open class SceneView @JvmOverloads constructor(
 
 //        runCatching { ResourceManager.getInstance().destroyAllResources() }
 
-            defaultRenderer?.let { engine.safeDestroyRenderer(it) }
-            defaultView?.let { engine.safeDestroyView(it) }
-            defaultScene?.let { engine.safeDestroyScene(it) }
-            defaultEnvironmentLoader?.destroy()
-            defaultMaterialLoader?.let { engine.safeDestroyMaterialLoader(it) }
-            defaultModelLoader?.let { engine.safeDestroyModelLoader(it) }
-
-            defaultEngine?.let { it.safeDestroy() }
-            defaultEglContext?.let { OpenGL.destroyEglContext(it) }
+            // Set before the engine goes: it may only go once its backend is idle, and the view is
+            // destroyed for every caller from here on. A second destroy() has nothing left to do.
             isDestroyed = true
+
+            val ownEngine = defaultEngine
+            if (ownEngine == null) {
+                // A shared engine belongs to whoever created it: nothing is deferred, its owner is
+                // free to destroy it as soon as this returns.
+                destroyEngineResources()
+                defaultEglContext?.let { OpenGL.destroyEglContext(it) }
+            } else {
+                // Engine.destroy() joins the driver thread once it has run everything queued, and
+                // Engine.destroyRenderer() waits for that same backlog. On the main thread, with a
+                // backend that is behind, that wait is an ANR: it is polled instead, and the same
+                // calls run in the same order once there is nothing left to wait for. With an idle
+                // backend - the usual case - all of it still happens before destroy() returns.
+                //
+                // The loads in flight stop now, as they always did by the time destroy() returned:
+                // no result is delivered to the app for a view it has already destroyed.
+                defaultMaterialLoader?.cancelLoads()
+                defaultModelLoader?.cancelLoads()
+                val startedAt = SystemClock.uptimeMillis()
+                ownEngine.whenBackendIdle { deferred ->
+                    // Not valid: destroyed by the app in the meantime, and what lived on it with it.
+                    if (ownEngine.isValid) {
+                        destroyEngineResources()
+                        ownEngine.safeDestroy()
+                        if (deferred) {
+                            Log.i(
+                                "Sceneview",
+                                "Engine destroyed once its backend was idle, " +
+                                        "${SystemClock.uptimeMillis() - startedAt} ms after the view"
+                            )
+                        }
+                    }
+                    // The EGL context is shared with the engine: always released after it.
+                    if (!deferred) {
+                        defaultEglContext?.let { OpenGL.destroyEglContext(it) }
+                    } else {
+                        // Nobody is left to catch it here.
+                        runCatching { defaultEglContext?.let { OpenGL.destroyEglContext(it) } }
+                            .onFailure { Log.w("Sceneview", "EGL context not destroyed", it) }
+                    }
+                }
+            }
         }
+    }
+
+    /**
+     * Destroys what this view created on its [engine], which must still be alive: the renderer
+     * first, the loaders last.
+     */
+    private fun destroyEngineResources() {
+        defaultRenderer?.let { engine.safeDestroyRenderer(it) }
+        defaultView?.let { engine.safeDestroyView(it) }
+        defaultScene?.let { engine.safeDestroyScene(it) }
+        defaultEnvironmentLoader?.destroy()
+        defaultMaterialLoader?.let { engine.safeDestroyMaterialLoader(it) }
+        defaultModelLoader?.let { engine.safeDestroyModelLoader(it) }
     }
 
     /**
@@ -933,7 +983,17 @@ open class SceneView @JvmOverloads constructor(
             displayHelper.detach()
             swapChain?.let {
                 runCatching { engine.destroySwapChain(it) }
-                engine.flushAndWait()
+                // Android takes the surface back when this returns, so the backend is given the
+                // time to finish with it - but not forever: this is the main thread, and a backend
+                // that needs longer than the bound is an ANR. Past it the queued commands still
+                // run, in order; a frame that reaches a surface already gone is dropped by EGL.
+                if (!engine.flushAndWait(SURFACE_DETACH_WAIT_NANOS)) {
+                    Log.w(
+                        "Sceneview",
+                        "Surface detached, backend still busy after " +
+                                "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+                    )
+                }
                 swapChain = null
             }
         }

@@ -1,9 +1,12 @@
 package io.github.sceneview
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
+import com.google.android.filament.Fence
 import com.google.android.filament.IndexBuffer
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Material
@@ -38,6 +41,86 @@ fun Engine.safeDestroy() = runCatching {
     destroy()
     Log.d("Sceneview", "Engine destroyed")
 }
+
+/**
+ * How long [whenBackendIdle] waits on its fence before it gives the thread back: one frame at
+ * 60 Hz. A backend with nothing queued reaches the fence well within it, so the usual teardown
+ * stays synchronous, exactly as it was before the wait became a poll.
+ */
+internal const val BACKEND_IDLE_FIRST_WAIT_NANOS = 16_000_000L
+
+/** How often a teardown deferred by [whenBackendIdle] re-checks its fence: one frame at 60 Hz. */
+internal const val BACKEND_IDLE_POLL_MS = 16L
+
+/**
+ * How long a surface detach waits for the backend to finish with the surface, in nanoseconds.
+ * Long enough for the frames in flight, far below the 5 s after which Android reports an ANR.
+ */
+internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
+
+/**
+ * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
+ * queued, **without blocking the calling thread on that drain**.
+ *
+ * `Engine.destroy()` joins the driver thread after it has run every pending command, and
+ * `Engine.destroyRenderer()` waits for the same backlog first. Called from the main thread while
+ * the backend is behind — a view closed right after it appeared, a driver thread parked on a
+ * surface that only the main thread can release — that wait is an ANR. Instead a fence is queued
+ * behind the backlog and checked from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS],
+ * so the destroy calls only run once they have nothing left to wait for.
+ *
+ * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
+ * idle, the engine was already destroyed, or — the old blocking behaviour — the thread has no
+ * [Looper] or the fence could not be created. The engine can be destroyed by someone else while
+ * the fence is pending: check [Engine.isValid] in [onIdle] before touching it.
+ */
+internal fun Engine.whenBackendIdle(onIdle: (deferred: Boolean) -> Unit) {
+    val engine = this
+    val looper = Looper.myLooper()
+    val fence = if (looper != null && engine.isValid) {
+        runCatching { engine.createFence() }.getOrNull()
+    } else {
+        null
+    }
+    if (looper == null || fence == null) {
+        onIdle(false)
+        return
+    }
+    if (!isFenceBusy(fence, BACKEND_IDLE_FIRST_WAIT_NANOS)) {
+        runCatching { engine.destroyFence(fence) }
+        onIdle(false)
+        return
+    }
+    val handler = Handler(looper)
+    val poll = object : Runnable {
+        override fun run() {
+            when {
+                // Destroyed while the fence was pending: its fences went with it, do not touch it.
+                !engine.isValid -> onIdle(true)
+                // Still busy: look again next frame. A looper that is quitting takes no more
+                // messages; the teardown then runs now rather than never.
+                isFenceBusy(fence) && handler.postDelayed(this, BACKEND_IDLE_POLL_MS) -> Unit
+                else -> {
+                    runCatching { engine.destroyFence(fence) }
+                    onIdle(true)
+                }
+            }
+        }
+    }
+    if (!handler.postDelayed(poll, BACKEND_IDLE_POLL_MS)) {
+        runCatching { engine.destroyFence(fence) }
+        onIdle(false)
+    }
+}
+
+/**
+ * Whether the backend has not reached [fence] yet, after waiting for it at most [timeoutNanos] —
+ * zero by default, which never blocks. A fence that cannot be read is reported as reached, so
+ * that a teardown waiting on it runs instead of being lost.
+ */
+internal fun isFenceBusy(fence: Fence, timeoutNanos: Long = 0L): Boolean =
+    runCatching { fence.wait(Fence.Mode.FLUSH, timeoutNanos) }.getOrNull() ==
+            Fence.FenceStatus.TIMEOUT_EXPIRED
 
 fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entity) }
 
