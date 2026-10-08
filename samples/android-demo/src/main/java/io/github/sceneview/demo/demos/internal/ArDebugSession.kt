@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -158,6 +159,12 @@ data class ArDebugStats(
     val tracking: Boolean,
     /** The room found so far, as a floor plan names it (`3.4 × 4.1 m · 14 m²`); `null` before one. */
     val room: String? = null,
+    /**
+     * How much floor, wall and ceiling ARCore has found, in m². Unlike [planes] — a count of
+     * ARCore's own objects, which falls from 4 to 1 when four patches of one floor merge — it
+     * says how much surface the scan holds.
+     */
+    val surfaceMetres2: Float = 0f,
 ) {
     companion object {
         val Empty = ArDebugStats(0f, 0f, 0f, 0, 0, 0, tracking = false)
@@ -174,7 +181,38 @@ data class ArDebugStats(
             planes = frame.planes.size,
             anchors = frame.anchors.size,
             tracking = frame.camera != null,
+            surfaceMetres2 = surfaceArea(frame.planes),
         )
+
+        /** The area [planes] cover between them, in m²: each plane's own polygon, summed. */
+        fun surfaceArea(planes: List<DebugPlane>): Float {
+            var total = 0f
+            for (plane in planes) total += polygonArea(plane.polygon)
+            return total
+        }
+
+        /**
+         * Area of a flat `[x,y,z, …]` polygon lying in any plane of space, in its own units
+         * squared (Newell's method). Fewer than three corners, or a non-finite one, is `0`.
+         */
+        fun polygonArea(polygon: FloatArray): Float {
+            val corners = polygon.size / 3
+            if (corners < MIN_CORNERS) return 0f
+            var nx = 0f
+            var ny = 0f
+            var nz = 0f
+            for (i in 0 until corners) {
+                val a = i * 3
+                val b = (i + 1) % corners * 3
+                nx += polygon[a + 1] * polygon[b + 2] - polygon[a + 2] * polygon[b + 1]
+                ny += polygon[a + 2] * polygon[b] - polygon[a] * polygon[b + 2]
+                nz += polygon[a] * polygon[b + 1] - polygon[a + 1] * polygon[b]
+            }
+            val area = sqrt(nx * nx + ny * ny + nz * nz) / 2f
+            return if (area.isFinite()) area else 0f
+        }
+
+        private const val MIN_CORNERS = 3
 
         /** Length of a flat `[x,y,z, …]` polyline, in its own units. */
         fun pathLength(path: FloatArray): Float {
@@ -205,6 +243,15 @@ object ArDebugFormat {
         metres < 100f -> String.format(Locale.US, "%.1f m", metres)
         else -> String.format(Locale.US, "%,d m", metres.toInt())
     }
+
+    /** `0.42` → `0.4 m²`, `14.236` → `14 m²`: one decimal under ten, whole metres past it. */
+    fun area(metres2: Float): String = when {
+        !metres2.isFinite() || metres2 <= 0f -> "0 m²"
+        metres2 < AREA_WHOLE_FROM_M2 -> String.format(Locale.US, "%.1f m²", metres2)
+        else -> String.format(Locale.US, "%,d m²", metres2.roundToInt())
+    }
+
+    private const val AREA_WHOLE_FROM_M2 = 9.95f
 
     /** `3812` → `3,812`. */
     fun count(value: Int): String = String.format(Locale.US, "%,d", value)

@@ -133,6 +133,7 @@ import io.github.sceneview.demo.demos.internal.DollhouseCopy
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanFigures
+import io.github.sceneview.demo.demos.internal.ScanLimits
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
@@ -895,7 +896,10 @@ private fun RerunLiveScreen(
     // log and photos, since the emulator cannot track. Its Stop saves that take like a real
     // scan — the same builder, bake and file — and opens it.
     var qaScan by remember { mutableStateOf<RerunReplayMedia?>(null) }
-    val qaRecord = qaState == QA_STATE_RECORD
+    // `--es qa_state record-full` is the same screen with both budgets spent: the emulator
+    // cannot scan, let alone scan half a million points.
+    val qaFull = qaState == QA_STATE_RECORD_FULL
+    val qaRecord = qaState == QA_STATE_RECORD || qaFull
     LaunchedEffect(qaRecord, sample) {
         val source = sample?.takeIf { qaRecord } ?: return@LaunchedEffect
         val events = withContext(Dispatchers.IO) {
@@ -919,7 +923,9 @@ private fun RerunLiveScreen(
     }
     val scanMedia = scan?.live ?: qaScan
     val recording = scanMedia != null
-    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, band = OrbitBand.SCAN) }
+    // The live view is a card with nothing over it, so the room is framed in the card's own band:
+    // the band of a full-width stage under a figures bar drew it at half the size in a small card.
+    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
 
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
@@ -1040,6 +1046,25 @@ private fun RerunLiveScreen(
 
     // A phone on its side has no height for the scan's line over its 3D card.
     val compact = compactStage()
+    // What the scan holds, against what it can hold: the line, the sheet and the notice by the
+    // shutter all read the same figures.
+    val depthScan = scan?.rawDepth == true || qaFull
+    val scanFigures = if (recording) {
+        val stats = debugSession.stats
+        val pointBudget = ScanLimits.pointBudget(depthScan)
+        ScanFigures(
+            points = when {
+                qaFull -> pointBudget
+                depthScan -> scan?.denseCount ?: 0
+                else -> stats.mapPoints
+            },
+            pointBudget = pointBudget,
+            surfaceMetres2 = stats.surfaceMetres2,
+            photos = debugSession.trace.imageCount,
+        )
+    } else {
+        null
+    }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -1048,28 +1073,13 @@ private fun RerunLiveScreen(
         controls = {
             RerunSheet(
                 stream = status.takeIf { isConnected },
-                head = if (recording) {
-                    {
-                        val stats = debugSession.stats
-                        ScanFiguresSection(
-                            figures = ScanFigures(
-                                points = stats.mapPoints,
-                                surfaces = stats.planes,
-                                photos = debugSession.trace.imageCount,
-                                dense = scan?.denseCount ?: 0,
-                            ),
-                            depthScan = scan?.rawDepth == true,
-                        )
-                    }
-                } else {
-                    null
-                },
+                head = scanFigures?.let { figures -> { ScanFiguresSection(figures, depthScan) } },
             )
         },
         // Room Scan shows no mode switch on any of its screens (#4397).
         modeSwitch = null,
         topOverlay = {
-            if (recording && scanMedia != null) {
+            if (scanFigures != null && scanMedia != null) {
                 // The line runs on its own clock: the trace records nothing while tracking is
                 // lost ("Not enough detail"), and a line read off it froze there for seconds.
                 val now by produceState(SystemClock.elapsedRealtimeNanos(), scan) {
@@ -1081,11 +1091,10 @@ private fun RerunLiveScreen(
                 val hud: @Composable () -> Unit = {
                     ScanHud(
                         seconds = scan?.elapsedSeconds(now) ?: debugSession.stats.duration,
-                        photoLimitReached = scan?.isPhotoLimitReached == true,
-                        depthScan = scan?.rawDepth == true,
+                        figures = scanFigures,
                     )
                 }
-                val stage: @Composable () -> Unit = {
+                val stage: @Composable (Boolean?, (Boolean) -> Unit) -> Unit = { expanded, onExpandedChange ->
                     ScanStage(
                         session = debugSession,
                         orbit = scanOrbit,
@@ -1093,22 +1102,37 @@ private fun RerunLiveScreen(
                         engine = engine,
                         modelLoader = modelLoader,
                         materialLoader = materialLoader,
+                        expanded = expanded,
+                        onExpandedChange = onExpandedChange,
                     )
                 }
+                // The one thing to know mid-scan: a budget is spent, and which. It stands under the
+                // line that counts it, beside the 3D card, where it costs the camera no height.
+                val limit = ScanCopy.limitNotice(
+                    pointsFull = scanFigures.pointsFull,
+                    photosFull = scanFigures.photosFull || scan?.isPhotoLimitReached == true,
+                )
+                val notice: @Composable () -> Unit = { ScanNotice(limit) }
                 if (compact) {
-                    // On its side the stack is taller than the window, and the shutter stood on
-                    // the 3D card (#4379): the card takes one side and the line the other, and
-                    // the shutter keeps the middle.
-                    val side = Modifier.width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)
+                    // On its side the window has no height for a card that grows: the card takes
+                    // one side and the line the other (#4379), and the shutter keeps the middle.
+                    val side = Modifier
+                        .width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)
+                        .padding(horizontal = Space.md)
                     Row(Modifier.fillMaxWidth()) {
-                        Box(side) { stage() }
+                        Box(side) { stage(null) {} }
                         Spacer(Modifier.weight(1f))
-                        // The 3D card keeps Space.sm of air above it: the line starts level with it.
-                        Box(side.padding(top = Space.sm)) { hud() }
+                        Column(
+                            modifier = side,
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(Space.sm),
+                        ) {
+                            hud()
+                            notice()
+                        }
                     }
                 } else {
-                    hud()
-                    stage()
+                    ScanLive(hud = hud, notice = notice, stage = stage)
                 }
             } else if (debugFullScreen) {
                 ArDebugLegend(debugSession)
@@ -1538,6 +1562,9 @@ private const val QA_STATE_SAVED = "saved"
 /** QA only: the Record screen mid-scan, fed by the sample room (#2754: no AR on the emulator). */
 private const val QA_STATE_RECORD = "record"
 
+/** QA only: that screen with a depth scan's point budget spent, which no emulator scan reaches. */
+private const val QA_STATE_RECORD_FULL = "record-full"
+
 /** The QA scan plays the sample once and holds on its end, as a scan in progress would. */
 private const val QA_RECORD_NEVER_LOOP_S = 3_600f
 
@@ -1602,7 +1629,8 @@ private const val QA_STATE_MODEL_SYNTHETIC = "model-synthetic"
 
 /** The QA states that open straight on the live AR screen. */
 private val LIVE_QA_STATES =
-    ArDebugQaState.entries.map { it.key } + QA_STATE_CONNECTED + QA_STATE_SAVED + QA_STATE_RECORD
+    ArDebugQaState.entries.map { it.key } + QA_STATE_CONNECTED + QA_STATE_SAVED + QA_STATE_RECORD +
+        QA_STATE_RECORD_FULL
 
 /**
  * The QA states of the bundled replay: a view, and where the replay stands — paused at a fixed

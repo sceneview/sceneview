@@ -592,8 +592,13 @@ private fun stageBoundsOf(subject: FloatArray?): FloatArray {
  *
  * [onShown] fires once, when the session's content has been on screen for a few rendered frames
  * — textures uploaded, nothing half-drawn — so a caller can hold its cover and chrome until then.
+ *
+ * [glass] draws the session on nothing: no stage colour, no skybox, a translucent surface — what
+ * is behind this view (a scan's camera) shows through wherever the session has drawn nothing.
+ * The caller paints the tint it wants under it.
  */
 @Composable
+@Suppress("LongParameterList") // the demo's shared engine, handed down once, and one flag per reading
 internal fun ArDebugSceneView(
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
@@ -605,6 +610,7 @@ internal fun ArDebugSceneView(
     replay: RerunReplayMedia? = null,
     surface: ReplaySurface? = null,
     onShown: (() -> Unit)? = null,
+    glass: Boolean = false,
 ) {
     val context = LocalContext.current
     val shown by rememberUpdatedState(onShown)
@@ -628,7 +634,7 @@ internal fun ArDebugSceneView(
         ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
     }
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
-    val environment = rememberEnvironment(engine, key = chrome.ground) {
+    val environment = rememberEnvironment(engine, key = chrome.ground to glass) {
         val stage = colorOf(chrome.ground).toLinearSpace()
         Environment(
             // The placed models are lit; the debug layers are unlit and ignore it.
@@ -636,7 +642,8 @@ internal fun ArDebugSceneView(
                 engine,
                 context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
             ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-            skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
+            // On glass nothing is drawn behind the session: a skybox would be the opaque slab.
+            skybox = if (glass) null else Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
         )
     }
     val view = rememberView(engine)
@@ -659,7 +666,8 @@ internal fun ArDebugSceneView(
 
     // The stage colour behind the view: a TextureView stays transparent until its first frame,
     // which would show the AR camera through the "3D view" for as long as the engine takes.
-    Box(modifier.background(chrome.ground)) {
+    // On glass that camera is the point, and the caller's tint is the ground.
+    Box(if (glass) modifier else modifier.background(chrome.ground)) {
         SceneView(
             modifier = Modifier.matchParentSize(),
             // A TextureView composes with the chrome and the AR SurfaceView under it.
@@ -669,7 +677,7 @@ internal fun ArDebugSceneView(
             materialLoader = materialLoader,
             view = view,
             renderer = renderer,
-            isOpaque = true,
+            isOpaque = !glass,
             frameRatePolicy = FrameRatePolicy.Continuous(maxFps = if (compact) PIP_FPS else null),
             autoCenterContent = false,
             environment = environment,

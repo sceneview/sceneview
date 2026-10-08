@@ -685,6 +685,16 @@ object SceneViewTokens {
          */
         val compactStageHeight = 500.dp
         val compactCardWidth = 280.dp
+
+        /**
+         * A scan in progress: the room being rebuilt is drawn on glass, over the camera it is
+         * made with. [liveGlass] is the stage's own ground at 60 % — the camera shows through
+         * it, and white on it still reads at 5:1 over a white wall. The card opens
+         * [liveCardShare] of the row wide, beside the scan's line, and grows to the whole row
+         * when tapped.
+         */
+        val liveGlass = Color(0x990B0F16)
+        const val liveCardShare = 0.44f
     }
 
     /** `DESIGN.md` — Spacing scale (`space-*`). */
