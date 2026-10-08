@@ -26,6 +26,8 @@ media3 = "1.9.0"
 mavenPublish = "0.35.0"
 dokka = "2.1.0"
 
+junit = "4.13.2"
+
 [libraries]
 arsceneview = { module = "io.github.sceneview:arsceneview", version = "2.3.3"}
 sceneview = { module = "io.github.sceneview:sceneview", version = "2.3.3"}
@@ -62,6 +64,9 @@ filament-utils = { group = "com.google.android.filament", name = "filament-utils
 # Other
 fuel = { group = "com.github.kittinunf.fuel", name = "fuel", version.ref = "fuel" }
 google-material = { group = "com.google.android.material", name = "material", version.ref = "googleMaterial" }
+
+# Test
+junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 # Media
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }

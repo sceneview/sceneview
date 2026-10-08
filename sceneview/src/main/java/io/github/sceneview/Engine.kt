@@ -50,21 +50,47 @@ fun Engine.safeDestroy() = runCatching {
  */
 internal const val BACKEND_IDLE_FIRST_WAIT_NANOS = 16_000_000L
 
-/** How often a teardown deferred by [whenBackendIdle] re-checks its fence: one frame at 60 Hz. */
+/** The shortest delay between two checks of a teardown deferred by [whenBackendIdle]: one frame. */
 internal const val BACKEND_IDLE_POLL_MS = 16L
 
+/** The longest delay between two checks, reached after 8 s of waiting. */
+internal const val BACKEND_IDLE_POLL_MAX_MS = 500L
+
 /**
- * How long a teardown deferred by [whenBackendIdle] keeps polling before it gives up. A backend
- * that has not caught up after this long is stuck, not late: destroying the engine would then
- * block the thread for good, so the engine is left alive instead.
+ * A deferred teardown that is still waiting gets one warning in the log once it has waited this
+ * long. It keeps waiting: a backend that is this late still drains.
  */
-internal const val BACKEND_IDLE_GIVE_UP_MS = 10_000L
+internal const val BACKEND_IDLE_WARN_MS = 10_000L
+
+/**
+ * How long a deferred teardown keeps checking before it gives up, with one error in the log, and
+ * leaves the engine alive. Nine times the slowest drain measured, 13.8 s on an emulator under
+ * load: what is still busy after that is stuck, and destroying the engine would block the thread
+ * for good.
+ */
+internal const val BACKEND_IDLE_BUDGET_MS = 120_000L
 
 /**
  * How long a surface detach waits for the backend to finish with the surface, in nanoseconds.
  * Long enough for the frames in flight, far below the 5 s after which Android reports an ANR.
  */
 internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
+
+/**
+ * How long a surface resize waits for the frames already queued, in nanoseconds. Half the detach
+ * bound: the surface stays, so a frame that misses it only reaches the surface at its former size.
+ */
+internal const val SURFACE_RESIZE_WAIT_NANOS = 500_000_000L
+
+/**
+ * The delay before the next check of a teardown deferred by [whenBackendIdle] that has already
+ * waited [waitedMs]: a sixteenth of it, between [BACKEND_IDLE_POLL_MS] and
+ * [BACKEND_IDLE_POLL_MAX_MS]. Every frame for the first quarter of a second, then less and less
+ * often — the teardown runs about 6 % later than it could have at worst, and a backend that takes
+ * the whole [BACKEND_IDLE_BUDGET_MS] costs under 300 checks.
+ */
+internal fun backendIdlePollDelayMs(waitedMs: Long): Long =
+    (waitedMs / 16L).coerceIn(BACKEND_IDLE_POLL_MS, BACKEND_IDLE_POLL_MAX_MS)
 
 /**
  * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
@@ -74,17 +100,21 @@ internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
  * `Engine.destroyRenderer()` waits for the same backlog first. Called from the main thread while
  * the backend is behind — a view closed right after it appeared, a driver thread parked on a
  * surface that only the main thread can release — that wait is an ANR. Instead a fence is queued
- * behind the backlog and checked from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS],
- * so the destroy calls only run once they have nothing left to wait for.
+ * behind the backlog and checked from the calling thread's [Looper], every
+ * [backendIdlePollDelayMs], so the destroy calls only run once they have nothing left to wait for.
  *
  * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
  * idle, the engine was already destroyed, or — the old blocking behaviour — the thread has no
  * [Looper] or the fence could not be created. The engine can be destroyed by someone else while
  * the fence is pending: check [Engine.isValid] in [onIdle] before touching it.
  *
- * [onIdle] is **not called at all** when the backend is still busy after
- * [BACKEND_IDLE_GIVE_UP_MS]: the engine and what hangs on it are leaked, with a warning in the
- * log, rather than blocking the calling thread on a backend that will not drain.
+ * A backend that is late is waited for: one warning after [BACKEND_IDLE_WARN_MS], and [onIdle]
+ * still runs when the backend gets there. The time counted is the sum of the delays asked for, so
+ * a process that was frozen or a thread that was stalled is not held against the backend. Only
+ * when [BACKEND_IDLE_BUDGET_MS] is spent is [onIdle] **not called at all**: the engine and what
+ * hangs on it are leaked, with an error in the log, rather than blocking the calling thread on a
+ * backend that will not drain. Until then [onIdle], and everything it references, stays reachable
+ * from the [Looper]'s queue — keep the view and its context out of it.
  */
 internal fun Engine.whenBackendIdle(onIdle: (deferred: Boolean) -> Unit) {
     val engine = this
@@ -104,29 +134,54 @@ internal fun Engine.whenBackendIdle(onIdle: (deferred: Boolean) -> Unit) {
         return
     }
     val handler = Handler(looper)
-    val giveUpAt = SystemClock.uptimeMillis() + BACKEND_IDLE_GIVE_UP_MS
+    val startedAt = SystemClock.uptimeMillis()
     val poll = object : Runnable {
+        var waitedMs = 0L
+        var warned = false
+
+        /** Asks for the next check. False when the looper is quitting and takes no more messages. */
+        fun schedule(): Boolean {
+            val delayMs = backendIdlePollDelayMs(waitedMs)
+            waitedMs += delayMs
+            return handler.postDelayed(this, delayMs)
+        }
+
         override fun run() {
             when {
                 // Destroyed while the fence was pending: its fences went with it, do not touch it.
                 !engine.isValid -> onIdle(true)
-                // Stuck, not late: stop polling and leave the engine alive.
-                isFenceBusy(fence) && SystemClock.uptimeMillis() >= giveUpAt -> Log.w(
-                    "Sceneview",
-                    "Filament backend still busy after $BACKEND_IDLE_GIVE_UP_MS ms: " +
-                            "engine left alive instead of blocking the thread"
-                )
-                // Still busy: look again next frame. A looper that is quitting takes no more
-                // messages; the teardown then runs now rather than never.
-                isFenceBusy(fence) && handler.postDelayed(this, BACKEND_IDLE_POLL_MS) -> Unit
-                else -> {
+                !isFenceBusy(fence) -> {
                     runCatching { engine.destroyFence(fence) }
                     onIdle(true)
+                }
+                // Stuck, not late: stop checking and leave the engine alive.
+                waitedMs >= BACKEND_IDLE_BUDGET_MS -> Log.e(
+                    "Sceneview",
+                    "Filament backend still busy after " +
+                            "${SystemClock.uptimeMillis() - startedAt} ms: giving up, " +
+                            "the engine is left alive instead of blocking the thread"
+                )
+                else -> {
+                    if (!warned && waitedMs >= BACKEND_IDLE_WARN_MS) {
+                        warned = true
+                        Log.w(
+                            "Sceneview",
+                            "Filament backend still busy after " +
+                                    "${SystemClock.uptimeMillis() - startedAt} ms: still " +
+                                    "waiting, the engine is destroyed once it is idle"
+                        )
+                    }
+                    // A looper that is quitting takes no more messages: the teardown then runs
+                    // now rather than never.
+                    if (!schedule()) {
+                        runCatching { engine.destroyFence(fence) }
+                        onIdle(true)
+                    }
                 }
             }
         }
     }
-    if (!handler.postDelayed(poll, BACKEND_IDLE_POLL_MS)) {
+    if (!poll.schedule()) {
         runCatching { engine.destroyFence(fence) }
         onIdle(false)
     }

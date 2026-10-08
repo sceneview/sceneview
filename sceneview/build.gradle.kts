@@ -69,6 +69,8 @@ dependencies {
 
     // Fuel
     implementation(libs.fuel)
+
+    testImplementation(libs.junit)
 }
 
 mavenPublishing {
