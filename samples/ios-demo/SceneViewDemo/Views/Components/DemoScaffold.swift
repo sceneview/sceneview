@@ -52,6 +52,11 @@ public enum DemoChromeMode {
     /// permanently, on every AR screen. Controls get an `ar-scrim` ground the
     /// size of themselves instead.
     case ar
+    /// A live camera feed whose subject is drawn on glass over it — Room Scan
+    /// while it records. No bands either, and the controls take that glass
+    /// (`ar-glass`) instead of the scrim, so the camera is read through the
+    /// whole chrome and the screen is one system.
+    case arGlass
 }
 
 public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls: View>: View {
@@ -241,6 +246,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         .environment(\.colorScheme, .dark)
         .environment(\.arChromeGround,
                      chromeMode == .ar ? SceneViewTokens.ARChrome.scrim(colorScheme) : nil)
+        .environment(\.arGlassTint,
+                     chromeMode == .arGlass ? SceneViewTokens.ARChrome.glass : nil)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 

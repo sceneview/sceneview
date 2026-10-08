@@ -125,7 +125,11 @@ struct RerunLiveCaptureView: View {
         ZStack {
             Color.clear
                 .overlay {
-                    if let backdrop {
+                    if UserDefaults.standard.string(forKey: "rerunBackdrop") == "white" {
+                        // `-rerunBackdrop white`: a white wall, the ground the glass has the
+                        // least contrast on.
+                        Color.white
+                    } else if let backdrop {
                         Image(decorative: backdrop, scale: 1).resizable().scaledToFill()
                     } else {
                         SceneViewTokens.Stage.background
@@ -762,7 +766,12 @@ private enum CaptureTokens {
     static let shadow = Color.black.opacity(0.5)
     static let shadowRadius: CGFloat = 20
     static let shadowY: CGFloat = 12
-    /// Recording is `danger` red, and only recording: the dot and the shutter.
+    /// The dark edge round everything drawn in the 3D card — points, outlines, its glyph:
+    /// `shadow-lg`'s black at 50 %, tight enough to be an outline and not a shadow.
+    static let stageHalo = shadow
+    static let stageHaloRadius: CGFloat = 1.5
+    /// Recording is `danger` red, and only recording: the dot and the shutter's glyph. The
+    /// shutter's ring stays white, as Android's.
     static let recording = SceneViewTokens.HomeColor.danger
 }
 
@@ -869,10 +878,10 @@ private struct ScanLiveLayout: Layout {
 
 /// A scan in progress says one line: the red dot, the clock, and its points against what it can
 /// hold — `4.8k points`, then `9.6k / 12k` once the limit is in sight, then `12k · full` in
-/// amber. On the AR scrim: it is read over a moving camera.
+/// amber. On `ar-glass`, the ground every control of this screen shares: grey enough to be
+/// glass, dense enough to be read over a moving camera.
 private struct ScanHud: View {
     let figures: RerunScanFigures
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let clock = RerunFormat.clock(Float(figures.duration))
@@ -892,7 +901,7 @@ private struct ScanHud: View {
             }
             .lineLimit(1)
         }
-        .environment(\.arChromeGround, SceneViewTokens.ARChrome.scrim(scheme))
+        .environment(\.arGlassTint, SceneViewTokens.ARChrome.glass)
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Scanning for \(clock), \(RerunScanCopy.pointsSpoken(figures.points, figures.pointBudget))")
@@ -923,10 +932,10 @@ private struct ScanNoticeSlot: View {
     }
 }
 
-/// The one thing to know mid-scan, in the guidance amber: a limit reached, or in sight.
+/// The one thing to know mid-scan, in the guidance amber: a limit reached, or in sight. On the
+/// dense glass: amber is a mid tone, and the grey the white labels sit on does not hold it.
 private struct ScanNotice: View {
     let text: String
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Text(text)
@@ -935,17 +944,16 @@ private struct ScanNotice: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, SceneViewTokens.Space.md)
             .padding(.vertical, SceneViewTokens.Space.sm)
-            .background(
-                SceneViewTokens.ARChrome.scrim(scheme),
-                in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-            )
+            .cameraGlass(SceneViewTokens.ARChrome.glassDense,
+                         in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
+            .environment(\.colorScheme, .dark)
             .accessibilityIdentifier("rerun-scan-notice")
     }
 }
 
-/// The scan growing in 3D while it records, on glass: the camera it is made with shows
-/// through, behind the stage's tint, so the points keep the dark ground they are coloured for.
-/// The same room the replay opens on once the scan stops.
+/// The scan growing in 3D while it records, on glass: the camera it is made with is read
+/// through the card — clear glass and a half tint, no blur — and the room keeps a dark edge
+/// that holds it over a bright wall. The same room the replay opens on once the scan stops.
 ///
 /// `expanded` is `nil` where the card has one size (a phone on its side). Otherwise the small
 /// card is one button that grows it, and the grown one turns under a finger and carries the
@@ -957,7 +965,6 @@ private struct ScanStage: View {
     var onExpandedChange: (Bool) -> Void = { _ in }
 
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.colorScheme) private var scheme
     @State private var renderer = RerunLiveStageRenderer()
     @State private var lastTranslation: CGSize?
 
@@ -965,11 +972,13 @@ private struct ScanStage: View {
         let shape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
         room
             .aspectRatio(SceneViewTokens.DebugView.liveCardAspect, contentMode: .fit)
-            .background(SceneViewTokens.DebugView.color(SceneViewTokens.DebugView.liveGlass))
+            // The room's contrast floor: glass this thin is a mid grey over a white wall,
+            // where a pale point or the floor's outline would be lost without an edge.
+            .shadow(color: CaptureTokens.stageHalo, radius: CaptureTokens.stageHaloRadius)
             .clipShape(shape)
-            .glassBackground(in: shape)
+            .cameraGlass(SceneViewTokens.DebugView.color(SceneViewTokens.DebugView.liveGlass), in: shape)
             .overlay { control }
-            // Glass over a camera is dark in both themes, like the rest of the AR chrome.
+            // Glass over a camera does not follow the theme, like the rest of the AR chrome.
             .environment(\.colorScheme, .dark)
             .onChange(of: revision, initial: true) { _, _ in renderer.show(frame) }
             .onChange(of: expanded, initial: true) { old, new in
@@ -1023,6 +1032,7 @@ private struct ScanStage: View {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: CaptureTokens.stageGlyph, weight: .semibold))
                             .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                            .shadow(color: CaptureTokens.stageHalo, radius: CaptureTokens.stageHaloRadius)
                             .padding(SceneViewTokens.Space.sm)
                     }
             }
@@ -1033,7 +1043,7 @@ private struct ScanStage: View {
             GlassIconButton(icon: "arrow.down.right.and.arrow.up.left", label: RerunScanCopy.stageCollapse) {
                 onExpandedChange(false)
             }
-            .environment(\.arChromeGround, SceneViewTokens.ARChrome.scrim(scheme))
+            .environment(\.arGlassTint, SceneViewTokens.ARChrome.glass)
             .padding(SceneViewTokens.Space.xs)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         case .none:
@@ -1096,18 +1106,12 @@ private struct RecordingDot: View {
 private struct CaptureShutter: View {
     let phase: RerunLiveCaptureModel.Phase
     let action: () -> Void
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
-                Circle()
-                    .strokeBorder(
-                        phase == .recording ? CaptureTokens.recording : SceneViewTokens.ARChrome.onScrim,
-                        lineWidth: CaptureTokens.shutterRing
-                    )
+                    .strokeBorder(SceneViewTokens.ARChrome.onScrim, lineWidth: CaptureTokens.shutterRing)
                 switch phase {
                 case .idle:
                     Circle()
@@ -1123,6 +1127,8 @@ private struct CaptureShutter: View {
                 }
             }
             .frame(width: CaptureTokens.shutterSize, height: CaptureTokens.shutterSize)
+            .cameraGlass(SceneViewTokens.ARChrome.glass, in: Circle())
+            .environment(\.colorScheme, .dark)
             .contentShape(Circle())
         }
         .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
@@ -1137,7 +1143,6 @@ private struct CaptureShutter: View {
 private struct CaptureHint: View {
     let text: String
     var privacy = false
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: SceneViewTokens.Space.xs) {
@@ -1148,19 +1153,15 @@ private struct CaptureHint: View {
             if privacy {
                 Label("Everything stays on your iPhone.", systemImage: "lock.fill")
                     .font(SceneViewTokens.TypeScale.captionSemibold)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+                    // Full white: the dim one drops under 4:1 on glass over a white wall.
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             }
         }
         .padding(.horizontal, SceneViewTokens.Space.md)
         .padding(.vertical, SceneViewTokens.Space.sm)
-        .background(
-            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                .fill(SceneViewTokens.ARChrome.scrim(scheme))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
-        )
+        .cameraGlass(SceneViewTokens.ARChrome.glass,
+                     in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+        .environment(\.colorScheme, .dark)
         .transition(.opacity)
     }
 }

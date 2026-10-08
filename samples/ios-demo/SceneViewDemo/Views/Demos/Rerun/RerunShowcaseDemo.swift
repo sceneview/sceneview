@@ -117,7 +117,7 @@ struct RerunShowcaseDemo: View {
                 "Room Scan",
                 dock: dock,
                 accent: accent,
-                chromeMode: screen == .record ? .ar : .stage,
+                chromeMode: screen == .record ? .arGlass : .stage,
                 chromeHidden: immersive
             ) {
                 stage(top: top, bottom: bottom,

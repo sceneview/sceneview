@@ -89,6 +89,8 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-pip-backdrop` | #F1F3F5 | #0B0F16 | Flat backdrop of the Secondary Camera stage (iOS `Stage.pipBackdrop`, = `surface-container-high` light / `stage-background` dark). The floor texture fades into exactly this colour at its rim, so no camera angle shows the floor's edge |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
+| `ar-glass` | rgba(49,49,49,0.72) | rgba(49,49,49,0.72) | Controls on a camera screen read through its glass (Room Scan recording) — Android's `scrimDock` under `glass-surface`, as one colour |
+| `ar-glass-dense` | rgba(0,0,0,0.88) | rgba(0,0,0,0.88) | The same glass under amber copy, which `ar-glass` does not hold over a white wall |
 
 **The dark ramp is solved for ratio, not picked by eye.** Contrast ratio compresses at
 the dark end, where `(Y+0.05)` is dominated by the constant: against a `#0D1117` page a
@@ -693,7 +695,9 @@ indicator; every value follows the safe area, none is a constant offset from the
   other. The dock accent is `.glassProminent` tinted `primary`. Below 26 the floor /
   material / ceiling / border stack below still applies. Content cards inside a page
   (About, Credits) keep the stack on every version, and AR chrome keeps its `ar-scrim`
-  ground. Android keeps its own glass fill — an accepted divergence.
+  ground — but for Room Scan while it records, whose chrome is `ar-glass` under the
+  system's **clear** glass (see "Room Scan replay"). Android keeps its own glass fill — an
+  accepted divergence.
 - **A material is not a colour — it needs a floor and a ceiling.** `.ultraThinMaterial`
   is a blur of what is behind it. Over dark media it resolves to nearly black (hence
   the 8 % floor); over a bright studio backdrop the dark-scheme material resolves to
@@ -754,16 +758,26 @@ and every value in the table is an existing token; the scan's glass card adds th
 - **Scanning: the camera is the screen, the room is rebuilt on glass.** The Android scan
   screen's layout and copy ("AR Debug View" below), with what iOS does differently. *The
   line* — the `danger` dot, the clock in `type-card`, the point count in `type-caption` —
-  is a 36pt pill on the AR scrim, under the title row; on its side it rides the title row's
-  trailing slot. *The live 3D card* stands at the end of that row, `liveCardShare` (44 %)
-  of it wide, `liveCardAspect` (1.35), `radius-lg`, no shadow: the replay's own geometry
-  with no ground and no grid, on **real glass** — the system glass (`.ultraThinMaterial`
-  before iOS 26) under `liveGlass`, the stage ground at 60 %, so the camera shows through
-  and the points keep a dark ground. It carries no text, which is what lets it be glass
-  where the pill and the notice, read over a moving camera, stay on the scrim. A tap grows
-  the card to the whole row, under the line, where a drag turns the room; its corner button
-  shrinks it back. On its side the card keeps the leading edge at `compactCardWidth`, at
-  that one size.
+  is a 36pt pill under the title row; on its side it rides the title row's trailing slot.
+  *The live 3D card* stands at the end of that row, `liveCardShare` (44 %) of it wide,
+  `liveCardAspect` (1.35), `radius-lg`, no shadow: the replay's own geometry with no ground
+  and no grid. A tap grows the card to the whole row, under the line, where a drag turns
+  the room; its corner button shrinks it back. On its side the card keeps the leading edge
+  at `compactCardWidth`, at that one size.
+- **One glass, and the camera is read through all of it.** Nothing on the recording screen
+  stands on the scrim. Every surface is a tint under the `glass-border`, on the system's
+  **clear** Liquid Glass from iOS 26 and with no material below it: the regular glass and
+  the materials blur a camera into one tone and darken it, which reads as a slab, not as
+  glass. *The card* is `liveGlass` — the stage ground at 50 % (Android: 60 %, a flat tint) —
+  and the room on it keeps a `stageHalo`, a 1.5pt edge of black at 50 % round every point
+  and outline, which is what holds it over a white wall where the tint alone no longer
+  does. *The controls* — back, title, Settings, the line, the hint, the shutter, the card's
+  corner button — are `ar-glass`: white on it holds 5.4:1 over a pure white wall, so all
+  their copy is `on-ar-scrim`, never the dim one. *The limit's word* is amber, a mid tone
+  that `ar-glass` does not hold, so it alone takes `ar-glass-dense`, as Android's does —
+  and it is what restates the line's figure, which turns amber on the pill at the limit. The
+  shutter's ring is white and only its glyph is `danger`. None of it follows the theme:
+  the ground is the camera, in light and in dark.
 - **A scan says what it can hold before it stops.** The pill counts "4.8k points"; from
   80 % of the budget it counts against it, "9.6k / 12k"; at the limit "12k · full" in
   `warning`, with one line in the same colour beside the card until the scan ends ("Point
