@@ -5,7 +5,7 @@ SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, Sw
 START HERE
 
 - Cosmos — a galaxy, a particle collision, a flow field and a ringed star system, joined by a camera tour that flies you through them. Touch the screen to take the camera back.
-- Rerun AR Replay — watch a real AR session rebuild itself in 3D.
+- Room Scan — scan your room, then replay it in 3D.
 
 WHAT THE SAMPLES SHOW
 

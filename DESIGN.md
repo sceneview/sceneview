@@ -635,7 +635,19 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
-with `motion-fade`.
+with `motion-fade`. A demo's own overlays stay through that tap — a status pill or a
+capture button is not chrome — unless everything it lays over the scene *is* chrome (the
+Room Scan replay's timeline): it opts in with `overlaysFollowChrome`, and the tap gives
+the scene the whole window (#4379).
+
+- **A thin bar goes with the dock (#4379).** The bottom overlay slot ends 24dp above the
+  dock, so a card reads as stacked over it. A one-row bar that belongs *with* the dock —
+  a timeline, a scrubber — sinks by `dockGap - space-sm` and rests `space-sm` above it.
+- **A mode that is a developer tool stays off the screen (#4397).** The mode pill is for
+  two experiences of equal weight (Cosmos "Starlight | Spacetime"). When the second mode
+  is a tool the QA harness opens — Room Scan's "Session MP4" — the host sets
+  `showSwitch = false`: no pill over the scene, no row in the settings sheet, and the
+  mode opens by deep link only (`?tab=<key>`).
 
 - **Every dock item is labelled.** An icon-only dock makes the user decode glyphs, and
   two actions in the same row can legitimately want the same picture — the viewer had
@@ -878,17 +890,24 @@ children spaced `space-sm`.
 
 ### AR Debug View (Android demo)
 
-The Rerun demo's in-app 3D view (#3950): what ARCore understood of the room, drawn by a
+The in-app 3D view (#3950) of the **Room Scan** demo (`ar-rerun`; named for what the user
+does, not for the tool, since #4306): what ARCore understood of the room, drawn by a
 second `SceneView` from a free third-person camera. The layout borrows from three
 references: **Polycam** (live camera with a small 3D preview, one tap to the full 3D
 inspection), the **Rerun viewer** (a dark spatial view with entity toggles over a
 timeline), and **Reality Composer** (planes and anchors drawn over the camera itself —
 the camera mode keeps `ARSceneView`'s own plane renderer).
 
-- **Two modes, one dock toggle.** *Camera*: the AR camera, with a portrait 3:4 picture-in-
-  picture of the 3D view under the status card (`radius-lg`, the glass edge of every
-  over-media element); tapping it opens *3D view*. *3D view*: the debug view full screen,
-  entity toggles on top, the timeline card at the bottom. Recenter is the dock's third item.
+- **The scene first (#4379).** The room or the camera keeps the screen — 70 % of the
+  window clear of chrome at rest in the replay. What is read once is a row of the settings
+  sheet, never a card over the scene: the layers and their figures, the room's size,
+  Points | Surface, a scan's counts and the computer stream's status. The replay has no
+  picture-in-picture and no corner card: the other view is one dock cell away. A scan in
+  progress keeps at least half of a portrait window's height clear, and is the one screen
+  with a second view over the first — on glass (below).
+- **Two modes, one dock toggle.** *Camera*: the AR camera, bare. *3D view*: the debug view
+  full screen, entity toggles on top, the timeline card at the bottom. Recenter is the
+  dock's third item.
 - **The replay follows the theme; the camera does not (#4080).** Over the live camera the
   3D view is drawn on `Stage.background` with the AR overlay chrome, in both themes. The
   replay and the landing are views the app draws itself, so they take the **themed stage**
@@ -900,7 +919,7 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
   (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
   instead of black; the one filled accent is the light scheme's `primary`; the status bar
-  keeps dark icons. The Rerun and Camera & Gestures demos opt in — every other stage is
+  keeps dark icons. The Room Scan and Camera & Gestures demos opt in — every other stage is
   media.
 - **Stage sky** (`StageSky`, #4089): the backdrop of a themed stage whose subjects stand on
   an open floor that the camera orbits. A flat skybox in the stage ground (the zenith) under
@@ -933,16 +952,78 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   into metres from the orbit distance (quantised, so a pinch does not rebuild every frame):
   a room seen from 8 m and a table seen from 50 cm both read.
 - **The camera frames itself until touched.** It eases to a three-quarter view of the
-  trail and planes as they grow; the first drag hands it to the user (drag orbits, two
-  fingers pan, pinch zooms); double-tap or Recenter hands it back.
-- **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
-  `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
-- **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the
-  scan's figures (points, surfaces, photos) are `type-display` white on the dark scrim, the
-  clock is `type-title`, and the only red is `danger` (the dot and the shutter). The 3D
-  card under them is the same view the replay opens on, growing as the phone moves, framed
-  to the scan with no intro. While recording the dock is empty: nothing may leave a scan
-  half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
+  room as it grows; the first drag hands it to the user (drag orbits, two fingers pan,
+  pinch zooms); double-tap or Recenter hands it back.
+- **The room is fitted into the clear band (#4306).** The subject is the box of everything
+  drawn — path, planes, anchors and both point clouds, trimmed of stray points — and it is
+  fitted, corner by corner, into the **clear band** of the stage: the part the header above
+  and the timeline bar below leave free. The camera stands as far back as the fit asks
+  (tested up to a 20 × 9 m box, some 60 m away); the box is what ARCore reported, which can
+  over-read the room itself (#4328). The replay **measures** that band on screen
+  (`OrbitBand.between`), so it holds on any phone or font scale, and keeps the last band
+  it measured while a tap has the chrome hidden — the room does not jump; a view with
+  nothing to measure takes the band of its orientation. The camera is lowered, never
+  tilted, to centre the room in it. Left alone the view sways
+  ±14° about the side the room was scanned from — never a turntable, which ends behind a
+  wall. The *Map* is squared with the walls by the nearest quarter-turn. A gesture stops
+  at the room's edge: the eye stays outside the cloud and above the floor, a pinch out
+  stops at 1.6× the framed distance, a pan keeps its pivot in the room. Every automatic
+  move is eased and capped at 150°/s, by the shortest way round; the opening is one short
+  crane-in from the same side.
+- **One 3D view, two readings: Points | Surface (#4306).** A scan that can be meshed heads
+  its settings sheet with a full-width two-way switch (#4379 — it headed a card over the
+  stage). *Surface* draws the room's mesh in the same view, under the same camera, in place
+  of its points and planes — never a second screen. Under the switch, one line says what
+  the surface is doing (building, then "Surface preview" and its triangle count), and a
+  `.glb` share button stands beside it once built; a recording with nothing to mesh has no
+  switch. The surface is a preview — a short scan gives a coarse, patchy mesh.
+- **The room in front, the tracking aids behind it (#4306).** The glows are held low
+  (trail head 2.0, live points and frustum 1.4), the history frusta are `primary` at 25 %
+  on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
+  photographed planes, the coloured cloud, the mesh — keeps its full strength.
+- **A phone on its side (#4306, #4379).** Under 500 dp of height the window has no row to
+  give above or under the room — provided it is wide enough for a 280 dp side card to
+  leave a stage beside it (`OrbitBand.halfWidthBeside`; a short *and* narrow window stays
+  stacked). The replay's timeline bar stands in the top corner, under the header's line,
+  280 dp wide; the room stays centred and is fitted clear of the bar, under the status bar
+  and `Space.lg` above the dock — its dimensions are written under its floor
+  (`OrbitBand.betweenSides`). A scan in progress puts its glass 3D card on one side, 280 dp
+  wide and at that one size, and its line in the opposite corner; the shutter keeps the
+  middle.
+- **Replay timeline: one bar, one touch target tall (#4379).** Play/pause, a filmstrip of
+  the recorded frames, the clock ("0:07 / 0:24"), on one `radius-lg` glass row `space-sm`
+  above the dock, as wide as an AR overlay card (480 dp at most). The strip is the
+  scrubber: the part still to come is dimmed, a playhead marks now; dragging pauses. A tap
+  on the stage hides it with the header and the dock, and another brings them back.
+- **Live 3D view timeline**: play/pause, the time, a scrubber, the length, and a *Live*
+  chip in `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
+- **A scan in progress: the camera is the screen, the room is rebuilt on glass.** Two
+  pieces of chrome share one row under the header, and nothing else stands over the camera
+  but the shutter. *The line* is one 36 dp glass pill at the start of the row: the `danger`
+  dot, the clock in `type-card` and the point count in `type-caption`, both in tabular
+  figures. *The live 3D card* stands at the end of the row, 44 % of it wide
+  (`DebugView.liveCardShare`), `radius-lg`, with the over-media edge and no shadow: the
+  same view the replay opens on, drawn with **no ground of its own** — a translucent
+  `SceneView` (no skybox, clear alpha 0) over `DebugView.liveGlass`, the stage ground at
+  60 %, so the camera shows through and white still reads at 5:1 over a white wall. Android
+  cannot blur a camera surface: the glass is a tint and an edge, never a fake blur. A tap
+  grows the card to the whole row, under the line; its corner button shrinks it back. Both
+  arrive with one `motionSpring` (fade, the card scaling from its own corner) and the card
+  grows with the same spring — no other motion. The only red is `danger` (the dot and the
+  shutter). While recording the dock is empty: nothing may leave a scan half-taken. The
+  privacy line ("Everything stays on your phone.") ends the idle copy.
+- **A scan's figures can be trusted, and a spent budget says so.** The pill counts points
+  as "246k points"; from 80 % of what the scan can hold it counts against it, "412k /
+  500k"; at the limit it reads "500k · full" in `accent-guidance` and one line in the same
+  colour stands under the pill until the scan ends: "Point limit reached — new areas add no
+  more points." (the photo limit and both limits have theirs). A count that has stopped
+  never reads as a frozen screen. The notice stays, so it stands beside the 3D card, in the
+  width the card leaves, and costs the camera no height; the stop hint over the shutter
+  ("Tap to stop and open your scan in 3D") leaves after 8 s. On its side, the notice stands
+  under the pill in its corner. The settings sheet holds what is read once: points and
+  photos against their budgets, the scan's kind, and **surfaces found as an area**
+  ("14 m²") — never ARCore's count of plane objects, which falls from 4 to 1 each time
+  patches of one floor merge.
 - **One flow, like a capture app (Polycam, Scaniverse, Reality Composer), laid out as the
   iOS demo's (#4068).** The demo opens on a scrolling page on the themed stage's ground, max width
   560 dp, clear of the header and the settings button: `type-display` "Scan a room in 3D"

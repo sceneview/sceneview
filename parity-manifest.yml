@@ -633,10 +633,11 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift
     contract: >-
-      Rerun, plus Session MP4 by deep link. Rerun opens on a landing (Record
-      your room, Watch a sample session, Open file, Your sessions); a
-      recording replays as a 3D
-      rebuild of the room (camera path, planes, points) and opens as a
+      Room Scan, plus Session MP4 by deep link. Room Scan (the card's name on
+      Android since #4306; iOS still titles it "Rerun AR Replay", #4325) opens
+      on a landing (Record your room, Watch a sample session, Open file, Your
+      sessions); a recording replays as a 3D rebuild of the room (camera path,
+      planes, points) and opens as a
       dollhouse; sessions share as a file, and a live stream to the Rerun
       viewer saves a .rrd. Session MP4 (Android only, the former
       `ar-record-playback` card since samples step 0): record the ARCore
@@ -1263,7 +1264,7 @@ demos:
     ios: []
     iosFiles: []
     contract: >-
-      The newest room recorded in the Rerun demo (or the session picked from
+      The newest room recorded in the Room Scan demo (or the session picked from
       its menu or at the end of its replay), ceiling cut away, auto-placed on
       the first horizontal surface as a miniature at a model maker's scale
       (about 1:12 for a bedroom, 35 cm longest side); drag, twist and pinch

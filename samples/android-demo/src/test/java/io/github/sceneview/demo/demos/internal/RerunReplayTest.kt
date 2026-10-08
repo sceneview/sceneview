@@ -152,11 +152,15 @@ class RerunReplayTest {
     }
 
     @Test
-    fun `the entrance starts high, wide and turned, and lands on home`() {
+    fun `the entrance starts high, a little wide and turned, and lands on home`() {
         val home = OrbitPose(Position(1f, 0f, 2f), azimuthDegrees = 30f, elevationDegrees = 28f, distance = 3f)
         val start = ReplayIntro.startFor(home)
         assertEquals(home.target, start.target)
-        assertTrue(start.distance > home.distance * 2f)
+        // Wide enough to read as a crane, near enough that the room is whole from the first frame
+        // and inside what a pinch may reach (#4306).
+        assertTrue(start.distance > home.distance * 1.2f)
+        assertTrue(start.distance <= home.distance * ArDebugFraming.MAX_ZOOM_OUT)
+        assertTrue("it opens on the room's front", kotlin.math.abs(ReplayIntro.TURN_DEGREES) < 60f)
         assertTrue(start.elevationDegrees > home.elevationDegrees)
         assertEquals(home.azimuthDegrees + ReplayIntro.TURN_DEGREES, start.azimuthDegrees, 1e-4f)
         assertEquals(start, ReplayIntro.pose(start, home, 0f))
@@ -170,7 +174,7 @@ class RerunReplayTest {
         camera.home = OrbitPose(azimuthDegrees = 40f, elevationDegrees = 28f, distance = 3f)
         camera.playIntro(ReplayIntro.startFor(camera.home))
         assertTrue(camera.introPlaying)
-        assertTrue(camera.pose.distance > 5f)
+        assertTrue(camera.pose.distance > 3.5f)
 
         repeat(((ReplayIntro.DURATION_S + 0.5f) * 60).toInt()) { camera.update(1f / 60f) }
         assertFalse(camera.introPlaying)
