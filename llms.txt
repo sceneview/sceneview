@@ -5982,6 +5982,171 @@ from the URL — fine for a quick preview, but never ship it (the Tripo URL expi
 generation; bundle the file or re-host it yourself). Prefer `search_models` (free, Sketchfab) before
 generating — generation consumes the user's own Tripo credits.
 
+### Scan a room and replay it later
+
+A tenant keeps how the room looked on the day they moved in. `ARRecorder` writes the walk
+(camera, motion, surfaces) to one MP4; `playbackDataset` plays it back as a live AR session,
+today or next year. The file is the record: keep it, and pass it again on any later launch.
+
+```kotlin
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.recording.rememberARRecorder
+import java.io.File
+
+@Composable
+fun RoomMemory(folder: File) {
+    val recorder = rememberARRecorder()
+    var replay by remember { mutableStateOf<File?>(null) } // null = the live camera
+
+    Box(Modifier.fillMaxSize()) {
+        // A session reads its source once: key() rebuilds it when the file changes.
+        key(replay) {
+            ARSceneView(
+                modifier = Modifier.fillMaxSize(),
+                playbackDataset = replay,
+                onSessionUpdated = { session, _ -> recorder.recordFrame(session) }
+            )
+        }
+        Row(Modifier.align(Alignment.BottomCenter)) {
+            Button(onClick = { recorder.start(File(folder, "living-room.mp4")) }) { Text("Scan") }
+            Button(onClick = { replay = recorder.stop() }) { Text("Replay") }
+        }
+    }
+}
+```
+
+What the SDK does not do: rebuild the room as a 3D model you can orbit. The demo's orbit view
+(path, photos, floor, points) is sample code — copy
+[`ArDebugView.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ArDebugView.kt)
+and [`RerunReplayScene.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunReplayScene.kt).
+iOS: `ARRecorder` records a video of the walk only (see the iOS section above) — no replay.
+
+### Measure how much floor a room scan has seen
+
+`Plane.polygon` is the outline of each surface ARCore finds; the floor is the lowest level one.
+Summing the outlines gives the floor the phone has actually seen, in m². It is an estimate: it
+grows as the user walks, furniture hides floor, and two patches that overlap count twice until
+ARCore merges them. Never present it as a surveyed figure.
+
+```kotlin
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.polygon
+import io.github.sceneview.ar.arcore.subsumedBy
+import kotlin.math.abs
+
+/** Surface of one detected patch, in m², from its outline (x, z pairs). */
+fun Plane.area(): Float {
+    val outline = polygon
+    val corners = outline.limit() / 2
+    var twice = 0f
+    for (i in 0 until corners) {
+        val j = (i + 1) % corners
+        twice += outline[2 * i] * outline[2 * j + 1] - outline[2 * j] * outline[2 * i + 1]
+    }
+    return abs(twice) / 2f
+}
+
+@Composable
+fun FloorArea() {
+    var squareMetres by remember { mutableFloatStateOf(0f) }
+
+    Box(Modifier.fillMaxSize()) {
+        ARSceneView(
+            modifier = Modifier.fillMaxSize(),
+            onSessionUpdated = { session, _ ->
+                val level = session.getAllTrackables(Plane::class.java).filter {
+                    it.trackingState == TrackingState.TRACKING && it.subsumedBy == null &&
+                        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+                }
+                // The floor is the lowest level surface; a table or a bed sits higher.
+                val floorY = level.minOfOrNull { it.centerPose.ty() } ?: 0f
+                squareMetres = level.filter { it.centerPose.ty() < floorY + 0.2f }
+                    .sumOf { it.area().toDouble() }.toFloat()
+            }
+        )
+        Text("%.1f m² of floor seen".format(squareMetres), Modifier.align(Alignment.BottomCenter))
+    }
+}
+```
+
+For a replayed recording, `rememberARRecordInterpreter()` gives `interpretation.planeAreaMeters2`
+without any of this — but it counts every surface found, walls and tables included. The demo's
+`Room 3.9 × 3.8 m · 15 m²` line is a different figure: the rectangle around the floor and walls,
+squared to the walls. It is sample code
+([`RoomMeasure.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt)),
+and it over-reads on large or open spaces (#4328).
+
+### Draw a room's outline from a scan
+
+The same `Plane.polygon`, moved to the ground with `centerPose`, is the floor's outline in
+metres: draw it, or hand the corners to whatever makes the listing. No plan file (PDF, SVG, DXF)
+is exported by the SDK or the demo — the demo exports `.rrd`, `.glb` and `.ply`.
+
+```kotlin
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.polygon
+
+/** The corners of one floor patch on the ground, in metres: x across, y deep. */
+fun Plane.outline(): List<Offset> {
+    val local = polygon
+    return List(local.limit() / 2) { i ->
+        val world = centerPose.transformPoint(floatArrayOf(local[2 * i], 0f, local[2 * i + 1]))
+        Offset(world[0], world[2])
+    }
+}
+
+@Composable
+fun RoomOutline() {
+    var outline by remember { mutableStateOf(emptyList<Offset>()) }
+    val ink = MaterialTheme.colorScheme.onSurface
+
+    Column(Modifier.fillMaxSize()) {
+        ARSceneView(
+            modifier = Modifier.weight(1f),
+            onSessionUpdated = { session, _ ->
+                // The biggest level surface the phone has found is the floor.
+                session.getAllTrackables(Plane::class.java)
+                    .filter {
+                        it.trackingState == TrackingState.TRACKING &&
+                            it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+                    }
+                    .maxByOrNull { it.extentX * it.extentZ }
+                    ?.let { outline = it.outline() }
+            }
+        )
+        Canvas(Modifier.fillMaxWidth().height(240.dp)) {
+            if (outline.size < 3) return@Canvas
+            val left = outline.minOf { it.x }
+            val top = outline.minOf { it.y }
+            val pixelsPerMetre = minOf(
+                size.width / (outline.maxOf { it.x } - left),
+                size.height / (outline.maxOf { it.y } - top)
+            )
+            val path = Path()
+            outline.forEachIndexed { i, corner ->
+                val x = (corner.x - left) * pixelsPerMetre
+                val y = (corner.y - top) * pixelsPerMetre
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path, ink, style = Stroke(width = 2.dp.toPx()))
+        }
+    }
+}
+```
+
+The outline is what the phone saw of the floor, so it is ragged where furniture stands. For a
+rectangle squared to the walls with its two lengths written along the sides, the way the demo
+draws it, copy `RoomMeasure` and `MeasureDrawing` from
+[`RoomMeasure.kt`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt).
+
 ---
 
 <!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->

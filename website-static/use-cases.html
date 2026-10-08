@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'self'; object-src 'none'">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sceneview-theme');
+        if (t !== 'dark' && t !== 'light') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH). -->
+  <script src="/assets/analytics.js"></script>
+  <title>Room scan use cases — replay a room, floor area, room outline | SceneView</title>
+  <meta name="description" content="Three things a phone room scan is good for today with SceneView: replay a room later, read how much floor it covers, draw its outline. A picture and the smallest code for each.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://sceneview.github.io/use-cases.html">
+  <meta property="og:title" content="Room scan use cases — SceneView">
+  <meta property="og:description" content="Replay a room later, read how much floor it covers, draw its outline. What works today, what does not, and the smallest code for each.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sceneview.github.io/use-cases.html">
+  <meta property="og:image" content="https://sceneview.github.io/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Room scan use cases — SceneView">
+  <meta name="twitter:description" content="Replay a room later, read how much floor it covers, draw its outline: what works today and the code behind it.">
+  <meta name="twitter:image" content="https://sceneview.github.io/og-image.png">
+  <meta name="theme-color" content="#005bc1">
+  <meta property="og:site_name" content="SceneView">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ===== USE CASES PAGE ===== */
+    .uc-page {
+      /* Spacing, radius and type steps from DESIGN.md. styles.css ships the colour tokens
+         only, so the page names the other steps once here and uses nothing else. */
+      --uc-space-xs: 4px;
+      --uc-space-sm: 8px;
+      --uc-space-md: 16px;
+      --uc-space-lg: 24px;
+      --uc-space-xl: 32px;
+      --uc-space-2xl: 48px;
+      --uc-space-3xl: 64px;
+      --uc-space-4xl: 96px;
+      --uc-radius-xs: 8px;
+      --uc-radius-sm: 12px;
+      --uc-radius-md: 16px;
+      --uc-radius-lg: 24px;
+      --uc-radius-full: 9999px;
+      --uc-text-hero: clamp(2.5rem, 6vw, 4rem);
+      --uc-text-section: clamp(1.75rem, 4vw, 2.5rem);
+      --uc-text-card-title: 1.125rem;
+      --uc-text-body: 1rem;
+      --uc-text-small: 0.9rem;
+      --uc-text-xs: 0.85rem;
+      --uc-measure: 1120px;
+      --uc-shot-width: 340px;
+      --uc-shot-width-wide: 448px;
+      --uc-dot: 8px;
+
+      padding-top: var(--nav-height);
+      color: var(--color-on-surface);
+    }
+
+    .uc-wrap {
+      max-width: var(--uc-measure);
+      margin: 0 auto;
+      padding: 0 var(--container-padding);
+      position: relative;
+    }
+
+    /* Hero */
+    .uc-hero {
+      position: relative;
+      overflow: hidden;
+      padding: var(--uc-space-4xl) 0 var(--uc-space-3xl);
+    }
+
+    .uc-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 20%, color-mix(in srgb, var(--color-primary) 9%, transparent) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .uc-hero__eyebrow {
+      font-size: var(--uc-text-xs);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--color-primary);
+      margin-bottom: var(--uc-space-md);
+    }
+
+    .uc-hero__title {
+      font-size: var(--uc-text-hero);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.08;
+      max-width: 18ch;
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-tertiary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: var(--uc-space-lg);
+    }
+
+    .uc-hero__lead {
+      font-size: var(--uc-text-card-title);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+      max-width: 62ch;
+    }
+
+    .uc-index {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--uc-space-md);
+      margin-top: var(--uc-space-2xl);
+    }
+
+    .uc-index__item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--uc-space-sm);
+      padding: var(--uc-space-lg);
+      border-radius: var(--uc-radius-md);
+      background: var(--color-surface-container-lowest);
+      box-shadow: var(--shadow-card);
+      color: inherit;
+      text-decoration: none;
+      transition: transform var(--duration-short) var(--ease-expressive);
+    }
+
+    .uc-index__item:hover {
+      transform: translateY(calc(-1 * var(--uc-space-xs)));
+    }
+
+    .uc-index__num {
+      font-size: var(--uc-text-xs);
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+
+    .uc-index__title {
+      font-size: var(--uc-text-card-title);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      line-height: 1.3;
+    }
+
+    .uc-index__who {
+      font-size: var(--uc-text-small);
+      line-height: 1.5;
+      color: var(--color-on-surface-variant);
+    }
+
+    /* One use case */
+    .uc-case {
+      padding: var(--uc-space-3xl) 0;
+      border-top: 1px solid var(--color-outline-variant);
+      scroll-margin-top: var(--nav-height);
+    }
+
+    .uc-case__head {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--uc-space-md);
+      margin-bottom: var(--uc-space-xl);
+    }
+
+    .uc-case__num {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: var(--uc-space-2xl);
+      height: var(--uc-space-2xl);
+      border-radius: var(--uc-radius-full);
+      font-size: var(--uc-text-card-title);
+      font-weight: 800;
+      color: var(--color-primary);
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    }
+
+    .uc-case__title {
+      font-size: var(--uc-text-section);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+
+    .uc-case__who {
+      margin-top: var(--uc-space-sm);
+      font-size: var(--uc-text-card-title);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+      max-width: 62ch;
+    }
+
+    .uc-case__top {
+      display: grid;
+      grid-template-columns: minmax(0, var(--uc-shot-width)) minmax(0, 1fr);
+      gap: var(--uc-space-2xl);
+      align-items: start;
+    }
+
+    .uc-case__top--wide {
+      grid-template-columns: minmax(0, var(--uc-shot-width-wide)) minmax(0, 1fr);
+    }
+
+    .uc-case__side {
+      display: grid;
+      gap: var(--uc-space-lg);
+      min-width: 0;
+    }
+
+    /* Picture */
+    .uc-shot {
+      margin: 0;
+    }
+
+    .uc-shot__frame {
+      border-radius: var(--uc-radius-md);
+      overflow: hidden;
+      border: 1px solid var(--color-outline-variant);
+      background: var(--color-surface-container-low);
+      box-shadow: var(--shadow-card);
+    }
+
+    .uc-shot__img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .uc-shot__img--dark,
+    [data-theme="dark"] .uc-shot__img--light {
+      display: none;
+    }
+
+    [data-theme="dark"] .uc-shot__img--dark {
+      display: block;
+    }
+
+    .uc-shot figcaption {
+      margin-top: var(--uc-space-sm);
+      font-size: var(--uc-text-xs);
+      line-height: 1.5;
+      color: var(--color-on-surface-variant);
+    }
+
+    /* Text column */
+    .uc-facts {
+      display: grid;
+      gap: var(--uc-space-lg);
+      min-width: 0;
+    }
+
+    .uc-status {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--uc-space-sm);
+    }
+
+    .uc-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uc-space-sm);
+      padding: var(--uc-space-xs) var(--uc-space-md);
+      border-radius: var(--uc-radius-full);
+      font-size: var(--uc-text-xs);
+      font-weight: 700;
+    }
+
+    .uc-pill::before {
+      content: '';
+      width: var(--uc-dot);
+      height: var(--uc-dot);
+      border-radius: var(--uc-radius-full);
+      background: currentColor;
+    }
+
+    .uc-pill--live {
+      color: var(--color-status-stable);
+      background: color-mix(in srgb, var(--color-status-stable) 12%, transparent);
+    }
+
+    .uc-pill--soon {
+      color: var(--color-status-soon);
+      background: color-mix(in srgb, var(--color-status-soon) 14%, transparent);
+    }
+
+    .uc-block__title {
+      font-size: var(--uc-text-card-title);
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: var(--uc-space-sm);
+    }
+
+    .uc-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: var(--uc-space-sm);
+    }
+
+    .uc-list li {
+      position: relative;
+      padding-left: var(--uc-space-lg);
+      font-size: var(--uc-text-body);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+    }
+
+    .uc-list li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.6em;
+      width: var(--uc-dot);
+      height: var(--uc-dot);
+      border-radius: var(--uc-radius-full);
+      background: var(--color-primary);
+    }
+
+    .uc-list--limits li::before {
+      background: var(--color-outline-variant);
+    }
+
+    .uc-page strong {
+      color: var(--color-on-surface);
+      font-weight: 600;
+    }
+
+    .uc-page :not(pre) > code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      padding: 0 var(--uc-space-xs);
+      border-radius: var(--uc-radius-xs);
+      background: var(--color-surface-container);
+      color: var(--color-on-surface);
+      overflow-wrap: anywhere;
+    }
+
+    .uc-page a:not(.uc-index__item):not(.uc-btn) {
+      color: var(--color-primary);
+      text-decoration: underline;
+      text-underline-offset: var(--uc-space-xs);
+    }
+
+    .uc-coming {
+      padding: var(--uc-space-md) var(--uc-space-lg);
+      border-radius: var(--uc-radius-md);
+      border: 1px dashed var(--color-outline-variant);
+      background: var(--color-surface-container-low);
+      display: grid;
+      gap: var(--uc-space-sm);
+      justify-items: start;
+    }
+
+    .uc-coming p {
+      font-size: var(--uc-text-small);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+    }
+
+    /* Code */
+    .uc-code {
+      margin-top: var(--uc-space-2xl);
+      display: grid;
+      gap: var(--uc-space-lg);
+      min-width: 0;
+    }
+
+    .uc-code__intro {
+      font-size: var(--uc-text-body);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+      max-width: 72ch;
+    }
+
+    .uc-code .code-card {
+      min-width: 0;
+    }
+
+    .uc-code .code-card__body pre {
+      font-size: var(--uc-text-xs);
+      line-height: 1.65;
+    }
+
+    .uc-syn-comment {
+      opacity: 0.6;
+    }
+
+    /* The SwiftUI version, folded so the page stays readable */
+    .uc-fold {
+      min-width: 0;
+      border-radius: var(--uc-radius-md);
+      border: 1px solid var(--color-outline-variant);
+      background: var(--color-surface-container-lowest);
+    }
+
+    .uc-fold > summary {
+      display: flex;
+      align-items: center;
+      gap: var(--uc-space-md);
+      padding: var(--uc-space-md) var(--uc-space-lg);
+      cursor: pointer;
+      list-style: none;
+      font-size: var(--uc-text-body);
+      line-height: 1.5;
+      color: var(--color-on-surface-variant);
+    }
+
+    .uc-fold > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .uc-fold > summary::after {
+      content: '';
+      flex: none;
+      margin-left: auto;
+      width: var(--uc-dot);
+      height: var(--uc-dot);
+      border-right: 2px solid var(--color-primary);
+      border-bottom: 2px solid var(--color-primary);
+      transform: rotate(45deg);
+      transition: transform var(--duration-short) var(--ease-expressive);
+    }
+
+    .uc-fold[open] > summary::after {
+      transform: rotate(225deg);
+    }
+
+    .uc-fold__logo {
+      flex: none;
+      width: var(--uc-space-md);
+      height: var(--uc-space-md);
+      object-fit: contain;
+    }
+
+    .uc-fold .code-card {
+      margin: 0 var(--uc-space-md) var(--uc-space-md);
+    }
+
+    .uc-sources {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--uc-space-sm) var(--uc-space-lg);
+      font-size: var(--uc-text-small);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+    }
+
+    .uc-sources__label {
+      font-weight: 700;
+      color: var(--color-on-surface);
+    }
+
+    /* Try it */
+    .uc-try {
+      padding: var(--uc-space-3xl) 0 var(--uc-space-4xl);
+      border-top: 1px solid var(--color-outline-variant);
+    }
+
+    .uc-try__title {
+      font-size: var(--uc-text-section);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: var(--uc-space-md);
+    }
+
+    .uc-try__text {
+      font-size: var(--uc-text-card-title);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+      max-width: 62ch;
+    }
+
+    .uc-try__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--uc-space-md);
+      margin-top: var(--uc-space-xl);
+    }
+
+    .uc-btn {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--uc-space-md) var(--uc-space-xl);
+      border-radius: var(--uc-radius-full);
+      font-size: var(--uc-text-body);
+      font-weight: 700;
+      text-decoration: none;
+      color: var(--color-primary);
+      border: 2px solid var(--color-outline-variant);
+      transition: transform var(--duration-short) var(--ease-spring);
+    }
+
+    .uc-btn:hover {
+      transform: scale(1.03);
+    }
+
+    .uc-btn--primary {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: var(--color-surface);
+    }
+
+    .uc-try__note {
+      margin-top: var(--uc-space-xl);
+      font-size: var(--uc-text-xs);
+      line-height: 1.6;
+      color: var(--color-on-surface-variant);
+      max-width: 72ch;
+    }
+
+    @media (max-width: 1024px) {
+      .uc-index {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .uc-hero {
+        padding: var(--uc-space-3xl) 0 var(--uc-space-2xl);
+      }
+
+      .uc-case {
+        padding: var(--uc-space-2xl) 0;
+      }
+
+      .uc-case__top,
+      .uc-case__top--wide {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--uc-space-xl);
+      }
+
+      .uc-shot {
+        max-width: var(--uc-shot-width);
+      }
+
+      .uc-case__top--wide .uc-shot {
+        max-width: var(--uc-shot-width-wide);
+      }
+
+      .uc-fold > summary {
+        padding: var(--uc-space-md);
+      }
+
+      .uc-fold .code-card {
+        margin: 0 var(--uc-space-sm) var(--uc-space-sm);
+      }
+
+      .uc-code .code-card__header {
+        padding: var(--uc-space-md);
+      }
+
+      .uc-code .code-card__body {
+        padding: var(--uc-space-md);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .uc-case__head {
+        flex-direction: column;
+        gap: var(--uc-space-sm);
+      }
+
+      .uc-btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+  <link href="assets/fonts/fonts.css" rel="stylesheet">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="nav" id="nav">
+    <div class="nav__container">
+      <a href="/" class="nav__brand" aria-label="SceneView SDK — home">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true" style="flex-shrink:0">
+          <defs>
+            <linearGradient id="navTopGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8AB4F8"/><stop offset="100%" stop-color="#42A5F5"/></linearGradient>
+            <linearGradient id="navRightGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#4A90D9"/><stop offset="100%" stop-color="#005BC1"/></linearGradient>
+            <linearGradient id="navLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#005BC1"/><stop offset="100%" stop-color="#0D47A1"/></linearGradient>
+          </defs>
+          <polygon points="256,272 122,194 122,340 256,418" fill="url(#navLeftGrad)"/>
+          <polygon points="256,272 390,194 390,340 256,418" fill="url(#navRightGrad)"/>
+          <polygon points="256,126 390,204 256,282 122,204" fill="url(#navTopGrad)"/>
+          <polyline points="96,120 96,82 134,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,120 416,82 378,82" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="96,392 96,430 134,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="416,392 416,430 378,430" fill="none" stroke="#005BC1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>SceneView SDK</span>
+      </a>
+
+      <div class="nav__links" id="navLinks">
+        <a href="/#features" class="nav__link">Features</a>
+        <a href="/showcase.html" class="nav__link">Showcase</a>
+        <a href="/playground.html" class="nav__link">Playground</a>
+        <a href="/web-demo/" class="nav__link" target="_blank" rel="noopener">Web Demo</a>
+        <a href="/docs.html" class="nav__link" target="_blank" rel="noopener">Docs</a>
+        <button class="nav__theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="nav__actions">
+        <a href="https://github.com/sceneview/sceneview" class="nav__icon-btn" target="_blank" rel="noopener" aria-label="View on GitHub">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="nav__hamburger nav__hamburger--mobile" id="hamburgerMobile" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="uc-page">
+
+    <!-- ===== HERO ===== -->
+    <section class="uc-hero">
+      <div class="uc-wrap">
+        <p class="uc-hero__eyebrow">Room scan &middot; use cases</p>
+        <h1 class="uc-hero__title">Three things a room scan is good for</h1>
+        <p class="uc-hero__lead">Walk around a room with a phone. SceneView keeps what the camera understood &mdash; the floor, the walls, the path you took &mdash; and can play it back. Here is what that gives you today: a picture from the demo app, what it does and does not do, and the smallest code behind it.</p>
+
+        <nav class="uc-index" aria-label="Use cases on this page">
+          <a class="uc-index__item" href="#remember-the-room">
+            <span class="uc-index__num">1</span>
+            <span class="uc-index__title">Remember how the room looked</span>
+            <span class="uc-index__who">A tenant on the day they get the keys.</span>
+          </a>
+          <a class="uc-index__item" href="#floor-area">
+            <span class="uc-index__num">2</span>
+            <span class="uc-index__title">How much floor does this room cover?</span>
+            <span class="uc-index__who">A floor fitter who needs a first figure for a quote.</span>
+          </a>
+          <a class="uc-index__item" href="#room-outline">
+            <span class="uc-index__num">3</span>
+            <span class="uc-index__title">A room outline for a listing</span>
+            <span class="uc-index__who">An estate agent who wants a shape next to the photos.</span>
+          </a>
+        </nav>
+      </div>
+    </section>
+
+    <div class="uc-wrap">
+
+      <!-- ===== 1. REMEMBER THE ROOM ===== -->
+      <article class="uc-case" id="remember-the-room">
+        <header class="uc-case__head">
+          <span class="uc-case__num" aria-hidden="true">1</span>
+          <div>
+            <h2 class="uc-case__title">Remember how the room looked</h2>
+            <p class="uc-case__who">A tenant gets the keys to an empty flat and wants to keep how each room looked that day, to look at again when they move out.</p>
+          </div>
+        </header>
+
+        <div class="uc-case__top">
+          <figure class="uc-shot">
+            <div class="uc-shot__frame">
+              <img class="uc-shot__img uc-shot__img--light" src="assets/demos/use-case-room-replay-light.jpg" width="448" height="742" alt="The SceneView Android demo replaying a scanned room: the floor rebuilt in 3D with the walked path, the camera picture in a corner, and a timeline of the recording underneath.">
+              <img class="uc-shot__img uc-shot__img--dark" src="assets/demos/use-case-room-replay-dark.jpg" width="448" height="742" alt="The SceneView Android demo replaying a scanned room: the floor rebuilt in 3D with the walked path, the camera picture in a corner, and a timeline of the recording underneath." loading="lazy">
+            </div>
+            <figcaption>The Android demo replaying the recording that ships with it: a real room, walked with a phone. Drag to look around, slide the timeline to go back to any moment.</figcaption>
+          </figure>
+
+          <div class="uc-facts">
+            <div class="uc-status">
+              <span class="uc-pill uc-pill--live">Works today</span>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What you get</h3>
+              <ul class="uc-list">
+                <li><strong>In the demo app:</strong> scan a room, stop, and the replay opens &mdash; the room rebuilt in 3D, the path you walked, and the camera picture from each moment. Sessions stay on the phone and can be opened again later.</li>
+                <li><strong>In your own app, on Android:</strong> one call records the walk to a file, one parameter plays that file back as if the phone were standing in the room again.</li>
+              </ul>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What it does not do</h3>
+              <ul class="uc-list uc-list--limits">
+                <li>The SDK plays the recording back through the camera view. The 3D room you can turn around in the picture is demo code you can copy, not one SDK call.</li>
+                <li>On iPhone the SDK records a video of the walk and nothing more. The iPhone demo has its own scan and 3D replay, also as sample code.</li>
+                <li>The file the Android code records plays back on Android phones, not on an iPhone.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="uc-code">
+          <p class="uc-code__intro">The smallest version: a <strong>Scan</strong> button that starts recording, a <strong>Replay</strong> button that stops and plays the file back.</p>
+          <div class="code-card code-card--kotlin">
+            <div class="code-card__header">
+              <div class="code-card__lang-wrap">
+                <img src="assets/brand/kotlin.svg" alt="" width="16" height="16" class="code-card__lang-logo">
+                <span class="code-card__lang">Kotlin (Jetpack Compose)</span>
+              </div>
+              <div class="code-card__dots">
+              <span class="code-card__dot code-card__dot--red"></span>
+              <span class="code-card__dot code-card__dot--yellow"></span>
+              <span class="code-card__dot code-card__dot--green"></span>
+              </div>
+            </div>
+            <div class="code-card__body">
+<pre><code><span class="syn-pink">import</span> io.github.sceneview.ar.<span class="syn-purple">ARSceneView</span>
+<span class="syn-pink">import</span> io.github.sceneview.ar.recording.rememberARRecorder
+<span class="syn-pink">import</span> java.io.<span class="syn-purple">File</span>
+
+<span class="syn-orange">@Composable</span>
+<span class="syn-pink">fun</span> <span class="syn-purple">RoomMemory</span>(folder: <span class="syn-purple">File</span>) {
+    <span class="syn-pink">val</span> recorder = <span class="syn-blue">rememberARRecorder</span>()
+    <span class="syn-pink">var</span> replay <span class="syn-pink">by</span> remember { mutableStateOf&lt;<span class="syn-purple">File</span>?&gt;(<span class="syn-pink">null</span>) } <span class="uc-syn-comment">// null = the live camera</span>
+
+    <span class="syn-purple">Box</span>(<span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxSize</span>()) {
+        <span class="uc-syn-comment">// A session reads its source once: key() rebuilds it when the file changes.</span>
+        <span class="syn-blue">key</span>(replay) {
+            <span class="syn-purple">ARSceneView</span>(
+                modifier = <span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxSize</span>(),
+                playbackDataset = replay,
+                onSessionUpdated = { session, _ -&gt; recorder.<span class="syn-blue">recordFrame</span>(session) }
+            )
+        }
+        <span class="syn-purple">Row</span>(<span class="syn-purple">Modifier</span>.<span class="syn-blue">align</span>(<span class="syn-purple">Alignment</span>.<span class="syn-purple">BottomCenter</span>)) {
+            <span class="syn-purple">Button</span>(onClick = { recorder.<span class="syn-blue">start</span>(<span class="syn-purple">File</span>(folder, <span class="syn-green">"living-room.mp4"</span>)) }) { <span class="syn-purple">Text</span>(<span class="syn-green">"Scan"</span>) }
+            <span class="syn-purple">Button</span>(onClick = { replay = recorder.<span class="syn-blue">stop</span>() }) { <span class="syn-purple">Text</span>(<span class="syn-green">"Replay"</span>) }
+        }
+    }
+}</code></pre>
+            </div>
+          </div>
+          <details class="uc-fold">
+            <summary><img src="assets/brand/swift.svg" alt="" width="16" height="16" class="uc-fold__logo"><span><strong>SwiftUI:</strong> record a video of the walk. There is no replay on iPhone in the SDK.</span></summary>
+          <div class="code-card code-card--swift">
+            <div class="code-card__header">
+              <div class="code-card__lang-wrap">
+                <img src="assets/brand/swift.svg" alt="" width="16" height="16" class="code-card__lang-logo">
+                <span class="code-card__lang">Swift (SwiftUI)</span>
+              </div>
+              <div class="code-card__dots">
+              <span class="code-card__dot code-card__dot--grey"></span>
+              <span class="code-card__dot code-card__dot--grey"></span>
+              <span class="code-card__dot code-card__dot--grey"></span>
+              </div>
+            </div>
+            <div class="code-card__body">
+<pre><code><span class="syn-purple">import</span> <span class="syn-pink">SwiftUI</span>
+<span class="syn-purple">import</span> <span class="syn-pink">SceneViewSwift</span>
+
+<span class="syn-purple">struct</span> <span class="syn-pink">RoomMemory</span>: <span class="syn-pink">View</span> {
+    <span class="syn-orange">@StateObject</span> <span class="syn-purple">private</span> <span class="syn-purple">var</span> recorder = <span class="syn-pink">ARRecorder</span>()
+    <span class="syn-orange">@State</span> <span class="syn-purple">private</span> <span class="syn-purple">var</span> video: <span class="syn-pink">URL</span>?
+
+    <span class="syn-purple">var</span> body: <span class="syn-purple">some</span> <span class="syn-pink">View</span> {
+        <span class="syn-pink">ARSceneView</span>(planeDetection: .horizontal)
+            .<span class="syn-blue-light">overlay</span>(alignment: .bottom) {
+                <span class="syn-pink">VStack</span> {
+                    <span class="syn-pink">Button</span>(recorder.isRecording ? <span class="syn-green-light">"Stop"</span> : <span class="syn-green-light">"Scan"</span>) {
+                        <span class="syn-pink">Task</span> {
+                            <span class="syn-purple">if</span> recorder.isRecording {
+                                video = <span class="syn-purple">try</span>? <span class="syn-purple">await</span> recorder.<span class="syn-blue-light">stopRecording</span>()
+                            } <span class="syn-purple">else</span> {
+                                <span class="syn-purple">try</span>? <span class="syn-purple">await</span> recorder.<span class="syn-blue-light">startRecording</span>()
+                            }
+                        }
+                    }
+                    <span class="uc-syn-comment">// A video of the walk, to keep or to send.</span>
+                    <span class="syn-purple">if</span> <span class="syn-purple">let</span> video { <span class="syn-pink">ShareLink</span>(<span class="syn-green-light">"Keep the video"</span>, item: video) }
+                }
+            }
+    }
+}</code></pre>
+            </div>
+          </div>
+          </details>
+          <p class="uc-sources">
+            <span class="uc-sources__label">Sample source</span>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARRerunDemo.kt" target="_blank" rel="noopener">ARRerunDemo.kt</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunScan.kt" target="_blank" rel="noopener">RerunScan.kt</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunReplayScene.kt" target="_blank" rel="noopener">RerunReplayScene.kt</a>
+            <a href="https://github.com/sceneview/sceneview/tree/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun" target="_blank" rel="noopener">iOS demo: Rerun/</a>
+          </p>
+        </div>
+      </article>
+
+      <!-- ===== 2. FLOOR AREA ===== -->
+      <article class="uc-case" id="floor-area">
+        <header class="uc-case__head">
+          <span class="uc-case__num" aria-hidden="true">2</span>
+          <div>
+            <h2 class="uc-case__title">How much floor does this room cover?</h2>
+            <p class="uc-case__who">A floor fitter visiting a customer wants a first figure for the quote before getting the tape measure out.</p>
+          </div>
+        </header>
+
+        <div class="uc-case__top uc-case__top--wide">
+          <div class="uc-case__side">
+          <figure class="uc-shot">
+            <div class="uc-shot__frame">
+              <img class="uc-shot__img uc-shot__img--light" src="assets/demos/use-case-room-size-light.jpg" width="424" height="128" alt="The demo's summary card: path 2.0 m, 3 planes, 2.0k points, 2 anchors, and the line Room 3.9 by 3.8 m, 15 square metres." loading="lazy">
+              <img class="uc-shot__img uc-shot__img--dark" src="assets/demos/use-case-room-size-dark.jpg" width="424" height="128" alt="The demo's summary card: path 2.0 m, 3 planes, 2.0k points, 2 anchors, and the line Room 3.9 by 3.8 m, 15 square metres." loading="lazy">
+            </div>
+            <figcaption>The same replay, top of the screen. The last line is the room: two lengths and the floor they make.</figcaption>
+          </figure>
+          <div class="uc-coming">
+            <span class="uc-pill uc-pill--soon">In review, not in the app yet</span>
+            <p>A room size that holds steady while you are still scanning (<a href="https://github.com/sceneview/sceneview/pull/4399" target="_blank" rel="noopener">#4399</a>), and the room size in the iPhone demo (<a href="https://github.com/sceneview/sceneview/pull/4402" target="_blank" rel="noopener">#4402</a>).</p>
+          </div>
+          </div>
+
+          <div class="uc-facts">
+            <div class="uc-status">
+              <span class="uc-pill uc-pill--live">Works today, as an estimate</span>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What you get</h3>
+              <ul class="uc-list">
+                <li><strong>In the demo app, on Android:</strong> the replay reads the room off the scan and shows it as <code>Room 3.9 &times; 3.8 m &middot; 15 m&sup2;</code> &mdash; the rectangle that fits the floor, squared to the walls.</li>
+                <li><strong>In your own app:</strong> the phone hands you every patch of floor it has found, with its outline in metres. Adding them up is a dozen lines.</li>
+              </ul>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What it does not do</h3>
+              <ul class="uc-list uc-list--limits">
+                <li>It is an estimate, never a surveyed figure. It grows as you walk, and floor hidden under a bed or a sofa is not counted until the camera has seen it.</li>
+                <li>The demo's rectangle reads right on the bundled room and too large on big or open spaces: a terrace of about 11.8 &times; 5.8 m read 19 &times; 8.6 m (<a href="https://github.com/sceneview/sceneview/issues/4328" target="_blank" rel="noopener">#4328</a>).</li>
+                <li>The rectangle is demo code to copy. The code below uses the SDK alone and counts the floor the camera has seen, which is a different, smaller figure.</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="uc-code">
+          <p class="uc-code__intro">The smallest version: add up the floor the phone has found so far and show it in square metres.</p>
+          <div class="code-card code-card--kotlin">
+            <div class="code-card__header">
+              <div class="code-card__lang-wrap">
+                <img src="assets/brand/kotlin.svg" alt="" width="16" height="16" class="code-card__lang-logo">
+                <span class="code-card__lang">Kotlin (Jetpack Compose)</span>
+              </div>
+              <div class="code-card__dots">
+              <span class="code-card__dot code-card__dot--red"></span>
+              <span class="code-card__dot code-card__dot--yellow"></span>
+              <span class="code-card__dot code-card__dot--green"></span>
+              </div>
+            </div>
+            <div class="code-card__body">
+<pre><code><span class="syn-pink">import</span> com.google.ar.core.<span class="syn-purple">Plane</span>
+<span class="syn-pink">import</span> com.google.ar.core.<span class="syn-purple">TrackingState</span>
+<span class="syn-pink">import</span> io.github.sceneview.ar.<span class="syn-purple">ARSceneView</span>
+<span class="syn-pink">import</span> io.github.sceneview.ar.arcore.polygon
+<span class="syn-pink">import</span> io.github.sceneview.ar.arcore.subsumedBy
+<span class="syn-pink">import</span> kotlin.math.abs
+
+<span class="uc-syn-comment">/** Surface of one detected patch, in m², from its outline (x, z pairs). */</span>
+<span class="syn-pink">fun</span> <span class="syn-purple">Plane</span>.<span class="syn-blue">area</span>(): <span class="syn-purple">Float</span> {
+    <span class="syn-pink">val</span> outline = polygon
+    <span class="syn-pink">val</span> corners = outline.<span class="syn-blue">limit</span>() / <span class="syn-orange">2</span>
+    <span class="syn-pink">var</span> twice = <span class="syn-orange">0f</span>
+    <span class="syn-pink">for</span> (i <span class="syn-pink">in</span> <span class="syn-orange">0</span> <span class="syn-pink">until</span> corners) {
+        <span class="syn-pink">val</span> j = (i + <span class="syn-orange">1</span>) % corners
+        twice += outline[<span class="syn-orange">2</span> * i] * outline[<span class="syn-orange">2</span> * j + <span class="syn-orange">1</span>] - outline[<span class="syn-orange">2</span> * j] * outline[<span class="syn-orange">2</span> * i + <span class="syn-orange">1</span>]
+    }
+    <span class="syn-pink">return</span> <span class="syn-blue">abs</span>(twice) / <span class="syn-orange">2f</span>
+}
+
+<span class="syn-orange">@Composable</span>
+<span class="syn-pink">fun</span> <span class="syn-purple">FloorArea</span>() {
+    <span class="syn-pink">var</span> squareMetres <span class="syn-pink">by</span> remember { <span class="syn-blue">mutableFloatStateOf</span>(<span class="syn-orange">0f</span>) }
+
+    <span class="syn-purple">Box</span>(<span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxSize</span>()) {
+        <span class="syn-purple">ARSceneView</span>(
+            modifier = <span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxSize</span>(),
+            onSessionUpdated = { session, _ -&gt;
+                <span class="syn-pink">val</span> level = session.<span class="syn-blue">getAllTrackables</span>(<span class="syn-purple">Plane</span>::class.java).filter {
+                    it.trackingState == <span class="syn-purple">TrackingState</span>.<span class="syn-purple">TRACKING</span> &amp;&amp; it.subsumedBy == <span class="syn-pink">null</span> &amp;&amp;
+                        it.type == <span class="syn-purple">Plane</span>.<span class="syn-purple">Type</span>.<span class="syn-purple">HORIZONTAL_UPWARD_FACING</span>
+                }
+                <span class="uc-syn-comment">// The floor is the lowest level surface; a table or a bed sits higher.</span>
+                <span class="syn-pink">val</span> floorY = level.minOfOrNull { it.centerPose.<span class="syn-blue">ty</span>() } ?: <span class="syn-orange">0f</span>
+                squareMetres = level.filter { it.centerPose.<span class="syn-blue">ty</span>() &lt; floorY + <span class="syn-orange">0.2f</span> }
+                    .sumOf { it.<span class="syn-blue">area</span>().<span class="syn-blue">toDouble</span>() }.<span class="syn-blue">toFloat</span>()
+            }
+        )
+        <span class="syn-purple">Text</span>(<span class="syn-green">"%.1f m² of floor seen"</span>.<span class="syn-blue">format</span>(squareMetres), <span class="syn-purple">Modifier</span>.<span class="syn-blue">align</span>(<span class="syn-purple">Alignment</span>.<span class="syn-purple">BottomCenter</span>))
+    }
+}</code></pre>
+            </div>
+          </div>
+          <details class="uc-fold">
+            <summary><img src="assets/brand/swift.svg" alt="" width="16" height="16" class="uc-fold__logo"><span><strong>SwiftUI:</strong> the same figure from ARKit, which tells the floor apart from tables and seats.</span></summary>
+          <div class="code-card code-card--swift">
+            <div class="code-card__header">
+              <div class="code-card__lang-wrap">
+                <img src="assets/brand/swift.svg" alt="" width="16" height="16" class="code-card__lang-logo">
+                <span class="code-card__lang">Swift (SwiftUI)</span>
+              </div>
+              <div class="code-card__dots">
+              <span class="code-card__dot code-card__dot--grey"></span>
+              <span class="code-card__dot code-card__dot--grey"></span>
+              <span class="code-card__dot code-card__dot--grey"></span>
+              </div>
+            </div>
+            <div class="code-card__body">
+<pre><code><span class="syn-purple">import</span> <span class="syn-pink">ARKit</span>
+<span class="syn-purple">import</span> <span class="syn-pink">SwiftUI</span>
+<span class="syn-purple">import</span> <span class="syn-pink">SceneViewSwift</span>
+
+<span class="syn-purple">extension</span> <span class="syn-pink">ARPlaneAnchor</span> {
+    <span class="uc-syn-comment">/// Surface of one detected patch, in m², from its outline.</span>
+    <span class="syn-purple">var</span> area: <span class="syn-pink">Float</span> {
+        <span class="syn-purple">let</span> corners = geometry.boundaryVertices
+        <span class="syn-purple">var</span> twice: <span class="syn-pink">Float</span> = <span class="syn-orange">0</span>
+        <span class="syn-purple">for</span> i <span class="syn-purple">in</span> corners.indices {
+            <span class="syn-purple">let</span> j = (i + <span class="syn-orange">1</span>) % corners.count
+            twice += corners[i].x * corners[j].z - corners[j].x * corners[i].z
+        }
+        <span class="syn-purple">return</span> <span class="syn-blue-light">abs</span>(twice) / <span class="syn-orange">2</span>
+    }
+}
+
+<span class="syn-purple">struct</span> <span class="syn-pink">FloorArea</span>: <span class="syn-pink">View</span> {
+    <span class="syn-orange">@State</span> <span class="syn-purple">private</span> <span class="syn-purple">var</span> squareMetres: <span class="syn-pink">Float</span> = <span class="syn-orange">0</span>
+
+    <span class="syn-purple">var</span> body: <span class="syn-purple">some</span> <span class="syn-pink">View</span> {
+        <span class="syn-pink">ARSceneView</span>(planeDetection: .horizontal)
+            .onFrame { frame, _ <span class="syn-purple">in</span>
+                <span class="uc-syn-comment">// ARKit names what each surface is: keep the floor, skip tables and seats.</span>
+                <span class="syn-purple">let</span> floor = frame.anchors
+                    .compactMap { $<span class="syn-orange">0</span> <span class="syn-purple">as</span>? <span class="syn-pink">ARPlaneAnchor</span> }
+                    .filter { $<span class="syn-orange">0</span>.classification == .floor }
+                    .<span class="syn-blue-light">reduce</span>(<span class="syn-pink">Float</span>(<span class="syn-orange">0</span>)) { $<span class="syn-orange">0</span> + $<span class="syn-orange">1</span>.area }
+                <span class="syn-pink">Task</span> { <span class="syn-orange">@MainActor</span> <span class="syn-purple">in</span> squareMetres = floor }
+            }
+            .<span class="syn-blue-light">overlay</span>(alignment: .bottom) {
+                <span class="syn-pink">Text</span>(<span class="syn-pink">String</span>(format: <span class="syn-green-light">"%.1f m² of floor seen"</span>, squareMetres))
+            }
+    }
+}</code></pre>
+            </div>
+          </div>
+          </details>
+          <p class="uc-sources">
+            <span class="uc-sources__label">Sample source</span>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt" target="_blank" rel="noopener">RoomMeasure.kt</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunReplayUi.kt" target="_blank" rel="noopener">RerunReplayUi.kt</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/arsceneview/src/main/java/io/github/sceneview/ar/arcore/Plane.kt" target="_blank" rel="noopener">Plane.kt (SDK)</a>
+          </p>
+        </div>
+      </article>
+
+      <!-- ===== 3. ROOM OUTLINE ===== -->
+      <article class="uc-case" id="room-outline">
+        <header class="uc-case__head">
+          <span class="uc-case__num" aria-hidden="true">3</span>
+          <div>
+            <h2 class="uc-case__title">A room outline for a listing</h2>
+            <p class="uc-case__who">An estate agent wants the shape of the living room, with its two lengths, to put next to the photos.</p>
+          </div>
+        </header>
+
+        <div class="uc-case__top uc-case__top--wide">
+          <figure class="uc-shot">
+            <div class="uc-shot__frame">
+              <img class="uc-shot__img uc-shot__img--light" src="assets/demos/use-case-room-outline-light.jpg" width="448" height="250" alt="The scanned floor seen in 3D with its outline drawn around it and two dimension lines reading 3.9 m and 3.8 m." loading="lazy">
+              <img class="uc-shot__img uc-shot__img--dark" src="assets/demos/use-case-room-outline-dark.jpg" width="448" height="250" alt="The scanned floor seen in 3D with its outline drawn around it and two dimension lines reading 3.9 m and 3.8 m." loading="lazy">
+            </div>
+            <figcaption>The same replay, floor only: the thin line is the outline of the floor the scan found, the two labels are its lengths.</figcaption>
+          </figure>
+
+          <div class="uc-facts">
+            <div class="uc-status">
+              <span class="uc-pill uc-pill--live">On screen today</span>
+              <span class="uc-pill uc-pill--soon">No plan file</span>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What you get</h3>
+              <ul class="uc-list">
+                <li><strong>In the demo app, on Android:</strong> the replay draws the outline of the floor with its two lengths, and a <strong>Map</strong> button turns the view to look at the room from straight above.</li>
+                <li><strong>In your own app:</strong> the corners of the floor, in metres, ready to draw at any size.</li>
+              </ul>
+            </div>
+
+            <div class="uc-block">
+              <h3 class="uc-block__title">What it does not do</h3>
+              <ul class="uc-list uc-list--limits">
+                <li><strong>There is no plan to download.</strong> Neither the SDK nor the demo writes a PDF, an image or a drawing file of the outline. Today the way to put it in a listing is a screenshot of the view from above.</li>
+                <li>The demo can share the scan as a 3D file (<code>.glb</code>, <code>.ply</code>, <code>.rrd</code>) for people who work in a 3D tool. That is a model of the room, not a plan.</li>
+                <li>The outline follows what the camera saw: it is ragged where furniture stands against a wall, and it has no doors or windows.</li>
+                <li>The iPhone demo has the view from above, without the two lengths.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="uc-code">
+          <p class="uc-code__intro">The smallest version: take the biggest patch of floor, lay its corners flat, and draw the shape under the camera view.</p>
+          <div class="code-card code-card--kotlin">
+            <div class="code-card__header">
+              <div class="code-card__lang-wrap">
+                <img src="assets/brand/kotlin.svg" alt="" width="16" height="16" class="code-card__lang-logo">
+                <span class="code-card__lang">Kotlin (Jetpack Compose)</span>
+              </div>
+              <div class="code-card__dots">
+              <span class="code-card__dot code-card__dot--red"></span>
+              <span class="code-card__dot code-card__dot--yellow"></span>
+              <span class="code-card__dot code-card__dot--green"></span>
+              </div>
+            </div>
+            <div class="code-card__body">
+<pre><code><span class="syn-pink">import</span> androidx.compose.ui.geometry.<span class="syn-purple">Offset</span>
+<span class="syn-pink">import</span> androidx.compose.ui.graphics.<span class="syn-purple">Path</span>
+<span class="syn-pink">import</span> androidx.compose.ui.graphics.drawscope.<span class="syn-purple">Stroke</span>
+<span class="syn-pink">import</span> com.google.ar.core.<span class="syn-purple">Plane</span>
+<span class="syn-pink">import</span> com.google.ar.core.<span class="syn-purple">TrackingState</span>
+<span class="syn-pink">import</span> io.github.sceneview.ar.<span class="syn-purple">ARSceneView</span>
+<span class="syn-pink">import</span> io.github.sceneview.ar.arcore.polygon
+
+<span class="uc-syn-comment">/** The corners of one floor patch on the ground, in metres: x across, y deep. */</span>
+<span class="syn-pink">fun</span> <span class="syn-purple">Plane</span>.<span class="syn-blue">outline</span>(): <span class="syn-purple">List</span>&lt;<span class="syn-purple">Offset</span>&gt; {
+    <span class="syn-pink">val</span> local = polygon
+    <span class="syn-pink">return</span> <span class="syn-purple">List</span>(local.<span class="syn-blue">limit</span>() / <span class="syn-orange">2</span>) { i -&gt;
+        <span class="syn-pink">val</span> world = centerPose.<span class="syn-blue">transformPoint</span>(<span class="syn-blue">floatArrayOf</span>(local[<span class="syn-orange">2</span> * i], <span class="syn-orange">0f</span>, local[<span class="syn-orange">2</span> * i + <span class="syn-orange">1</span>]))
+        <span class="syn-purple">Offset</span>(world[<span class="syn-orange">0</span>], world[<span class="syn-orange">2</span>])
+    }
+}
+
+<span class="syn-orange">@Composable</span>
+<span class="syn-pink">fun</span> <span class="syn-purple">RoomOutline</span>() {
+    <span class="syn-pink">var</span> outline <span class="syn-pink">by</span> remember { <span class="syn-blue">mutableStateOf</span>(emptyList&lt;<span class="syn-purple">Offset</span>&gt;()) }
+    <span class="syn-pink">val</span> ink = <span class="syn-purple">MaterialTheme</span>.colorScheme.onSurface
+
+    <span class="syn-purple">Column</span>(<span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxSize</span>()) {
+        <span class="syn-purple">ARSceneView</span>(
+            modifier = <span class="syn-purple">Modifier</span>.<span class="syn-blue">weight</span>(<span class="syn-orange">1f</span>),
+            onSessionUpdated = { session, _ -&gt;
+                <span class="uc-syn-comment">// The biggest level surface the phone has found is the floor.</span>
+                session.<span class="syn-blue">getAllTrackables</span>(<span class="syn-purple">Plane</span>::class.java)
+                    .filter {
+                        it.trackingState == <span class="syn-purple">TrackingState</span>.<span class="syn-purple">TRACKING</span> &amp;&amp;
+                            it.type == <span class="syn-purple">Plane</span>.<span class="syn-purple">Type</span>.<span class="syn-purple">HORIZONTAL_UPWARD_FACING</span>
+                    }
+                    .maxByOrNull { it.extentX * it.extentZ }
+                    ?.let { outline = it.<span class="syn-blue">outline</span>() }
+            }
+        )
+        <span class="syn-purple">Canvas</span>(<span class="syn-purple">Modifier</span>.<span class="syn-blue">fillMaxWidth</span>().<span class="syn-blue">height</span>(<span class="syn-orange">240</span>.dp)) {
+            <span class="syn-pink">if</span> (outline.size &lt; <span class="syn-orange">3</span>) <span class="syn-pink">return</span><span class="syn-orange">@Canvas</span>
+            <span class="syn-pink">val</span> left = outline.minOf { it.x }
+            <span class="syn-pink">val</span> top = outline.minOf { it.y }
+            <span class="syn-pink">val</span> pixelsPerMetre = <span class="syn-blue">minOf</span>(
+                size.width / (outline.maxOf { it.x } - left),
+                size.height / (outline.maxOf { it.y } - top)
+            )
+            <span class="syn-pink">val</span> path = <span class="syn-purple">Path</span>()
+            outline.forEachIndexed { i, corner -&gt;
+                <span class="syn-pink">val</span> x = (corner.x - left) * pixelsPerMetre
+                <span class="syn-pink">val</span> y = (corner.y - top) * pixelsPerMetre
+                <span class="syn-pink">if</span> (i == <span class="syn-orange">0</span>) path.<span class="syn-blue">moveTo</span>(x, y) <span class="syn-pink">else</span> path.<span class="syn-blue">lineTo</span>(x, y)
+            }
+            path.<span class="syn-blue">close</span>()
+            <span class="syn-blue">drawPath</span>(path, ink, style = <span class="syn-purple">Stroke</span>(width = <span class="syn-orange">2</span>.dp.<span class="syn-blue">toPx</span>()))
+        }
+    }
+}</code></pre>
+            </div>
+          </div>
+          <p class="uc-code__intro"><strong>SwiftUI:</strong> ARKit gives the same corners, <code>ARPlaneAnchor.geometry.boundaryVertices</code>, inside <code>ARSceneView.onFrame</code> as in the floor example above. There is no ready-made outline or room measure in SceneViewSwift today.</p>
+          <p class="uc-sources">
+            <span class="uc-sources__label">Sample source</span>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt" target="_blank" rel="noopener">RoomMeasure.kt (outline and lengths)</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunReplayScene.kt" target="_blank" rel="noopener">RerunReplayScene.kt</a>
+            <a href="https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RerunExportFormat.kt" target="_blank" rel="noopener">RerunExportFormat.kt</a>
+          </p>
+        </div>
+      </article>
+
+      <!-- ===== TRY IT ===== -->
+      <section class="uc-try">
+        <h2 class="uc-try__title">Try it on your phone</h2>
+        <p class="uc-try__text">The scan and its replay are in the SceneView demo app, under <strong>Rerun AR Replay</strong>. It comes with a recorded room, so you can look around before scanning your own.</p>
+        <div class="uc-try__actions">
+          <a class="uc-btn uc-btn--primary" href="/open/?demo=ar-rerun" target="_blank" rel="noopener">Open it in the demo app</a>
+          <a class="uc-btn" href="/rerun/">Replay a session in the browser</a>
+        </div>
+        <p class="uc-try__note">Pictures on this page are crops of one screen: the Android demo replaying the recording bundled with the app, a real room walked with a phone. The Kotlin on this page is the same code as the recipes in <a href="https://github.com/sceneview/sceneview/blob/main/llms.txt" target="_blank" rel="noopener">llms.txt</a>, which the project's checks compile against the library.</p>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="footer__container">
+      <div class="footer__grid">
+        <div class="footer__brand-col">
+          <div class="footer__brand-name">SceneView SDK</div>
+          <p class="footer__brand-desc">The architectural logic for building high-performance 3D spatial experiences across all modern platforms.</p>
+          <div class="footer__copyright">&copy; 2026 SceneView SDK. Architectural Logic.</div>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Documentation</h4>
+          <ul class="footer__col-list">
+            <li><a href="/docs.html" target="_blank" rel="noopener">Examples</a></li>
+            <li><a href="/showcase.html">Showcase</a></li>
+            <li><a href="/view.html">3D Viewer</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Community</h4>
+          <ul class="footer__col-list">
+            <li><a href="https://github.com/sceneview/sceneview" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://discord.gg/UbNDDBTNqb" target="_blank" rel="noopener">Discord</a></li>
+            <li><a href="/companies.html">For companies</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h4 class="footer__col-title">Legal</h4>
+          <ul class="footer__col-list">
+            <li><a href="/privacy.html">Privacy</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">Terms</a></li>
+            <li><a href="https://github.com/sceneview/sceneview/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="/credits.html">3D asset credits</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
