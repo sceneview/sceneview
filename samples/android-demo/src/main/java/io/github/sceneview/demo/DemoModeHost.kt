@@ -30,7 +30,8 @@ import io.github.sceneview.demo.ui.ConnectedChoiceRow
  *
  * [key] is the lowercase token used three ways — the `?tab=<key>` deep-link name
  * ([DeepLinkRouter.TAB_NAMES]), the `sample_interaction` control (`mode_<key>`) and the pill's
- * test tag (`demo_mode_<key>`) — so the three never drift apart.
+ * test tag (`demo_mode_<key>`) — so the three never drift apart. A host that draws no switch
+ * (`showSwitch = false`) has no pill, and so no such tag: its modes open by deep link only.
  */
 @Immutable
 data class DemoMode(val key: String, @StringRes val labelRes: Int)
@@ -47,7 +48,10 @@ class DemoModeSwitch internal constructor(
     val onSelect: (Int) -> Unit,
 )
 
-/** The switch of the [DemoModeHost] around the current demo, or `null` outside one. */
+/**
+ * The switch of the [DemoModeHost] around the current demo, or `null` outside one — and inside
+ * a host that keeps its modes off the screen (`showSwitch = false`).
+ */
 val LocalDemoModeSwitch = compositionLocalOf<DemoModeSwitch?> { null }
 
 /**
@@ -61,12 +65,19 @@ val LocalDemoModeSwitch = compositionLocalOf<DemoModeSwitch?> { null }
  * [DemoSettings.initialTab] for mode 0's own demo when [defaultModeReadsTab] is set — so
  * `ar-placement?tab=1` still opens the wall inside the Place mode — and is dropped otherwise,
  * so it cannot pre-select a tab of the next demo opened.
+ *
+ * **No switch on screen.** [showSwitch] `= false` publishes no [LocalDemoModeSwitch]: the
+ * card opens on its first mode and nothing on screen leads to the others, which stay
+ * reachable by deep link (`?tab=<key>`, a retired id). Room Scan does this — its
+ * "Session MP4" mode is a developer tool the QA harness opens, not a choice to put in front
+ * of whoever came to scan a room.
  */
 @Composable
 fun DemoModeHost(
     modes: List<DemoMode>,
     tabToMode: Map<Int, Int>,
     defaultModeReadsTab: Boolean = false,
+    showSwitch: Boolean = true,
     content: @Composable (mode: Int) -> Unit,
 ) {
     val sampleId = LocalSampleId.current
@@ -83,7 +94,7 @@ fun DemoModeHost(
             }
         },
     )
-    CompositionLocalProvider(LocalDemoModeSwitch provides switch) {
+    CompositionLocalProvider(LocalDemoModeSwitch provides switch.takeIf { showSwitch }) {
         key(mode) { content(mode) }
     }
 }

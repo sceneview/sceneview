@@ -633,13 +633,16 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift
     contract: >-
-      Rerun | Session MP4. Rerun opens on a landing (Record your room, Watch a
-      sample session, Open file, Your sessions); a recording replays as a 3D
+      Rerun, plus Session MP4 by deep link. Rerun opens on a landing (Record
+      your room, Watch a sample session, Open file, Your sessions); a
+      recording replays as a 3D
       rebuild of the room (camera path, planes, points) and opens as a
       dollhouse; sessions share as a file, and a live stream to the Rerun
       viewer saves a .rrd. Session MP4 (Android only, the former
       `ar-record-playback` card since samples step 0): record the ARCore
-      session, list takes, replay one 1:1 or with a tracking report.
+      session, list takes, replay one 1:1 or with a tracking report. The
+      card shows no mode switch: Session MP4 opens by deep link only
+      (`?tab=session-mp4`, or the retired id).
     parity: diverges
     evidence: >-
       Re-measured 2026-10-02 (the old evidence cited the dead
