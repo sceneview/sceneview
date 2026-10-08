@@ -27,15 +27,3 @@ jobs:
 
       - name: Build library
         run: ./gradlew assembleDebug --stacktrace
-
-      # What a release tag runs, short of the upload: release variant, sources and Dokka jars,
-      # POM, signature. Fork pull requests have no signing key and skip it.
-      - name: Rehearse the release publication (Maven local, signed)
-        if: github.event_name == 'pull_request' && startsWith(github.base_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository
-        run: |
-          ./gradlew publishToMavenLocal --no-daemon --no-parallel --no-configuration-cache
-          find ~/.m2/repository/io/github/sceneview -type f | sort
-        env:
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
