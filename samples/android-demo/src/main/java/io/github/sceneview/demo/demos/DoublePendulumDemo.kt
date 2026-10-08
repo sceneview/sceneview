@@ -34,6 +34,11 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.StageSkyFog
 import io.github.sceneview.demo.common.rememberStageSkybox
 import io.github.sceneview.demo.common.themedStageSky
+import io.github.sceneview.demo.demoSceneFrame
+import io.github.sceneview.demo.fitOrbitRadius
+import io.github.sceneview.demo.pendulumCeiling
+import io.github.sceneview.demo.pendulumSubject
+import io.github.sceneview.demo.pendulumSwingExtent
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
@@ -104,9 +109,9 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     // --- Tunable simulation parameters (exposed as sliders) ---
     // Distinct, asymmetric default proportions: a long lead arm and a shorter,
     // heavier trailing arm — an original ratio, not a mirrored pair.
-    var length1 by remember { mutableFloatStateOf(0.52f) }
-    var length2 by remember { mutableFloatStateOf(0.34f) }
-    var gravity by remember { mutableFloatStateOf(11.2f) }
+    var length1 by remember { mutableFloatStateOf(PENDULUM_DEFAULT_LENGTH_1) }
+    var length2 by remember { mutableFloatStateOf(PENDULUM_DEFAULT_LENGTH_2) }
+    var gravity by remember { mutableFloatStateOf(PENDULUM_DEFAULT_GRAVITY) }
 
     // Generation key — bumping it re-seeds the simulation (Release button).
     var generation by remember { mutableStateOf(0) }
@@ -124,11 +129,15 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     var state by remember(length1, length2, gravity, generation) {
         mutableStateOf(
             DoublePendulumState(
-                link1 = DoublePendulumLink(length = length1, mass = 1f, angle = HALF_PI * 1.15f),
-                link2 = DoublePendulumLink(length = length2, mass = 1.6f, angle = HALF_PI * 1.7f),
+                link1 = DoublePendulumLink(
+                    length = length1, mass = PENDULUM_JOINT_MASS, angle = PENDULUM_RELEASE_ANGLE_1,
+                ),
+                link2 = DoublePendulumLink(
+                    length = length2, mass = PENDULUM_TIP_MASS, angle = PENDULUM_RELEASE_ANGLE_2,
+                ),
                 pivot = pivot,
                 gravity = gravity,
-                damping = 0.035f,
+                damping = PENDULUM_DAMPING,
             )
         )
     }
@@ -172,14 +181,6 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         renderInvalidator.requestRender()
     }
 
-    // --- Camera auto-framing ---------------------------------------------
-    // The tip can reach anywhere within (length1 + length2) of the pivot, so
-    // the swing envelope is a disc of that radius centred on the hinge. The
-    // camera looks at the hinge from straight in front and backs off until that
-    // disc fills the viewport the scene actually gets (the band above the
-    // Release pill), so the hinge sits dead centre and no swing leaves frame.
-    val reach = length1 + length2
-    val envelopeCenter = pivot
     val cameraNode = rememberCameraNode(engine)
     val firstFrame = rememberFirstFrameState(engine)
     // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
@@ -206,7 +207,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 label = stringResource(R.string.demo_double_pendulum_lead_arm),
                 value = length1,
                 onValueChange = { length1 = it },
-                valueRange = 0.3f..0.65f,
+                valueRange = PENDULUM_LENGTH_1_RANGE,
                 valueText = "${"%.2f".format(Locale.US, length1)} m",
             )
 
@@ -214,7 +215,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 label = stringResource(R.string.demo_double_pendulum_trailing_arm),
                 value = length2,
                 onValueChange = { length2 = it },
-                valueRange = 0.2f..0.5f,
+                valueRange = PENDULUM_LENGTH_2_RANGE,
                 valueText = "${"%.2f".format(Locale.US, length2)} m",
             )
 
@@ -222,7 +223,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 label = stringResource(R.string.demo_double_pendulum_gravity),
                 value = gravity,
                 onValueChange = { gravity = it },
-                valueRange = 1.6f..20f,
+                valueRange = PENDULUM_GRAVITY_RANGE,
                 valueText = "${"%.1f".format(Locale.US, gravity)} m/s²",
             )
 
@@ -258,39 +259,28 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
         },
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val aspect = if (maxWidth.value > 0f && maxHeight.value > 0f) {
-                maxWidth.value / maxHeight.value
-            } else {
-                0.5f
+            // The scene may run under the glass (a phone held sideways has no room to
+            // inset it, #4310): what covers it goes to the SDK as `contentPadding`, so
+            // the hinge is centred in the free area and the swing is drawn there, not
+            // behind the Release pill or the settings sheet (#4326).
+            val frame = demoSceneFrame()
+            // Fitted for the free area at rest. The sheet then only narrows the band the
+            // lens projects into — the same picture, smaller, follows it up — so opening
+            // Settings neither rebuilds the orbit nor resets the angle the user set.
+            // Rebuilt when an arm length or the resting area changes, so a slider drag
+            // reframes live instead of leaving the swing cropped.
+            val shot = remember(length1, length2, frame.restingAspect, frame.compactHeight) {
+                pendulumHomeShot(length1, length2, frame.restingAspect, strip = frame.compactHeight)
             }
-            val cameraDistance = remember(reach, aspect) {
-                io.github.sceneview.demo.fitOrbitRadius(
-                    extentX = reach * 2f,
-                    extentY = reach * 2f,
-                    extentZ = 0.1f,
-                    aspect = aspect,
-                    elevationDegrees = PENDULUM_ELEVATION_DEGREES,
-                    fill = PENDULUM_FRAME_FILL,
-                    azimuthInvariant = false,
-                )
-            }
-            // Rebuilt when the envelope or the viewport changes, so a slider
-            // drag reframes live instead of leaving the swing cropped. A slight
-            // look-down puts the floor grid under the stand in the lower frame:
-            // a reference that shifts with every orbit.
-            val cameraManipulator = remember(cameraDistance) {
-                val pitch = Math.toRadians(PENDULUM_ELEVATION_DEGREES.toDouble())
+            val cameraManipulator = remember(shot) {
                 CameraGestureDetector.DefaultCameraManipulator(
-                    eyePosition = Position(
-                        envelopeCenter.x,
-                        envelopeCenter.y + cameraDistance * kotlin.math.sin(pitch).toFloat(),
-                        envelopeCenter.z + cameraDistance * kotlin.math.cos(pitch).toFloat(),
-                    ),
-                    targetPosition = envelopeCenter,
+                    eyePosition = shot.eye,
+                    targetPosition = shot.target,
                 )
             }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = frame.contentPadding,
                 onFrame = firstFrame.onFrame,
                 engine = engine,
                 view = view,
@@ -432,7 +422,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 )
                 // Joint bob — the lead link's point mass (also the trailing hinge).
                 SphereNode(
-                    radius = 0.062f,
+                    radius = JOINT_BOB_RADIUS,
                     materialInstance = leadBobMaterial,
                     apply = {
                         isShadowCaster = true
@@ -441,7 +431,7 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
                 )
                 // Tip bob — the trailing link's point mass; heavier, so larger.
                 SphereNode(
-                    radius = 0.085f,
+                    radius = TIP_BOB_RADIUS,
                     materialInstance = trailBobMaterial,
                     apply = {
                         isShadowCaster = true
@@ -514,17 +504,109 @@ fun DoublePendulumDemo(onBack: () -> Unit) {
     }
 }
 
-/** Share of the viewport the swing envelope's bounding square fills; the disc inside it sits clear. */
+/** Where the home shot stands and what it looks at. */
+internal class PendulumHomeShot(val eye: Position, val target: Position)
+
+/**
+ * The home shot for arms of [length1] and [length2] in a free area of [freeAspect] (width over
+ * height), a slight look-down that puts the floor grid under the stand in the lower frame.
+ *
+ * Upright the width limits. The tip's centre can reach anywhere within `length1 + length2` of the
+ * hinge and the bob drawn around it a radius further: the camera looks at the hinge from straight
+ * in front and backs off until that disc fills the free area, so the hinge sits dead centre of it
+ * and no swing leaves it.
+ *
+ * In a [strip] — a phone held sideways, where the free area is a band above the Release pill —
+ * the height limits, and it is spent on what is drawn: from the floor, or the stand's foot ends
+ * behind the pill, up to the highest a pendulum let go at rest can climb ([pendulumCeiling]).
+ */
+internal fun pendulumHomeShot(
+    length1: Float,
+    length2: Float,
+    freeAspect: Float,
+    strip: Boolean,
+): PendulumHomeShot {
+    val swingExtent = pendulumSwingExtent(length1, length2, TIP_BOB_RADIUS)
+    val ceiling = pendulumCeiling(
+        length1 = length1,
+        length2 = length2,
+        mass1 = PENDULUM_JOINT_MASS,
+        mass2 = PENDULUM_TIP_MASS,
+        releaseAngle1 = PENDULUM_RELEASE_ANGLE_1,
+        releaseAngle2 = PENDULUM_RELEASE_ANGLE_2,
+        jointBobRadius = JOINT_BOB_RADIUS,
+        tipBobRadius = TIP_BOB_RADIUS,
+    )
+    val subject = pendulumSubject(PIVOT_HEIGHT, swingExtent, ceiling, strip)
+    val distance = fitOrbitRadius(
+        extentX = swingExtent,
+        extentY = subject.extentY,
+        extentZ = TIP_BOB_RADIUS * 2f,
+        aspect = freeAspect,
+        elevationDegrees = PENDULUM_ELEVATION_DEGREES,
+        fill = if (strip) PENDULUM_STRIP_FRAME_FILL else PENDULUM_FRAME_FILL,
+        azimuthInvariant = false,
+    )
+    val pitch = Math.toRadians(PENDULUM_ELEVATION_DEGREES.toDouble())
+    val target = Position(0f, subject.centerY, 0f)
+    return PendulumHomeShot(
+        eye = Position(
+            target.x,
+            target.y + distance * kotlin.math.sin(pitch).toFloat(),
+            target.z + distance * kotlin.math.cos(pitch).toFloat(),
+        ),
+        target = target,
+    )
+}
+
+/**
+ * The release: both arms cocked to one side, past the horizontal, at rest. Angles from the
+ * downward vertical. The first frame already shows asymmetric motion, and the height the bobs
+ * start from is all the energy the swing will ever have — the home shot is fitted for it.
+ */
+internal const val PENDULUM_RELEASE_ANGLE_1 = HALF_PI * 1.15f
+internal const val PENDULUM_RELEASE_ANGLE_2 = HALF_PI * 1.7f
+
+/** The point masses: the tip is the heavier one, and is drawn larger. */
+internal const val PENDULUM_JOINT_MASS = 1f
+internal const val PENDULUM_TIP_MASS = 1.6f
+
+/** Share of the angular velocity lost per second. */
+internal const val PENDULUM_DAMPING = 0.035f
+
+/** What the demo opens with: the two arm lengths in metres, gravity in m/s². */
+internal const val PENDULUM_DEFAULT_LENGTH_1 = 0.52f
+internal const val PENDULUM_DEFAULT_LENGTH_2 = 0.34f
+internal const val PENDULUM_DEFAULT_GRAVITY = 11.2f
+
+/** What the Settings sliders can set them to. */
+internal val PENDULUM_LENGTH_1_RANGE = 0.3f..0.65f
+internal val PENDULUM_LENGTH_2_RANGE = 0.2f..0.5f
+internal val PENDULUM_GRAVITY_RANGE = 1.6f..20f
+
+/** Radius of the joint bob, the lead arm's point mass. */
+internal const val JOINT_BOB_RADIUS = 0.062f
+
+/** Radius of the tip bob, included in the full swing envelope. */
+internal const val TIP_BOB_RADIUS = 0.085f
+
+/** Share of the free area the swing envelope's bounding square fills. */
 private const val PENDULUM_FRAME_FILL = 0.96f
 
+/**
+ * The same in a strip, where the fit runs down to the stand's foot: a square has spare corners
+ * around the disc inside it, the foot and the shadow it casts forward have none.
+ */
+internal const val PENDULUM_STRIP_FRAME_FILL = 0.88f
+
 /** Look-down of the home shot: enough to put the floor grid under the stand in frame. */
-private const val PENDULUM_ELEVATION_DEGREES = 10f
+internal const val PENDULUM_ELEVATION_DEGREES = 10f
 
 /**
  * Height of the hinge above the floor. The longest reachable hang (0.65 + 0.5 m arms, plus the
  * tip bob) still clears the stand's base plate.
  */
-private const val PIVOT_HEIGHT = 1.4f
+internal const val PIVOT_HEIGHT = 1.4f
 
 /** Side of the square floor: far past where the stage sky's fog has swallowed it. */
 private const val FLOOR_SIZE = 90f
@@ -536,12 +618,12 @@ private const val GRID_LINE_WIDTH = 0.008f
 private const val GRID_LINE_HEIGHT = 0.002f
 
 /** The stand, behind the swing plane (the bobs reach 8.5 cm either side of it). */
-private const val STAND_POST_Z = -0.18f
-private const val STAND_POST_SIZE = 0.05f
-private const val STAND_AXLE_SIZE = 0.03f
-private const val STAND_BASE_WIDTH = 0.42f
-private const val STAND_BASE_DEPTH = 0.3f
-private const val STAND_BASE_HEIGHT = 0.03f
+internal const val STAND_POST_Z = -0.18f
+internal const val STAND_POST_SIZE = 0.05f
+internal const val STAND_AXLE_SIZE = 0.03f
+internal const val STAND_BASE_WIDTH = 0.42f
+internal const val STAND_BASE_DEPTH = 0.3f
+internal const val STAND_BASE_HEIGHT = 0.03f
 
 /** Trail: the tip's last ~0.8 s at 60 fps, drawn as a thin tube. */
 private const val TRAIL_POINTS = 48

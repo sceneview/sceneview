@@ -9,19 +9,27 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.settledSheetCover
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -34,8 +42,8 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
  *
  * [onCoveredHeightChange] reports how much of the screen the sheet covers, from the bottom edge
  * (#4053): the sheet is glass so the model can be watched while it re-lights, and the viewer
- * re-frames the model into the band above it. It is the sheet's measured size, not its animated
- * offset, so the camera eases once to where the sheet settles instead of chasing its slide-in.
+ * re-frames the model into the band above it. It is where the sheet settles ([settledSheetCover]),
+ * not its animated offset, so the camera eases once there instead of chasing its slide-in.
  */
 @Composable fun EnvironmentSheet(
     environments: List<ViewerEnvironment>, selectedPath: String, intensity: Float, showEnvironment: Boolean,
@@ -44,9 +52,17 @@ data class ViewerEnvironment(val assetPath: String, val displayName: String) { v
     onCoveredHeightChange: (Dp) -> Unit = {},
 ) {
     val density = LocalDensity.current
+    val sheetState = rememberModalBottomSheetState()
+    var measured by remember { mutableStateOf(0.dp) }
+    // A phone held sideways (#4326): the sheet is taller than half the window, so it rests at
+    // half of it. Reporting its whole size told the viewer the scene was fully covered.
+    val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
+    val covered = settledSheetCover(measured, windowHeight, sheetState.targetValue == SheetValue.Expanded)
+    LaunchedEffect(covered) { onCoveredHeightChange(covered) }
     DemoModalBottomSheet(
         onDismissRequest = onDismiss,
-        modifier = Modifier.onSizeChanged { onCoveredHeightChange(with(density) { it.height.toDp() }) },
+        sheetState = sheetState,
+        modifier = Modifier.onSizeChanged { measured = with(density) { it.height.toDp() } },
         // Glass, no scrim (#3827): the point of this sheet is to watch the model re-light,
         // and an opaque sheet over a dimming scrim hid the model while you changed it.
         containerColor = DemoSheetDefaults.glassContainerColor(),

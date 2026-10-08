@@ -129,6 +129,7 @@ import io.github.sceneview.demo.theme.themedStageChrome
 import io.github.sceneview.demo.theme.motionFade
 import io.github.sceneview.demo.ui.GlassIconButton
 import io.github.sceneview.demo.ui.GlassPill
+import io.github.sceneview.demo.ui.LocalGlassGround
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.haptic.SceneViewHaptic
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -341,6 +342,20 @@ val LocalDemoBottomChromeCover = androidx.compose.runtime.compositionLocalOf { 0
 val LocalDemoSceneCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
 
 /**
+ * [LocalDemoSceneCover] with the settings sheet closed: the bands the chrome keeps over the
+ * `scene` slot at rest (#4326).
+ *
+ * This is the area to **fit a camera distance for**. The SDK's `contentPadding` makes the band the
+ * chrome leaves free the lens's whole field, so a subject fitted for the resting band keeps the
+ * same share of whatever band a rising sheet leaves: the picture follows the sheet, smaller, with
+ * nothing to recompute. Fitting for the live cover instead rebuilds the orbit on every frame of a
+ * drag, and throws away the angle the user had set the moment Settings opens.
+ *
+ * Zero outside a [DemoScaffold].
+ */
+val LocalDemoSceneRestingCover = androidx.compose.runtime.compositionLocalOf { PaddingValues(0.dp) }
+
+/**
  * Whether insetting the scene by the bands above and below it still leaves a scene worth the
  * name — `bottomOverlayReservesScene`'s own precondition.
  *
@@ -417,7 +432,22 @@ private fun ProvideDemoSceneCover(
         slotTop = slotTop,
         slotBottom = slotBottom,
     )
-    CompositionLocalProvider(LocalDemoSceneCover provides cover, content = content)
+    // The same bands with the sheet closed. Remembered, so the demos that only read this one are
+    // not recomposed by a sheet on the move.
+    val restingCover = remember(chromeTop, chromeBottom, slotTop, slotBottom) {
+        demoSceneCover(
+            chromeTop = chromeTop,
+            chromeBottom = chromeBottom,
+            sheetCover = 0.dp,
+            slotTop = slotTop,
+            slotBottom = slotBottom,
+        )
+    }
+    CompositionLocalProvider(
+        LocalDemoSceneCover provides cover,
+        LocalDemoSceneRestingCover provides restingCover,
+        content = content,
+    )
 }
 
 @Composable
@@ -633,7 +663,11 @@ fun DemoScaffold(
     }
     BackHandler(enabled = settingsExpanded) { settingsExpanded = false }
 
-    CompositionLocalProvider(LocalStageChrome provides chrome) {
+    // A phone held sideways has no band of scrim under the identity row nor under what a demo
+    // stacks above the dock ([demoTopScrim], [demoBottomScrim]): each glass element then stands
+    // on its own piece of it, so it reads the same and the scene stays clear.
+    val glassGround = if (isDemoCompactHeight()) chrome.scrim else Color.Transparent
+    CompositionLocalProvider(LocalStageChrome provides chrome, LocalGlassGround provides glassGround) {
         BottomSheetScaffold(
             sheetContent = {
                 if (settingsSheetComposed) {
@@ -855,8 +889,12 @@ fun DemoScaffold(
                 // inside the chrome greys out, because the chrome is composed after the
                 // overlay slots. It still fades with the chrome, which is the only thing
                 // standing on it.
+                //
+                // Sized by [demoTopScrim]: the whole row upright, the status bar alone, eased
+                // out, on a phone held sideways, where a band that tall is a third of the picture.
+                val topScrim = demoTopScrim(isDemoCompactHeight(), statusBarInset)
                 AnimatedVisibility(
-                    visible = chromeVisible,
+                    visible = chromeVisible && topScrim.height > 0.dp,
                     enter = fadeIn(SceneViewTokens.Motion.fade()),
                     exit = fadeOut(SceneViewTokens.Motion.fade()),
                     modifier = Modifier.align(Alignment.TopCenter),
@@ -864,15 +902,8 @@ fun DemoScaffold(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(SceneViewTokens.Glass.scrimTopHeight)
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to chrome.scrim,
-                                    SceneViewTokens.Glass.scrimPlateau to
-                                        chrome.scrim,
-                                    1f to Color.Transparent,
-                                )
-                            ),
+                            .height(topScrim.height)
+                            .background(topScrim.brush(chrome.scrim, fromBottom = false)),
                     )
                 }
 
@@ -884,13 +915,22 @@ fun DemoScaffold(
                 // chrome's fade, because a status pill stays on screen after a scene tap
                 // has hidden the dock. Sized to the measured band so a pill a demo lifted
                 // clear of the dock still lands on the scrim.
-                val bottomBand = maxOf(
-                    SceneViewTokens.Glass.scrimBottomHeight,
-                    dockClearance + bottomOverlayBand,
+                //
+                // On a phone held sideways that band is more than half the picture: the scrim
+                // keeps to the dock and leaves with it ([demoBottomScrim]), and what stands
+                // above carries its own ground ([LocalGlassGround]).
+                val compactHeight = isDemoCompactHeight()
+                val bottomScrim = demoBottomScrim(
+                    compactHeight = compactHeight,
+                    dockReserve = dockClearance,
+                    overlayBand = bottomOverlayBand,
+                    dockBand = dockBandClearance,
+                    navigationBarInset = navigationBarInset,
                 )
+                val bottomStackShown = bottomOverlay != null || peekHeader != null ||
+                    modeSwitch != null || recordPillShown
                 AnimatedVisibility(
-                    visible = chromeVisible || bottomOverlay != null || peekHeader != null ||
-                        modeSwitch != null || recordPillShown,
+                    visible = chromeVisible || (bottomStackShown && !compactHeight),
                     enter = fadeIn(SceneViewTokens.Motion.fade()),
                     exit = fadeOut(SceneViewTokens.Motion.fade()),
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -898,15 +938,8 @@ fun DemoScaffold(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(bottomBand)
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    1f - SceneViewTokens.Glass.scrimPlateau to
-                                        chrome.scrimDock,
-                                    1f to chrome.scrimDock,
-                                )
-                            ),
+                            .height(bottomScrim.height)
+                            .background(bottomScrim.brush(chrome.scrimDock, fromBottom = true)),
                     )
                 }
 
@@ -1693,6 +1726,22 @@ private fun RecordPill(recorder: SceneRecorderState, onClick: () -> Unit) {
 
 /** Gap between two elements stacked in an overlay slot. */
 private val OVERLAY_STACK_SPACING = SceneViewTokens.Space.sm
+
+/**
+ * The band as a gradient of [color], solid at the screen edge it grounds: the top one, or the
+ * bottom one when [fromBottom]. The upright bands keep the two-stop ramp they always had.
+ */
+private fun DemoScrim.brush(color: Color, fromBottom: Boolean): Brush {
+    val ramp = stops().map { (at, share) ->
+        val tint = when (share) {
+            1f -> color
+            0f -> Color.Transparent
+            else -> color.copy(alpha = color.alpha * share)
+        }
+        (if (fromBottom) 1f - at else at) to tint
+    }
+    return Brush.verticalGradient(*(if (fromBottom) ramp.reversed() else ramp).toTypedArray())
+}
 
 /**
  * Receiver of the [DemoScaffold] `topOverlay` slot — the mirror of

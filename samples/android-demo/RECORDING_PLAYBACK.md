@@ -1,6 +1,14 @@
 # AR Record & Playback — debug AR without holding a phone
 
-The android-demo `Record & Playback` tile shows ARCore's most useful debugging primitive: capture a full AR session to an MP4, then replay it 1:1 from your desk.
+The android-demo Record & Playback screen shows ARCore's most useful debugging primitive: capture a full AR session to an MP4, then replay it 1:1 from your desk.
+
+It is a developer tool with no tile and no switch in the app: it is the Session MP4 mode of the `ar-rerun` card, opened by deep link only.
+
+```
+adb shell am start -a android.intent.action.VIEW -d "sceneview://demo/ar-rerun?tab=session-mp4"
+```
+
+The retired id still works: `--es demo ar-record-playback`.
 
 ## What this demo shows
 

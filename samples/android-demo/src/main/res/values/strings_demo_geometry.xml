@@ -6,7 +6,24 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_geometry_title">Geometry Primitives</string>
-    <string name="demo_geometry_subtitle">Cube, sphere, cylinder and plane primitives</string>
+    <string name="demo_geometry_subtitle">Show, hide and restyle the seven built-in shapes</string>
     <string name="demo_geometry">Geometry Nodes</string>
-    <string name="demo_geometry_desc">Procedural cube, sphere, cylinder, and plane geometry</string>
+    <string name="demo_geometry_desc">The seven built-in primitives: cube, sphere, cylinder, cone, torus, capsule and plane</string>
+
+    <!-- Shape chips over the scene: one switch per primitive. -->
+    <string name="demo_geometry_shape_cube">Cube</string>
+    <string name="demo_geometry_shape_sphere">Sphere</string>
+    <string name="demo_geometry_shape_cylinder">Cylinder</string>
+    <string name="demo_geometry_shape_cone">Cone</string>
+    <string name="demo_geometry_shape_torus">Torus</string>
+    <string name="demo_geometry_shape_capsule">Capsule</string>
+    <string name="demo_geometry_shape_plane">Plane</string>
+
+    <!-- Dock. -->
+    <string name="demo_geometry_animate">Animate</string>
+    <string name="demo_geometry_recenter">Recenter</string>
+
+    <!-- Settings sheet: the material every shape shares. -->
+    <string name="demo_geometry_metallic">Metallic</string>
+    <string name="demo_geometry_roughness">Roughness</string>
 </resources>

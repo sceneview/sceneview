@@ -31,6 +31,7 @@ import io.github.sceneview.demo.fragments.ArRerunFragment
 import io.github.sceneview.demo.fragments.ArXrFragment
 import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
 import io.github.sceneview.demo.fragments.RollingBallsFragment
+import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 
 /**
  * The sample on screen, for events logged deep inside shared components (the settings sheet,
@@ -187,6 +188,7 @@ internal val SAMPLE_MODES: Map<String, List<String>> = mapOf(
     "ar-rerun" to ArRerunFragment.modes.map { it.key },
     "ar-cloud-anchor" to ArCloudAnchorFragment.modes.map { it.key },
     "ar-xr" to ArXrFragment.modes.map { it.key },
+    "two-d-in-three-d" to TwoDInThreeDFragment.modes.map { it.key },
 )
 
 /** Initial mode of a catalogue umbrella. The pending tab is only peeked; the demo consumes it. */

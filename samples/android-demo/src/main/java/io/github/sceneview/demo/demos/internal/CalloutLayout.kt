@@ -1,289 +1,212 @@
 package io.github.sceneview.demo.demos.internal
 
+import io.github.sceneview.demo.fitOrbitRadius
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Size
+import io.github.sceneview.verticalFovDegreesForFocalLength
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.tan
 
-/**
- * Where the `2D in 3D` demo's Compose cards sit around the model, and which way they face.
- *
- * All of it is plain arithmetic on floats — no engine types, no Filament call — so the framing
- * is something `CalloutLayoutTest` can assert instead of a number tuned by eye. The demo
- * composable ([io.github.sceneview.demo.demos.TwoDInThreeDDemo]) only reads the results.
- *
- * ## The frame the numbers live in
- *
- * The model and every card are children of one **turntable** node that spins about Y. Inside
- * that node's local frame a card at [Callout.angleDegrees] `θ` and radius `r` sits at
- * `(r·sin θ, height, r·cos θ)` — `θ = 0` puts it between the model and the camera's home
- * position, and `θ` grows counter-clockwise seen from above, matching Filament's right-handed
- * Y-up convention.
- *
- * Parenting the cards to the turntable rather than to the world is what makes the Billboard
- * toggle legible: with billboarding off the cards ride round with the model and go edge-on;
- * with it on they pivot to stay square to the viewer while their *positions* still orbit.
- * Cards pinned in world space would look identical either way until the user orbited the
- * camera.
- */
-internal object CalloutLayout {
-
-    /** The model's largest dimension, in metres, after `scaleToUnits`. */
-    const val MODEL_SIZE_METERS = 0.62f
-
-    /** Camera orbit radius from the turntable's centre, in metres. */
-    const val CAMERA_DISTANCE = 2.4f
-
-    /** Camera height above the turntable's centre, in metres. A gentle look-down. */
-    const val CAMERA_HEIGHT = 0.34f
-
-    /** How far off the ground the whole rig sits — the point the camera looks at. */
-    const val TARGET_Y = 0.02f
-
-    /** Turntable rotation, in degrees per second. One revolution every 24 s. */
-    const val SPIN_DEGREES_PER_SECOND = 15f
-
-    /**
-     * Turntable angle frozen under `DemoSettings.qaMode`, so captures are deterministic.
-     *
-     * Zero, and deliberately so: [CALLOUTS]' own bearings already carry the composition, and at
-     * turntable zero the Vents card sits half behind the model — which is the frame that makes
-     * the **Always on top** toggle show a difference at all.
-     */
-    const val QA_SPIN_DEGREES = 0f
-
-    // ── Card spread (how far the cards stand off the model) ───────────────────────────────
-
-    /**
-     * Closest the cards may stand to the turntable axis, in metres.
-     *
-     * Deliberately *inside* the model's own silhouette at the low end. A call-out that
-     * overlaps the thing it names is what a real annotation UI looks like — and it is the only
-     * arrangement in which **Always on top** has anything to show.
-     */
-    const val MIN_SPREAD = 0.28f
-
-    /** Furthest the cards may stand from the turntable axis, in metres. */
-    const val MAX_SPREAD = 0.70f
-
-    /** Default card radius — just clear of the model's silhouette. */
-    const val DEFAULT_SPREAD = 0.34f
-
-    // ── Card size (world scale applied to the rendered Compose quad) ──────────────────────
-
-    /**
-     * Card scale bounds. A `ViewNode` renders at `pxPerUnits = 250 px/m`, so the demo's 264 dp
-     * card is a couple of metres across at scale 1 — these are the factors that bring it back to
-     * a hand-sized label next to a 0.62 m model.
-     */
-    const val MIN_CARD_SCALE = 0.07f
-
-    /** @see MIN_CARD_SCALE */
-    const val MAX_CARD_SCALE = 0.18f
-
-    /** @see MIN_CARD_SCALE */
-    const val DEFAULT_CARD_SCALE = 0.12f
-
-    /**
-     * The three annotations pinned to the model, in the order they are composed.
-     *
-     * The copy is about the *asset*, not about the demo: a call-out that says something true
-     * about the thing it points at is what makes the pattern worth copying. Angles are spread
-     * so no two cards overlap at [DEFAULT_SPREAD], and heights stagger them vertically so the
-     * turntable never lines all three up into one stripe.
-     */
-    val CALLOUTS: List<Callout> = listOf(
-        Callout(
-            id = "visor",
-            title = "Visor",
-            body = "Base color and metallic-roughness, 2048² each.",
-            angleDegrees = -58f,
-            height = 0.27f,
-        ),
-        Callout(
-            id = "vents",
-            title = "Vents",
-            body = "An emissive map. They glow with no light aimed at them.",
-            angleDegrees = 128f,
-            height = 0f,
-        ),
-        Callout(
-            id = "shell",
-            title = "Shell",
-            body = "Every dent is a normal map. The mesh under it is smooth.",
-            angleDegrees = 34f,
-            height = -0.26f,
-        ),
-    )
-
-    /**
-     * The interactive card's world position — in front of the model and below it, **not** on the
-     * turntable.
-     *
-     * A label may turn away; a control may not. Parenting the control card to the turntable would
-     * carry the only tappable thing in the scene round the back every twelve seconds, so it is
-     * pinned in world space, billboarded on every frame, and always drawn on top. That split —
-     * world-anchored annotations, viewer-anchored controls — is the part of this demo most worth
-     * copying into a real app.
-     */
-    val CONTROL_CARD_POSITION = Position(x = 0f, y = -0.45f, z = 0.85f)
-
-    /**
-     * The camera's home position, on a circle of radius [CAMERA_DISTANCE] around the origin.
-     *
-     * `rememberCameraManipulator` reads the **length** of `orbitHomePosition` as the orbit
-     * distance (see `GeometryLayout` and #2930), so the vector has to be the real eye offset,
-     * not a direction.
-     *
-     * @param distance Overrides [CAMERA_DISTANCE] — how `DemoSettings.cameraDistance` (#2652)
-     * reaches this scene, so a capture run can reframe it from adb.
-     */
-    fun cameraHomePosition(distance: Float = CAMERA_DISTANCE): Position {
-        val safeDistance = distance.coerceAtLeast(MIN_CAMERA_DISTANCE)
-        // Keep the look-down angle constant as the distance changes: the height scales with
-        // the radius instead of staying pinned, so pulling back does not flatten the view.
-        val height = CAMERA_HEIGHT * (safeDistance / CAMERA_DISTANCE)
-        val horizontal = kotlin.math.sqrt(
-            (safeDistance * safeDistance - height * height).coerceAtLeast(0f)
-        )
-        return Position(x = 0f, y = TARGET_Y + height, z = horizontal)
-    }
-
-    /** The point the camera orbits around — the model's centre, lifted off the ground. */
-    fun targetPosition(): Position = Position(x = 0f, y = TARGET_Y, z = 0f)
-
-    /**
-     * A card's position **in the turntable's local frame**.
-     *
-     * @param spread Radius from the turntable axis, in metres. Clamped to
-     * [MIN_SPREAD]…[MAX_SPREAD].
-     */
-    fun localPosition(callout: Callout, spread: Float): Position {
-        val radius = spread.coerceIn(MIN_SPREAD, MAX_SPREAD)
-        val radians = Math.toRadians(callout.angleDegrees.toDouble())
-        return Position(
-            x = (radius * sin(radians)).toFloat(),
-            y = callout.height,
-            z = (radius * cos(radians)).toFloat(),
-        )
-    }
-
-    /**
-     * The card's **world** position once the turntable has spun by [turntableYawDegrees].
-     *
-     * Rotating `(x, z)` about Y by `yaw` in a right-handed Y-up frame gives
-     * `x' = x·cos yaw + z·sin yaw`, `z' = −x·sin yaw + z·cos yaw`; because the local position
-     * is itself `(r·sin θ, h, r·cos θ)`, that collapses to the same expression at `θ + yaw`.
-     * Kept as the explicit rotation anyway, so the function stays correct if the local
-     * placement ever stops being a circle.
-     */
-    fun worldPosition(callout: Callout, spread: Float, turntableYawDegrees: Float): Position {
-        val local = localPosition(callout, spread)
-        val yaw = Math.toRadians(turntableYawDegrees.toDouble())
-        val cosYaw = cos(yaw).toFloat()
-        val sinYaw = sin(yaw).toFloat()
-        return Position(
-            x = local.x * cosYaw + local.z * sinYaw,
-            y = local.y,
-            z = -local.x * sinYaw + local.z * cosYaw,
-        )
-    }
-
-    /**
-     * Yaw, in degrees, that turns a quad's front face (its local +Z) toward the camera.
-     *
-     * This is the billboard, done as arithmetic rather than as a per-frame `lookTowards` on the
-     * node: the result is a plain `Float` the composable hands to `ViewNode(rotation = …)`, so
-     * the card's orientation stays declarative and this file stays testable. Only the yaw is
-     * solved — a card that also pitched toward a camera looking slightly down would lean
-     * backwards, and a wall of leaning labels reads as a bug, not as a feature.
-     *
-     * @param cardWorldPosition Where the quad actually is, in world space.
-     * @param cameraWorldPosition Live camera position. The user can orbit, so this is read every
-     * frame rather than assumed to be [cameraHomePosition].
-     * @param parentYawDegrees Yaw of the node the result will be applied *under*. The returned
-     * angle is a **local** rotation, so the parent's own turn has to be subtracted out; pass `0`
-     * for a quad parented to the world.
-     * @return An angle in `(-180, 180]`, or `0` when the camera is degenerately close to the
-     * quad — `atan2(0, 0)` is not meaningful, and a card the eye sits inside cannot be faced.
-     */
-    fun billboardYawDegrees(
-        cardWorldPosition: Position,
-        cameraWorldPosition: Position,
-        parentYawDegrees: Float = 0f,
-    ): Float {
-        val dx = cameraWorldPosition.x - cardWorldPosition.x
-        val dz = cameraWorldPosition.z - cardWorldPosition.z
-        if (dx * dx + dz * dz < DEGENERATE_DISTANCE_SQ) return 0f
-        // atan2(x, z) — not the usual atan2(y, x). A heading measured from +Z toward +X is
-        // exactly the convention `localPosition` places the cards with, so a card seen from its
-        // own radial direction comes back with its own bearing.
-        val headingDegrees = Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
-        return normalizeDegrees(headingDegrees - parentYawDegrees)
-    }
-
-    /** [billboardYawDegrees] for a call-out riding the turntable. */
-    fun billboardYawDegrees(
-        callout: Callout,
-        spread: Float,
-        turntableYawDegrees: Float,
-        cameraWorldPosition: Position,
-    ): Float = billboardYawDegrees(
-        cardWorldPosition = worldPosition(callout, spread, turntableYawDegrees),
-        cameraWorldPosition = cameraWorldPosition,
-        parentYawDegrees = turntableYawDegrees,
-    )
-
-    /**
-     * Yaw, in the turntable's local frame, of a card that is **not** billboarded: it faces
-     * radially outward, away from the model, and rides round with the turntable.
-     */
-    fun fixedYawDegrees(callout: Callout): Float = normalizeDegrees(callout.angleDegrees)
-
-    /** Wraps an angle into `(-180, 180]`, so a spin that has run for minutes stays readable. */
-    fun normalizeDegrees(degrees: Float): Float {
-        var value = degrees % 360f
-        if (value <= -180f) value += 360f
-        if (value > 180f) value -= 360f
-        // `-0f` compares equal to `0f` but prints as "-0.0"; normalise it away.
-        return if (value == 0f) 0f else value
-    }
-
-    /**
-     * Advances the turntable angle by one frame, wrapped into `[0, 360)`.
-     *
-     * @param deltaNanos Time since the previous frame, straight from `withFrameNanos`.
-     */
-    fun nextTurntableYaw(previousDegrees: Float, deltaNanos: Long): Float {
-        if (deltaNanos <= 0L) return previousDegrees
-        val seconds = deltaNanos / NANOS_PER_SECOND
-        val advanced = previousDegrees + SPIN_DEGREES_PER_SECOND * seconds
-        return ((advanced % 360f) + 360f) % 360f
-    }
-
-    /** Below this squared distance (1 cm²) the camera is treated as sitting on the card. */
-    private const val DEGENERATE_DISTANCE_SQ = 1e-4f
-
-    /** Guards `cameraHomePosition` against a `?camera_distance=0` extra flattening the rig. */
-    private const val MIN_CAMERA_DISTANCE = 0.6f
-
-    private const val NANOS_PER_SECOND = 1_000_000_000f
+/** Five pickable parts; the three fin nodes deliberately share one material choice. */
+internal enum class RocketPart(val originalMaterial: Int) {
+    Nose(1), Body(0), Window(1), Fins(2), Engine(2),
 }
 
-/**
- * One annotation pinned around the model.
- *
- * @param id Stable key for `key(…)` in the composition, and the UI-test handle.
- * @param title Card headline.
- * @param body One sentence about the part the card points at. Empty for the control card,
- * which carries a live control instead of prose.
- * @param angleDegrees Bearing around the turntable axis, `0` facing the camera's home.
- * @param height Metres above (positive) or below (negative) the model's centre.
- */
-internal data class Callout(
-    val id: String,
-    val title: String,
-    val body: String,
-    val angleDegrees: Float,
-    val height: Float,
-)
+/** Metres and Y-up rotations for the rocket, its attached card and the media gallery. */
+internal object CalloutLayout {
+    const val FLOOR_SIZE = 90f
+    const val ELEVATION_DEGREES = 10f
+    const val FOCAL_LENGTH_MM = 28.0
+    const val VIEW_PIXELS_PER_UNIT = 250f
+    const val PULSE_SCALE = 1.10f
+    /** The rocket alone, fins included; [inspectDistance] then makes room for the card. */
+    val INSPECT_EXTENT = Size(0.72f, 1f, 0.72f)
+    val INSPECT_TARGET = Position(y = 0.5f)
+    /** Narrower than the 1.49 m hung: the fit keeps a depth margin a near-flat wall has no use for. */
+    val MEDIA_EXTENT = Size(1.38f, 1.4f, 0.3f)
+    val MEDIA_TARGET = Position(y = 1.04f)
+    const val BODY_RADIUS = 0.15f
+    const val BODY_HEIGHT = 0.46f
+    const val NOSE_HEIGHT = 0.34f
+    const val WINDOW_RADIUS = 0.06f
+    /** The nozzle is a cone whose tip is buried in the body: only its flare shows. */
+    const val ENGINE_RADIUS = 0.12f
+    const val ENGINE_HEIGHT = 0.26f
+    /** A slab leaning on the body: its foot sweeps outwards, the floor hides what goes under. */
+    val FIN_SIZE = Size(0.03f, 0.34f, 0.16f)
+    val FIN_CENTER = Position(y = 0.16f, z = 0.22f)
+    const val FIN_TILT_DEGREES = -22f
+    /** Height the leaning slab reaches; the card stays above it so no fin is hidden. */
+    const val FIN_TOP = 0.35f
+    val WINDOW_SCALE = Size(1f, 1f, 0.45f)
+    /** None at yaw 0: the front, where the window is, stays clear. */
+    val FIN_YAWS = listOf(60f, 180f, 300f)
+    const val CARD_GAP = 0.02f
+    const val MAX_CARD_RETREAT = 1.8f
+    /** Nearest the home eye comes to its target: closer, the lens is inside the subject. */
+    const val MIN_HOME_DISTANCE = 0.6f
+    val PICTURE_SIZE = Size(0.64f, 0.512f, 0f)
+    val SCREEN_SIZE = Size(0.64f, 0.36f, 0f)
+    val BADGE_SIZE = Size(0.3f, 0.3f, 0f)
+    /** TextNode rasters 512 x 128: keep the quad at that 4:1 or the glyphs stretch. */
+    val CAPTION_SIZE = Size(0.72f, 0.18f, 0f)
+    const val FRAME_BORDER = 0.025f
+    const val FRAME_DEPTH = 0.035f
+    val CONTENT_OFFSET = Position(z = FRAME_DEPTH / 2f + 0.002f)
+
+    fun partPosition(part: RocketPart): Position = when (part) {
+        RocketPart.Nose -> Position(y = 0.83f)
+        RocketPart.Body -> Position(y = 0.43f)
+        RocketPart.Window -> Position(y = 0.52f, z = 0.145f)
+        RocketPart.Fins -> Position(y = FIN_CENTER.y)
+        RocketPart.Engine -> Position(y = ENGINE_HEIGHT / 2f)
+    }
+
+    fun finPosition(yaw: Float): Position = rotateY(FIN_CENTER, yaw)
+
+    /**
+     * Metres one dp spans at [distance] from the eye. `contentPadding` makes the lens' field of
+     * view span the free area, so its height — not the window's — is what the fov divides.
+     */
+    fun metersPerDp(distance: Float, freeHeightDp: Float): Float {
+        if (freeHeightDp <= 0f) return 0f
+        val halfFov = Math.toRadians(verticalFovDegreesForFocalLength(FOCAL_LENGTH_MM) / 2.0)
+        return (2.0 * tan(halfFov) * distance / freeHeightDp).toFloat()
+    }
+
+    /**
+     * Orbit distance for Inspect: the rocket as large as the free area allows, pulled back until
+     * a card [cardWidthDp] wide and its [marginDp] fit between the body and the screen edge. A
+     * card is sized in dp, the rocket in metres, so a narrow phone trades rocket for card — up to
+     * [MAX_CARD_RETREAT], past which the card overlaps the body rather than shrink the scene.
+     *
+     * The eye looks down by [ELEVATION_DEGREES], so a card beside the nose is nearer to it than
+     * the orbit target and drawn larger: the margin is kept for that nearest card.
+     */
+    fun inspectDistance(aspect: Float, freeWidthDp: Float, cardWidthDp: Float, marginDp: Float): Float {
+        val fit = cameraDistance(INSPECT_EXTENT, aspect)
+        val room = freeWidthDp / 2f - cardWidthDp - marginDp
+        if (aspect <= 0f || freeWidthDp <= 0f) return fit
+        if (room <= 0f) return fit * MAX_CARD_RETREAT
+        val perDp = metersPerDp(1f, freeWidthDp / aspect)
+        val elevation = Math.toRadians(ELEVATION_DEGREES.toDouble())
+        val lift = (1f + CARD_GAP - INSPECT_TARGET.y) * sin(elevation).toFloat()
+        val forCard = ((BODY_RADIUS + CARD_GAP) / perDp + (freeWidthDp / 2f - marginDp) * lift) / room
+        return forCard.coerceIn(fit, fit * MAX_CARD_RETREAT)
+    }
+
+    /**
+     * Centre of a [card] (metres) beside the part, to the viewer's right, in the plane through the
+     * rocket's axis that faces the viewer — the depth [inspectDistance] sized it for. Chosen on
+     * selection, it then stays in the object's local frame during spin. The card clears the body
+     * sideways and stays above the fins, which reach further out than the body, and under the nose.
+     *
+     * A card too tall for that — a phone held sideways, where the rocket is a strip high and the
+     * card as tall as it — stands outside the fins instead, centred on the rocket's height.
+     */
+    fun cardAnchor(part: RocketPart, camera: Position, parentYaw: Float, card: Size): Position {
+        val eye = rotateY(camera, -parentYaw)
+        val bearing = Math.toDegrees(atan2(eye.x.toDouble(), eye.z.toDouble())).toFloat()
+        val lowest = FIN_TOP + card.y / 2f
+        val highest = 1f + CARD_GAP - card.y / 2f
+        val outside = lowest > highest
+        val reach = if (outside) INSPECT_EXTENT.x / 2f else BODY_RADIUS
+        val height = if (outside) INSPECT_TARGET.y else partPosition(part).y.coerceIn(lowest, highest)
+        return rotateY(Position(x = reach + CARD_GAP + card.x / 2f), bearing).copy(y = height)
+    }
+
+    fun rotateY(local: Position, yawDegrees: Float): Position {
+        val yaw = Math.toRadians(yawDegrees.toDouble())
+        val c = cos(yaw).toFloat()
+        val s = sin(yaw).toFloat()
+        return Position(local.x * c + local.z * s, local.y, -local.x * s + local.z * c)
+    }
+
+    /** Turns a quad's +Z towards the eye, subtracting its parent's yaw for a local rotation. */
+    fun billboardYawDegrees(world: Position, camera: Position, parentYaw: Float = 0f): Float {
+        val dx = camera.x - world.x
+        val dz = camera.z - world.z
+        if (dx * dx + dz * dz < 1e-4f) return 0f
+        return normalizeDegrees(Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat() - parentYaw)
+    }
+
+    /**
+     * Local X rotation that, after [billboardYawDegrees], leans a quad back until it is parallel to
+     * the image plane of an eye looking at [world] from above: its edges then stay upright on screen.
+     */
+    fun billboardPitchDegrees(world: Position, camera: Position): Float {
+        val flat = hypot(camera.x - world.x, camera.z - world.z)
+        if (flat < 1e-2f) return 0f
+        return -Math.toDegrees(atan2((camera.y - world.y).toDouble(), flat.toDouble())).toFloat()
+    }
+
+    fun normalizeDegrees(degrees: Float): Float {
+        val wrapped = ((degrees + 180f) % 360f + 360f) % 360f - 180f
+        return if (wrapped == -180f) 180f else if (wrapped == 0f) 0f else wrapped
+    }
+
+    fun nextTurntableYaw(previous: Float, deltaNanos: Long): Float =
+        if (deltaNanos <= 0) previous else normalizeDegrees(previous + 15f * deltaNanos / 1_000_000_000f)
+
+    fun cameraDistance(extent: Size, aspect: Float): Float = fitOrbitRadius(
+        extent.x, extent.y, extent.z, aspect, ELEVATION_DEGREES,
+        azimuthInvariant = false, focalLengthMm = FOCAL_LENGTH_MM,
+    )
+
+    /**
+     * Distance the eye is really placed at for a [requested] one. A deep link may ask for less
+     * than [MIN_HOME_DISTANCE]; whatever is sized for the home — the card's dp scale — takes this
+     * value, never the request, or it is sized for an eye that is not there.
+     */
+    fun homeDistance(requested: Float): Float = requested.coerceAtLeast(MIN_HOME_DISTANCE)
+
+    /** Eye offset from the orbit target; add the target before passing it to the manipulator. */
+    fun cameraHome(distance: Float): Position {
+        val radians = Math.toRadians(ELEVATION_DEGREES.toDouble())
+        val radius = homeDistance(distance)
+        return Position(y = radius * sin(radians).toFloat(), z = radius * cos(radians).toFloat())
+    }
+
+    fun movedPerceptibly(previous: Position, current: Position): Boolean =
+        abs(previous.x - current.x) > 0.001f || abs(previous.y - current.y) > 0.001f ||
+            abs(previous.z - current.z) > 0.001f
+
+    /**
+     * Two fixed surfaces hung centre to centre and a sprite raised above the gap between them.
+     * The two wall captions share one line, under the taller frame.
+     */
+    val GALLERY = listOf(
+        Exhibit(Position(-0.385f, 0.86f, 0f), 14f, PICTURE_SIZE, Position(-0.385f, 0.44f, 0.05f)),
+        Exhibit(Position(0.385f, 0.86f, 0f), -14f, SCREEN_SIZE, Position(0.385f, 0.44f, 0.05f)),
+        Exhibit(Position(0f, 1.56f, -0.1f), 0f, BADGE_SIZE, Position(0f, 1.28f, -0.1f)),
+    )
+
+    /**
+     * A phone held sideways leaves a strip: the same three on one line, the sprite between the two
+     * surfaces, so the captions are half as large again as the upright wall would leave them.
+     */
+    val GALLERY_STRIP = listOf(
+        Exhibit(Position(-0.8f, 0.86f, 0f), 14f, PICTURE_SIZE, Position(-0.8f, 0.44f, 0.05f)),
+        Exhibit(Position(0.8f, 0.86f, 0f), -14f, SCREEN_SIZE, Position(0.8f, 0.44f, 0.05f)),
+        Exhibit(Position(0f, 0.86f, -0.1f), 0f, BADGE_SIZE, Position(0f, 0.44f, -0.1f)),
+    )
+    val MEDIA_STRIP_EXTENT = Size(2.34f, 0.82f, 0.3f)
+    val MEDIA_STRIP_TARGET = Position(y = 0.745f)
+
+    fun gallery(strip: Boolean): List<Exhibit> = if (strip) GALLERY_STRIP else GALLERY
+
+    fun mediaExtent(strip: Boolean): Size = if (strip) MEDIA_STRIP_EXTENT else MEDIA_EXTENT
+
+    fun mediaTarget(strip: Boolean): Position = if (strip) MEDIA_STRIP_TARGET else MEDIA_TARGET
+
+    fun frameSize(size: Size): Size = Size(
+        size.x + FRAME_BORDER * 2f, size.y + FRAME_BORDER * 2f, FRAME_DEPTH
+    )
+}
+
+/** One exhibit: where it hangs, how it is turned, its size and where its caption sits. */
+internal data class Exhibit(val position: Position, val yaw: Float, val size: Size, val caption: Position)

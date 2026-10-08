@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **AR on Android: the display no longer sleeps in the middle of a session ([#4392](https://github.com/sceneview/sceneview/issues/4392)).** `ARSceneView` keeps the screen on while it is composed and hands the previous setting back when it leaves — a scan, a Streetscape wait or a Cloud Anchor hosting is no longer cut by the display timeout. No API change; a 3D `SceneView` is unaffected.

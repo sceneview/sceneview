@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Mode labels of the consolidated cards (samples step 0), drawn by the shared
-     `DemoModePill`. Each mode was a card of its own before; its old id still opens it
+     `DemoModePill`. Some modes were cards of their own before; their old ids still open them
      through `DeepLinkRouter`. Keep them one or two words: the pill sits over the scene. -->
 <resources>
     <string name="demo_mode_place">Place</string>
@@ -19,4 +19,6 @@
     <string name="demo_mode_streetscape">Streetscape</string>
     <string name="demo_mode_hands">Hands</string>
     <string name="demo_mode_face">Face</string>
+    <string name="demo_mode_inspect">Inspect</string>
+    <string name="demo_mode_media">Media</string>
 </resources>

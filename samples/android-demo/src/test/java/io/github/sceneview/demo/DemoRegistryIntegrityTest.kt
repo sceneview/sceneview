@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 import io.github.sceneview.demo.ui.home.FEATURED_IDS
 import io.github.sceneview.demo.ui.home.FEATURED_PAGER_IDS
@@ -267,6 +268,22 @@ class DemoRegistryIntegrityTest {
             for (tag in demo.tags) {
                 assertTrue("Tag '$tag' on '${demo.id}' must be lowercase and non-blank", tag.isNotBlank() && tag == tag.lowercase())
             }
+        }
+    }
+
+    @Test
+    fun `2D in 3D exposes Inspect and Media on one searchable card`() {
+        val demo = ALL_DEMOS.single { it.id == "two-d-in-three-d" }
+        assertTrue(demo.tags.containsAll(setOf("picking", "material", "text", "image", "video", "billboard")))
+        assertEquals(listOf("inspect", "media"), TwoDInThreeDFragment.modes.map { it.key })
+        assertEquals(listOf(R.string.demo_mode_inspect, R.string.demo_mode_media),
+            TwoDInThreeDFragment.modes.map { it.labelRes })
+        assertEquals(mapOf("inspect" to 0, "media" to 1), DeepLinkRouter.TAB_NAMES[demo.id])
+        assertTrue(demo.id in DeepLinkRouter.TABBED_DEMOS)
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertFalse(ALL_DEMOS.any { it.id == alias })
+            assertEquals(demo.id, DeepLinkRouter.validate(alias, ALL_DEMOS))
+            assertEquals(1, DeepLinkRouter.ALIAS_INITIAL_TAB[alias])
         }
     }
 

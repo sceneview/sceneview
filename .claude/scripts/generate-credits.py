@@ -146,6 +146,21 @@ BUNDLED_SCOPES = [
         # the APK, but the app shows them, so their credits travel with it — read from the
         # same manifest the download reads, never copied by hand.
         "hd_manifest": "assets/hd-pack/android.json",
+        # Media the app plays from a URL and never stores (#4396). Not in the APK and in no
+        # manifest, so the credit is declared here, next to the scope that shows it.
+        "streamed": [
+            {
+                "file": "big_buck_bunny_excerpt_720p.mp4",
+                "title": "Big Buck Bunny (excerpt)",
+                "author": "Blender Foundation",
+                "copyright": "© 2008 Blender Foundation",
+                "source": "https://www.bigbuckbunny.org",
+                "license": "CC-BY-3.0",
+                "bytes": 3318043,
+                "note": "16 s cut from the film (1:48–2:04), resized to 1280×720, sound "
+                        "removed — played by `TwoDInThreeDDemo` (Media).",
+            },
+        ],
     },
     # ── JSON scopes (#3214) ──────────────────────────────────────────────────
     # The iOS and web demos cannot show a Markdown file to a user, so their
@@ -894,8 +909,32 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     hd = scope.get("hd_manifest")
     if hd:
         lines.extend(render_hd_pack_section(hd, to_root))
+    lines.extend(render_streamed_section(scope.get("streamed", [])))
 
     return "\n".join(lines) + "\n", uncredited
+
+
+def render_streamed_section(streamed: list[dict]) -> list[str]:
+    """Credits of the media the app streams: never in the APK, declared on the scope."""
+    if not streamed:
+        return []
+    lines = ["## Streamed media (played from a URL, never stored)", ""]
+    lines.append(
+        "Not bundled: the app reads each file from the `assets-v1` GitHub Release while the "
+        "demo that plays it is open."
+    )
+    lines.append("")
+    for m in sorted(streamed, key=lambda m: m["file"]):
+        lic = m["license"].strip()
+        lic_link = license_url(lic)
+        lic_md = f"[{lic}]({lic_link})" if lic_link else lic
+        lines.append(
+            f"- `{m['file']}` — **[{m['title']}]({m['source']})** by {m['author']} "
+            f"({m['copyright']}) — {lic_md} ({human_size(int(m['bytes']))})"
+        )
+        lines.append(f"  - {m['note']}")
+    lines.append("")
+    return lines
 
 
 def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:

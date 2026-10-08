@@ -633,15 +633,17 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunLiveCaptureView.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunReplayStage.swift
     contract: >-
-      Room Scan | Session MP4. Room Scan (the card's name on Android since
-      #4306; iOS still titles it "Rerun AR Replay", #4325) opens on a landing
-      (Record your room, Watch a sample session, Open file, Your sessions); a
-      recording replays as a 3D rebuild of the room (camera path, planes,
-      points) and opens as a
+      Room Scan, plus Session MP4 by deep link. Room Scan (the card's name on
+      Android since #4306; iOS still titles it "Rerun AR Replay", #4325) opens
+      on a landing (Record your room, Watch a sample session, Open file, Your
+      sessions); a recording replays as a 3D rebuild of the room (camera path,
+      planes, points) and opens as a
       dollhouse; sessions share as a file, and a live stream to the Rerun
       viewer saves a .rrd. Session MP4 (Android only, the former
       `ar-record-playback` card since samples step 0): record the ARCore
-      session, list takes, replay one 1:1 or with a tracking report.
+      session, list takes, replay one 1:1 or with a tracking report. The
+      card shows no mode switch: Session MP4 opens by deep link only
+      (`?tab=session-mp4`, or the retired id).
     parity: diverges
     evidence: >-
       Re-measured 2026-10-02 (the old evidence cited the dead
@@ -818,14 +820,19 @@ demos:
     iosFiles:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AllShapesDemo.swift
     contract: >-
-      Four spinning SDK primitives (cube, sphere, cylinder, plane) in brand
-      colours under IBL; chips show or hide each one, sliders set metallic and
-      roughness live.
+      Seven spinning SDK primitives (cube, sphere, cylinder, cone, torus,
+      capsule, plane) in the two brand tints on the stage, lit by a studio
+      IBL, full-bleed and fitted
+      to the band the chrome leaves free (2-3-2 block in portrait, one row in
+      landscape); chips over the scene show or hide each one in a fixed slot
+      without moving the camera; dock Animate and Recenter; Settings holds
+      Metallic and Roughness, live, plus Reset.
     parity: diverges
     evidence: >-
-      AllShapesDemo.swift:11-24,53: five static shapes (adds a cone), system
-      colours, text labels, a DemoHint, no controls; Android
-      GeometryDemo.kt:150-162,345-367
+      AllShapesDemo.swift:11-24,53: five static shapes (no torus, no capsule),
+      system colours, text labels, a DemoHint, no controls; Android
+      GeometryDemo.kt (GeometryDemo, GeometryShapes, GeometryShapeChips,
+      GeometryDemoControls)
   - id: lighting
     androidStatus: Working
     iosStatus: working
@@ -974,14 +981,20 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/VideoTextureDemo.swift
       - samples/ios-demo/SceneViewDemo/Views/Demos/BillboardDemo.swift
     contract: >-
-      Live UI cards orbit the Damaged Helmet on a turntable, one of them
-      interactive; Billboard and Always-on-top toggles, card size and distance
-      sliders.
+      Two modes behind the mode pill. Inspect: tap a part of a procedural
+      rocket and a live Compose card (ViewNode) stands beside it, restyling
+      that part through four material swatches; Spin and Reset in the dock,
+      Always on top in the sheet. Media: a picture (ImageNode), a muted
+      looping video (VideoNode), a camera-facing badge (BillboardNode) and
+      TextNode captions naming each node; Play/Pause and Face camera in the
+      dock.
     parity: diverges
     evidence: >-
-      Four separate iOS cards (text/image/video/billboard), no live UI;
+      iOS keeps four separate cards (text/image/video/billboard) where
+      Android's Media mode is one scene, and has nothing for Inspect:
       SceneViewSwift Nodes/ViewNode.swift is a white-plane placeholder
-      (#1035); Android TwoDInThreeDDemo.kt:4-53 (#3424)
+      (#1035), so no live UI can ride a model there. Android
+      TwoDInThreeDDemo.kt (Inspect) and TwoDInThreeDMediaDemo.kt (Media)
   - id: contact-shadow-preview
     androidStatus: InReview
     iosStatus: working
