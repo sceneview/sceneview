@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Website and README: a sponsors page lists the sponsor tiers ([#4406](https://github.com/sceneview/sceneview/pull/4406)).** `sceneview.github.io/sponsors.html` says what each tier includes and what a sponsorship does not buy, the README and `.github/SPONSORS.md` point to it, and the `sceneview-web` and `react-native-sceneview` packages declare the same funding links as `sceneview-mcp`.
