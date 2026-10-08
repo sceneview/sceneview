@@ -1,3 +1,5 @@
 Cosmos gains a ringed world: a planet with translucent rings orbits the blue star, lit by it. Click the planet or the star and the camera flies there.
 
 Animation opens on a fox on a studio stage, Lighting Lab has a real stage, Video Texture plays again, and Spatial Audio fades with distance.
+
+Resize the window and your zoom stays. In Model Viewer, a model you pick lands at the right size.

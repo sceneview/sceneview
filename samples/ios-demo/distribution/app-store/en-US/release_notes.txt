@@ -1,7 +1,5 @@
-Cosmos gains a ringed world: a planet with translucent rings orbits the blue star, lit by it. Tap the planet or the star and the camera flies there.
+Turn your phone and your zoom stays: the camera keeps the distance you chose, and returns to it when you turn back.
 
-Home shows every demo's picture edge to edge, and opens on its most striking demos: Cosmos first, then Rerun AR Replay.
+In Model Viewer, a model you pick lands at the right size, even while the picker is still closing.
 
-Controls over the 3D scene use Liquid Glass, so the model shows through. The About tab shows the SceneView mark in 3D.
-
-Animation opens on a fox on a studio stage, Lighting Lab has a real stage, Video Texture plays again, and Spatial Audio fades with distance.
+The Cosmos loading hint stays readable over the lit star.
