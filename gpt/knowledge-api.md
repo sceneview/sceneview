@@ -802,14 +802,15 @@ import io.github.sceneview.geometries.Plane // the geometry defaults, not com.go
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
-Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` update on recomposition.
-`widthMeters`, `heightMeters` and `cameraPositionProvider` are read **once**, when the node is
-created — a later value is ignored. The label is drawn into a 512 × 128 px bitmap; for another
-resolution build the node class yourself (`io.github.sceneview.node.TextNode(…, bitmapWidth, bitmapHeight)`).
+Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` and
+`cameraPositionProvider` update on recomposition. `widthMeters` and `heightMeters` are read
+**once**, when the node is created — a later value is ignored. The label is drawn into a
+512 × 128 px bitmap; for another resolution build the node class yourself
+(`io.github.sceneview.node.TextNode(…, bitmapWidth, bitmapHeight)`).
 `typeface` takes any `android.graphics.Typeface`, e.g. `Typeface.create("serif", Typeface.ITALIC)`.
 The label turns toward the camera **only** when `cameraPositionProvider` is given
 (`cameraPositionProvider = { cameraNode.worldPosition }`); without one it keeps the orientation
-of its parent. There is no `rotation` parameter.
+of its parent. There is no `rotation` parameter. See "Facing the camera" below.
 
 ### BillboardNode — always-facing-camera sprite
 ```kotlin
@@ -824,6 +825,26 @@ of its parent. There is no `rotation` parameter.
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+Reactive: `position`, `scale` and `cameraPositionProvider` update on recomposition; a new `bitmap`
+rebuilds the node. Without a `cameraPositionProvider` it is a plain image quad that keeps its parent's orientation.
+
+#### Facing the camera — `cameraPositionProvider` on `BillboardNode`, `TextNode` and `ViewNode`
+One parameter, one meaning on the three: `cameraPositionProvider: (() -> Position)? = null`.
+- `null` (default): the node does not turn. Nothing faces the camera unless you ask.
+- Set: a **full look-at**. The front of the quad points at the position you return and its top
+  edge stays toward world `+Y` — yaw and pitch, never roll. Pass
+  `{ cameraNode.worldPosition }` with the `cameraNode` you gave `SceneView`.
+- Yaw only (an upright sign): level the reported position with the node,
+  `{ cameraNode.worldPosition.copy(y = signHeight) }`.
+- Parallel to the screen (a card off the view axis that must stay a rectangle, where facing the
+  eye shows a parallelogram): report a point offset from the node the way the camera is offset
+  from what it looks at, `{ node.worldPosition + (cameraNode.worldPosition - target) }`.
+- It follows the camera, the node **and its parent**: a label on a turntable keeps facing you.
+- Reactive: swap it or set it to `null` on recomposition, or through the node's
+  `cameraPositionProvider` property. `null` stops the turning and leaves the node as last turned.
+- While it is set the node owns its orientation: a `rotation` or `quaternion` written by hand is
+  overwritten. Set the provider through the parameter, not inside `apply`.
+- Free while nothing moves: it does not keep a `FrameRatePolicy.OnDemand` scene awake.
 
 ### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
 Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
@@ -967,14 +988,17 @@ both parse the file on the main thread, during composition. A streamed URL needs
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),              // the quad is 1 m per 250 px of content at scale 1
     isVisible: Boolean = true,
+    cameraPositionProvider: (() -> Position)? = null,  // set = the quad faces this position
     apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit    // the Compose UI to render
 )
 ```
-Reactive: `position`, `rotation`, `scale`, `isVisible` and `viewContent` update on recomposition.
-`unlit` and `invertFrontFaceWinding` are read **once**, when the node is created, and `apply` runs
-once at the same moment.
+Reactive: `position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider` and `viewContent`
+update on recomposition. `unlit` and `invertFrontFaceWinding` are read **once**, when the node is
+created, and `apply` runs once at the same moment. `rotation` is ignored while
+`cameraPositionProvider` is set and applies again when it goes back to `null` — same semantics as
+`BillboardNode` and `TextNode`, see "Facing the camera" above.
 
 Usage:
 ```kotlin
@@ -3020,9 +3044,11 @@ class CollaborativeSession {
     fun resolve(engine: Engine, session: Session, cloudAnchorId: String,
                 onResolved: ((node: CloudAnchorNode?) -> Unit)? = null)
     fun onFrame(frame: Frame)                         // call from onSessionUpdated — broadcasts camera pose
+    fun broadcastLocalPose(relativePose: Pose)        // same rate limit as onFrame — for non-ARCore hosts
     fun placeNode(nodeKey: String, modelKey: String,
                   translation: FloatArray, quaternion: FloatArray,
                   scale: FloatArray = floatArrayOf(1f, 1f, 1f))
+    fun removeNode(nodeKey: String)                   // removes it on every peer; no-op if the key is not placed
 }
 ```
 
@@ -3044,9 +3070,9 @@ fun MultiplayerARScreen() {
 }
 ```
 
-- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — a node key holds the last write the device has seen (`PlacedNode`), a peer's or its own: `placeNode` on an existing key moves that node, including one a peer placed. Messages carry no logical clock, so two peers writing the *same* key at the same moment are not ordered — prefix node keys with the peer id when several users may move things at once. Stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` never block, so they are safe in the AR render callback: only camera poses are conflated (the newest wins), while a placement, the anchor id and the hello are never dropped by a later line. `broadcastLocalPose(Pose)` is not rate-limited — only `onFrame` honours `poseRateHz`. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
+- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `remove` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. A `node` line ends with a `clock` counter and a `remove` line carries one. Peers up to 4.53.0 interoperate both ways: they ignore `clock` and drop `remove` lines as an unknown type, and their `node` lines, which have no `clock`, are applied in arrival order. All transforms are in the shared anchor's local space so they are comparable across devices.
+- **Conflict policy** — a node key holds one `PlacedNode`, the last write to that key, and "last" is the same on every device: each `placeNode` / `removeNode` carries a per-key counter, set above every counter the writer has seen for that key and never below its wall clock in milliseconds, and equal counters are settled by the greater peer id. Two peers writing the *same* key at the same moment end on the same node whatever order the lines arrive in. `placeNode` on an existing key moves that node, including one a peer placed. `removeNode(nodeKey)` removes a node on every peer, whoever placed it: a placement written before the removal and delivered after it does not bring the node back, and a later `placeNode` places it again. Limits: nodes placed before a device joined are not re-sent to it; with peers up to 4.53.0 in the session, their writes apply in arrival order and they ignore removals; only the `MAX_NODES` most recent removals are remembered. Stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`broadcastLocalPose`/`placeNode`/`removeNode` never block, so they are safe in the AR render callback. Camera poses are limited to `poseRateHz` for `onFrame` and `broadcastLocalPose` alike: the first goes out at once, then one per interval, and the newest pose held back is sent when the interval ends — the pose a device stops on always arrives (`poseRateHz = 0` sends every pose). A placement or removal, the anchor id and the hello are never dropped by a later line of another kind. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.

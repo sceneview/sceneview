@@ -309,45 +309,36 @@ fun ComposeIn3D() {
 
 ### Billboard a `ViewNode` card at the camera
 
-`ViewNode` has no billboard flag — `BillboardNode`'s per-frame `lookTowards` is on
-`ImageNode`, not on it. Solve the yaw yourself and pass it as `rotation`, which keeps the
-orientation declarative and unit-testable. Yaw only: a card that also pitched toward a
-camera looking down leans backwards, and a wall of leaning labels reads as a bug.
+Pass `cameraPositionProvider`, the same parameter `BillboardNode` and `TextNode` take. The card
+then faces the camera — yaw and pitch, no roll — and follows an orbiting camera, a moving card
+and a rotating parent by itself. No `onFrame`, no state, no trigonometry.
 
 ```kotlin
-import kotlin.math.atan2
-
 val windowManager = rememberViewNodeManager()
 val cameraNode = rememberCameraNode(engine)
-var eye by remember { mutableStateOf(Position(0f, 0.3f, 2f)) }
-
-// atan2(x, z) — a heading measured from +Z toward +X, which is the frame Rotation(y = …)
-// turns in. NOT the usual atan2(y, x).
-fun facingYaw(card: Position, camera: Position): Float {
-    val dx = camera.x - card.x
-    val dz = camera.z - card.z
-    if (dx * dx + dz * dz < 1e-4f) return 0f      // camera sitting on the card: atan2(0,0)
-    return Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
-}
 
 SceneView(
     engine = engine,
     cameraNode = cameraNode,
     viewNodeWindowManager = windowManager,
-    onFrame = { eye = cameraNode.worldPosition },   // the user can orbit
 ) {
-    val card = Position(0f, 0.4f, 0f)
     ViewNode(
         windowManager = windowManager,
-        position = card,
-        rotation = Rotation(y = facingYaw(card, eye)),
+        position = Position(0f, 0.4f, 0f),
         scale = Scale(0.12f),
+        cameraPositionProvider = { cameraNode.worldPosition },
     ) { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } }
 }
 ```
 
-Under a rotating parent, subtract the parent's yaw — the value you pass is a **local**
-rotation, so the card has to undo the parent's turn before adding its own heading.
+Yaw only — an upright card that never leans back under a camera looking down: report the camera
+levelled with the card, `cameraPositionProvider = { cameraNode.worldPosition.copy(y = 0.4f) }`.
+To stop facing, pass `null`: `rotation` applies again.
+
+Parallel to the screen — a card beside the model, off the view axis, faces the eye at an angle to
+the screen and reads as a parallelogram. To keep it a rectangle, report a point offset from the
+card the way the camera is offset from its orbit target (`card` is the node kept from `apply`):
+`cameraPositionProvider = { card.worldPosition + (cameraNode.worldPosition - target) }`.
 
 ### Draw a `ViewNode` on top of everything
 
@@ -384,11 +375,11 @@ Drawing last is visual only: picking still returns the nearest collider, so an i
 card drawn over the model has to be looked up in `collisionSystem.hitTest(event)` before the
 geometry behind it.
 
-Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`, Inspect mode), with
-the arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`. Its one card stands beside
-the object under a camera that looks down, so it also leans back by the camera's elevation on
-the orbit target — `Rotation(x = -elevation, y = yaw)`, parallel to the screen rather than
-pitched at the eye — which keeps its edges upright on a phone held sideways.
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`, Inspect mode), each
+behind a switch: "Always on top", and "Face camera", which passes the provider — the
+parallel-to-the-screen one, the card sits beside the rocket — or `null`. With it off the card
+keeps the `rotation` it was given when its part was picked, and turns away as you orbit or spin
+the rocket.
 
 ### Animated model with play/pause
 
