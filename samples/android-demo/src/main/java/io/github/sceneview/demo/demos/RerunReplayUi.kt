@@ -93,7 +93,8 @@ internal fun RerunReplayHud(session: ArDebugSession, modifier: Modifier = Modifi
     val chrome = LocalStageChrome.current
     Column(
         modifier = modifier
-            .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
+            // No drop shadow: the card is translucent, and on the light stage its shadow showed
+            // through as a grey frame (#4306). The edge ring separates it, as on the timeline card.
             .clip(shape)
             .background(chrome.card, shape)
             .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
@@ -278,6 +279,8 @@ internal fun RerunCameraView(
  * The replay's timeline: play/pause and the clock over a filmstrip of the recorded frames. The
  * strip is the scrubber — tap or drag anywhere on it — with the part still to come dimmed and a
  * playhead on the current instant. Dragging pauses; letting go plays on if it was playing.
+ *
+ * [compact] — a phone on its side (#4306): play, strip and clock share one row, without the title.
  */
 @Composable
 internal fun RerunFilmstripCard(
@@ -287,9 +290,12 @@ internal fun RerunFilmstripCard(
     caption: String,
     modifier: Modifier = Modifier,
     title: String = ScanCopy.SAMPLE_TITLE,
+    header: (@Composable () -> Unit)? = null,
+    compact: Boolean = false,
 ) {
     val duration = media.trace.duration
     OverlayCard(testTag = RERUN_FILMSTRIP_TAG, modifier = modifier) {
+        header?.invoke()
         Row(verticalAlignment = Alignment.CenterVertically) {
             val playing = session.playing && !session.live
             IconButton(
@@ -303,9 +309,18 @@ internal fun RerunFilmstripCard(
                 )
             }
             Spacer(Modifier.width(Space.xs))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = OnScrimTitle, maxLines = 1)
-                Text(caption, style = OnScrimCaption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (compact) {
+                // One row: the strip takes the title's place, and the room keeps the height.
+                Filmstrip(
+                    media, thumbnails, session, duration,
+                    height = SceneViewTokens.Layout.touchTarget,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = OnScrimTitle, maxLines = 1)
+                    Text(caption, style = OnScrimCaption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Spacer(Modifier.width(Space.sm))
             Text(
@@ -313,7 +328,7 @@ internal fun RerunFilmstripCard(
                 style = HudCaption,
             )
         }
-        Filmstrip(media, thumbnails, session, duration)
+        if (!compact) Filmstrip(media, thumbnails, session, duration, FilmstripHeight, Modifier.fillMaxWidth())
     }
 }
 
@@ -323,15 +338,16 @@ private fun Filmstrip(
     thumbnails: Map<String, ImageBitmap>,
     session: ArDebugSession,
     duration: Float,
+    height: Dp,
+    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.xs)
     val chrome = LocalStageChrome.current
     // What is still to come on the strip: washed towards the card, so the frames stay legible.
     val dim = chrome.card.copy(alpha = FILMSTRIP_DIM_ALPHA)
     BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(FilmstripHeight)
+        modifier = modifier
+            .height(height)
             .clip(shape)
             .background(chrome.track, shape)
             .semantics {
@@ -374,7 +390,7 @@ private fun Filmstrip(
             }
             .testTag(RERUN_FILMSTRIP_STRIP_TAG),
     ) {
-        val slotWidth = FilmstripHeight * FRAME_ASPECT
+        val slotWidth = height * FRAME_ASPECT
         val slots = (maxWidth / slotWidth).toInt().coerceAtLeast(1)
         val frames = remember(media, slots) { filmstripFrames(media.trace.imageCount, slots) }
         Row(Modifier.fillMaxSize()) {

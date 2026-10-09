@@ -169,6 +169,52 @@ class ArDebugGeometryTest {
     }
 
     @Test
+    fun `a finished recording is framed on its clouds too, not on their strays`() {
+        // A room's worth of points round a short walk, and three strays a street away.
+        val cloud = FloatArray(400 * 3) { i ->
+            val p = i / 3
+            when (i % 3) {
+                0 -> -2f + 4f * (p % 20) / 19f
+                1 -> -1f + 2f * (p / 20) / 19f
+                else -> -3f + (p % 7) / 6f
+            }
+        }
+        val strays = floatArrayOf(60f, 2f, 0f, -80f, 0f, 5f, 0f, 40f, 90f)
+        val frame = frame(trail = floatArrayOf(0f, 0f, 0f, 0.5f, 0f, 0f), mapPoints = cloud + strays)
+        val bounds = ArDebugGeometry.subjectBounds(frame)!!
+
+        assertTrue("the cloud widens the walk's box", bounds[0] < -1.5f && bounds[3] > 1.5f)
+        assertTrue("the strays do not", bounds[3] < 3f && bounds[4] < 2f && bounds[5] < 2f && bounds[0] > -3f)
+        // The dense cloud counts as the sparse one does.
+        val dense = ArDebugGeometry.subjectBounds(frame(trail = floatArrayOf(0f, 0f, 0f)), dense = cloud)!!
+        assertTrue(dense[3] - dense[0] > 3f)
+        // Too few points to tell a body from its strays: the walk alone.
+        val few = ArDebugGeometry.subjectBounds(frame(trail = floatArrayOf(0f, 0f, 0f), mapPoints = strays))!!
+        assertEquals(0f, few[3], 1e-4f)
+        assertNull(ArDebugGeometry.robustBounds(strays))
+        assertNull(ArDebugGeometry.subjectBounds(frame()))
+    }
+
+    @Test
+    fun `the room's heading is read off its walls, whichever way each one runs`() {
+        fun wall(x0: Float, z0: Float, x1: Float, z1: Float) = DebugPlane(
+            1,
+            DebugPlaneKind.Wall,
+            floatArrayOf(x0, 0f, z0, x1, 0f, z1, x1, 2f, z1, x0, 2f, z0),
+        )
+        // A room turned 20° about +Y: two walls a quarter-turn apart, one listed backwards.
+        val c = kotlin.math.cos(Math.toRadians(20.0)).toFloat()
+        val s = kotlin.math.sin(Math.toRadians(20.0)).toFloat()
+        val walls = listOf(wall(0f, 0f, 3f * s, 3f * c), wall(2f * c, -2f * s, 0f, 0f))
+        assertEquals(20f, ArDebugGeometry.roomYawDegrees(walls)!!, 0.5f)
+
+        assertNull(ArDebugGeometry.roomYawDegrees(emptyList()))
+        val floor = DebugPlane(2, DebugPlaneKind.Floor, square(0f))
+        assertNull("a floor names no heading", ArDebugGeometry.roomYawDegrees(listOf(floor)))
+        assertNull("nor does a stub of wall", ArDebugGeometry.roomYawDegrees(listOf(wall(0f, 0f, 0.2f, 0f))))
+    }
+
+    @Test
     fun `sizes are screen-constant, and quantised so a pinch does not rebuild every frame`() {
         val near = ArDebugStyle.forOrbit(distance = 1f, verticalFovDegrees = 45.0, viewportHeightPx = 2000)
         val far = ArDebugStyle.forOrbit(distance = 8f, verticalFovDegrees = 45.0, viewportHeightPx = 2000)

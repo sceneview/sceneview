@@ -307,6 +307,22 @@ val LocalDemoChromeBottomInset = androidx.compose.runtime.compositionLocalOf { 0
 val LocalDemoSheetCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
 
 /**
+ * How much of the scene the scaffold's bottom chrome floats over, in dp above the bottom system
+ * inset: the dock reserve, plus the pills stacked on it (status, record, mode switch) when there
+ * are any.
+ *
+ * A scene that scrolls under the chrome ends its content this far up, or its last rows stay under
+ * the mode pill and the settings button with nothing left to scroll: Room Scan's landing hid its
+ * fourth and fifth sessions that way. Unlike [LocalDemoChromeBottomInset] — the dock band alone,
+ * for something that rests a gutter above it — this is the whole stack. Unlike
+ * [LocalDemoSceneCover] — made for a `SceneView`'s `contentPadding` — it leaves out the system
+ * inset, which a scrolling screen has already padded for, and the settings sheet, which must not
+ * resize a list while it is dragged. Measured, so it lands one frame late; zero outside a
+ * [DemoScaffold].
+ */
+val LocalDemoBottomChromeCover = androidx.compose.runtime.compositionLocalOf { 0.dp }
+
+/**
  * What the scaffold draws **over the `scene` slot**, measured inwards from the slot's own top and
  * bottom edges: the identity row and the status bar at the top; at the bottom, whichever reaches
  * higher of the controls band above the dock and the settings sheet (#4310).
@@ -457,6 +473,9 @@ fun DemoScaffold(
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
     recorder: SceneRecorderState? = null,
+    // The consolidated card's mode pill. A demo with screens of its own passes `null` on the ones
+    // past its landing: the pill switches the whole demo, which is not on offer mid-replay.
+    modeSwitch: DemoModeSwitch? = LocalDemoModeSwitch.current,
     scene: @Composable BoxScope.() -> Unit
 ) {
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
@@ -472,7 +491,6 @@ fun DemoScaffold(
     // "Record video" row in its settings sheet; while a recording runs, a Stop pill with the
     // elapsed time sits in the bottom band, and stopping offers Play in a snackbar. Opened
     // through the retired `video-recording` id, the Record pill shows in the band on arrival.
-    val modeSwitch = LocalDemoModeSwitch.current
     val recordSampleId = LocalSampleId.current
     val recordOpenedByLink = remember { recorder != null && DemoSettings.consumeOpenRecordAction() }
     val recordPillShown = recorder != null && (recorder.isRecording || recordOpenedByLink)
@@ -754,7 +772,6 @@ fun DemoScaffold(
                 SceneViewTokens.Layout.dockHeight + SceneViewTokens.Space.md,
                 dockBand,
             )
-
             // What the chrome covers of the window, top and bottom. A demo that reserves the
             // scene gets its slot inset by exactly these — unless that would leave no scene at
             // all (a phone in landscape), in which case the slot stays full-frame and the bands
@@ -764,6 +781,9 @@ fun DemoScaffold(
                 WindowInsets.safeDrawing.getBottom(density).toDp()
             }
             val chromeBottom = maxOf(bottomOverlayBand, dockBandClearance + navigationBarInset)
+            // The whole bottom stack above the system inset, for a scene that scrolls under it.
+            // The measured band counts the inset (see `DemoBottomOverlay`), so it comes off here.
+            val bottomChromeCover = maxOf(dockClearance, bottomOverlayBand - navigationBarInset)
             val reservesScene = bottomOverlayReservesScene && demoSceneReserveFits(
                 windowHeight = with(density) { rootHeightPx.toDp() },
                 topBand = chromeTop,
@@ -822,6 +842,7 @@ fun DemoScaffold(
                         androidx.compose.runtime.CompositionLocalProvider(
                             LocalDemoChromeTopInset provides identityRow + SceneViewTokens.Space.sm,
                             LocalDemoChromeBottomInset provides dockBandClearance,
+                            LocalDemoBottomChromeCover provides bottomChromeCover,
                             LocalDemoSheetCover provides settingsSheetCover,
                         ) {
                             ProvideDemoSceneCover(

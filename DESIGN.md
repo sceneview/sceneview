@@ -888,7 +888,8 @@ children spaced `space-sm`.
 
 ### AR Debug View (Android demo)
 
-The Rerun demo's in-app 3D view (#3950): what ARCore understood of the room, drawn by a
+The in-app 3D view (#3950) of the **Room Scan** demo (`ar-rerun`; named for what the user
+does, not for the tool, since #4306): what ARCore understood of the room, drawn by a
 second `SceneView` from a free third-person camera. The layout borrows from three
 references: **Polycam** (live camera with a small 3D preview, one tap to the full 3D
 inspection), the **Rerun viewer** (a dark spatial view with entity toggles over a
@@ -910,7 +911,7 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
   (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
   instead of black; the one filled accent is the light scheme's `primary`; the status bar
-  keeps dark icons. The Rerun and Camera & Gestures demos opt in — every other stage is
+  keeps dark icons. The Room Scan and Camera & Gestures demos opt in — every other stage is
   media.
 - **Stage sky** (`StageSky`, #4089): the backdrop of a themed stage whose subjects stand on
   an open floor that the camera orbits. A flat skybox in the stage ground (the zenith) under
@@ -943,8 +944,46 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   into metres from the orbit distance (quantised, so a pinch does not rebuild every frame):
   a room seen from 8 m and a table seen from 50 cm both read.
 - **The camera frames itself until touched.** It eases to a three-quarter view of the
-  trail and planes as they grow; the first drag hands it to the user (drag orbits, two
-  fingers pan, pinch zooms); double-tap or Recenter hands it back.
+  room as it grows; the first drag hands it to the user (drag orbits, two fingers pan,
+  pinch zooms); double-tap or Recenter hands it back.
+- **The room is fitted into the clear band (#4306).** The subject is the box of everything
+  drawn — path, planes, anchors and both point clouds, trimmed of stray points — and it is
+  fitted, corner by corner, into the **clear band** of the stage: the part the figures above
+  and the timeline card below leave free. The camera stands as far back as the fit asks
+  (tested up to a 20 × 9 m box, some 60 m away); the box is what ARCore reported, which can
+  over-read the room itself (#4328). The replay **measures** that band on screen
+  (`OrbitBand.between`), so it holds on any phone, font scale or card height; a view with
+  nothing to measure takes the band of its orientation. The camera is lowered, never
+  tilted, to centre the room in it. Left alone the view sways
+  ±14° about the side the room was scanned from — never a turntable, which ends behind a
+  wall. The *Map* is squared with the walls by the nearest quarter-turn. A gesture stops
+  at the room's edge: the eye stays outside the cloud and above the floor, a pinch out
+  stops at 1.6× the framed distance, a pan keeps its pivot in the room. Every automatic
+  move is eased and capped at 150°/s, by the shortest way round; the opening is one short
+  crane-in from the same side.
+- **One 3D view, two readings: Points | Surface (#4306).** A scan that can be meshed heads
+  its timeline card with a full-width two-way switch. *Surface* draws the room's mesh in
+  the same view, under the same camera, in place of its points and planes — never a second
+  screen. The switch owns the card's caption (building, then "Surface preview" and its
+  triangle count — no size: the figures above already measure the room) and a `.glb` share
+  button once built; it is absent over the camera's frames and for a recording with nothing
+  to mesh. The surface is a preview — a short scan gives a coarse, patchy mesh — and it is
+  what the view is there to show: the camera card is not laid over it.
+- **The room in front, the tracking aids behind it (#4306).** The glows are held low
+  (trail head 2.0, live points and frustum 1.4), the history frusta are `primary` at 25 %
+  on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
+  photographed planes, the coloured cloud, the mesh — keeps its full strength.
+- **A phone on its side (#4306).** Under 500 dp of height the stacked cards would leave the
+  room nothing — provided the window is wide enough for two side cards to leave a stage
+  between them (`OrbitBand.halfWidthBeside`; a short *and* narrow window stays stacked): the
+  figures and the timeline become two 280 dp cards on either side of the
+  room, under the header's line; the timeline folds onto one row (play, strip, clock), the
+  camera card is dropped — the dock's *Camera* is one tap away — and the room is fitted
+  between the two cards, under the status bar and `Space.lg` above the mode pill — the
+  room's dimensions are written under its floor (`OrbitBand.betweenSides`). The one-row
+  card has no caption line, so the surface's own line (building, its triangle count, or why
+  there is none) sits under the Points | Surface switch. Over the camera, the 3D
+  picture-in-picture shrinks to 96 × 128 dp and sits under the timeline, beside the frame.
 - **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
   `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
 - **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the
