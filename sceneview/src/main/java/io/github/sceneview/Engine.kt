@@ -415,6 +415,7 @@ fun Engine.safeDestroyCamera(camera: Camera) = runCatching { destroyCameraCompon
 fun Engine.safeDestroyEnvironment(environment: Environment) {
     environment.indirectLight?.let { safeDestroyIndirectLight(it) }
     environment.skybox?.let { safeDestroySkybox(it) }
+    environment.destroyOwnedTextures { safeDestroyTexture(it) }
 }
 
 fun Engine.safeDestroyIndirectLight(indirectLight: IndirectLight) =

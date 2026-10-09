@@ -3949,10 +3949,29 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The top-level factory also accepts owned textures:
+
+```kotlin
+fun createEnvironment(
+    engine: Engine,
+    isOpaque: Boolean = true,
+    indirectLight: IndirectLight? = null,
+    skybox: Skybox? = ...,
+    sphericalHarmonics: List<Float>? = null,
+    textures: List<Texture>
+): Environment
+```
+
+The `textures` overload transfers ownership to the returned environment. Use it for cubemaps passed
+to a Filament `IndirectLight` or `Skybox`: neither wrapper destroys its texture. Both
+`EnvironmentLoader.destroyEnvironment` and `Engine.safeDestroyEnvironment` release owned textures
+after the light and skybox, including environments rebuilt by a keyed `rememberEnvironment`.
 
 ---
 

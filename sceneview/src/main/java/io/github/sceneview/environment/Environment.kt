@@ -2,6 +2,7 @@ package io.github.sceneview.environment
 
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Skybox
+import com.google.android.filament.Texture
 import io.github.sceneview.loaders.EnvironmentLoader
 
 /**
@@ -46,4 +47,18 @@ data class Environment(
      * Array of 9 * 3 floats, or null on failure.
      */
     val sphericalHarmonics: List<Float>? = null
-)
+) {
+    private val ownedTextures = mutableListOf<Texture>()
+
+    internal fun ownTextures(textures: Iterable<Texture>) {
+        textures.forEach { texture ->
+            if (ownedTextures.none { it === texture }) ownedTextures += texture
+        }
+    }
+
+    internal fun destroyOwnedTextures(destroy: (Texture) -> Unit) {
+        val textures = ownedTextures.toList()
+        ownedTextures.clear()
+        textures.forEach(destroy)
+    }
+}

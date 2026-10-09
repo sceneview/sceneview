@@ -10,6 +10,7 @@ import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.Skybox
+import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
 import com.google.android.filament.View.AntiAliasing
@@ -275,14 +276,19 @@ fun createViewNodeManager(context: Context) = ViewNode.WindowManager(context)
 fun createEnvironment(
     environmentLoader: EnvironmentLoader,
     isOpaque: Boolean = true
-) = createEnvironment(
-    engine = environmentLoader.engine,
-    isOpaque = isOpaque,
-    indirectLight = KTX1Loader.createIndirectLight(
+): Environment {
+    val indirectLightBundle = KTX1Loader.createIndirectLight(
         environmentLoader.engine,
         environmentLoader.context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-    ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-)
+    )
+    return createEnvironment(
+        engine = environmentLoader.engine,
+        isOpaque = isOpaque,
+        indirectLight = indirectLightBundle.indirectLight
+            ?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+        textures = listOfNotNull(indirectLightBundle.cubemap),
+    )
+}
 
 fun createEnvironment(
     engine: Engine,
@@ -292,7 +298,29 @@ fun createEnvironment(
         .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
         .build(engine),
     sphericalHarmonics: List<Float>? = null
-) = Environment(indirectLight, skybox, sphericalHarmonics)
+) = createEnvironment(engine, isOpaque, indirectLight, skybox, sphericalHarmonics, emptyList())
+
+/**
+ * Creates an environment that owns [textures] used by its indirect light or skybox.
+ *
+ * Filament does not destroy those textures with the objects that sample them. Ownership transfers
+ * to the returned [Environment], and either environment destruction helper releases them after the
+ * light and skybox.
+ *
+ * @param textures Cubemap textures whose lifetime matches the returned environment.
+ */
+fun createEnvironment(
+    engine: Engine,
+    isOpaque: Boolean = true,
+    indirectLight: IndirectLight? = null,
+    skybox: Skybox? = Skybox.Builder()
+        .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
+        .build(engine),
+    sphericalHarmonics: List<Float>? = null,
+    textures: List<Texture>,
+) = Environment(indirectLight, skybox, sphericalHarmonics).also {
+    it.ownTextures(textures)
+}
 
 fun createCollisionSystem(view: View) = CollisionSystem(view)
 
