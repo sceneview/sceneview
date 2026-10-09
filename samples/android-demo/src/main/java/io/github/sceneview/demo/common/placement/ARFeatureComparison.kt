@@ -181,12 +181,13 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                     guidance.isCoaching -> null
                     invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                     state.phase == PlacementPhase.SCANNING -> stringResource(R.string.ar_place_move_slowly)
-                    state.phase == PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
+                    state.phase == PlacementPhase.TRACKING_LOST -> stringResource(
                         if (trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) {
-                            " " + stringResource(R.string.ar_place_try_brighter_area)
+                            R.string.ar_place_tracking_paused_low_light
                         } else {
-                            ""
-                        }
+                            R.string.ar_place_tracking_paused
+                        },
+                    )
                     state.phase == PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
                     state.phase == PlacementPhase.ADJUSTING ->
                         stringResource(R.string.ar_scale_preview_size, (state.scaleFactor * 100).toInt())
@@ -224,7 +225,7 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Text(stringResource(feature.requirement), Modifier.padding(vertical = SceneViewTokens.Space.sm))
-                    Button(onClick = { show3D = true }) { Text(stringResource(R.string.ar_place_view_in_3d)) }
+                    Button(onClick = { show3D = true }) { Text(stringResource(R.string.ar_place_show_in_3d)) }
                     TextButton(onClick = onBack) { Text(stringResource(R.string.samples_back)) }
                 }
             }

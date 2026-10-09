@@ -542,8 +542,7 @@ private fun coachingText(message: PlacementCoachingMessage?): String? = when (me
     PlacementCoachingMessage.MOVE_SLOWLY -> stringResource(R.string.ar_place_move_slowly)
     PlacementCoachingMessage.TRACKING_PAUSED -> stringResource(R.string.ar_place_tracking_paused)
     PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT ->
-        stringResource(R.string.ar_place_tracking_paused) + " " +
-            stringResource(R.string.ar_place_try_brighter_area)
+        stringResource(R.string.ar_place_tracking_paused_low_light)
 
     PlacementCoachingMessage.FINDING_PLACEMENT -> stringResource(R.string.ar_place_finding_placement)
     PlacementCoachingMessage.GESTURE_HINT -> stringResource(R.string.ar_place_gesture_hint)

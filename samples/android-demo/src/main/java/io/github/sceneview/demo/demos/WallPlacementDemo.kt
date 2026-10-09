@@ -107,7 +107,7 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
             TextButton(onClick = ::reset, enabled = state.hasPlacement) {
                 Text(stringResource(R.string.wall_reset))
             }
-            TextButton(onClick = { show3D = true }) { Text(stringResource(R.string.ar_place_view_in_3d)) }
+            TextButton(onClick = { show3D = true }) { Text(stringResource(R.string.ar_place_show_in_3d)) }
             if (state.hasPlacement && state.isSelected) {
                 val enabled = state.phase == PlacementPhase.PLACED
                 // Sheet-only accessibility alternatives; never a default D-pad over the camera.
@@ -132,9 +132,13 @@ private fun WallPlacementExperience(onBack: () -> Unit, playbackDataset: File?, 
                 invalidMove -> stringResource(R.string.ar_place_keep_on_surface)
                 else -> when (state.phase) {
                     PlacementPhase.SCANNING -> stringResource(R.string.wall_phase_scanning)
-                    PlacementPhase.TRACKING_LOST -> stringResource(R.string.ar_place_tracking_paused) +
-                        if (trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT)
-                            " " + stringResource(R.string.ar_place_try_brighter_area) else ""
+                    PlacementPhase.TRACKING_LOST -> stringResource(
+                        if (trackingFailure == TrackingFailureReason.INSUFFICIENT_LIGHT) {
+                            R.string.ar_place_tracking_paused_low_light
+                        } else {
+                            R.string.ar_place_tracking_paused
+                        },
+                    )
                     PlacementPhase.RECOVERING -> stringResource(R.string.ar_place_finding_placement)
                     PlacementPhase.PLACED -> if (showHint) stringResource(R.string.ar_place_gesture_hint) else null
                     PlacementPhase.ADJUSTING ->

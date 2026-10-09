@@ -41,7 +41,9 @@ class RerunCapturePack(val manifest: ByteArray, val log: ByteArray, val media: B
      */
     fun open(): OpenedCapture? {
         val parsed = ReplayManifest.parse(String(manifest)) ?: return null
-        val events = parseArDebugLog(String(log).lineSequence())
+        val events = parseArDebugLog(String(log).lineSequence()).filter { event ->
+            event !is ArDebugEvent.Image || parsed.media.containsKey(event.path)
+        }
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         return OpenedCapture(trace, parsed, media)
     }

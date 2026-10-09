@@ -76,8 +76,12 @@ class RerunScanV2Test {
         val back = SvpcCodec.decode(blob)!!
         assertEquals(3_000, back.count)
         assertArrayEquals(cloud.colors, back.colors)
-        // The v1 content is all still there.
-        assertEquals(showcase.open()!!.trace.imageCount, opened.trace.imageCount)
+        // The v1 content is all still there. This pack was built without photos, and a photo
+        // the archive does not hold is not replayed: photos are optional in a scan file.
+        val v1 = showcase.open()!!.trace
+        assertEquals(v1.duration, opened.trace.duration, 0f)
+        assertEquals(v1.frameAt(v1.duration).mapPointCount, opened.trace.frameAt(v1.duration).mapPointCount)
+        assertEquals(0, opened.trace.imageCount)
     }
 
     @Test
