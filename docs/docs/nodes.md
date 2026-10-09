@@ -46,7 +46,7 @@ Artifact versions: `io.github.sceneview:sceneview:4.53.0` and `io.github.scenevi
 
 **Content nodes**
 
-- [TextNode](#textnode) — SDF text
+- [TextNode](#textnode) — camera-facing text label
 - [ImageNode](#imagenode) — textured quad
 - [VideoNode](#videonode) — video texture
 - [BillboardNode](#billboardnode) — always-face-camera
@@ -430,11 +430,18 @@ ViewNode(
     invertFrontFaceWinding: Boolean = false,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
-    apply: ViewNodeImpl.() -> Unit = {},
+    scale: Scale = Scale(1f),
+    isVisible: Boolean = true,
+    apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit
 )
 ```
+
+`position`, `rotation`, `scale`, `isVisible` and `viewContent` follow recomposition. `unlit`
+and `invertFrontFaceWinding` are read once, when the node is created, and `apply` runs once at
+the same moment. At `scale = Scale(1f)` the quad measures 1 m per 250 px of content, so a card
+usually wants a `scale` well under 1.
 
 ### Example
 
@@ -686,20 +693,54 @@ MeshNode(
 
 ## TextNode
 
-SDF-based 3D text. Crisp at any distance, scales cleanly.
+A one-line text label. The text is drawn with Android `Canvas` into a bitmap — centred, on a
+rounded background — and shown on a flat quad that can turn toward the camera.
+
+### Signature
 
 ```kotlin
 TextNode(
-    text = "Hello, SceneView!",
-    size = 0.3f,                           // character height in meters
-    position = Position(0f, 1.5f, -2f),
-    materialInstance = remember(materialLoader) {
-        materialLoader.createColorInstance(Color.White, unlit = true)
-    }
+    text: String,
+    fontSize: Float = 48f,                 // pixels in the label bitmap, not metres
+    textColor: Int = android.graphics.Color.WHITE,
+    backgroundColor: Int = 0xCC000000.toInt(),
+    typeface: android.graphics.Typeface = android.graphics.Typeface.DEFAULT_BOLD,
+    widthMeters: Float = 0.6f,
+    heightMeters: Float = 0.2f,
+    position: Position = Position(x = 0f),
+    scale: Scale = Scale(1f),
+    cameraPositionProvider: (() -> Position)? = null,
+    apply: TextNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
 
-For reactive Compose-style text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
+### Example
+
+```kotlin
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    TextNode(
+        text = "Hello, SceneView!",
+        typeface = Typeface.create("serif", Typeface.ITALIC),
+        position = Position(0f, 1.5f, -2f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
+}
+```
+
+### Gotchas
+
+- **It faces the camera only when given a `cameraPositionProvider`.** Without one the label
+  keeps its parent's orientation. There is no `rotation` parameter.
+- **`text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position` and `scale`
+  follow recomposition.** `widthMeters`, `heightMeters` and `cameraPositionProvider` are read
+  once, when the node is created.
+- **The size of the label is `widthMeters` × `heightMeters`**, not `fontSize`: the bitmap is
+  512 × 128 px and is stretched over the quad, so keep the 4:1 ratio or the glyphs deform.
+
+For multi-line or styled text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
 
 ---
 
@@ -742,11 +783,21 @@ VideoNode(
 
 ## BillboardNode
 
-A wrapper that makes its children always face the camera. Commonly used for in-world labels.
+A bitmap on a flat quad that turns toward the camera — an [ImageNode](#imagenode) that
+re-orients itself every frame. It faces the camera only when given a `cameraPositionProvider`.
+[TextNode](#textnode) is a `BillboardNode` whose bitmap is rendered from a string.
 
 ```kotlin
-BillboardNode(position = Position(0f, 2f, 0f)) {
-    TextNode(text = "Tap me", size = 0.15f)
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    BillboardNode(
+        bitmap = markerBitmap,
+        widthMeters = 0.4f,
+        heightMeters = 0.4f,
+        position = Position(0f, 2f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
 
@@ -981,10 +1032,12 @@ ModelNode(
         position = Position(0f, 2f, 0f),
         apply = { intensity(30_000f); color(1f, 0.8f, 0.5f) }
     )
-    // This billboard label follows the ship too.
-    BillboardNode(position = Position(0f, 2.5f, 0f)) {
-        TextNode(text = "SS SceneView", size = 0.2f)
-    }
+    // This label follows the ship too, and turns toward the camera.
+    TextNode(
+        text = "SS SceneView",
+        position = Position(0f, 2.5f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
 
