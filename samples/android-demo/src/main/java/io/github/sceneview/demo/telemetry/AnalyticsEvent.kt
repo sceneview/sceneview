@@ -187,3 +187,21 @@ enum class UserProperty(val key: String) {
     /** `true` | `false` — the Notifications setting AND the system permission. */
     NotifEnabled("notif_enabled"),
 }
+
+/**
+ * Crash-report keys: what the device renders with, read once at launch. Device facts only —
+ * never anything about the user or what they opened.
+ */
+enum class CrashKey(val key: String) {
+    /** `GL_RENDERER`, for example `Adreno (TM) 740`; `none` when no ES 3 context exists. */
+    GlRenderer("gl_renderer"),
+
+    /** `GL_VERSION`. */
+    GlVersion("gl_version"),
+
+    /** The ABIs the device supports, preferred first, for example `x86_64,arm64-v8a`. */
+    Abi("abi"),
+
+    /** `live` | `still` — whether the home hero renders or shows its picture. */
+    HeroSurface("hero_surface"),
+}

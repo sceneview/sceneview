@@ -3686,6 +3686,23 @@ public final class io/github/sceneview/utils/FileLoader {
 	public final fun setFuelManager (Lcom/github/kittinunf/fuel/core/FuelManager;)V
 }
 
+public final class io/github/sceneview/utils/GlRenderer {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/sceneview/utils/GlRenderer;
+	public static synthetic fun copy$default (Lio/github/sceneview/utils/GlRenderer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/utils/GlRenderer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRenderer ()Ljava/lang/String;
+	public final fun getVendor ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isLegacySwiftShader ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/utils/NodeSnapshot {
 	public static final field $stable I
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZILjava/util/List;Ljava/util/Map;)V
@@ -3722,6 +3739,7 @@ public final class io/github/sceneview/utils/OpenGL {
 	public final fun createEglContext (Landroid/opengl/EGLContext;)Landroid/opengl/EGLContext;
 	public final fun createExternalTextureId ()I
 	public final fun destroyEglContext (Landroid/opengl/EGLContext;)V
+	public final fun queryRenderer ()Lio/github/sceneview/utils/GlRenderer;
 }
 
 public final class io/github/sceneview/utils/OpenGLKt {

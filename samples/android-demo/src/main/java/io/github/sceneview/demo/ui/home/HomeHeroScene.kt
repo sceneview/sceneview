@@ -6,6 +6,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Build
+import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -18,8 +21,11 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,7 +44,13 @@ import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.demo.BuildConfig
+import io.github.sceneview.demo.DemoSettings
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.StartupMarker
+import io.github.sceneview.demo.common.qaStateOverridesAllowed
+import io.github.sceneview.demo.telemetry.CrashKey
+import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Color
@@ -62,6 +74,7 @@ import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.safeDestroyIndexBuffer
 import io.github.sceneview.safeDestroyVertexBuffer
+import io.github.sceneview.utils.OpenGL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.cos
@@ -104,6 +117,12 @@ private const val HERO_TERRAIN_MATERIAL = "materials/hero_terrain.filamat"
  * no HDR decode, no bloom, fog or TAA — the same flight, matte. Reduced motion (animator
  * scale 0, QA mode) holds the opening frame under [FrameRatePolicy.OnDemand].
  *
+ * **Where it cannot fly.** On the legacy SwiftShader GLES library a GPU-less virtual
+ * device renders with, the app aborted inside Filament about a second after launch, on
+ * every start (#4411): a Filament panic is an uncaught C++ exception, there is nothing to
+ * catch. So the GL implementation is read first ([HeroSurface.forRenderer]), and there the
+ * stage shows [HomeHeroStill] — the same view, standing still — and no engine is created.
+ *
  * **Leaving before it has loaded.** The stage only starts, and only *issues* a load, while
  * the home screen is the resumed destination. Navigation drops the screen below RESUMED
  * the moment a demo is opened, so a tap on the hero's Open during a cold start no longer
@@ -121,20 +140,89 @@ internal fun HomeHeroScene(
     active: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var firstFrameDrawn by remember { mutableStateOf(false) }
+    // Null until Compose has presented the app's first frame *and* the GL implementation
+    // has been read — off the main thread, once per process.
+    var surface by remember { mutableStateOf<HeroSurface?>(null) }
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        firstFrameDrawn = true
+        surface = withContext(Dispatchers.Default) { heroSurface }
     }
-    val hostResumed = rememberHostResumed()
-    // Latched: once the stage exists it stays for the screen's life (#3949) — tearing it
-    // down on a pause would reload everything on the way back.
-    var started by remember { mutableStateOf(false) }
-    if (firstFrameDrawn && hostResumed) started = true
-    if (started) {
-        HomeHeroStage(active = active, loadsAllowed = hostResumed, modifier = modifier)
+    // `--ez qa_mode true --es qa_state hero_still`: the only way to look at the still on a
+    // device that can fly — no device this project tests on renders with that library.
+    val pinnedStill = DemoSettings.qaDemoState == HERO_STILL_QA_STATE && qaStateOverridesAllowed()
+    when (if (pinnedStill) HeroSurface.Still else surface) {
+        HeroSurface.Live -> {
+            val hostResumed = rememberHostResumed()
+            // Latched: once the stage exists it stays for the screen's life (#3949) —
+            // tearing it down on a pause would reload everything on the way back.
+            var started by remember { mutableStateOf(false) }
+            if (hostResumed) started = true
+            if (started) {
+                HomeHeroStage(active = active, loadsAllowed = hostResumed, modifier = modifier)
+            }
+        }
+        HeroSurface.Still -> HomeHeroStill(modifier)
+        null -> Unit
     }
 }
+
+/**
+ * What this device's hero stage shows, read once per process: [OpenGL.queryRenderer] makes a
+ * throwaway GL context, so the first read belongs off the main thread. The answer also goes
+ * to the crash reports — a Filament abort leaves no readable stack, and until #4411 nothing
+ * in a report said what the device rendered with.
+ */
+private val heroSurface: HeroSurface by lazy {
+    val renderer = runCatching { OpenGL.queryRenderer() }.getOrNull()
+    val surface = HeroSurface.forRenderer(renderer)
+    if (BuildConfig.DEBUG) Log.d(HERO_TAG, "hero surface=$surface on $renderer")
+    with(Telemetry.analytics) {
+        setCrashKey(CrashKey.GlRenderer, renderer?.renderer ?: NO_GL)
+        setCrashKey(CrashKey.GlVersion, renderer?.version ?: NO_GL)
+        setCrashKey(CrashKey.Abi, Build.SUPPORTED_ABIS.joinToString(","))
+        setCrashKey(CrashKey.HeroSurface, surface.name.lowercase())
+    }
+    surface
+}
+
+private const val HERO_TAG = "HomeHero"
+private const val NO_GL = "none"
+
+/** The `qa_state` id that pins the home stage to [HomeHeroStill] ([DemoSettings.qaDemoState]). */
+internal const val HERO_STILL_QA_STATE = "hero_still"
+
+/**
+ * The flight's picture, for a device that cannot fly it ([HeroSurface.Still]): one frame of
+ * the cinematic tier — valley, sun and helmet over the dusk sky — as a bundled image. No
+ * engine, no surface, nothing that can abort; the home screen reads the same, standing still.
+ *
+ * The picture carries its own sky and has a phone stage's proportions, so there it is shown
+ * whole. A wider stage (a tablet's) crops it, around the band that holds the sun and the
+ * helmet ([HERO_STILL_FOCUS_Y]) rather than around its centre.
+ */
+@Composable
+internal fun HomeHeroStill(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(R.drawable.home_hero_still),
+        contentDescription = null,
+        modifier = modifier,
+        alignment = HeroStillAlignment,
+        contentScale = ContentScale.Crop,
+    )
+}
+
+/**
+ * Where a crop of `home_hero_still` holds on, down the picture: the sun's top edge is at
+ * 0.26 of its height and the helmet's underside at 0.61, and a tablet stage shows 0.37 of
+ * it — pinned here, both stay in.
+ */
+private const val HERO_STILL_FOCUS_Y = 0.4f
+
+/** A bias of `2f − 1` pins the picture's fraction `f` to the same fraction of the stage. */
+private val HeroStillAlignment = BiasAlignment(
+    horizontalBias = 0f,
+    verticalBias = 2f * HERO_STILL_FOCUS_Y - 1f,
+)
 
 /** Whether the screen hosting the stage is the resumed destination, as state. */
 @Composable
