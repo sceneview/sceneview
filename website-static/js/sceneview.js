@@ -1030,11 +1030,8 @@
      */
     setEnvironmentSH(bands, intensity) {
       try {
-        var ibl = Filament.IndirectLight.Builder()
-          .irradiance(3, bands)
-          .intensity(intensity || 45000)
-          .build(this._engine);
-        this._setIndirectLight(ibl);
+        if (this._disposed) throw _disposedError();
+        this._setShEnvironment(bands, intensity || 45000);
       } catch (e) {
         console.warn('SceneView: setEnvironmentSH failed', e);
       }
@@ -2057,8 +2054,69 @@
     }
 
     /**
-     * Destroy an IndirectLight, the reflections cubemap Filament.js created for it
-     * and the Ktx1Bundle behind that cubemap.
+     * Build an IndirectLight from 3 bands of spherical harmonics and make it the scene's.
+     * @private
+     */
+    _setShEnvironment(bands, intensity) {
+      // Filament.js skips an array of any other length and builds a light with no irradiance.
+      if (!bands || bands.length !== 27) {
+        throw new Error('expected 27 coefficients (9 x RGB), got ' + (bands ? bands.length : bands));
+      }
+      var light = Filament.IndirectLight.Builder()
+        .irradianceSh(3, bands)
+        .reflections(this._createShReflections(bands))
+        .intensity(intensity)
+        .build(this._engine);
+      this._setIndirectLight(light);
+    }
+
+    /**
+     * The cubemap an SH environment reflects: the harmonics themselves, evaluated per
+     * direction. Without it the light has no specular term and a metal, which has no
+     * diffuse response, renders black. One small level is enough: 3 bands carry
+     * nothing sharper.
+     * @private
+     */
+    _createShReflections(sh) {
+      var size = 16;
+      var pixels = new Float32Array(6 * size * size * 3);
+      var o = 0;
+      for (var face = 0; face < 6; face++) {
+        for (var row = 0; row < size; row++) {
+          for (var col = 0; col < size; col++) {
+            var u = 2 * (col + 0.5) / size - 1;
+            var v = 2 * (row + 0.5) / size - 1;
+            // OpenGL cube faces, in upload order: +X, -X, +Y, -Y, +Z, -Z.
+            var d = face === 0 ? [1, -v, -u] : face === 1 ? [-1, -v, u]
+                  : face === 2 ? [u, 1, v] : face === 3 ? [u, -1, -v]
+                  : face === 4 ? [u, -v, 1] : [-u, -v, -1];
+            var length = Math.hypot(d[0], d[1], d[2]);
+            var x = d[0] / length, y = d[1] / length, z = d[2] / length;
+            for (var c = 0; c < 3; c++) {
+              // Same basis, same order as Filament's Irradiance_SphericalHarmonics().
+              pixels[o++] = Math.max(0,
+                sh[c] + sh[3 + c] * y + sh[6 + c] * z + sh[9 + c] * x +
+                sh[12 + c] * y * x + sh[15 + c] * y * z + sh[18 + c] * (3 * z * z - 1) +
+                sh[21 + c] * z * x + sh[24 + c] * (x * x - y * y));
+            }
+          }
+        }
+      }
+      var texture = Filament.Texture.Builder()
+        .width(size)
+        .height(size)
+        .levels(1)
+        .sampler(Filament.Texture$Sampler.SAMPLER_CUBEMAP)
+        .format(Filament.Texture$InternalFormat.R11F_G11F_B10F)
+        .build(this._engine);
+      texture.setImageCube(this._engine, 0,
+        Filament.PixelBuffer(pixels, Filament.PixelDataFormat.RGB, Filament.PixelDataType.FLOAT));
+      return texture;
+    }
+
+    /**
+     * Destroy an IndirectLight, its reflections cubemap and, for a KTX environment,
+     * the Ktx1Bundle behind that cubemap.
      * @private
      */
     _destroyIndirectLight(ibl) {
@@ -2103,13 +2161,13 @@
             _log('SceneView: KTX IBL loaded (' + Math.round(buffer.length / 1024) + 'KB)');
           } catch (e) {
             console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
-            _applySyntheticIBL(self);
+            _applySyntheticIBL(self, intensity);
           }
           self.requestRender();
         })
         .catch(function() {
           if (self._disposed) return;
-          _applySyntheticIBL(self);
+          _applySyntheticIBL(self, intensity);
           self.requestRender();
         });
     }
@@ -3097,26 +3155,25 @@
   }
 
   /** Fallback IBL from spherical harmonics when KTX not available */
-  function _applySyntheticIBL(instance) {
+  function _applySyntheticIBL(instance, intensity) {
     try {
-      // Studio-style IBL: warm key light from above-right, cool fill from left
-      var ibl = Filament.IndirectLight.Builder()
-        .irradiance(3, [
-           1.20,  1.15,  1.10,   // L00  — bright neutral ambient
-           0.25,  0.22,  0.18,   // L1-1 — warm fill from right
-           0.35,  0.33,  0.30,   // L10  — top light (key)
-          -0.08, -0.06, -0.04,   // L11  — slight side bias
-           0.10,  0.10,  0.12,   // L2-2 — cool accent
-           0.15,  0.14,  0.12,   // L2-1 — ground bounce
-           0.02,  0.02,  0.02,   // L20  — minimal
-          -0.04, -0.04, -0.03,   // L21
-           0.06,  0.06,  0.05    // L22
-        ])
-        .intensity(45000)
-        .build(instance._engine);
-      instance._setIndirectLight(ibl);
+      // The harmonics of /environments/neutral_ibl.ktx, the default environment: a viewer
+      // that cannot fetch it keeps the same diffuse light, with blurred reflections.
+      instance._setShEnvironment([
+         0.977,  0.977,  0.977,   // L00  — ambient
+         0.553,  0.553,  0.553,   // L1-1 — y: light from above
+         0.022,  0.022,  0.022,   // L10  — z
+        -0.032, -0.032, -0.032,   // L11  — x
+        -0.059, -0.059, -0.059,   // L2-2
+         0.063,  0.063,  0.063,   // L2-1
+         0.028,  0.028,  0.028,   // L20
+         0.178,  0.178,  0.178,   // L21
+         0.086,  0.086,  0.086    // L22
+      ], intensity);
       _log('SceneView: Using synthetic SH IBL');
-    } catch (e) { /* skip */ }
+    } catch (e) {
+      console.warn('SceneView: synthetic SH IBL failed', e);
+    }
   }
 
   /**
