@@ -1276,6 +1276,8 @@
           <p class="web-api-card__desc">
             Cleans up all GPU resources, removes event listeners,
             and stops the render loop. Call when removing the viewer.
+            Safe to call more than once; loads still in flight are cancelled
+            and their promises reject with an <code>AbortError</code>.
           </p>
         </div>
       </div>
