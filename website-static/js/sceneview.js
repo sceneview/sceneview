@@ -2120,7 +2120,9 @@
 
     /**
      * Stop the viewer and release everything it created: the fetches still in flight,
-     * its DOM listeners and elements, every Filament object, then the engine.
+     * its DOM listeners and elements, every Filament object, the engine, then the
+     * canvas's WebGL context (the canvas fires `webglcontextlost`; create() on the same
+     * canvas brings the context back).
      * Safe to call more than once. The instance cannot be used afterwards.
      */
     dispose() {
@@ -2182,6 +2184,8 @@
       this._hideLoadFallback();
 
       this._releaseNative();
+      // The engine is gone: hand the canvas's WebGL context back to the browser.
+      _releaseContext(this._canvas);
       _activeCanvases.delete(this._canvas);
     }
 
@@ -2976,6 +2980,74 @@
   // Singleton guard — prevent multiple engine creations on same canvas
   var _activeCanvases = new Set();
 
+  // Canvases whose WebGL context dispose() released, with what create() needs to bring
+  // it back: canvas -> { ext: WEBGL_lose_context, lost: Promise }.
+  var _releasedContexts = new WeakMap();
+  var CONTEXT_RESTORE_TIMEOUT_MS = 5000;
+
+  /**
+   * Give a disposed viewer's WebGL context back to the browser.
+   *
+   * Filament.js registers every context in Emscripten's GL table and never removes it,
+   * so a context outlives its engine. Browsers cap the live contexts of a page (16 in
+   * Chromium) and force-lose the least recently used one past the cap: after some 16
+   * create/dispose cycles, an idle viewer still on the page went black. Losing the
+   * context here frees its GPU memory and, in Chromium, takes it out of that count
+   * (WebKit goes on counting a lost context: Safari still evicts past 16). The canvas
+   * fires `webglcontextlost` when it happens.
+   *
+   * A canvas keeps its context for life, lost or not: create() restores it before it
+   * builds a new engine on the same canvas (see _restoreContext).
+   */
+  function _releaseContext(canvas) {
+    var gl = canvas.getContext('webgl2');
+    if (!gl || gl.isContextLost()) return;
+    // Taken now: getExtension() returns null once the context is lost.
+    var ext = gl.getExtension('WEBGL_lose_context');
+    if (!ext) return;
+    var released = { ext: ext, lost: null };
+    released.lost = new Promise(function(resolve) {
+      canvas.addEventListener('webglcontextlost', function(event) {
+        // restoreContext() is refused unless this event was cancelled, and the browser
+        // reads that once the dispatch returns: resolve in a later task, not a microtask.
+        event.preventDefault();
+        setTimeout(resolve, 0);
+      }, { once: true });
+    });
+    _releasedContexts.set(canvas, released);
+    ext.loseContext();
+  }
+
+  /**
+   * Bring back the context dispose() released on this canvas. Resolves once the
+   * browser has fired `webglcontextrestored`, rejects when it does not come in time.
+   */
+  function _restoreContext(canvas, released) {
+    return released.lost.then(function() {
+      var gl = canvas.getContext('webgl2');
+      // Already back (a restore that outlived an earlier timeout): nothing to wait for.
+      if (gl && !gl.isContextLost()) {
+        _releasedContexts.delete(canvas);
+        return;
+      }
+      return new Promise(function(resolve, reject) {
+        function onRestored() {
+          clearTimeout(timer);
+          _releasedContexts.delete(canvas);
+          resolve();
+        }
+        // A failed restore fires no event at all.
+        var timer = setTimeout(function() {
+          canvas.removeEventListener('webglcontextrestored', onRestored);
+          reject(new Error('SceneView: WebGL context not restored after ' +
+            CONTEXT_RESTORE_TIMEOUT_MS + 'ms, this canvas cannot render'));
+        }, CONTEXT_RESTORE_TIMEOUT_MS);
+        canvas.addEventListener('webglcontextrestored', onRestored, { once: true });
+        released.ext.restoreContext();
+      });
+    });
+  }
+
   /**
    * Set up Filament engine, scene, lights on a canvas.
    */
@@ -3175,9 +3247,22 @@
         // Engine is up — instance-creation failures (canvas not found, canvas
         // already initialized) are NOT init failures: never paint the overlay
         // here, it could cover an already-live viewer.
-        var instance = _createEngine(canvasOrId, options);
-        if (instance) return instance;
-        throw new Error('SceneView: Canvas already initialized');
+        function instantiate() {
+          var instance = _createEngine(canvasOrId, options);
+          if (instance) return instance;
+          throw new Error('SceneView: Canvas already initialized');
+        }
+        // A viewer was disposed on this canvas: its WebGL context comes back first.
+        // The canvas is held meanwhile, so a second create() fails fast, as it does
+        // on a live viewer, instead of racing this one.
+        var canvas = _resolveCanvas(canvasOrId);
+        var released = canvas && _releasedContexts.get(canvas);
+        if (!released || _activeCanvases.has(canvas)) return instantiate();
+        _activeCanvases.add(canvas);
+        return _restoreContext(canvas, released).then(
+          function() { _activeCanvases.delete(canvas); return instantiate(); },
+          function(e) { _activeCanvases.delete(canvas); throw e; }
+        );
       },
       function(e) {
         // Init-stage failure: degrade to the placeholder, then propagate so
