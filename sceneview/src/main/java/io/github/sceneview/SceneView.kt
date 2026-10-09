@@ -1456,58 +1456,6 @@ fun rememberModelInstance(
     return instance
 }
 
-// ── Video helper ──────────────────────────────────────────────────────────────────────────────────
-
-/**
- * Creates and remembers a [android.media.MediaPlayer] configured for the given [assetFileLocation].
- *
- * The player is prepared synchronously on the IO dispatcher and returned once ready. Returns
- * `null` while loading. The player is released automatically when the composition leaves the
- * tree.
- *
- * Use this with [SceneScope.VideoNode] for easy video playback in 3D:
- * ```kotlin
- * SceneView {
- *     val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
- *     if (player != null) {
- *         VideoNode(player = player, position = Position(z = -2f))
- *     }
- * }
- * ```
- *
- * @param context            Android context for resolving the asset.
- * @param assetFileLocation  Path to the video file relative to the `assets` folder.
- * @param isLooping          Whether the video should loop. Default `true`.
- * @param autoStart          Whether to start playback immediately once prepared. Default `true`.
- * @return The prepared [android.media.MediaPlayer], or `null` while loading.
- */
-@io.github.sceneview.ExperimentalSceneViewApi
-@Composable
-fun rememberMediaPlayer(
-    context: android.content.Context = LocalContext.current,
-    assetFileLocation: String,
-    isLooping: Boolean = true,
-    autoStart: Boolean = true
-): android.media.MediaPlayer? {
-    val player = remember(assetFileLocation) {
-        runCatching {
-            val afd = context.assets.openFd(assetFileLocation)
-            android.media.MediaPlayer().apply {
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                this.isLooping = isLooping
-                prepare()
-                if (autoStart) start()
-            }
-        }.getOrNull()
-    }
-    DisposableEffect(player) {
-        onDispose {
-            player?.release()
-        }
-    }
-    return player
-}
-
 // ── Engine / resource lifecycle helpers ──────────────────────────────────────────────────────────
 
 /**
