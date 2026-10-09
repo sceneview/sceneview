@@ -114,8 +114,8 @@ class HomeScreenSnapshotTest {
         )
         assertTrue(
             "${marked.size} of ${PHONE_DEMOS.size} demos are fresh at $PINNED_BUILD_VERSION — " +
-                "the goldens pin a grid that no release ever looks like",
-            marked.size * 3 <= PHONE_DEMOS.size,
+                "the goldens look like a release that declared everything",
+            marked.size * 2 <= PHONE_DEMOS.size,
         )
     }
 

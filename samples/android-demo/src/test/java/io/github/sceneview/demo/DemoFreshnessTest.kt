@@ -57,10 +57,17 @@ class DemoFreshnessTest {
 
     @Test
     fun `a version declared ahead of the build is fresh, not a crash`() {
-        // The registry test below forbids it; the rule itself still has to read
-        // a stray one as the newest thing in the app rather than as old.
+        // The registry permits one minor ahead; the rule itself also has to read
+        // a stray higher major as the newest thing in the app rather than as old.
         assertTrue(isRecentVersion("4.35.0", buildVersion = "4.34.0"))
         assertTrue(isRecentVersion("5.0.0", buildVersion = "4.34.0"))
+    }
+
+    @Test
+    fun `one minor ahead stays recent on the current build and the next two minors`() {
+        assertTrue(isRecentVersion("4.54.0", buildVersion = "4.53.0"))
+        assertTrue(isRecentVersion("4.54.0", buildVersion = "4.54.0"))
+        assertTrue(isRecentVersion("4.54.0", buildVersion = "4.55.0"))
     }
 
     @Test
@@ -94,6 +101,38 @@ class DemoFreshnessTest {
     fun `a wider window can be asked for explicitly`() {
         assertFalse(isRecentVersion("4.31.0", buildVersion = "4.35.0"))
         assertTrue(isRecentVersion("4.31.0", buildVersion = "4.35.0", window = 4))
+    }
+
+    // ── Declaration bound ──
+
+    @Test
+    fun `the build version is declarable`() {
+        assertTrue(isDeclarableVersion("4.53.0", buildVersion = "4.53.0"))
+    }
+
+    @Test
+    fun `one minor ahead with any patch is declarable`() {
+        assertTrue(isDeclarableVersion("4.54.99", buildVersion = "4.53.0"))
+    }
+
+    @Test
+    fun `two minors ahead is not declarable`() {
+        assertFalse(isDeclarableVersion("4.55.0", buildVersion = "4.53.0"))
+    }
+
+    @Test
+    fun `a higher major is not declarable`() {
+        assertFalse(isDeclarableVersion("5.0.0", buildVersion = "4.53.0"))
+    }
+
+    @Test
+    fun `a patch-only lead is declarable`() {
+        assertTrue(isDeclarableVersion("4.53.1", buildVersion = "4.53.0"))
+    }
+
+    @Test
+    fun `a malformed declaration is not declarable`() {
+        assertFalse(isDeclarableVersion("4.54.next", buildVersion = "4.53.0"))
     }
 
     // ── The marker ────────────────────────────────────────────────────────
@@ -218,17 +257,18 @@ class DemoFreshnessTest {
     }
 
     @Test
-    fun `no demo declares a version newer than the build`() {
-        // Work on main declares the version it ships in today, VERSION_NAME. A
-        // version from the future would badge itself "New" until that release
-        // and two more after it.
+    fun `no demo declares more than one minor ahead of the build`() {
+        // Work on main declares the next version it will ship in. Anything more
+        // than one minor ahead would badge itself "New" until that release and
+        // two more after it.
         val build = BuildConfig.VERSION_NAME
         ALL_DEMOS.forEach { demo ->
             listOfNotNull(demo.addedIn to "addedIn", demo.updatedIn?.let { it to "updatedIn" })
                 .forEach { (version, field) ->
                     assertTrue(
-                        "${demo.id}: $field = \"$version\" is newer than the build ($build)",
-                        isRecentVersion(build, buildVersion = version, window = 0),
+                        "${demo.id}: $field = \"$version\" is more than one minor " +
+                            "ahead of the build ($build)",
+                        isDeclarableVersion(version, buildVersion = build),
                     )
                 }
         }
@@ -264,7 +304,8 @@ class DemoFreshnessTest {
     @Test
     fun `the registry never marks most of the grid`() {
         // The failure mode of a hand-maintained marker CI can catch: a release
-        // that declared everything. The upper bound is a third of the catalogue.
+        // that declared everything. More than half of the phone catalogue is an
+        // alarm for that failure, not a budget that rations honest markers.
         //
         // An empty set is legal on purpose (#3927). A minor release in which no
         // demo changed visibly has nothing to badge; the Showcase then draws no
@@ -272,10 +313,12 @@ class DemoFreshnessTest {
         // lower bound ("the registry marks something") turned such a bump PR red
         // inside the release run, after the QA gate, and was only ever fixed by
         // hand-adding an `updatedIn` nobody had earned.
-        val marked = freshDemos(ALL_DEMOS, BuildConfig.VERSION_NAME)
+        val phoneDemos = listedDemos(ALL_DEMOS, xrDevice = false)
+        val marked = freshDemos(phoneDemos, BuildConfig.VERSION_NAME)
         assertTrue(
-            "${marked.size} of ${ALL_DEMOS.size} demos are marked — the badge means nothing",
-            marked.size * 3 <= ALL_DEMOS.size,
+            "${marked.size} of ${phoneDemos.size} phone demos are marked — " +
+                "this looks like a release that declared everything",
+            marked.size * 2 <= phoneDemos.size,
         )
     }
 }

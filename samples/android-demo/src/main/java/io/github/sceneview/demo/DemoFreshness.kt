@@ -33,13 +33,11 @@ package io.github.sceneview.demo
  * fragment is therefore harmless, which is the property that makes a
  * hand-maintained field survivable.
  *
- * **Declare the current version, never the next one.** `VERSION_NAME` is
- * bumped at release and then stays put, so work merged on `main` between two
- * releases declares the version the build already reports. The registry test
- * rejects a declaration newer than the build: a guessed "next" version is how a
- * typo (`4.15.0` for `4.51.0`, `5.0.0`) would pin a pill on a card for good.
- * [isRecentVersion] still reads a version ahead of the build as fresh, so a
- * fragment from a release branch never loses its pill on the way in.
+ * **Declare the next version.** `VERSION_NAME` is bumped only at release time,
+ * so work merged on `main` declares the version it will ship in: one minor
+ * ahead of the build during development. The registry test accepts exactly
+ * that one-minor lead and rejects anything further, so a typo (`4.15.0` for
+ * `4.51.0`, `5.0.0`) cannot pin a pill on a card for good.
  */
 enum class DemoFreshness {
     /** First shipped within the freshness window — drawn as "New". */
@@ -59,7 +57,8 @@ enum class DemoFreshness {
  * (`DemoFreshness.windowMinors`). At `1` a release cadence of several minors a
  * week left the pill on almost nothing by the time anyone opened the app, and
  * the maintainer could not find what was new (02/10). It stays small on
- * purpose: a marker on a third of the grid is decoration.
+ * purpose: marking more than half of the phone catalogue signals a release
+ * that declared everything, not a budget that should ration honest markers.
  */
 const val FRESHNESS_WINDOW_MINORS: Int = 2
 
@@ -103,6 +102,24 @@ internal fun isRecentVersion(
     val build = parseSemVer(buildVersion) ?: return false
     if (declared.major != build.major) return declared.major > build.major
     return declared.minor >= build.minor - window
+}
+
+/**
+ * Whether a demo may declare [version] while running [buildVersion].
+ *
+ * A declaration may be from an older release, the build's minor, or exactly
+ * one minor ahead on the same major. Patch levels do not affect that bound.
+ */
+internal fun isDeclarableVersion(version: String?, buildVersion: String): Boolean {
+    val parts = version?.split('.') ?: return false
+    if (parts.size != 3 || parts.any { it.toIntOrNull() == null }) return false
+    val declared = parseSemVer(version) ?: return false
+    val build = parseSemVer(buildVersion) ?: return false
+    return if (declared.major != build.major) {
+        declared.major < build.major
+    } else {
+        declared.minor <= build.minor + 1
+    }
 }
 
 /**
