@@ -1195,17 +1195,31 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── BillboardNode ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * A flat quad node that always faces the camera (billboard behaviour).
+     * A flat quad showing a bitmap, which turns to face the camera when given a
+     * [cameraPositionProvider] (billboard behaviour).
      *
      * Pass a [Bitmap] and optionally explicit [widthMeters]/[heightMeters] to control the world-
-     * space size of the quad. Provide [cameraPositionProvider] so the node can rotate toward the
-     * camera every frame.
+     * space size of the quad.
+     *
+     * **Facing the camera** is opt-in and means the same thing on [BillboardNode], [TextNode] and
+     * [ViewNode]: with a [cameraPositionProvider] the quad does a full look-at — front toward the
+     * camera position, top toward world `+Y`, so it yaws and pitches and never rolls. Without one
+     * it keeps the orientation of its parent.
+     *
+     * ```kotlin
+     * val cameraNode = rememberCameraNode(engine)
+     * SceneView(cameraNode = cameraNode) {
+     *     BillboardNode(bitmap = badge, cameraPositionProvider = { cameraNode.worldPosition })
+     * }
+     * ```
      *
      * @param bitmap                 The bitmap texture to display.
      * @param widthMeters            Quad width in meters (`null` derives from bitmap aspect ratio).
      * @param heightMeters           Quad height in meters (`null` derives from bitmap aspect ratio).
      * @param position               Local position.
-     * @param cameraPositionProvider Lambda returning the camera world position every frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                               (default) leaves the orientation alone. Follows recomposition:
+     *                               pass `null` and back to switch the behaviour off and on.
      * @param apply                  Additional configuration on the [BillboardNodeImpl].
      * @param content                Optional child nodes.
      */
@@ -1242,8 +1256,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.requestRender()
             }
         }
+        // Every recomposition, like the callbacks `SceneView` takes: the node was built with the
+        // provider of the FIRST composition, and before #4387 kept it for good.
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
-        // param here: the billboard rotates itself toward the camera every frame.
+        // param here: a billboard is given a `cameraPositionProvider` to orient it.
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
@@ -1256,10 +1273,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── TextNode ──────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * A 3D text-label node that always faces the camera.
+     * A 3D text label, which turns to face the camera when given a [cameraPositionProvider].
      *
      * Text is rendered to an Android [android.graphics.Bitmap] via [android.graphics.Canvas] and
-     * displayed on a flat quad that rotates toward the camera each frame.
+     * displayed on a flat quad.
+     *
+     * **Facing the camera** is opt-in and means the same thing on [BillboardNode], [TextNode] and
+     * [ViewNode]: with a [cameraPositionProvider] the quad does a full look-at — front toward the
+     * camera position, top toward world `+Y`, so it yaws and pitches and never rolls. Without one
+     * the label keeps the orientation of its parent.
      *
      * @param text                   The string to display.
      * @param fontSize               Font size in pixels used when rendering the bitmap (default 48).
@@ -1268,7 +1290,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param widthMeters            Quad width in meters (default 0.6).
      * @param heightMeters           Quad height in meters (default 0.2).
      * @param position               Local position.
-     * @param cameraPositionProvider Lambda returning the camera world position every frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                               (default) leaves the orientation alone. Follows recomposition:
+     *                               pass `null` and back to switch the behaviour off and on.
      * @param apply                  Additional configuration on the [TextNodeImpl].
      * @param content                Optional child nodes.
      */
@@ -1315,8 +1339,10 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.requestRender()
             }
         }
+        // Every recomposition — see BillboardNode above (#4387).
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
-        // param here: the text label rotates itself toward the camera every frame.
+        // param here: a label is given a `cameraPositionProvider` to orient it.
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
@@ -1506,9 +1532,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param unlit                 If `true`, ignores scene lighting (always fully bright).
      * @param invertFrontFaceWinding Inverts face winding — useful for front-facing AR cameras.
      * @param position              World-space position.
-     * @param rotation              World-space rotation (Euler angles in degrees).
+     * @param rotation              World-space rotation (Euler angles in degrees). Ignored while
+     *                              [cameraPositionProvider] is set, and applied again when it
+     *                              goes back to `null`.
      * @param scale                 Uniform or non-uniform scale.
      * @param isVisible             Whether the node renders this frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                              (default) leaves the orientation to [rotation]. The same
+     *                              parameter, with the same meaning, as on [BillboardNode] and
+     *                              [TextNode] (#4387): a full look-at — front toward the camera
+     *                              position, top toward world `+Y`, so the card yaws and pitches
+     *                              and never rolls. Follows recomposition. Typical value:
+     *                              `{ cameraNode.worldPosition }`.
      * @param apply                 Additional configuration on the [ViewNodeImpl] instance,
      *                              applied once at construction time. For reactive props,
      *                              prefer the top-level [position]/[rotation]/[scale]/[isVisible]
@@ -1525,6 +1560,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
         isVisible: Boolean = true,
+        cameraPositionProvider: (() -> Position)? = null,
         apply: ViewNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null,
         viewContent: @Composable () -> Unit
@@ -1544,17 +1580,25 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 materialLoader = materialLoader,
                 unlit = unlit,
                 invertFrontFaceWinding = invertFrontFaceWinding,
+                cameraPositionProvider = cameraPositionProvider,
                 content = { currentViewContent.value() }
             ).apply(apply)
         }
+        // Every recomposition — see BillboardNode above (#4387).
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
+        val facesCamera = cameraPositionProvider != null
         // Keyed on scalar components (Float3 is a mutable data class — keying on the wrapper
         // instance can miss in-place mutations of a retained instance; a fresh structurally-equal
         // Position per recomposition keeps the effect idle).
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
-        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
-            node.rotation = rotation; onDispose {}
+        // While the node faces the camera it owns its orientation, so `rotation` is not pushed —
+        // it would be undone at the next camera move, after showing for however long the camera
+        // held still. `facesCamera` is a key so that dropping the provider puts `rotation` back.
+        DisposableEffect(node, facesCamera, rotation.x, rotation.y, rotation.z) {
+            if (!facesCamera) node.rotation = rotation
+            onDispose {}
         }
         DisposableEffect(node, scale.x, scale.y, scale.z) {
             node.scale = scale; onDispose {}
