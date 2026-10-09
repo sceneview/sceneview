@@ -29,6 +29,7 @@ import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.ProvideStatusBarIcons
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
@@ -754,6 +755,21 @@ internal fun PendingDemoNavigation(
  */
 @Composable
 fun DemoRouter(id: String, onBack: () -> Unit) {
+    val entry = ALL_DEMOS.find { it.id == id }
+    if (entry?.isArDemo == true) {
+        ArDemoPermissionGate(
+            title = stringResource(entry.titleRes),
+            onBack = onBack,
+        ) {
+            RoutedDemo(id = id, onBack = onBack)
+        }
+        return
+    }
+    RoutedDemo(id = id, onBack = onBack)
+}
+
+@Composable
+private fun RoutedDemo(id: String, onBack: () -> Unit) {
     val matched = GeneratedDemos.Screen(id = id, onBack = onBack)
     if (!matched) {
         check(!BuildConfig.DEBUG) {

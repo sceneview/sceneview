@@ -9,17 +9,11 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.text.font.FontWeight
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import io.github.sceneview.demo.ui.overMediaEdge
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
@@ -33,7 +27,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -79,6 +72,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ArPermissionCard
 import io.github.sceneview.demo.common.CloudServiceStatus
 import io.github.sceneview.demo.common.CloudServiceStatusBanner
 import io.github.sceneview.demo.common.DemoStatusBanner
@@ -293,7 +287,7 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
                 .padding(SceneViewTokens.Space.lg),
             contentAlignment = Alignment.Center,
         ) {
-            GeospatialPermissionCard(
+            ArPermissionCard(
                 title = title,
                 detail = detail,
                 action = when {
@@ -317,63 +311,6 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
         }
     }
     return false
-}
-
-/**
- * The permission explanation, drawn as an AR overlay card (`DESIGN.md`): the stage behind
- * it is the camera's place, so it keeps the `ar-scrim` ground and white text in both themes.
- */
-@Composable
-private fun GeospatialPermissionCard(
-    title: String,
-    detail: String?,
-    action: String?,
-    onAction: () -> Unit,
-) {
-    val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    Column(
-        modifier = Modifier
-            .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
-            .fillMaxWidth()
-            .background(
-                color = if (dark) SceneViewTokens.ArOverlay.scrimDark else SceneViewTokens.ArOverlay.scrimLight,
-                shape = shape,
-            )
-            .overMediaEdge(shape)
-            .padding(SceneViewTokens.Space.md),
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            color = SceneViewTokens.ArOverlay.onScrim,
-        )
-        if (detail != null) {
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.bodyMedium,
-                color = SceneViewTokens.ArOverlay.onScrimMuted,
-            )
-        }
-        if (action != null) {
-            Button(
-                onClick = onAction,
-                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(top = SceneViewTokens.Space.sm)
-                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
-            ) {
-                Text(action, style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
 }
 
 /** Earth's camera pose, rounded so an unchanged reading does not recompose the screen. */
