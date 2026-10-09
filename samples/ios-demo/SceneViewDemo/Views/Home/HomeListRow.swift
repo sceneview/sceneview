@@ -95,8 +95,8 @@ struct BrowseOnlineRow: View {
 /// The "What's new" row under the hero (`home-whats-new-row`) — Android's
 /// `WhatsNewRow`: a ``HomeRowStyle/fused`` row, a sparkle on a
 /// `primary`-tinted panel, that says how many demos carry a "New" or "Updated"
-/// chip and opens the What's new filter. The Home hides it while searching
-/// and when nothing is fresh.
+/// chip and opens the What's new sheet, over a catalogue left whole. The Home
+/// hides it while searching and when nothing is fresh.
 struct WhatsNewRow: View {
     /// Demos with a freshness chip in this build.
     let count: Int

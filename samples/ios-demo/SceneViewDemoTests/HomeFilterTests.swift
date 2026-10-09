@@ -247,4 +247,119 @@ final class HomeListRowTests: XCTestCase {
     }
 }
 
+/// Android's HomeTopSections tests, plus the iOS chip and Show all decisions.
+final class HomeTopSectionsTests: XCTestCase {
+    private let entries: [HomeSearchEntry] = [
+        .init(id: "hero", title: "Models", subtitle: "Viewer", section: .view3d,
+              category: .basics3D, order: 1),
+        .init(id: "banner", title: "Materials", subtitle: "Sphere wall", section: .create,
+              category: .basics3D, order: 2, freshness: .updated),
+        .init(id: "other", title: "Geometry", subtitle: "Shapes", section: .create,
+              category: .basics3D, order: 3)
+    ]
+
+    private var top: HomeTopSections {
+        HomeTopSections(hero: ["hero"], featured: ["hero", "banner"], fresh: ["banner", "other"])
+    }
+
+    func testHeroDoesNotComeBackAsABanner() {
+        XCTAssertEqual(top.hero, ["hero"])
+        XCTAssertEqual(top.featured, ["banner"])
+    }
+
+    func testEarlierGroupsDoNotComeBackInFreshPictures() {
+        let top = HomeTopSections(hero: ["a"], featured: ["b", "c"], fresh: ["c", "e", "a", "f"])
+        XCTAssertEqual(top.whatsNew, ["e", "f"])
+    }
+
+    func testEmptyGroupsAreNotShown() {
+        let top = HomeTopSections(hero: ["a", "b", "c"], featured: ["b", "c"], fresh: [])
+        XCTAssertTrue(top.featured.isEmpty)
+        XCTAssertTrue(top.whatsNew.isEmpty)
+        XCTAssertFalse(top.showsWhatsNew(searching: false))
+        XCTAssertTrue(HomeTopSections(hero: [], featured: [], fresh: []).hero.isEmpty)
+    }
+
+    func testEachGroupKeepsOrderAndDeduplicates() {
+        let top = HomeTopSections(hero: ["b", "a", "b"], featured: ["d", "c", "d"], fresh: ["f", "e", "f"])
+        XCTAssertEqual(top.hero, ["b", "a"])
+        XCTAssertEqual(top.featured, ["d", "c"])
+        XCTAssertEqual(top.whatsNew, ["f", "e"])
+        let all = top.hero + top.featured + top.whatsNew
+        XCTAssertEqual(all.count, Set(all).count)
+    }
+
+    func testNoHeroLeavesTheFollowingGroupsIntact() {
+        let top = HomeTopSections(hero: [], featured: ["a"], fresh: ["b"])
+        XCTAssertEqual(top.featured, ["a"])
+        XCTAssertEqual(top.whatsNew, ["b"])
+    }
+
+    func testAllOmitsBannersButKeepsTheHero() {
+        XCTAssertEqual(top.catalogue(entries, selection: HomeSelection()).map(\.id), ["hero", "other"])
+        XCTAssertEqual(top.catalogue(entries, selection: HomeSelection(query: " \n ")).map(\.id), ["hero", "other"])
+    }
+
+    func testChipOrSearchIncludesEveryMatch() {
+        XCTAssertEqual(top.catalogue(entries, selection: HomeSelection(section: .create)).map(\.id),
+                       ["banner", "other"])
+        XCTAssertEqual(top.catalogue(entries, selection: HomeSelection(query: "Materials")).map(\.id), ["banner"])
+        XCTAssertEqual(top.catalogue(entries, selection: HomeSelection(whatsNew: true)).map(\.id), ["banner"])
+    }
+
+    func testPictureFreeWhatsNewMetadataStillDescribesAllFreshDemos() {
+        let top = HomeTopSections(hero: ["a"], featured: ["b"], fresh: ["a", "b", "b"])
+        XCTAssertTrue(top.whatsNew.isEmpty)
+        XCTAssertEqual(top.freshCount, 2)
+        XCTAssertTrue(top.showsWhatsNew(searching: false))
+        XCTAssertFalse(top.showsWhatsNew(searching: true))
+    }
+
+    func testSelectedSectionAndWhatsNewToggleBackToAll() {
+        var selection = HomeSelection()
+        selection.select(.create)
+        XCTAssertEqual(selection.section, .create)
+        selection.select(.create)
+        XCTAssertFalse(selection.isFiltered)
+        selection.toggleWhatsNew()
+        XCTAssertTrue(selection.whatsNew)
+        selection.toggleWhatsNew()
+        XCTAssertFalse(selection.isFiltered)
+        selection.toggleWhatsNew()
+        selection.select(.create)
+        XCTAssertFalse(selection.whatsNew)
+        XCTAssertEqual(selection.section, .create)
+        selection.select(nil)
+        XCTAssertFalse(selection.isFiltered)
+    }
+
+    func testShowAllNamesTheWholeCatalogueUnderAChipOnly() {
+        XCTAssertNil(HomeSelection().showAllCount(total: entries.count))
+        XCTAssertEqual(HomeSelection(section: .create).showAllCount(total: entries.count), 3)
+        XCTAssertEqual(HomeSelection(whatsNew: true).showAllCount(total: entries.count), 3)
+    }
+
+    /// Android's `activeCategory != null && !searching`: a query is its own
+    /// filter, with its own "Clear".
+    func testShowAllStepsAsideWhileSearching() {
+        XCTAssertNil(HomeSelection(query: "no match").showAllCount(total: entries.count))
+        XCTAssertNil(HomeSelection(section: .create, query: "Materials").showAllCount(total: entries.count))
+        XCTAssertNil(HomeSelection(whatsNew: true, query: "fog").showAllCount(total: entries.count))
+        XCTAssertEqual(HomeSelection(section: .create, query: " \n ").showAllCount(total: entries.count), 3)
+    }
+
+    func testShowAllClearsTheChipAndLeavesTheQuery() {
+        var selection = HomeSelection(section: .create, query: "Materials")
+        XCTAssertEqual(top.catalogue(entries, selection: selection).count, 1)
+        selection.showAll()
+        XCTAssertEqual(selection, HomeSelection(query: "Materials"))
+
+        selection = HomeSelection(whatsNew: true)
+        selection.showAll()
+        XCTAssertEqual(selection, HomeSelection())
+        XCTAssertNil(selection.showAllCount(total: entries.count))
+        XCTAssertEqual(top.catalogue(entries, selection: selection).map(\.id), ["hero", "other"])
+    }
+}
+
 #endif
