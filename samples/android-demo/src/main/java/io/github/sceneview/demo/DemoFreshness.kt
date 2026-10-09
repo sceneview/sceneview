@@ -115,8 +115,11 @@ internal fun isDeclarableVersion(version: String?, buildVersion: String): Boolea
     if (parts.size != 3 || parts.any { it.toIntOrNull() == null }) return false
     val declared = parseSemVer(version) ?: return false
     val build = parseSemVer(buildVersion) ?: return false
-    if (declared.major != build.major) return declared.major < build.major
-    return declared.minor <= build.minor + 1
+    return if (declared.major != build.major) {
+        declared.major < build.major
+    } else {
+        declared.minor <= build.minor + 1
+    }
 }
 
 /**
