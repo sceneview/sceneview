@@ -935,7 +935,13 @@ fun ARSceneView(
     // is freed too — closing the lifecycle leak that the umbrella audit flagged
     // for long AR sessions with intermittent estimation.
     val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
-    DisposableEffect(engine, builtIndirectLightRef, scene) {
+    // Keyed on `environment` too (#4358): the light built from an estimate without reflections
+    // samples the baseline's cubemap, and the baseline now releases that cubemap when it is
+    // destroyed. This effect is remembered after the caller's `rememberAREnvironment`, so it is
+    // disposed first — on a baseline swap as on leaving the screen, the built light is gone
+    // before the texture it reads, and `LaunchedEffect(environment, scene)` below then installs
+    // the new baseline.
+    DisposableEffect(engine, builtIndirectLightRef, scene, environment) {
         onDispose {
             // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
             // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
