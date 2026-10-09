@@ -84,14 +84,19 @@ per package, and that workflow is `release.yml`.
 To ship the MCP between SDK releases, merge the `mcp/package.json` bump
 (`manifest.json`, `server.json` and the root `gemini-extension.json` move with
 it — `src/packaging.test.ts` holds them together), then dispatch the release
-workflow on `main`:
+workflow on `main`, scoped to the MCP:
 
 ```bash
-gh workflow run release.yml --ref main
+gh workflow run release.yml --ref main -f mcp_only=true
 ```
 
-Every publisher job skips a version that is already on its registry, and the
-GitHub Release and API-docs deploy only run on a tag, so on a `main` whose SDK
-version is already released this publishes the MCP and nothing else. Check that
-first: a dispatch publishes every package whose version is not on its registry
-yet.
+`mcp_only=true` skips every other publisher (Maven Central, `sceneview-web`,
+React Native, pub.dev), the SPM check, the API-docs job and the GitHub Release:
+`publish-mcp` is the only job that can publish. Without the input, a dispatch
+on `main` publishes every package whose version is not on its registry yet —
+the SDK too, on a `main` whose `VERSION_NAME` is bumped but not tagged.
+
+A dispatch on any ref other than `main` or a `v*` tag publishes nothing: the
+guard job every publisher needs is skipped there. That holds for a branch that
+carries this version of `release.yml`; a dispatch runs the workflow file of the
+ref it is sent to.
