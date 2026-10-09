@@ -8,13 +8,15 @@
 @Composable
 fun TextLabels() {
     val engine = rememberEngine()
+    val cameraNode = rememberCameraNode(engine)
 
     SceneView(
         modifier = Modifier.fillMaxSize(),
         engine = engine,
+        cameraNode = cameraNode,
         cameraManipulator = rememberCameraManipulator()
     ) {
-        // Static text label — always faces camera
+        // Text label — faces the camera because it is given a cameraPositionProvider
         TextNode(
             text = "Hello 3D!",
             fontSize = 48f,
@@ -22,14 +24,17 @@ fun TextLabels() {
             backgroundColor = 0xCC000000.toInt(),
             widthMeters = 0.6f,
             heightMeters = 0.2f,
-            position = Position(y = 1f)
+            position = Position(y = 1f),
+            cameraPositionProvider = { cameraNode.worldPosition }
         )
-        // Second label at a different position
+        // Second label at a different position, in another typeface
         TextNode(
             text = "SceneView",
             fontSize = 36f,
             textColor = android.graphics.Color.CYAN,
-            position = Position(y = 2f)
+            typeface = Typeface.create("serif", Typeface.ITALIC),
+            position = Position(y = 2f),
+            cameraPositionProvider = { cameraNode.worldPosition }
         )
     }
 }
@@ -68,6 +73,8 @@ struct TextLabels: View {
 |---|---|---|
 | Text node | `TextNode(text = "...", fontSize = 48f)` | `TextNode(text: "...", fontSize: 0.1)` |
 | Text color | `textColor = android.graphics.Color.WHITE` | `color: .white` |
+| Typeface | `typeface = Typeface.create("serif", Typeface.ITALIC)` | N/A |
+| Facing the camera | `cameraPositionProvider = { cameraNode.worldPosition }` | wrap the label in a `BillboardNode` |
 | Background | `backgroundColor = 0xCC000000.toInt()` | N/A (transparent by default) |
 | Size (meters) | `widthMeters`, `heightMeters` | Derived from font size |
 | Always faces camera | Automatic (built-in billboard behavior) | `BillboardComponent` |

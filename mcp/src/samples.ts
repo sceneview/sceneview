@@ -807,6 +807,7 @@ fun LinePathScreen() {
     code: `@Composable
 fun TextLabelsScreen() {
     val engine = rememberEngine()
+    val cameraNode = rememberCameraNode(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
 
@@ -820,6 +821,7 @@ fun TextLabelsScreen() {
     SceneView(
         modifier = Modifier.fillMaxSize(),
         engine = engine,
+        cameraNode = cameraNode,
         cameraManipulator = rememberCameraManipulator(
             orbitHomePosition = Position(x = 0f, y = 1.5f, z = 5f),
             targetPosition = Position(0f, 0.5f, 0f)
@@ -849,7 +851,9 @@ fun TextLabelsScreen() {
                 backgroundColor = 0xCC000000.toInt(),
                 widthMeters = 0.6f,
                 heightMeters = 0.2f,
-                position = Position(x = planet.x, y = 0.9f, z = 0f)
+                position = Position(x = planet.x, y = 0.9f, z = 0f),
+                // Without a provider a TextNode does not turn toward the camera.
+                cameraPositionProvider = { cameraNode.worldPosition }
             )
         }
     }
