@@ -26,6 +26,7 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.collision.Box as CollisionBox
 import io.github.sceneview.collision.Vector3
+import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.demos.internal.ArDebugFraming
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -37,7 +38,6 @@ import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
-import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
@@ -340,12 +340,16 @@ internal fun DollhousePreview(
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
     val environment = rememberEnvironment(engine, key = chrome.ground) {
         val stage = colorOf(chrome.ground).toLinearSpace()
-        Environment(
-            indirectLight = KTX1Loader.createIndirectLight(
-                engine,
-                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-            ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+        val bundle = KTX1Loader.createIndirectLight(
+            engine,
+            context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
+        )
+        createEnvironment(
+            engine = engine,
+            indirectLight = bundle.indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
             skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
+            // The bundle's cubemap leaves with the environment, after the light (#4358).
+            textures = listOfNotNull(bundle.cubemap),
         )
     }
     val view = rememberView(engine)

@@ -298,16 +298,24 @@ fun createEnvironment(
         .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
         .build(engine),
     sphericalHarmonics: List<Float>? = null
-) = createEnvironment(engine, isOpaque, indirectLight, skybox, sphericalHarmonics, emptyList())
+): Environment =
+    createEnvironment(engine, isOpaque, indirectLight, skybox, sphericalHarmonics, emptyList())
 
 /**
- * Creates an environment that owns [textures] used by its indirect light or skybox.
+ * Creates an environment that owns the [textures] its indirect light and skybox sample.
  *
- * Filament does not destroy those textures with the objects that sample them. Ownership transfers
- * to the returned [Environment], and either environment destruction helper releases them after the
- * light and skybox.
+ * Filament does not destroy a texture with the `IndirectLight` or `Skybox` built on it, so a
+ * cubemap left out of [textures] stays on the GPU until the engine is destroyed (#4358) — the
+ * `cubemap` half of a `KTX1Loader` bundle is the usual one. Ownership moves to the returned
+ * [Environment]: `Engine.safeDestroyEnvironment` and `EnvironmentLoader.destroyEnvironment` both
+ * destroy them, once, after the light and the skybox. Do not destroy them yourself, and do not
+ * hand the same texture to two environments.
  *
- * @param textures Cubemap textures whose lifetime matches the returned environment.
+ * A `copy()` of the returned environment shares its handles without owning the textures: the
+ * environment to destroy is this one.
+ *
+ * @param textures The cubemaps [indirectLight] and [skybox] sample. A texture listed twice — one
+ * cubemap serving both — is destroyed once.
  */
 fun createEnvironment(
     engine: Engine,
@@ -318,7 +326,7 @@ fun createEnvironment(
         .build(engine),
     sphericalHarmonics: List<Float>? = null,
     textures: List<Texture>,
-) = Environment(indirectLight, skybox, sphericalHarmonics).also {
+): Environment = Environment(indirectLight, skybox, sphericalHarmonics).also {
     it.ownTextures(textures)
 }
 

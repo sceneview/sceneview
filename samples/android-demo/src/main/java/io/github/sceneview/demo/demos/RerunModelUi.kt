@@ -47,6 +47,7 @@ import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
+import io.github.sceneview.createEnvironment
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
@@ -384,12 +385,16 @@ private fun rememberModelEnvironment(engine: Engine, ground: androidx.compose.ui
     val context = LocalContext.current
     return rememberEnvironment(engine, key = ground) {
         val stage = colorOf(ground).toLinearSpace()
-        Environment(
-            indirectLight = KTX1Loader.createIndirectLight(
-                engine,
-                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-            ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+        val bundle = KTX1Loader.createIndirectLight(
+            engine,
+            context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
+        )
+        createEnvironment(
+            engine = engine,
+            indirectLight = bundle.indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
             skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
+            // The bundle's cubemap leaves with the environment, after the light (#4358).
+            textures = listOfNotNull(bundle.cubemap),
         )
     }
 }

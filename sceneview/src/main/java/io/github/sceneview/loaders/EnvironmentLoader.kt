@@ -13,8 +13,7 @@ import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.IBLPrefilter
 import io.github.sceneview.logDeferredTeardown
-import io.github.sceneview.safeDestroyIndirectLight
-import io.github.sceneview.safeDestroySkybox
+import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.use
 import io.github.sceneview.utils.loadFileBuffer
@@ -587,9 +586,9 @@ class EnvironmentLoader(
         // safe destroys make a second call for the same handles a no-op.
         val environmentIndex = environments.indexOfFirst { it === environment }
         if (environmentIndex != -1) environments.removeAt(environmentIndex)
-        environment.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
-        environment.skybox?.let { engine.safeDestroySkybox(it) }
-        environment.destroyOwnedTextures { engine.safeDestroyTexture(it) }
+        // Light and skybox first, then the cubemaps they sample: one implementation, shared with
+        // every caller of `Engine.safeDestroyEnvironment`.
+        engine.safeDestroyEnvironment(environment)
     }
 
     /**
