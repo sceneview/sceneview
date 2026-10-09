@@ -412,9 +412,19 @@ fun Engine.safeDestroyTransformable(@FilamentEntity entity: Entity) =
 
 fun Engine.safeDestroyCamera(camera: Camera) = runCatching { destroyCameraComponent(camera.entity) }
 
+/**
+ * Destroys the indirect light and the skybox of [environment], then the textures it owns — the
+ * cubemaps of a KTX or HDR environment, which Filament does not free with the light or the skybox
+ * that samples them (#4358).
+ *
+ * Safe to call twice, and after [io.github.sceneview.loaders.EnvironmentLoader.destroyEnvironment].
+ */
 fun Engine.safeDestroyEnvironment(environment: Environment) {
-    environment.indirectLight?.let { safeDestroyIndirectLight(it) }
-    environment.skybox?.let { safeDestroySkybox(it) }
+    environment.destroy(
+        destroyIndirectLight = { safeDestroyIndirectLight(it) },
+        destroySkybox = { safeDestroySkybox(it) },
+        destroyTexture = { safeDestroyTexture(it) },
+    )
 }
 
 fun Engine.safeDestroyIndirectLight(indirectLight: IndirectLight) =

@@ -3975,10 +3975,42 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The cubemaps behind an environment belong to it. Filament frees neither with the `IndirectLight` or
+`Skybox` that samples it, so `EnvironmentLoader.destroyEnvironment` and
+`Engine.safeDestroyEnvironment` release them after the light and the skybox — which is what every
+`remember*Environment` helper calls on disposal and on a key change. Every loader factory (KTX and
+HDR), `createEnvironment(environmentLoader)` and `createAREnvironment` hand their cubemaps over for
+you.
+
+Building the `IndirectLight` from a `KTX1Loader` bundle yourself? Pass the bundle's cubemap in
+`textures`, or one cubemap stays on the GPU each time the environment is rebuilt:
+
+```kotlin
+import com.google.android.filament.utils.KTX1Loader
+import io.github.sceneview.utils.readBuffer
+
+val environment = rememberEnvironment(engine) {
+    val bundle = KTX1Loader.createIndirectLight(
+        engine,
+        context.assets.readBuffer("environments/studio_ibl.ktx"),
+    )
+    createEnvironment(
+        engine = engine,
+        indirectLight = bundle.indirectLight,
+        // Ownership moves to the environment: destroyed with it, after the light.
+        textures = listOfNotNull(bundle.cubemap),
+    )
+}
+```
+
+`environment.copy(skybox = other)` shares the Filament handles and owns no texture: destroy the
+environment it was copied from, never the copy.
 
 ---
 

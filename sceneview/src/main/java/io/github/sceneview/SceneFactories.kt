@@ -10,6 +10,7 @@ import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.Skybox
+import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
 import com.google.android.filament.View.AntiAliasing
@@ -275,14 +276,19 @@ fun createViewNodeManager(context: Context) = ViewNode.WindowManager(context)
 fun createEnvironment(
     environmentLoader: EnvironmentLoader,
     isOpaque: Boolean = true
-) = createEnvironment(
-    engine = environmentLoader.engine,
-    isOpaque = isOpaque,
-    indirectLight = KTX1Loader.createIndirectLight(
+): Environment {
+    val indirectLightBundle = KTX1Loader.createIndirectLight(
         environmentLoader.engine,
         environmentLoader.context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-    ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-)
+    )
+    return createEnvironment(
+        engine = environmentLoader.engine,
+        isOpaque = isOpaque,
+        indirectLight = indirectLightBundle.indirectLight
+            ?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+        textures = listOfNotNull(indirectLightBundle.cubemap),
+    )
+}
 
 fun createEnvironment(
     engine: Engine,
@@ -292,7 +298,37 @@ fun createEnvironment(
         .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
         .build(engine),
     sphericalHarmonics: List<Float>? = null
-) = Environment(indirectLight, skybox, sphericalHarmonics)
+): Environment =
+    createEnvironment(engine, isOpaque, indirectLight, skybox, sphericalHarmonics, emptyList())
+
+/**
+ * Creates an environment that owns the [textures] its indirect light and skybox sample.
+ *
+ * Filament does not destroy a texture with the `IndirectLight` or `Skybox` built on it, so a
+ * cubemap left out of [textures] stays on the GPU until the engine is destroyed (#4358) — the
+ * `cubemap` half of a `KTX1Loader` bundle is the usual one. Ownership moves to the returned
+ * [Environment]: `Engine.safeDestroyEnvironment` and `EnvironmentLoader.destroyEnvironment` both
+ * destroy them, once, after the light and the skybox. Do not destroy them yourself, and do not
+ * hand the same texture to two environments.
+ *
+ * A `copy()` of the returned environment shares its handles without owning the textures: the
+ * environment to destroy is this one.
+ *
+ * @param textures The cubemaps [indirectLight] and [skybox] sample. A texture listed twice — one
+ * cubemap serving both — is destroyed once.
+ */
+fun createEnvironment(
+    engine: Engine,
+    isOpaque: Boolean = true,
+    indirectLight: IndirectLight? = null,
+    skybox: Skybox? = Skybox.Builder()
+        .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
+        .build(engine),
+    sphericalHarmonics: List<Float>? = null,
+    textures: List<Texture>,
+): Environment = Environment(indirectLight, skybox, sphericalHarmonics).also {
+    it.ownTextures(textures)
+}
 
 fun createCollisionSystem(view: View) = CollisionSystem(view)
 
