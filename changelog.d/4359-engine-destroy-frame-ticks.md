@@ -1,0 +1,3 @@
+<!-- category: Fixed -->
+- **Shared Android engines keep the full deferred-destroy grace period ([#4359](https://github.com/sceneview/sceneview/issues/4359)).** Multiple `SceneView`s rendering on the same display frame now advance their engine's resource-destroy queue only once, so textures and streams remain alive for the promised three engine frames.
+- **Demo app: Materials and Cosmos defer sampled-texture destruction ([#4360](https://github.com/sceneview/sceneview/issues/4360)).** Studio backdrops and Cosmos horizon maps now outlive the material instances that sampled them during scene teardown.

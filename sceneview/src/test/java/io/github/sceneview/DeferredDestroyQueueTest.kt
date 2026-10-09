@@ -9,9 +9,9 @@ import org.junit.Test
  * Pure-JVM pins for the frame-counting and drain-ordering contract of [DeferredDestroyQueue] —
  * the Filament-free core of [EngineDestroyQueue] (sceneview/sceneview#874).
  *
- * These guarantees are what make `ImageNode.destroy()` / `ViewNode.destroy()` safe:
- * a texture must outlive its `MaterialInstance` by exactly the grace period — destroyed neither
- * too early (native SIGABRT) nor never (GPU-memory leak).
+ * These guarantees are what make `ImageNode.destroy()` / `ViewNode.destroy()` safe: a texture is
+ * kept for the full grace period while pending renderable and material-instance teardown settles,
+ * but is eventually destroyed rather than leaked in GPU memory.
  */
 class DeferredDestroyQueueTest {
 
@@ -28,6 +28,22 @@ class DeferredDestroyQueueTest {
 
         // On the 3rd drain it runs.
         queue.drain() // frame 3
+        assertEquals(listOf("a"), log)
+    }
+
+    @Test
+    fun duplicateFrameTimeAdvancesOnlyOnceAcrossRenderers() {
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val log = mutableListOf<String>()
+        queue.enqueue { log.add("a") }
+
+        queue.drain(frameTimeNanos = 100L)
+        queue.drain(frameTimeNanos = 100L)
+        queue.drain(frameTimeNanos = 200L)
+        queue.drain(frameTimeNanos = 200L)
+        assertTrue("duplicate renderer drains shortened the grace period", log.isEmpty())
+
+        queue.drain(frameTimeNanos = 300L)
         assertEquals(listOf("a"), log)
     }
 

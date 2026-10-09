@@ -261,10 +261,11 @@ class SceneRenderer(
         onBeforeRender()
 
         if (shouldPresent?.invoke() == false) {
-            // Still drain: the queue's grace periods are counted in ticks of real scene time, and a
-            // scene that settles into on-demand would otherwise hold destroyed GPU resources until
-            // something happened to wake it.
-            EngineDestroyQueue.of(engine).drain()
+            // Still drain: the queue's grace periods are counted in engine frame ticks, and a scene
+            // that settles into on-demand would otherwise hold destroyed GPU resources until
+            // something happened to wake it. The timestamp prevents another renderer on this
+            // engine from counting the same display frame twice.
+            EngineDestroyQueue.of(engine).drain(frameTimeNanos)
             return false
         }
 
@@ -283,12 +284,13 @@ class SceneRenderer(
             presented = true
         }
 
-        // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
-        // (render) thread so Filament has reclaimed any MaterialInstance the texture was bound to —
-        // see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from a
-        // Choreographer callback so it advances in lock-step with real rendered frames, and stops
-        // the moment the surface (and thus the render loop) goes away.
-        EngineDestroyQueue.of(engine).drain()
+        // Destroy GPU resources whose grace period has elapsed. Running after endFrame on the main
+        // (render) thread gives pending renderable and MaterialInstance teardown several engine
+        // ticks to settle before a sampled texture is reclaimed — see EngineDestroyQueue
+        // (sceneview/sceneview#874). Driven here rather than from a Choreographer callback so it
+        // advances with engine frame timestamps, once when renderers share an engine, and stops
+        // when its render loops go away.
+        EngineDestroyQueue.of(engine).drain(frameTimeNanos)
 
         return presented
     }

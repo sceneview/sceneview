@@ -9,21 +9,22 @@ import java.util.WeakHashMap
  * Per-[Engine] frame-deferred destroy queue for Filament GPU resources.
  *
  * Some Filament resources cannot be destroyed eagerly the moment a node releases them:
- * destroying a [Texture] before Filament has reclaimed the [com.google.android.filament.MaterialInstance]
- * it was bound to triggers a native `SIGABRT` (`Invalid texture still bound to MaterialInstance`).
- * MaterialInstance reclamation is coupled to the render loop, not to the `destroy()` call — so the
- * texture must outlive the MI by at least one rendered frame.
+ * destroying a [Texture] while a live [com.google.android.filament.MaterialInstance] still refers
+ * to it triggers a native `SIGABRT` (`Invalid texture still bound to MaterialInstance`). Scene and
+ * composition teardown can release the texture before every renderable has dropped or destroyed
+ * the instance that sampled it, so the texture is kept alive across several engine frame ticks.
  *
- * This queue solves that without leaking: a resource is enqueued on the frame its MI is released,
- * then actually destroyed [GRACE_FRAMES] rendered frames later, by which point Filament has
- * guaranteed the MI is gone.
+ * This queue solves that without leaking: a resource is enqueued when its owner releases it, then
+ * actually destroyed [GRACE_FRAMES] engine frame ticks later. This gives pending renderable and
+ * material-instance teardown time to complete before the resource is reclaimed.
  *
  * ### Threading
  * **Every method must be called on the main thread.** Filament JNI calls (`destroyTexture`,
  * `destroyStream`) are not thread-safe and must run on the render thread — which on Android is the
- * main thread. [drain] is called once per frame from
- * [SceneRenderer.renderFrame][io.github.sceneview.SceneRenderer.renderFrame], which always runs on
- * the main thread via `withFrameNanos`. Enqueue happens from `Node.destroy()`, also main-thread.
+ * main thread. [SceneRenderer.renderFrame][io.github.sceneview.SceneRenderer.renderFrame] reports
+ * its timestamp on every renderer tick; duplicate timestamps advance the engine queue only once.
+ * Rendering always runs on the main thread via `withFrameNanos`. Enqueue happens from
+ * `Node.destroy()`, also main-thread.
  *
  * ### Lifecycle
  * Each [Engine] gets exactly one queue, looked up via [of]. When the [Engine] is torn down,
@@ -58,9 +59,10 @@ class EngineDestroyQueue private constructor(
     val size: Int get() = queue.size
 
     /**
-     * Enqueues [texture] to be destroyed [GRACE_FRAMES] rendered frames from now.
+     * Enqueues [texture] to be destroyed [GRACE_FRAMES] engine frame ticks from now.
      *
-     * Call from the main thread, right after the bound `MaterialInstance` has been released.
+     * Call from the main thread after the texture's owner releases it. Any bound
+     * `MaterialInstance` must be rebound or released before the grace period expires.
      *
      * If the owning [Engine] has already been torn down (see [drainAll]) the texture is destroyed
      * immediately rather than queued — there is no render loop left to [drain] it.
@@ -70,7 +72,7 @@ class EngineDestroyQueue private constructor(
     }
 
     /**
-     * Enqueues [stream] to be destroyed [GRACE_FRAMES] rendered frames from now.
+     * Enqueues [stream] to be destroyed [GRACE_FRAMES] engine frame ticks from now.
      *
      * Call from the main thread, right after the bound [Texture] has been enqueued/released.
      *
@@ -82,7 +84,7 @@ class EngineDestroyQueue private constructor(
     }
 
     /**
-     * Enqueues an arbitrary non-Filament [action] to run [GRACE_FRAMES] rendered frames from now,
+     * Enqueues an arbitrary non-Filament [action] to run [GRACE_FRAMES] engine frame ticks from now,
      * sharing the same FIFO ordering as [enqueueTexture]/[enqueueStream].
      *
      * For resources that only need to outlive the same render-loop grace period as a Filament
@@ -98,9 +100,17 @@ class EngineDestroyQueue private constructor(
 
     /**
      * Advances the frame counter by one and destroys every resource whose grace period has
-     * elapsed. Call exactly once per rendered frame, on the main thread.
+     * elapsed. Call exactly once per engine frame, on the main thread.
      */
     fun drain() = queue.drain()
+
+    /**
+     * Drains for the engine frame at [frameTimeNanos], ignoring duplicate calls for that frame.
+     *
+     * Multiple `SceneRenderer`s can share one [Engine]. Each renderer receives the same
+     * Choreographer timestamp on a display frame, so only the first advances the shared queue.
+     */
+    internal fun drain(frameTimeNanos: Long) = queue.drain(frameTimeNanos)
 
     /**
      * Destroys every still-pending resource immediately, ignoring the grace period, and marks the
@@ -123,9 +133,8 @@ class EngineDestroyQueue private constructor(
 
     companion object {
         /**
-         * Number of rendered frames a resource is kept alive after being enqueued. One frame is
-         * sufficient for Filament to reclaim the `MaterialInstance`; a small margin is kept for
-         * safety against frame-pacing jitter.
+         * Number of engine frame ticks a resource is kept alive after being enqueued. The margin
+         * lets renderable and material-instance teardown finish before the resource is reclaimed.
          */
         const val GRACE_FRAMES = 3
 
@@ -167,14 +176,15 @@ class EngineDestroyQueue private constructor(
 
 /**
  * Filament-free core of [EngineDestroyQueue]: a FIFO queue of deferred actions, each released a
- * fixed number of [drain] calls ("frames") after being enqueued.
+ * fixed number of engine frame ticks after being enqueued.
  *
  * Extracted so the frame-counting and drain-ordering contract can be exercised by a pure-JVM unit
  * test without a real Filament `Engine`/`Texture`/`Stream`.
  *
  * Not thread-safe — see the threading note on [EngineDestroyQueue]. All calls are main-thread.
  *
- * @param graceFrames Number of [drain] calls a deferred action waits before it runs. Must be `>= 0`.
+ * @param graceFrames Number of engine frame ticks a deferred action waits before it runs. Must be
+ * `>= 0`.
  */
 class DeferredDestroyQueue(private val graceFrames: Int) {
 
@@ -186,6 +196,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
 
     private val pending = ArrayDeque<Entry>()
     private var frame = 0L
+    private var lastFrameTimeNanos: Long? = null
 
     /**
      * Set once [drainAll] has run. Past that point there is no render loop left to advance [drain],
@@ -199,7 +210,7 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
     val size: Int get() = pending.size
 
     /**
-     * Enqueues [action] to run [graceFrames] [drain] calls from now.
+     * Enqueues [action] to run after [graceFrames] engine frame ticks.
      *
      * If [drainAll] has already run, [action] is executed immediately instead of being queued —
      * there is no render loop left to [drain] it.
@@ -225,6 +236,13 @@ class DeferredDestroyQueue(private val graceFrames: Int) {
             if (head.runAtFrame > frame) break
             pending.removeFirst().action()
         }
+    }
+
+    /** Advances once for [frameTimeNanos], even when several renderers report the same frame. */
+    internal fun drain(frameTimeNanos: Long) {
+        if (lastFrameTimeNanos == frameTimeNanos) return
+        lastFrameTimeNanos = frameTimeNanos
+        drain()
     }
 
     /**

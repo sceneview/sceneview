@@ -12,10 +12,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Engine
 import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.safeDestroySkybox
-import io.github.sceneview.safeDestroyTexture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -421,5 +421,5 @@ private class StudioEnvironmentResources(
 
 private fun StudioBackdrop.Backdrop.destroy(engine: Engine) {
     engine.safeDestroySkybox(skybox)
-    engine.safeDestroyTexture(texture)
+    EngineDestroyQueue.of(engine).enqueueTexture(texture)
 }
