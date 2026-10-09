@@ -154,6 +154,12 @@ fun TapToPlaceArSession(
     extraSceneContent: (@Composable ARSceneScope.() -> Unit)? = null,
     /** Picks the QA camera backdrop deterministically per demo (#3308). */
     backdropSeed: String = "ar-placement",
+    /**
+     * The asset location [placedContent] stands in for: a placement of that asset draws
+     * [placedContent] instead of the GLB, and needs no `ModelInstance` to commit.
+     */
+    replacementAssetLocation: String? = null,
+    placedContent: (@Composable ARSceneScope.(io.github.sceneview.ar.AutoPlacementResult) -> Unit)? = null,
 ) {
     // Viewport pixels: the automatic search casts its first ray through the viewport
     // centre (§2.3), which needs the measured size — a zero viewport searches nothing.
@@ -239,7 +245,11 @@ fun TapToPlaceArSession(
                         },
                     ),
                     commit = {
-                        if (state.modelInstance == null) false else {
+                        // A room recording stands without a ModelInstance: its content
+                        // being offered is what makes it ready.
+                        val roomReady = placedContent != null &&
+                            state.spec?.assetLocation == replacementAssetLocation
+                        if (state.modelInstance == null && !roomReady) false else {
                             committed = surface?.createAnchor()
                             committed != null
                         }
@@ -323,7 +333,9 @@ fun TapToPlaceArSession(
             // remember slot, so the model instance inside loads fresh per anchor.
             state.placed?.let { placed ->
                 key(placed.id) {
-                    PlacedModelNode(
+                    if (placed.spec.assetLocation == replacementAssetLocation && placedContent != null) {
+                        placedContent(placed.placement)
+                    } else PlacedModelNode(
                         placed = placed,
                         modelInstance = state.modelInstance,
                         controller = state.controller,

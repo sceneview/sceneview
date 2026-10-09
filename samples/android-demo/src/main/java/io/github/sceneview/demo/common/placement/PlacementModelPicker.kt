@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -120,6 +121,10 @@ data class PlacementModel(
      * never the picture of its bundled fallback, which is a different model (#3987).
      */
     val thumbnailUrl: String? = null,
+    /** Saved room id, or the bundled replay id; opt-in for AR Placement only. */
+    val roomRecordingId: String? = null,
+    /** On the bundled room when the user has none of their own: the section invites a scan. */
+    val inviteRoomScan: Boolean = false,
 ) {
     companion object {
         /**
@@ -338,6 +343,30 @@ fun placementModelLabel(model: PlacementModel): String =
         model.displayName
     }
 
+internal const val BUNDLED_ROOM_RECORDING_ID = "bundled-room-replay"
+
+/** What a room recording's `assetLocation` starts with: it is no file, and no GLB loads from it. */
+internal const val ROOM_ASSET_PREFIX = "room:"
+
+/** Whether [assetLocation] names a room recording rather than a model file. */
+internal fun isRoomAsset(assetLocation: String?): Boolean = assetLocation?.startsWith(ROOM_ASSET_PREFIX) == true
+
+/** Newest rooms first, then the demo recording; never displace the ordinary model catalogue. */
+internal fun roomPlacementModels(
+    recordings: List<io.github.sceneview.demo.demos.internal.RerunStoredSession>,
+    demoTitle: String,
+): List<PlacementModel> = recordings
+    .sortedByDescending { it.createdAt }
+    .distinctBy { it.id }
+    .map { PlacementModel(ROOM_ASSET_PREFIX + it.id, it.title, ROOM_ASSET_PREFIX + it.id, roomRecordingId = it.id) } +
+    PlacementModel(
+        id = ROOM_ASSET_PREFIX + BUNDLED_ROOM_RECORDING_ID,
+        displayName = demoTitle,
+        assetLocation = ROOM_ASSET_PREFIX + BUNDLED_ROOM_RECORDING_ID,
+        roomRecordingId = BUNDLED_ROOM_RECORDING_ID,
+        inviteRoomScan = recordings.isEmpty(),
+    )
+
 /**
  * The canonical model picker sheet — one grid of cards, one selected state, applied the
  * moment it is tapped.
@@ -376,6 +405,17 @@ fun PlacementModelPickerSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = SceneViewTokens.Space.sm),
             )
+            // Rooms first, under their own heading; the models keep theirs only when
+            // there is a second section to tell them from (AR Placement, #4306 follow-up).
+            val rooms = models.filter { it.roomRecordingId != null }
+            val objects = models.filter { it.roomRecordingId == null }
+            val select: (PlacementModel) -> Unit = { model ->
+                picker.selectedId = model.id
+                scope.launch {
+                    sheetState.hide()
+                    picker.dismissSheet()
+                }
+            }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = PICKER_CARD_MIN_SIZE),
                 verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
@@ -384,22 +424,47 @@ fun PlacementModelPickerSheet(
                     .fillMaxWidth()
                     .heightIn(max = PICKER_GRID_MAX_HEIGHT),
             ) {
-                items(models.size) { index ->
-                    val model = models[index]
-                    PlacementModelCard(
-                        model = model,
-                        selected = model.id == picker.selectedId,
-                        onClick = {
-                            picker.selectedId = model.id
-                            scope.launch {
-                                sheetState.hide()
-                                picker.dismissSheet()
-                            }
-                        },
-                    )
+                if (rooms.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        PickerSectionHeader(
+                            title = stringResource(R.string.ar_picker_your_rooms),
+                            caption = stringResource(R.string.ar_picker_record_room)
+                                .takeIf { rooms.any { it.inviteRoomScan } },
+                        )
+                    }
+                    items(rooms.size, key = { rooms[it].id }) { index ->
+                        val model = rooms[index]
+                        PlacementModelCard(model, model.id == picker.selectedId, onClick = { select(model) })
+                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        PickerSectionHeader(title = stringResource(R.string.ar_picker_models))
+                    }
+                }
+                items(objects.size) { index ->
+                    val model = objects[index]
+                    PlacementModelCard(model, model.id == picker.selectedId, onClick = { select(model) })
                 }
             }
             Spacer(Modifier.height(SceneViewTokens.Space.md))
+        }
+    }
+}
+
+/** A section's heading in the picker grid, with the one line that explains it. */
+@Composable
+internal fun PickerSectionHeader(title: String, modifier: Modifier = Modifier, caption: String? = null) {
+    Column(modifier = modifier.padding(top = SceneViewTokens.Space.xs)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (caption != null) {
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
