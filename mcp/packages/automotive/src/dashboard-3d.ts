@@ -73,6 +73,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.ViewNode
@@ -80,7 +81,6 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
@@ -104,7 +104,6 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 ${hasGaugeFaces ? `    // Off-screen window hosting the gauge faces — the same instance goes to SceneView
     // (viewNodeWindowManager) and to every ViewNode (windowManager).
     val windowManager = rememberViewNodeManager()` : ""}
@@ -126,7 +125,7 @@ ${gauges.includes("odometer") ? `    var odometer by remember { mutableFloatStat
 
 ${animated ? `    // Animate speed sweep for demo
     val animatedSpeed by animateFloatAsState(
-        targetValue = speed,
+        targetValue = ${gauges.includes("speedometer") ? "speed" : "0f"},
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 100f),
         label = "speedAnimation"
     )
@@ -147,13 +146,12 @@ ${animated ? `    // Animate speed sweep for demo
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
 ${hasGaugeFaces ? `                viewNodeWindowManager = windowManager,` : ""}
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/cockpit_hdr.ktx"
                 )!!,
                 onFrame = { frameTimeNanos ->
-${animated ? `                    // Demo: sweep speed up
+${animated && gauges.includes("speedometer") ? `                    // Demo: sweep speed up
                     if (speed < 120f) speed += 0.2f` : "                    // Frame update"}
                 }
             ) {
@@ -195,6 +193,7 @@ ${gauges.includes("tachometer") ? `
 
                 // Dashboard ambient lighting
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(20_000f)
                         color(0.95f, 0.9f, 0.85f)
@@ -340,13 +339,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.math.Position
 
 /**
@@ -360,13 +360,14 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val dashboardModel = rememberModelInstance(
         modelLoader, "models/dashboard/${options.theme ?? "classic"}_cluster.glb"
@@ -379,15 +380,19 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onSessionUpdated = { session, frame -> },
-            onTapAR = { hitResult ->
-                if (!placed && dashboardModel != null) {
-                    val anchor = hitResult.createAnchor()
-                    placed = true
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed && dashboardModel != null) {
+                            val anchor = hitResult.createAnchor()
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             dashboardModel?.let { instance ->
                 ModelNode(

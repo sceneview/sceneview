@@ -98,6 +98,8 @@ describe("generateDentalViewer", () => {
     const code = generateDentalViewer({ viewType: "full-arch" });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     const lightCount = (code.match(/LightNode\(/g) || []).length;
     expect(lightCount).toBeGreaterThanOrEqual(2);
   });

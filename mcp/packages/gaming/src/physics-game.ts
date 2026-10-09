@@ -73,7 +73,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.SphereNode
@@ -81,11 +83,10 @@ import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 import kotlin.math.sqrt
 import kotlin.math.max
 
@@ -106,8 +107,9 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // One colour material shared by the procedural geometry — created once, on the main thread
+    val shapeMaterial = remember(materialLoader) { materialLoader.createColorInstance(Color.LightGray) }
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     // Physics state
     val bodies = remember { mutableStateListOf<PhysicsBody>() }
@@ -132,7 +134,6 @@ fun ${composableName}() {
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/studio_hdr.ktx"
                 )!!,
@@ -149,20 +150,17 @@ ${config.sceneContent}
                 for (body in bodies) {
                     when (body.shape) {
                         "sphere" -> SphereNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
+                            materialInstance = shapeMaterial,
                             radius = body.radius,
                             position = Position(body.x, body.y, body.z)
                         )
                         "cube" -> CubeNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
-                            size = Scale(body.radius * 2, body.radius * 2, body.radius * 2),
+                            materialInstance = shapeMaterial,
+                            size = Size(body.radius * 2, body.radius * 2, body.radius * 2),
                             position = Position(body.x, body.y, body.z)
                         )
                         "cylinder" -> CylinderNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
+                            materialInstance = shapeMaterial,
                             radius = body.radius,
                             height = body.radius * 2,
                             position = Position(body.x, body.y, body.z)
@@ -175,8 +173,7 @@ ${showTrajectory ? `
                     val steps = predictTrajectory(body, gravity, 20)
                     for (step in steps) {
                         SphereNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
+                            materialInstance = shapeMaterial,
                             radius = 0.02f,
                             position = Position(step.first, step.second, step.third)
                         )
@@ -185,6 +182,7 @@ ${showTrajectory ? `
 
                 // Lighting
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(100_000f)
                         color(1.0f, 0.98f, 0.95f)
@@ -193,6 +191,7 @@ ${showTrajectory ? `
                 )
 
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(40_000f)
                         color(0.9f, 0.9f, 1.0f)
@@ -385,12 +384,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.SphereNode
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.math.Position
 
@@ -405,14 +405,15 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val materialLoader = rememberMaterialLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     var spawnCount by remember { mutableIntStateOf(0) }
 
@@ -421,12 +422,17 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onTapAR = { hitResult ->
-                val anchor = hitResult.createAnchor()
-                spawnCount++
-            }
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        val anchor = hitResult.createAnchor()
+                        spawnCount++
+                    }
+                }
+            )
         ) {
             // Physics objects rendered here
         }
@@ -459,23 +465,20 @@ function getPresetConfig(preset: PhysicsPreset): PresetConfig {
       description: "Spawn colorful balls that bounce off walls and each other. Demonstrates elastic collision, gravity, and friction.",
       sceneContent: `                // Ground plane
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(10f, 0.1f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(10f, 0.1f, 10f),
                     position = Position(0f, -0.05f, 0f)
                 )
 
                 // Walls
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(0.1f, 2f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(0.1f, 2f, 10f),
                     position = Position(-5f, 1f, 0f)
                 )
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(0.1f, 2f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(0.1f, 2f, 10f),
                     position = Position(5f, 1f, 0f)
                 )`,
     },
@@ -483,23 +486,20 @@ function getPresetConfig(preset: PhysicsPreset): PresetConfig {
       description: "A bowling lane with 10 pins. Swipe to launch the ball and knock down pins. Physics collision detection for scoring.",
       sceneContent: `                // Bowling lane
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(2f, 0.05f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(2f, 0.05f, 10f),
                     position = Position(0f, -0.025f, 0f)
                 )
 
                 // Lane gutters
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(0.2f, 0.3f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(0.2f, 0.3f, 10f),
                     position = Position(-1.1f, 0.15f, 0f)
                 )
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(0.2f, 0.3f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(0.2f, 0.3f, 10f),
                     position = Position(1.1f, 0.15f, 0f)
                 )`,
     },
@@ -507,39 +507,36 @@ function getPresetConfig(preset: PhysicsPreset): PresetConfig {
       description: "A billiard table with realistic ball physics. Drag to aim, release to shoot. Includes friction and cushion bounces.",
       sceneContent: `                // Billiard table surface
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(5f, 0.1f, 3f),
+                    materialInstance = shapeMaterial,
+                    size = Size(5f, 0.1f, 3f),
                     position = Position(0f, 0f, 0f)
                 )
 
                 // Table cushions
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(5f, 0.2f, 0.1f), position = Position(0f, 0.1f, -1.55f))
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(5f, 0.2f, 0.1f), position = Position(0f, 0.1f, 1.55f))
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(0.1f, 0.2f, 3f), position = Position(-2.55f, 0.1f, 0f))
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(0.1f, 0.2f, 3f), position = Position(2.55f, 0.1f, 0f))`,
+                CubeNode(materialInstance = shapeMaterial, size = Size(5f, 0.2f, 0.1f), position = Position(0f, 0.1f, -1.55f))
+                CubeNode(materialInstance = shapeMaterial, size = Size(5f, 0.2f, 0.1f), position = Position(0f, 0.1f, 1.55f))
+                CubeNode(materialInstance = shapeMaterial, size = Size(0.1f, 0.2f, 3f), position = Position(-2.55f, 0.1f, 0f))
+                CubeNode(materialInstance = shapeMaterial, size = Size(0.1f, 0.2f, 3f), position = Position(2.55f, 0.1f, 0f))`,
     },
     "marble-run": {
       description: "A marble run with ramps, funnels, and loops. Watch marbles race through the course with realistic physics.",
       sceneContent: `                // Start ramp
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(1f, 0.05f, 2f),
+                    materialInstance = shapeMaterial,
+                    size = Size(1f, 0.05f, 2f),
                     position = Position(-2f, 3f, 0f)
                 )
 
                 // Mid-level platforms
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(2f, 0.05f, 1f), position = Position(0f, 2f, 0f))
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(1.5f, 0.05f, 1f), position = Position(2f, 1f, 0f))`,
+                CubeNode(materialInstance = shapeMaterial, size = Size(2f, 0.05f, 1f), position = Position(0f, 2f, 0f))
+                CubeNode(materialInstance = shapeMaterial, size = Size(1.5f, 0.05f, 1f), position = Position(2f, 1f, 0f))`,
     },
     "tower-collapse": {
       description: "Build a tower of blocks and watch it collapse with realistic rigid body physics. Tap to add blocks, swipe to topple.",
       sceneContent: `                // Ground
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(8f, 0.1f, 8f),
+                    materialInstance = shapeMaterial,
+                    size = Size(8f, 0.1f, 8f),
                     position = Position(0f, -0.05f, 0f)
                 )`,
     },
@@ -547,46 +544,42 @@ function getPresetConfig(preset: PhysicsPreset): PresetConfig {
       description: "3D Pong with a bouncing ball between two paddles. Physics-based deflection angles based on hit position.",
       sceneContent: `                // Play field
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(4f, 0.05f, 6f),
+                    materialInstance = shapeMaterial,
+                    size = Size(4f, 0.05f, 6f),
                     position = Position(0f, -0.025f, 0f)
                 )
 
                 // Side walls
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(0.1f, 0.5f, 6f), position = Position(-2.05f, 0.25f, 0f))
-                CubeNode(engine = engine, materialLoader = materialLoader, size = Scale(0.1f, 0.5f, 6f), position = Position(2.05f, 0.25f, 0f))`,
+                CubeNode(materialInstance = shapeMaterial, size = Size(0.1f, 0.5f, 6f), position = Position(-2.05f, 0.25f, 0f))
+                CubeNode(materialInstance = shapeMaterial, size = Size(0.1f, 0.5f, 6f), position = Position(2.05f, 0.25f, 0f))`,
     },
     pinball: {
       description: "A pinball machine with flippers, bumpers, and scoring. Tilt your device to influence ball direction.",
       sceneContent: `                // Pinball table (tilted)
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(3f, 0.05f, 6f),
+                    materialInstance = shapeMaterial,
+                    size = Size(3f, 0.05f, 6f),
                     position = Position(0f, 0f, 0f)
                 )
 
                 // Bumpers
-                CylinderNode(engine = engine, materialLoader = materialLoader, radius = 0.2f, height = 0.3f, position = Position(-0.5f, 0.15f, -1f))
-                CylinderNode(engine = engine, materialLoader = materialLoader, radius = 0.2f, height = 0.3f, position = Position(0.5f, 0.15f, -0.5f))
-                CylinderNode(engine = engine, materialLoader = materialLoader, radius = 0.15f, height = 0.3f, position = Position(0f, 0.15f, 0.5f))`,
+                CylinderNode(materialInstance = shapeMaterial, radius = 0.2f, height = 0.3f, position = Position(-0.5f, 0.15f, -1f))
+                CylinderNode(materialInstance = shapeMaterial, radius = 0.2f, height = 0.3f, position = Position(0.5f, 0.15f, -0.5f))
+                CylinderNode(materialInstance = shapeMaterial, radius = 0.15f, height = 0.3f, position = Position(0f, 0.15f, 0.5f))`,
     },
     cannon: {
       description: "Aim and fire a cannon to hit targets. Adjust angle and power for projectile physics with trajectory prediction.",
       sceneContent: `                // Ground
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(10f, 0.1f, 10f),
+                    materialInstance = shapeMaterial,
+                    size = Size(10f, 0.1f, 10f),
                     position = Position(0f, -0.05f, 0f)
                 )
 
                 // Target wall
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(3f, 3f, 0.2f),
+                    materialInstance = shapeMaterial,
+                    size = Size(3f, 3f, 0.2f),
                     position = Position(0f, 1.5f, -4f)
                 )`,
     },

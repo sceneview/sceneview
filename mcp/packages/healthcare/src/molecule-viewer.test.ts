@@ -86,10 +86,12 @@ describe("generateMoleculeViewer", () => {
     expect(code).toContain("CPK");
   });
 
-  it("includes LightNode with named apply", () => {
+  it("includes LightNode with its type and named apply", () => {
     const code = generateMoleculeViewer({ moleculeType: "protein" });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
   });
 
   it("handles null modelInstance", () => {

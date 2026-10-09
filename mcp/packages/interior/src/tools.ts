@@ -458,8 +458,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -509,8 +509,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               (args.ar as boolean ?? true)
-                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -559,8 +559,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -623,8 +623,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
@@ -674,8 +674,8 @@ export async function dispatchTool(
               `**Gradle dependency:**`,
               "```kotlin",
               args.ar
-                ? `implementation("io.github.sceneview:arsceneview:4.16.9")`
-                : `implementation("io.github.sceneview:sceneview:4.16.9")`,
+                ? `implementation("io.github.sceneview:arsceneview:4.53.0")`
+                : `implementation("io.github.sceneview:sceneview:4.53.0")`,
               "```",
               ``,
               `**Kotlin (Jetpack Compose):**`,
