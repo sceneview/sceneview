@@ -652,6 +652,17 @@ enum SceneViewTokens {
         static let stageShadowWidth: CGFloat = 132
         /// Height of that shadow — a flat ellipse the mark hovers above.
         static let stageShadowHeight: CGFloat = 18
+        /// `about-app-icon` — the App Store icon of a row in the "More apps
+        /// built with SceneView" group, clipped to `radius-xs`. Half the
+        /// identity mark: these are other products, named but not featured.
+        static let appIcon: CGFloat = 40
+        /// The 1 pt `outline-subtle` hairline around that icon: it draws the
+        /// edge of a dark icon on the dark card.
+        static let appIconHairline: CGFloat = 1
+        /// Horizontal inset of an About row card, and the gap between its
+        /// leading tile and its text — the values `AboutCard` lays out with,
+        /// so a row of the "More apps" group lines up with the cards under it.
+        static let rowInset: CGFloat = 14
     }
 
     /// The SceneView mark as a 3D object (`mark-color` in `DESIGN.md`).

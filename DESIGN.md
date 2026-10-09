@@ -249,7 +249,7 @@ so the eye lands on the one thing the screen is for.
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
 | `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
 | `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
-| `about-app-icon` | 40dp, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
+| `about-app-icon` | 40dp / 40pt, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon (App Store icon on iOS) of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
 | `about-app-divider-inset` | 72dp | Hairline start inset in that group (row padding + icon + gap) |
 
 - **The identity block is not a card.** A slab there is a second emphasised surface
@@ -264,7 +264,10 @@ so the eye lands on the one thing the screen is for.
   group of rows directly under the support card: icon, name, one line on what the app
   does for the person holding the phone, open-in-new. No tinted surface, no price, no
   badge, no install button — the icons are the only colour, and a tap opens the Play
-  listing.
+  listing. On iOS the group sits under the identity block (there is no support card
+  there), drawn as the "Privacy & notifications" group is; it lists only apps that are
+  live on the App Store, with their App Store icon and name, and a tap opens the App
+  Store listing — never another store's.
 
 ### Text
 

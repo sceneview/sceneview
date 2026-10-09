@@ -7,6 +7,9 @@
 
 import XCTest
 import SceneViewSwift
+#if canImport(UIKit)
+import UIKit
+#endif
 @testable import SceneViewDemo
 
 private final class RecordingBackend: AnalyticsBackend, @unchecked Sendable {
@@ -208,6 +211,23 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(OutboundTarget.classify(URL(string: "itms-apps://itunes.apple.com/app/id1")!), .store)
         XCTAssertEqual(OutboundTarget.classify(URL(string: "https://sceneview.github.io/docs")!), .docs)
         XCTAssertEqual(OutboundTarget.classify(URL(string: "https://sketchfab.com/3d-models/x")!), .other)
+    }
+
+    /// Every row of About's "More apps built with SceneView" group opens an App Store
+    /// listing — never another store's — is logged as a `store` outbound link, and
+    /// ships the app's own icon.
+    func testMoreAppsOpenAppStoreListings() throws {
+        XCTAssertFalse(MoreApp.all.isEmpty)
+        XCTAssertEqual(Set(MoreApp.all.map(\.appStoreId)).count, MoreApp.all.count)
+        for app in MoreApp.all {
+            let url = try XCTUnwrap(app.storeURL)
+            XCTAssertEqual(url.scheme, "https")
+            XCTAssertEqual(url.host, "apps.apple.com")
+            XCTAssertEqual(OutboundTarget.classify(url), .store)
+            #if canImport(UIKit)
+            XCTAssertNotNil(UIImage(named: app.icon), "\(app.name) has no icon in the asset catalog")
+            #endif
+        }
     }
 
     @MainActor
