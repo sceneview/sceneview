@@ -132,4 +132,38 @@ describe("generateHudOverlay", () => {
     const code = generateHudOverlay({ elements: ["speedometer"] });
     expect(code).toContain("FontFamily.Monospace");
   });
+
+  // SceneScope.ViewNode takes `windowManager` as its first, required parameter, and the parent
+  // scene needs the same instance as `viewNodeWindowManager`. Without the three pieces the
+  // emitted Kotlin does not compile.
+  describe.each([
+    { mode: "3D", ar: false, scene: "SceneView(" },
+    { mode: "AR", ar: true, scene: "ARSceneView(" },
+  ])("ViewNode window manager ($mode)", ({ ar, scene }) => {
+    const code = generateHudOverlay({ elements: HUD_ELEMENTS, ar });
+
+    it("declares the window manager", () => {
+      expect(code).toContain("import io.github.sceneview.rememberViewNodeManager");
+      expect(code).toContain("val windowManager = rememberViewNodeManager()");
+    });
+
+    it("passes it to the scene", () => {
+      const sceneCall = code.slice(code.indexOf(`        ${scene}`));
+      const args = sceneCall.slice(0, sceneCall.indexOf(") {"));
+      expect(args).toContain("viewNodeWindowManager = windowManager");
+    });
+
+    it("passes it to every ViewNode", () => {
+      const calls = code.match(/\bViewNode\(/g) ?? [];
+      const wired = code.match(/\bViewNode\(\s*windowManager = windowManager,/g) ?? [];
+      expect(calls.length).toBeGreaterThan(0);
+      expect(wired.length).toBe(calls.length);
+    });
+
+    it("gives the HUD content an explicit width", () => {
+      // The ViewNode window is WRAP_CONTENT: a root fillMaxWidth() resolves to the display width.
+      expect(code).toMatch(/Column\([^)]*?\.width\(320\.dp\)/);
+      expect(code).not.toMatch(/Column\(\s*modifier = Modifier\s*\.fillMaxWidth\(\)/);
+    });
+  });
 });

@@ -48,6 +48,8 @@ export function generateDashboard3d(options: Dashboard3dOptions): string {
   } = options;
 
   const composableName = `${capitalize(theme)}Dashboard3D`;
+  // Only these two gauges are drawn as ViewNode faces; the window manager is emitted with them.
+  const hasGaugeFaces = gauges.includes("speedometer") || gauges.includes("tachometer");
 
   if (ar) {
     return generateArDashboard(composableName, options);
@@ -79,6 +81,7 @@ import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import kotlin.math.PI
@@ -102,6 +105,9 @@ fun ${composableName}() {
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
     val collisionSystem = rememberCollisionSystem(engine)
+${hasGaugeFaces ? `    // Off-screen window hosting the gauge faces — the same instance goes to SceneView
+    // (viewNodeWindowManager) and to every ViewNode (windowManager).
+    val windowManager = rememberViewNodeManager()` : ""}
 
     // Dashboard housing model
     val dashboardModel = rememberModelInstance(
@@ -142,6 +148,7 @@ ${animated ? `    // Animate speed sweep for demo
                 engine = engine,
                 modelLoader = modelLoader,
                 collisionSystem = collisionSystem,
+${hasGaugeFaces ? `                viewNodeWindowManager = windowManager,` : ""}
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/cockpit_hdr.ktx"
                 )!!,
@@ -160,6 +167,7 @@ ${animated ? `                    // Demo: sweep speed up
 
                 // Gauge faces as ViewNodes in 3D space
 ${gauges.includes("speedometer") ? `                ViewNode(
+                    windowManager = windowManager,
                     position = Position(-0.3f, 0.1f, -0.5f)
                 ) {
                     GaugeView(
@@ -172,6 +180,7 @@ ${gauges.includes("speedometer") ? `                ViewNode(
                 }` : ""}
 ${gauges.includes("tachometer") ? `
                 ViewNode(
+                    windowManager = windowManager,
                     position = Position(0.3f, 0.1f, -0.5f)
                 ) {
                     GaugeView(
@@ -232,6 +241,8 @@ private fun GaugeView(
         else -> Color.White
     }
 
+    // Explicit size, identical for every gauge: the ViewNode window is WRAP_CONTENT, and one
+    // window manager sizes all its ViewNodes to the largest content.
     Box(
         modifier = Modifier.size(160.dp),
         contentAlignment = Alignment.Center

@@ -154,6 +154,53 @@ describe("generateDashboard3d", () => {
     expect(code).toContain("Position(");
   });
 
+  // SceneScope.ViewNode takes `windowManager` as its first, required parameter, and the parent
+  // SceneView needs the same instance as `viewNodeWindowManager`. Without the three pieces the
+  // emitted Kotlin does not compile.
+  describe("ViewNode window manager", () => {
+    const code = generateDashboard3d({ gauges: ["speedometer", "tachometer"] });
+
+    it("declares the window manager", () => {
+      expect(code).toContain("import io.github.sceneview.rememberViewNodeManager");
+      expect(code).toContain("val windowManager = rememberViewNodeManager()");
+    });
+
+    it("passes it to SceneView", () => {
+      const sceneCall = code.slice(code.indexOf("            SceneView("));
+      const args = sceneCall.slice(0, sceneCall.indexOf(") {"));
+      expect(args).toContain("viewNodeWindowManager = windowManager");
+    });
+
+    it("passes it to every ViewNode", () => {
+      const calls = code.match(/\bViewNode\(/g) ?? [];
+      const wired = code.match(/\bViewNode\(\s*windowManager = windowManager,/g) ?? [];
+      expect(calls.length).toBe(2);
+      expect(wired.length).toBe(calls.length);
+    });
+
+    it("gives every gauge face the same explicit size", () => {
+      // One window manager sizes all its ViewNodes to the largest content.
+      expect(code).toContain("modifier = Modifier.size(160.dp)");
+    });
+
+    it.each([
+      { gauges: ["speedometer"] as const, faces: 1 },
+      { gauges: ["tachometer"] as const, faces: 1 },
+    ])("wires a single $gauges face", ({ gauges, faces }) => {
+      const single = generateDashboard3d({ gauges: [...gauges] });
+      expect(single).toContain("val windowManager = rememberViewNodeManager()");
+      expect(single).toContain("viewNodeWindowManager = windowManager");
+      expect(single.match(/\bViewNode\(\s*windowManager = windowManager,/g)).toHaveLength(faces);
+    });
+
+    it("emits no window manager when no gauge is drawn as a ViewNode", () => {
+      const noFaces = generateDashboard3d({ gauges: ["fuel"] });
+      expect(noFaces).not.toMatch(/\bViewNode\(/);
+      expect(noFaces).not.toContain("rememberViewNodeManager()");
+      expect(noFaces).not.toContain("viewNodeWindowManager");
+    });
+  });
+
   it("generates code for every dashboard theme", () => {
     for (const theme of DASHBOARD_THEMES) {
       const code = generateDashboard3d({ gauges: ["speedometer"], theme });
