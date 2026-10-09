@@ -63,12 +63,21 @@ class CollaborativeWireFormatTest {
             translation = floatArrayOf(1f, 2f, 3f),
             quaternion = floatArrayOf(0f, 0f, 0f, 1f),
             scale = floatArrayOf(1f, 1f, 1f),
+            logicalClock = 7L,
         )
         assertEquals(
             "{\"type\":\"node\",\"peer\":\"p3\",\"node\":\"cube-1\",\"model\":\"cube\"," +
                 "\"translation\":[1.0,2.0,3.0],\"quaternion\":[0.0,0.0,0.0,1.0]," +
-                "\"scale\":[1.0,1.0,1.0]}\n",
+                "\"scale\":[1.0,1.0,1.0],\"clock\":7}\n",
             line,
+        )
+    }
+
+    @Test
+    fun `remove emits canonical tombstone line`() {
+        assertEquals(
+            "{\"type\":\"remove\",\"peer\":\"p3\",\"node\":\"cube-1\",\"clock\":8}\n",
+            CollaborativeWireFormat.removeNode("p3", "cube-1", 8L),
         )
     }
 
@@ -134,6 +143,7 @@ class CollaborativeWireFormatTest {
             translation = floatArrayOf(-1f, 0f, 5f),
             quaternion = floatArrayOf(0f, 0f, 0f, 1f),
             scale = floatArrayOf(2f, 2f, 2f),
+            logicalClock = 12L,
         )
         val msg = CollaborativeWireFormat.parse(line)
         assertTrue(msg is CollaborativeMessage.NodeState)
@@ -142,6 +152,26 @@ class CollaborativeWireFormatTest {
         assertEquals("robot", msg.modelKey)
         assertEquals(2f, msg.scale[0], 1e-6f)
         assertEquals(5f, msg.translation[2], 1e-6f)
+        assertEquals(12L, msg.logicalClock)
+    }
+
+    @Test
+    fun `node without clock parses as legacy clock zero`() {
+        val msg = CollaborativeWireFormat.parse(
+            "{\"type\":\"node\",\"peer\":\"old\",\"node\":\"n\",\"model\":\"cube\"," +
+                "\"translation\":[0,0,0],\"quaternion\":[0,0,0,1],\"scale\":[1,1,1]}",
+        ) as CollaborativeMessage.NodeState
+        assertEquals(0L, msg.logicalClock)
+    }
+
+    @Test
+    fun `remove round-trips`() {
+        val msg = CollaborativeWireFormat.parse(
+            CollaborativeWireFormat.removeNode("p", "n-7", 13L),
+        ) as CollaborativeMessage.NodeRemoval
+        assertEquals("p", msg.peerId)
+        assertEquals("n-7", msg.nodeKey)
+        assertEquals(13L, msg.logicalClock)
     }
 
     @Test

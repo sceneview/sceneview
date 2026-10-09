@@ -133,6 +133,49 @@ class CollaborativeStateTest {
     }
 
     @Test
+    fun `node merge converges when concurrent writes arrive in opposite orders`() {
+        val alice = CollaborativeMessage.NodeState(
+            "alice", "shared", "chair",
+            floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+            floatArrayOf(1f, 1f, 1f), logicalClock = 1L,
+        )
+        val bob = CollaborativeMessage.NodeState(
+            "bob", "shared", "lamp",
+            floatArrayOf(2f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+            floatArrayOf(1f, 1f, 1f), logicalClock = 1L,
+        )
+        val first = CollaborativeState(local)
+        val second = CollaborativeState(local)
+
+        first.apply(alice)
+        first.apply(bob)
+        second.apply(bob)
+        second.apply(alice)
+
+        assertEquals("bob", first.placedNodes.single().ownerPeerId)
+        assertEquals(first.placedNodes, second.placedNodes)
+    }
+
+    @Test
+    fun `newer tombstone prevents stale placement resurrection`() {
+        val state = CollaborativeState(local)
+        val placement = CollaborativeMessage.NodeState(
+            "p1", "cube-1", "cube",
+            floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+            floatArrayOf(1f, 1f, 1f), logicalClock = 1L,
+        )
+        assertTrue(state.apply(placement))
+        assertTrue(state.apply(CollaborativeMessage.NodeRemoval("p1", "cube-1", 2L)))
+        assertTrue(state.placedNodes.isEmpty())
+
+        assertFalse(state.apply(placement))
+        assertTrue(state.placedNodes.isEmpty())
+
+        assertTrue(state.apply(placement.copy(logicalClock = 3L)))
+        assertEquals("cube-1", state.placedNodes.single().nodeKey)
+    }
+
+    @Test
     fun `duplicate node state is a no-op`() {
         val state = CollaborativeState(local)
         val msg = CollaborativeMessage.NodeState(

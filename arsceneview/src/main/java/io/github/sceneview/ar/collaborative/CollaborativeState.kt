@@ -6,7 +6,8 @@ package io.github.sceneview.ar.collaborative
  * It owns the authoritative local view of the session — the remote
  * [participants] and the set of [placedNodes] — and applies incoming
  * [CollaborativeMessage]s to it with a deterministic, **last-writer-wins**
- * policy. It has **no** ARCore, Filament, Android, or coroutine dependency, so
+ * policy ordered by each node's `(logicalClock, peerId)` pair. It has **no**
+ * ARCore, Filament, Android, or coroutine dependency, so
  * the entire sync-and-merge logic is unit-testable on plain JVM (see
  * `CollaborativeStateTest`).
  *
@@ -19,9 +20,10 @@ package io.github.sceneview.ar.collaborative
  * ### Roster caps (DoS hardening, #2569)
  *
  * Both rosters are **bounded**: at most [maxParticipants] participants and
- * [maxNodes] placed nodes are tracked. Messages that would create an entry
- * beyond a cap are dropped ([apply] returns `false`); updates to entries that
- * already exist always go through. Without a bound, a malicious (or buggy)
+ * [maxNodes] node keys are tracked, including removal tombstones. Messages
+ * that would create an entry beyond a cap are dropped ([apply] returns
+ * `false`); updates to entries that already exist always go through. Without
+ * a bound, a malicious (or buggy)
  * peer could grow the maps without limit by streaming thousands of distinct
  * forged `peer` / `node` keys — a memory-amplification DoS, since one small
  * wire line pins a map entry forever.
@@ -30,7 +32,8 @@ package io.github.sceneview.ar.collaborative
  *   equals this are ignored (a peer never tracks itself as a participant).
  * @param maxParticipants upper bound on tracked remote participants. Defaults
  *   to [MAX_PARTICIPANTS] — far above what Nearby-class transports support.
- * @param maxNodes upper bound on tracked placed nodes. Defaults to [MAX_NODES].
+ * @param maxNodes upper bound on tracked node keys, including tombstones.
+ *   Defaults to [MAX_NODES].
  */
 public class CollaborativeState
 @JvmOverloads
@@ -50,15 +53,16 @@ public constructor(
         public const val MAX_PARTICIPANTS: Int = 64
 
         /**
-         * Default cap on tracked placed nodes. 1024 is far beyond any sane
-         * same-room scene while keeping the worst-case roster size bounded
-         * against forged `node`-key floods.
+         * Default cap on tracked node keys, including tombstones. 1024 is far
+         * beyond any sane same-room scene while keeping the worst-case roster
+         * size bounded against forged `node`-key floods.
          */
         public const val MAX_NODES: Int = 1024
     }
 
     private val participantsById = LinkedHashMap<String, Participant>()
     private val nodesByKey = LinkedHashMap<String, PlacedNode>()
+    private val nodeVersions = LinkedHashMap<String, NodeVersion>()
 
     /** The most recent shared anchor announced for the session, or `null`. */
     public var sharedAnchor: CollaborativeMessage.SharedAnchor? = null
@@ -84,14 +88,27 @@ public constructor(
         // own placements — the local scene graph is already the source of
         // truth for anything this device originated.
         if (message.peerId == localPeerId) return false
-        return when (message) {
+        return applyMessage(message)
+    }
+
+    /** Applies a message originated by this device. */
+    internal fun applyLocal(message: CollaborativeMessage): Boolean = applyMessage(message)
+
+    /** Returns the next Lamport counter for [nodeKey]. */
+    internal fun nextNodeClock(nodeKey: String): Long =
+        (nodeVersions[nodeKey]?.logicalClock ?: 0L).let {
+            if (it == Long.MAX_VALUE) Long.MAX_VALUE else it + 1L
+        }
+
+    private fun applyMessage(message: CollaborativeMessage): Boolean =
+        when (message) {
             is CollaborativeMessage.Hello -> applyHello(message)
             is CollaborativeMessage.Bye -> applyBye(message)
             is CollaborativeMessage.SharedAnchor -> applySharedAnchor(message)
             is CollaborativeMessage.ParticipantPose -> applyPose(message)
             is CollaborativeMessage.NodeState -> applyNode(message)
+            is CollaborativeMessage.NodeRemoval -> applyNodeRemoval(message)
         }
-    }
 
     /** Removes the participant with [peerId] (e.g. transport link dropped). */
     public fun removeParticipant(peerId: String): Boolean =
@@ -147,7 +164,10 @@ public constructor(
     private fun applyNode(message: CollaborativeMessage.NodeState): Boolean {
         // Roster cap: never create a NEW node key beyond maxNodes — moves /
         // rewrites of already-tracked keys still apply (see class doc, #2569).
-        if (message.nodeKey !in nodesByKey && nodesByKey.size >= maxNodes) return false
+        if (message.nodeKey !in nodeVersions && nodeVersions.size >= maxNodes) return false
+        val version = NodeVersion(message.logicalClock, message.peerId)
+        val existingVersion = nodeVersions[message.nodeKey]
+        if (existingVersion != null && version <= existingVersion) return false
         val placed = PlacedNode(
             nodeKey = message.nodeKey,
             modelKey = message.modelKey,
@@ -156,15 +176,33 @@ public constructor(
             scale = message.scale,
             ownerPeerId = message.peerId,
         )
-        val existing = nodesByKey[message.nodeKey]
-        if (existing == placed) return false
-        // Last-writer-wins: the newest NodeState for a key fully replaces it.
+        nodeVersions[message.nodeKey] = version
         nodesByKey[message.nodeKey] = placed
         return true
     }
 
+    private fun applyNodeRemoval(message: CollaborativeMessage.NodeRemoval): Boolean {
+        if (message.nodeKey !in nodeVersions && nodeVersions.size >= maxNodes) return false
+        val version = NodeVersion(message.logicalClock, message.peerId)
+        val existingVersion = nodeVersions[message.nodeKey]
+        if (existingVersion != null && version <= existingVersion) return false
+        nodeVersions[message.nodeKey] = version
+        nodesByKey.remove(message.nodeKey)
+        return true
+    }
+
     /** Removes the placed node with [nodeKey]. */
-    public fun removeNode(nodeKey: String): Boolean = nodesByKey.remove(nodeKey) != null
+    public fun removeNode(nodeKey: String): Boolean {
+        nodeVersions.remove(nodeKey)
+        return nodesByKey.remove(nodeKey) != null
+    }
+
+    private data class NodeVersion(val logicalClock: Long, val peerId: String) {
+        operator fun compareTo(other: NodeVersion): Int {
+            val clockOrder = logicalClock.compareTo(other.logicalClock)
+            return if (clockOrder != 0) clockOrder else peerId.compareTo(other.peerId)
+        }
+    }
 
     private fun nowOr(existing: Participant?): Long =
         existing?.lastSeenEpochMs ?: 0L

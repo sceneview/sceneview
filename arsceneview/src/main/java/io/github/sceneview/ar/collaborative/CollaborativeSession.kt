@@ -69,12 +69,10 @@ import kotlinx.coroutines.launch
  *
  * ### Conflict policy
  *
- * A node key holds the **last write this device has seen**, whoever made it:
- * a peer's write replaces yours, your next [placeNode] on that key replaces
- * theirs. Messages carry no logical clock, so two peers writing the *same*
- * key at the same moment are not ordered — each can end up showing the
- * other's value. Give each peer its own keys (prefix them with the peer id)
- * when two users may move things at once.
+ * Node placements and removals use deterministic last-writer-wins ordering.
+ * Each key carries a Lamport counter; the peer id breaks ties when two peers
+ * write the same counter concurrently. Every device therefore converges on
+ * the same value regardless of delivery order.
  *
  * ### Security & trust model (#2569)
  *
@@ -174,9 +172,9 @@ public constructor(
     private var incomingHandle: AutoCloseable? = null
 
     @Volatile private var started = false
-    @Volatile private var lastPoseEmitNanos: Long = 0L
     private val minPoseIntervalNanos: Long =
         if (poseRateHz <= 0) 0L else 1_000_000_000L / poseRateHz
+    private val poseRateLimiter = PoseRateLimiter(minPoseIntervalNanos)
 
     /**
      * The shared coordinate-frame [CloudAnchorNode], once [host] has succeeded
@@ -196,8 +194,8 @@ public constructor(
     /**
      * Every node placed by any peer, in shared-anchor local space. Reconcile
      * your scene graph against this each frame: instantiate new keys, move
-     * existing ones, remove vanished ones. One entry per key — the last write
-     * this device has seen (see the class-level *Conflict policy*).
+     * existing ones, remove vanished ones. One entry per key, resolved by the
+     * deterministic last-writer-wins policy described above.
      */
     public val placedNodes: List<PlacedNode> get() = _placedNodes
 
@@ -372,7 +370,6 @@ public constructor(
     public fun onFrame(frame: Frame) {
         if (!started) return
         val anchorPose = sharedAnchorNode?.anchor?.pose ?: return
-        if (!shouldEmitPose(frame.timestamp)) return
         // Express the camera pose RELATIVE to the shared anchor:
         //   relative = anchorPose⁻¹ ∘ cameraPose
         // so the numbers mean the same thing on every device regardless of
@@ -386,18 +383,34 @@ public constructor(
      * [relativePose]. Useful for non-ARCore hosts or tests. [onFrame] is the
      * convenient path for a real AR session.
      *
-     * **Not rate-limited** — only [onFrame] honours [poseRateHz]. Call this
-     * when the pose changed, at the rate you want peers to receive it.
+     * Rate-limited to [poseRateHz], like [onFrame]. Later calls inside the
+     * current interval are dropped; `poseRateHz = 0` disables throttling.
      */
     public fun broadcastLocalPose(relativePose: Pose) {
-        if (!started) return
-        val t = floatArrayOf(relativePose.tx(), relativePose.ty(), relativePose.tz())
-        val q = floatArrayOf(
-            relativePose.qx(), relativePose.qy(), relativePose.qz(), relativePose.qw(),
+        broadcastLocalPose(
+            floatArrayOf(relativePose.tx(), relativePose.ty(), relativePose.tz()),
+            floatArrayOf(
+                relativePose.qx(), relativePose.qy(), relativePose.qz(), relativePose.qw(),
+            ),
+            System.nanoTime(),
         )
+    }
+
+    internal fun broadcastLocalPose(
+        translation: FloatArray,
+        quaternion: FloatArray,
+        timestampNanos: Long,
+    ) {
+        if (!started) return
+        if (!poseRateLimiter.shouldEmit(timestampNanos)) return
         enqueue(
             OUTBOX_POSE,
-            CollaborativeWireFormat.pose(localPeerId, System.currentTimeMillis(), t, q),
+            CollaborativeWireFormat.pose(
+                localPeerId,
+                System.currentTimeMillis(),
+                translation,
+                quaternion,
+            ),
         )
     }
 
@@ -433,31 +446,59 @@ public constructor(
         scale: FloatArray = floatArrayOf(1f, 1f, 1f),
     ) {
         if (!started) return
-        // Reflect the local placement into our own state so placedNodes is a
-        // complete picture (it would otherwise only contain remote nodes —
-        // CollaborativeState ignores self-originated messages).
-        val placed = PlacedNode(nodeKey, modelKey, translation, quaternion, scale, localPeerId)
+        // Reflect the placement immediately; applyLocal bypasses the inbound
+        // self-message filter while sharing the exact same merge policy.
         synchronized(stateLock) {
-            // This write is now the latest one this device has seen for the
-            // key: drop the copy a peer wrote earlier, which would otherwise
-            // keep shadowing it locally while every peer gets the new one.
-            state.removeNode(nodeKey)
-            localNodes[nodeKey] = placed
+            val logicalClock = state.nextNodeClock(nodeKey)
+            val message = CollaborativeMessage.NodeState(
+                localPeerId,
+                nodeKey,
+                modelKey,
+                translation,
+                quaternion,
+                scale,
+                logicalClock,
+            )
+            state.applyLocal(message)
             publishNodes()
+            enqueue(
+                OUTBOX_NODE_PREFIX + nodeKey,
+                CollaborativeWireFormat.node(
+                    localPeerId,
+                    nodeKey,
+                    modelKey,
+                    translation,
+                    quaternion,
+                    scale,
+                    logicalClock,
+                ),
+            )
         }
-        enqueue(
-            OUTBOX_NODE_PREFIX + nodeKey,
-            CollaborativeWireFormat.node(
-                localPeerId, nodeKey, modelKey, translation, quaternion, scale,
-            ),
-        )
+    }
+
+    /**
+     * Removes the node identified by [nodeKey] from every peer's shared scene.
+     *
+     * The removal is broadcast as an ordered tombstone, so an older delayed
+     * placement cannot make the node reappear. A later [placeNode] for the same
+     * key has a greater logical clock and places it again.
+     */
+    public fun removeNode(nodeKey: String) {
+        if (!started) return
+        synchronized(stateLock) {
+            val logicalClock = state.nextNodeClock(nodeKey)
+            state.applyLocal(CollaborativeMessage.NodeRemoval(localPeerId, nodeKey, logicalClock))
+            publishNodes()
+            enqueue(
+                OUTBOX_NODE_PREFIX + nodeKey,
+                CollaborativeWireFormat.removeNode(localPeerId, nodeKey, logicalClock),
+            )
+        }
     }
 
     // ── Internals ─────────────────────────────────────────────────────────
 
     private class Inbound(val peerId: String, val bytes: ByteArray)
-
-    private val localNodes = LinkedHashMap<String, PlacedNode>()
 
     private fun onTransportMessage(peerId: String, bytes: ByteArray) {
         // Queued, never merged on the transport's thread: the reader loop is
@@ -488,8 +529,6 @@ public constructor(
         }
         synchronized(stateLock) {
             if (!state.apply(message)) return
-            // The peer's write is now the latest one seen for that key.
-            if (message is CollaborativeMessage.NodeState) localNodes.remove(message.nodeKey)
             publishParticipants()
             publishNodes()
             state.sharedAnchor?.let { _sharedCloudAnchorId = it.cloudAnchorId }
@@ -501,10 +540,7 @@ public constructor(
     }
 
     private fun publishNodes() {
-        // A key lives on exactly one side — placeNode drops the peer's copy,
-        // an applied peer write drops the local one — so the union holds the
-        // last write this device has seen for every key.
-        _placedNodes = localNodes.values + state.placedNodes
+        _placedNodes = state.placedNodes
     }
 
     /**
@@ -527,14 +563,6 @@ public constructor(
         if (pending.hasNext()) pending.next().also { pending.remove() } else null
     }
 
-    private fun shouldEmitPose(timestampNanos: Long): Boolean {
-        if (minPoseIntervalNanos <= 0L) return true
-        val delta = timestampNanos - lastPoseEmitNanos
-        if (delta < minPoseIntervalNanos) return false
-        lastPoseEmitNanos = timestampNanos
-        return true
-    }
-
     private fun logWarning(msg: String) {
         try { Log.w(tag, msg) } catch (_: RuntimeException) { /* unit test stub */ }
     }
@@ -550,5 +578,20 @@ public constructor(
      */
     internal fun testOnlyReceive(peerId: String, line: String) {
         onTransportMessage(peerId, line.toByteArray(Charsets.UTF_8))
+    }
+}
+
+internal class PoseRateLimiter(private val minIntervalNanos: Long) {
+    private var lastEmitNanos: Long? = null
+
+    @Synchronized
+    fun shouldEmit(timestampNanos: Long): Boolean {
+        val previous = lastEmitNanos
+        val insideInterval = previous != null && timestampNanos - previous < minIntervalNanos
+        if (minIntervalNanos > 0L && insideInterval) {
+            return false
+        }
+        lastEmitNanos = timestampNanos
+        return true
     }
 }

@@ -23,7 +23,9 @@ package io.github.sceneview.ar.collaborative
  * {"type":"anchor", "peer":"<id>", "id":"<cloudAnchorId>", "name":"<key>"}
  * {"type":"pose",   "peer":"<id>", "t":<epochMs>, "translation":[x,y,z], "quaternion":[x,y,z,w]}
  * {"type":"node",   "peer":"<id>", "node":"<key>", "model":"<key>",
- *                   "translation":[x,y,z], "quaternion":[x,y,z,w], "scale":[x,y,z]}
+ *                   "translation":[x,y,z], "quaternion":[x,y,z,w], "scale":[x,y,z],
+ *                   "clock":<counter>}
+ * {"type":"remove", "peer":"<id>", "node":"<key>", "clock":<counter>}
  * {"type":"bye",    "peer":"<id>"}
  * ```
  *
@@ -36,7 +38,11 @@ package io.github.sceneview.ar.collaborative
  *   anchor's local space** so it is directly comparable across devices.
  * - `node` — a placed object's transform, again in shared-anchor space. The
  *   `model` field is an app-defined key telling the receiver which asset to
- *   instantiate. Conflict policy is last-writer-wins per `node` key.
+ *   instantiate. Conflict policy is last-writer-wins per `node` key, ordered
+ *   by the `clock` counter and then `peer` id. A missing `clock` from an older
+ *   peer is read as zero.
+ * - `remove` — a tombstone for a placed node, ordered like `node` so delayed
+ *   placements cannot resurrect it.
  *
  * All coordinates are in the shared anchor's local space. The translation /
  * quaternion / scale ordering matches ARCore's `Pose` (`[x,y,z]` translation,
@@ -52,6 +58,7 @@ public object CollaborativeWireFormat {
     public const val TYPE_ANCHOR: String = "anchor"
     public const val TYPE_POSE: String = "pose"
     public const val TYPE_NODE: String = "node"
+    public const val TYPE_REMOVE: String = "remove"
     public const val TYPE_BYE: String = "bye"
 
     // ── Encoders ──────────────────────────────────────────────────────────
@@ -146,10 +153,32 @@ public object CollaborativeWireFormat {
         translation: FloatArray,
         quaternion: FloatArray,
         scale: FloatArray,
+    ): String = node(peerId, nodeKey, modelKey, translation, quaternion, scale, 0L)
+
+    /**
+     * Encodes a versioned `node` message for deterministic last-writer-wins.
+     *
+     * @param peerId       the peer that placed / moved the node.
+     * @param nodeKey      app-defined unique key for the placed node.
+     * @param modelKey     app-defined key for the model asset to instantiate.
+     * @param translation  `[x,y,z]` translation in shared-anchor space.
+     * @param quaternion   `[x,y,z,w]` rotation in shared-anchor space.
+     * @param scale        `[x,y,z]` scale.
+     * @param logicalClock per-key Lamport counter for last-writer-wins order.
+     */
+    public fun node(
+        peerId: String,
+        nodeKey: String,
+        modelKey: String,
+        translation: FloatArray,
+        quaternion: FloatArray,
+        scale: FloatArray,
+        logicalClock: Long,
     ): String {
         require(translation.size == 3) { "translation must have 3 components" }
         require(quaternion.size == 4) { "quaternion must have 4 components" }
         require(scale.size == 3) { "scale must have 3 components" }
+        require(logicalClock >= 0L) { "logicalClock must not be negative" }
         return buildString(224) {
             append('{')
             appendField("type", TYPE_NODE)
@@ -165,6 +194,30 @@ public object CollaborativeWireFormat {
             appendVec("quaternion", quaternion)
             append(',')
             appendVec("scale", scale)
+            append(",\"clock\":")
+            append(logicalClock)
+            append("}\n")
+        }
+    }
+
+    /**
+     * Encodes a `remove` tombstone for a placed node.
+     *
+     * @param peerId the peer that removed the node.
+     * @param nodeKey app-defined key of the node to remove.
+     * @param logicalClock per-key Lamport counter for last-writer-wins order.
+     */
+    public fun removeNode(peerId: String, nodeKey: String, logicalClock: Long): String {
+        require(logicalClock >= 0L) { "logicalClock must not be negative" }
+        return buildString(96) {
+            append('{')
+            appendField("type", TYPE_REMOVE)
+            append(',')
+            appendField("peer", peerId)
+            append(',')
+            appendField("node", nodeKey)
+            append(",\"clock\":")
+            append(logicalClock)
             append("}\n")
         }
     }
@@ -193,6 +246,7 @@ public object CollaborativeWireFormat {
             TYPE_ANCHOR -> parseAnchor(trimmed, peer)
             TYPE_POSE -> parsePose(trimmed, peer)
             TYPE_NODE -> parseNode(trimmed, peer)
+            TYPE_REMOVE -> parseRemoval(trimmed, peer)
             else -> null
         }
     }
@@ -222,7 +276,9 @@ public object CollaborativeWireFormat {
         val nodeKey = stringField(line, "node")
         val modelKey = stringField(line, "model")
         val transform = parseTransform(line) ?: return null
+        val logicalClock = longField(line, "clock") ?: 0L
         if (nodeKey == null || modelKey == null) return null
+        if (logicalClock < 0L) return null
         return CollaborativeMessage.NodeState(
             peerId = peer,
             nodeKey = nodeKey,
@@ -230,7 +286,15 @@ public object CollaborativeWireFormat {
             translation = transform.translation,
             quaternion = transform.quaternion,
             scale = transform.scale,
+            logicalClock = logicalClock,
         )
+    }
+
+    private fun parseRemoval(line: String, peer: String): CollaborativeMessage? {
+        val nodeKey = stringField(line, "node") ?: return null
+        val logicalClock = longField(line, "clock") ?: return null
+        if (logicalClock < 0L) return null
+        return CollaborativeMessage.NodeRemoval(peer, nodeKey, logicalClock)
     }
 
     /** A `translation`/`quaternion`/`scale` triple parsed off one line. */

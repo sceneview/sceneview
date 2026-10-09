@@ -86,8 +86,8 @@ public sealed interface CollaborativeMessage {
     /**
      * The transform of a placed object, in shared-anchor local space.
      *
-     * Conflict policy is **last-writer-wins** keyed on [nodeKey]: a later
-     * `NodeState` for the same key fully replaces the earlier one.
+     * Conflict policy is **last-writer-wins** keyed on [nodeKey]: the greatest
+     * ([logicalClock], [peerId]) pair wins, independent of delivery order.
      *
      * @param nodeKey     app-defined unique key for the placed node.
      * @param modelKey    app-defined key for the model asset to instantiate.
@@ -97,14 +97,17 @@ public sealed interface CollaborativeMessage {
      * @param translation `[x,y,z]` translation in shared-anchor space.
      * @param quaternion  `[x,y,z,w]` rotation in shared-anchor space.
      * @param scale       `[x,y,z]` scale.
+     * @param logicalClock per-key Lamport counter used to order concurrent
+     *   writes. A peer id breaks ties between equal counters.
      */
-    public data class NodeState(
+    public data class NodeState @JvmOverloads constructor(
         override val peerId: String,
         public val nodeKey: String,
         public val modelKey: String,
         public val translation: FloatArray,
         public val quaternion: FloatArray,
         public val scale: FloatArray,
+        public val logicalClock: Long = 0L,
     ) : CollaborativeMessage {
 
         override fun equals(other: Any?): Boolean {
@@ -115,7 +118,8 @@ public sealed interface CollaborativeMessage {
                 modelKey == other.modelKey &&
                 translation.contentEquals(other.translation) &&
                 quaternion.contentEquals(other.quaternion) &&
-                scale.contentEquals(other.scale)
+                scale.contentEquals(other.scale) &&
+                logicalClock == other.logicalClock
         }
 
         override fun hashCode(): Int {
@@ -125,9 +129,25 @@ public sealed interface CollaborativeMessage {
             result = 31 * result + translation.contentHashCode()
             result = 31 * result + quaternion.contentHashCode()
             result = 31 * result + scale.contentHashCode()
+            result = 31 * result + logicalClock.hashCode()
             return result
         }
     }
+
+    /**
+     * A tombstone removing a placed object from the shared scene.
+     *
+     * The tombstone participates in the same last-writer-wins order as
+     * [NodeState], so an older placement cannot resurrect a removed node.
+     *
+     * @param nodeKey app-defined key of the node to remove.
+     * @param logicalClock per-key Lamport counter used to order the removal.
+     */
+    public data class NodeRemoval(
+        override val peerId: String,
+        public val nodeKey: String,
+        public val logicalClock: Long,
+    ) : CollaborativeMessage
 }
 
 /**

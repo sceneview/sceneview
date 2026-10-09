@@ -286,6 +286,75 @@ class CollaborativeSessionTest {
     }
 
     @Test
+    fun `simultaneous writes to one key converge on both sessions`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        alice.placeNode(
+            "shared", "chair", floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+        )
+        bob.placeNode(
+            "shared", "lamp", floatArrayOf(2f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+        )
+        advanceUntilIdle()
+
+        assertEquals("bob", alice.placedNodes.single().ownerPeerId)
+        assertEquals(alice.placedNodes, bob.placedNodes)
+    }
+
+    @Test
+    fun `removeNode broadcasts a tombstone and a stale placement cannot restore it`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        alice.placeNode(
+            "shared", "chair", floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+        )
+        advanceUntilIdle()
+        bob.removeNode("shared")
+        advanceUntilIdle()
+        assertTrue(alice.placedNodes.isEmpty())
+        assertTrue(bob.placedNodes.isEmpty())
+
+        alice.testOnlyReceive(
+            "bob",
+            CollaborativeWireFormat.node(
+                "bob", "shared", "chair",
+                floatArrayOf(1f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
+                floatArrayOf(1f, 1f, 1f), logicalClock = 1L,
+            ),
+        )
+        advanceUntilIdle()
+        assertTrue(alice.placedNodes.isEmpty())
+    }
+
+    @Test
+    fun `broadcastLocalPose uses the configured rate limit`() = runTest {
+        val hub = LoopbackCollaborativeTransport.LoopbackHub()
+        val alice = session(hub.join("alice"), "Alice")
+        val bob = session(hub.join("bob"), "Bob")
+        alice.start(); bob.start()
+        advanceUntilIdle()
+
+        val identity = floatArrayOf(0f, 0f, 0f, 1f)
+        alice.broadcastLocalPose(floatArrayOf(1f, 0f, 0f), identity, 1_000_000_000L)
+        advanceUntilIdle()
+        alice.broadcastLocalPose(floatArrayOf(2f, 0f, 0f), identity, 1_050_000_000L)
+        advanceUntilIdle()
+        assertEquals(1f, bob.participants.first { it.id == "alice" }.translation!![0], 0f)
+
+        alice.broadcastLocalPose(floatArrayOf(3f, 0f, 0f), identity, 1_100_000_000L)
+        advanceUntilIdle()
+        assertEquals(3f, bob.participants.first { it.id == "alice" }.translation!![0], 0f)
+    }
+
+    @Test
     fun `inbound writes to one key apply in arrival order`() = runTest {
         val hub = LoopbackCollaborativeTransport.LoopbackHub()
         val carol = session(hub.join("carol"), "Carol")
@@ -298,6 +367,7 @@ class CollaborativeSessionTest {
                     "alice", "k", "chair",
                     floatArrayOf(i.toFloat(), 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f),
                     floatArrayOf(1f, 1f, 1f),
+                    logicalClock = i.toLong(),
                 ),
             )
         }

@@ -3030,9 +3030,11 @@ class CollaborativeSession {
     fun resolve(engine: Engine, session: Session, cloudAnchorId: String,
                 onResolved: ((node: CloudAnchorNode?) -> Unit)? = null)
     fun onFrame(frame: Frame)                         // call from onSessionUpdated — broadcasts camera pose
+    fun broadcastLocalPose(relativePose: Pose)        // same rate limit, for non-ARCore hosts/tests
     fun placeNode(nodeKey: String, modelKey: String,
                   translation: FloatArray, quaternion: FloatArray,
                   scale: FloatArray = floatArrayOf(1f, 1f, 1f))
+    fun removeNode(nodeKey: String)                   // ordered tombstone; prevents stale resurrection
 }
 ```
 
@@ -3054,9 +3056,9 @@ fun MultiplayerARScreen() {
 }
 ```
 
-- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — a node key holds the last write the device has seen (`PlacedNode`), a peer's or its own: `placeNode` on an existing key moves that node, including one a peer placed. Messages carry no logical clock, so two peers writing the *same* key at the same moment are not ordered — prefix node keys with the peer id when several users may move things at once. Stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` never block, so they are safe in the AR render callback: only camera poses are conflated (the newest wins), while a placement, the anchor id and the hello are never dropped by a later line. `broadcastLocalPose(Pose)` is not rate-limited — only `onFrame` honours `poseRateHz`. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
+- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `remove` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. `node` lines carry an optional trailing `clock` counter (missing means `0` for compatibility); `remove` is an ordered tombstone. All transforms are in the shared anchor's local space so they are comparable across devices.
+- **Conflict policy** — placements and removals use deterministic last-writer-wins per node key, ordered by `(clock, peerId)`. Each local write increments that key's Lamport counter; the peer id breaks simultaneous-write ties, so every delivery order converges. `removeNode` retains a tombstone so a delayed older placement cannot resurrect the node; a later `placeNode` can place it again. Stale poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`broadcastLocalPose`/`placeNode`/`removeNode` never block, so they are safe in the render callback: camera poses are rate-limited by `poseRateHz` and conflated (the newest wins), while node-key state, the anchor id and the hello each retain an outbox slot. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.
