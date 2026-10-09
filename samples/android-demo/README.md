@@ -92,6 +92,7 @@ adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainA
 |---|---|---|
 | `ar-cloud-anchor` | `placing` `mapping` `ready_to_host` `hosting` `hosted` `host_failed` `resolve_empty` `resolve_ready` `resolving` `resolved` `resolve_not_found` `api_key_missing` `api_key_rejected` `no_network` (case- and separator-insensitive) | `cloudAnchorScenarioOf` |
 | `point-and-ask` | `checking` `downloadable` `downloading` `unsupported` `ready` `capturing` `thinking` `streaming` `answered` `failed` `failed-persistent` | `askStepForQaOverride` (`ASK_QA_STATE_IDS`) |
+| home (no `demo` extra) | `hero_still` — the still the hero stage shows where Filament cannot run (legacy guest SwiftShader, #4411), instead of the live flight | `HERO_STILL_QA_STATE` (`HomeHeroScene`) |
 
 ## Requirements
 

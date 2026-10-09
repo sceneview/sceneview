@@ -99,7 +99,9 @@ object DemoSettings {
      *  - Cloud Anchors: [io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf]
      *    (`placing`, `hosted`, `resolve_not_found`, …);
      *  - Point & Ask: [io.github.sceneview.demo.ai.askStepForQaOverride], ids listed in
-     *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …).
+     *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …);
+     *  - Home: [io.github.sceneview.demo.ui.home.HERO_STILL_QA_STATE] (`hero_still`), the
+     *    still its stage shows on a renderer Filament cannot run on (#4411).
      *
      * Set only through [io.github.sceneview.demo.DeepLinkRouter.resolveQaState], which
      * returns `null` unless [qaMode] is on, and only read where
