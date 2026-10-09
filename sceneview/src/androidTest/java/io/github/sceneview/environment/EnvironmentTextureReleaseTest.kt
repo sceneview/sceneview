@@ -43,6 +43,9 @@ import java.nio.ByteBuffer
  * leaked cubemap. The question is always asked before anything else is created, so a recycled
  * address cannot answer for a dead texture.
  *
+ * It has to be a second wrapper: `Engine.destroyTexture` clears the wrapper it is given, and
+ * asking anything of a cleared wrapper throws instead of answering `false`.
+ *
  * [canary_aDroppedCubemapIsSeenByTheProbe] builds an environment the way the factories did before
  * the fix and asserts the probe reports the leak — if a Filament upgrade ever turned
  * `isValidTexture` into a constant, that test fails instead of every other one passing on a dead
@@ -125,7 +128,6 @@ class EnvironmentTextureReleaseTest {
             engine.safeDestroyEnvironment(environment)
 
             assertEquals("cubemaps still in the engine", 0, aliveAmong(cubemaps))
-            assertFalse(engine.isValidIndirectLight(checkNotNull(environment.indirectLight)))
         }
     }
 
@@ -237,6 +239,7 @@ class EnvironmentTextureReleaseTest {
     fun canary_aDroppedCubemapIsSeenByTheProbe() {
         onMain {
             val dropped = mutableListOf<Texture>()
+            val probes = mutableListOf<Texture>()
             var leaked = 0
             repeat(SWAPS) {
                 // The factories before #4358: the light is kept, the bundle's cubemap is not.
@@ -245,15 +248,16 @@ class EnvironmentTextureReleaseTest {
                 val cubemaps = cubemapsOf(environment)
                 engine.safeDestroyEnvironment(environment)
                 leaked += aliveAmong(cubemaps)
+                probes += cubemaps
                 bundle.cubemap?.let { dropped += it }
             }
             try {
                 assertEquals("the probe no longer sees a dropped cubemap", SWAPS, leaked)
-                assertTrue(dropped.all { engine.isValidTexture(it) })
+                assertEquals("dropped cubemaps all still in the engine", SWAPS, aliveAmong(probes))
             } finally {
                 dropped.forEach { engine.safeDestroyTexture(it) }
             }
-            assertEquals(0, aliveAmong(dropped))
+            assertEquals(0, aliveAmong(probes))
         }
     }
 
@@ -269,12 +273,13 @@ class EnvironmentTextureReleaseTest {
                 indirectLight = bundle.indirectLight,
                 skybox = null,
             )
+            val probe = cubemapsOf(environment).single()
 
             engine.safeDestroyEnvironment(environment)
-            assertTrue("a texture the caller owns was destroyed", engine.isValidTexture(cubemap))
+            assertTrue("a texture the caller owns was destroyed", engine.isValidTexture(probe))
 
             engine.safeDestroyTexture(cubemap)
-            assertFalse(engine.isValidTexture(cubemap))
+            assertFalse(engine.isValidTexture(probe))
         }
     }
 }
