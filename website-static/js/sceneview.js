@@ -445,6 +445,26 @@
     return v + 1;
   }
 
+  /** What a load rejects with when dispose() overtook it: an `AbortError`, as fetch does. */
+  function _disposedError() {
+    var e = new Error('SceneView: the viewer was disposed');
+    e.name = 'AbortError';
+    return e;
+  }
+
+  /** Stop a hidden <video> created by createVideo() and take it out of the page. */
+  function _releaseVideo(video) {
+    video.pause();
+    video.src = '';
+    if (video.parentNode) video.parentNode.removeChild(video);
+  }
+
+  /** Same test as Filament.js: these external resources are fetched as textures. */
+  function _isTextureUri(uri) {
+    return uri.endsWith('.png') || uri.endsWith('.ktx2') ||
+      uri.endsWith('.jpg') || uri.endsWith('.jpeg');
+  }
+
   // ---------------------------------------------------------------
   // Background colour
   // ---------------------------------------------------------------
@@ -519,7 +539,7 @@
    * SceneView instance — wraps Filament engine, scene, camera, renderer.
    */
   class SceneViewInstance {
-    constructor(canvas, engine, scene, renderer, view, swapChain, camera, cameraEntity, loader) {
+    constructor(canvas, engine, scene, renderer, view, swapChain, camera, cameraEntity, loader, materials) {
       this._canvas = canvas;
       this._engine = engine;
       this._scene = scene;
@@ -529,7 +549,16 @@
       this._camera = camera;
       this._cameraEntity = cameraEntity;
       this._loader = loader;
+      this._materials = materials; // gltfio material provider behind the loader
       this._asset = null;
+
+      // Native lifetime (#4366): everything dispose() has to release or cancel.
+      this._disposed = false;
+      this._abort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      this._assets = new Set();         // every live gltfio asset created by this viewer
+      this._resourceLoads = new Map();  // asset -> its running resource load (see _loadResources)
+      this._ibl = null;                 // { light, ktx } currently set on the scene
+      this._loadingVideos = new Map();  // <video> still loading (createVideo) -> its reject()
       this._angle = 0.785; // Start at ~45° like model-viewer
       this._autoRotate = true;
       this._orbitRadius = 3.5;
@@ -592,7 +621,6 @@
       // default); 'onDemand' parks the loop once nothing moves (see _isIdle) and
       // requestRender() wakes it. Both share the single loop below and its visibility gate.
       this._renderMode = "continuous";
-      this._pendingLoads = 0; // glTF texture decodes still landing (loadResources)
       this._animationDone = false; // a non-looping animation reached its last frame
       this._frameCallbacks = new Set(); // onFrame() listeners
       this._renderRequested = false; // requestRender() landed while the loop was live
@@ -607,7 +635,10 @@
     // Model loading (existing)
     // ---------------------------------------------------------------
 
-    /** Load a glTF/GLB model from URL */
+    /**
+     * Load a glTF/GLB model from URL. The model it replaces is destroyed.
+     * Rejects with an `AbortError` when the viewer is disposed before the model arrives.
+     */
     loadModel(url) {
       var self = this;
       return new Promise(function(resolve, reject) {
@@ -617,19 +648,20 @@
         // playground.html, web.html) keep their current behaviour — but bare
         // callers (the two showcase pages) no longer get a dead blank canvas.
         function fail(e) {
-          self._showLoadFallback(url);
+          // A disposed viewer has no canvas to paint on: just report the abort.
+          if (!self._disposed) self._showLoadFallback(url);
           reject(e);
         }
-        fetch(url)
+        self._fetch(url)
           .then(function(resp) {
             if (!resp.ok) throw new Error('HTTP ' + resp.status + ' loading ' + url);
             return resp.arrayBuffer();
           })
           .then(function(buffer) {
-            Filament.assets = Filament.assets || {};
-            Filament.assets[url] = new Uint8Array(buffer);
+            // Disposed while the bytes were on their way: drop them (#4366).
+            if (self._disposed) throw _disposedError();
             try {
-              self._showModel(url);
+              self._showModel(url, new Uint8Array(buffer));
               self._hideLoadFallback();  // clear any prior-failure placeholder
               resolve(self);
             } catch (e) {
@@ -660,14 +692,14 @@
       this._fallbackEl = null;
     }
 
-    _showModel(url) {
-      // Remove previous model
+    _showModel(url, data) {
+      // Destroy the previous model. Taking it off the scene alone kept its buffers,
+      // textures and material instances alive for the life of the engine (#4366).
       if (this._asset) {
-        try {
-          this._asset.getRenderableEntities().forEach(function(e) { this._scene.remove(e); }.bind(this));
-          this._scene.remove(this._asset.getRoot());
-        } catch (e) { /* ignore cleanup errors */ }
+        var previous = this._asset;
         this._asset = null;
+        this._animator = null;
+        this._destroyAsset(previous);
       }
       // Also remove any primitives added by createBox/Sphere/Cylinder — otherwise
       // they'd linger on top of the newly loaded model.
@@ -682,22 +714,21 @@
         this._primitiveAssets = [];
       }
 
-      var data = Filament.assets[url];
+      // The bytes come from loadModel(); a caller of this private method may still
+      // have put them in the global Filament.assets map, as it had to before #4366.
+      data = data || (Filament.assets && Filament.assets[url]);
       if (!data) throw new Error('Failed to fetch model: ' + url);
-
-      var asset = this._loader.createAsset(data);
-      if (!asset) throw new Error('Failed to parse model: ' + url);
 
       // gltfio decodes textures asynchronously, one every 30 ms, after this call
       // returns: until onDone, a frame shows the geometry with no material
       // (a black silhouette). Redraw once they have all landed, so a viewer
       // parked off-screen does not keep that frame (#3690).
-      // The pending count keeps an 'onDemand' loop awake until the decode finishes.
-      this._pendingLoads++;
-      asset.loadResources(() => {
-        this._pendingLoads = Math.max(0, this._pendingLoads - 1);
+      // The running load keeps an 'onDemand' loop awake until the decode finishes.
+      var asset = this._createAsset(data, () => {
         if (this._asset === asset) this.requestRender();
       });
+      if (!asset) throw new Error('Failed to parse model: ' + url);
+
       this._scene.addEntity(asset.getRoot());
       this._scene.addEntities(asset.getRenderableEntities());
       this._asset = asset;
@@ -932,6 +963,11 @@
      * True when an 'onDemand' loop has nothing left to animate.
      * @private
      */
+    /** glTF resource loads (texture decodes) still running. @private */
+    get _pendingLoads() {
+      return this._resourceLoads.size;
+    }
+
     _isIdle() {
       if (this._autoRotate || this._isDragging) return false;
       if (this._velocityAngle !== 0 || this._velocityHeight !== 0) return false;
@@ -963,20 +999,20 @@
      *
      * @param {string} url - URL to a KTX IBL file
      * @param {number} [intensity=40000] - Light intensity
-     * @returns {Promise<SceneViewInstance>} this (for chaining)
+     * @returns {Promise<SceneViewInstance>} this (for chaining); rejects with an
+     *   `AbortError` when the viewer is disposed before the environment arrives
      */
     loadEnvironment(url, intensity) {
       var self = this;
-      return fetch(url)
+      return this._fetch(url)
         .then(function(r) {
           if (!r.ok) throw new Error('HTTP ' + r.status);
           return r.arrayBuffer().then(function(ab) { return new Uint8Array(ab); });
         })
         .then(function(buffer) {
+          if (self._disposed) throw _disposedError();
           try {
-            var ibl = self._engine.createIblFromKtx1(buffer);
-            ibl.setIntensity(intensity || 40000);
-            self._scene.setIndirectLight(ibl);
+            self._setKtxEnvironment(buffer, intensity || 40000);
             _log('SceneView: Environment loaded (' + Math.round(buffer.length / 1024) + 'KB)');
           } catch (e) {
             console.warn('SceneView: loadEnvironment failed', e);
@@ -998,7 +1034,7 @@
           .irradiance(3, bands)
           .intensity(intensity || 45000)
           .build(this._engine);
-        this._scene.setIndirectLight(ibl);
+        this._setIndirectLight(ibl);
       } catch (e) {
         console.warn('SceneView: setEnvironmentSH failed', e);
       }
@@ -1210,7 +1246,7 @@
       var billboard = options.billboard || false;
       var opacity = options.opacity !== undefined ? options.opacity : 1.0;
 
-      return fetch(url)
+      return this._fetch(url)
         .then(function(resp) {
           if (!resp.ok) throw new Error('Failed to load image: ' + url + ' (HTTP ' + resp.status + ')');
           return resp.blob();
@@ -1288,8 +1324,14 @@
         video.style.display = 'none';
         document.body.appendChild(video);
 
+        // Until its first frame is decoded the element belongs to no node: track it
+        // so dispose() can stop the download and take it out of the page (#4366).
+        self._loadingVideos.set(video, reject);
+
         video.addEventListener('loadeddata', function onLoaded() {
           video.removeEventListener('loadeddata', onLoaded);
+          // dispose() already released the element and rejected the promise.
+          if (!self._loadingVideos.delete(video)) return;
 
           // Create a canvas to capture video frames
           var vw = _nextPow2(video.videoWidth || 640);
@@ -1630,6 +1672,7 @@
         newTex.setImage(this._engine, 0, pb);
 
         // Update the material instance's texture
+        var rebound = false;
         try {
           var renderables = nodeInfo.asset.getRenderableEntities();
           if (renderables.length > 0) {
@@ -1643,6 +1686,7 @@
                 Filament.WrapMode.CLAMP_TO_EDGE
               )
             );
+            rebound = true;
           }
         } catch (e) {
           // Material parameter name may differ — try alternatives
@@ -1659,10 +1703,16 @@
                   Filament.WrapMode.CLAMP_TO_EDGE
                 )
               );
+              rebound = true;
             }
           } catch (e2) { /* texture update failed silently */ }
         }
 
+        // The material samples the new texture: the one it replaces is no longer
+        // referenced and would otherwise live as long as the engine (#4366).
+        if (rebound && nodeInfo.texture) {
+          try { this._engine.destroyTexture(nodeInfo.texture); } catch (e3) { /* ignore */ }
+        }
         nodeInfo.texture = newTex;
         nodeInfo.texWidth = width;
         nodeInfo.texHeight = height;
@@ -1704,14 +1754,18 @@
       var quadKey = '__sv_quad_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
       return new Promise(function(resolve, reject) {
+        // An image or a video frame that arrives after dispose() has no engine left.
+        if (self._disposed) {
+          reject(_disposedError());
+          return;
+        }
         try {
           // Load the quad GLB through the asset loader
-          var asset = self._loader.createAsset(self._quadGLB);
+          var asset = self._createAsset(self._quadGLB);
           if (!asset) {
             reject(new Error('SceneView: Failed to create quad asset'));
             return;
           }
-          asset.loadResources();
 
           var rootEntity = asset.getRoot();
           self._scene.addEntity(rootEntity);
@@ -1829,40 +1883,255 @@
         return;
       }
 
+      if (!this._mediaNodes.has(entity)) return;
+      this._releaseMediaNode(entity);
+      this.requestRender();
+    }
+
+    /**
+     * Take a text, image or video node off the scene and free what it owns: the
+     * `<video>` element, the quad asset, then the texture its material sampled.
+     * @private
+     */
+    _releaseMediaNode(entity) {
       var nodeInfo = this._mediaNodes.get(entity);
       if (!nodeInfo) return;
+      this._mediaNodes.delete(entity);
+      this._billboards.delete(entity);
 
-      // Remove from scene
-      if (nodeInfo.asset) {
-        try {
-          nodeInfo.asset.getRenderableEntities().forEach(function(e) {
-            this._scene.remove(e);
-          }.bind(this));
-          this._scene.remove(nodeInfo.asset.getRoot());
-        } catch (e) { /* ignore */ }
-      }
-
-      // Clean up video element if present
       var vInfo = this._videoElements.get(entity);
       if (vInfo) {
-        vInfo.video.pause();
-        vInfo.video.src = '';
-        if (vInfo.video.parentNode) vInfo.video.parentNode.removeChild(vInfo.video);
+        _releaseVideo(vInfo.video);
         this._videoElements.delete(entity);
       }
 
-      // Remove from tracking
-      this._billboards.delete(entity);
-      this._mediaNodes.delete(entity);
-      this.requestRender();
+      // The asset first: its material instance still references the texture.
+      this._destroyAsset(nodeInfo.asset);
+      if (nodeInfo.texture) {
+        try { this._engine.destroyTexture(nodeInfo.texture); } catch (e) { /* ignore */ }
+        nodeInfo.texture = null;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Native resource lifetime (#4366)
+    // ---------------------------------------------------------------
+
+    /** fetch() tied to this viewer: dispose() aborts it. @private */
+    _fetch(url) {
+      return this._abort ? fetch(url, { signal: this._abort.signal }) : fetch(url);
+    }
+
+    /**
+     * Parse a glTF/GLB into a gltfio asset, start loading its resources, and track it
+     * so dispose() can destroy it. Returns null when the bytes do not parse.
+     * @private
+     */
+    _createAsset(data, onLoaded) {
+      var asset = this._loader.createAsset(data);
+      if (!asset) return null;
+      this._assets.add(asset);
+      this._loadResources(asset, onLoaded);
+      return asset;
+    }
+
+    /**
+     * Load an asset's buffers and textures, as `asset.loadResources()` does in
+     * Filament.js (same providers, same 30 ms decode tick, same `Filament.assets`
+     * lookup for external URIs, resolved against the page), but with the loader and
+     * its timer kept on the instance. Filament.js keeps both in a closure: nothing
+     * could stop them, so they went on ticking on a destroyed engine after dispose().
+     * @private
+     */
+    _loadResources(asset, onDone) {
+      var self = this;
+      var job = {
+        cancelled: false,
+        timer: null,
+        loader: new Filament.gltfio$ResourceLoader(this._engine, true),
+        stb: new Filament.gltfio$StbProvider(this._engine),
+        ktx2: new Filament.gltfio$Ktx2Provider(this._engine)
+      };
+      job.loader.addStbProvider('image/jpeg', job.stb);
+      job.loader.addStbProvider('image/png', job.stb);
+      job.loader.addKtx2Provider('image/ktx2', job.ktx2);
+      this._resourceLoads.set(asset, job);
+
+      // External resources (a .gltf with separate .bin / images), keyed by absolute URI.
+      var relativeUris = {};
+      var textureUris = [];
+      var bufferUris = [];
+      asset.getResourceUris().forEach(function(relativeUri) {
+        var absoluteUri = '' + new URL(relativeUri, document.location);
+        if (!(absoluteUri in relativeUris)) {
+          (_isTextureUri(relativeUri) ? textureUris : bufferUris).push(absoluteUri);
+        }
+        relativeUris[absoluteUri] = relativeUri;
+      });
+
+      function addResource(absoluteUri) {
+        if (job.cancelled) return;
+        var buffer = Filament.Buffer(Filament.assets[absoluteUri]);
+        job.loader.addResourceData(relativeUris[absoluteUri], buffer);
+        buffer.delete();
+      }
+
+      function decode() {
+        if (job.cancelled) return;
+        job.loader.asyncBeginLoad(asset);
+        // One PNG/JPEG decode per tick, in the wasm layer.
+        job.timer = setInterval(function() {
+          job.loader.asyncUpdateLoad();
+          if (job.loader.asyncGetLoadProgress() >= 1) {
+            self._endResourceLoad(asset);
+            if (onDone) onDone();
+          }
+        }, 30);
+      }
+
+      // Decoding starts once every buffer is there; textures may land while it runs.
+      if (bufferUris.length === 0) decode();
+      else Filament.fetch(bufferUris, decode, addResource);
+      Filament.fetch(textureUris, null, addResource);
+    }
+
+    /**
+     * Stop an asset's resource load, finished or not, and free its loader.
+     * @private
+     */
+    _endResourceLoad(asset) {
+      var job = this._resourceLoads.get(asset);
+      if (!job) return;
+      this._resourceLoads.delete(asset);
+      job.cancelled = true;
+      if (job.timer !== null) clearInterval(job.timer);
+      job.loader.delete();
+      job.stb.delete();
+      job.ktx2.delete();
+    }
+
+    /**
+     * Destroy a gltfio asset created by this viewer: stop its load, take its
+     * entities off the scene, then free its entities, buffers, textures and material
+     * instances. The JS handle is deleted too, so a caller that kept it gets a clean
+     * exception instead of reading freed memory.
+     * @private
+     */
+    _destroyAsset(asset) {
+      if (!asset || !this._assets.delete(asset)) return;
+      this._endResourceLoad(asset);
+      try {
+        var entities = asset.getEntities();
+        this._scene.removeEntities(entities);
+        entities.forEach(function(e) { e.delete(); });
+        var root = asset.getRoot();
+        this._scene.remove(root);
+        root.delete();
+      } catch (e) { /* not on the scene */ }
+      this._loader.destroyAsset(asset);
+      // Not a second free: Filament.js binds FilamentAsset with a no-op destructor,
+      // so delete() only invalidates the JS handle. destroyAsset() freed the object.
+      asset.delete();
+    }
+
+    /**
+     * Put an IndirectLight on the scene (or none) and release the one it replaces.
+     * `ktx` is the Ktx1Bundle its cubemap was read from, when there is one.
+     * @private
+     */
+    _setIndirectLight(light, ktx) {
+      var previous = this._ibl;
+      this._scene.setIndirectLight(light || null);
+      this._ibl = light ? { light: light, ktx: ktx || null } : null;
+      if (previous) this._destroyIndirectLight(previous);
+    }
+
+    /** Build an IndirectLight from KTX1 bytes and make it the scene's. @private */
+    _setKtxEnvironment(buffer, intensity) {
+      // Filament.js hands the Ktx1Bundle it allocates back through this object and
+      // never frees it: keep it, so it can go with the light.
+      var options = {};
+      var light = this._engine.createIblFromKtx1(buffer, options);
+      light.setIntensity(intensity);
+      this._setIndirectLight(light, options.ktx);
+    }
+
+    /**
+     * Destroy an IndirectLight, the reflections cubemap Filament.js created for it
+     * and the Ktx1Bundle behind that cubemap.
+     * @private
+     */
+    _destroyIndirectLight(ibl) {
+      var reflections = ibl.light.getReflectionsTexture();
+      this._engine.destroyIndirectLight(ibl.light);
+      if (reflections) this._engine.destroyTexture(reflections);
+      if (ibl.ktx) {
+        // The cubemap upload reads the bundle's bytes when the command runs: flush
+        // the queue before freeing them.
+        this._engine.execute();
+        ibl.ktx.delete();
+      }
+    }
+
+    /**
+     * Destroy a light entity created by this viewer: its components in the engine,
+     * then the entity itself (the EntityManager is shared by every viewer of the page).
+     * @private
+     */
+    _destroyLight(entity) {
+      try { this._scene.remove(entity); } catch (e) { /* ignore */ }
+      this._engine.destroyEntity(entity);
+      Filament.EntityManager.get().destroy(entity);
+    }
+
+    /**
+     * Initial environment: the KTX IBL when it can be fetched, synthetic SH otherwise.
+     * @private
+     */
+    _loadDefaultEnvironment(url, intensity) {
+      var self = this;
+      this._fetch(url)
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.arrayBuffer().then(function(ab) { return new Uint8Array(ab); });
+        })
+        .then(function(buffer) {
+          // Disposed while the IBL was on its way: the engine is gone, drop it (#4366).
+          if (self._disposed) return;
+          try {
+            self._setKtxEnvironment(buffer, intensity);
+            _log('SceneView: KTX IBL loaded (' + Math.round(buffer.length / 1024) + 'KB)');
+          } catch (e) {
+            console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
+            _applySyntheticIBL(self);
+          }
+          self.requestRender();
+        })
+        .catch(function() {
+          if (self._disposed) return;
+          _applySyntheticIBL(self);
+          self.requestRender();
+        });
     }
 
     // ---------------------------------------------------------------
     // Dispose
     // ---------------------------------------------------------------
 
+    /**
+     * Stop the viewer and release everything it created: the fetches still in flight,
+     * its DOM listeners and elements, every Filament object, then the engine.
+     * Safe to call more than once. The instance cannot be used afterwards.
+     */
     dispose() {
+      // Idempotent (#4366): a second call used to walk the freed engine.
+      if (this._disposed) return;
+      this._disposed = true;
       this._running = false;
+
+      // Fetches still in flight (IBL, model, image): abort them. A response that
+      // already landed is dropped by its continuation, which checks _disposed.
+      if (this._abort) this._abort.abort();
 
       // Stop any pending animation frame so the loop cannot draw after teardown.
       if (this._rafId !== null) {
@@ -1873,17 +2142,19 @@
         cancelAnimationFrame(this._primeRafId);
         this._primeRafId = null;
       }
+      if (this._autoRotateTimer) {
+        clearTimeout(this._autoRotateTimer);
+        this._autoRotateTimer = null;
+      }
 
-      // Clean up video elements
-      var self = this;
-      this._videoElements.forEach(function(vInfo) {
-        vInfo.video.pause();
-        vInfo.video.src = '';
-        if (vInfo.video.parentNode) vInfo.video.parentNode.removeChild(vInfo.video);
-      });
+      // Clean up video elements, playing or still loading
+      this._videoElements.forEach(function(vInfo) { _releaseVideo(vInfo.video); });
       this._videoElements.clear();
-      this._mediaNodes.clear();
-      this._lightEntities.clear();
+      this._loadingVideos.forEach(function(reject, video) {
+        _releaseVideo(video);
+        reject(_disposedError());
+      });
+      this._loadingVideos.clear();
       this._billboards.clear();
       // onFrame() callbacks capture page state (a mirror canvas, a component): drop them.
       this._frameCallbacks.clear();
@@ -1902,21 +2173,98 @@
         this._intersectionObserver.disconnect();
         this._intersectionObserver = null;
       }
-      if (this._resizeObserver) this._resizeObserver.disconnect();
+      if (this._resizeObserver) {
+        this._resizeObserver.disconnect();
+        this._resizeObserver = null;
+      }
 
       // Remove any load-failure fallback overlay we painted into the DOM.
       this._hideLoadFallback();
 
+      this._releaseNative();
       _activeCanvases.delete(this._canvas);
-      // Release the view's ColorGrading once, before the engine (a second dispose() skips it).
-      if (this._colorGrading) {
-        try {
+    }
+
+    /**
+     * Free every Filament object of this viewer, then the engine (#4366).
+     *
+     * Order matters. `Engine.destroy` refuses to shut down, with an exception, while
+     * a material instance is alive, and gltfio assets own material instances: every
+     * asset goes first. dispose() used to skip that and swallow the exception, which
+     * left the whole engine allocated and half shut down.
+     * @private
+     */
+    _releaseNative() {
+      var self = this;
+      var engine = this._engine;
+      try {
+        // Resource loads: their timers and loaders run on the engine.
+        Array.from(this._resourceLoads.keys()).forEach(function(asset) {
+          self._endResourceLoad(asset);
+        });
+
+        // Media nodes (asset + texture), then every other asset: the model, the
+        // primitives, and the ones taken off the scene whose handle a caller may hold.
+        Array.from(this._mediaNodes.keys()).forEach(function(entity) {
+          self._releaseMediaNode(entity);
+        });
+        Array.from(this._assets).forEach(function(asset) { self._destroyAsset(asset); });
+        this._asset = null;
+        this._animator = null;
+        this._primitiveAssets = [];
+
+        this._setIndirectLight(null);
+
+        this._lightEntities.forEach(function(entity) { self._destroyLight(entity); });
+        this._lightEntities.clear();
+        this._baseLights.forEach(function(entity) { self._destroyLight(entity); });
+        this._baseLights = [];
+
+        // No asset is left: the loader's materials can go, then the loader.
+        // Both delete() calls release JS-side wrappers only. Filament.js 1.72.1 binds
+        // neither AssetLoader::destroy nor a destructor for the MaterialProvider, so
+        // their order is free, and the provider keeps its ubershader archive (about
+        // 15 MB per viewer) until the page goes: nothing in JS can free it.
+        if (this._materials) {
+          this._materials.destroyMaterials();
+          this._materials.delete();
+        }
+        this._loader.delete();
+
+        if (this._colorGrading) {
           this._view.setColorGrading(null);
-          this._engine.destroyColorGrading(this._colorGrading);
-        } catch (e) { /* engine already gone */ }
-        this._colorGrading = null;
+          engine.destroyColorGrading(this._colorGrading);
+        }
+        engine.destroyView(this._view);
+        engine.destroyScene(this._scene);
+        engine.destroyRenderer(this._renderer);
+        engine.destroyCameraComponent(this._cameraEntity);
+        Filament.EntityManager.get().destroy(this._cameraEntity);
+        engine.destroySwapChain(this._swapChain);
+        // Run the destroy commands on this engine's WebGL context before it goes.
+        engine.execute();
+      } catch (e) {
+        console.error('SceneView: dispose() could not release every Filament object', e);
       }
-      try { Filament.Engine.destroy(this._engine); } catch (e) { /* already destroyed */ }
+
+      try {
+        Filament.Engine.destroy(engine);
+      } catch (e) {
+        console.error('SceneView: Engine.destroy failed, the engine is still allocated', e);
+      }
+
+      // The handles now point at freed memory in a heap every viewer of the page
+      // shares: drop them, so a late call fails on null instead of writing there.
+      this._engine = null;
+      this._scene = null;
+      this._renderer = null;
+      this._view = null;
+      this._swapChain = null;
+      this._camera = null;
+      this._cameraEntity = null;
+      this._loader = null;
+      this._materials = null;
+      this._colorGrading = null;
     }
 
     // ---------------------------------------------------------------
@@ -2230,13 +2578,11 @@
      * Lights and camera are preserved.
      */
     clearScene() {
-      // Remove loaded glTF asset
+      // Destroy the loaded glTF asset (off the scene alone, it stayed allocated: #4366)
       if (this._asset) {
-        try {
-          this._asset.getRenderableEntities().forEach(function(e) { this._scene.remove(e); }.bind(this));
-          this._scene.remove(this._asset.getRoot());
-        } catch (e) { /* ignore */ }
+        var model = this._asset;
         this._asset = null;
+        this._destroyAsset(model);
       }
       // Reset animator state — no model, no animation
       this._animator = null;
@@ -2253,13 +2599,12 @@
         });
         this._primitiveAssets = [];
       }
-      // Remove media nodes
+      // Remove media nodes, with their quad, texture and <video> element
       if (this._mediaNodes && this._mediaNodes.size > 0) {
         var self = this;
-        this._mediaNodes.forEach(function(info, entity) {
-          try { self._scene.remove(entity); } catch (e) { /* ignore */ }
+        Array.from(this._mediaNodes.keys()).forEach(function(entity) {
+          self._releaseMediaNode(entity);
         });
-        this._mediaNodes.clear();
       }
       this.requestRender();
     }
@@ -2346,12 +2691,13 @@
      * @returns {SceneViewInstance} this (for chaining)
      */
     removeLight(entity) {
-      try { this._scene.remove(entity); } catch (e) { /* ignore */ }
       // A light created by addLight() is owned by the viewer: untrack it and
-      // free its light and transform components. The Filament.js LightManager
-      // binding has no destroy() of its own.
+      // free its light and transform components, then the entity. The Filament.js
+      // LightManager binding has no destroy() of its own.
       if (this._lightEntities.delete(entity)) {
-        try { this._engine.destroyEntity(entity); } catch (e) { /* ignore */ }
+        try { this._destroyLight(entity); } catch (e) { /* ignore */ }
+      } else {
+        try { this._scene.remove(entity); } catch (e) { /* ignore */ }
       }
       return this.requestRender();
     }
@@ -2370,12 +2716,12 @@
       if (this._baseLights && this._baseLights.length > 0) {
         var self = this;
         this._baseLights.forEach(function(entity) {
-          try { self._scene.remove(entity); } catch (e) { /* ignore */ }
+          try { self._destroyLight(entity); } catch (e) { /* ignore */ }
         });
         this._baseLights = [];
       }
       // Also drop IBL so the user-provided lights dominate
-      try { this._scene.setIndirectLight(null); } catch (e) { /* ignore */ }
+      try { this._setIndirectLight(null); } catch (e) { /* ignore */ }
       return this.requestRender();
     }
 
@@ -2611,14 +2957,10 @@
 
       // Load via gltfio
       var glbData = new Uint8Array(glb);
-      var fakeUrl = '_prim_' + name + '_' + Date.now();
-      Filament.assets = Filament.assets || {};
-      Filament.assets[fakeUrl] = glbData;
 
       try {
-        var asset = this._loader.createAsset(glbData);
+        var asset = this._createAsset(glbData);
         if (!asset) { console.warn('SceneView: Failed to create primitive asset'); return null; }
-        asset.loadResources();
         this._scene.addEntity(asset.getRoot());
         this._scene.addEntities(asset.getRenderableEntities());
         this._primitiveAssets.push(asset);
@@ -2732,38 +3074,21 @@
       .build(engine, back);
     scene.addEntity(back);
 
-    // --- IBL: load real KTX if available, fallback to synthetic SH ---
-    var iblUrl = options.iblUrl || '/environments/neutral_ibl.ktx';
-    fetch(iblUrl)
-      .then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.arrayBuffer().then(function(ab) { return new Uint8Array(ab); });
-      })
-      .then(function(buffer) {
-        try {
-          var ibl = engine.createIblFromKtx1(buffer);
-          ibl.setIntensity(options.iblIntensity || 40000);
-          scene.setIndirectLight(ibl);
-          _log('SceneView: KTX IBL loaded (' + Math.round(buffer.length / 1024) + 'KB)');
-        } catch (e) {
-          console.warn('SceneView: createIblFromKtx1 failed, using SH fallback', e);
-          _applySyntheticIBL(engine, scene);
-        }
-        if (instance) instance.requestRender();
-      })
-      .catch(function() {
-        _applySyntheticIBL(engine, scene);
-        if (instance) instance.requestRender();
-      });
-
-    var loader = engine.createAssetLoader();
-    var instance = new SceneViewInstance(canvas, engine, scene, renderer, view, swapChain, camera, cameraEntity, loader);
+    // What engine.createAssetLoader() does, with the material provider kept: the
+    // loader does not own it, and dispose() needs it to free the materials.
+    var materials = new Filament.gltfio$UbershaderProvider(engine);
+    var loader = new Filament.gltfio$AssetLoader(engine, materials);
+    var instance = new SceneViewInstance(canvas, engine, scene, renderer, view, swapChain, camera, cameraEntity, loader, materials);
     instance._fov = fov;
     // Track base 3-point lights so clearLights() can wipe them for custom setups
     instance._baseLights = [sun, fill, back];
     // Owned by the instance: dispose() destroys it before the engine.
     instance._colorGrading = colorGrading;
     instance._transparent = transparent;
+
+    // --- IBL: load real KTX if available, fallback to synthetic SH ---
+    instance._loadDefaultEnvironment(
+      options.iblUrl || '/environments/neutral_ibl.ktx', options.iblIntensity || 40000);
 
     if (options.autoRotate === false) instance.setAutoRotate(false);
     if (options.renderMode !== undefined) instance.setRenderMode(options.renderMode);
@@ -2772,7 +3097,7 @@
   }
 
   /** Fallback IBL from spherical harmonics when KTX not available */
-  function _applySyntheticIBL(engine, scene) {
+  function _applySyntheticIBL(instance) {
     try {
       // Studio-style IBL: warm key light from above-right, cool fill from left
       var ibl = Filament.IndirectLight.Builder()
@@ -2788,8 +3113,8 @@
            0.06,  0.06,  0.05    // L22
         ])
         .intensity(45000)
-        .build(engine);
-      scene.setIndirectLight(ibl);
+        .build(instance._engine);
+      instance._setIndirectLight(ibl);
       _log('SceneView: Using synthetic SH IBL');
     } catch (e) { /* skip */ }
   }
