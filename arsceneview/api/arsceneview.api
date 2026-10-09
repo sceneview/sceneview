@@ -1610,18 +1610,38 @@ public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$Hel
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$NodeRemoval : io/github/sceneview/ar/collaborative/CollaborativeMessage {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;J)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeRemoval;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeRemoval;Ljava/lang/String;Ljava/lang/String;JILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeRemoval;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLogicalClock ()J
+	public final fun getNodeKey ()Ljava/lang/String;
+	public fun getPeerId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState : io/github/sceneview/ar/collaborative/CollaborativeMessage {
 	public static final field $stable I
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FJ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/lang/String;
 	public final fun component4 ()[F
 	public final fun component5 ()[F
 	public final fun component6 ()[F
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
-	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
+	public final fun component7 ()J
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FJ)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FJILjava/lang/Object;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage$NodeState;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLogicalClock ()J
 	public final fun getModelKey ()Ljava/lang/String;
 	public final fun getNodeKey ()Ljava/lang/String;
 	public fun getPeerId ()Ljava/lang/String;
@@ -1691,6 +1711,7 @@ public final class io/github/sceneview/ar/collaborative/CollaborativeSession {
 	public final fun placeNode (Ljava/lang/String;Ljava/lang/String;[F[F)V
 	public final fun placeNode (Ljava/lang/String;Ljava/lang/String;[F[F[F)V
 	public static synthetic fun placeNode$default (Lio/github/sceneview/ar/collaborative/CollaborativeSession;Ljava/lang/String;Ljava/lang/String;[F[F[FILjava/lang/Object;)V
+	public final fun removeNode (Ljava/lang/String;)V
 	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;)V
 	public final fun resolve (Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public static synthetic fun resolve$default (Lio/github/sceneview/ar/collaborative/CollaborativeSession;Lcom/google/android/filament/Engine;Lcom/google/ar/core/Session;Ljava/lang/String;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
@@ -1738,12 +1759,15 @@ public final class io/github/sceneview/ar/collaborative/CollaborativeWireFormat 
 	public static final field TYPE_HELLO Ljava/lang/String;
 	public static final field TYPE_NODE Ljava/lang/String;
 	public static final field TYPE_POSE Ljava/lang/String;
+	public static final field TYPE_REMOVE Ljava/lang/String;
 	public final fun anchor (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public final fun bye (Ljava/lang/String;)Ljava/lang/String;
 	public final fun hello (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public final fun node (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[F)Ljava/lang/String;
+	public final fun node (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[F[F[FJ)Ljava/lang/String;
 	public final fun parse (Ljava/lang/String;)Lio/github/sceneview/ar/collaborative/CollaborativeMessage;
 	public final fun pose (Ljava/lang/String;J[F[F)Ljava/lang/String;
+	public final fun remove (Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;
 }
 
 public final class io/github/sceneview/ar/collaborative/LoopbackCollaborativeTransport : io/github/sceneview/ar/collaborative/CollaborativeTransport {
