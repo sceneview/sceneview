@@ -760,24 +760,38 @@ ImageNode(
 
 ## VideoNode
 
-Plays a `MediaPlayer` video onto a 3D quad. Supports optional chroma keying (green-screen removal).
+Plays a video onto a 3D quad. Supports optional chroma keying (green-screen removal).
 
 ```kotlin
-val mediaPlayer = remember {
-    MediaPlayer.create(context, R.raw.my_video).apply { isLooping = true }
-}
-DisposableEffect(mediaPlayer) {
-    mediaPlayer.start()
-    onDispose { mediaPlayer.release() }
-}
-
 VideoNode(
-    player = mediaPlayer,
+    videoPath = "videos/promo.mp4", // under assets/, or an https://, file:// or content:// location
+    autoPlay = isPlaying,           // reactive: true plays, false pauses
     size = Size(x = 1.6f, y = 0.9f),
     chromaKeyColor = android.graphics.Color.GREEN, // optional green-screen key
-    position = Position(0f, 1f, -2f)
+    position = Position(0f, 1f, -2f),
+    onError = { cause -> videoError = cause }      // missing file, unsupported codec, broken stream
 )
 ```
+
+The video is prepared off the main thread: the node appears once it is ready, and until then, or
+if it fails, it emits nothing. To show a placeholder and a fallback, hold the player yourself —
+`rememberMediaPlayer` returns where it stands:
+
+```kotlin
+when (val video = rememberMediaPlayer("videos/promo.mp4")) {
+    is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(0f, 1f, -2f))
+    is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(0f, 1f, -2f))
+    MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(0f, 1f, -2f))
+}
+```
+
+The player is released when the location changes and when the call leaves the composition. Both
+APIs are `@ExperimentalSceneViewApi`.
+
+!!! warning "Never prepare a player inside `remember { }`"
+    `MediaPlayer.create(…)` and `MediaPlayer.prepare()` parse the file on the calling thread: in
+    `remember { }` that is the main thread, during composition. `VideoNode(player = …)` takes a
+    player you prepared with `prepareAsync()`.
 
 ---
 

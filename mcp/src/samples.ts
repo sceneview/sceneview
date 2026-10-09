@@ -932,36 +932,27 @@ fun PostProcessingScreen() {
     id: "video-texture",
     title: "Video Texture",
     description:
-      "Video playback on a 3D plane using VideoNode with MediaPlayer — supports looping, chroma-key, and auto-sizing.",
+      "Video playback on a 3D plane using VideoNode — prepared off the main thread, with play/pause, looping, chroma-key, auto-sizing and an error callback.",
     tags: ["3d", "video", "model"],
     dependency: "io.github.sceneview:sceneview:" + LATEST_SCENEVIEW_RELEASE + "",
     prompt: `Create a 3D scene with a video playing on a floating 3D plane. Include play/pause controls and chroma-key support. Use SceneView \`io.github.sceneview:sceneview:${LATEST_SCENEVIEW_RELEASE}\`.`,
-    code: `@Composable
+    code: `@OptIn(ExperimentalSceneViewApi::class)
+@Composable
 fun VideoTextureScreen() {
-    val context = LocalContext.current
-    val engine = rememberEngine()
     var isPlaying by remember { mutableStateOf(true) }
-
-    val player = remember {
-        MediaPlayer().apply {
-            setDataSource(context, Uri.parse("android.resource://\${context.packageName}/raw/video"))
-            isLooping = true
-            prepare()
-            start()
-        }
-    }
-    DisposableEffect(Unit) { onDispose { player.release() } }
+    var error by remember { mutableStateOf<Exception?>(null) }
 
     Column {
-        SceneView(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            engine = engine
-        ) {
+        SceneView(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Prepared off the main thread: the node appears once the video is ready.
             VideoNode(
-                player = player,
+                videoPath = "videos/promo.mp4", // under assets/, or an https:// URL
+                autoPlay = isPlaying,           // reactive: true plays, false pauses
+                isLooping = true,
                 // size = null auto-sizes from video aspect ratio (longer edge = 1 unit)
                 position = Position(z = -2f),
-                chromaKeyColor = null // set to android.graphics.Color.GREEN for green-screen
+                chromaKeyColor = null, // set to android.graphics.Color.GREEN for green-screen
+                onError = { cause -> error = cause } // missing file, unsupported codec, broken stream
             )
         }
         Row(
@@ -969,11 +960,12 @@ fun VideoTextureScreen() {
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(onClick = {
-                if (isPlaying) player.pause() else player.start()
-                isPlaying = !isPlaying
-            }) {
-                Text(if (isPlaying) "Pause" else "Play")
+            if (error != null) {
+                Text("This video cannot be played.")
+            } else {
+                Button(onClick = { isPlaying = !isPlaying }) {
+                    Text(if (isPlaying) "Pause" else "Play")
+                }
             }
         }
     }

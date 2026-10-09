@@ -5,10 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.media.MediaPlayer
-import android.net.Uri
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -16,11 +14,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import io.github.sceneview.ExperimentalSceneViewApi
+import io.github.sceneview.MediaPlayerState
 import io.github.sceneview.demo.SceneViewColors
 import io.github.sceneview.demo.demos.internal.StreamPhase
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.rememberMediaPlayer
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -35,16 +35,19 @@ internal const val MEDIA_VIDEO_URL =
 /** A muted, looping [MediaPlayer] reading a URL, and where its stream stands. */
 @Stable
 internal class StreamedVideo {
-    /** Null until the composition that owns it has entered; released when it leaves. */
+    /** Null until the stream is prepared; `rememberMediaPlayer` releases it with the screen. */
     var player: MediaPlayer? by mutableStateOf(null)
-        internal set
+        private set
 
     var phase by mutableStateOf(StreamPhase.Loading)
         private set
 
-    /** Prepared in time. A stream already given up on stays given up on. */
-    fun ready() {
-        if (phase == StreamPhase.Loading) phase = StreamPhase.Ready
+    /** Prepared in time: muted, then shown. A stream already given up on stays given up on. */
+    fun ready(prepared: MediaPlayer) {
+        if (phase != StreamPhase.Loading) return
+        if (runCatching { prepared.setVolume(0f, 0f) }.isFailure) return fail()
+        player = prepared
+        phase = StreamPhase.Ready
     }
 
     /** The stream broke, or a call on its player threw: nothing plays from here on. */
@@ -54,32 +57,25 @@ internal class StreamedVideo {
 }
 
 /**
- * Streams [url] through a [MediaPlayer] this composition owns. `rememberMediaPlayer` reads an APK
- * asset and prepares it on the spot; a URL has to be prepared off the main thread, so the player
- * is handed to a `VideoNode` only once [StreamedVideo.phase] is [StreamPhase.Ready]. No network,
- * a broken stream or [PREPARE_TIMEOUT_MILLIS] without an answer all end in [StreamPhase.Failed].
+ * Streams [url] through the player of `rememberMediaPlayer`, looping and not started: the library
+ * prepares it off the main thread and says when the stream cannot be read, this screen's play
+ * button starts it. The player is handed to a `VideoNode` only once [StreamedVideo.phase] is
+ * [StreamPhase.Ready]. No network, a broken stream or [PREPARE_TIMEOUT_MILLIS] without an answer
+ * all end in [StreamPhase.Failed].
  */
+@OptIn(ExperimentalSceneViewApi::class)
 @Composable
 internal fun rememberStreamedVideo(url: String): StreamedVideo {
-    val context = LocalContext.current.applicationContext
     val video = remember(url) { StreamedVideo() }
-    DisposableEffect(video) {
-        val player = MediaPlayer()
-        runCatching {
-            player.setDataSource(context, Uri.parse(url))
-            player.isLooping = true
-            player.setVolume(0f, 0f)
-            player.setOnPreparedListener { video.ready() }
-            player.setOnErrorListener { _, _, _ -> video.fail(); true }
-            player.prepareAsync()
-        }.onFailure { video.fail() }
-        video.player = player
-        onDispose {
-            player.setOnPreparedListener(null)
-            player.setOnErrorListener(null)
-            runCatching { player.release() }
+    val state = rememberMediaPlayer(fileLocation = url, isLooping = true, autoPlay = false)
+    LaunchedEffect(video, state) {
+        when (state) {
+            is MediaPlayerState.Ready -> video.ready(state.player)
+            is MediaPlayerState.Failed -> video.fail()
+            MediaPlayerState.Preparing -> Unit
         }
     }
+    // The player has no deadline of its own: a server that never answers must not load for ever.
     LaunchedEffect(video) {
         delay(PREPARE_TIMEOUT_MILLIS)
         if (video.phase == StreamPhase.Loading) video.fail()
