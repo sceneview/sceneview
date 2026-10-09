@@ -5,7 +5,7 @@
 
 **Gaming 3D MCP — give any AI assistant everything it needs to build character viewers, level editors, physics games, particle effects, and 3D inventories with [SceneView](https://sceneview.github.io) on Android.**
 
-Every tool returns Kotlin code written against the SceneView 4.0.0 APIs (Jetpack Compose, `rememberModelInstance`, `ModelNode`, `PhysicsNode`, `LightNode` with the named `apply` parameter) — ready to drop into an Android project.
+Every tool returns Kotlin code written against the SceneView 4.53.0 APIs (Jetpack Compose, `rememberModelInstance`, `ModelNode`, `PhysicsNode`, `LightNode` with its `type` and the named `apply` parameter) — ready to drop into an Android project.
 
 ## Installation
 

@@ -71,13 +71,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
@@ -95,7 +95,6 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     val assemblyModel = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -121,7 +120,6 @@ ${features.includes("search") ? `    var searchQuery by remember { mutableStateO
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/neutral_hdr.ktx"
                 )!!,
@@ -139,6 +137,7 @@ ${features.includes("search") ? `    var searchQuery by remember { mutableStateO
 
                 // Technical lighting
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(80_000f)
                         color(1.0f, 1.0f, 1.0f)
@@ -146,6 +145,7 @@ ${features.includes("search") ? `    var searchQuery by remember { mutableStateO
                     }
                 )
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(40_000f)
                         color(0.9f, 0.95f, 1.0f)
@@ -215,7 +215,7 @@ ${features.includes("cross-section") ? `                Row(
                     items(parts${features.includes("search") ? `.filter { it.name.contains(searchQuery, ignoreCase = true) }` : ""}) { part ->
                         PartItem(
                             part = part,
-                            isSelected = part.id == selectedPart,
+                            isSelected = ${features.includes("part-selection") ? "part.id == selectedPart" : "false"},
                             onClick = { ${features.includes("part-selection") ? `selectedPart = part.id` : "/* Part tapped */"} }
                         )
                     }
@@ -277,13 +277,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.math.Position
 
 /**
@@ -297,13 +298,14 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val assemblyModel = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -314,15 +316,19 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onSessionUpdated = { session, frame -> },
-            onTapAR = { hitResult ->
-                if (!placed && assemblyModel != null) {
-                    val anchor = hitResult.createAnchor()
-                    placed = true
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed && assemblyModel != null) {
+                            val anchor = hitResult.createAnchor()
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             assemblyModel?.let { instance ->
                 ModelNode(
@@ -413,10 +419,15 @@ function getPartsForCategory(category: PartCategory, partNumbers: boolean, prici
   const categoryParts = parts[category] ?? parts.engine;
   const items = categoryParts.map(
     (p) =>
-      `        PartData(id = "${p.id}", name = "${p.name}"${partNumbers ? `, partNumber = "${p.pn}"` : ""}${pricing ? `, price = "${p.price}"` : ""}, description = "${p.desc}")`
+      `        PartData(id = "${kotlinString(p.id)}", name = "${kotlinString(p.name)}"${partNumbers ? `, partNumber = "${kotlinString(p.pn)}"` : ""}${pricing ? `, price = "${kotlinString(p.price)}"` : ""}, description = "${kotlinString(p.desc)}")`
   );
 
   return `listOf(\n${items.join(",\n")}\n    )`;
+}
+
+/** Escapes a value for a Kotlin string literal — a part name like `19"` or a `$` price would otherwise break it. */
+function kotlinString(s: string): string {
+  return s.replace(/[\\"$]/g, (c) => `\\${c}`);
 }
 
 function capitalize(s: string): string {

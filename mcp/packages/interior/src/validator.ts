@@ -51,7 +51,7 @@ export function validateInteriorCode(code: string): ValidationResult {
     if (/LightNode\s*\(/.test(lines[i]) && /\)\s*\{/.test(lines[i])) {
       issues.push({
         severity: "error",
-        message: `Line ${i + 1}: LightNode's \`apply\` is a named parameter (apply = { ... }), not a trailing lambda. Use: LightNode(apply = { intensity(...) })`,
+        message: `Line ${i + 1}: LightNode's \`apply\` is a named parameter (apply = { ... }), not a trailing lambda. Use: LightNode(type = LightManager.Type.DIRECTIONAL, apply = { intensity(...) })`,
         line: i + 1,
       });
     }

@@ -115,13 +115,15 @@ describe("generateDashboard3d", () => {
     const code = generateDashboard3d({ gauges: ["speedometer"], ar: true });
     expect(code).toContain("ARSceneView(");
     expect(code).toContain("android.permission.CAMERA");
-    expect(code).toContain("arsceneview:4.0.9");
+    expect(code).toContain("arsceneview:4.53.0");
   });
 
-  it("includes LightNode with named apply parameter", () => {
+  it("includes LightNode with its type and named apply parameter", () => {
     const code = generateDashboard3d({ gauges: ["speedometer"] });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

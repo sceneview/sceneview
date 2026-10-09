@@ -90,14 +90,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -116,7 +118,6 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -153,7 +154,6 @@ ${materialVariants ? `
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/studio_hdr.ktx"
                 )!!,
@@ -174,6 +174,7 @@ ${turntable ? `                    if (autoRotate) {
 
                 // Studio lighting — key, fill, rim
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(120_000f)
                         color(1.0f, 0.98f, 0.95f)
@@ -181,6 +182,7 @@ ${turntable ? `                    if (autoRotate) {
                     }
                 )
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(40_000f)
                         color(0.9f, 0.93f, 1.0f)
@@ -188,6 +190,7 @@ ${turntable ? `                    if (autoRotate) {
                     }
                 )
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(25_000f)
                         color(1.0f, 1.0f, 1.0f)
@@ -287,11 +290,13 @@ ${colorPicker ? `            // Color picker
                             .clickable { onColorSelect(index) }
                     ) {
                         if (index == selectedColor) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = name,
-                                modifier = Modifier.align(Alignment.Center),
-                                tint = if (color == Color(0xFF1A1A1A)) Color.White else Color.Black
+                            // Plain text check mark — no material-icons dependency needed
+                            Text(
+                                text = "✓",
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .semantics { contentDescription = name },
+                                color = if (color == Color(0xFF1A1A1A)) Color.White else Color.Black
                             )
                         }
                     }
@@ -340,13 +345,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.math.Position
 
 /**
@@ -362,13 +368,14 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -379,18 +386,23 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onSessionUpdated = { session, frame ->
+            onSessionUpdated = { _, frame ->
                 // AR session active
+                latestFrame = frame
             },
-            onTapAR = { hitResult ->
-                if (!placed && modelInstance != null) {
-                    val anchor = hitResult.createAnchor()
-                    // Place car at tapped location
-                    placed = true
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed && modelInstance != null) {
+                            val anchor = hitResult.createAnchor()
+                            // Place car at tapped location
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             modelInstance?.let { instance ->
                 ModelNode(

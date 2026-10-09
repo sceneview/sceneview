@@ -61,6 +61,7 @@ describe("validateInteriorCode", () => {
   it("passes correct LightNode usage", () => {
     const result = validateInteriorCode(`
       LightNode(
+        type = LightManager.Type.DIRECTIONAL,
         apply = {
           intensity(80000f)
         }

@@ -72,11 +72,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
@@ -96,7 +96,6 @@ import io.github.sceneview.math.Position
 fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
     // Off-screen window hosting the ViewNode's Compose content — the same instance goes to
     // SceneView (viewNodeWindowManager) and to the ViewNode (windowManager).
     val windowManager = rememberViewNodeManager()
@@ -116,7 +115,6 @@ ${elements.includes("alerts") ? `    var alerts by remember { mutableStateOf(lis
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             viewNodeWindowManager = windowManager,
             onFrame = { frameTimeNanos ->
                 // Simulate speed changes for demo
@@ -143,6 +141,7 @@ ${elements.includes("alerts") ? `                    alerts = alerts,` : ""}
 
             // Ambient lighting
             LightNode(
+                type = LightManager.Type.DIRECTIONAL,
                 apply = {
                     intensity(50_000f)
                     color(0.9f, 0.95f, 1.0f)
@@ -296,7 +295,6 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.math.Position
 
@@ -311,13 +309,12 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
     // Off-screen window hosting the ViewNode's Compose content — the same instance goes to
     // ARSceneView (viewNodeWindowManager) and to the ViewNode (windowManager).
     val windowManager = rememberViewNodeManager()
@@ -330,7 +327,6 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             viewNodeWindowManager = windowManager,
             planeRenderer = false,
             onSessionUpdated = { session, frame ->

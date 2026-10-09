@@ -22,16 +22,16 @@ describe("generateSetupProject — android", () => {
     expect(sidecar!.contents).toContain("rerun as rr");
   });
 
-  it("references arsceneview:4.16.9 in the Gradle file", () => {
+  it("references arsceneview:4.53.0 in the Gradle file", () => {
     const gradle = result.files.find((f) => f.path.endsWith("build.gradle.kts"))!;
-    expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.16.9");
+    expect(gradle.contents).toContain("io.github.sceneview:arsceneview:4.53.0");
   });
 
   it("uses rememberRerunBridge in the Kotlin composable", () => {
     const kt = result.files.find((f) => f.path.endsWith("ARWithRerun.kt"))!;
     expect(kt.contents).toContain("rememberRerunBridge");
     expect(kt.contents).toContain("onSessionUpdated");
-    expect(kt.contents).toContain("rerun.logFrame(frame)");
+    expect(kt.contents).toContain("rerun.logFrame(session, frame)");
   });
 
   it("omits the sidecar when includeSidecar=false", () => {

@@ -84,6 +84,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.CubeNode
@@ -91,7 +92,6 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
@@ -106,7 +106,7 @@ import io.github.sceneview.math.Scale
  * Uses SceneView's geometry nodes for walls/floor and ModelNode for furniture.
  * Orbit camera with pinch-to-zoom for interior exploration.
  *
- * Gradle: implementation("io.github.sceneview:sceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:sceneview:4.53.0")
  */
 @Composable
 fun ${composableName}() {
@@ -114,7 +114,6 @@ fun ${composableName}() {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     // Room dimensions
     val width = ${widthMeters}f   // meters
@@ -136,7 +135,6 @@ fun ${composableName}() {
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/interior_hdr.ktx"
                 )!!,
@@ -185,6 +183,7 @@ fun ${composableName}() {
                 // ── Interior lighting ─────────────────────────────────────
                 // Ceiling downlight
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(120_000f)
                         color(1.0f, 0.95f, 0.9f)
@@ -194,6 +193,7 @@ fun ${composableName}() {
 
                 // Window light simulation
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(60_000f)
                         color(0.95f, 0.98f, 1.0f)
@@ -304,12 +304,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
 
@@ -325,13 +326,14 @@ import io.github.sceneview.math.Scale
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val scale = 0.1f // 1:10 miniature
     val width = ${widthMeters}f * scale
@@ -345,15 +347,19 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onSessionUpdated = { session, frame -> },
-            onTapAR = { hitResult ->
-                if (!placed) {
-                    val anchor = hitResult.createAnchor()
-                    placed = true
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed) {
+                            val anchor = hitResult.createAnchor()
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             // Floor
             CubeNode(

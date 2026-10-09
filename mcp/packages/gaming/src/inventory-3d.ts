@@ -69,13 +69,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -96,7 +96,6 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     // Inventory state
     val items = remember { getSampleItems() }
@@ -125,7 +124,6 @@ ${autoRotate ? `    var previewRotation by remember { mutableFloatStateOf(0f) }`
                     modifier = Modifier.fillMaxSize(),
                     engine = engine,
                     modelLoader = modelLoader,
-                    collisionSystem = collisionSystem,
                     environment = environmentLoader.createHDREnvironment(
                         assetFileLocation = "environments/studio_hdr.ktx"
                     )!!,
@@ -143,6 +141,7 @@ ${autoRotate ? `                        previewRotation += 1f` : ""}
 
                     // Studio lighting for item showcase
                     LightNode(
+                        type = LightManager.Type.DIRECTIONAL,
                         apply = {
                             intensity(80_000f)
                             color(1.0f, 0.98f, 0.95f)
@@ -151,6 +150,7 @@ ${autoRotate ? `                        previewRotation += 1f` : ""}
                     )
 
                     LightNode(
+                        type = LightManager.Type.DIRECTIONAL,
                         apply = {
                             intensity(30_000f)
                             color(0.9f, 0.9f, 1.0f)
@@ -195,7 +195,7 @@ ${showStats ? `            // Item stats panel
         // ── Category Filter ───────────────────────────────────────────────
         ScrollableTabRow(
             selectedTabIndex = if (categoryFilter == null) 0
-                else categories.indexOf(categoryFilter) + 1,
+                else listOf<String>(${categories.map((cat) => `"${cat}"`).join(", ")}).indexOf(categoryFilter) + 1,
             modifier = Modifier.fillMaxWidth()
         ) {
             Tab(selected = categoryFilter == null, onClick = { categoryFilter = null }) {
@@ -319,12 +319,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.math.Position
 
 /**
@@ -338,13 +339,14 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val modelInstance = rememberModelInstance(modelLoader, "models/items/iron_sword.glb")
 
@@ -355,14 +357,19 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onTapAR = { hitResult ->
-                if (!placed && modelInstance != null) {
-                    val anchor = hitResult.createAnchor()
-                    placed = true
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed && modelInstance != null) {
+                            val anchor = hitResult.createAnchor()
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             modelInstance?.let { instance ->
                 ModelNode(

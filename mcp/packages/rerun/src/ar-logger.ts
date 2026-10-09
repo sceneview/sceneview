@@ -77,7 +77,7 @@ function generateKotlinLogger(
   }
   if (dataTypes.includes("planes")) {
     logBlocks.push(`            // Detected planes
-            bridge.logPlanes(frame.getUpdatedPlanes(), nowNanos)`);
+            bridge.logPlanes(frame.getUpdatedTrackables(Plane::class.java), nowNanos)`);
   }
   if (dataTypes.includes("point_cloud")) {
     logBlocks.push(`            // Point cloud — IMPORTANT: call release() on the acquired cloud
@@ -90,17 +90,37 @@ function generateKotlinLogger(
             bridge.logAnchors(session.allAnchors, nowNanos)`);
   }
   if (dataTypes.includes("hit_results")) {
-    logBlocks.push(`            // Last hit result (update from your gesture handler)
+    logBlocks.push(`            // Last hit result — set by the tap handler below
+            latestFrame = frame
             lastHit?.let { bridge.logHitResult(it, nowNanos) }`);
   }
 
+  const logsPlanes = dataTypes.includes("planes");
+  const logsHits = dataTypes.includes("hit_results");
+  const imports = [
+    "androidx.compose.foundation.layout.fillMaxSize",
+    "androidx.compose.runtime.Composable",
+    ...(logsHits
+      ? [
+          "androidx.compose.runtime.getValue",
+          "androidx.compose.runtime.mutableStateOf",
+          "androidx.compose.runtime.remember",
+          "androidx.compose.runtime.setValue",
+        ]
+      : []),
+    "androidx.compose.ui.Modifier",
+    ...(logsHits ? ["com.google.ar.core.Frame", "com.google.ar.core.HitResult"] : []),
+    ...(logsPlanes ? ["com.google.ar.core.Plane"] : []),
+    "io.github.sceneview.ar.ARSceneView",
+    "io.github.sceneview.ar.rerun.rememberRerunBridge",
+    ...(logsHits ? ["io.github.sceneview.rememberOnGestureListener"] : []),
+  ]
+    .map((name) => `import ${name}`)
+    .join("\n");
+
   return `package com.example.rerun
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.rerun.rememberRerunBridge
+${imports}
 
 /**
  * AR scene that logs ${dataTypes.join(", ")} to Rerun at ${rateHz} Hz.
@@ -116,13 +136,22 @@ fun ARWithRerunLogger() {
         rateHz = ${rateHz},
         enabled = true,
     )
-
+${logsHits ? `
+    // Latest ARCore frame and the last tap hit-tested against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+    var lastHit by remember { mutableStateOf<HitResult?>(null) }
+` : ""}
     ARSceneView(
         modifier = Modifier.fillMaxSize(),
         onSessionUpdated = { session, frame ->
             val nowNanos = frame.timestamp
 ${logBlocks.join("\n")}
-        },
+        },${logsHits ? `
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { e, _ ->
+                lastHit = latestFrame?.hitTest(e)?.firstOrNull()
+            }
+        ),` : ""}
     )
 }
 `;

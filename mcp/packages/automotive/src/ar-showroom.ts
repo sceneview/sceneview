@@ -62,13 +62,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberModelInstance
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
@@ -84,13 +86,14 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     val carModel = rememberModelInstance(modelLoader, "models/cars/showroom_car.glb")
 
@@ -112,18 +115,23 @@ ${features.includes("night-lighting") ? `    var nightMode by remember { mutable
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = !placed,
-            onSessionUpdated = { session, frame ->
+            onSessionUpdated = { _, frame ->
                 // AR session active — ${location} tracking
+                latestFrame = frame
             },
-            onTapAR = { hitResult ->
-                if (!placed && carModel != null) {
-                    val anchor = hitResult.createAnchor()
-                    // Place car at the tapped ${location} location
-                    placed = true
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        if (!placed && carModel != null) {
+                            val anchor = hitResult.createAnchor()
+                            // Place car at the tapped ${location} location
+                            placed = true
+                        }
+                    }
                 }
-            }
+            )
         ) {
             // Car model at real-world scale
             carModel?.let { instance ->
@@ -135,6 +143,7 @@ ${features.includes("night-lighting") ? `    var nightMode by remember { mutable
 
 ${shadows ? `            // Ground shadow light
             LightNode(
+                type = LightManager.Type.DIRECTIONAL,
                 apply = {
                     intensity(100_000f)
                     color(1.0f, 0.98f, 0.95f)
@@ -145,6 +154,7 @@ ${features.includes("night-lighting") ? `
             // Night mode accent lighting
             if (nightMode) {
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(50_000f)
                         color(0.6f, 0.8f, 1.0f)
@@ -152,6 +162,7 @@ ${features.includes("night-lighting") ? `
                     }
                 )
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(50_000f)
                         color(1.0f, 0.6f, 0.2f)
