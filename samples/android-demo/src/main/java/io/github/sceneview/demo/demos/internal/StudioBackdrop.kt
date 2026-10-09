@@ -421,5 +421,9 @@ private class StudioEnvironmentResources(
 
 private fun StudioBackdrop.Backdrop.destroy(engine: Engine) {
     engine.safeDestroySkybox(skybox)
+    // The cubemap's only reader is the skybox's own material instance, which Filament destroys
+    // with the skybox on the line above, so nothing alive should still sample it here. Queued all
+    // the same, like every texture a material read: it costs three frames, and it does not rest
+    // on that destroy — a `runCatching` — having gone through (#4360).
     EngineDestroyQueue.of(engine).enqueueTexture(texture)
 }

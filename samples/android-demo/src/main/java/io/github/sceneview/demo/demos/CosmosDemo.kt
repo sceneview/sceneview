@@ -1569,6 +1569,10 @@ private const val MAX_BAKE_BANDS = 8
 private class GpuSheet(val mesh: GpuMesh, val horizon: Texture) {
     fun destroy(engine: Engine) {
         mesh.destroy(engine)
+        // Queued, not destroyed here: the sheet's material instance still samples this map when
+        // the sheet goes. It belongs to the material loader, which is remembered before the sheet
+        // and so disposed after it. The sheet is built once and never rebuilt while its material
+        // stays, so there is no replacement map to bind an instance to first (#4360).
         EngineDestroyQueue.of(engine).enqueueTexture(horizon)
     }
 }
