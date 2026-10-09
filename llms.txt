@@ -1207,7 +1207,7 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented: a geometry keeps one upload in flight and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
 
 ### ShapeNode — 2D polygon shape
 ```kotlin

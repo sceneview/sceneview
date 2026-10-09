@@ -500,7 +500,11 @@ fun SceneView(
     DisposableEffect(frameRateGate, sceneInvalidator, scene) {
         sceneInvalidator.attach(frameRateGate)
         SceneRenderInvalidators.register(scene, sceneInvalidator)
+        // And by engine, for the one change no node announces: a geometry upload that had to
+        // wait for the previous one and left from a Filament callback (#4365).
+        EngineRenderInvalidators.register(engine, sceneInvalidator)
         onDispose {
+            EngineRenderInvalidators.unregister(engine, sceneInvalidator)
             // Only this view's entry: another view may render the same scene (#3723).
             SceneRenderInvalidators.unregister(scene, sceneInvalidator)
             sceneInvalidator.detach(frameRateGate)
