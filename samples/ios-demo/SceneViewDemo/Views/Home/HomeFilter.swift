@@ -130,8 +130,9 @@ enum HomeCatalogue {
 /// notable rework (`// @updatedIn`), both read from this platform's history,
 /// and the verdict is computed against the running build's version. Nothing
 /// is hardcoded as "new": a declaration ages out on its own two minors
-/// later (`windowMinors`). A demo that is not available on iOS ("Coming soon") is never
-/// marked: there is nothing new to try.
+/// later (`windowMinors`). Declare the release the change will ship in, including
+/// the next version for work merged between releases. A demo that is not
+/// available on iOS ("Coming soon") is never marked: there is nothing new to try.
 enum DemoFreshness: Equatable {
     case new
     case updated
@@ -166,10 +167,9 @@ enum DemoFreshness: Equatable {
         return of(addedIn: item.addedIn, updatedIn: item.updatedIn, buildVersion: buildVersion)
     }
 
-    /// `true` when `version` parses and is not ahead of `buildVersion` — the
-    /// registry rule: work merged between two releases declares the version the
-    /// build already reports, never a guessed next one (a typo such as `4.15.0`
-    /// for `4.51.0`, or `5.0.0`, would pin a chip on a card for good).
+    /// `true` when `version` parses and is not ahead of `buildVersion`.
+    /// This validates the iOS registry against its `MARKETING_VERSION`; the
+    /// freshness comparison itself still treats a future version as recent.
     static func isDeclarable(_ version: String?, buildVersion: String) -> Bool {
         guard let declared = semVer(version), let build = semVer(buildVersion) else { return false }
         return declared.lexicographicallyPrecedes(build) || declared == build

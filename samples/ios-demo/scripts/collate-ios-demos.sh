@@ -21,9 +21,8 @@
 #   // @addedIn   <x.y.z>       (REQUIRED) release the demo first shipped in on iOS — the
 #                                  first v4.x.y tag containing the demo's first commit.
 #                                  Mirrors Android `DemoEntry.addedIn`; drives the "New" chip.
-#                                  Work merged between two releases declares the current
-#                                  MARKETING_VERSION, never a guessed next one
-#                                  (HomeFilterTests fails on a version newer than the build).
+#                                  Declare the release the change will ship in, including
+#                                  the next version for work merged between releases.
 #   // @updatedIn <x.y.z>       (optional) release of the demo's last notable rework in its
 #                                  own files (not a sweep, refactor or lint commit) — mirrors
 #                                  Android `DemoEntry.updatedIn`; drives "Updated".

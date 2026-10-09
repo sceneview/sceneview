@@ -127,9 +127,8 @@ final class DemoFreshnessTests: XCTestCase {
     }
 
     /// The registry rule, on the real scenes: every demo declares the release it
-    /// first shipped in (`// @addedIn`), and neither version is ahead of the
-    /// build — work merged between two releases declares the version the build
-    /// reports, never a guessed next one.
+    /// first shipped in (`// @addedIn`), and neither version is ahead of this
+    /// iOS target's `MARKETING_VERSION`.
     func testEverySceneDeclaresAnAddedInThatIsNotAheadOfTheBuild() {
         let scenes = GeneratedScenes.all()
         XCTAssertFalse(scenes.isEmpty)
