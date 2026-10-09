@@ -387,8 +387,10 @@ public final class io/github/sceneview/SceneFactoriesKt {
 	public static final fun createEglContext ()Landroid/opengl/EGLContext;
 	public static final fun createEngine (Landroid/opengl/EGLContext;)Lcom/google/android/filament/Engine;
 	public static final fun createEnvironment (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;)Lio/github/sceneview/environment/Environment;
+	public static final fun createEnvironment (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;Ljava/util/List;)Lio/github/sceneview/environment/Environment;
 	public static final fun createEnvironment (Lio/github/sceneview/loaders/EnvironmentLoader;Z)Lio/github/sceneview/environment/Environment;
 	public static synthetic fun createEnvironment$default (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
+	public static synthetic fun createEnvironment$default (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
 	public static synthetic fun createEnvironment$default (Lio/github/sceneview/loaders/EnvironmentLoader;ZILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
 	public static final fun createFillLightNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/node/LightNode;
 	public static final fun createMainLightNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/node/LightNode;
