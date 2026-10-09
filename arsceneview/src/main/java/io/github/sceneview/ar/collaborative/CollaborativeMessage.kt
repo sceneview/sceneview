@@ -87,7 +87,8 @@ public sealed interface CollaborativeMessage {
      * The transform of a placed object, in shared-anchor local space.
      *
      * Conflict policy is **last-writer-wins** keyed on [nodeKey]: the greatest
-     * ([logicalClock], [peerId]) pair wins, independent of delivery order.
+     * ([logicalClock], [peerId]) pair wins, whatever order the writes arrive
+     * in — see [CollaborativeState].
      *
      * @param nodeKey     app-defined unique key for the placed node.
      * @param modelKey    app-defined key for the model asset to instantiate.
@@ -97,8 +98,10 @@ public sealed interface CollaborativeMessage {
      * @param translation `[x,y,z]` translation in shared-anchor space.
      * @param quaternion  `[x,y,z,w]` rotation in shared-anchor space.
      * @param scale       `[x,y,z]` scale.
-     * @param logicalClock per-key Lamport counter used to order concurrent
-     *   writes. A peer id breaks ties between equal counters.
+     * @param logicalClock the write's position among the writes to [nodeKey];
+     *   [peerId] breaks a tie between equal counters. `0` — the default — is
+     *   a write with no counter, as sent by a peer that predates it: it is
+     *   applied in arrival order.
      */
     public data class NodeState @JvmOverloads constructor(
         override val peerId: String,
@@ -135,13 +138,16 @@ public sealed interface CollaborativeMessage {
     }
 
     /**
-     * A tombstone removing a placed object from the shared scene.
+     * The removal of a placed object from the shared scene.
      *
-     * The tombstone participates in the same last-writer-wins order as
-     * [NodeState], so an older placement cannot resurrect a removed node.
+     * A removal takes part in the same last-writer-wins order as [NodeState]:
+     * a placement written before it cannot bring the node back, one written
+     * after it places the node again.
      *
-     * @param nodeKey app-defined key of the node to remove.
-     * @param logicalClock per-key Lamport counter used to order the removal.
+     * @param nodeKey      app-defined key of the node to remove.
+     * @param logicalClock the removal's position among the writes to
+     *   [nodeKey]; [peerId] breaks a tie between equal counters. Must be
+     *   positive — a removal with no counter is ignored.
      */
     public data class NodeRemoval(
         override val peerId: String,

@@ -1,81 +1,28 @@
 package io.github.sceneview.ar.collaborative
 
 /**
- * JSON-lines wire format for the collaborative (multiplayer) AR layer.
+ * The wire format as released up to SceneView 4.53.0 — before the `node` line
+ * carried a `clock` and before the `remove` line existed (#4384).
  *
- * Every collaborative event is one JSON object on a single line, terminated
- * by `\n`. A [CollaborativeTransport] relays these lines verbatim between
- * peers; [CollaborativeSession] produces and consumes them.
- *
- * ### Why JSON-lines (and not protobuf / kotlinx.serialization)
- *
- * This mirrors [io.github.sceneview.ar.rerun.RerunWireFormat]: a `String`-in /
- * `String`-out, hand-rolled serializer with **zero new runtime dependencies**.
- * `kotlinx.serialization` is not on the `arsceneview` classpath and pulling it
- * in for a small message bus would bloat every SceneView app. JSON-lines is
- * also trivially framable on a byte stream (split on `\n`) and human-readable
- * on the wire, which makes a loopback / fake transport easy to debug.
- *
- * ### Message types
- *
- * ```
- * {"type":"hello",  "peer":"<id>", "name":"<display>"}
- * {"type":"anchor", "peer":"<id>", "id":"<cloudAnchorId>", "name":"<key>"}
- * {"type":"pose",   "peer":"<id>", "t":<epochMs>, "translation":[x,y,z], "quaternion":[x,y,z,w]}
- * {"type":"node",   "peer":"<id>", "node":"<key>", "model":"<key>",
- *                   "translation":[x,y,z], "quaternion":[x,y,z,w], "scale":[x,y,z],
- *                   "clock":<counter>}
- * {"type":"remove", "peer":"<id>", "node":"<key>", "clock":<counter>}
- * {"type":"bye",    "peer":"<id>"}
- * ```
- *
- * - `hello` / `bye` — a peer joining / leaving. `hello` carries an optional
- *   human-readable display name.
- * - `anchor` — the shared coordinate-frame anchor. The host broadcasts the
- *   ARCore Cloud Anchor ID it obtained from [io.github.sceneview.ar.node.CloudAnchorNode.host]
- *   so every other peer can resolve the *same* anchor and agree on a frame.
- * - `pose` — a participant's live camera pose, expressed **in the shared
- *   anchor's local space** so it is directly comparable across devices.
- * - `node` — a placed object's transform, again in shared-anchor space. The
- *   `model` field is an app-defined key telling the receiver which asset to
- *   instantiate. Conflict policy is last-writer-wins per `node` key, ordered
- *   by the `clock` counter and then the `peer` id — see [CollaborativeState].
- * - `remove` — the removal of a placed node, ordered like `node` so a
- *   placement written earlier cannot bring the node back.
- *
- * ### Compatibility with peers that predate `clock` and `remove`
- *
- * `clock` is the last field of a `node` line and fields are read by name, so
- * an older peer reads a new `node` line as it always did and ignores the
- * counter. It drops a `remove` line as an unknown type: a node removed by a
- * newer peer stays on an older peer's screen.
- *
- * In the other direction, a `node` line with no `clock` parses with
- * [CollaborativeMessage.NodeState.logicalClock] `0`, which [CollaborativeState]
- * applies in arrival order. A `clock` that is present but unreadable, and a
- * `remove` with no `clock`, cannot be ordered: those lines are dropped.
- *
- * All coordinates are in the shared anchor's local space. The translation /
- * quaternion / scale ordering matches ARCore's `Pose` (`[x,y,z]` translation,
- * `[x,y,z,w]` quaternion) and SceneView's `Scale` (`[x,y,z]`).
- *
- * This object is pure: no I/O, no threading, no Android framework — it can be
- * unit-tested on plain JVM.
+ * A verbatim copy of `CollaborativeWireFormat` at tag `v4.53.0`, kept so the
+ * tests can put a real older peer on the other end of the wire: it encodes
+ * the lines an installed app sends and parses the lines it receives exactly
+ * as that app does. **Do not update it** — its value is that it does not
+ * follow the code under test.
  */
-public object CollaborativeWireFormat {
+internal object PreClockWireFormat {
 
     /** Discriminator values for the `"type"` field. */
-    public const val TYPE_HELLO: String = "hello"
-    public const val TYPE_ANCHOR: String = "anchor"
-    public const val TYPE_POSE: String = "pose"
-    public const val TYPE_NODE: String = "node"
-    public const val TYPE_REMOVE: String = "remove"
-    public const val TYPE_BYE: String = "bye"
+    const val TYPE_HELLO: String = "hello"
+    const val TYPE_ANCHOR: String = "anchor"
+    const val TYPE_POSE: String = "pose"
+    const val TYPE_NODE: String = "node"
+    const val TYPE_BYE: String = "bye"
 
     // ── Encoders ──────────────────────────────────────────────────────────
 
     /** Encodes a `hello` message — a peer announcing itself to the session. */
-    public fun hello(peerId: String, displayName: String): String = buildString(96) {
+    fun hello(peerId: String, displayName: String): String = buildString(96) {
         append('{')
         appendField("type", TYPE_HELLO)
         append(',')
@@ -86,7 +33,7 @@ public object CollaborativeWireFormat {
     }
 
     /** Encodes a `bye` message — a peer leaving the session. */
-    public fun bye(peerId: String): String = buildString(48) {
+    fun bye(peerId: String): String = buildString(48) {
         append('{')
         appendField("type", TYPE_BYE)
         append(',')
@@ -101,7 +48,7 @@ public object CollaborativeWireFormat {
      * @param cloudAnchorId the ARCore-issued Cloud Anchor ID.
      * @param name          an app-meaningful name for the anchor (registry key).
      */
-    public fun anchor(peerId: String, cloudAnchorId: String, name: String): String =
+    fun anchor(peerId: String, cloudAnchorId: String, name: String): String =
         buildString(160) {
             append('{')
             appendField("type", TYPE_ANCHOR)
@@ -123,7 +70,7 @@ public object CollaborativeWireFormat {
      * @param translation  `[x,y,z]` translation in shared-anchor space.
      * @param quaternion   `[x,y,z,w]` rotation in shared-anchor space.
      */
-    public fun pose(
+    fun pose(
         peerId: String,
         epochMs: Long,
         translation: FloatArray,
@@ -147,27 +94,6 @@ public object CollaborativeWireFormat {
     }
 
     /**
-     * Encodes a `node` message with no counter — the line a peer that predates
-     * `clock` sends. Receivers apply it in arrival order. Prefer the overload
-     * that takes a `logicalClock`.
-     *
-     * @param peerId       the peer that placed / moved the node.
-     * @param nodeKey      app-defined unique key for the placed node.
-     * @param modelKey     app-defined key for the model asset to instantiate.
-     * @param translation  `[x,y,z]` translation in shared-anchor space.
-     * @param quaternion   `[x,y,z,w]` rotation in shared-anchor space.
-     * @param scale        `[x,y,z]` scale.
-     */
-    public fun node(
-        peerId: String,
-        nodeKey: String,
-        modelKey: String,
-        translation: FloatArray,
-        quaternion: FloatArray,
-        scale: FloatArray,
-    ): String = node(peerId, nodeKey, modelKey, translation, quaternion, scale, 0L)
-
-    /**
      * Encodes a `node` message — a placed object's transform in shared-anchor
      * local space.
      *
@@ -177,22 +103,18 @@ public object CollaborativeWireFormat {
      * @param translation  `[x,y,z]` translation in shared-anchor space.
      * @param quaternion   `[x,y,z,w]` rotation in shared-anchor space.
      * @param scale        `[x,y,z]` scale.
-     * @param logicalClock the write's position in the last-writer-wins order
-     *   of [nodeKey] — see [CollaborativeState]. `0` writes no `clock` field.
      */
-    public fun node(
+    fun node(
         peerId: String,
         nodeKey: String,
         modelKey: String,
         translation: FloatArray,
         quaternion: FloatArray,
         scale: FloatArray,
-        logicalClock: Long,
     ): String {
         require(translation.size == 3) { "translation must have 3 components" }
         require(quaternion.size == 4) { "quaternion must have 4 components" }
         require(scale.size == 3) { "scale must have 3 components" }
-        require(logicalClock >= 0L) { "logicalClock must not be negative" }
         return buildString(224) {
             append('{')
             appendField("type", TYPE_NODE)
@@ -208,34 +130,6 @@ public object CollaborativeWireFormat {
             appendVec("quaternion", quaternion)
             append(',')
             appendVec("scale", scale)
-            if (logicalClock > 0L) {
-                append(",\"clock\":")
-                append(logicalClock)
-            }
-            append("}\n")
-        }
-    }
-
-    /**
-     * Encodes a `remove` message — the removal of a placed node.
-     *
-     * @param peerId       the peer that removed the node.
-     * @param nodeKey      app-defined key of the node to remove.
-     * @param logicalClock the removal's position in the last-writer-wins order
-     *   of [nodeKey] — see [CollaborativeState]. Must be positive: a removal
-     *   with no counter cannot be ordered against a placement.
-     */
-    public fun remove(peerId: String, nodeKey: String, logicalClock: Long): String {
-        require(logicalClock > 0L) { "logicalClock must be positive" }
-        return buildString(96) {
-            append('{')
-            appendField("type", TYPE_REMOVE)
-            append(',')
-            appendField("peer", peerId)
-            append(',')
-            appendField("node", nodeKey)
-            append(",\"clock\":")
-            append(logicalClock)
             append("}\n")
         }
     }
@@ -250,7 +144,7 @@ public object CollaborativeWireFormat {
      * message-type addition never crashes an older peer. Hand-parsed (no JSON
      * library) to keep the runtime dependency-free, matching [hello] etc.
      */
-    public fun parse(line: String): CollaborativeMessage? {
+    fun parse(line: String): CollaborativeMessage? {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) return null
         val type = stringField(trimmed, "type") ?: return null
@@ -264,7 +158,6 @@ public object CollaborativeWireFormat {
             TYPE_ANCHOR -> parseAnchor(trimmed, peer)
             TYPE_POSE -> parsePose(trimmed, peer)
             TYPE_NODE -> parseNode(trimmed, peer)
-            TYPE_REMOVE -> parseRemoval(trimmed, peer)
             else -> null
         }
     }
@@ -295,14 +188,6 @@ public object CollaborativeWireFormat {
         val modelKey = stringField(line, "model")
         val transform = parseTransform(line) ?: return null
         if (nodeKey == null || modelKey == null) return null
-        // No clock at all is a peer that predates it. A clock that is there
-        // but unreadable is not: reading it as "no clock" would let the line
-        // overwrite a newer write.
-        val logicalClock = if (hasField(line, "clock")) {
-            longField(line, "clock")?.takeIf { it >= 0L } ?: return null
-        } else {
-            0L
-        }
         return CollaborativeMessage.NodeState(
             peerId = peer,
             nodeKey = nodeKey,
@@ -310,14 +195,7 @@ public object CollaborativeWireFormat {
             translation = transform.translation,
             quaternion = transform.quaternion,
             scale = transform.scale,
-            logicalClock = logicalClock,
         )
-    }
-
-    private fun parseRemoval(line: String, peer: String): CollaborativeMessage? {
-        val nodeKey = stringField(line, "node") ?: return null
-        val logicalClock = longField(line, "clock")?.takeIf { it > 0L } ?: return null
-        return CollaborativeMessage.NodeRemoval(peer, nodeKey, logicalClock)
     }
 
     /** A `translation`/`quaternion`/`scale` triple parsed off one line. */
@@ -412,9 +290,6 @@ public object CollaborativeWireFormat {
         }
         return null
     }
-
-    /** `true` if the line carries a field called [name], whatever its value. */
-    private fun hasField(line: String, name: String): Boolean = line.contains("\"$name\":")
 
     /** Extracts an integer (`long`) field by name, or `null` if absent. */
     private fun longField(line: String, name: String): Long? {
