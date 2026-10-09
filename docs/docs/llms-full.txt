@@ -158,7 +158,7 @@ MeshNode(primitiveType = primitiveType, vertexBuffer = vertexBuffer, indexBuffer
 ### Media Nodes
 ```kotlin
 ImageNode(imageFileLocation = "images/logo.png", size = Size(1f, 1f))
-VideoNode(player = mediaPlayer, position = Position(z = -2f))
+VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f)) // prepared off the main thread
 ViewNode(windowManager = windowManager) { Card { Text("Hello 3D!") } }
 ```
 

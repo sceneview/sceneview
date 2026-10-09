@@ -921,24 +921,25 @@ separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
-// Simple — asset path (recommended):
+// Simple — a path or a URL (recommended):
 @ExperimentalSceneViewApi
 @Composable fun VideoNode(
-    videoPath: String,              // e.g. "videos/promo.mp4"
-    autoPlay: Boolean = true,
-    isLooping: Boolean = true,
+    videoPath: String,              // "videos/promo.mp4" (assets), or https:// file:// content://
+    autoPlay: Boolean = true,       // reactive: true plays, false pauses
+    isLooping: Boolean = true,      // reactive
     chromaKeyColor: Int? = null,
     size: Size? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),
+    onError: ((Exception) -> Unit)? = null,   // missing file, unsupported codec, broken stream
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 
 // Advanced — bring your own MediaPlayer:
 @Composable fun VideoNode(
-    player: MediaPlayer,
+    player: MediaPlayer,   // already prepared
     chromaKeyColor: Int? = null,
     size: Size? = null,    // null = auto-sized from video aspect ratio
     position: Position = Position(x = 0f),
@@ -947,23 +948,58 @@ separately under #2646.
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
+
+// The player both overloads are built on:
+@ExperimentalSceneViewApi
+@Composable fun rememberMediaPlayer(
+    fileLocation: String,           // assets path, or a location with a scheme
+    isLooping: Boolean = true,
+    autoPlay: Boolean = true
+): MediaPlayerState
+
+sealed interface MediaPlayerState {
+    data object Preparing : MediaPlayerState
+    class Ready(val player: MediaPlayer) : MediaPlayerState
+    class Failed(val cause: Exception) : MediaPlayerState   // FileNotFoundException, MediaPlayerException(what, extra), …
+}
 ```
+
+The video is prepared off the main thread (`prepareAsync`), never during composition. The node
+appears once the video is prepared; until then, and if it fails, `VideoNode(videoPath)` emits
+nothing — pass `onError` to hear about a failure (called once, on the main thread; also logged
+once under the `MediaPlayerState` tag). The player is released when the location changes and when
+the call leaves the composition: never release it yourself, never keep it past that point.
 
 Usage (simple):
 ```kotlin
+var videoError by remember { mutableStateOf<Exception?>(null) }
+
 SceneView {
-    VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
+    VideoNode(
+        videoPath = "videos/promo.mp4",
+        position = Position(z = -2f),
+        onError = { cause -> videoError = cause }   // render your own message from this state
+    )
 }
 ```
 
-Usage (advanced — custom MediaPlayer):
+Usage (a placeholder while it prepares, a fallback when it fails):
 ```kotlin
-val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
-
-SceneView(...) {
-    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+@Composable
+fun PromoVideo(loadingStill: Bitmap, unavailableStill: Bitmap) {
+    SceneView {
+        when (val video = rememberMediaPlayer("https://example.com/promo.mp4")) {
+            is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+            is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(z = -2f))
+            MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(z = -2f))
+        }
+    }
 }
 ```
+
+Never call the blocking `MediaPlayer.prepare()` or `MediaPlayer.create(…)` inside `remember { }`:
+both parse the file on the main thread, during composition. A streamed URL needs the
+`android.permission.INTERNET` permission.
 
 ### ViewNode — Compose UI in 3D
 **Requires `viewNodeWindowManager` on the parent `SceneView`.**
@@ -3953,7 +3989,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
-| `rememberMediaPlayer(context, assetFileLocation, isLooping = true, autoStart = true)` | `MediaPlayer?` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared synchronously: ready on the first composition, `null` only when the asset cannot be opened or prepared (#4388) |
+| `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
 
 **AR-specific helpers** (from `arsceneview` module):
 

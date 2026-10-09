@@ -273,7 +273,7 @@ mechanism (EV-stop post-process via CIColorControls) — do not copy values acro
 | `PlaneNode` | `size: Size`, `materialInstance` |
 | `LightNode` | `type: LightManager.Type`, `apply = { intensity(); color(); castShadows() }` |
 | `ImageNode` | `imageFileLocation` / `imageResId` / `bitmap`, `size` |
-| `VideoNode` | `videoPath` (simple) / `player: MediaPlayer` (advanced), `chromaKeyColor`, `size` |
+| `VideoNode` | `videoPath` (asset path or URL, with `autoPlay`, `isLooping`, `onError`) / `player: MediaPlayer` (advanced), `chromaKeyColor`, `size` |
 | `ViewNode` | `windowManager`, `unlit`, `position`, `rotation`, `scale`, `isVisible`, content = `@Composable` |
 | `TextNode` | `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `widthMeters`, `heightMeters`, `cameraPositionProvider` |
 | `BillboardNode` | `bitmap`, `widthMeters`, `heightMeters`, `cameraPositionProvider` |

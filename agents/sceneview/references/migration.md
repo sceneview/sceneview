@@ -89,6 +89,26 @@ morph writes through `RenderableManager`. After one of those, call
 **`ARSceneView` takes no `frameRatePolicy`** — do not add one: a live camera
 feed is never idle, so its loop never parks.
 
+## Video player (4.54.0)
+
+`rememberMediaPlayer(context, assetFileLocation, isLooping, autoStart): MediaPlayer?`
+is **removed**, with no deprecated overload. It prepared the video on the main
+thread during composition and returned `null` for every failure.
+
+| Old | New |
+| --- | --- |
+| `rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")` | `rememberMediaPlayer("videos/promo.mp4")` — no `context`; an `https://`, `file://` or `content://` location works too |
+| `autoStart = true` | `autoPlay = true` — reactive, like `isLooping`: `true` plays, `false` pauses |
+| returns `MediaPlayer?` | returns `MediaPlayerState`: `Preparing`, `Ready(player)` or `Failed(cause)` |
+| `player?.let { VideoNode(player = it) }` | `if (video is MediaPlayerState.Ready) VideoNode(player = video.player)` |
+| a failure was silent | `MediaPlayerState.Failed.cause`, or `VideoNode(videoPath = …, onError = { cause -> … })`; logged once under `MediaPlayerState` |
+
+The first composition never has a player: anything that touched it right after
+the call (`seekTo`, `videoWidth`) moves under the `Ready` branch. Never call the
+blocking `MediaPlayer.prepare()` or `MediaPlayer.create(…)` inside
+`remember { }`; a player of your own is prepared with `prepareAsync()`. Both
+APIs are `@ExperimentalSceneViewApi`.
+
 ## Common compile errors and fixes
 
 1. `Type mismatch: expected Direction, got Position` — `LightNode.direction`

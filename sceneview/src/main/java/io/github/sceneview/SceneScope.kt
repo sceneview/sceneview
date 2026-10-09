@@ -5,7 +5,6 @@
 
 package io.github.sceneview
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaPlayer
 import androidx.annotation.DrawableRes
@@ -17,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
@@ -1339,20 +1337,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * [android.media.MediaPlayer.OnVideoSizeChangedListener] the geometry is updated automatically.
      *
      * ```kotlin
-     * val player = remember {
-     *     MediaPlayer().apply {
-     *         setDataSource(context, videoUri)
-     *         isLooping = true
-     *         prepare()
-     *         start()
+     * SceneView {
+     *     when (val video = rememberMediaPlayer("videos/promo.mp4")) {
+     *         is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+     *         is MediaPlayerState.Failed -> Unit // video.cause says why
+     *         MediaPlayerState.Preparing -> Unit
      *     }
      * }
-     * DisposableEffect(Unit) { onDispose { player.release() } }
-     *
-     * SceneView {
-     *     VideoNode(player = player, position = Position(z = -2f))
-     * }
      * ```
+     *
+     * [rememberMediaPlayer] prepares the player off the main thread and releases it. A player you
+     * build yourself must be prepared before it gets here — with `prepareAsync()`, never the
+     * blocking `prepare()` during composition — and released by you.
      *
      * @param player           [android.media.MediaPlayer] whose frames are rendered on this node.
      * @param chromaKeyColor   Optional ARGB chroma-key colour for green-screen compositing.
@@ -1393,30 +1389,43 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     }
 
     /**
-     * Convenience overload that loads a video from an asset file path and manages the
-     * [MediaPlayer] lifecycle automatically.
+     * Plays the video at [videoPath] on a flat plane, and owns its [MediaPlayer].
      *
-     * Mirrors the Android roadmap goal of `VideoNode(videoPath = "videos/promo.mp4", autoPlay = true)`.
-     * Internally uses [rememberMediaPlayer] for lifecycle management and [VideoNode] for rendering.
+     * The video is prepared off the main thread by [rememberMediaPlayer]: the node appears once it
+     * is ready, sized to the video's aspect ratio, and nothing is drawn before that. A video that
+     * cannot be played — missing file, unsupported codec, broken stream — is reported to [onError]
+     * and logged once; the node then stays out of the scene.
      *
      * ```kotlin
      * SceneView {
      *     VideoNode(
      *         videoPath = "videos/promo.mp4",
-     *         position = Position(z = -2f)
+     *         position = Position(z = -2f),
+     *         onError = { cause -> videoError = cause }
      *     )
      * }
      * ```
      *
-     * @param videoPath        Asset file path (e.g. `"videos/promo.mp4"`).
-     * @param autoPlay         Whether to start playback immediately. Default `true`.
-     * @param isLooping        Whether the video should loop. Default `true`.
+     * To draw a placeholder while the video is prepared, or something else when it fails, call
+     * [rememberMediaPlayer] yourself and branch on its [MediaPlayerState].
+     *
+     * @param videoPath        Path to the video relative to the `assets` folder
+     *                         (`"videos/promo.mp4"`), or a location with a scheme: `https://…`,
+     *                         `file://…`, `content://…`, `android.resource://…`.
+     * @param autoPlay         Whether the video plays. Applied when the video becomes ready and
+     *                         each time the value changes: `true` starts playback, `false` pauses
+     *                         it. Default `true`.
+     * @param isLooping        Whether the video loops. Applied when it changes. Default `true`.
      * @param chromaKeyColor   Optional ARGB chroma-key colour for green-screen compositing.
      * @param size             Fixed plane size in world units. `null` = auto-size from video.
      * @param position         World-space position.
      * @param rotation         World-space rotation.
      * @param scale            World-space scale.
-     * @param apply            Additional configuration on the [VideoNodeImpl] instance.
+     * @param onError          Called once when the video cannot be played, with the cause: the
+     *                         exception thrown while opening [videoPath], or a
+     *                         [MediaPlayerException] carrying the codes the player reported.
+     * @param apply            Additional configuration on the [VideoNodeImpl] instance. Runs when
+     *                         the node is created, that is once the video is ready.
      * @param content          Optional child nodes in a [NodeScope].
      */
     @ExperimentalSceneViewApi
@@ -1430,19 +1439,19 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         position: Position = Position(x = 0f),
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
+        onError: ((Exception) -> Unit)? = null,
         apply: VideoNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
-        val context: Context = LocalContext.current
-        val player = rememberMediaPlayer(
-            context = context,
-            assetFileLocation = videoPath,
+        val state = rememberMediaPlayer(
+            fileLocation = videoPath,
             isLooping = isLooping,
-            autoStart = autoPlay
+            autoPlay = autoPlay
         )
-        if (player != null) {
+        MediaPlayerFailureEffect(state, onError)
+        if (state is MediaPlayerState.Ready) {
             VideoNode(
-                player = player,
+                player = state.player,
                 chromaKeyColor = chromaKeyColor,
                 size = size,
                 position = position,
