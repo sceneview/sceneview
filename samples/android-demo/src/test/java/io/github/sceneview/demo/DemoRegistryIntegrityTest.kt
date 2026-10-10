@@ -301,10 +301,10 @@ class DemoRegistryIntegrityTest {
      * permission it never uses; a new AR demo is gated unless it is added here on purpose.
      */
     @Test
-    fun `every AR demo asks for the camera on entry, except the three that open without one`() {
+    fun `every AR demo asks for the camera on entry, except the four that open without one`() {
         val arDemos = ALL_DEMOS.filter { it.isArDemo }
         assertEquals(
-            setOf("ar-placement", "ar-rerun", "ar-xr"),
+            setOf("ar-placement", "ar-rerun", "ar-splat-room", "ar-xr"),
             arDemos.filterNot { it.opensCameraOnEntry }.map { it.id }.toSet(),
         )
         assertTrue("the AR demos behind the route gate", arDemos.count { it.opensCameraOnEntry } > 0)
