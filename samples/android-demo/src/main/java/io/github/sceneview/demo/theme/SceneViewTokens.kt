@@ -442,9 +442,18 @@ object SceneViewTokens {
         /**
          * `home-row-whole-dissolve` — the same, for a row that shows its picture whole
          * (the "What's new" row): the picture stays solid across the band a card holds its
-         * subject in and only its trailing margin dissolves.
+         * subject in and only its trailing margin dissolves, into its own edge colour.
          */
         const val rowWholeDissolveStart = 0.84f
+
+        /**
+         * `home-row-whole-melt` — the strip after a whole picture (`space-xl`) over which
+         * the picture's own edge colour carries on and melts into the row's tint. One
+         * ease runs from `home-row-whole-dissolve` to the end of the strip; the text
+         * starts after it. `space-2xl` breaks the row's subtitle onto a second line on a
+         * 411 dp phone.
+         */
+        val rowWholeMelt = 32.dp
 
         /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
         val rowTextPaddingEnd = 16.dp

@@ -36,6 +36,27 @@ internal object HomeAmbient {
         return color
     }
 
+    private val edgeCache = HashMap<Long, Color>()
+
+    /**
+     * The colour drawable [res] ends on along one vertical edge — its right one, or its
+     * left one when [leftEdge] — as the plain mean of that column, decoded once and
+     * cached. What a row that shows its picture whole carries on with past the picture
+     * (`home-row-whole-melt`).
+     */
+    fun edge(resources: Resources, @DrawableRes res: Int, leftEdge: Boolean): Color {
+        val key = (res.toLong() shl 1) or (if (leftEdge) 1L else 0L)
+        synchronized(edgeCache) { edgeCache[key]?.let { return it } }
+        val options = BitmapFactory.Options().apply { inSampleSize = AMBIENT_SAMPLE_SIZE }
+        val bitmap = BitmapFactory.decodeResource(resources, res, options) ?: return Color.Gray
+        val column = IntArray(bitmap.height)
+        bitmap.getPixels(column, 0, 1, if (leftEdge) 0 else bitmap.width - 1, 0, 1, bitmap.height)
+        bitmap.recycle()
+        val color = meanColor(column)
+        synchronized(edgeCache) { edgeCache[key] = color }
+        return color
+    }
+
     /**
      * The picture decoded at 1/16 (50 x 40 for an 800 x 640 preview) — plenty for an
      * average, and cheap enough to run on first composition of a row.
@@ -91,6 +112,21 @@ internal fun ambientSeed(argb: IntArray): Color {
     }
     if (total == 0.0) return Color.Gray
     return Color((r / total).toFloat(), (g / total).toFloat(), (b / total).toFloat())
+}
+
+/** The unweighted mean of [argb], opaque: the flat colour a strip of pixels reads as. */
+internal fun meanColor(argb: IntArray): Color {
+    if (argb.isEmpty()) return Color.Gray
+    var r = 0L
+    var g = 0L
+    var b = 0L
+    for (pixel in argb) {
+        r += (pixel shr 16) and 0xFF
+        g += (pixel shr 8) and 0xFF
+        b += pixel and 0xFF
+    }
+    val n = argb.size * 255f
+    return Color(r / n, g / n, b / n)
 }
 
 /**

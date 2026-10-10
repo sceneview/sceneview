@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -171,11 +172,14 @@ fun WhatsNewRow(
     val res = leadDemoId?.let { DemoPreviews.resourceFor(it, dark) }
     val title = stringResource(R.string.home_whats_new_title)
     if (res != null) {
+        // The picture's trailing edge is its left one when the row is mirrored.
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         WholePictureRow(
             title = title,
             subtitle = subtitle,
             tint = remember(res, dark) { HomeAmbient.tint(resources, res, dark) },
             picture = painterResource(res),
+            pictureEdge = remember(res, rtl) { HomeAmbient.edge(resources, res, leftEdge = rtl) },
             alignment = FEATURED_MEDIA_ALIGNMENT[leadDemoId] ?: Alignment.Center,
             onClick = onClick,
             modifier = modifier,
@@ -196,10 +200,14 @@ fun WhatsNewRow(
 
 /**
  * `home-row-whole`: a row whose [picture] is shown whole instead of filling half the row.
- * The picture keeps its own shape at the row's height, against the leading edge, and
- * dissolves into [tint] only from `home-row-whole-dissolve` on, past where a card holds its
- * subject; the text starts `space-md` after it. The row's width therefore never decides
- * what is left of the picture: a phone and a tablet show the same card.
+ * The picture keeps its own shape at the row's height, against the leading edge, solid
+ * across the band a card holds its subject in. The melt into [tint] takes most of its
+ * room after the picture, not from it: from `home-row-whole-dissolve` on the picture
+ * gives way to [pictureEdge], the colour it ends on, which carries on past the picture
+ * over `home-row-whole-melt` and fades into the row on one ease from the first point to
+ * the last. A dark card on a pale row therefore ends like an illustration, not on a
+ * line. The text starts after that strip. The row's width never decides what is left of
+ * the picture: a phone and a tablet show the same card.
  *
  * A row its text makes taller widens the picture with it, up to the
  * [SceneViewTokens.Home.rowMediaFraction] a catalogue row gives its own; only past that
@@ -212,6 +220,7 @@ private fun WholePictureRow(
     subtitle: String,
     tint: Color,
     picture: Painter,
+    pictureEdge: Color,
     alignment: Alignment,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -230,6 +239,8 @@ private fun WholePictureRow(
     ) {
         Layout(
             content = {
+                // Under the picture's dissolving margin and on past it: one melt, one ease.
+                Box(Modifier.dissolve(DissolveEdge.End, start = 0f).background(pictureEdge))
                 RowPicture(
                     painter = picture,
                     alignment = alignment,
@@ -244,10 +255,10 @@ private fun WholePictureRow(
                         .padding(vertical = home.rowTextPaddingVertical),
                 )
             },
-        ) { (pictureMeasurable, captionMeasurable), constraints ->
+        ) { (meltMeasurable, pictureMeasurable, captionMeasurable), constraints ->
             val width = constraints.maxWidth
             val minHeight = home.rowHeight.roundToPx()
-            val gap = SceneViewTokens.Space.md.roundToPx()
+            val gap = home.rowWholeMelt.roundToPx()
             val widest = (width * home.rowMediaFraction).roundToInt()
             fun pictureWidth(height: Int) = (height * aspect).roundToInt().coerceAtMost(widest)
             // The picture's width follows the row's height and the text's height follows the
@@ -261,7 +272,12 @@ private fun WholePictureRow(
             )
             val height = maxOf(minHeight, caption.height)
             val pictureBox = pictureMeasurable.measure(Constraints.fixed(pictureWidth, height))
+            val meltStart = (pictureWidth * home.rowWholeDissolveStart).roundToInt()
+            val melt = meltMeasurable.measure(
+                Constraints.fixed(pictureWidth - meltStart + gap, height),
+            )
             layout(width, height) {
+                melt.placeRelative(meltStart, 0)
                 pictureBox.placeRelative(0, 0)
                 caption.placeRelative(pictureWidth + gap, (height - caption.height) / 2)
             }
