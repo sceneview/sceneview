@@ -90,6 +90,162 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertEqual(poses.rowCount, 4, "three path samples and one keyframe pose")
     }
 
+    func testLivePointsHaveSortedNanosecondRowsAndAndroidComponentNames() throws {
+        var recorded = scene()
+        recorded.pointObservations = [
+            .init(time: 1.25, points: [1, 2]),
+            .init(time: 0.5, points: [-1, 0, 99]),
+            .init(time: 0.75, points: []),
+        ]
+        let live = try XCTUnwrap(RerunRRDWriter.chunks(for: recorded).first { $0.entityPath == "/world/points/live" })
+        XCTAssertEqual(live.times, [500_000_000, 1_250_000_000])
+        let parsed = try XCTUnwrap(try chunks(of: recorded).first { $0.entityPath == "/world/points/live" })
+        XCTAssertFalse(parsed.isStatic)
+        XCTAssertEqual(parsed.rowCount, 2)
+        XCTAssertEqual(parsed.fieldNames, ["rerun.controls.RowId", "time", "Points3D:colors", "Points3D:positions", "Points3D:radii"])
+        XCTAssertEqual(live.components.map(\.componentType), ["Position3D", "Radius", "Color"])
+    }
+
+    func testEveryPhotoIsWrittenWithItsPoseAndKeyframesRemainAFallback() throws {
+        var recorded = scene()
+        let keyframe = try XCTUnwrap(recorded.keyframes.first)
+        recorded.photos = [0.0, 0.25, 1.0].map { time in
+            var photo = keyframe
+            photo.time = time
+            photo.pose.time = time
+            return photo
+        }
+        let chunks = try chunks(of: recorded)
+        let images = try XCTUnwrap(chunks.first { $0.fieldNames.contains("EncodedImage:blob") })
+        XCTAssertEqual(images.rowCount, 3)
+        let poses = try XCTUnwrap(chunks.first { $0.fieldNames.contains("Transform3D:translation") && !$0.isStatic })
+        XCTAssertEqual(poses.rowCount, 6)
+        recorded.photos = []
+        XCTAssertEqual(try self.chunks(of: recorded).first { $0.fieldNames.contains("EncodedImage:blob") }?.rowCount, 1)
+    }
+
+    // MARK: - Expected bytes written by hand from the Android writer's source
+    //
+    // No file the Android writer produced is involved here: the expected bytes are assembled
+    // in this file from a reading of `RerunRrdWriter.kt` and `RerunRrdChunk.kt`. They pin the
+    // iOS layout to that reading; they do not prove the two writers agree.
+
+    /// `RerunRrdWriter.kt`'s `TUID_EPOCH_NANOS`, and its `RerunTuidSequence` seed for
+    /// ``recordingId``: the UUID's high 64 bits masked to 48.
+    private static let tuidEpoch: UInt64 = 1_767_225_600_000_000_000
+    private static let tuidSeed: UInt64 = 0x04E0_4F89_11D3
+
+    /// `rerun.common.v1alpha1.StoreId` as Android's `storeId` writes it: kind 1 (recording),
+    /// the lowercase recording id, then the application id in its own message.
+    private static let storeId: [UInt8] = [0x08, 0x01, 0x12, 0x24]
+        + Array("3f2504e0-4f89-11d3-9a0c-0305e82c3301".utf8)
+        + [0x1A, 0x15, 0x0A, 0x13] + Array("sceneview_ar_replay".utf8)
+
+    /// The stream header, the first `MessageHeader` and the whole `SetStoreInfo`, assembled
+    /// here field by field from `RerunRrdWriter.kt` (`streamHeader`, `appendMessage`,
+    /// `setStoreInfo`) and compared as one prefix. By that reading the store source label is
+    /// the only byte run that differs between the platforms: `SceneView Android` there.
+    func testStreamAndStoreInfoMatchBytesHandWrittenFromTheAndroidWriter() throws {
+        let data = try RerunRRDWriter.data(for: scene(), recordingId: recordingId)
+        let source = Array("SceneView iOS".utf8)
+        var expected: [UInt8] = Array("RRF2".utf8) + [0, 38, 1, 0] + [0, 2, 0, 0]
+        expected += Self.le64(1) + Self.le64(UInt64(101 + source.count)) // MessageHeader: kind, length.
+        expected += [0x0A, 0x12, 0x09] + Self.le64(Self.tuidEpoch) + [0x11] + Self.le64(Self.tuidSeed + 1) // row_id
+        expected += [0x12, UInt8(79 + source.count)] // info
+        expected += [0x12, 0x3F] + Self.storeId
+        expected += [0x2A, UInt8(6 + source.count), 0x08, 0x06, 0x12, UInt8(2 + source.count), 0x0A, UInt8(source.count)]
+        expected += source
+        expected += [0x32, 0x04, 0x08, 0x80, 0xCC, 0x04] // crate_version_bits of 0.38.1
+        XCTAssertEqual(Self.storeId.count, 0x3F)
+        XCTAssertEqual(Array(data.prefix(expected.count)), expected)
+        XCTAssertEqual(Array(data.dropFirst(expected.count).prefix(8)), Self.le64(2), "an ArrowMsg follows")
+    }
+
+    /// The `world/points/live` message against a reading of Android's `arrowMessage` and
+    /// `liveChunk`: the envelope bytes around the IPC stream are compared in place, the chunk
+    /// and row ids and each column's values are looked for as contiguous little-endian runs
+    /// inside the IPC stream — present, not located.
+    func testLivePointsMessageContainsBytesHandWrittenFromTheAndroidWriter() throws {
+        var recorded = scene()
+        recorded.pointObservations = [.init(time: 1.25, points: [1, 2]), .init(time: 0.5, points: [0])]
+        let messages = try Self.messages(in: RerunRRDWriter.data(for: recorded, recordingId: recordingId))
+        let parsed = try messages.dropFirst().map { try Self.chunk(from: $0.payload) }
+        let index = try XCTUnwrap(parsed.firstIndex { $0.entityPath == "/world/points/live" })
+        XCTAssertEqual(parsed[index - 1].entityPath, "/world/points", "right after the static map, as on Android")
+
+        // One id for SetStoreInfo, then a chunk id and one row id per row for every chunk.
+        let chunkInc = Self.tuidSeed + 1 + UInt64(parsed[..<index].reduce(0) { $0 + 1 + $1.rowCount }) + 1
+        let payload = [UInt8](messages[index + 1].payload)
+        let ipc = parsed[index].ipc
+        var head: [UInt8] = [0x0A, 0x3F] + Self.storeId
+        head += [0x10, 0x01, 0x18] + Self.varint(ipc.count) + [0x20, 0x01, 0x2A] + Self.varint(ipc.count)
+        head += [0xFF, 0xFF, 0xFF, 0xFF]
+        XCTAssertEqual(Array(payload.prefix(head.count)), head, "store id, no compression, size, Arrow IPC, payload")
+        var tail: [UInt8] = [0x32, 0x12, 0x09] + Self.le64(Self.tuidEpoch)
+        tail += [0x11] + Self.le64(chunkInc) + [0x38, 0x00]
+        XCTAssertEqual(Array(payload.suffix(tail.count)), tail, "chunk id, then is_static = false")
+
+        func tuid(_ inc: UInt64) -> [UInt8] { Array(Self.le64(Self.tuidEpoch).reversed()) + Array(Self.le64(inc).reversed()) }
+        XCTAssertNotNil(ipc.range(of: Data(tuid(chunkInc + 1) + tuid(chunkInc + 2))), "row ids, big-endian")
+        XCTAssertNotNil(ipc.range(of: Data(Self.le64(500_000_000) + Self.le64(1_250_000_000))), "nanoseconds, sorted")
+        let positions: [Float] = [0, 0, 0, 1, 0, 0, 0, 1, 0]
+        XCTAssertNotNil(ipc.range(of: Data(positions.flatMap { Self.le32($0.bitPattern) })), "the sighted map points, row after row")
+        let radius = Self.le32(Float(0.008).bitPattern)
+        XCTAssertNotNil(ipc.range(of: Data(radius + radius)), "radius 8 mm")
+        XCTAssertNotNil(ipc.range(of: Data([0xFF, 0x0B, 0x9E, 0xF5, 0xFF, 0x0B, 0x9E, 0xF5])), "#F59E0B, opaque")
+    }
+
+    /// A plane photo with a texel that is not opaque is written as straight RGBA
+    /// (`ColorModel` 3); an opaque one stays RGB (2). Both are 8 bits per channel (6).
+    func testPlaneTexturesAreStraightRGBAOnlyWhenATexelIsNotOpaque() throws {
+        let texels: [UInt8] = [10, 20, 30, 255, 0, 0, 0, 0, 100, 150, 200, 51, 240, 80, 40, 255]
+        var translucent = scene()
+        translucent.planes[0].texture = .init(imageData: try Self.png(rgba: texels, width: 2, height: 2),
+                                              origin: .zero, u: SIMD3(1, 0, 0), v: SIMD3(0, 0, 1))
+        let rgba = try XCTUnwrap(try chunks(of: translucent).first { $0.entityPath == "/world/planes/7" }).ipc
+        XCTAssertNotNil(rgba.range(of: Data(texels)), "the texels, unpremultiplied, top row first")
+        XCTAssertNotNil(rgba.range(of: Data(Self.imageFormat(width: 2, height: 2, colorModel: 3))))
+        XCTAssertNil(rgba.range(of: Data(Self.imageFormat(width: 2, height: 2, colorModel: 2))))
+
+        let rgb = try XCTUnwrap(try chunks(of: scene()).first { $0.entityPath == "/world/planes/7" }).ipc
+        XCTAssertNotNil(rgb.range(of: Data(Self.imageFormat(width: 12, height: 16, colorModel: 2))))
+        XCTAssertNil(rgb.range(of: Data(Self.imageFormat(width: 12, height: 16, colorModel: 3))))
+    }
+
+    /// The body buffers of one `ImageFormat` struct row, each padded to 8 bytes: `width`,
+    /// `height`, the null `pixel_format` (validity, value), `color_model`, `channel_datatype`.
+    private static func imageFormat(width: UInt32, height: UInt32, colorModel: UInt8) -> [UInt8] {
+        func padded(_ bytes: [UInt8]) -> [UInt8] { bytes + [UInt8](repeating: 0, count: 8 - bytes.count) }
+        return padded(le32(width)) + padded(le32(height)) + padded([0]) + padded([0])
+            + padded([colorModel]) + padded([6])
+    }
+
+    private static func le64(_ value: UInt64) -> [UInt8] { (0..<8).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) } }
+    private static func le32(_ value: UInt32) -> [UInt8] { (0..<4).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) } }
+
+    private static func varint(_ value: Int) -> [UInt8] {
+        var rest = UInt64(value), out: [UInt8] = []
+        while rest >= 0x80 {
+            out.append(UInt8(rest & 0x7F) | 0x80)
+            rest >>= 7
+        }
+        return out + [UInt8(rest)]
+    }
+
+    private static func png(rgba: [UInt8], width: Int, height: Int) throws -> Data {
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(rgba) as CFData))
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let image = try XCTUnwrap(CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                                          bytesPerRow: width * 4, space: space,
+                                          bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                          provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let output = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(output as CFMutableData, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return output as Data
+    }
+
     func testRowAndChunkIdsIncreaseAcrossTheFile() throws {
         let ids = try chunks(of: scene()).map(\.chunkId)
         XCTAssertEqual(ids, ids.sorted())
@@ -140,7 +296,8 @@ final class RerunRRDWriterTests: XCTestCase {
         XCTAssertEqual(photo.data, png, "PNG passes through")
         XCTAssertEqual([photo.width, photo.height], [8, 6])
         let pixels = try XCTUnwrap(RerunImageCodec.rgbPixels(from: png, maxDimension: 4))
-        XCTAssertEqual(pixels.rgb.count, pixels.width * pixels.height * 3)
+        XCTAssertEqual(pixels.channels, 3)
+        XCTAssertEqual(pixels.data.count, pixels.width * pixels.height * 3)
         XCTAssertEqual(max(pixels.width, pixels.height), 4)
     }
 
@@ -198,6 +355,7 @@ final class RerunRRDWriterTests: XCTestCase {
         var encoding: UInt64
         var uncompressedSize: Int
         var ipcLength: Int
+        var ipc: Data
         var messageTypes: [UInt8]
         var schema: [String: String]
         var fieldNames: [String]
@@ -312,6 +470,7 @@ final class RerunRRDWriterTests: XCTestCase {
             encoding: message[4]?.first?.varint ?? 0,
             uncompressedSize: Int(message[3]?.first?.varint ?? 0),
             ipcLength: ipc.count,
+            ipc: Data(ipc),
             messageTypes: types,
             schema: schema,
             fieldNames: names,

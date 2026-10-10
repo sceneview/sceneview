@@ -43,8 +43,7 @@ enum RerunExportAdapter {
     static let anchorModel = "shiba"
 
     /// The whole session as the exporters see it: every map point, the full camera path, the
-    /// keyframe photos the replay draws in their frustums, the planes as they ended, and the
-    /// placed models.
+    /// timed point observations, every photo, the planes as they ended, and the placed models.
     static func scene(for pack: RerunPack) -> RerunExportScene {
         let trace = pack.trace
         let whole = trace.frameAt(trace.duration)
@@ -72,6 +71,24 @@ enum RerunExportAdapter {
             images[image] = bytes
         }
 
+        let photos = zip(trace.imagePaths, trace.imageTimes).compactMap { image, time -> RerunExportScene.Keyframe? in
+            guard let bytes = images[image] ?? pack.bytes(for: image), !trace.poses.isEmpty else { return nil }
+            images[image] = bytes
+            // Latest kept pose at or before the photo, or the first pose before the path starts.
+            var lo = 0
+            var hi = trace.poseTimes.count
+            while lo < hi {
+                let mid = (lo + hi) / 2
+                if trace.poseTimes[mid] <= time { lo = mid + 1 } else { hi = mid }
+            }
+            let pose = trace.poses[max(lo - 1, 0)]
+            let sample = RerunExportScene.CameraSample(time: Double(time), position: pose.position, orientation: pose.rotation)
+            return .init(time: Double(time), imagePath: image, pose: sample)
+        }
+        let observations = zip(trace.observationTimes, trace.observations).compactMap { time, indices -> RerunExportScene.PointObservation? in
+            indices.isEmpty ? nil : .init(time: Double(time), points: indices)
+        }
+
         let planes = whole.planes.map { plane in
             let texture = pack.manifest.texture(for: plane.id).flatMap { texture -> RerunExportScene.PlaneTexture? in
                 guard let bytes = pack.bytes(for: texture.path) else { return nil }
@@ -96,7 +113,9 @@ enum RerunExportAdapter {
             keyframes: keyframes,
             images: images,
             planes: planes,
-            anchors: anchors
+            anchors: anchors,
+            photos: photos,
+            pointObservations: observations
         )
     }
 
