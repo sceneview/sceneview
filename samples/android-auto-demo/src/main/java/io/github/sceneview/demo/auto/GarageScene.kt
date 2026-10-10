@@ -23,7 +23,7 @@ internal fun SceneScope.GarageFloor() {
         materialLoader = materialLoader,
         color = AutoTokens.Stage.background,
         metallic = 0f,
-        roughness = 0.45f,
+        roughness = 0.75f,
         reflectance = 0.5f,
     )
     CylinderNode(
@@ -54,8 +54,8 @@ internal fun SceneScope.Turntable(
     val podium = rememberMaterialInstance(
         materialLoader = materialLoader,
         color = AutoTokens.Stage.background,
-        metallic = 1f,
-        roughness = 0.22f,
+        metallic = 0f,
+        roughness = 0.16f,
         reflectance = 0.5f,
     )
     val ring = rememberUnlitMaterialInstance(materialLoader, AutoTokens.Accent.primary)
@@ -84,21 +84,25 @@ internal fun SceneScope.Turntable(
  * Every car of the catalog stays in the scene and only [visible] changes: a switch is then a
  * visibility flip on a model that is already uploaded, not a load — no pop, no empty podium.
  *
+ * @param car    Catalog entry: its scale and how it rests on the podium.
  * @param shadow Whether the car's contact shadow is drawn — only under the car on show.
  */
 @Composable
 internal fun NodeScope.ParkedCar(
+    car: Car,
     instance: ModelInstance,
     visible: Boolean,
     shadow: Boolean,
 ) {
-    ModelNode(
-        modelInstance = instance,
-        scaleToUnits = GarageStage.CAR_LENGTH,
-        // Bottom-aligned: the tyres rest on the podium whatever the model's own origin is.
-        centerOrigin = Position(0f, -1f, 0f),
-        isVisible = visible,
-    )
+    Node(position = Position(y = -car.sink)) {
+        ModelNode(
+            modelInstance = instance,
+            scaleToUnits = car.length,
+            // Bottom-aligned: the tyres rest on the podium whatever the model's own origin is.
+            centerOrigin = Position(0f, -1f, 0f),
+            isVisible = visible,
+        )
+    }
     if (shadow) {
         // glTF does not say which way a car points: the shadow follows the body's long axis.
         val lengthAlongX = remember(instance) {
@@ -112,6 +116,7 @@ internal fun NodeScope.ParkedCar(
                 Size(GarageStage.SHADOW_WIDTH, 0f, GarageStage.SHADOW_LENGTH)
             },
             context = ContactShadowContext.Floor,
+            intensity = GarageStage.SHADOW_INTENSITY,
             normal = Direction(y = 1f),
         )
     }

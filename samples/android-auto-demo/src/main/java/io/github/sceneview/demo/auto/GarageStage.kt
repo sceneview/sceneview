@@ -19,4 +19,6 @@ internal object GarageStage {
     /** The contact shadow is a soft ellipse, a little larger than the car's footprint. */
     const val SHADOW_LENGTH = CAR_LENGTH * 1.15f
     const val SHADOW_WIDTH = CAR_LENGTH * 0.55f
+    /** Dense: the podium is dark, and a faint shadow leaves the car hovering. */
+    const val SHADOW_INTENSITY = 0.9f
 }

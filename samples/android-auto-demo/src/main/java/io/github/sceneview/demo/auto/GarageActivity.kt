@@ -148,12 +148,15 @@ private fun GarageScreen(store: GarageStore) {
         cameraNode.setShift(0.0, STAGE_SHIFT)
         orbit.applyTo(cameraNode)
         var last = 0L
-        var spin = 1f
+        var spin = 0f
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / NANOS_PER_SECOND).coerceAtMost(MAX_FRAME_STEP_S)
                 last = now
-                val held = touching || System.nanoTime() - releasedAt < SPIN_RESUME_NANOS
+                // Still until the cover lifts: the reveal opens on the home three-quarter view.
+                val covered = presentedFrames < REVEAL_FRAMES
+                val held = covered || touching ||
+                    System.nanoTime() - releasedAt < SPIN_RESUME_NANOS
                 spin += ((if (held) 0f else 1f) - spin) * (1f - exp(-SPIN_EASE_RATE * dt))
                 turntableYaw = (turntableYaw + SPIN_DEGREES_PER_S * spin * dt) % FULL_TURN
                 if (!orbit.settled) {
@@ -198,6 +201,7 @@ private fun GarageScreen(store: GarageStore) {
                     key(entry.assetPath) {
                         instances[index]?.let { parked ->
                             ParkedCar(
+                                car = entry,
                                 instance = parked,
                                 visible = !warmed || index == selection.car,
                                 shadow = warmed && index == selection.car,

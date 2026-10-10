@@ -76,12 +76,12 @@ internal class OrbitCamera {
         /** Height the camera looks at: roughly a car's beltline on the podium. */
         const val TARGET_HEIGHT = 0.42f
         private const val HOME_YAW = 32f
-        private const val HOME_PITCH = 13f
-        private const val HOME_DISTANCE = 5.4f
+        private const val HOME_PITCH = 11f
+        private const val HOME_DISTANCE = 7.4f
         private const val MIN_PITCH = 3f
         private const val MAX_PITCH = 55f
-        private const val MIN_DISTANCE = 3.2f
-        private const val MAX_DISTANCE = 8f
+        private const val MIN_DISTANCE = 4.2f
+        private const val MAX_DISTANCE = 11f
         private const val FOLLOW_RATE = 9f
         private const val SETTLE_DEGREES = 0.02f
         private const val SETTLE_DISTANCE = 0.001f

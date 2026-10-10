@@ -29,6 +29,10 @@ internal data class TintPaint(
  * @param paints        Finishes in the order the Paint control cycles them; empty when the body
  *                      is textured and cannot be repainted cleanly.
  * @param paintMaterial Name of the glTF material a [TintPaint] is written to.
+ * @param length        Longest side the model is scaled to, in metres.
+ * @param sink          How far the model is lowered, in metres, when its bounding box reaches
+ *                      under its tyres (steered wheels inflate an axis-aligned box) and a
+ *                      bottom-aligned car would hover.
  */
 internal data class Car(
     val label: String,
@@ -36,6 +40,8 @@ internal data class Car(
     val credit: String,
     val paints: List<Paint> = emptyList(),
     val paintMaterial: String? = null,
+    val length: Float = GarageStage.CAR_LENGTH,
+    val sink: Float = 0f,
 )
 
 /**
@@ -67,6 +73,7 @@ internal object GarageCatalog {
                 VariantPaint("Pearly Swirly", "Pearly Swirly"),
                 VariantPaint("Torched Graphite", "Torched Graphite"),
             ),
+            sink = 0.16f,
         ),
         Car(
             label = "Ferrari F40",
@@ -85,6 +92,8 @@ internal object GarageCatalog {
             label = "Toy Car",
             assetPath = "models/khronos_toy_car.glb",
             credit = "Guido Odendahl, Eric Chadwick · CC0",
+            // The model is a toy on its cloth: scaled so its cloth stays inside the podium.
+            length = 4.0f,
         ),
     )
 
