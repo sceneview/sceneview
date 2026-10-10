@@ -20,6 +20,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.Viewport
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
 import io.github.sceneview.demo.demos.internal.ArDebugStyle
@@ -30,6 +31,7 @@ import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.MeasureDrawing
+import io.github.sceneview.demo.demos.internal.MeasureSize
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.PointColorAtlas
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
@@ -37,13 +39,13 @@ import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.SteadyRoomMeasure
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.material.setTexture
-import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.ImageTexture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -250,7 +252,7 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
     engine.destroySkybox(skybox)
     engine.destroyColorGrading(colorGrading)
     instances.forEach(materialLoader::destroyMaterialInstance)
-    engine.safeDestroyTexture(texture)
+    EngineDestroyQueue.of(engine).enqueueTexture(texture)
 }
 
 /** The off-screen warm-up's size: past bloom's seven halvings, nothing more. */
@@ -269,9 +271,9 @@ internal class ReplayLayers(
     private val materialLoader: MaterialLoader,
     private val media: RerunReplayMedia,
     /** The dimensions' ink, ARGB: the floor outline's colour, so they read as part of the plan. */
-    @ColorInt private val measureInk: Int = FALLBACK_POINT_COLOR,
+    @ColorInt private var measureInk: Int = FALLBACK_POINT_COLOR,
     /** The halo around the dimensions' figures, ARGB: the stage's ground, so they stay legible. */
-    @ColorInt private val measureHalo: Int = android.graphics.Color.TRANSPARENT,
+    @ColorInt private var measureHalo: Int = android.graphics.Color.TRANSPARENT,
     /**
      * The dense cloud drawn here: the scan's own, or a cut of it — the dollhouse's, without its
      * ceiling ([io.github.sceneview.demo.demos.internal.RoomDollhouse.cropDense]) — drawn whole.
@@ -367,7 +369,14 @@ internal class ReplayLayers(
     private val measureMaterial = material(atlas, solid = false)
     private val measureNode = DebugLayerNode(engine, measureMaterial, MEASURE_PRIORITY, textured = true)
     private var measurePlanes: List<DebugPlane>? = null
-    private var measure: RoomMeasure? = null
+    private var foundMeasure: RoomMeasure? = null
+
+    /** A scan still recording steadies its figure; a recording played back is exact at every frame. */
+    private val steadyMeasure = if (media.growing) SteadyRoomMeasure() else null
+
+    /** The room at the last [sync]: the one the dimensions draw, and the one the HUD names. */
+    var measure: RoomMeasure? = null
+        private set
     private var measureLabels: Pair<String, String>? = null
     private var measureLabelWidths = FloatArray(2)
 
@@ -434,9 +443,10 @@ internal class ReplayLayers(
     private fun syncMeasure(frame: ArDebugFrame, style: ArDebugStyle, floorY: Float, shown: Boolean, eye: Vec3?) {
         if (frame.planes !== measurePlanes) {
             measurePlanes = frame.planes
-            measure = RoomMeasure.of(frame.planes, floorY)
+            foundMeasure = RoomMeasure.of(frame.planes, floorY)
         }
-        val room = measure
+        val room = if (steadyMeasure != null) steadyMeasure.update(foundMeasure, frame.time) else foundMeasure
+        measure = room
         measureNode.isVisible = shown && room != null
         if (!measureNode.isVisible || room == null) return
         val labels = RoomMeasure.metres(room.width) to RoomMeasure.metres(room.depth)
@@ -448,18 +458,26 @@ internal class ReplayLayers(
         // Sized in pixels, and rebuilt only past a 5 % zoom step, not on every frame of a pinch.
         val step = kotlin.math.round(kotlin.math.ln(style.metresPerPixel.coerceAtLeast(1e-6f)) / MEASURE_ZOOM_STEP)
         if (!changed(measureNode, listOf(room.summary, room.yaw, floorY, sides.toList(), step, labels))) return
-        val mpp = kotlin.math.exp(step * MEASURE_ZOOM_STEP)
-        val textHeight = (MEASURE_TEXT_PX * mpp).coerceIn(MEASURE_TEXT_MIN_M, MEASURE_TEXT_MAX_M)
-        val offset = (MEASURE_OFFSET_PX * mpp).coerceIn(MEASURE_OFFSET_MIN_M, MEASURE_OFFSET_MAX_M)
+        val size = MeasureSize.at(kotlin.math.exp(step * MEASURE_ZOOM_STEP))
         mesh.clear()
         for (side in sides) {
-            val row = side % 2
-            val textWidth = textHeight * measureLabelWidths[row] / MeasureDrawing.ROW_HEIGHT
             MeasureDrawing.addDimension(
-                mesh, room, side, floorY + MEASURE_LIFT_M, offset, style.outlineHalfWidth, textHeight, textWidth,
+                mesh, room, side, floorY + MEASURE_LIFT_M, size, style.outlineHalfWidth, measureLabelWidths[side % 2],
             )
         }
         measureNode.upload(mesh)
+    }
+
+    /**
+     * The dimensions take another [ink] and [halo] — the theme changed. Their atlas is redrawn at
+     * the next [sync], by the swap that already follows a change of figures: the layers, their
+     * nodes and every other texture stay as they are (#4330).
+     */
+    fun setMeasureColors(@ColorInt ink: Int, @ColorInt halo: Int) {
+        if (ink == measureInk && halo == measureHalo) return
+        measureInk = ink
+        measureHalo = halo
+        measureLabels = null
     }
 
     /**
@@ -474,7 +492,7 @@ internal class ReplayLayers(
         val canvas = Canvas(bitmap)
         val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = measureInk
-            textSize = MEASURE_FONT_PX
+            textSize = MeasureDrawing.FONT_PX
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val halo = Paint(ink).apply {
@@ -485,9 +503,10 @@ internal class ReplayLayers(
         }
         listOf(labels.first, labels.second).forEachIndexed { index, text ->
             val baseline = index * row + (row - ink.ascent() - ink.descent()) / 2f
-            canvas.drawText(text, MEASURE_PAD_PX, baseline, halo)
-            canvas.drawText(text, MEASURE_PAD_PX, baseline, ink)
-            measureLabelWidths[index] = (ink.measureText(text) + 2 * MEASURE_PAD_PX).coerceAtMost(width.toFloat())
+            canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, halo)
+            canvas.drawText(text, MeasureDrawing.PAD_PX, baseline, ink)
+            val padded = ink.measureText(text) + 2 * MeasureDrawing.PAD_PX
+            measureLabelWidths[index] = padded.coerceAtMost(width.toFloat())
         }
         val solid = MeasureDrawing.ATLAS_HEIGHT - MeasureDrawing.SOLID_HEIGHT
         canvas.drawRect(0f, solid.toFloat(), width.toFloat(), height.toFloat(), Paint().apply { color = measureInk })
@@ -495,7 +514,7 @@ internal class ReplayLayers(
         measureMaterial.setTexture(texture, clamp)
         if (measureTexture !== atlas) {
             textures -= measureTexture
-            engine.safeDestroyTexture(measureTexture)
+            retire(measureTexture)
         }
         measureTexture = texture
     }
@@ -604,7 +623,7 @@ internal class ReplayLayers(
         while (iterator.hasNext() && frameTextures.size > FRAME_TEXTURE_CACHE) {
             val texture = iterator.next()
             if (texture in bound) continue
-            engine.safeDestroyTexture(texture)
+            retire(texture)
             iterator.remove()
         }
     }
@@ -618,12 +637,19 @@ internal class ReplayLayers(
     /** Material instances and textures, once the nodes are gone. */
     fun destroy() {
         materials.forEach { materialLoader.destroyMaterialInstance(it) }
-        textures.forEach { engine.safeDestroyTexture(it) }
-        frameTextures.values.forEach { engine.safeDestroyTexture(it) }
+        textures.forEach(::retire)
+        frameTextures.values.forEach(::retire)
         materials.clear()
         textures.clear()
         frameTextures.clear()
     }
+
+    /**
+     * Frees [texture] a few rendered frames from now, through the library's [EngineDestroyQueue],
+     * as `ImageNode` frees its own: these layers destroy no texture in the call that rebinds or
+     * destroys the material instance that read it.
+     */
+    private fun retire(texture: Texture) = EngineDestroyQueue.of(engine).enqueueTexture(texture)
 
     private class PhotoSlot(val node: DebugLayerNode, val material: MaterialInstance) {
         var texture: Texture? = null
@@ -641,24 +667,12 @@ internal class ReplayLayers(
 
         /** A millimetre over the grid: the dimensions are drawn on the floor, not in it. */
         const val MEASURE_LIFT_M = 0.003f
-        /**
-         * The label's box, in pixels: its figures' capitals are ~40 % of it, and the floor seen
-         * at a slant shortens it further.
-         */
-        const val MEASURE_TEXT_PX = 72f
-        const val MEASURE_TEXT_MIN_M = 0.04f
-        const val MEASURE_TEXT_MAX_M = 0.9f
-        const val MEASURE_OFFSET_PX = 28f
-        const val MEASURE_OFFSET_MIN_M = 0.06f
-        const val MEASURE_OFFSET_MAX_M = 0.9f
 
         /** The dimensions are rebuilt at every 5 % of zoom. */
-        const val MEASURE_ZOOM_STEP = 0.05f
+        const val MEASURE_ZOOM_STEP = MeasureSize.ZOOM_STEP
 
-        /** The atlas's figures: 76 px bold in a 128 px row, a 14 px halo, 10 px of margin. */
-        const val MEASURE_FONT_PX = 76f
+        /** The halo round the atlas's figures ([MeasureDrawing.FONT_PX] bold in a 128 px row). */
         const val MEASURE_HALO_PX = 14f
-        const val MEASURE_PAD_PX = 10f
 
         /** Two triangles per surfel ([DenseSurfels.mesh]). */
         const val INDICES_PER_SURFEL = 6

@@ -385,8 +385,11 @@ class ArDebugTrace {
 
     /**
      * Records that the dense map (a `.svscan` v2's `dense/points.bin`) held [total] surfels at
-     * [nanos], [added] of them new and [kept] depth samples merged — what lets a replay reveal
-     * the cloud as it grew, since surfels keep the order they were found in.
+     * [nanos] — those the saved cloud keeps ([DenseFusion.points]) — with [added] voxels new and
+     * [kept] depth samples merged since the last call: what lets a replay reveal the cloud as it
+     * grew, since surfels keep the order they were found in. Scans recorded before the two
+     * figures were one counted every voxel held here, so their replay counter reaches the saved
+     * total early and stays there.
      */
     fun addDepthStats(nanos: Long, added: Int, kept: Int, total: Int) {
         val t = secondsOf(nanos)

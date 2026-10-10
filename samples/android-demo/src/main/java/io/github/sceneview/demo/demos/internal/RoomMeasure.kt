@@ -6,6 +6,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -100,6 +101,119 @@ class RoomMeasure(val corners: FloatArray, val width: Float, val depth: Float, v
 }
 
 /**
+ * The room to show while it is still being scanned. ARCore merges and regrows its planes
+ * mid-walk, so the figure found on one frame can jump, or vanish, and be back on the next:
+ * a figure that differs from the one shown replaces it only once it has differed for a while.
+ * The first room shows at once, and a room that is only being refined (each side within
+ * [CHANGE_TOLERANCE_M]) is followed without delay.
+ *
+ * A scan only ever adds to a room, so the two ways a figure can differ do not wait alike. A
+ * room that grew — a wall just found — shows after [CHANGE_HOLD_SECONDS]. A room that shrank,
+ * or was lost, waits [SHRINK_HOLD_SECONDS]: on a phone, planes dropped while ARCore merged them
+ * read 3.7 × 3.9 m, then 2.4 × 2.3 m for two and a half seconds, then 3.7 × 3.9 m again, and
+ * the short hold showed all three.
+ */
+class SteadyRoomMeasure {
+    private var shown: RoomMeasure? = null
+    private var differsSince = Float.NaN
+    private var differsSmaller = false
+    private var lastTime = Float.NaN
+
+    /** The room to show at [time] seconds, [found] being the one measured there. */
+    fun update(found: RoomMeasure?, time: Float): RoomMeasure? {
+        // The clock ran back: another scan, nothing of the last one holds.
+        if (time < lastTime) {
+            shown = null
+            differsSince = Float.NaN
+        }
+        lastTime = time
+        val current = shown
+        if (current == null || sameFigure(found, current)) {
+            // A room refined keeps its latest figure.
+            if (found != null) shown = found
+            differsSince = Float.NaN
+            return shown
+        }
+        val smaller = isSmaller(found, current)
+        // A room that stops shrinking to start growing, or the reverse, starts its wait over.
+        if (differsSince.isNaN() || smaller != differsSmaller) {
+            differsSince = time
+            differsSmaller = smaller
+        }
+        if (time - differsSince >= (if (smaller) SHRINK_HOLD_SECONDS else CHANGE_HOLD_SECONDS)) {
+            // A room lost for good is shown as lost.
+            shown = found
+            differsSince = Float.NaN
+        }
+        return shown
+    }
+
+    private fun sameFigure(a: RoomMeasure?, b: RoomMeasure): Boolean =
+        a != null && abs(a.width - b.width) <= CHANGE_TOLERANCE_M && abs(a.depth - b.depth) <= CHANGE_TOLERANCE_M
+
+    /**
+     * Whether [found] is [shown] with something taken away: no room at all, or neither its long
+     * nor its short side past [shown]'s — whichever of the two is named the width, since a room
+     * near a diagonal trades them from one frame to the next.
+     */
+    private fun isSmaller(found: RoomMeasure?, shown: RoomMeasure): Boolean {
+        found ?: return true
+        val long = max(found.width, found.depth) - max(shown.width, shown.depth)
+        val short = min(found.width, found.depth) - min(shown.width, shown.depth)
+        return long <= CHANGE_TOLERANCE_M && short <= CHANGE_TOLERANCE_M
+    }
+
+    companion object {
+        /** A plane merge settles in a few frames; a wall just found stays. */
+        const val CHANGE_HOLD_SECONDS = 0.75f
+
+        /**
+         * A room that shrinks is ARCore taking planes back, which it gives back within seconds;
+         * the walls are still there. Past this, it is believed.
+         */
+        const val SHRINK_HOLD_SECONDS = 5f
+
+        /** Under this on each side, two measures are the same room, refined. */
+        const val CHANGE_TOLERANCE_M = 0.15f
+    }
+}
+
+/**
+ * How large a room's dimensions are drawn where a pixel covers a given length of floor: the
+ * label [textHeight] metres tall, its dimension line [offset] metres outside the wall. Both are
+ * sized in pixels, within metres that keep them readable from very near and very far.
+ */
+class MeasureSize(val textHeight: Float, val offset: Float) {
+    companion object {
+        fun at(metresPerPixel: Float): MeasureSize = MeasureSize(
+            textHeight = (TEXT_PX * metresPerPixel).coerceIn(TEXT_MIN_M, TEXT_MAX_M),
+            offset = (OFFSET_PX * metresPerPixel).coerceIn(OFFSET_MIN_M, OFFSET_MAX_M),
+        )
+
+        /**
+         * The largest the dimensions are drawn on a view where a pixel covers [metresPerPixel]:
+         * the drawing is rebuilt in steps of zoom ([ZOOM_STEP]), so it can stand half a step over
+         * the exact size. This is the size a framing has to leave room for.
+         */
+        fun atMost(metresPerPixel: Float): MeasureSize = at(metresPerPixel * (1f + ZOOM_STEP))
+
+        /**
+         * The label's box, in pixels: its figures' capitals are ~40 % of it, and the floor seen
+         * at a slant shortens it further.
+         */
+        const val TEXT_PX = 72f
+        const val TEXT_MIN_M = 0.04f
+        const val TEXT_MAX_M = 0.9f
+        const val OFFSET_PX = 28f
+        const val OFFSET_MIN_M = 0.06f
+        const val OFFSET_MAX_M = 0.9f
+
+        /** The dimensions are rebuilt at every 5 % of zoom. */
+        const val ZOOM_STEP = 0.05f
+    }
+}
+
+/**
  * A [RoomMeasure] drawn on the floor as an architect's plan draws it: on the two sides facing
  * the viewer, a dimension line a little outside the room, extension lines out from its corners,
  * a slash at each end, and the length written beyond the line, reading from outside.
@@ -115,6 +229,18 @@ object MeasureDrawing {
 
     /** The solid strip the lines sample: the atlas's last [SOLID_HEIGHT] rows. */
     const val SOLID_HEIGHT = 32
+
+    /** The atlas's figures: [FONT_PX] bold in a [ROW_HEIGHT] row, with [PAD_PX] of margin. */
+    const val FONT_PX = 76f
+    const val PAD_PX = 10f
+
+    /**
+     * How wide [text]'s label is in the atlas, in pixels, without drawing it: an upper estimate
+     * (a bold figure is under [GLYPH_ADVANCE] of the font size wide, a point and a space far
+     * less), for a framing that has to leave the label its room before it exists.
+     */
+    fun labelWidthPx(text: String): Float =
+        (text.length * FONT_PX * GLYPH_ADVANCE + 2 * PAD_PX).coerceAtMost(ATLAS_WIDTH.toFloat())
 
     private const val SOLID_U = 0.5f
 
@@ -143,9 +269,9 @@ object MeasureDrawing {
     }
 
     /**
-     * Appends [side]'s dimension at height [y]: the line [offset] outside the side, [halfWidth]
-     * wide, and its label [textHeight] tall and [textWidth] wide, sampling its atlas row (0 for
-     * a width side, 1 for a depth side) over its first [textWidth] / [textHeight] × [ROW_HEIGHT] px.
+     * Appends [side]'s dimension at height [y], drawn at [size]: the line outside the side,
+     * [halfWidth] wide, and its label, sampling the first [labelWidthPx] pixels of its atlas row
+     * (0 for a width side, 1 for a depth side).
      */
     @Suppress("LongParameterList")
     fun addDimension(
@@ -153,10 +279,9 @@ object MeasureDrawing {
         measure: RoomMeasure,
         side: Int,
         y: Float,
-        offset: Float,
+        size: MeasureSize,
         halfWidth: Float,
-        textHeight: Float,
-        textWidth: Float,
+        labelWidthPx: Float,
     ) {
         val c = measure.corners
         val a = side % 4
@@ -166,6 +291,7 @@ object MeasureDrawing {
         val az = c[a * 2 + 1]
         val bx = c[b * 2]
         val bz = c[b * 2 + 1]
+        val offset = size.offset
         val gap = offset * EXTENSION_GAP
         val over = offset * EXTENSION_OVERSHOOT
         // The dimension line, and an extension line from each corner out past it.
@@ -181,23 +307,84 @@ object MeasureDrawing {
         for ((px, pz) in listOf(ax + ox * offset to az + oz * offset, bx + ox * offset to bz + oz * offset)) {
             ribbon(mesh, px - sx, pz - sz, px + sx, pz + sz, y, halfWidth * SLASH_WEIGHT)
         }
-        // The label beyond the line, its top towards the room, reading from outside: its right
-        // is (-outside) × up.
         val row = side % 2
-        val rx = oz
-        val rz = -ox
-        val mx = (ax + bx) / 2f + ox * (offset + gap + textHeight / 2f)
-        val mz = (az + bz) / 2f + oz * (offset + gap + textHeight / 2f)
-        val hw = textWidth / 2f
-        val hh = textHeight / 2f
-        val u1 = (textWidth / textHeight * ROW_HEIGHT / ATLAS_WIDTH).coerceAtMost(1f)
+        val q = labelQuad(measure, side, size, labelWidthPx)
+        val u1 = (labelWidthPx / ATLAS_WIDTH).coerceAtMost(1f)
         val v0 = vOf(row * ROW_HEIGHT.toFloat())
         val v1 = vOf((row + 1) * ROW_HEIGHT.toFloat())
-        val tl = mesh.vertex(mx - rx * hw - ox * hh, y, mz - rz * hw - oz * hh, 0f, v0)
-        val tr = mesh.vertex(mx + rx * hw - ox * hh, y, mz + rz * hw - oz * hh, u1, v0)
-        val br = mesh.vertex(mx + rx * hw + ox * hh, y, mz + rz * hw + oz * hh, u1, v1)
-        val bl = mesh.vertex(mx - rx * hw + ox * hh, y, mz - rz * hw + oz * hh, 0f, v1)
+        val tl = mesh.vertex(q[0], y, q[1], 0f, v0)
+        val tr = mesh.vertex(q[2], y, q[3], u1, v0)
+        val br = mesh.vertex(q[4], y, q[5], u1, v1)
+        val bl = mesh.vertex(q[6], y, q[7], 0f, v1)
         mesh.quad(tl, tr, br, bl)
+    }
+
+    /**
+     * How far the dimensions of [sides] reach on the floor at height [y], drawn at [size]: for
+     * each, its label's four corners and the outer ends of its line, flat xyz. A view that fits
+     * these with the room shows every figure whole. [labelWidthsPx] are the labels' widths in
+     * the atlas, the width's then the depth's; their [labelWidthPx] estimates by default.
+     */
+    fun reach(
+        measure: RoomMeasure,
+        sides: IntArray,
+        y: Float,
+        size: MeasureSize,
+        labelWidthsPx: FloatArray = floatArrayOf(
+            labelWidthPx(RoomMeasure.metres(measure.width)),
+            labelWidthPx(RoomMeasure.metres(measure.depth)),
+        ),
+    ): FloatArray {
+        val out = FloatArray(sides.size * REACH_POINTS * 3)
+        var at = 0
+        fun add(x: Float, z: Float) {
+            out[at++] = x
+            out[at++] = y
+            out[at++] = z
+        }
+        val c = measure.corners
+        for (side in sides) {
+            val a = side % 4
+            val b = (side + 1) % 4
+            val (ox, oz) = outward(measure, side)
+            val ax = c[a * 2]
+            val az = c[a * 2 + 1]
+            val bx = c[b * 2]
+            val bz = c[b * 2 + 1]
+            val length = hypot(bx - ax, bz - az).coerceAtLeast(1e-6f)
+            val far = size.offset * (1f + EXTENSION_OVERSHOOT)
+            // The slashes run past each end of the line, along the side.
+            val sx = (bx - ax) / length * SLASH * size.offset
+            val sz = (bz - az) / length * SLASH * size.offset
+            add(ax + ox * far - sx, az + oz * far - sz)
+            add(bx + ox * far + sx, bz + oz * far + sz)
+            val q = labelQuad(measure, side, size, labelWidthsPx[side % 2])
+            for (corner in 0 until 4) add(q[corner * 2], q[corner * 2 + 1])
+        }
+        return out
+    }
+
+    /**
+     * [side]'s label, as its four corners (x, z) — top left, top right, bottom right, bottom
+     * left: beyond the line, its top towards the room, reading from outside (its right is
+     * (-outside) × up), [labelWidthPx] of its [ROW_HEIGHT] px row wide.
+     */
+    private fun labelQuad(measure: RoomMeasure, side: Int, size: MeasureSize, labelWidthPx: Float): FloatArray {
+        val (ox, oz) = outward(measure, side)
+        val (sideX, sideZ) = midpoint(measure, side)
+        val rx = oz
+        val rz = -ox
+        val out = size.offset * (1f + EXTENSION_GAP) + size.textHeight / 2f
+        val mx = sideX + ox * out
+        val mz = sideZ + oz * out
+        val hw = size.textHeight * labelWidthPx / ROW_HEIGHT / 2f
+        val hh = size.textHeight / 2f
+        return floatArrayOf(
+            mx - rx * hw - ox * hh, mz - rz * hw - oz * hh,
+            mx + rx * hw - ox * hh, mz + rz * hw - oz * hh,
+            mx + rx * hw + ox * hh, mz + rz * hw + oz * hh,
+            mx - rx * hw + ox * hh, mz - rz * hw + oz * hh,
+        )
     }
 
     /** The unit outside direction of [side], (x, z). */
@@ -242,4 +429,10 @@ object MeasureDrawing {
 
     /** End slashes are drawn this much bolder than the lines. */
     private const val SLASH_WEIGHT = 1.6f
+
+    /** A bold figure's advance, as a share of the font size, rounded up. */
+    private const val GLYPH_ADVANCE = 0.62f
+
+    /** [reach] names this many points per side: the line's two outer ends, the label's corners. */
+    private const val REACH_POINTS = 6
 }

@@ -161,7 +161,7 @@ class DemoSmokeTest {
 
     @Test
     fun a06_arRerun_smokeOpen() {
-        openDemoTolerant("ar-rerun", "Rerun AR Replay")
+        openDemoTolerant("ar-rerun", "Room Scan")
         screenshot("s06_ar_rerun")
     }
 
@@ -170,11 +170,74 @@ class DemoSmokeTest {
     // without a crash; the scan itself is checked on a Pixel from the PR's needs-device list.
     @Test
     fun a06b_arRerun_recordSmokeOpen() {
-        openDemoTolerant("ar-rerun", "Rerun AR Replay")
+        openDemoTolerant("ar-rerun", "Room Scan")
         device.wait(Until.findObject(By.text("Record your room")), timeout)?.click()
         Thread.sleep(5000)
         screenshot("s06b_ar_rerun_record")
         check(device.currentPackageName == pkg) { "The demo left the foreground after opening Record" }
+    }
+
+    // The system theme changes while the bundled replay's 3D view is on screen (#4330). The
+    // activity handles `uiMode` itself, so the scene stays and takes the other theme's colours
+    // on the layers it already draws. Rebuilding them freed textures their material instances
+    // still held: Filament aborted the process on the next frame, and this run with it.
+    @Test
+    fun a06c_arRerun_themeSwitchDuringReplay() =
+        switchThemeOverReplay(qaState = "replay", shot = "s06c_ar_rerun_theme_switch") { Thread.sleep(10000) }
+
+    // Same switch over the Surface view. Its ground is the scene's skybox, which the theme
+    // replaced: the scene kept the old one a dispatch after its owner had destroyed it, and
+    // Filament read it while taking the new one — a segfault, on some switches only. So the
+    // switches start once the surface is built and on screen (about a minute on the emulator;
+    // before that the view is still the points'), and there are enough of them for a defect
+    // that showed once in ~27 to show.
+    @Test
+    fun a06d_arRerun_themeSwitchOverSurface() =
+        switchThemeOverReplay(
+            qaState = "model-synthetic",
+            shot = "s06d_ar_rerun_theme_surface",
+            rounds = SURFACE_SWITCH_ROUNDS,
+        ) {
+            // The caption turns from "Building the surface…" to the mesh's figures once it is built.
+            checkNotNull(device.wait(Until.findObject(By.textStartsWith("Surface preview")), SURFACE_TIMEOUT)) {
+                "The surface was not built within ${SURFACE_TIMEOUT / 1000} s"
+            }
+            // Built, then loaded into the 3D view and drawn.
+            Thread.sleep(8000)
+        }
+
+    private fun switchThemeOverReplay(
+        qaState: String,
+        shot: String,
+        rounds: Int = THEME_SWITCH_ROUNDS,
+        settle: () -> Unit,
+    ) {
+        val initial = device.executeShellCommand("cmd uimode night").substringAfter(": ").trim()
+        try {
+            context.startActivity(
+                Intent().apply {
+                    setClassName(pkg, MainActivity::class.java.name)
+                    putExtra("demo", "ar-rerun")
+                    putExtra("qa_mode", true)
+                    putExtra("qa_state", qaState)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+            device.wait(Until.hasObject(By.text("Room Scan")), timeout)
+            settle()
+            repeat(rounds) { round ->
+                for (night in listOf("yes", "no")) {
+                    device.executeShellCommand("cmd uimode night $night")
+                    Thread.sleep(SWITCH_SETTLE_MILLIS)
+                    check(device.currentPackageName == pkg) {
+                        "The demo left the foreground on round ${round + 1}, switching night mode to $night"
+                    }
+                }
+            }
+            screenshot(shot)
+        } finally {
+            device.executeShellCommand("cmd uimode night ${if (initial in NIGHT_MODES) initial else "no"}")
+        }
     }
 
     // Samples step 0 — `ar-streetscape` is now the Streetscape mode of the Geospatial
@@ -198,5 +261,22 @@ class DemoSmokeTest {
     fun z01_cameraControls_smokeOpen() {
         openDemoTolerant("camera-gestures", "Camera & Gestures")
         screenshot("s08_camera_controls")
+    }
+
+    private companion object {
+        /** What `cmd uimode night` takes back, to leave the device as it was found. */
+        val NIGHT_MODES = setOf("yes", "no", "auto")
+
+        /** Dark then light, this many times: the freed skybox is not read on every switch. */
+        const val THEME_SWITCH_ROUNDS = 3
+
+        /** Over the surface: 60 switches, twice what it took to see the abort once (#4330). */
+        const val SURFACE_SWITCH_ROUNDS = 30
+
+        /** A few rendered frames on the new theme, and time for an abort to take the process down. */
+        const val SWITCH_SETTLE_MILLIS = 1500L
+
+        /** The synthetic surface takes about a minute on the emulator, up to 95 s under load. */
+        const val SURFACE_TIMEOUT = 180_000L
     }
 }

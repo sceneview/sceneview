@@ -1,10 +1,17 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,98 +22,254 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloseFullscreen
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import com.google.android.filament.Engine
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanFigures
+import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.demo.theme.motionFade
+import io.github.sceneview.demo.theme.motionSpring
+import io.github.sceneview.demo.ui.GlassIconButton
+import io.github.sceneview.demo.ui.GlassPill
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 /*
- * The Record screen of the Rerun demo: a room scanned live, over the camera. It is meant to be
- * read over the shoulder, a metre away — so the figures are in the display size, white on the
- * dark scrim, and the scan itself grows in a large 3D card right under them.
+ * A room being scanned, over the camera it is scanned with. The camera is the screen: one glass
+ * line says a scan is running, for how long and how many points it holds; the room being rebuilt
+ * stands beside it on glass, the camera showing through, and grows to the row's width on a tap;
+ * a limit reached says so under the line; the shutter keeps the bottom. The counts — never read
+ * while walking a room — are rows of the settings sheet.
  */
 
 /**
- * The live figures of a scan: the red recording dot and the clock, then the points, surfaces
- * and photos taken so far — each counted off the scan itself, never estimated.
- *
- * A [depthScan] (ARCore raw depth, Rerun v2 tier `depth`) counts its dense map's points, and
- * says so beside "Scanning"; a sparse scan counts ARCore's feature points and says that too.
+ * A scan in progress, on one line of glass: the red recording dot, the clock, and the points
+ * the scan holds ([ScanCopy.pointsLine]) — counted against their budget once it is in sight, and
+ * `full` when it is spent, so a count that has stopped does not read as a frozen screen.
  */
 @Composable
-internal fun ScanHud(figures: ScanFigures, seconds: Float, photoLimitReached: Boolean, depthScan: Boolean = false) {
-    OverlayCard(testTag = SCAN_HUD_TAG) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(ScanDotSize)
-                    .background(ArOverlay.accentRecord, CircleShape),
-            )
-            Spacer(Modifier.width(Space.sm))
-            Text(text = SCANNING, style = OnScrimTitle)
-            Spacer(Modifier.width(Space.sm))
-            Text(
-                text = if (depthScan) ScanCopy.TIER_DEPTH else ScanCopy.TIER_SPARSE,
-                style = OnScrimTitle.copy(color = ArOverlay.onScrimMuted),
-                maxLines = 1,
-                modifier = Modifier.weight(1f).testTag(SCAN_TIER_TAG),
-            )
-            val clock = ArDebugFormat.clock(seconds)
-            Text(
-                text = clock,
-                style = SceneViewTokens.Type.title.copy(color = ArOverlay.onScrim),
-                modifier = Modifier.semantics { contentDescription = "Recording for $clock" },
-            )
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            ScanFigure(if (depthScan) figures.dense else figures.points, "point", "points", Modifier.weight(1f))
-            ScanFigure(figures.surfaces, "surface", "surfaces", Modifier.weight(1f))
-            ScanFigure(figures.photos, "photo", "photos", Modifier.weight(1f))
-        }
-        if (photoLimitReached) {
-            Text(
-                text = ScanCopy.FULL,
-                style = SceneViewTokens.Type.body.copy(color = ArOverlay.accentGuidance),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ScanFigure(value: Int, one: String, many: String, modifier: Modifier) {
-    val label = ScanCopy.label(value, one, many)
-    Column(modifier = modifier.semantics(mergeDescendants = true) {}) {
+internal fun ScanHud(seconds: Float, figures: ScanFigures, modifier: Modifier = Modifier) {
+    val clock = ArDebugFormat.clock(seconds)
+    val spoken = "Scanning for $clock, ${ScanCopy.pointsSpoken(figures.points, figures.pointBudget)}"
+    GlassPill(
+        modifier = modifier.testTag(SCAN_HUD_TAG).clearAndSetSemantics { contentDescription = spoken },
+        // The line stands where the camera is brightest (a ceiling, a window): its own scrim.
+        ground = SceneViewTokens.Glass.scrimDock,
+    ) {
+        Box(Modifier.size(ScanDotSize).background(ArOverlay.accentRecord, CircleShape))
+        Spacer(Modifier.width(Space.sm))
+        // Tabular figures: the pill does not twitch as the seconds turn.
+        Text(text = clock, style = SceneViewTokens.Type.card.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+        Spacer(Modifier.width(Space.sm))
         Text(
-            text = ScanCopy.figure(value),
-            style = SceneViewTokens.Type.display.copy(color = ArOverlay.onScrim),
+            text = ScanCopy.pointsLine(figures.points, figures.pointBudget),
+            // A spent budget reads in the colour of the notice that explains it.
+            style = SceneViewTokens.Type.caption.copy(
+                fontFeatureSettings = "tnum",
+                color = if (figures.pointsFull) ArOverlay.accentGuidance else Color.Unspecified,
+            ),
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Text(text = label, style = OnScrimTitle.copy(color = ArOverlay.onScrimMuted), maxLines = 1)
     }
 }
 
 /**
- * The scan growing in 3D while it records: the camera's path drawing itself, the points in the
- * colours the camera saw, the planes and the photos, framed as they grow. The same view the
- * replay opens on once the scan stops.
+ * The scan's line before there is a scan: the same glass, in the same place, saying what the
+ * screen waits for — the camera, then the room ([cameraReady]). The scan starts by itself once
+ * the room is found, so from its first frame the screen is the scan's, and nothing on it looks
+ * ready that is not: a phone showed three seconds of black under the dock of another screen.
+ */
+@Composable
+internal fun ScanStartingHud(cameraReady: Boolean, modifier: Modifier = Modifier) {
+    val text = if (cameraReady) ScanCopy.FINDING_ROOM else ScanCopy.STARTING_CAMERA
+    GlassPill(
+        modifier = modifier.testTag(SCAN_STARTING_TAG).clearAndSetSemantics { contentDescription = text },
+        ground = SceneViewTokens.Glass.scrimDock,
+    ) {
+        LoadingIndicator(
+            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+            color = SceneViewTokens.Glass.onGlass,
+        )
+        Spacer(Modifier.width(Space.sm))
+        Text(text = text, style = SceneViewTokens.Type.card, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * The one thing to know mid-scan, under the line that counts it: a budget is spent, and what
+ * that changes ([ScanCopy.limitNotice]). It stays as long as it is true, so it stands beside the
+ * 3D card and not over the shutter, where it would cost the camera its height for the rest of
+ * the scan. Nothing while [text] is `null`.
+ */
+@Composable
+internal fun ScanNotice(text: String?, modifier: Modifier = Modifier) {
+    // The notice that is leaving is still the one drawn while it fades.
+    var shown by remember { mutableStateOf(text) }
+    if (text != null) shown = text
+    AnimatedVisibility(
+        visible = text != null,
+        modifier = modifier,
+        enter = fadeIn(motionFade()),
+        exit = fadeOut(motionFade()),
+    ) {
+        Text(
+            text = shown.orEmpty(),
+            style = SceneViewTokens.Type.caption.copy(color = ArOverlay.accentGuidance),
+            modifier = Modifier
+                .background(ArOverlay.scrimDark, RoundedCornerShape(SceneViewTokens.Radius.md))
+                .padding(horizontal = Space.md, vertical = Space.sm)
+                .testTag(SCAN_NOTICE_TAG),
+        )
+    }
+}
+
+/**
+ * The top of a scan in progress on an upright phone: [hud] and [stage] side by side, the stage
+ * [SceneViewTokens.DebugView.liveCardShare] of the row wide, and [notice] under the line, in the
+ * width the stage leaves. Tapped, the stage grows to the whole row and drops under them; its own
+ * button brings it back. Line and stage arrive together when the scan starts.
+ *
+ * Before the scan starts there is no [stage] yet (`null`): the line stands alone, there from the
+ * screen's first frame, and the stage arrives beside it when the scan does.
+ *
+ * A line too wide to stand beside the stage (a large font, a narrow window) keeps the stage
+ * under it instead of being cut.
+ */
+@Composable
+internal fun ScanLive(
+    hud: @Composable () -> Unit,
+    notice: @Composable () -> Unit,
+    stage: (@Composable (expanded: Boolean, onExpandedChange: (Boolean) -> Unit) -> Unit)?,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val grow by animateFloatAsState(if (expanded) 1f else 0f, motionSpring(), label = "scan-stage")
+    val arrival = motionSpring<Float>()
+    val staged = stage != null
+    // A line waiting for its scan is the screen's first frame: it does not fade in.
+    val lineEnter = remember { Animatable(if (staged) 0f else 1f) }
+    val stageEnter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { lineEnter.animateTo(1f, arrival) }
+    LaunchedEffect(staged) { if (staged) stageEnter.animateTo(1f, arrival) else stageEnter.snapTo(0f) }
+    Layout(
+        content = {
+            Box(Modifier.graphicsLayer { alpha = lineEnter.value.coerceIn(0f, 1f) }) { hud() }
+            Box(
+                Modifier.graphicsLayer {
+                    val shown = stageEnter.value.coerceIn(0f, 1f)
+                    alpha = shown
+                    // Grows out of its own corner, the way it grows when tapped.
+                    transformOrigin = TransformOrigin(1f, 0f)
+                    scaleX = ENTER_SCALE + (1f - ENTER_SCALE) * shown
+                    scaleY = scaleX
+                },
+            ) { stage?.invoke(expanded) { expanded = it } }
+            Box { notice() }
+        },
+        modifier = Modifier
+            .padding(horizontal = Space.md)
+            .widthIn(max = ArOverlay.maxWidth)
+            .fillMaxWidth()
+            .testTag(SCAN_LIVE_TAG),
+    ) { measurables, constraints ->
+        val full = constraints.maxWidth
+        val gap = Space.sm.roundToPx()
+        val line = measurables[0].measure(Constraints(maxWidth = full))
+        val small = (full * SceneViewTokens.DebugView.liveCardShare).roundToInt()
+        val beside = line.width + gap + small <= full
+        val share = grow.coerceIn(0f, 1f)
+        val width = small + ((full - small) * share).roundToInt()
+        val card = measurables[1].measure(Constraints.fixedWidth(width))
+        // The notice keeps the width beside the small stage, so it does not reflow as it grows.
+        val word = measurables[2].measure(Constraints(maxWidth = if (beside) full - small - gap else full))
+        val head = line.height + if (word.height > 0) gap + word.height else 0
+        val drop = head + gap
+        val top = if (beside) (drop * share).roundToInt() else drop
+        layout(full, max(head, top + card.height)) {
+            line.placeRelative(0, 0)
+            word.placeRelative(0, line.height + gap)
+            card.placeRelative(full - width, top)
+        }
+    }
+}
+
+/**
+ * What the scan has taken so far, as rows of the settings sheet: its points against their
+ * budget, how much surface it has found, its photos against theirs, and what kind of scan this
+ * phone makes — each read off the scan itself, never estimated.
+ *
+ * "Surfaces" is an area, not a count (#4306): ARCore's planes are born, merge and are dropped,
+ * so their count went 0, 1, 4, 1, 6 over one room.
+ */
+@Composable
+internal fun ScanFiguresSection(figures: ScanFigures, depthScan: Boolean, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().testTag(SCAN_FIGURES_TAG)) {
+        Text(
+            text = SCAN_FIGURES_TITLE,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = Space.xs).semantics { heading() },
+        )
+        SheetFigureRow("Points", ScanCopy.budgeted(figures.points, figures.pointBudget))
+        SheetFigureRow("Surfaces found", ArDebugFormat.area(figures.surfaceMetres2))
+        SheetFigureRow("Photos", ScanCopy.budgeted(figures.photos, figures.photoBudget))
+        SheetFigureRow(
+            "Scan type",
+            if (depthScan) ScanCopy.TIER_DEPTH else ScanCopy.TIER_SPARSE,
+            Modifier.testTag(SCAN_TIER_TAG),
+        )
+    }
+}
+
+/**
+ * The scan growing in 3D while it records, on glass: the camera's path drawing itself, the points
+ * in the colours the camera saw, the planes and the photos, framed as they grow — and the camera
+ * it is made with showing through, behind a tint. The same view the replay opens on once the scan
+ * stops.
+ *
+ * [expanded] is `null` where the card has one size (a phone on its side). Otherwise the small
+ * card is one button that grows it, and the grown one turns under a finger and carries the
+ * button that brings it back.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine, handed down once
@@ -117,39 +280,64 @@ internal fun ScanStage(
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
+    modifier: Modifier = Modifier,
+    expanded: Boolean? = null,
+    onExpandedChange: (Boolean) -> Unit = {},
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
-    // The scaffold stacks top overlays Space.sm apart; one more brings the card to the Space.md
-    // the HUD keeps from the header and the screen's edges.
-    Box(modifier = Modifier.fillMaxWidth().padding(top = Space.sm), contentAlignment = Alignment.Center) {
-        Box(
-            modifier = Modifier
-                .padding(horizontal = Space.md)
-                .widthIn(max = ArOverlay.maxWidth)
-                .fillMaxWidth()
-                .aspectRatio(SCAN_STAGE_ASPECT)
-                .shadow(elevation = SceneViewTokens.Elevation.lg, shape = shape, clip = false)
-                .clip(shape)
-                .background(SceneViewTokens.Stage.background)
-                .testTag(SCAN_STAGE_TAG),
-        ) {
-            ArDebugSceneView(
-                session = session,
-                orbit = orbit,
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                modifier = Modifier.fillMaxSize(),
-                replay = media,
+    val chrome = LocalStageChrome.current
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(SCAN_STAGE_ASPECT)
+            .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
+            .clip(shape)
+            .background(SceneViewTokens.DebugView.liveGlass)
+            .testTag(SCAN_STAGE_TAG),
+    ) {
+        ArDebugSceneView(
+            session = session,
+            orbit = orbit,
+            engine = engine,
+            modelLoader = modelLoader,
+            materialLoader = materialLoader,
+            modifier = Modifier.fillMaxSize(),
+            // Small, the room is a few hundred pixels: finer points, no measure, half the frames.
+            compact = expanded == false,
+            replay = media,
+            glass = true,
+        )
+        when (expanded) {
+            false -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClickLabel = STAGE_EXPAND, role = Role.Button) { onExpandedChange(true) }
+                    .semantics { contentDescription = STAGE_LABEL },
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.OpenInFull,
+                    contentDescription = null,
+                    tint = chrome.onGlass,
+                    modifier = Modifier.padding(Space.sm).size(StageGlyphSize),
+                )
+            }
+            true -> GlassIconButton(
+                icon = Icons.Rounded.CloseFullscreen,
+                contentDescription = STAGE_COLLAPSE,
+                onClick = { onExpandedChange(false) },
+                modifier = Modifier.align(Alignment.TopEnd).padding(Space.xs),
+                ground = SceneViewTokens.Glass.scrimDock,
             )
-            Box(Modifier.fillMaxSize().overMediaEdge(shape))
+            null -> Unit
         }
     }
 }
 
 /**
- * Record, and the one line under it: nothing while idle (the status card says what Record does),
- * how to stop while recording, and a wait while the scan is packed.
+ * Record, and the one line over it: a wait while the scan is packed, or how to stop — which
+ * leaves after [STOP_HINT_MS] and gives the camera its height back. Nothing while idle (the
+ * status card says what Record does).
  */
 @Composable
 internal fun ScanShutter(
@@ -159,24 +347,37 @@ internal fun ScanShutter(
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
-    val hint = when {
+    var hinting by remember(recording) { mutableStateOf(recording) }
+    LaunchedEffect(recording) {
+        if (recording) {
+            delay(STOP_HINT_MS)
+            hinting = false
+        }
+    }
+    val line = when {
         finishing -> ScanCopy.FINISHING
-        recording -> ScanCopy.STOP_HINT
+        recording && hinting -> ScanCopy.STOP_HINT
         else -> null
     }
+    // The line that is leaving is still the one drawn while it fades.
+    var shown by remember { mutableStateOf(line) }
+    if (line != null) shown = line
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        if (hint != null) {
+        AnimatedVisibility(visible = line != null, enter = fadeIn(motionFade()), exit = fadeOut(motionFade())) {
             Text(
-                text = hint,
+                text = shown.orEmpty(),
                 style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
                 textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .background(ArOverlay.scrimDark, CircleShape)
-                    .padding(horizontal = Space.md, vertical = Space.sm),
+                    .padding(horizontal = Space.md)
+                    .widthIn(max = ArOverlay.maxWidth)
+                    .background(ArOverlay.scrimDark, RoundedCornerShape(SceneViewTokens.Radius.lg))
+                    .padding(horizontal = Space.md, vertical = Space.sm)
+                    .testTag(SCAN_LINE_TAG),
             )
         }
         RecordShutter(
@@ -188,16 +389,41 @@ internal fun ScanShutter(
     }
 }
 
-private const val SCANNING = "Scanning"
-
-/** The HUD's tier label, for the QA harness. */
+/** The scan type's row in the settings sheet, for the QA harness. */
 internal const val SCAN_TIER_TAG = "rerun_scan_tier"
 
-/** Wider than tall: the room reads across, and the camera keeps the lower half of the screen. */
+/** Wider than tall: the room reads across. */
 private const val SCAN_STAGE_ASPECT = 1.35f
 
-/** A notch above the capture card's 10 dp dot: this one is read from a metre away. */
-private val ScanDotSize = Space.md - Space.xs / 2
+/** The stage and the line arrive from just under their size. */
+private const val ENTER_SCALE = 0.92f
+
+/** How long a scan says how to stop it: long enough to read twice, then the camera has the height. */
+private const val STOP_HINT_MS = 8_000L
+
+/** The capture card's 10 dp dot. */
+private val ScanDotSize = Space.sm + Space.xs / 2
+
+/** The small card's "grows" glyph: a mark, not a button — the whole card is the button. */
+private val StageGlyphSize = Space.md
+
+private const val SCAN_FIGURES_TITLE = "This scan"
+private const val STAGE_LABEL = "Your scan in 3D"
+private const val STAGE_EXPAND = "Enlarge"
+private const val STAGE_COLLAPSE = "Shrink the 3D view"
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
+internal const val SCAN_STARTING_TAG = "ar_rerun_scan_starting"
+
+/** The line and the 3D card together, on an upright phone. */
+internal const val SCAN_LIVE_TAG = "ar_rerun_scan_live"
+
+/** The line over the shutter: how to stop, or the wait while the scan is packed. */
+internal const val SCAN_LINE_TAG = "ar_rerun_scan_line"
+
+/** A limit reached, under the scan's line. */
+internal const val SCAN_NOTICE_TAG = "ar_rerun_scan_notice"
+
+/** The scan's figures in the settings sheet. */
+internal const val SCAN_FIGURES_TAG = "ar_rerun_scan_figures"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"

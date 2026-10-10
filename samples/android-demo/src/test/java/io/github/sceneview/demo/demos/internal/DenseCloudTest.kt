@@ -154,7 +154,7 @@ class DenseCloudTest {
         val blue = 0xFF0000FF.toInt()
         val positions = floatArrayOf(0.001f, 0.001f, 0.001f, 0.011f, 0.009f, 0.005f)
         val stats = fusion.add(samples(positions, intArrayOf(red, blue)))
-        assertEquals(DenseFuseStats(added = 1, kept = 2, total = 1), stats)
+        assertEquals(DenseFuseStats(added = 1, kept = 2, total = 1, points = 0), stats)
         val cloud = fusion.cloud()
         assertEquals(1, cloud.count)
         assertEquals(0.006f, cloud.positions[0], 1e-6f)
@@ -168,15 +168,75 @@ class DenseCloudTest {
         assertEquals(2, fusion.count)
     }
 
+    /** [n] voxels in a row along x, [first] being the first one's rank. */
+    private fun row(first: Int, n: Int) = samples(
+        FloatArray(n * 3) { if (it % 3 == 0) (first + it / 3) * 0.1f else 0f },
+        IntArray(n) { COLOR },
+    )
+
     @Test
-    fun `the map is capped, keeps insertion order, and survives rehashing`() {
+    fun `a scan counts the points it will save, and no others`() {
+        // The Pixel 4a's scan: 32 k "points" on the HUD, 5.6 k in the session it saved. The HUD
+        // counted every voxel held; the file keeps those two depth frames saw.
+        val fusion = DenseFusion()
+        val once = fusion.add(row(0, 10))
+        assertEquals(10, once.added)
+        assertEquals(10, once.total)
+        assertEquals("seen by one frame: not a point yet", 0, once.points)
+        // The next frame sees four of them again, and six new ones.
+        val twice = fusion.add(row(6, 10))
+        assertEquals(16, twice.total)
+        assertEquals(4, twice.points)
+        assertEquals(4, fusion.points)
+        assertEquals(fusion.points, fusion.cloud(minViews = DenseFusion.MIN_VIEWS).count)
+        // Seen a third time, a point is still one point.
+        assertEquals(4, fusion.add(row(6, 4)).points)
+    }
+
+    @Test
+    fun `the limit counts the points a scan saves`() {
         val capped = DenseFusion(maxPoints = 3)
-        val line = FloatArray(30) { if (it % 3 == 0) it / 3 * 0.1f else 0f }
-        val stats = capped.add(samples(line, IntArray(10) { COLOR }))
-        assertEquals(3, stats.added)
-        assertEquals(3, stats.total)
-        assertEquals(3, capped.count)
+        // Ten voxels seen once are no point: the limit is not reached, all are held.
+        assertEquals(DenseFuseStats(added = 10, kept = 10, total = 10, points = 0), capped.add(row(0, 10)))
+        // Seen again, the first three fill the scan; the seven others stay what they were.
+        val full = capped.add(row(0, 10))
+        assertEquals(3, full.points)
+        assertEquals(3, capped.cloud(minViews = DenseFusion.MIN_VIEWS).count)
         assertArrayEquals(floatArrayOf(0f, 0f, 0f, 0.1f, 0f, 0f), capped.cloud(limit = 2).positions, 1e-6f)
+        // Full: nothing new is taken, and no later view makes a fourth point.
+        val after = capped.add(row(0, 20))
+        assertEquals(0, after.added)
+        assertEquals(3, after.points)
+        assertEquals(3, capped.cloud(minViews = DenseFusion.MIN_VIEWS).count)
+    }
+
+    @Test
+    fun `voxels seen once make room when the map is full, points never do`() {
+        val fusion = DenseFusion(maxPoints = 100, maxVoxels = 20)
+        // Eight points, then twelve voxels one frame alone sees: the map holds all it can.
+        fusion.add(row(0, 8))
+        fusion.add(row(0, 8))
+        fusion.add(row(100, 12))
+        assertEquals(20, fusion.count)
+        // A frame later there is no room, and nothing is old enough to go.
+        assertEquals(0, fusion.add(row(200, 5)).added)
+        // Long after, the twelve are noise: they go, and the new voxels are taken in.
+        repeat(DenseFusion.STALE_VIEWS) { fusion.add(row(0, 8)) }
+        val later = fusion.add(row(200, 5))
+        assertEquals(5, later.added)
+        assertEquals(13, later.total)
+        assertEquals(8, later.points)
+        // The points are untouched, in their order, and still found where they were.
+        val cloud = fusion.cloud(minViews = DenseFusion.MIN_VIEWS)
+        assertEquals(8, cloud.count)
+        for (i in 0 until 8) assertEquals(i * 0.1f, cloud.positions[i * 3], 1e-6f)
+        assertEquals(0, fusion.add(row(0, 8)).added)
+        // And the newcomers become points as any voxel does.
+        assertEquals(13, fusion.add(row(200, 5)).points)
+    }
+
+    @Test
+    fun `the map survives rehashing`() {
 
         val big = DenseFusion()
         val n = 50_000

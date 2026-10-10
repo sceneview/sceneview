@@ -254,6 +254,8 @@ internal fun RoomDollhouseScreen(
         loadingLabel = DollhouseCopy.OPENING,
         // The camera feed is media; the 3D view, the empty state and the error follow the theme.
         themedStage = !inRoom,
+        // The mode pill belongs to Room Scan's landing, not to a session opened from it.
+        modeSwitch = null,
         peekHeader = if (fit != null && showsScale) {
             DollhouseCopy.peek(title, fit, realSize && inRoom)
         } else null,

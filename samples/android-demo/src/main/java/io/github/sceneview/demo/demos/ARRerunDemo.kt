@@ -20,9 +20,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -43,8 +46,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,13 +61,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -96,6 +112,7 @@ import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.demos.internal.ArDebugLogPlayer
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
+import io.github.sceneview.demo.demos.internal.OrbitBand
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.RERUN_INTRO
@@ -116,6 +133,7 @@ import io.github.sceneview.demo.demos.internal.DollhouseCopy
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanFigures
+import io.github.sceneview.demo.demos.internal.ScanLimits
 import io.github.sceneview.demo.demos.internal.of
 import io.github.sceneview.demo.demos.internal.parseArDebugLog
 import io.github.sceneview.demo.demos.internal.rerunSaveActionUx
@@ -184,8 +202,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         mutableStateOf(
             when {
                 startInDollhouse || qaState in DOLLHOUSE_QA_STATES -> RerunScreen.Dollhouse
-                qaState == QA_STATE_MODEL_SYNTHETIC -> RerunScreen.Model
-                qaReplay != null -> RerunScreen.Replay
+                qaReplay != null || qaState == QA_STATE_MODEL_SYNTHETIC -> RerunScreen.Replay
                 arPlaybackDataset != null || qaState in LIVE_QA_STATES -> RerunScreen.Live
                 else -> RerunScreen.Landing
             },
@@ -221,18 +238,21 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // Bumped on every open, so reopening the same replay frames and plays it afresh.
     var openCount by remember { mutableIntStateOf(0) }
     val media = if (showingScan) scanMedia else sample
-    // The final model (RerunModelUi.kt): your scan's room, meshed. The sample is not offered one.
-    var modelSource by remember {
-        mutableStateOf<RerunModelSource?>(RerunModelSource.Synthetic.takeIf { qaState == QA_STATE_MODEL_SYNTHETIC })
+    // The room's surface (RerunModelUi.kt): your scan, meshed, drawn in place of its points. The
+    // sample has no depth to mesh; QA's synthetic room stands in for a scan on the emulator.
+    val surfaceSource = remember(showingScan, scanPack, scanMedia) {
+        when {
+            qaState == QA_STATE_MODEL_SYNTHETIC -> RerunModelSource.Synthetic
+            showingScan -> RerunModelSource.of(scanPack, scanMedia)
+            else -> null
+        }
     }
-    val scanModel = if (showingScan) RerunModelSource.of(scanPack, scanMedia) else null
 
     val replaySession = remember { ArDebugSession().apply { loops = true } }
-    // QA captures hold still: no intro fly-in, no idle drift. Each opening is framed afresh.
-    val replayOrbit = remember(media, openCount) {
-        ArDebugOrbitCamera(drift = qaState == null, lift = REPLAY_STAGE_LIFT)
-    }
-    val replayPipOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null) }
+    // The band of the stage the chrome leaves free, per orientation: the room is fitted into it.
+    val stageBand = LocalConfiguration.current.let { OrbitBand.stage(it.screenWidthDp.toFloat() / it.screenHeightDp) }
+    // QA captures hold still: no intro fly-in, no idle sway. Each opening is framed afresh.
+    val replayOrbit = remember(media, openCount) { ArDebugOrbitCamera(drift = qaState == null, band = stageBand) }
     LaunchedEffect(media, openCount) {
         val replay = media ?: return@LaunchedEffect
         replaySession.trace = replay.trace
@@ -245,7 +265,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     // cover, the chrome and the playback all wait for the stage, so nothing shows up empty.
     var revealed by remember(media, openCount) { mutableStateOf(false) }
     LaunchedEffect(revealed, media) {
-        if (revealed && !showingScan && qaReplay?.pauseAt == null) replaySession.playFromStart()
+        val held = qaReplay?.pauseAt != null || qaState == QA_STATE_MODEL_SYNTHETIC
+        if (revealed && !showingScan && !held) replaySession.playFromStart()
     }
     LaunchedEffect(mode, replayOrbit) { replayOrbit.overhead = mode == RerunMode.Map }
 
@@ -308,7 +329,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
         when (screen) {
             RerunScreen.Dollhouse -> leaveDollhouse()
             RerunScreen.Live -> leaveLive()
-            RerunScreen.Model -> if (showingScan) screen = RerunScreen.Replay else toLanding()
             else -> toLanding()
         }
     }
@@ -444,16 +464,12 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             scanTitle = scanTitle,
             session = replaySession,
             orbit = replayOrbit,
+            stageBand = stageBand,
             revealed = revealed,
             onRevealed = { revealed = true },
-            pipOrbit = replayPipOrbit,
             onExport = { exporting = true },
-            onBuildModel = scanModel?.let { source ->
-                {
-                    modelSource = source
-                    screen = RerunScreen.Model
-                }
-            },
+            surfaceSource = surfaceSource,
+            startOnSurface = qaState == QA_STATE_MODEL_SYNTHETIC,
             // Your own room only: the sample is not a room of yours to stand on a table.
             onViewInAr = scanMedia?.takeIf { showingScan }?.let { scan ->
                 { openDollhouse(scanId, scanTitle, scan) }
@@ -482,17 +498,6 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             arPlaybackDataset = arPlaybackDataset,
             startIn3d = qaState == QA_STATE_DOLLHOUSE_3D,
         )
-        RerunScreen.Model -> modelSource?.let { source ->
-            RerunModelScreen(
-                source = source,
-                title = if (showingScan) scanTitle else ScanCopy.REPLAY_TITLE,
-                onBack = { if (showingScan) screen = RerunScreen.Replay else toLanding() },
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                drift = qaState == null,
-            )
-        }
     }
     if (exporting && screen == RerunScreen.Replay && media != null) {
         val source = remember(showingScan, scanTitle, scanPack) {
@@ -512,7 +517,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
  * The demo's screens: the landing, the live AR session (Record), the replay, and the dollhouse —
  * a session stood on a table in AR (#4075).
  */
-private enum class RerunScreen { Landing, Live, Replay, Dollhouse, Model }
+private enum class RerunScreen { Landing, Live, Replay, Dollhouse }
 
 /** The replay's three views. */
 private enum class RerunMode { Scene, Map, Camera }
@@ -536,9 +541,14 @@ private fun RerunLandingScreen(onBack: () -> Unit, state: RerunLandingState, act
 }
 
 /**
- * The bundled replay: the 3D view (orbit, or the overhead map) or the camera's frames, under the
- * HUD, the corner card that swaps to the other view, and the filmstrip. A themed stage (#4080):
- * it follows the app theme, where the live camera screen keeps the media chrome.
+ * The replay: the 3D view (orbit, or the overhead map) or the camera's frames, and one thin
+ * timeline bar over the dock (#4379). A themed stage (#4080): it follows the app theme, where the
+ * live camera screen keeps the media chrome. A tap on the stage hides the header, the bar and
+ * the dock; another brings them back.
+ *
+ * What is read once lives in the settings sheet: the layers and their figures, and — for a scan
+ * that can be meshed — Points | Surface (#4306), the surface being drawn by this same 3D view,
+ * under the same camera, instead of a second screen.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine and replay state, handed down once
@@ -553,22 +563,68 @@ private fun RerunReplayScreen(
     onRevealed: () -> Unit,
     session: ArDebugSession,
     orbit: ArDebugOrbitCamera,
-    pipOrbit: ArDebugOrbitCamera,
+    stageBand: OrbitBand,
     onExport: () -> Unit,
     onViewInAr: (() -> Unit)?,
     engine: Engine,
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
-    onBuildModel: (() -> Unit)? = null,
+    surfaceSource: RerunModelSource? = null,
+    startOnSurface: Boolean = false,
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
+    val title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE
+    // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
+    // the built model itself each time it comes back.
+    var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
+    val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
+    // The stage the chrome really leaves, measured on screen: the room is fitted between the
+    // header above and the timeline bar below, whatever the phone or the font scale. A phone on
+    // its side has no height to give a row under the room: the bar stands in the top corner,
+    // under the header's line, and the room keeps the middle of the window.
+    val compact = compactStage()
+    var stage by remember { mutableStateOf(Rect.Zero) }
+    // Kept while a tap has the chrome hidden: the room does not move when the bar leaves.
+    var timeline by remember(compact) { mutableStateOf<Rect?>(null) }
+    var headerBottom by remember(compact) { mutableFloatStateOf(Float.NaN) }
+    // On its side: where the dock starts, under the room.
+    var pillTop by remember(compact) { mutableFloatStateOf(Float.NaN) }
+    val statusBottom = WindowInsets.safeDrawing.getTop(LocalDensity.current).toFloat()
+    // The room's dimensions are written under its floor, outside the box the band fits: they
+    // keep this much air over the dock.
+    val pillClearance = with(LocalDensity.current) { Space.lg.toPx() }
+    val measured = when {
+        compact -> sideBand(stage, timeline, statusBottom, pillTop - pillClearance)
+        else -> stackedBand(stage, headerBottom, timeline)
+    }
+    val band = measured ?: stageBand
+    SideEffect { orbit.band = band }
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
     val readyState = rememberUpdatedState(ready)
-    val hudIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
-    val cardIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
-    val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS * 2)
+    val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
+    // The 3D view runs the session's clock while it draws. Over the camera's frames there is
+    // none on screen (the corner picture-in-picture that ran it is gone, #4379): the screen does.
+    // It counts for the view too: the sheet's layer rows and the timeline read those figures.
+    if (media != null && mode == RerunMode.Camera) {
+        LaunchedEffect(session, media) {
+            // A finished recording stands on the floor of the whole recording, as in the 3D view.
+            val whole = if (media.growing) null else session.trace.let { it.frameAt(it.duration) }
+            var last = withFrameNanos { it }
+            var countedAt = last - STATS_INTERVAL_NS
+            while (true) {
+                val now = withFrameNanos { it }
+                session.tick((now - last) / NANOS_PER_SECOND)
+                last = now
+                if (now - countedAt >= STATS_INTERVAL_NS) {
+                    countedAt = now
+                    val frame = session.trace.frameAt(session.time)
+                    session.count(frame, media.pointCountAt(frame.time), stageFloorY(whole ?: frame))
+                }
+            }
+        }
+    }
     // The session on screen as open files: .rrd, .glb and .ply, written on the phone.
     val export = DockItem(
         icon = Icons.Rounded.IosShare,
@@ -580,69 +636,65 @@ private fun RerunReplayScreen(
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
-        controls = { RerunSheet() },
+        controls = {
+            RerunSheet {
+                // What the 3D view draws: the points of your scan or its surface, then its layers.
+                if (surfaceSource != null) {
+                    RerunSurfaceSwitch(surface, onWanted = { surfaceWanted = it }, title = title)
+                }
+                RerunLayersSection(session)
+            }
+        },
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
+        // The room has the screen (#4379): a tap on the stage hides the header, the timeline and
+        // the dock, and another brings them back.
+        chromeToggleOnTap = true,
+        overlaysFollowChrome = true,
+        // Room Scan shows no mode switch on any of its screens (#4397).
+        modeSwitch = null,
         topOverlay = {
-            if (media != null) {
-                RerunReplayHud(
-                    session = session,
-                    modifier = Modifier
-                        .padding(horizontal = Space.md)
-                        .widthIn(max = ArOverlay.maxWidth)
-                        .fillMaxWidth()
-                        .reveal(hudIn, rise = -Space.md),
-                )
-                // Space.sm on top of the scaffold's Space.sm stack gap: the card sits Space.md under
-                // the HUD, the spacing the HUD keeps from the header and the screen's edges.
-                val corner = Modifier
-                    .align(Alignment.End)
-                    .padding(top = Space.sm, end = Space.md)
-                    .reveal(cardIn, rise = -Space.md)
-                when (mode) {
-                    // The map is a floor plan and needs the whole width: the camera card would sit
-                    // on the room's far corner. The dock's Camera button stays one tap away.
-                    RerunMode.Map -> Unit
-                    RerunMode.Camera -> ArDebugPip(
-                        session = session,
-                        orbit = pipOrbit,
-                        engine = engine,
-                        modelLoader = modelLoader,
-                        materialLoader = materialLoader,
-                        onExpand = { onMode(RerunMode.Scene) },
-                        modifier = corner,
-                        replay = media,
-                    )
-                    RerunMode.Scene -> RerunCameraCard(
+            if (media != null && compact) {
+                Row(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.weight(1f))
+                    RerunTimelineBar(
                         media = media,
                         thumbnails = thumbnails,
                         session = session,
-                        onOpen = { onMode(RerunMode.Camera) },
-                        modifier = corner,
+                        modifier = Modifier
+                            .padding(end = Space.md)
+                            .width(SceneViewTokens.DebugView.compactCardWidth)
+                            // Measured outside the reveal: where the bar rests, not where it rises from.
+                            .onGloballyPositioned { timeline = it.boundsInRoot() }
+                            .reveal(filmstripIn, rise = -Space.md),
                     )
                 }
+            } else {
+                // Nothing to draw: this marks where the header ends over the room — by its
+                // position: an empty box has no bounds.
+                Spacer(Modifier.fillMaxWidth().onGloballyPositioned { headerBottom = it.positionInRoot().y })
             }
         },
         bottomOverlay = {
-            if (media != null && onBuildModel != null) {
-                RerunBuildModelButton(
-                    onClick = onBuildModel,
-                    modifier = Modifier.align(Alignment.CenterHorizontally).reveal(filmstripIn, rise = Space.lg),
-                )
-            }
-            if (media != null) {
-                RerunFilmstripCard(
+            if (media != null && compact) {
+                // Nothing to draw: the timeline stands in the corner. This marks where the dock
+                // starts under the room.
+                Spacer(Modifier.fillMaxWidth().onGloballyPositioned { pillTop = it.positionInRoot().y })
+            } else if (media != null) {
+                RerunTimelineBar(
                     media = media,
                     thumbnails = thumbnails,
                     session = session,
-                    modifier = Modifier.reveal(filmstripIn, rise = Space.lg),
-                    title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE,
-                    caption = when (mode) {
-                        RerunMode.Map -> "Top-down map of the room"
-                        RerunMode.Camera -> "What the camera saw"
-                        else -> "Drag to orbit · double-tap to recenter"
-                    },
+                    modifier = Modifier
+                        // The bar goes with the dock: one small gutter above it, not a card
+                        // stacked over it.
+                        .offset(y = (dockGap - Space.sm).coerceAtLeast(0.dp))
+                        .padding(horizontal = Space.md)
+                        .widthIn(max = ArOverlay.maxWidth)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { timeline = it.boundsInRoot() }
+                        .reveal(filmstripIn, rise = Space.lg),
                 )
             }
         },
@@ -691,8 +743,9 @@ private fun RerunReplayScreen(
                 engine = engine,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned { stage = it.boundsInRoot() },
                 replay = media,
+                surface = surface.surface,
                 onShown = onRevealed,
             )
         }
@@ -700,17 +753,70 @@ private fun RerunReplayScreen(
 }
 
 /**
- * The settings sheet: what the demo is, then — advanced — how to stream a live session to a
- * computer.
+ * A phone on its side: too short for the stacked cards, and wide enough for the two side cards to
+ * leave the room a stage between them — by the rule the band itself is measured with
+ * ([OrbitBand.halfWidthBeside]). A window that is short and narrow (split screen) keeps the
+ * stacked layout: beside the room, the cards would stand on it.
  */
 @Composable
-private fun RerunSheet() {
+private fun compactStage(): Boolean {
+    if (LocalConfiguration.current.screenHeightDp.dp >= SceneViewTokens.DebugView.compactStageHeight) return false
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing
+    // The room stays centred: the side a cutout pushes further in decides for both.
+    val inset = maxOf(insets.getLeft(density, direction), insets.getRight(density, direction))
+    val card = with(density) { (Space.md + SceneViewTokens.DebugView.compactCardWidth).toPx() }
+    val width = LocalWindowInfo.current.containerSize.width.toFloat()
+    return OrbitBand.halfWidthBeside(cardEnd = inset + card, viewWidth = width) != null
+}
+
+/**
+ * The band the replay's chrome leaves the room on [stage] when the phone is upright, measured on
+ * screen: from [headerBottom], where the header ends, down to the timeline bar. `null` until both
+ * are laid out.
+ */
+private fun stackedBand(stage: Rect, headerBottom: Float, timeline: Rect?): OrbitBand? {
+    if (timeline == null) return null
+    return OrbitBand.between(headerBottom - stage.top, timeline.top - stage.top, stage.height)
+}
+
+/**
+ * The same band for a phone on its side: the timeline bar stands in a top corner, so the room —
+ * which stays centred — keeps clear of it on both sides, from [statusBottom] under the status bar
+ * down to [pillTop], where the dock starts. `null` until the bar is laid out.
+ */
+private fun sideBand(stage: Rect, timeline: Rect?, statusBottom: Float, pillTop: Float): OrbitBand? {
+    if (timeline == null) return null
+    // How far in the bar reaches from the edge it stands against, whichever that is (RTL).
+    val reach = minOf(stage.right - timeline.left, timeline.right - stage.left)
+    return OrbitBand.betweenSides(
+        startCardEnd = reach,
+        endCardStart = stage.width - reach,
+        top = (statusBottom - stage.top).coerceAtLeast(0f),
+        bottom = pillTop - stage.top,
+        viewWidth = stage.width,
+        viewHeight = stage.height,
+    )
+}
+
+/**
+ * The settings sheet: [head], what the screen it is opened from keeps off its stage (#4379) — the
+ * replay's layers and figures, a scan's counts — then what the demo is and, advanced, how to
+ * stream a live session to a computer, with [stream], that stream's status, once it is connected.
+ */
+@Composable
+private fun RerunSheet(stream: RerunStatusUx? = null, head: (@Composable () -> Unit)? = null) {
+    if (head != null) {
+        head()
+        Spacer(Modifier.size(Space.md))
+    }
     Text(
         text = RERUN_REPLAY_INTRO,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    RerunSetupSection()
+    RerunSetupSection(stream)
     // Developer-only debug toggle — visible when QA mode is on. Lets QA force-emit each
     // TrackingFailureReason so the actionable-message overlay can be validated without staging a
     // real failure. See io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
@@ -750,11 +856,10 @@ private fun RerunLiveScreen(
     val qaDebug = remember { ArDebugQaState.of(qaState) }
 
     // The in-app 3D debug view (#3950): what ARCore understood of the room, drawn by a second
-    // SceneView from a free camera. The picture-in-picture over the camera opens it full-screen.
+    // SceneView from a free camera. The dock's "3D view" opens it full-screen.
     val debugSession = remember { ArDebugSession() }
     val debugRecorder = remember { ArDebugRecorder() }
     val debugOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
-    val pipOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
     var debugFullScreen by remember { mutableStateOf(qaDebug?.fullScreen == true) }
 
     LaunchedEffect(qaDebug) {
@@ -791,7 +896,10 @@ private fun RerunLiveScreen(
     // log and photos, since the emulator cannot track. Its Stop saves that take like a real
     // scan — the same builder, bake and file — and opens it.
     var qaScan by remember { mutableStateOf<RerunReplayMedia?>(null) }
-    val qaRecord = qaState == QA_STATE_RECORD
+    // `--es qa_state record-full` is the same screen with both budgets spent: the emulator
+    // cannot scan, let alone scan half a million points.
+    val qaFull = qaState == QA_STATE_RECORD_FULL
+    val qaRecord = qaState == QA_STATE_RECORD || qaFull
     LaunchedEffect(qaRecord, sample) {
         val source = sample?.takeIf { qaRecord } ?: return@LaunchedEffect
         val events = withContext(Dispatchers.IO) {
@@ -815,7 +923,9 @@ private fun RerunLiveScreen(
     }
     val scanMedia = scan?.live ?: qaScan
     val recording = scanMedia != null
-    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, lift = SCAN_STAGE_LIFT) }
+    // The live view is a card with nothing over it, so the room is framed in the card's own band:
+    // the band of a full-width stage under a figures bar drew it at half the size in a small card.
+    val scanOrbit = remember(scanMedia) { ArDebugOrbitCamera(drift = false, band = OrbitBand.CARD) }
 
     var isTracking by remember { mutableStateOf(false) }
     var cameraReady by remember { mutableStateOf(false) }
@@ -934,68 +1044,115 @@ private fun RerunLiveScreen(
         }
     }
 
+    // A phone on its side has no height for the scan's line over its 3D card.
+    val compact = compactStage()
+    // What the scan holds, against what it can hold: the line, the sheet and the notice by the
+    // shutter all read the same figures.
+    val depthScan = scan?.rawDepth == true || qaFull
+    val scanFigures = if (recording) {
+        val stats = debugSession.stats
+        val pointBudget = ScanLimits.pointBudget(depthScan)
+        ScanFigures(
+            points = when {
+                qaFull -> pointBudget
+                depthScan -> scan?.denseCount ?: 0
+                else -> stats.mapPoints
+            },
+            pointBudget = pointBudget,
+            surfaceMetres2 = stats.surfaceMetres2,
+            photos = debugSession.trace.imageCount,
+        )
+    } else {
+        null
+    }
+    // The scan has not started and will by itself, once ARCore has found the room: until then
+    // the screen is already the scan's — its line of glass, saying what it waits for, and no dock
+    // cell that leads elsewhere — instead of three seconds of another screen over a black camera.
+    val starting = !recording && !autoStarted && !debugFullScreen &&
+        arCoreAvailability == null && qaDebug == null && !qaRecord && qaState == null
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
-        // The sheet holds what the screen must not: the connection steps a developer types
-        // once. The screen itself only says what the demo does and whether it is live.
-        controls = { RerunSheet() },
+        // The sheet holds what the screen must not (#4379): a scan's counts, the stream's status
+        // and the connection steps a developer types once. The screen keeps the camera.
+        controls = {
+            RerunSheet(
+                stream = status.takeIf { isConnected },
+                head = scanFigures?.let { figures -> { ScanFiguresSection(figures, depthScan) } },
+            )
+        },
+        // Room Scan shows no mode switch on any of its screens (#4397).
+        modeSwitch = null,
         topOverlay = {
-            if (recording && scanMedia != null) {
-                val stats = debugSession.stats
-                // The HUD runs on its own clock: the trace records nothing while tracking is
-                // lost ("Not enough detail"), and a HUD read off it froze there for seconds.
+            if ((scanFigures != null && scanMedia != null) || starting) {
+                // The line runs on its own clock: the trace records nothing while tracking is
+                // lost ("Not enough detail"), and a line read off it froze there for seconds.
                 val now by produceState(SystemClock.elapsedRealtimeNanos(), scan) {
                     while (true) {
                         delay(HUD_TICK_MS)
                         value = SystemClock.elapsedRealtimeNanos()
                     }
                 }
-                ScanHud(
-                    figures = ScanFigures(
-                        points = stats.mapPoints,
-                        surfaces = stats.planes,
-                        photos = debugSession.trace.imageCount,
-                        dense = scan?.denseCount ?: 0,
-                    ),
-                    depthScan = scan?.rawDepth == true,
-                    seconds = scan?.elapsedSeconds(now) ?: stats.duration,
-                    photoLimitReached = scan?.isPhotoLimitReached == true,
-                )
-                ScanStage(
-                    session = debugSession,
-                    orbit = scanOrbit,
-                    media = scanMedia,
-                    engine = engine,
-                    modelLoader = modelLoader,
-                    materialLoader = materialLoader,
-                )
-            } else if (debugFullScreen) {
-                ArDebugLegend(debugSession)
-            } else {
-                // While the SDK's "Couldn't start AR" card explains why there is no session,
-                // the preview has nothing to mirror and sat on top of that card's title,
-                // under the "No computer connected" card (#3989). One card at a time
-                // (DESIGN.md "AR Overlay Card"): both come back as soon as a session
-                // starts. A QA fixture hides the SDK card and owns the 3D view, so it
-                // keeps them. Streaming to a computer is advanced: its card shows only
-                // once one is connected.
-                val availabilityCardShown = arCoreAvailability != null && qaState == null
-                if (!availabilityCardShown) {
-                    if (isConnected) RerunStatusCard(status)
-                    ArDebugPip(
-                        session = debugSession,
-                        orbit = pipOrbit,
-                        engine = engine,
-                        modelLoader = modelLoader,
-                        materialLoader = materialLoader,
-                        onExpand = { debugFullScreen = true },
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(end = Space.md),
+                val hud: @Composable () -> Unit = {
+                    if (scanFigures != null) {
+                        ScanHud(
+                            seconds = scan?.elapsedSeconds(now) ?: debugSession.stats.duration,
+                            figures = scanFigures,
+                        )
+                    } else {
+                        ScanStartingHud(cameraReady)
+                    }
+                }
+                // No stage before the scan: there is nothing of the room to draw yet.
+                val stage: (@Composable (Boolean?, (Boolean) -> Unit) -> Unit)? = scanMedia?.let { media ->
+                    { expanded, onExpandedChange ->
+                        ScanStage(
+                            session = debugSession,
+                            orbit = scanOrbit,
+                            media = media,
+                            engine = engine,
+                            modelLoader = modelLoader,
+                            materialLoader = materialLoader,
+                            expanded = expanded,
+                            onExpandedChange = onExpandedChange,
+                        )
+                    }
+                }
+                // The one thing to know mid-scan: a budget is spent, and which. It stands under the
+                // line that counts it, beside the 3D card, where it costs the camera no height.
+                val limit = scanFigures?.let { figures ->
+                    ScanCopy.limitNotice(
+                        pointsFull = figures.pointsFull,
+                        photosFull = figures.photosFull || scan?.isPhotoLimitReached == true,
                     )
                 }
+                val notice: @Composable () -> Unit = { ScanNotice(limit) }
+                if (compact) {
+                    // On its side the window has no height for a card that grows: the card takes
+                    // one side and the line the other (#4379), and the shutter keeps the middle.
+                    val side = Modifier
+                        .width(SceneViewTokens.DebugView.compactCardWidth + Space.md * 2)
+                        .padding(horizontal = Space.md)
+                    Row(Modifier.fillMaxWidth()) {
+                        Box(side) { stage?.invoke(null) {} }
+                        Spacer(Modifier.weight(1f))
+                        Column(
+                            modifier = side,
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(Space.sm),
+                        ) {
+                            hud()
+                            notice()
+                        }
+                    }
+                } else {
+                    ScanLive(hud = hud, notice = notice, stage = stage)
+                }
+            } else if (debugFullScreen) {
+                ArDebugLegend(debugSession)
             }
+            // Otherwise the camera has the screen (#4379): the stream's status is a line of the
+            // settings sheet, and the 3D view is the dock's second cell — no card in the corner.
         },
         // Status banner + primary action are both bottom-anchored, so both live in the
         // scaffold slot: a bottom-aligned Column that stacks them instead of letting
@@ -1005,8 +1162,11 @@ private fun RerunLiveScreen(
                 ArDebugTimelineCard(debugSession)
             } else {
                 RerunCameraBottomOverlay(
-                    visible = (!isTracking && arCoreAvailability == null && qaDebug == null && !qaRecord) ||
-                        ForcedTrackingFailure.override != null,
+                    // Nothing to move the phone for while the camera itself is still starting.
+                    visible = (
+                        !isTracking && arCoreAvailability == null && qaDebug == null && !qaRecord &&
+                            (cameraReady || !starting)
+                        ) || ForcedTrackingFailure.override != null,
                     trackingFailureReason = trackingFailureReason,
                     // Before a scan, the wait is for Record; during one, ARCore's own guidance.
                     searching = if (recording) null else ScanCopy.WAITING,
@@ -1025,8 +1185,9 @@ private fun RerunLiveScreen(
                 }
             }
         },
-        // A scan in progress owns the screen: nothing in the dock may leave it half-taken.
-        dock = if (recording) emptyList() else listOf(
+        // A scan in progress owns the screen: nothing in the dock may leave it half-taken. So
+        // does one about to start by itself.
+        dock = if (recording || starting) emptyList() else listOf(
             DockItem(
                 icon = Icons.Rounded.Videocam,
                 label = "Camera view",
@@ -1173,25 +1334,37 @@ private fun RerunLiveScreen(
 }
 
 /**
- * The status over the camera: a dot that turns green while events reach the computer, a
- * title, and one quieter line — what the demo does, or how much has been sent.
+ * The stream's status, a line of the settings sheet's "Connect your computer" section: a dot that
+ * turns green while events reach the computer, a title, and how much has been sent. It was a
+ * card over the camera (#4379); Save & Share on the screen already says a computer is there.
  */
 @Composable
-private fun RerunStatusCard(status: RerunStatusUx) {
-    OverlayCard(testTag = RERUN_STATUS_CARD_TAG) {
+private fun RerunStreamStatus(status: RerunStatusUx) {
+    Column(
+        modifier = Modifier.testTag(RERUN_STATUS_CARD_TAG).semantics(mergeDescendants = true) {},
+        verticalArrangement = Arrangement.spacedBy(Space.xs),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(StatusDotSize)
                     .background(
-                        color = if (status.live) ArOverlay.accentSuccess else ArOverlay.onScrimMuted,
+                        color = if (status.live) ArOverlay.accentSuccess else MaterialTheme.colorScheme.outline,
                         shape = CircleShape,
                     ),
             )
             Spacer(Modifier.width(Space.sm))
-            Text(text = status.title, style = OnScrimTitle)
+            Text(
+                text = status.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
-        Text(text = status.detail, style = OnScrimBody)
+        Text(
+            text = status.detail,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1254,7 +1427,7 @@ private fun DemoBottomOverlayScope.RerunCameraBottomOverlay(
 
 /** "Connect your computer", numbered, commands in mono blocks. Theme colours: it is the sheet. */
 @Composable
-private fun RerunSetupSection() {
+private fun RerunSetupSection(stream: RerunStatusUx? = null) {
     // Space.md above: the sheet's intro paragraph sits right before this heading.
     Column(
         modifier = Modifier.padding(top = Space.md),
@@ -1265,6 +1438,7 @@ private fun RerunSetupSection() {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.semantics { heading() },
         )
+        if (stream != null) RerunStreamStatus(stream)
         // What streaming does, under its own heading: it is the advanced path, not the demo.
         Text(
             text = RERUN_INTRO,
@@ -1400,16 +1574,14 @@ private val StatusDotSize = Space.sm + Space.xs / 2 // 10 dp, same as the record
 private const val MAX_PLACEMENT_DISTANCE_METERS = 5f
 private const val QA_SEED = "ar-rerun"
 
-/** Where the replay stage draws the room: 7 % of the height above centre, clear of the filmstrip. */
-private const val REPLAY_STAGE_LIFT = 0.07f
-
-/** The Record screen's 3D card frames the room higher: its floor used to sit clipped at the card's foot. */
-private const val SCAN_STAGE_LIFT = 0.12f
 private const val QA_STATE_CONNECTED = "connected"
 private const val QA_STATE_SAVED = "saved"
 
 /** QA only: the Record screen mid-scan, fed by the sample room (#2754: no AR on the emulator). */
 private const val QA_STATE_RECORD = "record"
+
+/** QA only: that screen with a depth scan's point budget spent, which no emulator scan reaches. */
+private const val QA_STATE_RECORD_FULL = "record-full"
 
 /** The QA scan plays the sample once and holds on its end, as a scan in progress would. */
 private const val QA_RECORD_NEVER_LOOP_S = 3_600f
@@ -1419,6 +1591,7 @@ private const val AUTO_START_POLL_MS = 100L
 
 /** The scan HUD's clock ticks ten times a second, tracking or not. */
 private const val HUD_TICK_MS = 100L
+private const val NANOS_PER_SECOND = 1e9f
 
 /**
  * QA only: the take the Record screen played from the sample, built into a session like a real
@@ -1474,7 +1647,8 @@ private const val QA_STATE_MODEL_SYNTHETIC = "model-synthetic"
 
 /** The QA states that open straight on the live AR screen. */
 private val LIVE_QA_STATES =
-    ArDebugQaState.entries.map { it.key } + QA_STATE_CONNECTED + QA_STATE_SAVED + QA_STATE_RECORD
+    ArDebugQaState.entries.map { it.key } + QA_STATE_CONNECTED + QA_STATE_SAVED + QA_STATE_RECORD +
+        QA_STATE_RECORD_FULL
 
 /**
  * The QA states of the bundled replay: a view, and where the replay stands — paused at a fixed

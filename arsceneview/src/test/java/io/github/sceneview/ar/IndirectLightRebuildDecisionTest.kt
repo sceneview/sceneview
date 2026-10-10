@@ -133,7 +133,7 @@ class IndirectLightRebuildDecisionTest {
     @Test
     fun `should not rebuild when estimation is empty even with base IBL`() {
         // The base IBL is already on `scene.indirectLight` from the
-        // `LaunchedEffect(environment)` baseline initialiser — rebuilding
+        // `DisposableEffect(environment, scene)` baseline initialiser — rebuilding
         // when ARCore has nothing fresh just churns native resources.
         val estimation = LightEstimator.Estimation()
         // Pure-JVM cannot mock a Filament `IndirectLight`, but the helper

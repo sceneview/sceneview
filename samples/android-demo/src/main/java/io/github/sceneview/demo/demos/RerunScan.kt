@@ -118,7 +118,10 @@ internal class ScanCapture private constructor(
     /** When Record started, on the monotonic clock: the HUD's clock runs from it (see [elapsedSeconds]). */
     private val startedNanos = SystemClock.elapsedRealtimeNanos()
 
-    /** Surfels in the dense map so far: the HUD's "N surfaces" count. `0` without raw depth. */
+    /**
+     * Points of the dense map so far ([DenseFusion.points]): the surfels the saved scan will
+     * hold, so the HUD's count and the session's are one figure. `0` without raw depth.
+     */
     val denseCount: Int get() = denseTotal.get()
 
     /**
@@ -300,7 +303,7 @@ internal class ScanCapture private constructor(
                 )
                 denseAdded.addAndGet(stats.added)
                 denseKept.addAndGet(stats.kept)
-                denseTotal.set(stats.total)
+                denseTotal.set(stats.points)
                 snapshotLiveDense(fusion)
             } finally {
                 fusing.set(false)

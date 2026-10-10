@@ -313,17 +313,40 @@ object ScanArchive {
     }
 }
 
-/** The figures the Record screen shows while scanning, read off the trace. */
+/** The figures of a scan in progress, read off the trace. */
 data class ScanFigures(
+    /** The points the scan holds: the dense map's for a depth scan, ARCore's own otherwise. */
     val points: Int,
-    val surfaces: Int,
+    /** The most [points] this scan can hold ([ScanLimits.pointBudget]). */
+    val pointBudget: Int,
+    /** Floor, walls and ceiling found so far, in m² ([ArDebugStats.surfaceMetres2]). */
+    val surfaceMetres2: Float,
     val photos: Int,
-    /** Surfels of the dense depth map (Rerun v2 tier `depth`); `0` for a sparse scan. */
-    val dense: Int = 0,
+    val photoBudget: Int = KeyframeGate.MAX_PHOTOS,
 ) {
-    companion object {
-        val Empty = ScanFigures(0, 0, 0)
-    }
+    val pointsFull: Boolean get() = ScanLimits.isFull(points, pointBudget)
+    val photosFull: Boolean get() = ScanLimits.isFull(photos, photoBudget)
+}
+
+/**
+ * What a scan can hold. A scan's points are a map of small cubes of space, each kept once: past
+ * the budget a new cube is dropped, so the count stops for good while the points already kept go
+ * on being refined, and the path and the photos go on recording.
+ */
+object ScanLimits {
+    /** From this share of the budget the scan's line counts against it: `412k / 500k`. */
+    const val NEAR_SHARE = 0.8f
+
+    /**
+     * The most points a scan keeps: [DenseFusion.MAX_POINTS] cubes of 2 cm with ARCore's raw
+     * depth, [ArDebugTrace.MAX_MAP_POINTS] of 3 cm from its feature points alone.
+     */
+    fun pointBudget(depthScan: Boolean): Int =
+        if (depthScan) DenseFusion.MAX_POINTS else ArDebugTrace.MAX_MAP_POINTS
+
+    fun isFull(count: Int, budget: Int): Boolean = budget > 0 && count >= budget
+
+    fun isNear(count: Int, budget: Int): Boolean = budget > 0 && count >= budget * NEAR_SHARE
 }
 
 /** Copy of the Record mode, pure so a test holds it to what the brief promised. */
@@ -334,6 +357,10 @@ object ScanCopy {
     const val IDLE_TITLE = "Scan your room in 3D"
     const val IDLE_DETAIL = "Tap record, then walk the phone slowly around the room. $PRIVACY"
     const val WAITING = "Move the phone slowly to find the room. Recording starts once it is found."
+
+    // What the scan's line says before there is a scan: what the screen is waiting for.
+    const val STARTING_CAMERA = "Starting camera…"
+    const val FINDING_ROOM = "Looking for the room…"
 
     // The landing, worded as the iOS demo's (#4068), "phone" for "iPhone".
     const val LANDING_TITLE = "Scan a room in 3D"
@@ -390,10 +417,52 @@ object ScanCopy {
     const val SAMPLE_TITLE = "Recorded AR session"
     const val FULL = "Photo limit reached — points and path keep recording."
 
+    /** The point budget is spent: the count has stopped, and says why. */
+    const val POINTS_FULL = "Point limit reached — new areas add no more points."
+
+    /** Both budgets are spent: nothing more of the room is kept, only the path. */
+    const val SCAN_FULL = "Point and photo limits reached — tap stop to open your scan."
+
+    /** The one thing to know mid-scan, under the line that counts: which budget is spent. `null` while none is. */
+    fun limitNotice(pointsFull: Boolean, photosFull: Boolean): String? = when {
+        pointsFull && photosFull -> SCAN_FULL
+        pointsFull -> POINTS_FULL
+        photosFull -> FULL
+        else -> null
+    }
+
+    /**
+     * The points on a scan's line, beside the clock: `246k points`, then `412k / 500k` once the
+     * budget is in sight ([ScanLimits.NEAR_SHARE]), then `500k · full` — a count that has
+     * stopped never reads as a frozen screen.
+     */
+    fun pointsLine(points: Int, budget: Int): String {
+        val count = ArDebugFormat.compactCount(points)
+        return when {
+            ScanLimits.isFull(points, budget) -> "${ArDebugFormat.compactCount(budget)} · full"
+            ScanLimits.isNear(points, budget) -> "$count / ${ArDebugFormat.compactCount(budget)}"
+            else -> "$count ${label(points, "point", "points")}"
+        }
+    }
+
+    /** The same line, spoken: `412 thousand` is not a thing a screen reader should guess. */
+    fun pointsSpoken(points: Int, budget: Int): String = when {
+        ScanLimits.isFull(points, budget) -> "point limit of ${ArDebugFormat.count(budget)} reached"
+        ScanLimits.isNear(points, budget) ->
+            "${ArDebugFormat.count(points)} of ${ArDebugFormat.count(budget)} points"
+        else -> "${ArDebugFormat.count(points)} ${label(points, "point", "points")}"
+    }
+
+    /** A budgeted figure of the settings sheet: `246k of 500k`, `300 of 300 · full`. */
+    fun budgeted(count: Int, budget: Int): String {
+        val line = "${figure(count.coerceAtMost(budget))} of ${figure(budget)}"
+        return if (ScanLimits.isFull(count, budget)) "$line · full" else line
+    }
+
     /** `1` → `1 photo`, `12` → `12 photos`: the figure's label follows its value. */
     fun label(count: Int, one: String, many: String): String = if (count == 1) one else many
 
-    /** The HUD's tier, beside "Scanning": what this phone's scan really is (Rerun v2). */
+    /** A scan's kind, in the settings sheet: what this phone's scan really is (Rerun v2). */
     const val TIER_DEPTH = "Depth scan"
     const val TIER_SPARSE = "Sparse scan"
 
