@@ -38,6 +38,45 @@ logs `first-frame slug=… elapsedMs=…` in the job's `logcat.txt`.
 | --- | --- |
 | `splatpreview_default` | Correct render, but not reproducible: the splat is framed differently from one run to the next (54.7 % of pixels differed from its recording in run 36416690269, 54.9 % between the two attempts of run 38044621943). No single capture can be its reference. |
 
+### What moved the Splat Preview picture (#4459)
+
+Not the framing: the three CI captures of commit `4140018cb` hold the same
+geometry and differ in how the translucent points are blended, mostly in the
+foreground ground — 0.49 % of pixels between runs 1 and 3, 13.6 % and 13.8 %
+between run 2 and the two others. The captures were taken 15.3 s, 7.8 s and
+8.5 s after "Scene ready".
+
+The cause was the order the screen opened in. It drew an empty stage on the
+default camera while the file decoded, then swapped the camera onto the scan,
+which the SDK turns into a 0.6 s glide. `SplatNode` sorts its points back to
+front for the camera on a background thread, one sort at a time, and only
+starts another when the camera has moved more than 1 % of the scan's radius.
+So the sorts chased the glide: "Scene ready" could be announced on an order
+computed for a pose the camera had already left, replaced seconds later on a
+software rasteriser, and the last order kept was sorted for a pose merely
+*near* the final one, which one depending on frame timing.
+
+Measured on `emulator-5554` (host GPU, status bar cropped, 3 450 880 px),
+captures at +0.5 s, +2 s, +5 s and +15 s after "Scene ready":
+
+| | Within one cold start | Between cold starts |
+| --- | --- | --- |
+| Before | 0 px at all four delays | 0.30 % and 0.03 % — three starts, three pictures |
+| Before, order forced to the one sorted for the default camera | 0 px over 15 s | 20.4 % against a normal start |
+| After | 0 px at all four delays | 0 px across five cold starts |
+
+The screen now draws the stage only once the file is open, with the camera
+already on the scan (no glide, one sort, for the exact home pose), and keeps
+its cover up until that sort is on screen. On the emulator the scan appears
+about 0.6 s later than before, because the surface is no longer created while
+the file decodes.
+
+**Not proven here:** the emulator is too fast to show the settle the CI
+captures show, so the row above stays until `render-tests.yml` has produced
+the same picture on several SwiftShader runs. Its reference must come from
+those runs — the sort order changed, so no older capture matches (0.51 %
+against the previous emulator picture).
+
 ## "Scene ready" came before the models (#4448, closed by #4459)
 
 Seven runs of 2026-10-10 on the same code gave **two pictures** for several
