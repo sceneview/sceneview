@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.ui.home
 
 import android.os.Build
+import android.util.LruCache
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +22,8 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -233,12 +236,20 @@ private fun MediaCard(
                         // without cutting a word: the tallest peer's text sets the floor.
                         .layout { measurable, constraints ->
                             val placeable = measurable.measure(constraints)
-                            val gap = textGap.roundToPx()
-                            val width = Constraints(maxWidth = constraints.maxWidth)
                             val floor = captionPeers().maxOfOrNull { (peerTitle, peerSubtitle) ->
-                                measurer.measure(peerTitle, titleStyle, constraints = width).size.height +
-                                    gap +
-                                    measurer.measure(peerSubtitle, subtitleStyle, constraints = width).size.height
+                                captionHeight(
+                                    CaptionKey(
+                                        title = peerTitle,
+                                        subtitle = peerSubtitle,
+                                        titleStyle = titleStyle,
+                                        subtitleStyle = subtitleStyle,
+                                        width = constraints.maxWidth,
+                                        gap = textGap.roundToPx(),
+                                        density = density,
+                                        fontScale = fontScale,
+                                    ),
+                                    measurer,
+                                )
                             } ?: 0
                             val height = maxOf(placeable.height, floor)
                                 .coerceIn(constraints.minHeight, constraints.maxHeight)
@@ -270,6 +281,37 @@ private fun MediaCard(
         }
     }
 }
+
+/** Everything the height of a caption depends on: its two texts, their styles, and the room it has. */
+private data class CaptionKey(
+    val title: String,
+    val subtitle: String,
+    val titleStyle: TextStyle,
+    val subtitleStyle: TextStyle,
+    val width: Int,
+    val gap: Int,
+    val density: Float,
+    val fontScale: Float,
+)
+
+/**
+ * Caption heights already measured (#4461). Every card of a row asks for the height of every
+ * caption of that row, and a list is rebuilt from nothing each time a demo is closed: without
+ * this, a row of two lays out eight paragraphs to learn two numbers, on the frame that starts
+ * the exit transition. A height is a pure function of its [CaptionKey], so it is computed once.
+ */
+private val captionHeights = LruCache<CaptionKey, Int>(CAPTION_HEIGHTS_KEPT)
+
+private const val CAPTION_HEIGHTS_KEPT = 256
+
+/** Height of the caption [key] describes: title, gap, subtitle, each wrapped to the key's width. */
+private fun captionHeight(key: CaptionKey, measurer: TextMeasurer): Int =
+    captionHeights[key] ?: run {
+        val width = Constraints(maxWidth = key.width)
+        val title = measurer.measure(key.title, key.titleStyle, constraints = width)
+        val subtitle = measurer.measure(key.subtitle, key.subtitleStyle, constraints = width)
+        (title.size.height + key.gap + subtitle.size.height).also { captionHeights.put(key, it) }
+    }
 
 /**
  * A grid card's blurred copy. It covers only the caption band — from one melt above the
