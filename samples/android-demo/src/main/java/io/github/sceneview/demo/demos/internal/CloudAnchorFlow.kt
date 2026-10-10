@@ -473,8 +473,9 @@ fun CloudAnchorBlocker.blockedCopy(): CloudAnchorBlockedCopy? = when (this) {
     )
     CloudAnchorBlocker.ApiKeyRejected -> CloudAnchorBlockedCopy(
         title = "ARCore key rejected",
-        body = "Google Cloud refused this build's ARCore API key. Check that the key's " +
-            "SHA-1 restriction matches the certificate that signed this app.",
+        body = "Google Cloud refused this build's ARCore API key. The key's Android " +
+            "restriction must list this app's package name together with the SHA-1 of the " +
+            "certificate that signed it.",
     )
     CloudAnchorBlocker.QuotaExhausted -> CloudAnchorBlockedCopy(
         title = "Cloud quota used up",

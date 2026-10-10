@@ -1,6 +1,10 @@
 package io.github.sceneview.demo.common
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -13,9 +17,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import androidx.core.location.LocationManagerCompat
 import com.google.ar.core.Anchor
 import com.google.ar.core.Earth
+import com.google.ar.core.VpsAvailability
 import io.github.sceneview.demo.DemoBottomOverlayScope
 
 /**
@@ -110,6 +117,22 @@ fun Earth.EarthState?.toCloudServiceStatus(operation: String): CloudServiceStatu
 }
 
 /**
+ * Maps a Street View coverage answer ([VpsAvailability]) to the [CloudServiceStatus] it
+ * represents, or `null` when the answer is about coverage rather than about the service
+ * (`AVAILABLE`, `UNAVAILABLE`, an internal error).
+ *
+ * The coverage request is the first Geospatial round-trip a session can make with a
+ * position in hand, so a rejected key shows up here even where [Earth.getEarthState] is
+ * still `ENABLED` because Earth has had nothing to ask Google for yet.
+ */
+fun VpsAvailability?.toCloudServiceStatus(operation: String): CloudServiceStatus? = when (this) {
+    VpsAvailability.ERROR_NOT_AUTHORIZED -> CloudServiceStatus.ApiKeyRejected(operation)
+    VpsAvailability.ERROR_RESOURCE_EXHAUSTED -> CloudServiceStatus.QuotaExhausted(operation)
+    VpsAvailability.ERROR_NETWORK_CONNECTION -> CloudServiceStatus.NoNetwork
+    else -> null
+}
+
+/**
  * Maps a Cloud Anchor host/resolve result [Anchor.CloudAnchorState] to the
  * [CloudServiceStatus] it represents, or `null` for a state that is not itself a
  * Cloud-service failure (`SUCCESS`, `NONE`, `TASK_IN_PROGRESS`, …).
@@ -197,4 +220,49 @@ private fun currentNetworkAvailable(context: Context): Boolean {
     val network = connectivityManager.activeNetwork ?: return false
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
     return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+}
+
+/**
+ * Whether the phone's Location switch is on — the system-wide toggle, not this app's
+ * `ACCESS_FINE_LOCATION` grant.
+ *
+ * Geospatial needs both, and ARCore reports neither as an error: with the switch off
+ * `Earth.earthState` stays `ENABLED` and `Earth.trackingState` simply never reaches
+ * `TRACKING`, which reads exactly like standing indoors. Follows
+ * [LocationManager.MODE_CHANGED_ACTION], so flipping the switch from Quick Settings clears
+ * the banner without leaving the demo.
+ */
+@Composable
+fun rememberIsLocationEnabled(): Boolean {
+    val context = LocalContext.current
+    var isEnabled by remember { mutableStateOf(currentLocationEnabled(context)) }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                isEnabled = currentLocationEnabled(context)
+            }
+        }
+        val registered = runCatching {
+            ContextCompat.registerReceiver(
+                context,
+                receiver,
+                IntentFilter(LocationManager.MODE_CHANGED_ACTION),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }.isSuccess
+        // The switch may have moved between the first read and the registration.
+        isEnabled = currentLocationEnabled(context)
+        onDispose {
+            if (registered) runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+    return isEnabled
+}
+
+private fun currentLocationEnabled(context: Context): Boolean {
+    // No LocationManager on this device/harness — assume on, so the banner never blames
+    // the switch for a different, real failure.
+    val locationManager = context.getSystemService<LocationManager>() ?: return true
+    return runCatching { LocationManagerCompat.isLocationEnabled(locationManager) }
+        .getOrDefault(true)
 }
