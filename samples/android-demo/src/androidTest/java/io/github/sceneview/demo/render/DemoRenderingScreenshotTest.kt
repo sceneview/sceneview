@@ -879,11 +879,14 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
+            // First baselined for #4459, once the scan opens framed and sorted in one step:
+            // runs 38090189401, 38090195575 and 38090201359 gave the same picture (51 px of
+            // 2 488 320 apart at most). It was out until then: 54.7 % of pixels moved between
+            // runs when the sort order chased a camera glide.
+            "splatpreview_default",
             // Re-baselined after the Inspect and Media rewrite (the rocket replaces the helmet
             // and its cards), from the first-run capture of run 37677981378.
             "twodinthreed_default",
-            // splatpreview_default: rejected — its framing differs run to run (54.7 % of
-            // pixels in run 36416690269), so no single capture is a reference.
         )
 
         // How long we allow the demo screen to compose after `am start` — covers a cold
