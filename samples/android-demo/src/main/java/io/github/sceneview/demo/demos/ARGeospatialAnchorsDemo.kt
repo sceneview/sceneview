@@ -200,8 +200,9 @@ fun ARGeospatialAnchorsDemo(onBack: () -> Unit) {
 }
 
 /**
- * Camera and precise location, asked together once. Returns `true` when both are granted;
- * until then it draws the permission screen itself.
+ * Precise location, asked once. Returns `true` when it is granted; until then it draws the
+ * permission screen itself. The camera is not asked here: this demo only composes behind the
+ * AR demos' camera gate (`DemoEntry.opensCameraOnEntry`, #4139).
  *
  * The screen is an AR overlay card on the dark stage (#3990): it used to be a bare line of
  * text on the window background — white in both themes — with no button, so answering
@@ -221,36 +222,27 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
     fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
-    var cameraGranted by remember { mutableStateOf(granted(Manifest.permission.CAMERA)) }
     var locationGranted by remember { mutableStateOf(granted(Manifest.permission.ACCESS_FINE_LOCATION)) }
     var asked by remember { mutableStateOf(false) }
     // Bumped on every dialog answer and every resume: a second "Don't allow" changes no
     // grant, so without it the Allow/Open settings choice below would never be re-read.
     var permissionEpoch by remember { mutableIntStateOf(0) }
 
-    fun missingPermissions() = buildList {
-        if (!cameraGranted) add(Manifest.permission.CAMERA)
-        if (!locationGranted) add(Manifest.permission.ACCESS_FINE_LOCATION)
-    }
-
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestPermission(),
     ) { result ->
-        cameraGranted = result[Manifest.permission.CAMERA] ?: cameraGranted
-        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] ?: locationGranted
+        locationGranted = result
         asked = true
         permissionEpoch++
     }
     LaunchedEffect(Unit) {
-        val missing = missingPermissions()
-        if (missing.isNotEmpty()) launcher.launch(missing.toTypedArray())
+        if (!locationGranted) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
     // Back from the app's settings page: pick up what the user switched on there.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                cameraGranted = granted(Manifest.permission.CAMERA)
                 locationGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
                 permissionEpoch++
             }
@@ -258,28 +250,35 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    if (cameraGranted && locationGranted) return true
+    if (locationGranted) return true
 
     // After a denial Android shows the dialog again only while it still wants a rationale;
     // once it does not (a second "Don't allow"), the launcher returns at once, and the
     // app's settings page is the only way forward.
-    val canAskAgain = remember(permissionEpoch, cameraGranted, locationGranted) {
-        missingPermissions().any { permission ->
-            activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
-        }
+    val canAskAgain = remember(permissionEpoch, locationGranted) {
+        activity != null && ActivityCompat.shouldShowRequestPermissionRationale(
+            activity,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
     }
-    val title = when {
-        !asked -> stringResource(R.string.demo_ar_geospatial_permissions_requesting)
-        !cameraGranted -> stringResource(R.string.demo_ar_geospatial_permission_camera_title)
-        else -> stringResource(R.string.demo_ar_geospatial_permission_location_title)
+    val title = if (asked) {
+        stringResource(R.string.demo_ar_geospatial_permission_location_title)
+    } else {
+        stringResource(R.string.demo_ar_geospatial_permissions_requesting)
     }
-    val detail = when {
-        !asked -> null
-        !cameraGranted -> stringResource(R.string.demo_ar_geospatial_permission_camera_detail)
-        else -> stringResource(R.string.demo_ar_geospatial_permission_location_detail)
+    val detail = if (asked) {
+        stringResource(R.string.demo_ar_geospatial_permission_location_detail)
+    } else {
+        null
     }
 
-    DemoScaffold(title = stringResource(R.string.demo_ar_geospatial_anchors_title), onBack = onBack) {
+    // No dock: its "Settings" pill opens the demo's own sheet, not the system settings the
+    // card is talking about.
+    DemoScaffold(
+        title = stringResource(R.string.demo_ar_geospatial_anchors_title),
+        onBack = onBack,
+        dockHidden = true,
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -293,11 +292,11 @@ private fun rememberGeospatialPermissions(onBack: () -> Unit): Boolean {
                 action = when {
                     !asked -> null
                     canAskAgain -> stringResource(R.string.demo_ar_geospatial_permission_allow)
-                    else -> stringResource(R.string.demo_ar_geospatial_permission_open_settings)
+                    else -> stringResource(R.string.ar_permission_open_settings)
                 },
                 onAction = {
                     if (canAskAgain) {
-                        launcher.launch(missingPermissions().toTypedArray())
+                        launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                     } else {
                         context.startActivity(
                             Intent(

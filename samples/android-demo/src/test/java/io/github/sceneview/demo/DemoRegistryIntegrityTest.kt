@@ -294,6 +294,27 @@ class DemoRegistryIntegrityTest {
         assertFalse("'my-demo' is the template id and must not be registered", ALL_DEMOS.any { it.id == "my-demo" })
     }
 
+    /**
+     * #4139: the route asks for the camera before an AR demo composes — except the demos
+     * whose first screen needs none, which gate their camera screens themselves. Pinned by
+     * id: gating one of these again locks a replay, a chooser or a static pose behind a
+     * permission it never uses; a new AR demo is gated unless it is added here on purpose.
+     */
+    @Test
+    fun `every AR demo asks for the camera on entry, except the three that open without one`() {
+        val arDemos = ALL_DEMOS.filter { it.isArDemo }
+        assertEquals(
+            setOf("ar-placement", "ar-rerun", "ar-xr"),
+            arDemos.filterNot { it.opensCameraOnEntry }.map { it.id }.toSet(),
+        )
+        assertTrue("the AR demos behind the route gate", arDemos.count { it.opensCameraOnEntry } > 0)
+        assertEquals(
+            "a demo that is not AR never asks for the camera on entry",
+            emptyList<String>(),
+            ALL_DEMOS.filter { !it.isArDemo && it.opensCameraOnEntry }.map { it.id },
+        )
+    }
+
     @Test
     fun `deep-link router rejects ids that are not in the registry`() {
         // Negative-space guard: an id that looks like a demo but isn't registered

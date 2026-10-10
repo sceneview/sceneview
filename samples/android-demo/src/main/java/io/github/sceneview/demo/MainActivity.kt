@@ -756,7 +756,7 @@ internal fun PendingDemoNavigation(
 @Composable
 fun DemoRouter(id: String, onBack: () -> Unit) {
     val entry = ALL_DEMOS.find { it.id == id }
-    if (entry?.isArDemo == true) {
+    if (entry?.opensCameraOnEntry == true) {
         ArDemoPermissionGate(
             title = stringResource(entry.titleRes),
             onBack = onBack,

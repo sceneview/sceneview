@@ -44,11 +44,9 @@
     <!-- Permission gate. Both modes need CAMERA + ACCESS_FINE_LOCATION before an
          ARSceneView may be mounted at all. -->
     <string name="demo_ar_scene_mesh_requesting_permissions">Requesting permissions…</string>
-    <string name="demo_ar_scene_mesh_camera_denied">Camera permission denied — AR cannot run</string>
     <string name="demo_ar_scene_mesh_location_denied">Location permission denied — Scene Mesh needs ACCESS_FINE_LOCATION</string>
     <string name="demo_ar_scene_mesh_streetscape_denied">Location permission denied — Streetscape Geometry needs ACCESS_FINE_LOCATION</string>
     <string name="demo_ar_scene_mesh_retry">Retry</string>
-    <string name="demo_ar_scene_mesh_open_settings">Open Settings</string>
 
     <!-- Classification legend, Mesh mode only. -->
     <string name="demo_ar_scene_mesh_legend_title">Classification</string>

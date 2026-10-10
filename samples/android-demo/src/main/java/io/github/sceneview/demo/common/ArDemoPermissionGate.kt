@@ -1,15 +1,5 @@
 package io.github.sceneview.demo.common
 
-import android.Manifest
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,115 +15,112 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 
 /**
- * Owns camera permission for every registered AR demo before the demo can mount ARCore.
+ * Holds a screen that needs the camera back until the camera is granted.
+ *
+ * Wrap the part of a demo that opens the camera, not the whole demo: a chooser, a landing
+ * page or a recorded replay must stay reachable for someone who refused. Most AR demos are
+ * camera from the first frame and get the gate from `DemoRouter`
+ * (see `DemoEntry.opensCameraOnEntry`).
  *
  * [content] is only composed while the camera is granted, so a grant read on the way back
  * from system settings mounts the demo — and a fresh AR session — on its own.
+ *
+ * @param enabled `false` lets [content] through untouched — for a debug QA state that
+ *   stages the screen without opening the camera.
  */
 @Composable
 internal fun ArDemoPermissionGate(
     title: String,
     onBack: () -> Unit,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    val activity = remember(context) { context.findActivity() }
-    fun cameraGranted() =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
-
-    var granted by remember { mutableStateOf(cameraGranted()) }
-    var requested by rememberSaveable { mutableStateOf(false) }
-    // Bumped on every dialog answer and every resume: a second "Don't allow" changes no
-    // grant, so without it the Try again / Open settings choice would never be re-read.
-    var permissionEpoch by remember { mutableIntStateOf(0) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { result ->
-        granted = result
-        requested = true
-        permissionEpoch++
+    if (!enabled) {
+        content()
+        return
     }
+    ArCameraPermissionGate(
+        permission = rememberArCameraPermission(),
+        blocked = { detail, action, onAction ->
+            ArPermissionScreen(title, onBack, detail, action, onAction)
+        },
+        content = content,
+    )
+}
 
-    // Back from the app's settings page: pick up what the user switched on there.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                granted = cameraGranted()
-                permissionEpoch++
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+/**
+ * [ArDemoPermissionGate] for a camera view that is one stage of a screen which already has
+ * its own scaffold: the card takes the stage, the screen keeps its chrome — and with it the
+ * ways to the stages that need no camera.
+ *
+ * [permission] is hoisted so the screen can hold back what only makes sense with a camera
+ * (a "camera did not start" timeout, say).
+ */
+@Composable
+internal fun ArCameraStagePermissionGate(
+    permission: ArCameraPermission,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    ArCameraPermissionGate(
+        permission = permission,
+        blocked = { detail, action, onAction ->
+            ArPermissionStage(detail, action, onAction, modifier)
+        },
+        content = content,
+    )
+}
 
-    val shouldShowRationale = remember(permissionEpoch, granted, activity) {
-        !granted && activity != null &&
-            ActivityCompat.shouldShowRequestPermissionRationale(
-                activity,
-                Manifest.permission.CAMERA,
-            )
-    }
+@Composable
+private fun ArCameraPermissionGate(
+    permission: ArCameraPermission,
+    blocked: @Composable (detail: String, action: String, onAction: () -> Unit) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    var promptLaunched by rememberSaveable { mutableStateOf(false) }
 
-    when (arDemoPermissionUiState(granted, requested, shouldShowRationale)) {
+    when (arDemoPermissionUiState(permission.granted, permission.blocked)) {
         ArDemoPermissionUiState.ShowDemo -> content()
-        ArDemoPermissionUiState.RequestPermission -> {
-            ArPermissionScreen(
-                title = title,
-                onBack = onBack,
-                detail = stringResource(R.string.ar_permission_allow_subtitle),
+        ArDemoPermissionUiState.AskPermission -> {
+            // The same card stays up behind the system dialog and after it: a dialog that
+            // never comes back (process death, a dismissal) still leaves a button.
+            blocked(
+                stringResource(R.string.ar_permission_allow_subtitle),
+                stringResource(R.string.ar_permission_try_again),
+                permission.request,
             )
-            LaunchedEffect(Unit) {
-                permissionLauncher.launch(Manifest.permission.CAMERA)
+            val autoPrompt = shouldAutoPromptForCamera(
+                granted = permission.granted,
+                blocked = permission.blocked,
+                shouldShowRationale = permission.shouldShowRationale,
+                promptLaunched = promptLaunched,
+            )
+            LaunchedEffect(autoPrompt) {
+                if (autoPrompt) {
+                    promptLaunched = true
+                    permission.request()
+                }
             }
         }
-        ArDemoPermissionUiState.RetryPermission -> ArPermissionScreen(
-            title = title,
-            onBack = onBack,
-            detail = stringResource(R.string.ar_permission_allow_subtitle),
-            action = stringResource(R.string.ar_permission_try_again),
-            onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-        )
-        ArDemoPermissionUiState.OpenSettings -> ArPermissionScreen(
-            title = title,
-            onBack = onBack,
-            detail = stringResource(R.string.ar_permission_blocked_subtitle),
-            action = stringResource(R.string.ar_permission_open_settings),
-            onAction = {
-                context.startActivity(
-                    Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.fromParts("package", context.packageName, null),
-                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            },
+        ArDemoPermissionUiState.OpenSettings -> blocked(
+            stringResource(R.string.ar_permission_blocked_subtitle),
+            stringResource(R.string.ar_permission_open_settings),
+            permission.openSettings,
         )
     }
 }
@@ -143,26 +130,37 @@ private fun ArPermissionScreen(
     title: String,
     onBack: () -> Unit,
     detail: String,
-    action: String? = null,
-    onAction: () -> Unit = {},
+    action: String,
+    onAction: () -> Unit,
 ) {
     // No dock: its "Settings" pill opens the demo's own sheet, which has nothing in it here
     // and reads as the way to the *system* settings the card is talking about.
     DemoScaffold(title = title, onBack = onBack, dockHidden = true) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SceneViewTokens.Stage.background)
-                .padding(SceneViewTokens.Space.lg),
-            contentAlignment = Alignment.Center,
-        ) {
-            ArPermissionCard(
-                title = stringResource(R.string.ar_permission_required_title),
-                detail = detail,
-                action = action,
-                onAction = onAction,
-            )
-        }
+        ArPermissionStage(detail, action, onAction)
+    }
+}
+
+/** The permission card, centred on the dark AR stage it stands in for. */
+@Composable
+private fun ArPermissionStage(
+    detail: String,
+    action: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(SceneViewTokens.Stage.background)
+            .padding(SceneViewTokens.Space.lg),
+        contentAlignment = Alignment.Center,
+    ) {
+        ArPermissionCard(
+            title = stringResource(R.string.ar_permission_required_title),
+            detail = detail,
+            action = action,
+            onAction = onAction,
+        )
     }
 }
 
@@ -190,18 +188,17 @@ internal fun ArPermissionCard(
             )
             .overMediaEdge(shape)
             .padding(SceneViewTokens.Space.md),
-        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
+            style = SceneViewTokens.Type.card,
             color = SceneViewTokens.ArOverlay.onScrim,
         )
         if (detail != null) {
             Text(
                 text = detail,
-                style = MaterialTheme.typography.bodyMedium,
+                style = SceneViewTokens.Type.body,
                 color = SceneViewTokens.ArOverlay.onScrimMuted,
             )
         }
@@ -210,7 +207,6 @@ internal fun ArPermissionCard(
                 onClick = onAction,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = SceneViewTokens.Space.sm)
                     .heightIn(min = SceneViewTokens.Layout.touchTarget),
                 shape = RoundedCornerShape(SceneViewTokens.Radius.md),
                 colors = ButtonDefaults.buttonColors(
@@ -222,10 +218,4 @@ internal fun ArPermissionCard(
             }
         }
     }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }

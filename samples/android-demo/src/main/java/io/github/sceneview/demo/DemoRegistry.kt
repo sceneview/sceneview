@@ -209,6 +209,31 @@ val DemoEntry.isArDemo: Boolean
     get() = category in AR_CATEGORIES || id in AR_DEMOS_OUTSIDE_AR_SECTIONS
 
 /**
+ * AR demos whose first screen needs no camera, so the route must not ask for it.
+ *
+ *  - `ar-rerun` opens on a landing page, and its sample replay, saved sessions and shared
+ *    `.svscan` / `.rrd` files play without a camera. It gates its two camera screens
+ *    (live capture, room dollhouse) itself.
+ *  - `ar-placement` opens on a model chooser with a "View in 3D" way out. It gates its
+ *    camera phase itself.
+ *  - `ar-xr` renders reference poses on a phone and never opens the camera.
+ *
+ * Someone who refused the camera must still reach those screens (#4139 review).
+ */
+internal val AR_DEMOS_WITHOUT_CAMERA_ON_ENTRY: Set<String> = setOf(
+    "ar-placement",
+    "ar-rerun",
+    "ar-xr",
+)
+
+/**
+ * Whether opening this demo opens the camera straight away — the demos `DemoRouter` puts
+ * behind the camera-permission gate before they can mount an AR session.
+ */
+val DemoEntry.opensCameraOnEntry: Boolean
+    get() = isArDemo && id !in AR_DEMOS_WITHOUT_CAMERA_ON_ENTRY
+
+/**
  * Maps a stable category key to its display-name resource ID.
  * Unknown keys fall back to [R.string.category_view_3d] (safe default — never
  * surfaces a raw key like "Understand the World" to the user).

@@ -5,12 +5,8 @@
 
 package io.github.sceneview.demo.ui
 
-import android.Manifest
 import android.app.Activity
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +24,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -50,6 +45,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -66,9 +62,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
-import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
+import io.github.sceneview.demo.common.rememberArCameraPermission
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
@@ -142,22 +138,11 @@ fun ArViewTabContent(
     val context = LocalContext.current
 
     // ---------- Permission gate ----------
-    var cameraGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA,
-            ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var permissionsResolved by remember { mutableStateOf(cameraGranted) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        cameraGranted = granted
-        permissionsResolved = true
-    }
+    // The same holder as the AR demos' gate (#4139): re-read on every resume, and it knows
+    // when Android has stopped showing its dialog, so the launcher's button can lead to
+    // system settings instead of doing nothing.
+    val camera = rememberArCameraPermission()
+    val cameraGranted = camera.granted
 
     // ---------- ARCore availability + launcher gate ----------
     //
@@ -236,39 +221,21 @@ fun ArViewTabContent(
         ArLauncherScreen(
             availability = arCoreAvailability,
             cameraGranted = cameraGranted,
-            onRequestCamera = {
-                permissionLauncher.launch(Manifest.permission.CAMERA)
-            },
+            cameraBlocked = camera.blocked,
+            onRequestCamera = camera.request,
+            onOpenSettings = camera.openSettings,
             onStartArSession = { sessionStarted = true },
             onArDemoClick = onDemoClick,
         )
         return
     }
 
-    // From this point the user has tapped "Start AR Camera". Re-request the
-    // permission if the system revoked it between launcher and now (process
-    // resumed from background, settings toggled in another tab, etc.). If the
-    // user denies, we don't strand them on a dead placeholder — flip
-    // sessionStarted back to false so the launcher's "Grant Camera Access"
-    // CTA becomes available again.
-    LaunchedEffect(sessionStarted) {
-        if (sessionStarted && !cameraGranted) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        } else if (sessionStarted && cameraGranted) {
-            permissionsResolved = true
-        }
-    }
-
-    if (permissionsResolved && !cameraGranted) {
-        // Permission was definitively denied. Drop back to the launcher so
-        // the user can retry from the CTA instead of getting stuck on a
-        // generic "Camera permission is required" placeholder with no
-        // affordance.
-        sessionStarted = false
-        return
-    }
-    if (!permissionsResolved) {
-        ArPermissionPlaceholder(granted = false)
+    // From this point the user has tapped "Start AR Camera". If the camera is gone by now
+    // (revoked in system settings while the app was in the background, or a session restored
+    // after process death), drop back to the launcher: its button asks again, or leads to
+    // settings, instead of a dead screen.
+    if (!cameraGranted) {
+        SideEffect { sessionStarted = false }
         return
     }
 
@@ -392,7 +359,10 @@ fun ArViewTabContent(
 private fun ArLauncherScreen(
     availability: ArCoreApk.Availability?,
     cameraGranted: Boolean,
+    /** Android no longer shows its dialog: only system settings turn the camera on. */
+    cameraBlocked: Boolean,
     onRequestCamera: () -> Unit,
+    onOpenSettings: () -> Unit,
     onStartArSession: () -> Unit,
     onArDemoClick: (String) -> Unit,
 ) {
@@ -419,6 +389,7 @@ private fun ArLauncherScreen(
 
     val ctaLabel = when {
         isChecking -> stringResource(R.string.ar_cta_checking)
+        !cameraGranted && cameraBlocked -> stringResource(R.string.ar_permission_open_settings)
         !cameraGranted -> stringResource(R.string.ar_cta_grant_camera)
         else -> stringResource(R.string.ar_cta_start_camera)
     }
@@ -541,12 +512,19 @@ private fun ArLauncherScreen(
                 }
 
                 if (showCta) {
+                    if (!cameraGranted && cameraBlocked && !isChecking) {
+                        Text(
+                            text = stringResource(R.string.ar_permission_required_subtitle),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Button(
                         onClick = {
-                            if (!cameraGranted) {
-                                onRequestCamera()
-                            } else {
-                                onStartArSession()
+                            when {
+                                cameraGranted -> onStartArSession()
+                                cameraBlocked -> onOpenSettings()
+                                else -> onRequestCamera()
                             }
                         },
                         enabled = ctaEnabled,
@@ -701,46 +679,3 @@ private val FEATURED_AR_DEMOS = listOf(
 )
 // Samples step 0 dropped the `ar-pose` tile: Free pose is a mode of `ar-placement`, which
 // the grid below already lists.
-
-@Composable
-private fun ArPermissionPlaceholder(granted: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Cached,
-                contentDescription = null,
-                modifier = Modifier.size(56.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = if (granted) {
-                    stringResource(R.string.ar_starting_session)
-                } else {
-                    stringResource(R.string.ar_permission_required_title)
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = if (granted) {
-                    stringResource(R.string.ar_starting_session_subtitle)
-                } else {
-                    stringResource(R.string.ar_permission_required_subtitle)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-    }
-}
