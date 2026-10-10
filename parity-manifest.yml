@@ -650,7 +650,9 @@ demos:
       (RerunShowcaseDemo.swift:9-11): Record a room on-device
       (RerunLiveCaptureView, :155-162), replay it in 3D, Share exports
       .rrd/.glb/.usdz/.ply (:239-241,414-461). Scaffold + sheet; no live
-      sidecar stream or stats card as on Android, no Session MP4 mode
+      sidecar stream or stats card as on Android, no Session MP4 mode;
+      the Android .rrd export opens on a default layout (RerunRrdBlueprint),
+      RerunRRDWriter.swift writes none yet
   - id: ar-scene-mesh
     androidStatus: KnownIssue
     iosStatus: working

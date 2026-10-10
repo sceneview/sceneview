@@ -4663,6 +4663,8 @@ Stream an ARCore or ARKit session to the [Rerun](https://rerun.io) viewer for sc
 
 The Android demo's Rerun Debug screen also draws the session **on the phone, with no computer**: a second `SceneView` on the same `Engine` (`SurfaceType.TextureSurface`, `isOpaque = true`, a custom `CameraGestureDetector.CameraManipulator`) shows the camera trail, the live frustum, the feature-point map, the planes and the anchors from a free orbit camera, with a timeline to scrub the session. It is demo code, not SDK API — `samples/android-demo/.../demos/ArDebugView.kt` is the pattern to copy for a second 3D view over an `ARSceneView`.
 
+Its export sheet also writes a recorded session to a `.rrd` with no sidecar and no Rerun SDK (`RerunRrdWriter`, pure Kotlin, Rerun 0.38.1 format). On Android the file opens on a default layout, written as a Rerun blueprint next to the recording: the room in 3D beside the camera's photos (2 : 1), the side panels collapsed, the time panel open. It is a *default* blueprint, so a layout the viewer's user saved for the app still wins, and "Reset to default blueprint" brings this one back. The iOS demo's writer does not write the layout yet.
+
 ### Architecture
 
 ```
