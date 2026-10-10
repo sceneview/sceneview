@@ -51,7 +51,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.android.filament.Engine
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Renderer
@@ -274,7 +273,36 @@ import java.util.concurrent.atomic.AtomicReference
  * @param permissionHandler        [ARPermissionHandler] for camera permission and ARCore install
  *                                 checks. Auto-created from the host [ComponentActivity][androidx.activity.ComponentActivity]
  *                                 when available. Pass `null` to skip permission checks.
- * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle.
+ * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle and the
+ *                                 render loop. Defaults to [rememberHostLifecycle], the lifecycle
+ *                                 of the **host activity**, not to `LocalLifecycleOwner`: the
+ *                                 session runs while this composable is in the composition and
+ *                                 the activity is resumed, so the camera stays live while the
+ *                                 screen animates in and out of a `NavHost` (whose destination
+ *                                 lifecycle leaves `RESUMED` when the exit transition starts)
+ *                                 and under a dialog destination or a bottom sheet. The session
+ *                                 pauses when the activity pauses and is closed when the
+ *                                 composable is disposed.
+ *
+ *                                 The camera therefore stays on wherever the host keeps this
+ *                                 composable composed but not visible. Pass a narrower lifecycle
+ *                                 there, `LocalLifecycleOwner.current.lifecycle`:
+ *                                 - in a **Fragment** kept off screen, such as a `ViewPager2`
+ *                                   page (inside a fragment's `ComposeView` that is the
+ *                                   fragment's view lifecycle, which leaves `RESUMED` off
+ *                                   screen). With two AR pages on the default, the last one to
+ *                                   register takes the camera, whichever is visible;
+ *                                 - on a screen covered by a full-screen `dialog()` destination.
+ *
+ *                                 Two cases no lifecycle covers: a fragment hidden with `hide()`
+ *                                 stays resumed, and a Compose `HorizontalPager` has no
+ *                                 lifecycle per page. Take the `ARSceneView` out of the
+ *                                 composition there (compose it on the settled page only).
+ *
+ *                                 Known limit: on a predictive back gesture from one AR screen
+ *                                 to another, the screen previewed underneath takes the single
+ *                                 camera and the screen under the finger shows its last frame
+ *                                 until the gesture ends.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
 /**
@@ -773,7 +801,7 @@ fun ARSceneView(
     permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
         remember(activity) { ActivityARPermissionHandler(activity) }
     },
-    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    lifecycle: Lifecycle = rememberHostLifecycle(),
     /**
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
      * [ARCameraPermissionState] whose [ARCameraPermissionState.request] re-shows the system
@@ -1437,6 +1465,9 @@ fun ARSceneView(
 
     // ── Lifecycle-aware rendering ─────────────────────────────────────────────────────────────────
 
+    // `lifecycle` is the host activity's by default (see [rememberHostLifecycle]), so the loop and
+    // the session keep running while a navigation destination animates out: the camera leaves the
+    // screen live, and `sceneRenderer.destroy()` / `arCore.destroy()` end both on disposal.
     val isResumed = remember {
         AtomicBoolean(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
@@ -2276,7 +2307,7 @@ fun ARScene(
     permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
         remember(activity) { ActivityARPermissionHandler(activity) }
     },
-    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    lifecycle: Lifecycle = rememberHostLifecycle(),
     content: (@Composable ARSceneScope.() -> Unit)? = null
 ) = ARSceneView(
     modifier = modifier,

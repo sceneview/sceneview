@@ -205,6 +205,23 @@ ARSceneView(
 }
 ```
 
+### Session lifecycle
+
+`ARSceneView(lifecycle = …)` defaults to `rememberHostLifecycle()`, the **host activity's**
+lifecycle, not `LocalLifecycleOwner`: the camera stays live while the screen animates in and out
+of a `NavHost`, pauses with the activity, and the session is closed on disposal.
+
+```kotlin
+ARSceneView()                                                     // follows the host activity
+ARSceneView(lifecycle = LocalLifecycleOwner.current.lifecycle)    // follows the destination / fragment view
+```
+
+Pass the narrower lifecycle where the host keeps the screen composed but not visible: a Fragment
+page of a `ViewPager2`, a screen under a full-screen `dialog()` destination. A fragment hidden
+with `hide()` and a Compose `HorizontalPager` page have no lifecycle of their own: take the
+`ARSceneView` out of the composition. Two `ARSceneView`s composed at once share the single
+camera: the last one to resume runs.
+
 ### Recording / playback
 
 ```kotlin
