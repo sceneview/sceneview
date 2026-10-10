@@ -133,8 +133,8 @@
 		</dict>
 		<dict>
 			<!--
-				A room recorded with the Rerun demo: the app's own scan file, and the
-				Rerun recording it exports. Both open in the Rerun demo, which keeps
+				A room recorded with the Room Scan demo: the app's own scan file, and the
+				Rerun recording it exports. Both open in the Room Scan demo, which keeps
 				them as one of "Your sessions" (`RerunInbox`), not in the 3D viewer.
 			-->
 			<key>CFBundleTypeName</key>

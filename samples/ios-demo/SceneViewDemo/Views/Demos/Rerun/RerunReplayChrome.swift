@@ -4,28 +4,28 @@ import UIKit
 
 // The replay's chrome, the iOS twin of Android's `RerunReplayUi.kt`: the HUD card, the corner
 // card that swaps between the camera and the 3D view, the full camera view and the filmstrip.
-// Every card sits on `ar-scrim` in its dark value in both themes: the ground under it is always
-// the stage (`Stage.background`) or a camera frame, never the page.
+// Opaque themed cards keep labels legible over both the stage and recorded photographs.
 
 private typealias Space = SceneViewTokens.Space
 private typealias ARChrome = SceneViewTokens.ARChrome
 
 /// Tokens of the replay chrome that are not already in `SceneViewTokens`.
 enum RerunChromeMetrics {
-    /// `ar-scrim`, dark — Android's `ArOverlay.scrimDark` (`#E0000000`) in both themes.
-    static let scrim = ARChrome.scrim(.dark)
-    static let border = ARChrome.border(.dark)
+    /// Opaque DESIGN.md container, shared with the scaffold.
+    static let scrim = SceneViewTokens.RoomScan.card
+    static let border = SceneViewTokens.RoomScan.border
     /// The same scrim at 55 %: the part of the filmstrip still to come, and the camera
     /// view's blurred backdrop.
     static let dimAlpha: Double = 0.55
-    /// A hidden HUD group.
-    static let hiddenAlpha: Double = 0.45
     /// The HUD's colour dots.
     static let dot: CGFloat = Space.xs + Space.xs / 2
     /// The filmstrip's frames are portrait camera frames.
     static let frameAspect: CGFloat = 3.0 / 4.0
     static let stripHeight: CGFloat = SceneViewTokens.Layout.touchTarget + Space.sm
     static let playheadWidth: CGFloat = Space.xs - Space.xs / 4
+    /// The playhead's card-coloured edge on each side. Ink and card are over 13:1 apart in both
+    /// themes, so over any photograph one of the two tones holds 3:1.
+    static let playheadEdge: CGFloat = ARChrome.borderWidth
     /// `ArOverlay.maxWidth`.
     static let maxWidth: CGFloat = 480
 }
@@ -52,24 +52,24 @@ struct RerunReplayHud: View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.sm) {
                 Circle()
-                    .fill(stats.tracking ? ARChrome.success : ARChrome.onScrimDim)
+                    .fill(stats.tracking ? SceneViewTokens.RoomScan.point : SceneViewTokens.RoomScan.secondaryText)
                     .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
                     .accessibilityHidden(true)
                 Text(stats.tracking ? "Tracking" : "Initializing")
                     .font(SceneViewTokens.TypeScale.captionSemibold)
-                    .foregroundStyle(ARChrome.onScrim)
+                    .foregroundStyle(SceneViewTokens.RoomScan.text)
                 Spacer(minLength: Space.sm)
                 Text("\(RerunFormat.clock(stats.time)) · \(session.fps) fps")
                     .font(SceneViewTokens.TypeScale.caption)
                     .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrimDim)
+                    .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
             }
             .accessibilityElement(children: .combine)
             HStack(alignment: .top, spacing: Space.sm) {
-                figure("Path", RerunFormat.distance(stats.pathMetres), SceneViewTokens.DebugView.trailNew, .trail)
-                figure("Planes", "\(stats.planes)", SceneViewTokens.DebugView.floorOutline, .planes)
-                figure("Points", RerunFormat.compactCount(stats.mapPoints), SceneViewTokens.DebugView.mapPoint, .points)
-                figure("Anchors", "\(stats.anchors)", SceneViewTokens.DebugView.anchor, .anchors)
+                figure("Path", RerunFormat.distance(stats.pathMetres), SceneViewTokens.HomeColor.primary, .trail)
+                figure("Planes", "\(stats.planes)", SceneViewTokens.HomeColor.primary, .planes)
+                figure("Points", RerunFormat.compactCount(stats.mapPoints), SceneViewTokens.RoomScan.point, .points)
+                figure("Anchors", "\(stats.anchors)", SceneViewTokens.RoomScan.text, .anchors)
             }
         }
         .padding(.horizontal, Space.md)
@@ -78,7 +78,7 @@ struct RerunReplayHud: View {
         .accessibilityIdentifier("rerun-hud")
     }
 
-    private func figure(_ label: String, _ value: String, _ color: UInt32, _ group: RerunGroup) -> some View {
+    private func figure(_ label: String, _ value: String, _ color: Color, _ group: RerunGroup) -> some View {
         let on = session.isVisible(group)
         return Button {
             withAnimation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.short)) { session.toggle(group) }
@@ -87,21 +87,28 @@ struct RerunReplayHud: View {
                 Text(value)
                     .font(SceneViewTokens.TypeScale.card)
                     .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrim)
+                    .foregroundStyle(SceneViewTokens.RoomScan.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 HStack(spacing: Space.xs) {
+                    // Hidden reads by shape, not by colour alone: a hollow ring and a struck label.
                     Circle()
-                        .fill(on ? SceneViewTokens.DebugView.color(color) : ARChrome.meterTrack)
+                        .fill(on ? color : Color.clear)
+                        .overlay {
+                            if !on {
+                                Circle().strokeBorder(SceneViewTokens.RoomScan.secondaryText,
+                                                      lineWidth: ARChrome.borderWidth)
+                            }
+                        }
                         .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
                     Text(label)
+                        .strikethrough(!on, color: SceneViewTokens.RoomScan.secondaryText)
                         .font(SceneViewTokens.TypeScale.caption)
-                        .foregroundStyle(ARChrome.onScrimDim)
+                        .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(on ? 1 : RerunChromeMetrics.hiddenAlpha)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -126,7 +133,7 @@ private struct RerunCardLabel: View {
             }
         }
         .font(SceneViewTokens.TypeScale.captionSemibold)
-        .foregroundStyle(ARChrome.onScrim)
+        .foregroundStyle(SceneViewTokens.RoomScan.text)
         .padding(.horizontal, Space.sm)
         .padding(.vertical, Space.xs / 2)
         .background(Capsule().fill(RerunChromeMetrics.scrim))
@@ -144,7 +151,7 @@ struct RerunCameraCard: View {
         let size = SceneViewTokens.DebugView.pipSize
         Button(action: onOpen) {
             ZStack(alignment: .bottomLeading) {
-                SceneViewTokens.Stage.background
+                SceneViewTokens.RoomScan.background
                 if let image = session.thumbnail(session.currentImagePath) {
                     Color.clear.overlay {
                         Image(decorative: image, scale: 1)
@@ -208,7 +215,7 @@ struct RerunCameraView: View {
         let path = session.currentImagePath
         let thumbnail = session.thumbnail(path)
         ZStack {
-            SceneViewTokens.Stage.background
+            SceneViewTokens.RoomScan.background
             if let thumbnail {
                 Color.clear.overlay {
                     Image(decorative: thumbnail, scale: 1)
@@ -254,7 +261,7 @@ struct RerunFilmstripCard: View {
                 Button { session.togglePlay() } label: {
                     Image(systemName: session.playing ? "pause.fill" : "play.fill")
                         .font(SceneViewTokens.TypeScale.card)
-                        .foregroundStyle(ARChrome.onScrim)
+                        .foregroundStyle(SceneViewTokens.RoomScan.text)
                         .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
                         .contentShape(Rectangle())
                 }
@@ -265,18 +272,18 @@ struct RerunFilmstripCard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title)
                         .font(SceneViewTokens.TypeScale.bodySemibold)
-                        .foregroundStyle(ARChrome.onScrim)
+                        .foregroundStyle(SceneViewTokens.RoomScan.text)
                         .lineLimit(1)
                     Text(caption)
                         .font(SceneViewTokens.TypeScale.captionRegular)
-                        .foregroundStyle(ARChrome.onScrimDim)
+                        .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                         .lineLimit(1)
                 }
                 Spacer(minLength: Space.sm)
                 Text("\(RerunFormat.clock(session.time)) / \(RerunFormat.clock(session.duration))")
                     .font(SceneViewTokens.TypeScale.caption)
                     .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrimDim)
+                    .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                     .accessibilityHidden(true)
             }
             strip
@@ -297,7 +304,7 @@ struct RerunFilmstripCard: View {
             let progress = session.duration > 0 ? CGFloat(session.time / session.duration) : 0
             let slotWidth = width / CGFloat(max(frames.count, 1))
             ZStack(alignment: .leading) {
-                ARChrome.meterTrack
+                SceneViewTokens.RoomScan.secondaryText
                 HStack(spacing: 0) {
                     ForEach(Array(frames.enumerated()), id: \.offset) { _, index in
                         Color.clear
@@ -310,11 +317,14 @@ struct RerunFilmstripCard: View {
                             .clipped()
                     }
                 }
-                Color.black.opacity(RerunChromeMetrics.dimAlpha)
+                SceneViewTokens.Chrome.scrim.opacity(RerunChromeMetrics.dimAlpha)
                     .frame(width: width * (1 - min(max(progress, 0), 1)))
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                ARChrome.onScrim
+                SceneViewTokens.RoomScan.text
                     .frame(width: RerunChromeMetrics.playheadWidth, height: height)
+                    .background {
+                        SceneViewTokens.RoomScan.card.padding(.horizontal, -RerunChromeMetrics.playheadEdge)
+                    }
                     .offset(x: min(max(progress * width - RerunChromeMetrics.playheadWidth / 2, 0),
                                    width - RerunChromeMetrics.playheadWidth))
             }
@@ -356,12 +366,12 @@ struct RerunFilmstripCard: View {
 struct RerunReplayLoading: View {
     var body: some View {
         ZStack {
-            SceneViewTokens.Stage.background
+            SceneViewTokens.RoomScan.background
             VStack(spacing: Space.md) {
-                ProgressView().tint(ARChrome.onScrim)
+                ProgressView().tint(SceneViewTokens.RoomScan.text)
                 Text("Loading the recorded session…")
                     .font(SceneViewTokens.TypeScale.body)
-                    .foregroundStyle(ARChrome.onScrimDim)
+                    .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
             }
         }
         .ignoresSafeArea()
