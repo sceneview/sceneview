@@ -156,6 +156,7 @@ fun GeometryDemo(onBack: () -> Unit) {
         // moment after the shapes, and lifting in between showed the scene twice.
         firstFrameRendered = firstFrame.sceneReady,
         sceneReady = firstFrame.sceneReady,
+        contentFailed = firstFrame.contentFailed,
         onReset = state::reset,
         dock = listOf(
             DockItem(

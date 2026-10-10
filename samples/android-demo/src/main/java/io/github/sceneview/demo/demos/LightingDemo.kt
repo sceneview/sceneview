@@ -264,6 +264,10 @@ fun LightingDemo(onBack: () -> Unit) {
     val presentedEnvironment =
         rememberResidentEnvironment(environmentLoader, environmentFile, warm = residentSkies)
     val loadedEnvironment = presentedEnvironment?.resource
+    // "Scene ready" is the helmet under the rig's own light, with its sky when it has one — not
+    // the fallback-lit, empty stage the first frames show (#4459).
+    firstFrame.holdUntil(landed = loadedEnvironment != null)
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = heroInstance != null)
     // The previous environment stays on screen while the next one loads, and for that stretch
     // `skyVisible` already describes the rig being loaded: applied at once it would draw the
     // studio HDR as a sky on Studio → Sun. So the engine follows `skyOnScreen`, the flag of the
@@ -359,6 +363,8 @@ fun LightingDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lighting_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
+        contentFailed = firstFrame.contentFailed,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = when (rig) {
             LightingRig.Image -> stringResource(

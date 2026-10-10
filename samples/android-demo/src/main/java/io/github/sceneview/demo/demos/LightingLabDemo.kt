@@ -261,6 +261,9 @@ fun LightingLabDemo(onBack: () -> Unit) {
     val firstFrame = rememberFirstFrameState(engine)
     // "Scene ready" waits for the HDR: the fallback-lit frames are not the demo's picture (#4174).
     firstFrame.holdUntil(landed = benchEnvironment != null)
+    // And for the helmet the lights are aimed at: it landed after "ready" in five CI runs of
+    // seven, which is a picture of a lit, empty bench (#4459).
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = heroInstance != null)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
         extentY = LightingStage.SUBJECT_EXTENT_Y,
@@ -318,6 +321,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentFailed = firstFrame.contentFailed,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = "Toggle shading or reflections to compare",
         onResetSettings = {

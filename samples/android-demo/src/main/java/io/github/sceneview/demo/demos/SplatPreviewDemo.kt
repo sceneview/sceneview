@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import android.util.Log
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -37,6 +38,7 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,6 +51,8 @@ import kotlinx.coroutines.withContext
  * bundleable 3.1 MB — with every kept splat byte-identical to the capture.
  */
 private const val SPLAT_ASSET = "splats/raccoon_family.spz"
+
+private const val TAG = "SplatPreviewDemo"
 
 /**
  * **Open a 3D scan** — the demo answers one question a developer actually has: *what does a
@@ -86,19 +90,28 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     // "returns null while loading, always handle the null case" resource-loading contract.
     var scan by remember { mutableStateOf<LoadedScan?>(null) }
     LaunchedEffect(Unit) {
-        val bytes = withContext(Dispatchers.IO) {
-            context.assets.open(SPLAT_ASSET).use { it.readBytes() }
-        }
-        scan = withContext(Dispatchers.Default) {
-            val startedAt = System.nanoTime()
-            // parse() sniffs the container: the same call opens a .spz or a .ply export.
-            val cloud = SplatParser.parse(bytes)
-            LoadedScan(
-                cloud = cloud,
-                framing = scanFraming(cloud),
-                fileBytes = bytes.size,
-                decodeMillis = (System.nanoTime() - startedAt) / 1_000_000,
-            )
+        try {
+            val bytes = withContext(Dispatchers.IO) {
+                context.assets.open(SPLAT_ASSET).use { it.readBytes() }
+            }
+            scan = withContext(Dispatchers.Default) {
+                val startedAt = System.nanoTime()
+                // parse() sniffs the container: the same call opens a .spz or a .ply export.
+                val cloud = SplatParser.parse(bytes)
+                LoadedScan(
+                    cloud = cloud,
+                    framing = scanFraming(cloud),
+                    fileBytes = bytes.size,
+                    decodeMillis = (System.nanoTime() - startedAt) / 1_000_000,
+                )
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+            // A capture that cannot be read or decoded is said on the stage, not left as an
+            // empty one — and no longer takes the app down with it (#4459).
+            Log.w(TAG, "Failed to open $SPLAT_ASSET", error)
+            firstFrame.reportContentFailed()
         }
     }
 
@@ -108,6 +121,8 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     LaunchedEffect(totalPoints) {
         if (totalPoints > 0) drawnPoints = totalPoints
     }
+    // "Scene ready" is the scan on screen, not the empty stage it decodes behind (#4459).
+    firstFrame.holdUntil(landed = scan != null && drawnPoints > 0, what = "scan")
 
     // The framing is only known once the file is decoded, so the manipulator is re-created when
     // the scan lands — same `remember(key)` pattern the model viewer uses for its park framing.
@@ -123,6 +138,8 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_splat_preview_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
+        contentFailed = firstFrame.contentFailed,
         loadingLabel = stringResource(R.string.demo_splat_preview_loading),
         peekHeader = scan?.let {
             stringResource(
