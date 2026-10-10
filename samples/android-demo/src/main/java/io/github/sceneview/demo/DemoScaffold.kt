@@ -457,6 +457,12 @@ fun DemoScaffold(
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
     recorder: SceneRecorderState? = null,
+    // `FirstFrameState.contentIssue`: a model or environment the scene is held for failed to
+    // load, or is taking long. Said over the stage, so neither is just an empty one (#4459).
+    contentIssue: androidx.compose.runtime.State<DemoContentIssue?>? = null,
+    // `false` for a screen that stands in for a scene without drawing one (the camera
+    // permission card): its viewport is never named "Scene ready" (#4460).
+    hasScene: Boolean = true,
     scene: @Composable BoxScope.() -> Unit
 ) {
     // The stage's ground and the chrome over it (#4080): media glass unless the demo draws a
@@ -799,7 +805,8 @@ fun DemoScaffold(
                 // first composition, which is how a black `materials` frame was captured and
                 // shipped as a passing QA screenshot. A demo with no first-frame state (AR:
                 // the viewport is the camera feed) is ready as soon as it is composed.
-                val viewportReady = demoSceneReady((sceneReady ?: firstFrameRendered)?.value)
+                val viewportReady = hasScene &&
+                    demoSceneReady((sceneReady ?: firstFrameRendered)?.value)
                 val sceneReadyContentDescription = stringResource(R.string.demo_scene_ready_cd)
                 Box(
                     modifier = Modifier
@@ -860,6 +867,33 @@ fun DemoScaffold(
                         loadingLabel = loadingLabel,
                         onRetry = onReset,
                     )
+                }
+
+                val issue = contentIssue?.value
+                if (issue != null && !arSessionFailed) {
+                    // Over the stage rather than instead of it: whatever did load stays visible.
+                    // The box does the centring and takes no touches: the stage stays draggable.
+                    // "Could not load" is only for a load the demo saw fail; one that is merely
+                    // slow gets the neutral card, which leaves when the content lands.
+                    val failed = issue == DemoContentIssue.Failed
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = slotTop, bottom = slotBottom),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        io.github.sceneview.demo.common.DemoStatusCard(
+                            text = stringResource(
+                                if (failed) R.string.demo_content_failed else R.string.demo_content_slow,
+                            ),
+                            tone = if (failed) {
+                                io.github.sceneview.demo.common.DemoStatusTone.Blocked
+                            } else {
+                                io.github.sceneview.demo.common.DemoStatusTone.Progress
+                            },
+                            modifier = Modifier.padding(SceneViewTokens.Space.lg),
+                        )
+                    }
                 }
 
                 // Ground for the identity row (#3328). Like the bottom band below, it is

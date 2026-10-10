@@ -489,6 +489,26 @@ class DemoRenderingScreenshotTest {
         // flag the library's render tests use (#803, #912). Skipped-with-a-reason is the
         // honest verdict there; a permanent red that means "wrong hardware" trains
         // everyone to ignore the leg.
+        // The app says "Scene ready" over a failed load on purpose, so the user is told and
+        // the screen is not left waiting. That is a verdict for a person, not a picture to
+        // compare or record: a golden of a stage missing its model is the bug of #4459.
+        if (device.hasObject(By.textContains(CONTENT_FAILED_CARD_TEXT))) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_content_failed_to_load")
+            throw AssertionError(
+                "Demo '$demoSlug' displayed its \"$CONTENT_FAILED_CARD_TEXT\" card: a model or " +
+                    "environment failed to load, so the stage is not the scene of $goldenName. " +
+                    "Capture saved to $savedTo.",
+            )
+        }
+        if (!settled && device.hasObject(By.textContains(CONTENT_SLOW_CARD_TEXT))) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_content_still_loading")
+            throw AssertionError(
+                "Demo '$demoSlug' was still showing its \"$CONTENT_SLOW_CARD_TEXT\" card after " +
+                    "${settleBudgetMs}ms: a model or environment had not landed, so the stage is " +
+                    "not the scene of $goldenName. Capture saved to $savedTo.",
+            )
+        }
+
         if (!settled && device.hasObject(By.textContains(STALL_CARD_TEXT))) {
             val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_rendered_a_frame")
             val message = "Demo '$demoSlug' displayed its \"$STALL_CARD_TEXT\" card: the " +
@@ -783,6 +803,16 @@ class DemoRenderingScreenshotTest {
          * editing this one makes the check silently stop matching, so they move together.
          */
         const val STALL_CARD_TEXT = "The scene has not rendered a frame yet."
+
+        /**
+         * The start of `R.string.demo_content_failed`: a load the demo saw fail. The scene is
+         * "ready" with this card up, so it is checked for on its own. Moves with the string,
+         * like [STALL_CARD_TEXT].
+         */
+        const val CONTENT_FAILED_CARD_TEXT = "Part of this scene could not load."
+
+        /** `R.string.demo_content_slow`: a load still in flight past the app's own wait. */
+        const val CONTENT_SLOW_CARD_TEXT = "Still loading part of this scene"
 
         /** Every demo slug in `DemoRegistry` is lower-kebab; nothing here reaches a shell unchecked. */
         val DEMO_SLUG_PATTERN = Regex("[a-z0-9]+(-[a-z0-9]+)*")

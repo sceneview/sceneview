@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -261,9 +262,19 @@ fun LightingDemo(onBack: () -> Unit) {
     // end before its sky is ready and never be seen. So while it runs, the three sky HDRs are
     // loaded once and kept behind the one on screen; they are released when it stops.
     val residentSkies = if (sunClockRunning) LightingStage.skyEnvironmentFiles else emptyList()
-    val presentedEnvironment =
-        rememberResidentEnvironment(environmentLoader, environmentFile, warm = residentSkies)
+    val wantedEnvironmentFile by rememberUpdatedState(environmentFile)
+    val presentedEnvironment = rememberResidentEnvironment(
+        environmentLoader,
+        environmentFile,
+        warm = residentSkies,
+        // A sky kept warm behind the one on screen can fail without the stage missing anything.
+        onLoadFailed = { file -> if (file == wantedEnvironmentFile) firstFrame.reportContentFailed() },
+    )
     val loadedEnvironment = presentedEnvironment?.resource
+    // "Scene ready" is the helmet under the rig's own light, with its sky when it has one — not
+    // the fallback-lit, empty stage the first frames show (#4459).
+    firstFrame.holdUntil(landed = loadedEnvironment != null)
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = heroInstance != null)
     // The previous environment stays on screen while the next one loads, and for that stretch
     // `skyVisible` already describes the rig being loaded: applied at once it would draw the
     // studio HDR as a sky on Studio → Sun. So the engine follows `skyOnScreen`, the flag of the
@@ -359,6 +370,8 @@ fun LightingDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lighting_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = when (rig) {
             LightingRig.Image -> stringResource(
