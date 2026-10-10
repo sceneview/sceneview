@@ -20,6 +20,9 @@ class IBLPrefilter(engine: Engine) {
     }
     private val specularFilterLazy = lazy { IBLPrefilterContext.SpecularFilter(context) }
 
+    /** Whether the prefilter was used, and so has a context of its own to destroy. */
+    internal val isCreated: Boolean get() = contextLazy.isInitialized()
+
     /**
      * Created IBLPrefilterContext, keeping it around if several cubemap will be processed.
      */

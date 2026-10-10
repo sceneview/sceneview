@@ -1006,12 +1006,14 @@ open class SceneView @JvmOverloads constructor(
                 // time to finish with it. With its own engine the view does not wait forever: this
                 // is the main thread, and a backend that needs longer than the bound is an ANR.
                 // Past it the queued commands still run, in order; what reaches a surface already
-                // gone is refused by EGL and logged. A shared engine is waited for as before.
-                val ownsEngine = defaultEngine != null
+                // gone is refused by EGL and logged. The same goes for an engine that
+                // rememberEngine() destroys off the thread. Any other shared engine is waited for
+                // as before.
+                val bounded = defaultEngine != null || engine.isTeardownDeferred
                 val drained = engine.flushAndWait(
-                    surfaceWaitNanos(ownsEngine, SURFACE_DETACH_WAIT_NANOS)
+                    surfaceWaitNanos(bounded, SURFACE_DETACH_WAIT_NANOS)
                 )
-                if (!drained && ownsEngine) {
+                if (!drained && bounded) {
                     Log.w(
                         "Sceneview",
                         "Surface detached, backend still busy after " +
@@ -1029,11 +1031,12 @@ open class SceneView @JvmOverloads constructor(
             // between the surface being resized and the frames still to be rendered into it. With
             // its own engine the view does not wait forever: this is the main thread. A frame that
             // is later than the bound reaches the surface at its former size; the next one is
-            // rendered at the new one. A shared engine is waited for as before.
-            val ownsEngine = defaultEngine != null
+            // rendered at the new one. The same goes for an engine that rememberEngine() destroys
+            // off the thread. Any other shared engine is waited for as before.
+            val bounded = defaultEngine != null || engine.isTeardownDeferred
             val fence = engine.createFence()
-            val busy = isFenceBusy(fence, surfaceWaitNanos(ownsEngine, SURFACE_RESIZE_WAIT_NANOS))
-            if (busy && ownsEngine) {
+            val busy = isFenceBusy(fence, surfaceWaitNanos(bounded, SURFACE_RESIZE_WAIT_NANOS))
+            if (busy && bounded) {
                 Log.w(
                     "Sceneview",
                     "Surface resized, backend still busy after " +
