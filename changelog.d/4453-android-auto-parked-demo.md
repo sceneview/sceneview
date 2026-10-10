@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **Android Auto sample (prototype)** — `samples/android-auto-demo` shows SceneView as an Android Auto parked app: "Night Garage", a car on a turntable with orbit, zoom, and car, finish and lighting switches sized for a car screen. It is a plain activity declared with `android:appCategory="game"` and `CAR_LAUNCHER`; no Car App Library. Proven on an emulator at head-unit sizes, not yet in a car (#4453).
