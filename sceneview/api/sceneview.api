@@ -208,6 +208,14 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun sortTransformsIfUnsorted (Lcom/google/android/filament/Engine;)V
 }
 
+public final class io/github/sceneview/EngineRenderInvalidators {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/EngineRenderInvalidators;
+	public final fun register (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
+	public final fun requestRender (Lcom/google/android/filament/Engine;)V
+	public final fun unregister (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
+}
+
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 

@@ -66,6 +66,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
+import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.FrameRateGate
 import io.github.sceneview.RenderInvalidator
 import io.github.sceneview.SceneNodeManager
@@ -1544,8 +1545,15 @@ fun ARSceneView(
         // through `attachedScene`, so registering here is what makes every push source in
         // `sceneview` — transforms, geometry, materials, visibility — reach the AR loop too.
         SceneRenderInvalidators.register(scene, sceneInvalidator)
-        // Only this view's entry: a SceneView may render the same scene (#3723).
-        onDispose { SceneRenderInvalidators.unregister(scene, sceneInvalidator) }
+        // And by engine, for the one change no node announces: a geometry upload that had to
+        // wait for the previous one and left from a Filament callback (#4365). Without it that
+        // upload is only drawn with the next camera image.
+        EngineRenderInvalidators.register(engine, sceneInvalidator)
+        onDispose {
+            EngineRenderInvalidators.unregister(engine, sceneInvalidator)
+            // Only this view's entry: a SceneView may render the same scene (#3723).
+            SceneRenderInvalidators.unregister(scene, sceneInvalidator)
+        }
     }
 
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.
