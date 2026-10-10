@@ -1162,7 +1162,7 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented: a geometry keeps one upload in flight and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two uploads and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
 
 ### ShapeNode — 2D polygon shape
 ```kotlin
@@ -3622,6 +3622,17 @@ node.animatePositions(...)
 node.animateRotations(...)
 ```
 
+`rotation` and `worldRotation` use one Euler convention: degrees, ZYX order. Each getter reads
+`toEulerAngles()` of `quaternion` / `worldQuaternion` and each setter writes
+`Quaternion.fromEuler(value)`, so a node with no parent reads the same angles through both, and
+`node.worldRotation = node.worldRotation` leaves it where it is. Y is the middle angle and stays
+within ±90°: a 120° yaw reads `Rotation(180f, 60f, 180f)`, the same orientation. To read a heading,
+compare orientations or interpolate, use `quaternion` / `worldQuaternion`.
+
+Through 4.53.0 the `worldRotation` getter used another convention (YXZ, yaw sign negated, Y within
+±180°): `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`. Code that negated
+`worldRotation.y` to compensate must drop the negation.
+
 ### Editable nodes — Sceneform `TransformableNode` parity
 
 SceneView's gesture-editing API is the direct replacement for Sceneform's
@@ -3929,10 +3940,42 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The cubemaps behind an environment belong to it. Filament frees neither with the `IndirectLight` or
+`Skybox` that samples it, so `EnvironmentLoader.destroyEnvironment` and
+`Engine.safeDestroyEnvironment` release them after the light and the skybox — which is what every
+`remember*Environment` helper calls on disposal and on a key change. Every loader factory (KTX and
+HDR), `createEnvironment(environmentLoader)` and `createAREnvironment` hand their cubemaps over for
+you.
+
+Building the `IndirectLight` from a `KTX1Loader` bundle yourself? Pass the bundle's cubemap in
+`textures`, or one cubemap stays on the GPU each time the environment is rebuilt:
+
+```kotlin
+import com.google.android.filament.utils.KTX1Loader
+import io.github.sceneview.utils.readBuffer
+
+val environment = rememberEnvironment(engine) {
+    val bundle = KTX1Loader.createIndirectLight(
+        engine,
+        context.assets.readBuffer("environments/studio_ibl.ktx"),
+    )
+    createEnvironment(
+        engine = engine,
+        indirectLight = bundle.indirectLight,
+        // Ownership moves to the environment: destroyed with it, after the light.
+        textures = listOfNotNull(bundle.cubemap),
+    )
+}
+```
+
+`environment.copy(skybox = other)` shares the Filament handles and owns no texture: destroy the
+environment it was copied from, never the copy.
 
 ---
 
