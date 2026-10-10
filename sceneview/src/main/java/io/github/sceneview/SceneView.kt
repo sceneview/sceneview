@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.MediaRecorder
 import android.opengl.EGLContext
+import android.os.SystemClock
 import android.util.AttributeSet
+import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.Surface
@@ -21,7 +23,6 @@ import androidx.lifecycle.findViewTreeLifecycleOwner
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Colors
 import com.google.android.filament.Engine
-import com.google.android.filament.Fence
 import com.google.android.filament.Filament
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
@@ -696,16 +697,84 @@ open class SceneView @JvmOverloads constructor(
 
 //        runCatching { ResourceManager.getInstance().destroyAllResources() }
 
-            defaultRenderer?.let { engine.safeDestroyRenderer(it) }
-            defaultView?.let { engine.safeDestroyView(it) }
-            defaultScene?.let { engine.safeDestroyScene(it) }
-            defaultEnvironmentLoader?.destroy()
-            defaultMaterialLoader?.let { engine.safeDestroyMaterialLoader(it) }
-            defaultModelLoader?.let { engine.safeDestroyModelLoader(it) }
-
-            defaultEngine?.let { it.safeDestroy() }
-            defaultEglContext?.let { OpenGL.destroyEglContext(it) }
+            // Set before the engine goes: it may only go once its backend is idle, and the view is
+            // destroyed for every caller from here on. A second destroy() has nothing left to do.
             isDestroyed = true
+
+            val ownEngine = defaultEngine
+            val destroyEngineResources = engineResourcesDestroyer()
+            val eglContext = defaultEglContext
+            if (ownEngine == null) {
+                // A shared engine belongs to whoever created it: nothing is deferred, its owner is
+                // free to destroy it as soon as this returns.
+                destroyEngineResources()
+                eglContext?.let { OpenGL.destroyEglContext(it) }
+            } else {
+                // Engine.destroy() joins the driver thread once it has run everything queued, and
+                // Engine.destroyRenderer() waits for that same backlog. On the main thread, with a
+                // backend that is behind, that wait is an ANR: it is polled instead, and the same
+                // calls run in the same order once there is nothing left to wait for. With an idle
+                // backend - the usual case - all of it still happens before destroy() returns.
+                //
+                // The loads in flight stop now, as they always did by the time destroy() returned:
+                // no result is delivered to the app for a view it has already destroyed.
+                defaultMaterialLoader?.cancelLoads()
+                defaultModelLoader?.cancelLoads()
+                val startedAt = SystemClock.uptimeMillis()
+                // Deferred, this block waits in the main looper's queue: it references the engine
+                // and what is destroyed with it, not this view.
+                ownEngine.whenBackendIdle { deferred ->
+                    // Not valid: destroyed by the app in the meantime, and what lived on it with it.
+                    if (ownEngine.isValid) {
+                        destroyEngineResources()
+                        ownEngine.safeDestroy()
+                        if (deferred) {
+                            Log.i(
+                                "Sceneview",
+                                "Engine destroyed once its backend was idle, " +
+                                        "${SystemClock.uptimeMillis() - startedAt} ms after the view"
+                            )
+                        }
+                    }
+                    // The EGL context is shared with the engine: always released after it.
+                    if (!deferred) {
+                        eglContext?.let { OpenGL.destroyEglContext(it) }
+                    } else {
+                        // Nobody is left to catch it here. A try and not runCatching, which in a
+                        // class is the extension on `this` and would make the block hold the view.
+                        try {
+                            eglContext?.let { OpenGL.destroyEglContext(it) }
+                        } catch (e: Exception) {
+                            Log.w("Sceneview", "EGL context not destroyed", e)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * What destroys what this view created on its [engine], which must still be alive then: the
+     * renderer first, the loaders last.
+     *
+     * It holds those objects and not this view, so that a teardown waiting for the backend does
+     * not keep the view. The loaders still reference the [Context] they were created with.
+     */
+    private fun engineResourcesDestroyer(): () -> Unit {
+        val engine = engine
+        val renderer = defaultRenderer
+        val view = defaultView
+        val scene = defaultScene
+        val environmentLoader = defaultEnvironmentLoader
+        val materialLoader = defaultMaterialLoader
+        val modelLoader = defaultModelLoader
+        return {
+            renderer?.let { engine.safeDestroyRenderer(it) }
+            view?.let { engine.safeDestroyView(it) }
+            scene?.let { engine.safeDestroyScene(it) }
+            environmentLoader?.destroy()
+            materialLoader?.let { engine.safeDestroyMaterialLoader(it) }
+            modelLoader?.let { engine.safeDestroyModelLoader(it) }
         }
     }
 
@@ -933,7 +1002,22 @@ open class SceneView @JvmOverloads constructor(
             displayHelper.detach()
             swapChain?.let {
                 runCatching { engine.destroySwapChain(it) }
-                engine.flushAndWait()
+                // Android takes the surface back when this returns, so the backend is given the
+                // time to finish with it. With its own engine the view does not wait forever: this
+                // is the main thread, and a backend that needs longer than the bound is an ANR.
+                // Past it the queued commands still run, in order; what reaches a surface already
+                // gone is refused by EGL and logged. A shared engine is waited for as before.
+                val ownsEngine = defaultEngine != null
+                val drained = engine.flushAndWait(
+                    surfaceWaitNanos(ownsEngine, SURFACE_DETACH_WAIT_NANOS)
+                )
+                if (!drained && ownsEngine) {
+                    Log.w(
+                        "Sceneview",
+                        "Surface detached, backend still busy after " +
+                                "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+                    )
+                }
                 swapChain = null
             }
         }
@@ -941,12 +1025,22 @@ open class SceneView @JvmOverloads constructor(
         override fun onResized(width: Int, height: Int) {
             this@SceneView.onResized(width, height)
 
-            // Wait for all pending frames to be processed before returning. This is to avoid a race
-            // between the surface being resized before pending frames are rendered into it.
-            engine.createFence().apply {
-                wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER)
-                engine.destroyFence(this)
+            // Wait for the pending frames to be processed before returning, to avoid a race
+            // between the surface being resized and the frames still to be rendered into it. With
+            // its own engine the view does not wait forever: this is the main thread. A frame that
+            // is later than the bound reaches the surface at its former size; the next one is
+            // rendered at the new one. A shared engine is waited for as before.
+            val ownsEngine = defaultEngine != null
+            val fence = engine.createFence()
+            val busy = isFenceBusy(fence, surfaceWaitNanos(ownsEngine, SURFACE_RESIZE_WAIT_NANOS))
+            if (busy && ownsEngine) {
+                Log.w(
+                    "Sceneview",
+                    "Surface resized, backend still busy after " +
+                            "${SURFACE_RESIZE_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+                )
             }
+            engine.destroyFence(fence)
         }
     }
 

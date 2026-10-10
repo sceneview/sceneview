@@ -405,6 +405,14 @@ class ModelLoader(
         models -= model
     }
 
+    /**
+     * Stops the loads in flight, the first thing [clear] does, without waiting on the engine: for
+     * a view whose engine is destroyed later than the view itself.
+     */
+    internal fun cancelLoads() {
+        runCatching { coroutineScope.cancel() }
+    }
+
     fun clear() {
         runCatching { coroutineScope.cancel() }
 

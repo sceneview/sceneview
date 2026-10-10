@@ -1,15 +1,15 @@
-name: Upload release to Sonatype Staging Repository
+name: Publish release to Maven Central
 
-# Run this workflow when a tag is pushed
+# A final 2.x tag (v2.3.4, never v2.3.4-rc1) publishes. No manual run: nothing but a tag whose
+# name is the version in the tree can reach Maven Central.
 on:
   push:
     tags:
-      - '*'
-  workflow_dispatch:
+      - 'v2.[0-9]+.[0-9]+'
 
 jobs:
   publish:
-    name: Release build and updload
+    name: Release build and publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,13 +24,23 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Upload release to Sonatype Staging Repository
-        run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-daemon --no-parallel
+      - name: Tag matches the version in the tree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for module in sceneview arsceneview; do
+            version="$(sed -n 's/^VERSION_NAME=//p' "$module/gradle.properties")"
+            if [ "$version" != "$tag" ]; then
+              echo "::error::$module is at $version, the tag says $tag"
+              exit 1
+            fi
+          done
+
+      # Central Portal: uploads, signs and releases in one step. Not reversible.
+      - name: Publish release to Maven Central
+        run: ./gradlew publishAndReleaseToMavenCentral --no-daemon --no-parallel --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.SONATYPE_NEXUS_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.SONATYPE_NEXUS_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_PRIVATE_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
-          #SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
-          #SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-          #SONATYPE_STAGING_PROFILE_ID: ${{ secrets.SONATYPE_STAGING_PROFILE_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}

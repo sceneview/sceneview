@@ -23,6 +23,11 @@ pluginManagement {
     }
 }
 
+// Without an explicit name the root project takes the name of the checkout directory. Since the
+// repository is called "sceneview", that is the name of the :sceneview module as well, and the
+// type-safe project accessors then generate `getSceneview()` twice and fail to compile.
+rootProject.name = "sceneview-android"
+
 /**
  * This file is responsible for loading and including all submodules which declare a
  * build.gradle.kts file in their root. No need to use include("path-to-folder") anymore

@@ -315,6 +315,14 @@ class MaterialLoader(
         }
     }
 
+    /**
+     * Stops the loads in flight, the first thing [destroy] does, without touching the engine: for
+     * a view whose engine is destroyed later than the view itself.
+     */
+    internal fun cancelLoads() {
+        runCatching { coroutineScope.cancel() }
+    }
+
     fun destroy() {
         coroutineScope.cancel()
 

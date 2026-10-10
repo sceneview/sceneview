@@ -2,6 +2,7 @@ package io.github.sceneview.ar
 
 import android.content.Context
 import android.util.AttributeSet
+import android.util.Log
 import android.util.Size
 import android.view.MotionEvent
 import android.widget.FrameLayout
@@ -410,6 +411,12 @@ open class ARSceneView @JvmOverloads constructor(
     private var defaultCameraNode: ARCameraNode? = null
     private var defaultCameraStream: ARCameraStream? = null
 
+    /**
+     * `true` while the last AR frame update threw, so that a failure which repeats on every frame
+     * is logged once and not sixty times a second. See [onFrame].
+     */
+    private var isSessionUpdateFailing = false
+
     init {
         setCameraNode(sharedCameraNode ?: createARCameraNode(engine).also {
             defaultCameraNode = it
@@ -474,9 +481,23 @@ open class ARSceneView @JvmOverloads constructor(
      */
     override fun onFrame(frameTimeNanos: Long) {
         session?.let { session ->
-            session.updateOrNull()?.let { frame ->
-                onSessionUpdated(session, frame)
+            // ARCore can fail an update on its own: `Session.update()` throws a `FatalException`
+            // when its native side gives up, and other exceptions when the camera is taken away.
+            // Uncaught, that leaves the Choreographer callback and kills the app. The AR part of
+            // this frame is dropped instead, the scene is still rendered below, and the next
+            // frame tries again. Only the ARCore call is guarded: an exception thrown by the
+            // app's own `onSessionUpdated` still reaches the app, as it did before.
+            val frame = try {
+                session.updateOrNull().also { isSessionUpdateFailing = false }
+            } catch (e: Exception) {
+                // Once per failure, then quiet until an update goes through again.
+                if (!isSessionUpdateFailing) {
+                    isSessionUpdateFailing = true
+                    Log.e("Sceneview", "ARCore session update failed", e)
+                }
+                null
             }
+            frame?.let { onSessionUpdated(session, it) }
         }
         super.onFrame(frameTimeNanos)
     }

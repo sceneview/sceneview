@@ -1,8 +1,7 @@
 name: Publish Dokka docs
 
+# Manual only: a 2.x maintenance release must not replace the published API reference.
 on:
-  release:
-    types: [released]
   workflow_dispatch:
 
 jobs:

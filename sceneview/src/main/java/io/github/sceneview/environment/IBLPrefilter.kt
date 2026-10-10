@@ -12,21 +12,25 @@ import com.google.android.filament.utils.IBLPrefilterContext
  */
 class IBLPrefilter(engine: Engine) {
 
+    // The three are created on first use. Each Lazy is kept so that destroy() can tell what was
+    // actually created.
+    private val contextLazy = lazy { IBLPrefilterContext(engine) }
+    private val equirectangularToCubemapLazy = lazy {
+        IBLPrefilterContext.EquirectangularToCubemap(context)
+    }
+    private val specularFilterLazy = lazy { IBLPrefilterContext.SpecularFilter(context) }
+
     /**
      * Created IBLPrefilterContext, keeping it around if several cubemap will be processed.
      */
-    val context by lazy { IBLPrefilterContext(engine) }
+    val context by contextLazy
 
     /**
      * EquirectangularToCubemap is use to convert an equirectangluar image to a cubemap.
      *
      * Creates a EquirectangularToCubemap processor.
      */
-    private val equirectangularToCubemap by lazy {
-        IBLPrefilterContext.EquirectangularToCubemap(
-            context
-        )
-    }
+    private val equirectangularToCubemap by equirectangularToCubemapLazy
 
     /**
      * Converts an equirectangular image to a cubemap.
@@ -51,7 +55,7 @@ class IBLPrefilter(engine: Engine) {
      * An instance of SpecularFilter is needed per filter configuration. A filter configuration
      * contains the filter's kernel and sample count.
      */
-    private val specularFilter by lazy { IBLPrefilterContext.SpecularFilter(context) }
+    private val specularFilter by specularFilterLazy
 
     /**
      * Generates a prefiltered cubemap.
@@ -67,9 +71,16 @@ class IBLPrefilter(engine: Engine) {
      */
     fun specularFilter(skybox: Texture) = specularFilter.run(skybox)
 
+    /**
+     * Destroys what was created, and only that: a prefilter that was never used has nothing on the
+     * GPU. Reading the lazy properties here would build the context, its materials and the
+     * specular kernel — shader programs included — only to wait for them and destroy them.
+     */
     fun destroy() {
-        runCatching { specularFilter.destroy() }
-        runCatching { equirectangularToCubemap.destroy() }
-        runCatching { context.destroy() }
+        if (specularFilterLazy.isInitialized()) runCatching { specularFilter.destroy() }
+        if (equirectangularToCubemapLazy.isInitialized()) {
+            runCatching { equirectangularToCubemap.destroy() }
+        }
+        if (contextLazy.isInitialized()) runCatching { context.destroy() }
     }
 }
