@@ -26,6 +26,7 @@ import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.model.Model
+import java.util.WeakHashMap
 
 fun Engine.createModelLoader(context: Context) = ModelLoader(this, context)
 fun Engine.createMaterialLoader(context: Context) = MaterialLoader(this, context)
@@ -39,8 +40,144 @@ fun AssetLoader.safeDestroyModel(model: Model) {
 }
 
 fun Engine.safeDestroy() = runCatching {
+    // What is still waiting for the backend on this engine (a renderer, a used IBL prefilter) goes
+    // first: the engine must outlive what was created on it.
+    synchronized(pendingTeardowns) { pendingTeardowns.remove(this) }?.runAll()
     destroy()
     Log.d("Sceneview", "Engine destroyed")
+}
+
+/**
+ * The teardowns that wait for the backend of one engine to be idle, in the order they were asked
+ * for, so that the engine's own destroy can run the ones still waiting first.
+ *
+ * A teardown runs once: from its own check of the backend or from [runAll], whichever comes first.
+ * No Filament in here, so that the ordering can be tested without an engine.
+ */
+internal class PendingTeardowns {
+
+    inner class Entry(private val action: () -> Unit) {
+        var isDone = false
+            private set
+
+        /** Runs the teardown unless it already ran. What it throws is logged, not propagated. */
+        fun run() {
+            if (isDone) return
+            isDone = true
+            pending.remove(this)
+            try {
+                action()
+            } catch (e: Exception) {
+                onFailure(e)
+            }
+        }
+    }
+
+    private val pending = ArrayDeque<Entry>()
+
+    /** Called with what a teardown threw. Logs by default; a test replaces it. */
+    var onFailure: (Exception) -> Unit = { Log.w("Sceneview", "Deferred teardown failed", it) }
+
+    /** How many teardowns have not run yet. */
+    val size: Int get() = pending.size
+
+    fun add(action: () -> Unit): Entry = Entry(action).also { pending.addLast(it) }
+
+    /** Runs every teardown that has not run yet, oldest first, including one added meanwhile. */
+    fun runAll() {
+        while (pending.isNotEmpty()) pending.first().run()
+    }
+}
+
+/**
+ * The engines whose owner destroys them through [destroyWhenBackendIdle] — the ones created by
+ * `rememberEngine()` — each with what is waiting for its backend. An engine leaves the map when it
+ * is destroyed by [safeDestroy]. Weak keys: an engine destroyed any other way is not kept by it.
+ */
+private val pendingTeardowns = WeakHashMap<Engine, PendingTeardowns>()
+
+/**
+ * Declares that this engine will be destroyed through [destroyWhenBackendIdle], off the calling
+ * thread's time, and not by a synchronous `Engine.destroy()` right after its views are gone.
+ *
+ * That is what allows the rest of its teardown not to wait on the thread either: see
+ * [teardownWhenBackendIdle] and [surfaceWaitNanos].
+ */
+internal fun Engine.deferTeardown() {
+    synchronized(pendingTeardowns) { pendingTeardowns.getOrPut(this) { PendingTeardowns() } }
+}
+
+/** Whether [deferTeardown] was called for this engine and it has not been destroyed since. */
+internal val Engine.isTeardownDeferred: Boolean
+    get() = synchronized(pendingTeardowns) { pendingTeardowns.containsKey(this) }
+
+/**
+ * Runs [teardown] — a call that waits for the backend of this engine, `Engine.destroyRenderer` or
+ * the destroy of a used `IBLPrefilterContext` — once that backend is idle, without blocking the
+ * calling thread on the drain. See [whenBackendIdle].
+ *
+ * Only on an engine whose own destroy is deferred as well ([isTeardownDeferred]): anywhere else
+ * the owner may destroy its engine as soon as the caller returns, so [teardown] runs now, as it
+ * always did. With an idle backend, the usual case, it also runs before this returns.
+ *
+ * A teardown that is still waiting when the engine is destroyed by [safeDestroy] runs right before
+ * it. It is skipped when the engine was destroyed any other way: what it would destroy went with
+ * the engine. Until it runs, what [teardown] references stays reachable from the looper's queue.
+ */
+internal fun Engine.teardownWhenBackendIdle(teardown: () -> Unit) {
+    val engine = this
+    val teardowns = synchronized(pendingTeardowns) { pendingTeardowns[engine] }
+    if (teardowns == null || !engine.isValid) {
+        teardown()
+        return
+    }
+    val entry = teardowns.add { if (engine.isValid) teardown() }
+    engine.whenBackendIdle { entry.run() }
+}
+
+/**
+ * Destroys this engine once its backend has executed everything already queued, without blocking
+ * the calling thread on that drain, then calls [onDestroyed] — where what must outlive the engine,
+ * its EGL context, is released.
+ *
+ * `Engine.destroy()` joins the driver thread after it has run every queued command. From the main
+ * thread, when a composition leaves while the backend is still setting the scene up, that join is
+ * an ANR. Through [whenBackendIdle] the same call runs on the same thread once there is nothing
+ * left to wait for. With an idle backend, the usual case, the engine is destroyed before this
+ * returns, exactly as [safeDestroy] does.
+ *
+ * [onDestroyed] also runs when the engine was destroyed by someone else in the meantime. It does
+ * not run when the backend never drains and the poll gives up: the engine is left alive then, and
+ * its EGL context with it. What it throws reaches the caller when nothing was deferred, as before;
+ * deferred, there is no caller left and it is logged.
+ */
+internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit) {
+    val engine = this
+    val startedAt = SystemClock.uptimeMillis()
+    engine.whenBackendIdle { deferred ->
+        if (engine.isValid) {
+            engine.safeDestroy()
+            if (deferred) {
+                Log.i(
+                    "Sceneview",
+                    "Engine destroyed once its backend was idle, " +
+                            "${SystemClock.uptimeMillis() - startedAt} ms after its composition left"
+                )
+            }
+        } else {
+            // Destroyed by a raw Engine.destroy(): what was waiting on it went with it.
+            synchronized(pendingTeardowns) { pendingTeardowns.remove(engine) }
+        }
+        if (!deferred) {
+            onDestroyed()
+        } else {
+            try {
+                onDestroyed()
+            } catch (e: Exception) {
+                Log.w("Sceneview", "Engine destroyed, what follows it failed", e)
+            }
+        }
+    }
 }
 
 /**
@@ -72,33 +209,37 @@ internal const val BACKEND_IDLE_BUDGET_MS = 120_000L
 
 /**
  * How long a surface detach waits for the backend to finish with the surface, in nanoseconds, in
- * a view that owns its engine — see [surfaceWaitNanos]. Long enough for the frames in flight, far
+ * a view whose engine is destroyed off the thread — see [surfaceWaitNanos]. Long enough for the frames in flight, far
  * below the 5 s after which Android reports an ANR.
  */
 internal const val SURFACE_DETACH_WAIT_NANOS = 1_000_000_000L
 
 /**
- * How long a surface resize waits for the frames already queued, in nanoseconds, in a view that
- * owns its engine — see [surfaceWaitNanos]. Half the detach bound: the surface stays, so a frame
+ * How long a surface resize waits for the frames already queued, in nanoseconds, in a view whose
+ * engine is destroyed off the thread — see [surfaceWaitNanos]. Half the detach bound: the surface stays, so a frame
  * that misses it only reaches the surface at its former size.
  */
 internal const val SURFACE_RESIZE_WAIT_NANOS = 500_000_000L
 
 /**
- * How long a surface callback waits for the backend, in nanoseconds: [boundNanos] in a view that
- * owns its engine, [Fence.WAIT_FOR_EVER] — what `Engine.flushAndWait()` passes — in a view that
- * was given one.
+ * How long a surface callback waits for the backend, in nanoseconds: [boundNanos] when the destroy
+ * of the engine is deferred, [Fence.WAIT_FOR_EVER] — what `Engine.flushAndWait()` passes —
+ * otherwise.
  *
  * Giving up on the wait does not make the backlog go away, it leaves it for whoever destroys the
- * engine. A view that owns its engine waits for that backlog off the thread, see
- * [whenBackendIdle], so its callbacks can be bounded. A shared engine is destroyed by its owner,
- * synchronously — `rememberEngine` does it as soon as the composition leaves: bounded callbacks
- * there only moved the whole wait into that destroy, still on the main thread, and let Android
- * take the surface back before the backend had even created its swap chain (`EGL_BAD_ALLOC` in
- * the log). Those views keep the unbounded waits they always had.
+ * engine. Where that destroy waits for the backlog off the thread, see [whenBackendIdle], the
+ * callbacks can be bounded: in a view that owns its engine, and in a view that was given an engine
+ * created by `rememberEngine()` ([isTeardownDeferred]). Any other shared engine is destroyed by its
+ * owner when and how the owner sees fit, possibly synchronously right after the view: bounded
+ * callbacks there would only move the whole wait into that destroy, still on the main thread.
+ * Those views keep the unbounded waits they always had.
+ *
+ * Past the bound, Android may take the surface back before the backend has created its swap chain
+ * on it: EGL then refuses the creation (`EGL_BAD_ALLOC` in the log), Filament keeps a swap chain
+ * without a surface and the destroy queued behind it releases it.
  */
-internal fun surfaceWaitNanos(ownsEngine: Boolean, boundNanos: Long): Long =
-    if (ownsEngine) boundNanos else Fence.WAIT_FOR_EVER
+internal fun surfaceWaitNanos(engineTeardownDeferred: Boolean, boundNanos: Long): Long =
+    if (engineTeardownDeferred) boundNanos else Fence.WAIT_FOR_EVER
 
 /**
  * The delay before the next check of a teardown deferred by [whenBackendIdle] that has already

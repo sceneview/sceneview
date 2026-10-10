@@ -319,11 +319,17 @@ fun rememberEngine(
     engineCreator: (eglContext: EGLContext) -> Engine = { SceneView.createEngine(it) }
 ): Engine {
     val eglContext = remember(eglContextCreator)
-    val engine = remember(eglContext) { engineCreator(eglContext) }
+    // Declared up front: what is destroyed on this engine before it, and the surface callbacks of
+    // the views it is given to, can then leave the wait for the backend to the engine's destroy.
+    val engine = remember(eglContext) { engineCreator(eglContext).also { it.deferTeardown() } }
     DisposableEffect(eglContext, engine) {
         onDispose {
-            engine.safeDestroy()
-            eglContext.destroy()
+            // Engine.destroy() joins the Filament driver thread once it has run everything queued.
+            // On the main thread, when the composition leaves while the backend is still setting
+            // the scene up, that join is an ANR: the backend is polled instead and the engine is
+            // destroyed once it is idle — before this returns when it already is, the usual case.
+            // The EGL context is shared with the engine: always released after it.
+            engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }
     return engine
@@ -382,7 +388,10 @@ fun rememberRenderer(
 ) = remember(engine, creator).also { renderer ->
     DisposableEffect(renderer) {
         onDispose {
-            engine.safeDestroyRenderer(renderer)
+            // Engine.destroyRenderer() waits for everything queued on the backend. On an engine
+            // created by rememberEngine() it runs once the backend is idle, before the engine
+            // goes; on any other engine it runs now, as before.
+            engine.teardownWhenBackendIdle { engine.safeDestroyRenderer(renderer) }
         }
     }
 }
@@ -427,7 +436,15 @@ fun rememberEnvironmentLoader(
 ) = remember(engine, context, creator).also { environmentLoader ->
     DisposableEffect(environmentLoader) {
         onDispose {
-            environmentLoader.destroy()
+            if (!environmentLoader.iblPrefilter.isCreated) {
+                environmentLoader.destroy()
+            } else {
+                // A prefilter that was used destroys a Filament renderer of its own, which waits
+                // for everything queued on the backend: same rule as rememberRenderer. The loads
+                // in flight and the environments stop now, as before.
+                environmentLoader.clear()
+                environmentLoader.engine.teardownWhenBackendIdle { environmentLoader.destroy() }
+            }
         }
     }
 }
