@@ -138,9 +138,9 @@
     <string name="ar_starting_session">Starting AR session…</string>
     <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
-    <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this demo.</string>
-    <string name="ar_permission_granted_title">Camera access is on</string>
-    <string name="ar_permission_granted_subtitle">Try again to start a fresh AR session.</string>
+    <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
+    <string name="ar_permission_allow_subtitle">Allow camera access to start this demo.</string>
+    <string name="ar_permission_blocked_subtitle">Camera access is off for this app. Turn it on in system settings — the demo starts when you come back.</string>
     <string name="ar_permission_try_again">Try again</string>
     <string name="ar_permission_open_settings">Open settings</string>
 

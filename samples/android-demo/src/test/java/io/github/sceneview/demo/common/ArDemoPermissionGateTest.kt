@@ -9,11 +9,15 @@ class ArDemoPermissionGateTest {
     fun `granted permission shows the AR demo`() {
         assertEquals(
             ArDemoPermissionUiState.ShowDemo,
-            arDemoPermissionUiState(
-                permission = ArCameraPermissionState.Granted,
-                shouldShowRationale = false,
-                session = ArDemoSessionState.Running,
-            ),
+            arDemoPermissionUiState(granted = true, requested = false, shouldShowRationale = false),
+        )
+    }
+
+    @Test
+    fun `a first visit without the permission asks for it`() {
+        assertEquals(
+            ArDemoPermissionUiState.RequestPermission,
+            arDemoPermissionUiState(granted = false, requested = false, shouldShowRationale = false),
         )
     }
 
@@ -21,11 +25,7 @@ class ArDemoPermissionGateTest {
     fun `first denial that can ask again shows retry`() {
         assertEquals(
             ArDemoPermissionUiState.RetryPermission,
-            arDemoPermissionUiState(
-                permission = ArCameraPermissionState.Denied,
-                shouldShowRationale = true,
-                session = ArDemoSessionState.BlockedByPermission,
-            ),
+            arDemoPermissionUiState(granted = false, requested = true, shouldShowRationale = true),
         )
     }
 
@@ -33,23 +33,16 @@ class ArDemoPermissionGateTest {
     fun `permanent denial opens system settings`() {
         assertEquals(
             ArDemoPermissionUiState.OpenSettings,
-            arDemoPermissionUiState(
-                permission = ArCameraPermissionState.Denied,
-                shouldShowRationale = false,
-                session = ArDemoSessionState.BlockedByPermission,
-            ),
+            arDemoPermissionUiState(granted = false, requested = true, shouldShowRationale = false),
         )
     }
 
+    /** #4139 (c): back from settings with the camera on, no "Try again" tap in between. */
     @Test
-    fun `grant after settings restarts the AR session`() {
+    fun `grant after a permanent denial shows the demo without another tap`() {
         assertEquals(
-            ArDemoPermissionUiState.RetrySession,
-            arDemoPermissionUiState(
-                permission = ArCameraPermissionState.Granted,
-                shouldShowRationale = false,
-                session = ArDemoSessionState.BlockedByPermission,
-            ),
+            ArDemoPermissionUiState.ShowDemo,
+            arDemoPermissionUiState(granted = true, requested = true, shouldShowRationale = false),
         )
     }
 }

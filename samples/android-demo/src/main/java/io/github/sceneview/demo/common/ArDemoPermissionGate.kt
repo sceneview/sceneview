@@ -28,7 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,49 +49,11 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 
-/** Camera permission as observed by the demo app. */
-internal enum class ArCameraPermissionState {
-    Granted,
-    Denied,
-}
-
-/** Whether the current AR demo has mounted a session or was stopped by camera permission. */
-internal enum class ArDemoSessionState {
-    NotStarted,
-    Running,
-    BlockedByPermission,
-}
-
-/** The one screen-level outcome of the camera-permission and AR-session state. */
-internal enum class ArDemoPermissionUiState {
-    ShowDemo,
-    RequestPermission,
-    RetryPermission,
-    OpenSettings,
-    RetrySession,
-}
-
-/**
- * Chooses the only UI the AR demo route may show for its current permission/session state.
- */
-internal fun arDemoPermissionUiState(
-    permission: ArCameraPermissionState,
-    shouldShowRationale: Boolean,
-    session: ArDemoSessionState,
-): ArDemoPermissionUiState = when {
-    permission == ArCameraPermissionState.Granted &&
-        session == ArDemoSessionState.BlockedByPermission -> ArDemoPermissionUiState.RetrySession
-    permission == ArCameraPermissionState.Granted -> ArDemoPermissionUiState.ShowDemo
-    session == ArDemoSessionState.NotStarted -> ArDemoPermissionUiState.RequestPermission
-    shouldShowRationale -> ArDemoPermissionUiState.RetryPermission
-    else -> ArDemoPermissionUiState.OpenSettings
-}
-
 /**
  * Owns camera permission for every registered AR demo before the demo can mount ARCore.
  *
- * A grant read after returning from system settings remounts [content] under a fresh key, so
- * the user never has to leave and reopen the demo to create a new AR session.
+ * [content] is only composed while the camera is granted, so a grant read on the way back
+ * from system settings mounts the demo — and a fresh AR session — on its own.
  */
 @Composable
 internal fun ArDemoPermissionGate(
@@ -102,56 +63,30 @@ internal fun ArDemoPermissionGate(
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    fun cameraPermission() = if (
+    fun cameraGranted() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-        PackageManager.PERMISSION_GRANTED
-    ) {
-        ArCameraPermissionState.Granted
-    } else {
-        ArCameraPermissionState.Denied
-    }
+            PackageManager.PERMISSION_GRANTED
 
-    val initialPermission = remember { cameraPermission() }
-    var permission by remember { mutableStateOf(initialPermission) }
-    var session by rememberSaveable {
-        mutableStateOf(
-            if (initialPermission == ArCameraPermissionState.Granted) {
-                ArDemoSessionState.Running
-            } else {
-                ArDemoSessionState.NotStarted
-            },
-        )
-    }
+    var granted by remember { mutableStateOf(cameraGranted()) }
+    var requested by rememberSaveable { mutableStateOf(false) }
+    // Bumped on every dialog answer and every resume: a second "Don't allow" changes no
+    // grant, so without it the Try again / Open settings choice would never be re-read.
     var permissionEpoch by remember { mutableIntStateOf(0) }
-    var sessionGeneration by remember { mutableIntStateOf(0) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permission = if (granted) {
-            ArCameraPermissionState.Granted
-        } else {
-            ArCameraPermissionState.Denied
-        }
-        session = when {
-            granted && session == ArDemoSessionState.NotStarted -> ArDemoSessionState.Running
-            granted -> session
-            else -> ArDemoSessionState.BlockedByPermission
-        }
+    ) { result ->
+        granted = result
+        requested = true
         permissionEpoch++
     }
 
+    // Back from the app's settings page: pick up what the user switched on there.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                val resumedPermission = cameraPermission()
-                if (resumedPermission == ArCameraPermissionState.Denied &&
-                    permission == ArCameraPermissionState.Granted
-                ) {
-                    session = ArDemoSessionState.BlockedByPermission
-                }
-                permission = resumedPermission
+                granted = cameraGranted()
                 permissionEpoch++
             }
         }
@@ -159,30 +94,22 @@ internal fun ArDemoPermissionGate(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val shouldShowRationale = remember(permissionEpoch, permission, activity) {
-        permission == ArCameraPermissionState.Denied && activity != null &&
+    val shouldShowRationale = remember(permissionEpoch, granted, activity) {
+        !granted && activity != null &&
             ActivityCompat.shouldShowRequestPermissionRationale(
                 activity,
                 Manifest.permission.CAMERA,
             )
     }
-    val uiState = arDemoPermissionUiState(permission, shouldShowRationale, session)
 
-    when (uiState) {
-        ArDemoPermissionUiState.ShowDemo -> key(sessionGeneration) { content() }
-        ArDemoPermissionUiState.RetrySession -> ArPermissionScreen(
-            title = title,
-            onBack = onBack,
-            cardTitle = stringResource(R.string.ar_permission_granted_title),
-            detail = stringResource(R.string.ar_permission_granted_subtitle),
-            action = stringResource(R.string.ar_permission_try_again),
-            onAction = {
-                sessionGeneration++
-                session = ArDemoSessionState.Running
-            },
-        )
+    when (arDemoPermissionUiState(granted, requested, shouldShowRationale)) {
+        ArDemoPermissionUiState.ShowDemo -> content()
         ArDemoPermissionUiState.RequestPermission -> {
-            ArPermissionScreen(title = title, onBack = onBack)
+            ArPermissionScreen(
+                title = title,
+                onBack = onBack,
+                detail = stringResource(R.string.ar_permission_allow_subtitle),
+            )
             LaunchedEffect(Unit) {
                 permissionLauncher.launch(Manifest.permission.CAMERA)
             }
@@ -190,12 +117,14 @@ internal fun ArDemoPermissionGate(
         ArDemoPermissionUiState.RetryPermission -> ArPermissionScreen(
             title = title,
             onBack = onBack,
+            detail = stringResource(R.string.ar_permission_allow_subtitle),
             action = stringResource(R.string.ar_permission_try_again),
             onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) },
         )
         ArDemoPermissionUiState.OpenSettings -> ArPermissionScreen(
             title = title,
             onBack = onBack,
+            detail = stringResource(R.string.ar_permission_blocked_subtitle),
             action = stringResource(R.string.ar_permission_open_settings),
             onAction = {
                 context.startActivity(
@@ -213,12 +142,13 @@ internal fun ArDemoPermissionGate(
 private fun ArPermissionScreen(
     title: String,
     onBack: () -> Unit,
-    cardTitle: String = stringResource(R.string.ar_permission_required_title),
-    detail: String = stringResource(R.string.ar_permission_required_subtitle),
+    detail: String,
     action: String? = null,
     onAction: () -> Unit = {},
 ) {
-    DemoScaffold(title = title, onBack = onBack) {
+    // No dock: its "Settings" pill opens the demo's own sheet, which has nothing in it here
+    // and reads as the way to the *system* settings the card is talking about.
+    DemoScaffold(title = title, onBack = onBack, dockHidden = true) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -227,7 +157,7 @@ private fun ArPermissionScreen(
             contentAlignment = Alignment.Center,
         ) {
             ArPermissionCard(
-                title = cardTitle,
+                title = stringResource(R.string.ar_permission_required_title),
                 detail = detail,
                 action = action,
                 onAction = onAction,
@@ -282,12 +212,13 @@ internal fun ArPermissionCard(
                     .fillMaxWidth()
                     .padding(top = SceneViewTokens.Space.sm)
                     .heightIn(min = SceneViewTokens.Layout.touchTarget),
+                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = SceneViewTokens.ArOverlay.accentProgress,
                     contentColor = SceneViewTokens.ArOverlay.onAccentProgress,
                 ),
             ) {
-                Text(action)
+                Text(action, style = MaterialTheme.typography.labelLarge)
             }
         }
     }
