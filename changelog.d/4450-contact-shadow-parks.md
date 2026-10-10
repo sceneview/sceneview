@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **The Contact Shadow demo stops rendering when nothing moves ([#4450](https://github.com/sceneview/sceneview/issues/4450)).** Its two labels set `Node.onFrame` to hide themselves past a yaw threshold, and a `Node.onFrame` is a standing request for frames, so the Android demo drew at 60 fps with Bounce off and no touch. The labels now take their visibility from `SceneView(onFrame = …)`, which observes frames without asking for them: the scene parks, and wakes on orbit, on Bounce and on Reset.

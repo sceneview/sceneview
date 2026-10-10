@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **The iOS demo's About screen lists the other apps built with SceneView ([#4415](https://github.com/sceneview/sceneview/pull/4415)).** A "More apps built with SceneView" group sits under the app's name and version, with a row for 3D AR Model Viewer: its App Store icon, its name and one line saying what it does. A tap opens the app's App Store listing. The group only lists apps that are available on the App Store.
