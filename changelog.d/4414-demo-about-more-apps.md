@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **The Android demo's About screen lists the other apps built with SceneView ([#4414](https://github.com/sceneview/sceneview/pull/4414)).** A "More apps built with SceneView" group sits under the support card, with one row each for 3D AR Model Viewer and Will It Fit: the app's own icon, its name and one line saying what it does. A tap opens the app's Google Play listing, in the Play Store app when there is one and in the browser otherwise.

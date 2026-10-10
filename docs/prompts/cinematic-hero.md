@@ -13,7 +13,7 @@ prompt only has to place it, which is why it stays short.
 ```text
 Add a cinematic, scroll-driven 3D hero to the top of my app's home screen with SceneView.
 
-1. In the app module: add implementation("io.github.sceneview:sceneview:4.53.0"), set
+1. In the app module: add implementation("io.github.sceneview:sceneview:4.54.0"), set
    compileSdk = 37 (SceneView requires it; keep minSdk and targetSdk), and add
    <uses-permission android:name="android.permission.INTERNET" /> to AndroidManifest.xml.
 2. Find the home screen's scrolling list (LazyColumn, LazyVerticalGrid, or Column with
