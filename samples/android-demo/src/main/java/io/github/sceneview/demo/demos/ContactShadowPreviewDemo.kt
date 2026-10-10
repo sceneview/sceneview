@@ -258,6 +258,15 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
 
     val resetAll: () -> Unit = demoState::reset
 
+    // #3802: whether the "Shadow" / "No shadow" labels are shown — see [contactShadowLabelsVisible].
+    // Read from the scene's own `onFrame`, which observes each presented frame without asking for
+    // the next one. A `Node.onFrame` on the labels did the same job but is a standing request for
+    // frames: the scene rendered at 60 fps with nothing moving (#4450). A drag moves the camera
+    // through the manipulator's native transform, which recomposition never sees, hence a
+    // per-frame read rather than a Compose key; only the flip is state, so only the flip
+    // recomposes — and the visibility change it pushes requests its own frame.
+    var labelsVisible by remember { mutableStateOf(true) }
+
     // The orbit is rebuilt at its authored home on every reset (#3728) — a Filament
     // manipulator carries the whole camera pose and has no "go home" call — and the
     // continuity layer eases from wherever the user left the camera to that new home
@@ -269,9 +278,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         .driving(homeOrbit)
     // The continuity wrapper stays the same when its driven orbit changes, so SceneView cannot
     // observe a reset by identity. Wake the on-demand loop after composition installs the new home.
-    // Today the labels' `onFrame` below is a standing request for frames, so this scene never
-    // parks and Reset comes home without it (#4346, measured on the emulator); the request is
-    // what keeps Reset working the day those labels stop holding the loop awake.
+    // Load-bearing since #4450: with Bounce off nothing holds the loop awake, the scene parks, and
+    // this request is the frame that starts the camera on its way home (#4346).
     RequestContactShadowCameraRenderOnHomeChange(
         cameraHomeGeneration = demoState.cameraHomeGeneration,
         homeShot = homeShot,
@@ -324,10 +332,13 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = frame.contentPadding,
-                onFrame = firstFrame.onFrame,
                 engine = engine,
                 cameraNode = labelCamera,
                 renderInvalidator = renderInvalidator,
+                onFrame = { frameTimeNanos ->
+                    firstFrame.onFrame(frameTimeNanos)
+                    labelsVisible = contactShadowLabelsVisible(labelCamera.worldPosition)
+                },
                 materialLoader = materialLoader,
                 environment = environment,
                 // Keep the hand-built room where it was authored — auto-centring would reframe the
@@ -339,8 +350,8 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                 //
                 // Orbit is completely free — no yaw clamp (#3802 reworked: an earlier revision
                 // bounded the reachable yaw, which read as a bug, a camera that "bumps" into an
-                // invisible wall). The "Shadow" / "No shadow" labels fade out instead — see the
-                // `TextNode.isVisible` assignment below.
+                // invisible wall). The "Shadow" / "No shadow" labels hide instead — see
+                // `labelsVisible`.
                 cameraManipulator = cameraManipulator,
             ) {
                 // Read the hop clock HERE, inside the content lambda, not in the demo body: this
@@ -424,55 +435,43 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
                     materialInstance = boxMaterial,
                 )
 
-                listOf(
-                    Position(-BOX_HALF_SPACING, BOX_EDGE_METERS + hopHeight + CONTACT_LABEL_GAP_METERS, BOXES_Z) to
-                        groundedLabel,
-                    Position(
-                        BOX_HALF_SPACING,
-                        DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f + CONTACT_LABEL_GAP_METERS,
-                        BOXES_Z,
-                    ) to noShadowLabel,
-                ).forEach { (position, label) ->
-                    TextNode(
-                        text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
-                        fontSize = labelsFontSize,
-                        textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
-                        backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
-                        widthMeters = 0.62f,
-                        heightMeters = CONTACT_LABEL_HEIGHT_METERS,
-                        position = position,
-                        cameraPositionProvider = { labelCamera.worldPosition },
-                        // #3802: the room is built and lit for a roughly head-on view, so orbiting
-                        // toward broadside collapses these two billboards' screen-space projections
-                        // until "Shadow" / "No shadow" merge into one illegible blob. Orbit stays
-                        // completely free — a yaw clamp read as a bug and was removed — so instead
-                        // each label hides itself once the camera has turned far enough from
-                        // front-on to start overlapping its neighbour, and reappears the moment the
-                        // camera comes back. `TextNode` shares its material — `image_texture.filamat`
-                        // — with every `ImageNode`/`BillboardNode` in the SDK, and that material
-                        // exposes only a `texture` sampler, no alpha uniform (see the .mat source),
-                        // so a continuous per-instance fade is not available without widening a
-                        // material used far outside this demo; `isVisible` is the documented,
-                        // node-scoped fallback.
-                        //
-                        // `Node.onFrame` (node-scoped, not `SceneView(onFrame = …)`) because the
-                        // value must track the live camera position on every rendered frame,
-                        // including mid-drag frames Compose recomposition never sees (dragging moves
-                        // the manipulator's native transform directly, the same reason
-                        // `cameraPositionProvider` above is a lambda and not a one-shot value). It's
-                        // a handful of float ops on the main thread — no per-frame allocation.
-                        apply = {
-                            onFrame = {
-                                isVisible = orbitLabelFadeAlpha(
-                                    orbitYawDeviationDegrees(
-                                        eye = labelCamera.worldPosition,
-                                        target = CONTACT_CAMERA_TARGET,
-                                        referenceYawDegrees = 0f,
-                                    ),
-                                ) > 0f
-                            }
-                        },
-                    )
+                // #3802: the room is built and lit for a roughly head-on view, so orbiting toward
+                // broadside collapses the two billboards' screen-space projections until "Shadow" /
+                // "No shadow" merge into one illegible blob. Orbit stays completely free — a yaw
+                // clamp read as a bug and was removed — so instead the labels hide once the camera
+                // has turned far enough from front-on to start overlapping, and reappear the
+                // moment it comes back. `TextNode` shares its material — `image_texture.filamat` —
+                // with every `ImageNode`/`BillboardNode` in the SDK, and that material exposes only
+                // a `texture` sampler, no alpha uniform (see the .mat source), so a continuous
+                // per-instance fade is not available without widening a material used far outside
+                // this demo; visibility is the documented fallback, set once on the parent node.
+                Node(isVisible = labelsVisible) {
+                    listOf(
+                        Position(
+                            -BOX_HALF_SPACING,
+                            BOX_EDGE_METERS + hopHeight + CONTACT_LABEL_GAP_METERS,
+                            BOXES_Z,
+                        ) to groundedLabel,
+                        Position(
+                            BOX_HALF_SPACING,
+                            DemoMath.floatHoverY(bounceElapsedNanos) + BOX_EDGE_METERS / 2f +
+                                CONTACT_LABEL_GAP_METERS,
+                            BOXES_Z,
+                        ) to noShadowLabel,
+                    ).forEach { (position, label) ->
+                        TextNode(
+                            text = if (!shadowVisible && label == groundedLabel) noShadowLabel else label,
+                            fontSize = labelsFontSize,
+                            textColor = SceneViewTokens.ArOverlay.onScrim.toArgb(),
+                            backgroundColor = SceneViewTokens.ArOverlay.scrimDark.toArgb(),
+                            widthMeters = 0.62f,
+                            heightMeters = CONTACT_LABEL_HEIGHT_METERS,
+                            position = position,
+                            // Faces the camera on the frames the scene renders anyway; a camera
+                            // that stands still asks for none.
+                            cameraPositionProvider = { labelCamera.worldPosition },
+                        )
+                    }
                 }
 
                 // ── Wall-mounted TV — the case a real shadow map cannot serve ─────────────────
@@ -769,12 +768,21 @@ internal fun RequestContactShadowCameraRenderOnHomeChange(
     LaunchedEffect(cameraHomeGeneration, homeShot) { requestRender() }
 }
 
+/**
+ * Whether the "Shadow" / "No shadow" labels are shown with the camera at [eye]: hidden once the
+ * orbit has turned far enough from front-on for the two billboards to overlap (#3802).
+ */
+internal fun contactShadowLabelsVisible(eye: Position): Boolean =
+    orbitLabelFadeAlpha(
+        orbitYawDeviationDegrees(eye = eye, target = CONTACT_CAMERA_TARGET, referenceYawDegrees = 0f),
+    ) > 0f
+
 internal val CONTACT_CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)
 
 /**
  * Camera orbit target — see the comment at its `rememberCameraManipulator` call site. Also the
  * front-on reference the "Shadow" / "No shadow" labels fade around (#3802): [CONTACT_CAMERA_EYE] sits at
- * `0°` yaw in [CONTACT_CAMERA_EYE]/[CONTACT_CAMERA_TARGET]'s convention, which is why the `TextNode` fade below
+ * `0°` yaw in [CONTACT_CAMERA_EYE]/[CONTACT_CAMERA_TARGET]'s convention, which is why [contactShadowLabelsVisible]
  * passes `referenceYawDegrees = 0f`.
  */
 internal val CONTACT_CAMERA_TARGET = Position(x = 0.0f, y = 0.75f, z = -0.5f)
