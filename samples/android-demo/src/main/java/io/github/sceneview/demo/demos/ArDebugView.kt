@@ -590,6 +590,9 @@ private fun stageBoundsOf(frame: ArDebugFrame): FloatArray {
  *
  * [onShown] fires once, when the session's content has been on screen for a few rendered frames
  * — textures uploaded, nothing half-drawn — so a caller can hold its cover and chrome until then.
+ *
+ * [surfelMaterial] shades a [replay]'s dense cloud ([createSurfelMaterial]); without it the cloud
+ * is drawn flat.
  */
 @Composable
 internal fun ArDebugSceneView(
@@ -601,6 +604,7 @@ internal fun ArDebugSceneView(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     replay: RerunReplayMedia? = null,
+    surfelMaterial: Material? = null,
     onShown: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -643,12 +647,13 @@ internal fun ArDebugSceneView(
 
     val layers = remember(engine, materials) { ArDebugLayers(engine, materials) }
     // The replay's textured layers: created before the SceneView, released after its nodes.
-    val replayLayers = remember(engine, materialLoader, replay, palette, chrome.ground) {
+    val replayLayers = remember(engine, materialLoader, replay, palette, chrome.ground, surfelMaterial) {
         replay?.let {
             ReplayLayers(
                 engine, materialLoader, it,
                 measureInk = palette.floorOutline.toArgb(),
                 measureHalo = chrome.ground.toArgb(),
+                surfelMaterial = surfelMaterial,
             )
         }
     }
@@ -860,6 +865,7 @@ internal fun ArDebugPip(
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
     replay: RerunReplayMedia? = null,
+    surfelMaterial: Material? = null,
 ) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
     val chrome = LocalStageChrome.current
@@ -880,6 +886,7 @@ internal fun ArDebugPip(
             modifier = Modifier.fillMaxSize(),
             compact = true,
             replay = replay,
+            surfelMaterial = surfelMaterial,
         )
         Box(
             modifier = Modifier
