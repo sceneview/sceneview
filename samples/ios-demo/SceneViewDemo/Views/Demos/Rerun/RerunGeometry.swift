@@ -54,7 +54,7 @@ struct RerunMesh: Sendable {
     }
 }
 
-/// What the HUD's figures toggle. The stage (grid, axes) is always on.
+/// What the settings sheet's layer rows toggle. The stage (grid, axes) is always on.
 enum RerunGroup: Hashable, Sendable, CaseIterable { case trail, points, planes, anchors }
 
 /// Every flat-colour layer the stage draws; each is one mesh with one colour.
@@ -461,6 +461,14 @@ enum RerunGeometry {
         frame.planes.forEach { $0.polygon.forEach(add) }
         frame.anchors.forEach { add($0.pose.position) }
         return any ? (lo, hi) : nil
+    }
+
+    /// What the camera frames, point by point: the path, the planes' outlines and the anchors
+    /// that ``contentBounds(_:)`` bounds.
+    static func subject(_ frame: RerunFrame) -> RerunSubject? {
+        guard let (lo, hi) = contentBounds(frame) else { return nil }
+        let points = frame.trail + frame.planes.flatMap(\.polygon) + frame.anchors.map(\.pose.position)
+        return RerunSubject(centre: (lo + hi) / 2, points: points)
     }
 
     /// Grid extent: the content bounds snapped to the grid.

@@ -16,6 +16,9 @@ import SceneViewSwift
 ///   ``DemoChromeMode/ar``, where the stage is a camera feed and each control
 ///   carries its own `ar-scrim` ground instead;
 /// - the settings sheet (detents, themed surface, keyboard, Reset / feedback / QA);
+/// - `chromeHidden`: a demo whose stage is worth the whole screen (the Room Scan replay)
+///   toggles it from a tap on the stage — header, accessory, dock and scrim bands leave on
+///   the motion they entered with, and come back on the next tap;
 /// - Dynamic Type (chrome capped at XXL, the sheet scales freely), VoiceOver
 ///   order (back → title → scene → accessory → dock) and Reduce Motion.
 ///
@@ -58,6 +61,9 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     private let onReset: (() -> Void)?
     private let hasControls: Bool
     private let chromeMode: DemoChromeMode
+    /// The demo has put the chrome away (a tap on its stage): nothing but the stage is
+    /// drawn, hit or read out until it is `false` again.
+    private let chromeHidden: Bool
     private let stage: Stage
     private let accessory: Accessory
     /// Trailing end of the identity row — a small state pill (asset source,
@@ -95,6 +101,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         accent: DockItem? = nil,
         onReset: (() -> Void)? = nil,
         chromeMode: DemoChromeMode = .stage,
+        chromeHidden: Bool = false,
         @ViewBuilder stage: () -> Stage,
         @ViewBuilder accessory: () -> Accessory = { EmptyView() },
         @ViewBuilder status: () -> Status = { EmptyView() },
@@ -106,6 +113,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         self.onReset = onReset
         self.hasControls = Controls.self != EmptyView.self
         self.chromeMode = chromeMode
+        self.chromeHidden = chromeHidden
         self.stage = stage()
         self.accessory = accessory()
         self.status = status()
@@ -114,6 +122,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
 
     private typealias Metrics = SceneViewTokens.Chrome
     private var resolvedTitle: String? { title ?? presenterTitle }
+    /// The chrome is on screen: the screen has entered and the demo has not hidden it.
+    private var chromeShown: Bool { entered && !chromeHidden }
 
     public var body: some View {
         GeometryReader { proxy in
@@ -176,7 +186,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .opacity(entered ? 1 : 0)
+        .opacity(chromeShown ? 1 : 0)
+        .animation(SceneViewTokens.Spring.fade, value: chromeHidden)
     }
 
     private func scrimBand(edge: VerticalEdge) -> some View {
@@ -194,7 +205,7 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
     // MARK: Chrome
 
     private func chrome(bottomInset: CGFloat) -> some View {
-        let travels = !entered && !reduceMotion
+        let travels = !chromeShown && !reduceMotion
         return VStack(spacing: 0) {
             identityRow
                 .offset(y: travels ? -Metrics.enterTop : 0)
@@ -221,8 +232,10 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
         }
         .padding(.top, Metrics.topGap - Self.touchSlop)
         .padding(.bottom, bottomInset)
-        .opacity(entered ? 1 : 0)
-        .animation(reduceMotion ? SceneViewTokens.Spring.fade : SceneViewTokens.Spring.animation, value: entered)
+        .opacity(chromeShown ? 1 : 0)
+        .animation(reduceMotion ? SceneViewTokens.Spring.fade : SceneViewTokens.Spring.animation, value: chromeShown)
+        .allowsHitTesting(!chromeHidden)
+        .accessibilityHidden(chromeHidden)
         // Chrome over media is theme-independent: pin the material and every
         // asset colour to their dark variant so light mode cannot wash it out.
         .environment(\.colorScheme, .dark)

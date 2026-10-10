@@ -6,17 +6,18 @@ import SceneViewSwift
 import simd
 import SwiftUI
 
-// The "Record your own" screen of the Rerun showcase: the live AR camera, one Record / Stop
-// control and the capture's figures. Every frame goes through `RerunCaptureRecorder`; on
-// Stop the finished pack is handed to the host, which replays it like the bundled room.
+// The Record screen of Room Scan: the live AR camera and one Record / Stop control. Every frame
+// goes through `RerunCaptureRecorder`; on Stop the finished pack is handed to the host, which
+// replays it like the bundled room.
 //
-// Built to be filmed: the launch video shoots the phone over a shoulder, in one take, from
-// about a metre. So the figures are big and white on a near-opaque scrim, and what the
-// recorder has kept is drawn over the camera as it grows — the path walked, every voxel the
-// feature points filled, the planes tracked now. All of it is the recorder's own data.
+// The camera keeps the screen (#4379). What the recorder has kept is drawn over it as it grows
+// — the path walked, every voxel the feature points filled, the planes tracked now — and that
+// drawing is the readout. A scan in progress says one line, in the host's title row
+// (`RerunCaptureStatusLine`); its counts are rows of the host's settings sheet
+// (`RerunCaptureSettings`). All of it is the recorder's own data.
 //
-// The screen draws no navigation chrome: the host owns the title row above (the top
-// ~110 pt stay free) and the dock below (the bottom ~140 pt stay free).
+// The screen draws no navigation chrome: the host owns the title row above and the dock below,
+// and says how much of the window they take.
 
 /// Records a live AR session into a ``RerunCapturePack``.
 ///
@@ -24,23 +25,29 @@ import SwiftUI
 /// the recording. Tapping a detected surface places a Shiba facing the camera, logged as
 /// an anchor while recording.
 struct RerunLiveCaptureView: View {
+    private let topInset: CGFloat
+    private let bottomInset: CGFloat
     private let onFinish: (RerunCapturePack) -> Void
-    private let onRecordingChange: (Bool) -> Void
+    private let onStatusChange: (RerunLiveStatus) -> Void
     @State private var model = RerunLiveCaptureModel()
     @State private var isOnScreen = false
 
+    /// `topInset` and `bottomInset` are what the host's title row and dock take of the window.
     /// `onFinish` receives the capture when the user stops a recording that holds at least
-    /// one camera pose. `onRecordingChange` tells the host when a recording starts and when it
-    /// is over (saved or discarded), so it can put away whatever would end it by accident.
-    init(onRecordingChange: @escaping (Bool) -> Void = { _ in },
+    /// one camera pose. `onStatusChange` hands the host the scan's phase and counts as they
+    /// move: it shows them, and puts away whatever would end a recording by accident.
+    init(topInset: CGFloat, bottomInset: CGFloat,
+         onStatusChange: @escaping (RerunLiveStatus) -> Void = { _ in },
          onFinish: @escaping (RerunCapturePack) -> Void) {
-        self.onRecordingChange = onRecordingChange
+        self.topInset = topInset
+        self.bottomInset = bottomInset
+        self.onStatusChange = onStatusChange
         self.onFinish = onFinish
     }
 
     var body: some View {
         #if targetEnvironment(simulator)
-        RerunLiveCaptureSimulatorCard()
+        RerunLiveCaptureSimulatorCard(topInset: topInset, bottomInset: bottomInset)
         #else
         ZStack {
             if isOnScreen {
@@ -62,31 +69,41 @@ struct RerunLiveCaptureView: View {
                 SceneViewTokens.Stage.background.ignoresSafeArea()
             }
 
-            VStack(spacing: SceneViewTokens.Space.sm) {
-                CaptureReadout(model: model)
-                    .padding(.top, CaptureTokens.topReserve)
-                Spacer(minLength: SceneViewTokens.Space.md)
-                if let hint = model.hint {
-                    CaptureHint(text: hint)
-                }
-                CaptureControls(model: model) {
-                    model.toggleRecording(onFinish: onFinish)
-                }
-            }
-            .frame(maxWidth: CaptureTokens.maxWidth)
-            .padding(.horizontal, SceneViewTokens.Chrome.margin)
-            .padding(.bottom, CaptureTokens.bottomReserve)
-            .animation(SceneViewTokens.Spring.fade, value: model.hint)
+            chrome
         }
         .task { await model.loadModel() }
-        .onChange(of: model.phase) { _, phase in onRecordingChange(phase != .idle) }
+        .onChange(of: model.status, initial: true) { _, status in onStatusChange(status) }
         .onAppear { isOnScreen = true }
         .onDisappear {
             isOnScreen = false
             model.discardRecording()
+            onStatusChange(RerunLiveStatus())
         }
         #endif
     }
+
+    /// The shutter and, while there is something to say, one card of copy above it.
+    private var chrome: some View {
+        VStack(spacing: SceneViewTokens.Space.md) {
+            Spacer(minLength: topInset)
+            if let hint = model.hint {
+                CaptureHint(text: hint, privacy: model.phase == .idle)
+            }
+            CaptureShutter(phase: model.phase) {
+                model.toggleRecording(onFinish: onFinish)
+            }
+        }
+        .frame(maxWidth: CaptureTokens.maxWidth)
+        .padding(.horizontal, SceneViewTokens.Chrome.margin)
+        .padding(.bottom, bottomInset)
+        .animation(SceneViewTokens.Spring.fade, value: model.hint)
+    }
+}
+
+/// What the host shows of a scan: its phase, and what the recorder holds.
+struct RerunLiveStatus: Equatable {
+    var phase: RerunLiveCaptureModel.Phase = .idle
+    var stats = RerunCaptureRecorder.Stats()
 }
 
 // MARK: - Model
@@ -109,6 +126,8 @@ final class RerunLiveCaptureModel {
     private(set) var stats = RerunCaptureRecorder.Stats()
     /// One line of guidance above the controls, `nil` for none.
     private(set) var hint: String? = RerunLiveCaptureModel.idleHint
+
+    var status: RerunLiveStatus { RerunLiveStatus(phase: phase, stats: stats) }
 
     static let idleHint = "Tap Record, then walk slowly around the room. Tap a surface to place a Shiba."
 
@@ -358,19 +377,9 @@ extension RerunCapturePlane {
 
 // MARK: - Chrome
 
-/// Layout of the capture chrome: `DESIGN.md` AR Overlay Cards over the camera, sized for a
-/// phone filmed from about a metre.
-enum CaptureTokens {
-    /// Free space kept for the host's title row and dock.
-    static let topReserve: CGFloat = 110
-    static let bottomReserve: CGFloat = 140
+/// Layout of the capture chrome: `DESIGN.md` AR Overlay Cards over the camera.
+private enum CaptureTokens {
     static let maxWidth: CGFloat = 480
-    /// A figure you can read on a phone filmed from a metre: 44 pt digits are ~7 mm tall on
-    /// an iPhone 17 Pro, the size of a 30 pt headline on a laptop seen from the same distance.
-    static let figure = Font.system(size: 44, weight: .bold, design: .rounded)
-    static let figureLabel = Font.system(size: 15, weight: .bold)
-    static let clock = Font.system(size: 22, weight: .bold, design: .rounded)
-    static let swatch: CGFloat = 10
     /// The shutter: bigger than a touch target, so Record and Stop read on film too.
     static let shutterSize: CGFloat = 76
     static let shutterRing: CGFloat = 4
@@ -380,7 +389,7 @@ enum CaptureTokens {
     static let shadow = Color.black.opacity(0.5)
     static let shadowRadius: CGFloat = 20
     static let shadowY: CGFloat = 12
-    /// Recording is `danger` red, and only recording.
+    /// Recording is `danger` red, and only recording: the dot and the shutter.
     static let recording = SceneViewTokens.HomeColor.danger
 }
 
@@ -402,91 +411,58 @@ private struct CaptureCard: ViewModifier {
     }
 }
 
-/// The four figures, big: what the recorder holds, growing as the phone moves. Each swatch is
-/// the colour that figure is drawn in over the camera.
-private struct CaptureReadout: View {
-    let model: RerunLiveCaptureModel
+/// A scan in progress says one line: the red dot, "Scanning" and the clock. It rides the host's
+/// title row, so it takes nothing more of the camera.
+struct RerunCaptureStatusLine: View {
+    let status: RerunLiveStatus
+
+    var body: some View {
+        GlassPill {
+            HStack(spacing: SceneViewTokens.Space.sm) {
+                if status.phase == .recording { RecordingDot() }
+                Text(status.phase == .saving ? "Saving" : "Scanning")
+                Text(RerunFormat.clock(Float(status.stats.duration)))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .font(SceneViewTokens.TypeScale.card)
+            .foregroundStyle(SceneViewTokens.Glass.onGlass)
+            .lineLimit(1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("rerun-scan-status")
+    }
+}
+
+/// What the settings sheet reads out of a scan, once: the recorder's counts. Each dot is the
+/// colour that figure is drawn in over the camera.
+struct RerunCaptureSettings: View {
+    let status: RerunLiveStatus
 
     private typealias Palette = SceneViewTokens.DebugView
 
     var body: some View {
-        let stats = model.stats
-        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-            status
-            Grid(alignment: .leading, horizontalSpacing: SceneViewTokens.Space.md, verticalSpacing: SceneViewTokens.Space.sm) {
-                GridRow {
-                    Figure(value: String(format: "%.1f m", stats.pathLength), label: "Path walked",
-                           swatch: Palette.color(Palette.trailNew))
-                    Figure(value: stats.points.formatted(), label: "Points",
-                           swatch: Palette.color(Palette.livePoint))
-                }
-                GridRow {
-                    Figure(value: "\(stats.planes)", label: stats.planes == 1 ? "Surface" : "Surfaces",
-                           swatch: Palette.color(Palette.liveFloorOutline))
-                    Figure(value: "\(stats.keyframes)", label: stats.keyframes == 1 ? "Photo" : "Photos",
-                           swatch: SceneViewTokens.ARChrome.onScrim)
-                }
-            }
-            .animation(SceneViewTokens.Spring.animation, value: stats)
-        }
-        .padding(SceneViewTokens.Space.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(CaptureCard())
-        .accessibilityElement(children: .combine)
-    }
-
-    private var status: some View {
-        HStack(spacing: SceneViewTokens.Space.sm) {
-            if model.phase == .recording {
-                RecordingDot()
-                Text("REC")
-                    .font(CaptureTokens.clock)
-                    .foregroundStyle(CaptureTokens.recording)
-            } else {
-                Text(model.phase == .saving ? "Saving" : "Ready")
-                    .font(CaptureTokens.clock)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-            }
-            Spacer(minLength: SceneViewTokens.Space.sm)
-            Text(Self.clock(model.stats.duration))
-                .font(CaptureTokens.clock)
-                .monospacedDigit()
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-        }
-    }
-
-    /// `m:ss`.
-    static func clock(_ seconds: TimeInterval) -> String {
-        let whole = max(0, Int(seconds))
-        return String(format: "%d:%02d", whole / 60, whole % 60)
-    }
-}
-
-private struct Figure: View {
-    let value: String
-    let label: String
-    let swatch: Color
-
-    var body: some View {
+        let stats = status.stats
         VStack(alignment: .leading, spacing: 0) {
-            Text(value)
-                .font(CaptureTokens.figure)
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            HStack(spacing: SceneViewTokens.Space.xs) {
-                Circle()
-                    .fill(swatch)
-                    .frame(width: CaptureTokens.swatch, height: CaptureTokens.swatch)
-                    .accessibilityHidden(true)
-                Text(label)
-                    .font(CaptureTokens.figureLabel)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+            Text("This scan")
+                .font(SceneViewTokens.TypeScale.captionSemibold)
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            RerunSheetFigure(label: "Path walked", value: RerunFormat.distance(stats.pathLength)) {
+                RerunLayerDot(color: Palette.trailNew)
+            }
+            RerunSheetFigure(label: "Points", value: RerunFormat.count(stats.points)) {
+                RerunLayerDot(color: Palette.livePoint)
+            }
+            RerunSheetFigure(label: stats.planes == 1 ? "Surface" : "Surfaces", value: "\(stats.planes)") {
+                RerunLayerDot(color: Palette.liveFloorOutline)
+            }
+            RerunSheetFigure(label: stats.keyframes == 1 ? "Photo" : "Photos", value: "\(stats.keyframes)") {
+                Image(systemName: "photo").foregroundStyle(.secondary)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(SceneViewTokens.Spring.animation, value: stats)
+        .accessibilityIdentifier("rerun-scan-counts")
     }
 }
 
@@ -508,45 +484,23 @@ private struct RecordingDot: View {
     }
 }
 
-/// The shutter and the privacy line.
-private struct CaptureControls: View {
-    let model: RerunLiveCaptureModel
-    let onShutter: () -> Void
+/// The shutter, alone over the camera: Record when idle, Stop while recording.
+private struct CaptureShutter: View {
+    let phase: RerunLiveCaptureModel.Phase
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        HStack(spacing: SceneViewTokens.Space.md) {
-            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
-                Text(title)
-                    .font(SceneViewTokens.TypeScale.title)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-                Label("Everything stays on your iPhone.", systemImage: "lock.fill")
-                    .font(SceneViewTokens.TypeScale.captionSemibold)
-                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            shutter
-        }
-        .padding(SceneViewTokens.Space.md)
-        .modifier(CaptureCard())
-    }
-
-    private var title: String {
-        switch model.phase {
-        case .idle: "Record"
-        case .recording: "Stop to replay"
-        case .saving: "Saving…"
-        }
-    }
-
-    private var shutter: some View {
-        Button(action: onShutter) {
+        Button(action: action) {
             ZStack {
                 Circle()
+                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
+                Circle()
                     .strokeBorder(
-                        model.phase == .recording ? CaptureTokens.recording : SceneViewTokens.ARChrome.onScrim,
+                        phase == .recording ? CaptureTokens.recording : SceneViewTokens.ARChrome.onScrim,
                         lineWidth: CaptureTokens.shutterRing
                     )
-                switch model.phase {
+                switch phase {
                 case .idle:
                     Circle()
                         .fill(CaptureTokens.recording)
@@ -563,37 +517,51 @@ private struct CaptureControls: View {
             .frame(width: CaptureTokens.shutterSize, height: CaptureTokens.shutterSize)
             .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .disabled(model.phase == .saving)
-        .accessibilityLabel(model.phase == .recording ? "Stop recording" : "Start recording")
+        .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+        .disabled(phase == .saving)
+        .shadow(color: CaptureTokens.shadow, radius: CaptureTokens.shadowRadius, y: CaptureTokens.shadowY)
+        .accessibilityLabel(phase == .recording ? "Stop recording" : "Start recording")
+        .accessibilityIdentifier("rerun-shutter")
     }
 }
 
+/// One card of copy above the shutter. The idle copy ends on the privacy line.
 private struct CaptureHint: View {
     let text: String
+    var privacy = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Text(text)
-            .font(SceneViewTokens.TypeScale.bodySemibold)
-            .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, SceneViewTokens.Space.md)
-            .padding(.vertical, SceneViewTokens.Space.sm)
-            .background(
-                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                    .fill(SceneViewTokens.ARChrome.scrim(scheme))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                    .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
-            )
-            .transition(.opacity)
+        VStack(spacing: SceneViewTokens.Space.xs) {
+            Text(text)
+                .font(SceneViewTokens.TypeScale.bodySemibold)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                .multilineTextAlignment(.center)
+            if privacy {
+                Label("Everything stays on your iPhone.", systemImage: "lock.fill")
+                    .font(SceneViewTokens.TypeScale.captionSemibold)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
+            }
+        }
+        .padding(.horizontal, SceneViewTokens.Space.md)
+        .padding(.vertical, SceneViewTokens.Space.sm)
+        .background(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                .fill(SceneViewTokens.ARChrome.scrim(scheme))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+                .strokeBorder(SceneViewTokens.ARChrome.border(scheme), lineWidth: SceneViewTokens.ARChrome.borderWidth)
+        )
+        .transition(.opacity)
     }
 }
 
 /// The simulator has no camera: say so, and point at the recorded replay instead.
 private struct RerunLiveCaptureSimulatorCard: View {
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+
     var body: some View {
         ZStack {
             SceneViewTokens.Stage.background.ignoresSafeArea()
@@ -614,8 +582,8 @@ private struct RerunLiveCaptureSimulatorCard: View {
             .modifier(CaptureCard())
             .frame(maxWidth: CaptureTokens.maxWidth)
             .padding(.horizontal, SceneViewTokens.Chrome.margin)
-            .padding(.top, CaptureTokens.topReserve)
-            .padding(.bottom, CaptureTokens.bottomReserve)
+            .padding(.top, topInset)
+            .padding(.bottom, bottomInset)
             .accessibilityElement(children: .combine)
         }
     }

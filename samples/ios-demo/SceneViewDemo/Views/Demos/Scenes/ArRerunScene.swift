@@ -1,5 +1,5 @@
 // @sceneId     ar-rerun
-// @title       Rerun AR Replay
+// @title       Room Scan
 // @subtitle    Watch a real AR session rebuild itself in 3D
 // @category    ar
 // @section     devTools
