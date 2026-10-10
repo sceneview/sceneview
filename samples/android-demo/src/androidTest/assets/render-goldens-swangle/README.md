@@ -62,17 +62,17 @@ Since #4459 each of these screens holds "Scene ready" for what its picture
 needs — the model instances, their textures (`ModelLoader.isLoading`), the
 environment, the decoded splat — and, when any of it landed after a frame had
 already been presented, for one backend drain behind the first frame that
-carries it. A load that never lands shows a "could not load" card on the stage
-after 30 s, so a capture of a failed load is a red case, not an empty stage.
+carries it. A load that reports a failure shows a "could not load" card on the
+stage, and the test fails on that card by name; a load that is merely slow shows
+"Still loading part of this scene…" after 30 s and is never captured as ready.
 
-Not yet confirmed on the CI runners. Two things to read on the first runs:
+First CI run with #4459 (38082396646, 2026-10-10): 13 of the 14 gated cases
+matched. One more run is not a proof of stability; read the next ones.
 
-- `geometry_default` still matches the early state (it passed on the slow
-  runners and failed by 5.4 % on the fast ones). Neither geometry screen loads a
-  model; the only thing #4459 changes for them is the drain behind the frame
-  that carries the HDR. If that was the difference, this reference now fails
-  everywhere and is re-recorded from a CI run; if both pictures still appear,
-  the cause is elsewhere and is not known.
+- `geometry_default` was the early state. With #4459 the capture carries the
+  environment's highlights on the shapes and differed from the old reference by
+  5.38 %, as predicted; the reference here is that run's capture.
+  `customgeometry_default` matched as it was.
 - `splatpreview_default` now waits for the decoded scan, which removes the
   empty-stage capture but is not known to explain a 54.9 % difference in
   framing. It stays out of the gate until seen stable.
