@@ -267,6 +267,16 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
     }
     val cameraManipulator = rememberContinuousCameraManipulator(pivot = CONTACT_CAMERA_TARGET)
         .driving(homeOrbit)
+    // The continuity wrapper stays the same when its driven orbit changes, so SceneView cannot
+    // observe a reset by identity. Wake the on-demand loop after composition installs the new home.
+    // Today the labels' `onFrame` below is a standing request for frames, so this scene never
+    // parks and Reset comes home without it (#4346, measured on the emulator); the request is
+    // what keeps Reset working the day those labels stop holding the loop awake.
+    RequestContactShadowCameraRenderOnHomeChange(
+        cameraHomeGeneration = demoState.cameraHomeGeneration,
+        homeShot = homeShot,
+        requestRender = renderInvalidator::requestRender,
+    )
 
     DemoScaffold(
         title = stringResource(R.string.demo_contact_shadow_preview_title),
@@ -747,6 +757,16 @@ internal class ContactShadowDemoState {
         bounceElapsedNanos = 0L
         cameraHomeGeneration++
     }
+}
+
+/** Wakes a parked scene after the Contact Shadow camera's home orbit is rebuilt. */
+@Composable
+internal fun RequestContactShadowCameraRenderOnHomeChange(
+    cameraHomeGeneration: Int,
+    homeShot: ContactShadowShot,
+    requestRender: () -> Unit,
+) {
+    LaunchedEffect(cameraHomeGeneration, homeShot) { requestRender() }
 }
 
 internal val CONTACT_CAMERA_EYE = Position(x = 0.0f, y = 1.35f, z = 3.3f)

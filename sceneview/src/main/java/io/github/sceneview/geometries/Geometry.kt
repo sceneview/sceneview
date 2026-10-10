@@ -13,6 +13,8 @@ import dev.romainguy.kotlin.math.max
 import dev.romainguy.kotlin.math.min
 import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.EntityInstance
+import io.github.sceneview.safeDestroyIndexBuffer
+import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.math.Box
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.Direction
@@ -49,12 +51,50 @@ private const val kColorSize = 4 // r, g, b, a
 open class Geometry internal constructor(
     val primitiveType: PrimitiveType,
     vertices: List<Vertex>,
-    val vertexBuffer: VertexBuffer,
+    vertexBuffer: VertexBuffer,
     primitivesIndices: List<List<Int>>,
-    val indexBuffer: IndexBuffer,
+    indexBuffer: IndexBuffer,
     var primitivesOffsets: List<IntRange>,
     var boundingBox: Box
 ) {
+    var vertexBuffer: VertexBuffer = vertexBuffer
+        private set
+    var indexBuffer: IndexBuffer = indexBuffer
+        private set
+
+    internal interface Consumer {
+        fun validate(primitiveCount: Int)
+        fun rebind()
+    }
+
+    private val lifetime = GeometryBufferLifetime<Pair<VertexBuffer, IndexBuffer>>()
+
+    internal fun attach(consumer: Consumer) = lifetime.attach(consumer)
+
+    internal fun detach(consumer: Consumer) = lifetime.detach(consumer)
+
+    /**
+     * Releases the buffers, immediately, unless a node is still bound to this geometry — in which
+     * case this is a no-op and the last node to go releases them. Main-thread only.
+     *
+     * Nodes are the only references counted. A raw renderable that was lent [vertexBuffer] and
+     * [indexBuffer] (a `MeshNode`) is not: destroy it before, or in the same pass as, this call.
+     */
+    internal fun destroy(engine: Engine) {
+        val destroyed = lifetime.destroy(vertexBuffer to indexBuffer) { engine.release(it) }
+        // What was waiting described buffers that are gone, and would rebuild them.
+        if (destroyed) uploads.discardPending()
+    }
+
+    private fun rebindConsumers(engine: Engine) = lifetime.rebind { engine.release(it) }
+
+    // Immediate, not frame-deferred: by the time a pair gets here every bound renderable has been
+    // destroyed or re-pointed at other buffers, and Filament runs driver commands in order.
+    private fun Engine.release(buffers: Pair<VertexBuffer, IndexBuffer>) {
+        safeDestroyVertexBuffer(buffers.first)
+        safeDestroyIndexBuffer(buffers.second)
+    }
+
     /**
      * Used for constructing renderables dynamically
      *
@@ -155,17 +195,43 @@ open class Geometry internal constructor(
                 offsets: List<IntRange>, boundingBox: Box
             ) -> T
         ): T {
-            val vertexBuffer = vertexBuilder.build(engine)
-            val boundingBox = vertexBuffer.setVertices(engine, vertices)
-            val indexBuffer = indexBuilder.build(engine).apply {
-                setIndices(engine, indices.flatten())
+            // Filament aborts on a zero-sized VertexBuffer; fail before allocating anything.
+            require(vertices.isNotEmpty()) { "Geometry requires at least one vertex" }
+            val (vertexBuffer, indexBuffer) = buildBuffers(engine, handler = null, released = null)
+            return try {
+                constructor(vertexBuffer, indexBuffer, indices.getOffsets(), vertices.boundingBox())
+            } catch (failure: Throwable) {
+                // These buffers have not been handed to any renderable yet.
+                engine.safeDestroyVertexBuffer(vertexBuffer)
+                engine.safeDestroyIndexBuffer(indexBuffer)
+                throw failure
             }
-            return constructor(
-                vertexBuffer,
-                indexBuffer,
-                indices.getOffsets(),
-                boundingBox
-            )
+        }
+
+        /**
+         * Builds both buffers and uploads the vertices and indices set on this builder into
+         * them. [released] runs on [handler] once per buffer Filament has let go of — see
+         * [GeometryBufferLayout.streamCount] — or never when both are `null`.
+         */
+        internal fun buildBuffers(
+            engine: Engine,
+            handler: Any?,
+            released: Runnable?
+        ): Pair<VertexBuffer, IndexBuffer> {
+            val vertexBuffer = vertexBuilder.build(engine)
+            var indexBuffer: IndexBuffer? = null
+            try {
+                vertexBuffer.uploadVertices(engine, vertices, handler, released)
+                val builtIndices = indexBuilder.build(engine)
+                indexBuffer = builtIndices
+                builtIndices.uploadIndices(engine, indices.flatten(), handler, released)
+                return vertexBuffer to builtIndices
+            } catch (failure: Throwable) {
+                // These buffers have not been handed to any renderable yet.
+                engine.safeDestroyVertexBuffer(vertexBuffer)
+                indexBuffer?.let { engine.safeDestroyIndexBuffer(it) }
+                throw failure
+            }
         }
 
         open fun build(engine: Engine) =
@@ -177,24 +243,32 @@ open class Geometry internal constructor(
             }
     }
 
-    var vertices: List<Vertex> = vertices
+    var vertices: List<Vertex> = vertices.toList()
         private set
 
-    var primitivesIndices: List<List<Int>> = primitivesIndices
+    var primitivesIndices: List<List<Int>> = primitivesIndices.map { it.toList() }
         private set
 
     val indices: List<Int>
         get() = primitivesIndices.flatten()
 
+    /** What [vertexBuffer] and [indexBuffer] were sized for; a state that differs rebuilds them. */
+    private var bufferLayout = GeometryBufferLayout.of(this.vertices, this.primitivesIndices)
+
+    /** Counts [rebuildBuffers] calls, so [update] knows one ran inside its own submission. */
+    private var rebuildCount = 0
+
     /**
-     * Back-pressure on the in-place uploads below: one in flight, the rest collapsed into the
-     * latest — see [LatestWinsUploadGate] for why a geometry cannot simply hand Filament every
-     * update it is given (#4365).
+     * Back-pressure on the uploads below, in place and rebuild alike: one in flight, the rest
+     * collapsed into the latest — see [LatestWinsUploadGate] for why a geometry cannot simply
+     * hand Filament every update it is given (#4365).
      */
     private val uploads = LatestWinsUploadGate<GeometryUpload>(
         merge = { pending, next -> pending.mergedWith(next) },
-        canUpload = { it.targets(vertexBuffer, indexBuffer) },
-        upload = { upload, onReleased -> upload.issue(vertexBuffer, indexBuffer, onReleased) },
+        // `this.`: in an initializer the bare names are the constructor parameters — the buffers
+        // this geometry was built with, destroyed by its first rebuild.
+        canUpload = { !lifetime.isDestroyed && it.targets(this.vertexBuffer, this.indexBuffer) },
+        upload = { upload, onReleased -> issueUpload(upload, onReleased) },
         // This upload left from a Filament callback, not from a node call, so no node asked for
         // a frame: without this a render-on-demand view would keep showing the superseded state.
         onDeferredUpload = { EngineRenderInvalidators.requestRender(it.engine) },
@@ -208,91 +282,172 @@ open class Geometry internal constructor(
         get() = uploads.isIdle
 
     /**
-     * Replaces the vertices. Same count and attributes as the geometry was built with.
-     *
-     * [vertices] and [boundingBox] change immediately. The upload itself is handed to Filament
-     * right away when the previous one has been consumed; otherwise it waits for it, and only the
-     * most recent call is kept — see [update].
+     * Replaces the vertices: `update(engine, vertices = vertices)`. Any count, any attributes —
+     * see [update] for what is rebuilt, and for what changes during the call and what waits for
+     * the previous upload.
      *
      * To change vertices **and** indices, call [update] with both rather than this and
-     * [setPrimitivesIndices] in turn: two calls are two uploads, and a frame can be drawn between
+     * [setPrimitivesIndices] in turn: two calls are two updates, and a frame can be drawn between
      * them with the new vertices on the old indices.
      */
     fun setVertices(engine: Engine, vertices: List<Vertex>) {
-        applyVertices(vertices)
-        uploads.submit(GeometryUpload(engine, GeometryStreams.snapshotOf(vertices = vertices)))
+        update(engine, vertices = vertices)
     }
 
     /**
-     * Replaces the indices. Uploaded under the same policy as [setVertices] — and, like it, as an
-     * upload of its own: use [update] to change vertices and indices in the same frame.
+     * Replaces the indices: `update(engine, primitivesIndices = primitivesIndices)`. Like
+     * [setVertices] it is an update of its own: use [update] to change vertices and indices in
+     * the same frame.
      */
     fun setPrimitivesIndices(engine: Engine, primitivesIndices: List<List<Int>>) {
-        applyPrimitivesIndices(primitivesIndices)
-        val streams = GeometryStreams.snapshotOf(primitivesIndices = primitivesIndices)
-        uploads.submit(GeometryUpload(engine, streams))
+        update(engine, primitivesIndices = primitivesIndices)
     }
 
     /**
-     * Updates the vertices and / or the indices in place. Anything equal to the current value is
-     * skipped.
+     * Updates the vertices and / or the indices. Anything equal to the current value is skipped.
      *
-     * Safe to call at any rate, including faster than frames are presented — an animation driven
-     * from Compose's frame clock while the view has no surface yet, or while the GPU is behind.
-     * Filament keeps every buffer it is handed pinned until its backend thread has consumed it,
-     * so a geometry holds **one** upload in flight and remembers only the latest state set while
-     * it waits. That state is uploaded as soon as the previous upload is released; the ones set
-     * in between are dropped without ever reaching Filament.
+     * **Any list fits.** The same vertex count, the same index count per primitive and the same
+     * attributes (normals, UVs, colours) are written into the existing buffers. Anything else —
+     * a sphere given more slices, a path that gains a point, a shape that gains colours —
+     * rebuilds both buffers, re-points every node bound to this geometry (`GeometryNode`, or any
+     * `RenderableNode.setGeometry`) at them, primitive ranges, bounding box and collider
+     * included, and destroys the replaced buffers right after: no node draws from them any more.
+     *
+     * **Safe to call at any rate**, including faster than frames are presented — an animation
+     * driven from Compose's frame clock while the view has no surface yet, or while the GPU is
+     * behind. Filament keeps every buffer it is handed pinned until its backend thread has
+     * consumed it, so a geometry holds **one** upload in flight — in place or rebuild alike — and
+     * remembers only the latest state set while it waits. That state is uploaded as soon as the
+     * previous upload is released; the ones set in between are dropped without ever reaching
+     * Filament.
+     *
+     * What changes when:
+     * - [vertices] and [primitivesIndices] always change during the call.
+     * - An update that fits the buffers also changes [boundingBox] and [primitivesOffsets]
+     *   during the call, whether or not its upload has to wait.
+     * - An update that needs new buffers and has to wait changes none of [vertexBuffer],
+     *   [indexBuffer], [primitivesOffsets] and [boundingBox] yet: the four keep describing the
+     *   buffers the nodes are drawing from, and switch together, with the nodes, when the
+     *   rebuild goes out. With nothing in flight that is during the call.
      *
      * What a frame can show, as a result:
      * - Vertices and indices passed to **one** call are uploaded together, so no frame mixes one
      *   call's vertices with another's indices. That does not hold for [setVertices] followed by
-     *   [setPrimitivesIndices], which are two uploads.
+     *   [setPrimitivesIndices], which are two updates.
      * - Two calls made before a frame is drawn are no longer guaranteed to land in that same
      *   frame: the first is already with Filament, so the frame may show it, and the latest state
      *   follows on the next one. The last state set is always the one that ends up on screen.
      *
      * The lists are read during the call: a `MutableList` can be refilled and passed again
-     * afterwards without changing an upload that is still waiting.
+     * afterwards, and is compared against the copy taken here.
+     *
+     * [vertexBuffer] and [indexBuffer] may be lent to a raw renderable (a `MeshNode`) as long as
+     * every update keeps the counts and the attributes: the buffers are then never replaced. A
+     * raw renderable is not re-pointed by a rebuild and would be left drawing from destroyed
+     * buffers — bind a `GeometryNode` instead when the topology can change.
+     *
+     * Main-thread only.
+     *
+     * @throws IllegalArgumentException if [vertices] is empty.
+     * @throws IllegalStateException if this geometry has been destroyed, or if some vertices
+     * declare a normal, UV or colour and others do not.
      */
     fun update(
         engine: Engine,
         vertices: List<Vertex> = this.vertices,
         primitivesIndices: List<List<Int>> = this.primitivesIndices
     ) = apply {
-        val verticesChanged = this.vertices != vertices
-        val indicesChanged = this.primitivesIndices != primitivesIndices
-        if (verticesChanged) applyVertices(vertices)
-        if (indicesChanged) applyPrimitivesIndices(primitivesIndices)
-        if (verticesChanged || indicesChanged) {
-            uploads.submit(
-                GeometryUpload(
-                    engine,
-                    GeometryStreams.snapshotOf(
-                        vertices = vertices.takeIf { verticesChanged },
-                        primitivesIndices = primitivesIndices.takeIf { indicesChanged },
-                    )
-                )
-            )
+        check(!lifetime.isDestroyed) { "Geometry has been destroyed" }
+        // Filament aborts on a zero-sized VertexBuffer; fail before anything changes.
+        require(vertices.isNotEmpty()) { "Geometry requires at least one vertex" }
+        // Identity first: the default arguments are this geometry's own lists.
+        val verticesChanged = this.vertices !== vertices && this.vertices != vertices
+        val indicesChanged = this.primitivesIndices !== primitivesIndices &&
+            this.primitivesIndices != primitivesIndices
+        if (!verticesChanged && !indicesChanged) {
+            // A consumer that failed its last rebind still holds the retired buffers: retry.
+            if (lifetime.retiredCount > 0) rebindConsumers(engine)
+            return@apply
+        }
+        // Checked here, at the call site, because the upload may not happen inside this call.
+        if (verticesChanged) vertices.requireUniformAttributes()
+        lifetime.validate(primitivesIndices.size)
+
+        // Only what changed, so a list the caller refills later still compares as different. The
+        // snapshot is both this geometry's state and what the upload carries.
+        val streams = GeometryStreams.snapshotOf(
+            vertices = vertices.takeIf { verticesChanged },
+            primitivesIndices = primitivesIndices.takeIf { indicesChanged },
+        )
+        streams.vertices?.let { this.vertices = it }
+        streams.primitivesIndices?.let { this.primitivesIndices = it }
+
+        val fitsBuffers =
+            GeometryBufferLayout.of(this.vertices, this.primitivesIndices) == bufferLayout
+        // Fits: these describe the buffers already bound, so they follow now even if the upload
+        // waits. Does not fit: they wait for the buffers they describe — see [rebuildBuffers].
+        if (fitsBuffers) describeBuffers()
+        val rebuildsBefore = rebuildCount
+        uploads.submit(GeometryUpload(engine, streams))
+        // A rebuild that left during the call has re-pointed the nodes itself; one that waits
+        // has nothing to show them yet.
+        if (fitsBuffers && rebuildCount == rebuildsBefore) rebindConsumers(engine)
+    }
+
+    /** [boundingBox] and [primitivesOffsets], from the state the bound buffers are sized for. */
+    private fun describeBuffers() {
+        boundingBox = vertices.boundingBox()
+        primitivesOffsets = primitivesIndices.getOffsets()
+    }
+
+    /**
+     * Hands the latest state to Filament — called by the gate, during [update] when nothing is in
+     * flight, otherwise from the release of the upload that was.
+     *
+     * Decided here rather than in [update]: between the two the state may have changed size and
+     * come back, and what matters is whether it fits the buffers as they are now.
+     */
+    private fun issueUpload(upload: GeometryUpload, onReleased: () -> Unit) {
+        val layout = GeometryBufferLayout.of(vertices, primitivesIndices)
+        if (layout == bufferLayout) {
+            upload.issue(vertexBuffer, indexBuffer, onReleased)
+        } else {
+            rebuildBuffers(upload.engine, layout, onReleased)
         }
     }
 
-    private fun applyVertices(vertices: List<Vertex>) {
-        // Checked here, at the call site, because the upload may not happen inside this call.
-        vertices.requireUniformAttributes()
-        boundingBox = vertices.boundingBox()
-        this.vertices = vertices
-    }
-
-    private fun applyPrimitivesIndices(primitivesIndices: List<List<Int>>) {
-        this.primitivesIndices = primitivesIndices
-        primitivesOffsets = primitivesIndices.getOffsets()
+    /**
+     * Replaces both buffers with ones sized for the current state, and re-points every node.
+     *
+     * Gated like an in-place upload: a geometry that changes size on every update while Filament
+     * consumes nothing would otherwise pin a new set of buffers per call (#4365).
+     */
+    private fun rebuildBuffers(
+        engine: Engine,
+        layout: GeometryBufferLayout,
+        onReleased: () -> Unit
+    ) {
+        val countdown = ReleaseCountdown(layout.streamCount, onReleased)
+        val released = Runnable { countdown.release() }
+        val (newVertexBuffer, newIndexBuffer) = Builder(primitiveType)
+            .vertices(vertices)
+            .primitivesIndices(primitivesIndices)
+            .buildBuffers(engine, releaseThreadHandler(), released)
+        // Retired, not destroyed: consumers reference them until rebindConsumers succeeds.
+        lifetime.retire(vertexBuffer to indexBuffer)
+        vertexBuffer = newVertexBuffer
+        indexBuffer = newIndexBuffer
+        bufferLayout = layout
+        rebuildCount++
+        describeBuffers()
+        rebindConsumers(engine)
     }
 }
 
 /**
- * The data of one in-place upload of a [Geometry]: the streams that changed, `null` for the ones
- * that did not.
+ * The data of one [Geometry] update: the streams that changed, `null` for the ones that did not.
+ * An update that fits the buffers uploads exactly these; one that does not rebuilds the buffers
+ * from the geometry's whole state.
  *
  * Only built through [snapshotOf]: an upload can wait for the previous one to be released, long
  * after the call that asked for it returned, and must still carry what that call was given.
@@ -303,6 +458,12 @@ internal class GeometryStreams private constructor(
     val vertices: List<Geometry.Vertex>?,
     val primitivesIndices: List<List<Int>>?,
 ) {
+    /**
+     * The index values of every primitive, end to end — what the index buffer holds. The values,
+     * not `0 until n`: `flatMap { it.indices }` reads the same and uploads the latter.
+     */
+    val flatIndices: List<Int>? get() = primitivesIndices?.flatten()
+
     /** The newest of each stream: a vertex or index list fully replaces the one before it. */
     fun mergedWith(next: GeometryStreams) = GeometryStreams(
         vertices = next.vertices ?: vertices,
@@ -326,7 +487,7 @@ internal class GeometryStreams private constructor(
     }
 }
 
-/** One in-place upload of a [Geometry]: its [streams], and the engine to hand them to. */
+/** One update of a [Geometry]: its [streams], and the engine to hand them to. */
 private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
     private val vertices get() = streams.vertices
     private val primitivesIndices get() = streams.primitivesIndices
@@ -345,8 +506,8 @@ private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
     }.getOrDefault(false)
 
     /**
-     * Hands every changed stream to Filament and calls [onReleased] once Filament has released
-     * all of them.
+     * Writes every changed stream into the existing buffers and calls [onReleased] once Filament
+     * has released all of them.
      */
     fun issue(vertexBuffer: VertexBuffer, indexBuffer: IndexBuffer, onReleased: () -> Unit) {
         val streamCount =
@@ -355,10 +516,8 @@ private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
         val released = Runnable { countdown.release() }
         val handler = releaseThreadHandler()
         vertices?.let { vertexBuffer.uploadVertices(engine, it, handler, released) }
-        primitivesIndices?.let { primitivesIndices ->
-            indexBuffer.uploadIndices(
-                engine, primitivesIndices.flatMap { it.indices }, handler, released
-            )
+        if (primitivesIndices != null) {
+            indexBuffer.uploadIndices(engine, streams.flatIndices.orEmpty(), handler, released)
         }
     }
 }
@@ -416,6 +575,49 @@ private fun List<Geometry.Vertex>.boundingBox(): Box {
     val center = minPosition + halfExtent
     return Box(center, halfExtent)
 }
+
+/**
+ * What a [Geometry]'s Filament buffers were sized for. A state with another layout does not fit
+ * them: the index counts are compared per primitive, not just in total, because the renderable's
+ * primitive ranges follow them.
+ *
+ * Free of any Filament type so the allocation decision is tested on the JVM.
+ */
+internal data class GeometryBufferLayout(
+    val vertexCount: Int,
+    val indexCounts: List<Int>,
+    val hasNormals: Boolean,
+    val hasUvCoordinates: Boolean,
+    val hasColors: Boolean,
+) {
+    /** How many buffers Filament is handed, and reports back, when this layout is built. */
+    val streamCount: Int
+        get() = 1 + // position
+            (if (hasNormals) 1 else 0) +
+            (if (hasUvCoordinates) 1 else 0) +
+            (if (hasColors) 1 else 0) +
+            1 // indices
+
+    companion object {
+        fun of(vertices: List<Geometry.Vertex>, primitivesIndices: List<List<Int>>) =
+            GeometryBufferLayout(
+                vertexCount = vertices.size,
+                indexCounts = primitivesIndices.map { it.size },
+                hasNormals = vertices.hasNormals,
+                hasUvCoordinates = vertices.hasUvCoordinates,
+                hasColors = vertices.hasColors,
+            )
+    }
+}
+
+/** Pure allocation decision — see [GeometryBufferLayout]. */
+internal fun requiresBufferRebuild(
+    oldVertices: List<Geometry.Vertex>,
+    oldIndices: List<List<Int>>,
+    newVertices: List<Geometry.Vertex>,
+    newIndices: List<List<Int>>
+): Boolean = GeometryBufferLayout.of(oldVertices, oldIndices) !=
+    GeometryBufferLayout.of(newVertices, newIndices)
 
 /**
  * A fresh **direct** float buffer of [count] floats, filled by [fill] and left ready to read.

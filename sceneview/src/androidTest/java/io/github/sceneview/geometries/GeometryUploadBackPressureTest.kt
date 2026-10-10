@@ -4,6 +4,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Engine
 import com.google.android.filament.Filament
+import com.google.android.filament.IndexBuffer
+import com.google.android.filament.VertexBuffer
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.Utils
 import io.github.sceneview.createEglContext
@@ -14,6 +16,9 @@ import io.github.sceneview.safeDestroy
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -78,6 +83,11 @@ class GeometryUploadBackPressureTest {
         Position(x = index * 0.1f, y = 0.05f * sin(index + step * 0.37f), z = 0f)
     }
 
+    /** [pathAt] with a point count that changes on every step: 8, 9, 10, 11, 8, … */
+    private fun resizedPathAt(step: Int): List<Position> = List(POINTS + step % 4) { index ->
+        Position(x = index * 0.1f, y = 0.05f * sin(index + step * 0.37f), z = 0f)
+    }
+
     /**
      * Lets Filament consume what it was handed and the release callbacks reach the main thread,
      * until [tube] has nothing in flight and nothing waiting.
@@ -128,6 +138,93 @@ class GeometryUploadBackPressureTest {
 
         settle(tube)
         onMain { engine.destroyGeometry(tube) }
+    }
+
+    /**
+     * The same stall with a geometry that changes **size** on every update (#4344): each one needs
+     * new buffers, and a rebuild pins a buffer per stream exactly like a rewrite. Rebuilt outside
+     * the gate this aborts the process the same way — 20 000 rebuilds × 3 streams × 4 references.
+     */
+    @Test
+    fun resizesWithNoFrame_doNotExhaustTheGlobalReferenceTable() {
+        lateinit var tube: Tube
+
+        onMain {
+            tube = Tube.Builder()
+                .points(pathAt(0))
+                .radialSegments(RADIAL_SEGMENTS)
+                .build(engine)
+            val builtVertexBuffer = tube.vertexBuffer
+            val builtOffsets = tube.primitivesOffsets
+            // Rebuilt inside the call: nothing was in flight.
+            tube.update(engine, points = resizedPathAt(1))
+            val firstRebuild = tube.vertexBuffer
+            assertNotSame("A longer path needs new buffers", builtVertexBuffer, firstRebuild)
+            assertNotEquals(builtOffsets, tube.primitivesOffsets)
+            val firstOffsets = tube.primitivesOffsets
+
+            // No flush, no frame: nothing handed to Filament below is consumed.
+            for (step in 2..STALLED_UPDATES) {
+                tube.update(engine, points = resizedPathAt(step))
+            }
+
+            // Reaching this line is the first assertion: ungated, the loop aborts the process.
+            assertEquals(resizedPathAt(STALLED_UPDATES), tube.points)
+            assertSame(
+                "A rebuild that waits must not swap the buffers before it is issued",
+                firstRebuild,
+                tube.vertexBuffer,
+            )
+            assertEquals(
+                "primitivesOffsets describes the buffers still bound, not the waiting state",
+                firstOffsets,
+                tube.primitivesOffsets,
+            )
+            assertFalse(tube.isUploadSettled)
+        }
+
+        settle(tube)
+        onMain {
+            assertEquals(
+                "Once issued, the waiting rebuild describes its own buffers",
+                tube.primitivesIndices.getOffsets(),
+                tube.primitivesOffsets,
+            )
+            assertTrue(engine.isValidVertexBuffer(tube.vertexBuffer))
+            assertTrue(engine.isValidIndexBuffer(tube.indexBuffer))
+            engine.destroyGeometry(tube)
+        }
+    }
+
+    @Test
+    fun geometryDestroyedWithARebuildWaiting_dropsItInsteadOfRebuilding() {
+        lateinit var tube: Tube
+        lateinit var destroyedVertexBuffer: VertexBuffer
+        lateinit var destroyedIndexBuffer: IndexBuffer
+
+        onMain {
+            tube = Tube.Builder()
+                .points(pathAt(0))
+                .radialSegments(RADIAL_SEGMENTS)
+                .build(engine)
+            tube.update(engine, points = pathAt(1)) // in flight
+            tube.update(engine, points = resizedPathAt(2)) // a rebuild, waiting
+            destroyedVertexBuffer = tube.vertexBuffer
+            destroyedIndexBuffer = tube.indexBuffer
+            engine.destroyGeometry(tube)
+        }
+
+        // The release of the in-flight upload arrives after the geometry is gone. Issuing the
+        // waiting rebuild then would allocate buffers nothing will ever destroy.
+        settle(tube)
+        onMain {
+            assertSame(
+                "A destroyed geometry must not be given new buffers",
+                destroyedVertexBuffer,
+                tube.vertexBuffer,
+            )
+            assertSame(destroyedIndexBuffer, tube.indexBuffer)
+        }
     }
 
     @Test
