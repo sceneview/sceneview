@@ -1,0 +1,108 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.compose.compiler)
+}
+
+android {
+    namespace = "io.github.sceneview.demo.auto"
+
+    compileSdk 37
+
+    defaultConfig {
+        // Its own application id, never the Play demo's `io.github.sceneview.demo`: a car
+        // declaration in the store app would put every one of its updates through car review.
+        applicationId "io.github.sceneview.demo.auto"
+        minSdk 28
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    buildTypes {
+        release {
+        }
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    buildFeatures {
+        compose = true
+    }
+    androidResources {
+        // en-US only, like the phone and TV demos.
+        localeFilters += ['en-rUS']
+        noCompress 'filamat', 'ktx'
+    }
+    // The garage ships three cars and three HDR environments that already exist in the
+    // repository: nothing is registered or copied into git for this sample. `stageGarageAssets`
+    // (below) picks those six files out of the phone demo's and the website's asset folders into
+    // a generated folder, so the APK carries 27 MB instead of both folders (300 MB).
+    sourceSets.main.assets.srcDirs += layout.buildDirectory.dir("generated/garageAssets").get().asFile
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+// AGP 9 ships built-in Kotlin support, so `org.jetbrains.kotlin.android` is gone
+// and with it the `android { kotlinOptions { } }` block. The Kotlin JVM target
+// now lives in the top-level `kotlin { }` extension AGP registers itself.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
+    }
+}
+
+dependencies {
+    // Compose BOM
+    implementation platform(libs.androidx.compose.bom)
+
+    // Theme, Material 3, activity-compose and :sceneview come through here.
+    implementation project(":samples:common")
+
+    // SceneView
+    implementation project(":sceneview")
+
+    // Unit tests — the selection logic, and every catalog path resolving to a staged asset.
+    testImplementation "junit:junit:4.13.2"
+}
+
+// ─── Binary 3D assets (assets/manifest.json) ─────────────────────────────
+//
+// The models are not in git: they live on the `assets-v1` GitHub Release and
+// `tools/fetch-assets.sh` materialises them at their manifest paths. The Toy Car and the HDR
+// environments are in the `android` scope, the Car Concept and the F40 in the `web` scope.
+def fetchAssets = tasks.register("fetchAssets", Exec) {
+    description = "Materialises the binary assets the garage reuses (assets/manifest.json)."
+    group = "build"
+    workingDir rootProject.projectDir
+    commandLine "bash", rootProject.file("tools/fetch-assets.sh").absolutePath, "--scope", "android", "--scope", "web"
+}
+
+// Keep in step with `GarageCatalog.kt`: `GarageCatalogTest` fails when a catalog path is not
+// staged here.
+def stageGarageAssets = tasks.register("stageGarageAssets", Sync) {
+    description = "Stages the garage's cars and environments from the shared asset folders."
+    group = "build"
+    dependsOn(fetchAssets)
+    into(layout.buildDirectory.dir("generated/garageAssets"))
+    from(rootProject.file("samples/android-demo/src/main/assets/models")) {
+        include "khronos_toy_car.glb"
+        into "models"
+    }
+    from(rootProject.file("website-static/models/platforms")) {
+        include "CarConcept.glb", "ferrari_f40.glb"
+        into "models"
+    }
+    from(rootProject.file("samples/android-demo/src/main/assets/environments")) {
+        include "studio_2k.hdr", "studio_warm_2k.hdr", "rooftop_night_2k.hdr"
+        into "environments"
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(stageGarageAssets)
+}
+tasks.withType(Test).configureEach {
+    dependsOn(stageGarageAssets)
+}

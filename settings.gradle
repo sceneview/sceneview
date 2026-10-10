@@ -50,6 +50,7 @@ project(":snippets-check").projectDir = file("tools/snippets-check")
 include ":samples:common"
 include ":samples:android-demo"         // Android (Play Store)
 include ":samples:android-tv-demo"      // Android TV
+include ":samples:android-auto-demo"    // Android Auto (parked app)
 include ":samples:desktop-demo"         // Desktop (Windows/macOS/Linux)
 // Web demo: samples/web-demo/ — plain static-site (HTML + inline JS +
 //   self-hosted sceneview.js); NOT a Gradle module. Its dead Kotlin/JS

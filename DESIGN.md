@@ -666,6 +666,29 @@ with `motion-fade`.
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
+### Car Chrome (Android Auto demo)
+
+`samples/android-auto-demo` is shown on a car's screen while parked, touched at arm's
+length. Its chrome is Glass Chrome over Media — same `glass-surface`, `over-media-edge`,
+`on-glass`, `on-glass-muted` and `chrome-scrim`, theme-independent for the same reason —
+with three tokens of its own:
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `car-touch-target` | `76dp` | Height of every tappable control. Never the 48dp phone target on a head unit |
+| `car-control-max-width` | `360dp` | A control stops growing here; on a 1920dp screen the row is centred, not stretched into banners |
+| `car-pip` | `8dp` | One step of a control's position indicator (`primary` when current) |
+
+- **One tap, one step.** A control cycles to its next choice; no picker, no list, no
+  slider, nothing that needs a second aimed touch.
+- **A control with a single choice is shown, not tappable** — its value in
+  `on-glass-muted`, no pips — so the row never changes shape between two cars.
+- **The 3D stage is the screen.** Chrome is one title block (top start) and one control
+  row (bottom), each on a `chrome-scrim` band; the car is lifted into the band between
+  them.
+- **The stage is `stage-background` and the accent is the dark-scheme `primary`**, in
+  both themes: the garage is a night scene, and the accent is always read on it.
+
 ### Demo Scaffold (iOS demo)
 
 `DemoScaffold` is the one SwiftUI shell every iOS demo screen stands in: the scene

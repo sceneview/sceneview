@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SceneView Night Garage</string>
+    <string name="garage_title">Night Garage</string>
+    <string name="garage_opening">Opening the garage</string>
+    <string name="garage_loading_car">Loading %1$s</string>
+    <string name="garage_control_car">Car</string>
+    <string name="garage_control_paint">Paint</string>
+    <string name="garage_control_lighting">Lighting</string>
+    <string name="garage_paint_factory">Factory finish</string>
+    <!-- TalkBack: what a tap on a control does. -->
+    <string name="garage_action_next">Next</string>
+</resources>
