@@ -30,6 +30,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.math.Position
+import io.github.sceneview.node.Node
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -89,12 +90,16 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
     // loading — the SplatNode is only declared once the cloud is ready, mirroring the SDK's
     // "returns null while loading, always handle the null case" resource-loading contract.
     var scan by remember { mutableStateOf<LoadedScan?>(null) }
+    var openFailed by remember { mutableStateOf(false) }
+    // How many of the captured points are drawn. 0 until the file is open, then the whole scan:
+    // set with the scan, so the first frame that carries it carries all of it.
+    var drawnPoints by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         try {
             val bytes = withContext(Dispatchers.IO) {
                 context.assets.open(SPLAT_ASSET).use { it.readBytes() }
             }
-            scan = withContext(Dispatchers.Default) {
+            val loaded = withContext(Dispatchers.Default) {
                 val startedAt = System.nanoTime()
                 // parse() sniffs the container: the same call opens a .spz or a .ply export.
                 val cloud = SplatParser.parse(bytes)
@@ -105,33 +110,42 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
                     decodeMillis = (System.nanoTime() - startedAt) / 1_000_000,
                 )
             }
+            drawnPoints = loaded.cloud.count
+            scan = loaded
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
             // A capture that cannot be read or decoded is said on the stage, not left as an
             // empty one — and no longer takes the app down with it (#4459).
             Log.w(TAG, "Failed to open $SPLAT_ASSET", error)
+            openFailed = true
             firstFrame.reportContentFailed()
         }
     }
-
-    // How many of the captured points are drawn. 0 until the file is open, then the whole scan.
-    var drawnPoints by remember { mutableIntStateOf(0) }
     val totalPoints = scan?.cloud?.count ?: 0
-    LaunchedEffect(totalPoints) {
-        if (totalPoints > 0) drawnPoints = totalPoints
-    }
     // "Scene ready" is the scan on screen, not the empty stage it decodes behind (#4459).
-    firstFrame.holdUntil(landed = scan != null && drawnPoints > 0, what = "scan")
+    firstFrame.holdUntil(landed = scan != null, what = "scan")
 
-    // The framing is only known once the file is decoded, so the manipulator is re-created when
-    // the scan lands — same `remember(key)` pattern the model viewer uses for its park framing.
+    // The framing comes from the file, and the scene below is only composed once the file is
+    // open: the camera starts on the scan. A manipulator swapped in after a frame was shown
+    // glides to its pose (the library's swap continuity), and the scan then appeared mid-move.
     val framing = scan?.framing
     val cameraManipulator = remember(framing) {
         createDefaultCameraManipulator(
             eyePosition = framing?.cameraPosition ?: DEFAULT_CAMERA_POSITION,
             targetPosition = framing?.target ?: Position(0f),
         )
+    }
+
+    // The node sorts its points for the camera on a background thread and starts from the file's
+    // own order. Frames presented while a sort is in flight are not the scan's picture yet, so
+    // they neither lift the loading cover nor count towards "Scene ready" (#4459).
+    val splatNode = remember { arrayOfNulls<Node>(1) }
+    val onFrame = remember(firstFrame) {
+        { frameTimeNanos: Long ->
+            val sorting = !firstFrame.sceneReady.value && splatNode[0]?.isFrameActive == true
+            if (!sorting) firstFrame.onFrame(frameTimeNanos)
+        }
     }
 
     DemoScaffold(
@@ -159,20 +173,25 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
             )
         },
     ) {
-        SceneView(
-            modifier = Modifier.fillMaxSize(),
-            engine = engine,
-            materialLoader = materialLoader,
-            cameraNode = cameraNode,
-            cameraManipulator = cameraManipulator,
-            onFrame = firstFrame.onFrame,
-        ) {
-            scan?.let { loaded ->
-                // The node re-sorts for the scene camera by itself as the orbit moves.
-                SplatNode(
-                    splatCloud = loaded.cloud,
-                    splatCount = drawnPoints,
-                )
+        // Nothing to draw while the file decodes: the loading cover is the screen until then.
+        // A file that could not be opened still gets its stage, under the "could not load" card.
+        if (scan != null || openFailed) {
+            SceneView(
+                modifier = Modifier.fillMaxSize(),
+                engine = engine,
+                materialLoader = materialLoader,
+                cameraNode = cameraNode,
+                cameraManipulator = cameraManipulator,
+                onFrame = onFrame,
+            ) {
+                scan?.let { loaded ->
+                    // The node re-sorts for the scene camera by itself as the orbit moves.
+                    SplatNode(
+                        splatCloud = loaded.cloud,
+                        splatCount = drawnPoints,
+                        apply = { splatNode[0] = this },
+                    )
+                }
             }
         }
     }

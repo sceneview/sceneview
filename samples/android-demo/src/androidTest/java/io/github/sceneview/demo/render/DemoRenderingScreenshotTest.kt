@@ -323,6 +323,13 @@ class DemoRenderingScreenshotTest {
      * gaussians through `SplatParser`, then uploads its data textures before the first
      * instanced draw. The scene is static once loaded (the camera only moves on user drag, and
      * there is no spin loop), so the wait is for loading, not for motion to settle.
+     *
+     * "Loaded" includes the node's painter's sort (#4459): the points start in the file's order
+     * and are re-ordered for the camera on a background thread, so the same camera gave two
+     * pictures depending on whether the capture fell before or after that order reached the
+     * screen. The demo now names itself "Scene ready" only on frames drawn with no sort in
+     * flight, and never moves its camera after the first frame, so the order it parks on is
+     * the one sorted for the home pose.
      */
     @Test
     fun splatPreviewDemo_default_state() {
@@ -872,11 +879,14 @@ class DemoRenderingScreenshotTest {
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
+            // First baselined for #4459, once the scan opens framed and sorted in one step:
+            // runs 38090189401, 38090195575 and 38090201359 gave the same picture (51 px of
+            // 2 488 320 apart at most). It was out until then: 54.7 % of pixels moved between
+            // runs when the sort order chased a camera glide.
+            "splatpreview_default",
             // Re-baselined after the Inspect and Media rewrite (the rocket replaces the helmet
             // and its cards), from the first-run capture of run 37677981378.
             "twodinthreed_default",
-            // splatpreview_default: rejected — its framing differs run to run (54.7 % of
-            // pixels in run 36416690269), so no single capture is a reference.
         )
 
         // How long we allow the demo screen to compose after `am start` — covers a cold
