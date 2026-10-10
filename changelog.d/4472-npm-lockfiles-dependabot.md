@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Security: patched transitive npm dependencies in the MCP servers and the React Native package and demo.** The lockfiles of `sceneview-mcp` and its `rerun`, `interior` and `gaming` packages now resolve `proxy-addr` 2.0.8, `@modelcontextprotocol/sdk` 1.32.1 and `sharp` 0.35.5; those of `@sceneview-sdk/react-native` and the React Native demo resolve `handlebars` 4.7.10, `shell-quote` 1.12.0 and `compression` 1.8.2. Only lockfiles change — no dependency range, no version — so nothing published changes until the next release of each package.
