@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `ar-collaborative` demo (registered by
-     `ArCloudAnchorFragment.kt`, Collaborative mode since samples step 0). Android's resource merger
-     fans every `res/values/*.xml` file in, so `R.string.demo_ar_collaborative_title` etc.
-     remains globally resolvable. Adding a new demo never needs to touch
-     this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_collaborative_title">Collaborative AR</string>
-    <string name="demo_ar_collaborative_subtitle">Place one object in two shared views</string>
+    <string name="demo_ar_collaborative_alice">Alice</string>
+    <string name="demo_ar_collaborative_bob">Bob</string>
+    <string name="demo_ar_collaborative_cube">Cube</string>
+    <string name="demo_ar_collaborative_sphere">Sphere</string>
+    <string name="demo_ar_collaborative_cylinder">Cylinder</string>
+    <string name="demo_ar_collaborative_hint">Tap the floor in either view</string>
+    <string name="demo_ar_collaborative_local">Alice and Bob share this space through two connected sessions on this phone. No second phone needed.</string>
+    <string name="demo_ar_collaborative_devices">On separate devices, a shared spatial anchor puts objects in the same place, and a network connection carries changes between viewers.</string>
 </resources>
