@@ -176,7 +176,7 @@ internal class ArDebugRecorder {
         val capture = scan?.takeIf { it.trace === trace }
         capture?.recordDepthStats(nanos)
         val pointsDue = pointsGate.isDue(nanos)
-        val photoDue = capture?.wantsPhoto(display) == true
+        val photoDue = capture?.wantsPhoto(nanos, display) == true
         // A new raw-depth image (Rerun v2 dense map), when the scan has depth and is free to fuse.
         val depth = capture?.acquireDepth(frame)
         // One camera image per frame at most, shared by the colours, the photo and the depth.
