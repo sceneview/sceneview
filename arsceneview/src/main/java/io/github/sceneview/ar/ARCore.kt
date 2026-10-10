@@ -169,6 +169,8 @@ class ARCore(
         this.features = features
         this.permissionHandler = handler
         isHostDetached = false
+        // A host that comes back after [detachHost] finds its registration released (#4467).
+        (handler as? ActivityARPermissionHandler)?.register()
 
         if (handler != null) {
             if (checkPermissionAndInstall(handler)) {
@@ -212,6 +214,8 @@ class ARCore(
      * one used to be able to create and resume a session for a scene that no longer exists,
      * and keep the camera open behind the app. From here until the next [create], a late
      * answer is dropped, [retryCameraPermission] does nothing and no verdict is published.
+     *
+     * It also releases the activity-result registration `ARSceneView` made for itself.
      */
     internal fun detachHost() {
         isHostDetached = true
@@ -223,6 +227,9 @@ class ARCore(
             cameraPermissionRequested = false
         }
         cameraRequest = null
+        // The registration of the view's own handler goes with the view (#4467): what the
+        // activity's registry keeps under a key is never collected otherwise.
+        (permissionHandler as? ActivityARPermissionHandler)?.releaseRegistration()
     }
 
     /**
@@ -316,12 +323,18 @@ class ARCore(
             return
         }
         cameraPermissionRequested = true
+        // The dialog of a request made before the activity was recreated is already up, or
+        // was answered while the activity was gone (#4467). The handler takes that request
+        // over; here it must not read as "answered at once", which means a blocked dialog.
+        val inherited = (handler as? ActivityARPermissionHandler)?.inheritsCameraRequest == true
+        val shownForNanos =
+            if (inherited) CAMERA_PROMPT_INSTANT_RETURN_MS * NANOS_PER_MILLI else 0L
         val request = CameraRequest(
             handler = handler,
             // `shouldShowPermissionRationale()` is historically inverted on this interface:
             // it answers `true` when there is NO rationale to show.
             rationaleBefore = !handler.shouldShowPermissionRationale(),
-            startedAtNanos = nanoTime(),
+            startedAtNanos = nanoTime() - shownForNanos,
         )
         cameraRequest = request
         // Android cancels a request it cannot show — another permission is being asked, the
