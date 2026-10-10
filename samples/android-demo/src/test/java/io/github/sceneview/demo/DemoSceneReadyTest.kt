@@ -1,7 +1,9 @@
 package io.github.sceneview.demo
 
 import androidx.compose.runtime.mutableStateOf
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -158,9 +160,11 @@ class DemoSceneReadyTest {
     }
 
     @Test
-    fun `a content load that never lands releases Scene ready once the wait expires`() {
+    fun `a load the demo saw fail releases Scene ready on a parked scene`() {
         // A failed HDR load never lands. The scene has presented its fallback-lit frames and
-        // parked, so no later frame will come to count: the expiry has to mark it by itself.
+        // parked, so no later frame will come to count: the report has to mark it by itself.
+        // The expiry alone no longer does (#4459): with nobody reporting a failure the load
+        // is only slow, and the stage says "still loading" instead.
         val rendered = mutableStateOf(false)
         val state = FirstFrameState(rendered)
         state.holdUntil(landed = false)
@@ -169,6 +173,9 @@ class DemoSceneReadyTest {
         assertFalse(state.sceneReady.value)
 
         state.contentWaitExpired()
+        assertFalse("slow is not ready", state.sceneReady.value)
+
+        state.reportContentFailed()
 
         assertTrue("a failed load costs a flat scene, never a hang", state.sceneReady.value)
     }
@@ -292,26 +299,65 @@ class DemoSceneReadyTest {
     }
 
     @Test
-    fun `a wait that expires with content missing says the load failed`() {
+    fun `a wait that expires with a load in flight says still loading and keeps waiting`() {
         val state = FirstFrameState(mutableStateOf(false))
         state.holdUntilModels(instancesLoaded = false) { false }
         state.onFrame(base)
         state.onFrame(base + 16 * millis)
-        assertFalse(state.contentFailed.value)
+        assertNull(state.contentIssue.value)
 
         state.contentWaitExpired()
 
-        assertTrue("never a silent empty stage", state.contentFailed.value)
-        assertTrue(state.sceneReady.value)
+        assertEquals("slow is not lost", DemoContentIssue.Slow, state.contentIssue.value)
+        assertFalse("a half-loaded stage is not ready", state.sceneReady.value)
+        state.onFrame(base + 31_000 * millis)
+        assertEquals(DemoContentIssue.Slow, state.contentIssue.value)
+        assertFalse(state.sceneReady.value)
 
-        // Slow rather than lost: the content turning up takes the message down.
+        // The content turning up takes the card down by itself, and the scene is then ready.
         state.holdUntilModels(instancesLoaded = true) { false }
         state.onFrame(base + 40_000 * millis)
-        assertFalse(state.contentFailed.value)
+        assertNull(state.contentIssue.value)
+        assertTrue(state.sceneReady.value)
     }
 
     @Test
-    fun `a wait that expires with everything landed reports no failure`() {
+    fun `textures still decoding at the end of the wait are slow, not failed`() {
+        var decoding = true
+        val state = FirstFrameState(mutableStateOf(false))
+        state.holdUntilModels(instancesLoaded = true) { decoding }
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+
+        state.contentWaitExpired()
+        assertEquals(DemoContentIssue.Slow, state.contentIssue.value)
+        assertFalse(state.sceneReady.value)
+
+        decoding = false
+        state.onFrame(base + 35_000 * millis)
+        assertNull(state.contentIssue.value)
+        assertTrue(state.sceneReady.value)
+    }
+
+    @Test
+    fun `a slow scene that parked is ready on the next ask, with no frame`() {
+        // The content landed after the last frame the scene presented: nothing calls onFrame.
+        val state = FirstFrameState(mutableStateOf(false))
+        state.holdUntil(landed = false)
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        state.contentWaitExpired()
+        assertEquals(DemoContentIssue.Slow, state.contentIssue.value)
+
+        state.holdUntil(landed = true)
+        state.contentWaitExpired()
+
+        assertNull(state.contentIssue.value)
+        assertTrue(state.sceneReady.value)
+    }
+
+    @Test
+    fun `a wait that expires with everything landed reports nothing`() {
         // The scene parked on the frame before the content landed and never presented another.
         val state = FirstFrameState(mutableStateOf(false))
         state.holdUntil(landed = false)
@@ -322,7 +368,7 @@ class DemoSceneReadyTest {
         state.contentWaitExpired()
 
         assertTrue(state.sceneReady.value)
-        assertFalse(state.contentFailed.value)
+        assertNull(state.contentIssue.value)
     }
 
     @Test
@@ -335,9 +381,41 @@ class DemoSceneReadyTest {
 
         state.reportContentFailed()
 
-        assertTrue(state.contentFailed.value)
+        assertEquals(DemoContentIssue.Failed, state.contentIssue.value)
         assertTrue("the user is told, the screen is not left on its cover", state.sceneReady.value)
         state.onFrame(base + 32 * millis)
-        assertTrue(state.contentFailed.value)
+        state.contentWaitExpired()
+        assertEquals(DemoContentIssue.Failed, state.contentIssue.value)
+    }
+
+    @Test
+    fun `a failure reported after the still loading card replaces it`() {
+        val state = FirstFrameState(mutableStateOf(false))
+        state.holdUntilModels(instancesLoaded = false) { false }
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        state.contentWaitExpired()
+
+        state.reportContentFailed()
+
+        assertEquals(DemoContentIssue.Failed, state.contentIssue.value)
+        assertTrue(state.sceneReady.value)
+    }
+
+    @Test
+    fun `a ready scene no longer asks the model loader on each frame`() {
+        // `texturesPending` is `modelLoader.isLoading`: a JNI call, and a ready scene presents
+        // frames for as long as it is on screen.
+        var asked = 0
+        val state = FirstFrameState(mutableStateOf(false))
+        state.holdUntilModels(instancesLoaded = true) { asked++; false }
+        state.onFrame(base)
+        state.onFrame(base + 16 * millis)
+        assertTrue(state.sceneReady.value)
+
+        val askedUntilReady = asked
+        repeat(100) { state.onFrame(base + (32 + it * 16) * millis) }
+
+        assertEquals(askedUntilReady, asked)
     }
 }

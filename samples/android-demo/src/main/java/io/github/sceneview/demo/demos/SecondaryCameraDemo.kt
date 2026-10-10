@@ -296,16 +296,19 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         bottomOverlay = {
-            DemoStatusBanner(
-                text = when (lastEdit) {
-                    EditSource.MAIN -> stringResource(R.string.demo_secondary_camera_status_main_edit)
-                    EditSource.PIP -> stringResource(R.string.demo_secondary_camera_status_pip_edit)
-                    null -> stringResource(R.string.demo_secondary_camera_status_prompt)
-                },
-                tone = DemoStatusTone.Guidance,
-            )
+            // No helmet, nothing to move: the stage already says the load failed.
+            if (helmet?.isFailure != true) {
+                DemoStatusBanner(
+                    text = when (lastEdit) {
+                        EditSource.MAIN -> stringResource(R.string.demo_secondary_camera_status_main_edit)
+                        EditSource.PIP -> stringResource(R.string.demo_secondary_camera_status_pip_edit)
+                        null -> stringResource(R.string.demo_secondary_camera_status_prompt)
+                    },
+                    tone = DemoStatusTone.Guidance,
+                )
+            }
         },
         controls = {
             Text(

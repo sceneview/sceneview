@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -102,13 +103,18 @@ internal class ResidentResources<T : Any>(private val release: (T) -> Unit) {
  * request: its result goes to the cache if still wanted there, and is destroyed otherwise.
  * An environment that stops being wanted is destroyed two frames after its replacement is on
  * screen; everything is destroyed when the composable leaves.
+ *
+ * A file that fails to load is not tried again and stays out of the result: [onLoadFailed] is
+ * told which one, on the main thread.
  */
 @Composable
 internal fun rememberResidentEnvironment(
     environmentLoader: EnvironmentLoader,
     file: String,
     warm: List<String> = emptyList(),
+    onLoadFailed: (file: String) -> Unit = {},
 ): Presented<Environment>? {
+    val reportLoadFailed by rememberUpdatedState(onLoadFailed)
     val resident = remember(environmentLoader) {
         ResidentResources<Environment>(environmentLoader::destroyEnvironment)
     }
@@ -127,6 +133,8 @@ internal fun rememberResidentEnvironment(
                 null
             }
             resident.onLoaded(next, environment)
+            // Not retried, so said: a caller holding "Scene ready" for this file stops waiting.
+            if (environment == null) reportLoadFailed(next)
             Log.d(TAG, "Loaded $next in ${SystemClock.elapsedRealtime() - started} ms")
             // A frame between loads: each ends on a main-thread prefilter, so they never stack.
             withFrameNanos { }

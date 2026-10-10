@@ -457,9 +457,9 @@ fun DemoScaffold(
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
     recorder: SceneRecorderState? = null,
-    // `FirstFrameState.contentFailed`: a model or environment the scene was held for did not
-    // load. Said over the stage, so a failed load is never just an empty one (#4459).
-    contentFailed: androidx.compose.runtime.State<Boolean>? = null,
+    // `FirstFrameState.contentIssue`: a model or environment the scene is held for failed to
+    // load, or is taking long. Said over the stage, so neither is just an empty one (#4459).
+    contentIssue: androidx.compose.runtime.State<DemoContentIssue?>? = null,
     // `false` for a screen that stands in for a scene without drawing one (the camera
     // permission card): its viewport is never named "Scene ready" (#4460).
     hasScene: Boolean = true,
@@ -869,9 +869,13 @@ fun DemoScaffold(
                     )
                 }
 
-                if (contentFailed?.value == true && !arSessionFailed) {
+                val issue = contentIssue?.value
+                if (issue != null && !arSessionFailed) {
                     // Over the stage rather than instead of it: whatever did load stays visible.
                     // The box does the centring and takes no touches: the stage stays draggable.
+                    // "Could not load" is only for a load the demo saw fail; one that is merely
+                    // slow gets the neutral card, which leaves when the content lands.
+                    val failed = issue == DemoContentIssue.Failed
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -879,8 +883,14 @@ fun DemoScaffold(
                         contentAlignment = Alignment.Center,
                     ) {
                         io.github.sceneview.demo.common.DemoStatusCard(
-                            text = stringResource(R.string.demo_content_failed),
-                            tone = io.github.sceneview.demo.common.DemoStatusTone.Blocked,
+                            text = stringResource(
+                                if (failed) R.string.demo_content_failed else R.string.demo_content_slow,
+                            ),
+                            tone = if (failed) {
+                                io.github.sceneview.demo.common.DemoStatusTone.Blocked
+                            } else {
+                                io.github.sceneview.demo.common.DemoStatusTone.Progress
+                            },
                             modifier = Modifier.padding(SceneViewTokens.Space.lg),
                         )
                     }

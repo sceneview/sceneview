@@ -288,7 +288,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.camera_gestures_loading),
         onReset = resetAll,
         // The stage sky follows the theme, so the chrome over it does too (`DESIGN.md` → Themed

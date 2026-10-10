@@ -321,7 +321,7 @@ fun LightingLabDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = "Toggle shading or reflections to compare",
         onResetSettings = {

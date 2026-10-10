@@ -139,7 +139,7 @@ fun SplatPreviewDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_splat_preview_loading),
         peekHeader = scan?.let {
             stringResource(

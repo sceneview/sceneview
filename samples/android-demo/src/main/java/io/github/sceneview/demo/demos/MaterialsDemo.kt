@@ -709,7 +709,7 @@ private fun StudioSection(
         onBack = { if (inspecting) changeMode(MaterialsMode.Gallery) else onBack() },
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
@@ -1324,7 +1324,7 @@ private fun OcclusionSection(
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
-        contentFailed = firstFrame.contentFailed,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = stringResource(
             if (occluderVisible) {
