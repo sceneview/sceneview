@@ -8736,6 +8736,9 @@ public struct ARSceneView: UIViewRepresentable {
 }
 ```
 
+The display stays awake while an `ARSceneView` is on screen (#4392): the view disables the app's
+idle timer when it appears and restores the previous setting when it goes away.
+
 View modifiers (chainable):
 ```swift
 .onSessionStarted(_ handler: @escaping (ARView) -> Void) -> ARSceneView
