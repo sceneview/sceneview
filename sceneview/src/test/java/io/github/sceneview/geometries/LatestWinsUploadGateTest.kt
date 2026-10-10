@@ -286,7 +286,7 @@ class LatestWinsUploadGateTest {
         assertThrows(IllegalArgumentException::class.java) { ReleaseCountdown(0) {} }
     }
 
-    // ── Call-site contract: Geometry's in-place path goes through the gate ───────────────────────
+    // ── Call-site contract: every Geometry upload after the Builder's goes through the gate ──────
 
     private val geometrySource: String by lazy {
         (
@@ -296,7 +296,7 @@ class LatestWinsUploadGateTest {
     }
 
     /** `Geometry`'s own members, from past the `Builder` (whose one-shot upload is not gated). */
-    private val inPlaceMembers: String by lazy {
+    private val updateMembers: String by lazy {
         val start = geometrySource.indexOf("private val uploads = LatestWinsUploadGate")
         assertTrue("Geometry no longer owns an upload gate", start >= 0)
         val end = geometrySource.indexOf("private class GeometryUpload", start)
@@ -305,24 +305,87 @@ class LatestWinsUploadGateTest {
     }
 
     @Test
-    fun `setVertices, setPrimitivesIndices and update all submit to the gate`() {
+    fun `update is the one place that submits to the gate`() {
+        // #4344: `setVertices` and `setPrimitivesIndices` are `update` with one argument, so that
+        // a list of another size takes the rebuild path instead of overrunning the buffers.
         assertEquals(
-            "Each in-place entry point must hand its upload to the gate",
-            3,
-            Regex("""uploads\.submit\(""").findAll(inPlaceMembers).count(),
+            "Geometry.update is the single entry point: it alone hands uploads to the gate",
+            1,
+            Regex("""uploads\.submit\(""").findAll(updateMembers).count(),
+        )
+        listOf("fun setVertices(", "fun setPrimitivesIndices(").forEach { setter ->
+            val body = updateMembers.substringAfter(setter).substringBefore("\n    }")
+            assertTrue(
+                "$setter must delegate to update, which decides between rewrite and rebuild",
+                body.contains("update(engine, "),
+            )
+        }
+    }
+
+    @Test
+    fun `a buffer rebuild is issued by the gate and reports its release`() {
+        // #4344 × #4365: a rebuild pins a buffer per stream like any upload. Issued outside the
+        // gate — or without the release callback — a geometry that changes size on every update
+        // during a stall pins without bound. The instrumented twin, where the process actually
+        // aborts, is `GeometryUploadBackPressureTest.resizesWithNoFrame_…`.
+        val gateUpload = updateMembers.substringAfter("upload = {").substringBefore("\n")
+        assertTrue(
+            "The gate's upload must go through issueUpload, which picks rewrite or rebuild",
+            gateUpload.contains("issueUpload(upload, onReleased)"),
+        )
+        assertEquals(
+            "rebuildBuffers must be reachable from issueUpload only",
+            1,
+            Regex("""(?<!fun )rebuildBuffers\(""").findAll(updateMembers).count(),
+        )
+        val rebuild = updateMembers.substringAfter("private fun rebuildBuffers(")
+        assertTrue(
+            "The rebuild must hand Filament the release callback, or the gate never reopens",
+            rebuild.contains(".buildBuffers(engine, releaseThreadHandler(), released)"),
+        )
+        assertTrue(
+            "The gate reopens once every stream of the new buffers is released",
+            rebuild.contains("ReleaseCountdown(layout.streamCount, onReleased)"),
         )
     }
 
     @Test
-    fun `no in-place entry point uploads to Filament directly`() {
+    fun `the gate checks the buffers the geometry holds now, not the ones it was built with`() {
+        // In a property initializer the bare `vertexBuffer` is the constructor parameter. After
+        // the first rebuild that buffer is destroyed, the check fails and every waiting update is
+        // dropped: `resizesWithNoFrame_…` then ends on stale buffers.
+        assertTrue(
+            "canUpload must read this.vertexBuffer / this.indexBuffer, which a rebuild replaces",
+            updateMembers.contains("it.targets(this.vertexBuffer, this.indexBuffer)"),
+        )
+    }
+
+    @Test
+    fun `destroying a geometry forgets the update that was waiting`() {
+        val destroy = geometrySource
+            .substringAfter("internal fun destroy(engine: Engine) {")
+            .substringBefore("\n    }")
+        assertTrue(
+            "A waiting update describes buffers that are gone: Geometry.destroy must discard it " +
+                "rather than leave it to rebuild a destroyed geometry",
+            destroy.contains("uploads.discardPending()"),
+        )
+        assertTrue(
+            "The gate must refuse a waiting update once the geometry is destroyed",
+            updateMembers.contains("canUpload = { !lifetime.isDestroyed && "),
+        )
+    }
+
+    @Test
+    fun `no update entry point uploads to Filament directly`() {
         // The pre-#4365 shape: `boundingBox = vertexBuffer.setVertices(engine, vertices)` straight
         // from Geometry.setVertices, once per call, unbounded.
         listOf("vertexBuffer.setVertices(", "indexBuffer.setIndices(", "setBufferAt(", "setBuffer(")
             .forEach { call ->
                 assertFalse(
-                    "Geometry's in-place path calls $call directly — it must go through the " +
+                    "Geometry's update path calls $call directly — it must go through the " +
                         "upload gate or updates pile up unbounded (#4365)",
-                    inPlaceMembers.contains(call),
+                    updateMembers.contains(call),
                 )
             }
     }

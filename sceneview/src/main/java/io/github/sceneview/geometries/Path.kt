@@ -43,7 +43,6 @@ class Path private constructor(
         fun closed(closed: Boolean) = apply { this.closed = closed }
 
         override fun build(engine: Engine): Path {
-            require(points.size >= 2) { "Path requires at least 2 points" }
             vertices(getVertices(points))
             primitivesIndices(getIndices(points.size, closed))
             return build(engine) { vertexBuffer, indexBuffer, offsets, boundingBox ->
@@ -60,6 +59,10 @@ class Path private constructor(
     var closed: Boolean = closed
         private set
 
+    /**
+     * @throws IllegalArgumentException if [points] holds fewer than 2 points: a path that short
+     * has no segment, and Filament aborts on the empty buffers it would need.
+     */
     fun update(
         engine: Engine,
         points: List<Position> = this.points,
@@ -77,8 +80,19 @@ class Path private constructor(
     companion object {
         val DEFAULT_POINTS = listOf(Position(0f, 0f, 0f), Position(1f, 0f, 0f))
 
-        fun getVertices(points: List<Position>): List<Vertex> =
-            points.map { Vertex(position = it) }
+        /**
+         * One vertex per point.
+         *
+         * Both [Builder.build] and [update] come through here before touching Filament, so this
+         * is where a degenerate path is refused: with one point there is no segment and an empty
+         * index buffer, with none an empty vertex buffer — Filament aborts natively on either.
+         *
+         * @throws IllegalArgumentException if [points] holds fewer than 2 points.
+         */
+        fun getVertices(points: List<Position>): List<Vertex> {
+            require(points.size >= 2) { "Path requires at least 2 points" }
+            return points.map { Vertex(position = it) }
+        }
 
         /**
          * Build one flat list of index pairs — two indices per segment:
