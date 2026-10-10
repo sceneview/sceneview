@@ -51,6 +51,23 @@ class ContactShadowResetRenderWiringTest {
     }
 
     @Test
+    fun `no node of the demo holds the render loop awake`() {
+        // `Node.onFrame` is a standing request for frames: one left on a label kept this scene
+        // rendering at 60 fps with nothing moving (#4450). `SceneView(onFrame = …)` is the
+        // observer that does not, and it is the only `onFrame` this demo may set.
+        assertEquals(
+            "ContactShadowPreviewDemo sets onFrame somewhere other than on SceneView — a " +
+                "Node.onFrame keeps the scene from parking (#4450).",
+            1,
+            Regex("""\bonFrame\s*=""").findAll(demoBody).count()
+        )
+        assertTrue(
+            "The one onFrame of the demo must be SceneView's.",
+            Regex("""SceneView\([^{]*?onFrame = \{""").containsMatchIn(demoBody)
+        )
+    }
+
+    @Test
     fun `the frame is requested on the invalidator the scene listens to`() {
         assertTrue(
             "The invalidator woken on Reset must be the one handed to SceneView.",
