@@ -821,6 +821,11 @@ class DemoRenderingScreenshotTest {
          */
         val SWANGLE_BASELINED_GOLDENS: Set<String> = setOf(
             "animationphysics_default",
+            // Six cases re-baselined for #4448 from the captures of run 38073545804, each one
+            // the screen with all of its content in it and each matched by at least one other
+            // run of the same day: camera-gestures (Camera | PiP switch, #4282), debug-overlay
+            // and secondary-camera (floor and light stage, #4111), fog and lighting (stage
+            // fading into the sky, #4156), model-viewer (navy stage, #4179).
             "cameragestures_default",
             "customgeometry_default",
             "debugoverlay_default",
@@ -829,6 +834,9 @@ class DemoRenderingScreenshotTest {
             // first-run capture of run 37154919481.
             "geometry_default",
             "lighting_default",
+            // First baselined for #4448, from the first-run capture of run 38073545804: the
+            // helmet is in it, and run 38065275881 gave the same picture.
+            "lightinglab_default",
             "linespaths_default",
             "materials_default",
             "modelviewer_default",
@@ -837,7 +845,6 @@ class DemoRenderingScreenshotTest {
             // Re-baselined after the Inspect and Media rewrite (the rocket replaces the helmet
             // and its cards), from the first-run capture of run 37677981378.
             "twodinthreed_default",
-            // lightinglab_default: rejected — the helmet is missing from the CI capture.
             // splatpreview_default: rejected — its framing differs run to run (54.7 % of
             // pixels in run 36416690269), so no single capture is a reference.
         )

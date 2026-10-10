@@ -36,5 +36,28 @@ logs `first-frame slug=… elapsedMs=…` in the job's `logcat.txt`.
 
 | Case | Why |
 | --- | --- |
-| `lightinglab_default` | The helmet is missing from the recording capture (run 36415395782) and present in the next run: the scene reports ready before the model is always in it. It takes the first-run skip until a capture shows the full scene. |
-| `splatpreview_default` | Correct render, but not reproducible: the splat is framed differently from one run to the next (54.7 % of pixels differed from its recording in run 36416690269). No single capture can be its reference. |
+| `splatpreview_default` | Correct render, but not reproducible: the splat is framed differently from one run to the next (54.7 % of pixels differed from its recording in run 36416690269, 54.9 % between the two attempts of run 38044621943). No single capture can be its reference. |
+
+## Known gap: "Scene ready" comes before the models (#4448)
+
+Seven runs of 2026-10-10 on the same code gave **two pictures** for several
+screens, by runner speed. On the fast runners the capture holds the whole scene;
+on the slow ones it is taken before a model, or the environment, is in it:
+
+| Case | What the early capture lacks |
+| --- | --- |
+| `cameragestures_default` | all three models (4 runs of 7) |
+| `secondarycamera_default` | the helmet in both views (3 of 7), or only the environment's shading (1 of 7) |
+| `lighting_default` | the helmet and the sky (2 of 7), or the sky alone (1 of 7) |
+| `fog_default`, `lightinglab_default` | the helmet (5 of 7) — both slugs open the same Lighting Lab screen since #4282 |
+| `customgeometry_default`, `geometry_default` | nothing visible to the eye: only the shading of the shapes differs, by 11.5 % and 5.4 % of pixels (4 runs of 7 in the early state) |
+| `materials_default` | the blurred sky behind the spheres (1 of 7) |
+
+The references here are the complete picture, so a run that captures early goes
+red, and it should: the picture it took is not the screen. The cause is the
+readiness signal, not the renderer — "Scene ready" follows the first presented
+frame (and, on the screens that pass `sceneReady`, the HDR), never the models.
+Until a screen holds "Scene ready" for its models too, expect these cases to
+flip with the runner. One reference still matches the early state:
+`geometry_default` passes on the slow runners and fails by 5.4 % on the fast
+ones. Re-record it once the gap is closed, not before.
