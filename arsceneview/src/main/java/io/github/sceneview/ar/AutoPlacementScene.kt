@@ -406,6 +406,9 @@ fun AutoPlacementScene(
     // old glyph kept sweeping over that card's copy and its Try again button (#3986).
     // DESIGN.md: the coaching is silent whenever a card explains the state.
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    // Same rule for the "Camera access needed" card: with the camera refused the session
+    // never starts, so the coaching sat on "Getting ready" over that card for good (#4452).
+    var cameraDenied by remember { mutableStateOf(false) }
     // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
@@ -438,6 +441,7 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
+            onCameraPermissionStateChanged = { cameraDenied = it != null },
             onTrackingFailureChanged = {
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
@@ -472,7 +476,7 @@ fun AutoPlacementScene(
         if (coaching) {
             val guidance = rememberArGuidanceState(state, surface, trackingFailureReason = trackingFailure)
             ARCoachingOverlay(
-                cue = if (availability == null) guidance.cue else ArGuidanceCue.NONE,
+                cue = if (availability == null && !cameraDenied) guidance.cue else ArGuidanceCue.NONE,
                 surface = guidance.surface,
                 hint = guidance.hint,
                 scanLingering = guidance.scanLingering,
