@@ -71,6 +71,7 @@ import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.FrameRateGate
 import io.github.sceneview.RenderInvalidator
 import io.github.sceneview.SceneFrameActivity
+import io.github.sceneview.SceneFrameDispatch
 import io.github.sceneview.SceneNodeManager
 import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.SceneRenderer
@@ -1418,6 +1419,9 @@ fun ARSceneView(
     // Same contract as in `SceneView`: fed with `childNodesRef`, cleared when the scene leaves.
     val frameActivity = remember { SceneFrameActivity() }
     DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
+    // Hands each frame to the nodes that have per-frame work, instead of walking the tree (#4451).
+    val frameDispatch = remember { SceneFrameDispatch() }
+    DisposableEffect(frameDispatch) { onDispose { frameDispatch.clear() } }
 
     LaunchedEffect(nodeManager) {
         var prevNodes = emptyList<Node>()
@@ -1696,7 +1700,7 @@ fun ARSceneView(
                     // nothing under the nodes' cached transform handles.
                     engine.sortTransformsIfUnsorted()
                     modelLoader.updateLoad()
-                    childNodes.forEach { it.onFrame(frameTimeNanos) }
+                    frameDispatch.dispatch(childNodes, frameTimeNanos)
 
                     // Last, so the node ticks above are already accounted for: a glTF animation
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
