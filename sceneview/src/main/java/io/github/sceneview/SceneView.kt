@@ -718,6 +718,9 @@ fun SceneView(
     // `childNodesRef`; it survives a restart of the effect below and lets go of the nodes on exit.
     val frameActivity = remember { SceneFrameActivity() }
     DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
+    // Hands each frame to the nodes that have per-frame work, instead of walking the tree (#4451).
+    val frameDispatch = remember { SceneFrameDispatch() }
+    DisposableEffect(frameDispatch) { onDispose { frameDispatch.clear() } }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -1136,7 +1139,7 @@ fun SceneView(
                         // TransformManager already sorted and reindex nothing (Engine.kt).
                         engine.sortTransformsIfUnsorted()
                         modelLoader.updateLoad()
-                        childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+                        frameDispatch.dispatch(childNodesRef.get(), frameTimeNanos)
 
                         // One time step for everything this loop advances itself: capped, so a
                         // stall does not spend an ease in one frame, and nominal after a park —
