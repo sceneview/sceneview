@@ -782,7 +782,11 @@ fun ARSceneView(
      * dialog and whose [ARCameraPermissionState.openSettings] sends the user to App Info —
      * the latter is the only way forward once [ARCameraPermissionState.permanentlyDenied].
      * Defaults to the built-in [ARCameraPermissionOverlay]; pass `null` to draw nothing and
-     * handle the state yourself through [permissionHandler].
+     * handle the state yourself through [onCameraPermissionStateChanged].
+     *
+     * It is drawn inside the scene's own box, so anything the host stacks over the scene —
+     * an "initializing" card, a scanning hint — covers it. Take that chrome down from
+     * [onCameraPermissionStateChanged] while the camera is denied (#4452).
      */
     cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
         ARCameraPermissionOverlay(it)
@@ -809,6 +813,18 @@ fun ARSceneView(
      * [arCoreAvailabilityOverlay] already explains the situation over the scene.
      */
     onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    /**
+     * Called when the camera permission verdict changes (#4452). A non-null
+     * [ARCameraPermissionState] means the session is held back until the camera is granted —
+     * it is the same state the [cameraPermissionOverlay] receives; `null` means the camera
+     * is granted again and AR is starting.
+     *
+     * Use it to replace your own "initializing" chrome while the camera is denied: without
+     * it a host has no way to tell "the session is on its way" from "the session is waiting
+     * for the user", and a loading card drawn over the scene hides the built-in explanation
+     * for good.
+     */
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,
     /**
      * DSL block for declaring AR nodes via [ARSceneScope].
      */
@@ -1164,7 +1180,23 @@ fun ARSceneView(
         )
     }
 
-    arCore.onCameraPermissionDenied = { permanently -> cameraPermissionDenial = permanently }
+    val cameraPermissionStateOf = { permanently: Boolean ->
+        ARCameraPermissionState(
+            permanentlyDenied = permanently,
+            request = { arCore.retryCameraPermission(permissionHandler) },
+            openSettings = { arCore.openAppSettings(permissionHandler) },
+        )
+    }
+    arCore.onCameraPermissionDenied = { permanently ->
+        cameraPermissionDenial = permanently
+        onCameraPermissionStateChanged?.invoke(cameraPermissionStateOf(permanently))
+    }
+    // The grant takes the explanation down on its own: waiting for a session to be created
+    // left "camera access needed" up when the grant was followed by another failure (#4452).
+    arCore.onCameraPermissionGranted = {
+        cameraPermissionDenial = null
+        onCameraPermissionStateChanged?.invoke(null)
+    }
     // Reassigned on each composition like the denial callback above, so the host lambda is
     // never stale. Both are set during composition, before the `DisposableEffect` below runs
     // `arCore.create()` — the first verdict is therefore never missed (#3374).
@@ -1712,13 +1744,7 @@ fun ARSceneView(
 
         val denial = cameraPermissionDenial
         if (denial != null && cameraPermissionOverlay != null) {
-            val state = remember(denial, permissionHandler) {
-                ARCameraPermissionState(
-                    permanentlyDenied = denial,
-                    request = { arCore.retryCameraPermission(permissionHandler) },
-                    openSettings = { arCore.openAppSettings(permissionHandler) },
-                )
-            }
+            val state = remember(denial, permissionHandler) { cameraPermissionStateOf(denial) }
             cameraPermissionOverlay(state)
         }
 
