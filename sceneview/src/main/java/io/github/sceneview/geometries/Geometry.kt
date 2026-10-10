@@ -22,6 +22,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
+import java.util.concurrent.Executor
 
 typealias UvCoordinate = Float2
 typealias UvScale = Float2
@@ -212,16 +213,24 @@ open class Geometry internal constructor(
      * [vertices] and [boundingBox] change immediately. The upload itself is handed to Filament
      * right away when the previous one has been consumed; otherwise it waits for it, and only the
      * most recent call is kept — see [update].
+     *
+     * To change vertices **and** indices, call [update] with both rather than this and
+     * [setPrimitivesIndices] in turn: two calls are two uploads, and a frame can be drawn between
+     * them with the new vertices on the old indices.
      */
     fun setVertices(engine: Engine, vertices: List<Vertex>) {
         applyVertices(vertices)
-        uploads.submit(GeometryUpload(engine, vertices = vertices))
+        uploads.submit(GeometryUpload(engine, GeometryStreams.snapshotOf(vertices = vertices)))
     }
 
-    /** Replaces the indices. Uploaded under the same policy as [setVertices]. */
+    /**
+     * Replaces the indices. Uploaded under the same policy as [setVertices] — and, like it, as an
+     * upload of its own: use [update] to change vertices and indices in the same frame.
+     */
     fun setPrimitivesIndices(engine: Engine, primitivesIndices: List<List<Int>>) {
         applyPrimitivesIndices(primitivesIndices)
-        uploads.submit(GeometryUpload(engine, primitivesIndices = primitivesIndices))
+        val streams = GeometryStreams.snapshotOf(primitivesIndices = primitivesIndices)
+        uploads.submit(GeometryUpload(engine, streams))
     }
 
     /**
@@ -232,9 +241,19 @@ open class Geometry internal constructor(
      * from Compose's frame clock while the view has no surface yet, or while the GPU is behind.
      * Filament keeps every buffer it is handed pinned until its backend thread has consumed it,
      * so a geometry holds **one** upload in flight and remembers only the latest state set while
-     * it waits. That state is uploaded as soon as the previous upload is released; the ones in
-     * between, which no frame could have shown, are dropped. Vertices and indices set by one call
-     * are uploaded together.
+     * it waits. That state is uploaded as soon as the previous upload is released; the ones set
+     * in between are dropped without ever reaching Filament.
+     *
+     * What a frame can show, as a result:
+     * - Vertices and indices passed to **one** call are uploaded together, so no frame mixes one
+     *   call's vertices with another's indices. That does not hold for [setVertices] followed by
+     *   [setPrimitivesIndices], which are two uploads.
+     * - Two calls made before a frame is drawn are no longer guaranteed to land in that same
+     *   frame: the first is already with Filament, so the frame may show it, and the latest state
+     *   follows on the next one. The last state set is always the one that ends up on screen.
+     *
+     * The lists are read during the call: a `MutableList` can be refilled and passed again
+     * afterwards without changing an upload that is still waiting.
      */
     fun update(
         engine: Engine,
@@ -249,8 +268,10 @@ open class Geometry internal constructor(
             uploads.submit(
                 GeometryUpload(
                     engine,
-                    vertices = vertices.takeIf { verticesChanged },
-                    primitivesIndices = primitivesIndices.takeIf { indicesChanged },
+                    GeometryStreams.snapshotOf(
+                        vertices = vertices.takeIf { verticesChanged },
+                        primitivesIndices = primitivesIndices.takeIf { indicesChanged },
+                    )
                 )
             )
         }
@@ -270,19 +291,48 @@ open class Geometry internal constructor(
 }
 
 /**
- * One in-place upload of a [Geometry]: the streams that changed, `null` for the ones that did not.
+ * The data of one in-place upload of a [Geometry]: the streams that changed, `null` for the ones
+ * that did not.
+ *
+ * Only built through [snapshotOf]: an upload can wait for the previous one to be released, long
+ * after the call that asked for it returned, and must still carry what that call was given.
+ *
+ * Free of any Filament type so that the snapshot and the merge are tested on the JVM.
  */
-private class GeometryUpload(
-    val engine: Engine,
-    val vertices: List<Geometry.Vertex>? = null,
-    val primitivesIndices: List<List<Int>>? = null,
+internal class GeometryStreams private constructor(
+    val vertices: List<Geometry.Vertex>?,
+    val primitivesIndices: List<List<Int>>?,
 ) {
     /** The newest of each stream: a vertex or index list fully replaces the one before it. */
-    fun mergedWith(next: GeometryUpload) = GeometryUpload(
-        engine = next.engine,
+    fun mergedWith(next: GeometryStreams) = GeometryStreams(
         vertices = next.vertices ?: vertices,
         primitivesIndices = next.primitivesIndices ?: primitivesIndices,
     )
+
+    companion object {
+        /**
+         * Copies the lists, so that a caller refilling its own `MutableList` afterwards does not
+         * rewrite an upload that has not left yet. The index lists are copied one level down for
+         * the same reason. The vertices themselves are shared, not cloned: a [Geometry.Vertex] is
+         * replaced, not edited, by every geometry builder.
+         */
+        fun snapshotOf(
+            vertices: List<Geometry.Vertex>? = null,
+            primitivesIndices: List<List<Int>>? = null,
+        ) = GeometryStreams(
+            vertices = vertices?.toList(),
+            primitivesIndices = primitivesIndices?.map { it.toList() },
+        )
+    }
+}
+
+/** One in-place upload of a [Geometry]: its [streams], and the engine to hand them to. */
+private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
+    private val vertices get() = streams.vertices
+    private val primitivesIndices get() = streams.primitivesIndices
+
+    fun mergedWith(next: GeometryUpload) =
+        GeometryUpload(next.engine, streams.mergedWith(next.streams))
 
     /**
      * Whether the buffers are still there to upload into. Asked from a Filament callback, some
@@ -299,11 +349,11 @@ private class GeometryUpload(
      * all of them.
      */
     fun issue(vertexBuffer: VertexBuffer, indexBuffer: IndexBuffer, onReleased: () -> Unit) {
-        val streams =
+        val streamCount =
             (vertices?.attributeStreamCount ?: 0) + (if (primitivesIndices != null) 1 else 0)
-        val countdown = ReleaseCountdown(streams, onReleased)
+        val countdown = ReleaseCountdown(streamCount, onReleased)
         val released = Runnable { countdown.release() }
-        val handler = uploadThreadHandler()
+        val handler = releaseThreadHandler()
         vertices?.let { vertexBuffer.uploadVertices(engine, it, handler, released) }
         primitivesIndices?.let { primitivesIndices ->
             indexBuffer.uploadIndices(
@@ -316,13 +366,17 @@ private class GeometryUpload(
 private val mainThreadHandler by lazy { Handler(Looper.getMainLooper()) }
 
 /**
- * Where Filament reports a released buffer: the thread the upload was issued from, which is the
- * thread that owns the engine and the only one allowed to issue the next upload. Falls back to
- * the main thread for a caller without a [Looper].
+ * Where Filament reports a released buffer — a [Handler] or an [Executor], it takes either: the
+ * thread the upload was issued from, which is the thread that owns the engine and the only one
+ * allowed to issue the next upload. Falls back to the main thread for a caller without a
+ * [Looper], and for one whose looper has quit by the time the buffer is released — a release that
+ * is never delivered would leave the geometry's gate closed for good.
  */
-private fun uploadThreadHandler(): Handler {
+private fun releaseThreadHandler(): Any {
     val looper = Looper.myLooper() ?: return mainThreadHandler
-    return if (looper === Looper.getMainLooper()) mainThreadHandler else Handler(looper)
+    if (looper === Looper.getMainLooper()) return mainThreadHandler
+    val handler = Handler(looper)
+    return Executor { released -> if (!handler.post(released)) mainThreadHandler.post(released) }
 }
 
 val List<Geometry.Vertex>.hasNormals get() = any { it.normal != null }

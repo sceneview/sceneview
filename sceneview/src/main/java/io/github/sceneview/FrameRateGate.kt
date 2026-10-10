@@ -268,8 +268,11 @@ object SceneRenderInvalidators {
  * Coarser than [SceneRenderInvalidators] on purpose: every view on the engine draws one more
  * frame. Views sharing an engine are few, and a frame that changes nothing is cheap next to a
  * view left showing stale geometry.
+ *
+ * Library-group API, not app API: `arsceneview` registers its view here too.
  */
-internal object EngineRenderInvalidators {
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+object EngineRenderInvalidators {
 
     private val registry = InvalidatorRegistry<Engine>()
 

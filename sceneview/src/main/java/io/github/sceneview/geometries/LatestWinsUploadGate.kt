@@ -30,8 +30,12 @@ package io.github.sceneview.geometries
  * Filament ever saw it carries no information — uploading it would only cost a copy. The gate
  * therefore keeps one pending value and folds each new submission into it with [merge]. When the
  * in-flight upload is released, that one value goes out. The state a caller set last is always
- * the state that ends up on screen; only the intermediate ones the display could not have shown
- * anyway are skipped.
+ * the state that ends up on screen; the ones set between the upload in flight and that last one
+ * are skipped.
+ *
+ * The cost is in *when*, not in *what*: the upload in flight is not recalled, so a frame drawn
+ * while a newer value waits shows the older one, and the newer one a frame later — where two
+ * ungated uploads issued before the same flush would both have landed in it.
  *
  * Free of any Filament or Android type so the policy is tested on the JVM.
  *
