@@ -1,6 +1,7 @@
 package io.github.sceneview.node
 
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.FrameDispatchEpoch
 import io.github.sceneview.frameDeltaSeconds
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
@@ -44,13 +45,24 @@ class NodeAnimationDelegate(
             val changed = (field == null) != (value == null)
             field = value
             // Starting or finishing a glide changes whether the scene has to ask this node (#3724).
-            if (changed) node.frameActivityChanged()
+            if (changed) {
+                node.frameActivityChanged()
+                // ...and whether it has a step in the per-frame plan (#4451).
+                FrameDispatchEpoch.bump()
+                // A node is only ticked while it glides, so the time of its last tick says
+                // nothing about the next glide: without this the first step of that glide would
+                // span the whole pause between the two (capped, but a visibly larger step).
+                if (value == null) lastFrameTimeNanos = null
+            }
         }
 
     /** Invoked when a smooth transform animation reaches its target. */
     var onSmoothEnd: ((node: Node) -> Unit)? = null
 
     private var lastFrameTimeNanos: Long? = null
+
+    /** Time of the last tick, or `null` when the next one starts a glide afresh. For tests. */
+    internal val lastTickNanos: Long? get() = lastFrameTimeNanos
 
     // #2324: cache the smooth-transform target's decomposed TRS so the per-frame slerp does
     // not re-run the three `Mat4` decompositions on a target held stable for the whole

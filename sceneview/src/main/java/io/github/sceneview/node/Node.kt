@@ -19,6 +19,7 @@ import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.FilamentEntity
 import io.github.sceneview.FrameActivityTracker
+import io.github.sceneview.FrameDispatchEpoch
 import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.animation.NodeAnimator
 import io.github.sceneview.collision.Collider
@@ -46,6 +47,7 @@ import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.math.worldToLocalQuaternion
 import io.github.sceneview.NULL_ENTITY
+import io.github.sceneview.overridesOnFrameCached
 import io.github.sceneview.safeDestroyEntity
 import io.github.sceneview.safeDestroyTransformable
 import io.github.sceneview.markTransformOrderUnsorted
@@ -729,6 +731,8 @@ open class Node protected constructor(
                 field = value
                 // First, and before any hook below can throw: the trackers mirror this field
                 // (#3724), so they hear about every write to it, whatever happens afterwards.
+                // Same for the per-frame plan (#4451): it was built by walking this field.
+                FrameDispatchEpoch.bump()
                 frameActivityTrackers.forEach {
                     it.onChildrenChanged(this, removedNodes, addedNodes)
                 }
@@ -928,7 +932,11 @@ open class Node protected constructor(
         set(value) {
             val changed = (field == null) != (value == null)
             field = value
-            if (changed) frameActivityChanged()
+            if (changed) {
+                frameActivityChanged()
+                // Whether this node has a step in the per-frame plan just changed (#4451).
+                FrameDispatchEpoch.bump()
+            }
         }
     var onAddedToScene: ((scene: Scene) -> Unit)? = null
     var onRemovedFromScene: ((scene: Scene) -> Unit)? = null
@@ -950,6 +958,12 @@ open class Node protected constructor(
      * nothing means "I never need a frame of my own".
      */
     internal var internalOnFrame: ((frameTimeNanos: Long) -> Unit)? = null
+        set(value) {
+            val changed = (field == null) != (value == null)
+            field = value
+            // Whether this node has a step in the per-frame plan just changed (#4451).
+            if (changed) FrameDispatchEpoch.bump()
+        }
 
     /**
      * Extra activity terms OR-ed into [isFrameActive]: the one way the library adds a term to a
@@ -1468,13 +1482,33 @@ open class Node protected constructor(
 
     // ---- Per-frame lifecycle ----
 
+    /**
+     * One frame for this node and everything under it: its smooth transform, then its children,
+     * then its own hooks.
+     *
+     * A scene does not call this on every node any more (#4451). A node whose class inherits this
+     * method is handed its two halves — [advanceSmoothTransform] and [invokeFrameCallbacks] — by
+     * [io.github.sceneview.SceneFrameDispatch], in the same order, and only when it has one; a
+     * node with neither is not visited. A class that **overrides** this method is still called on
+     * every frame, in full, and reaches its children through `super.onFrame` as it always has.
+     */
     open fun onFrame(frameTimeNanos: Long) {
         // Smooth transform interpolation
-        animationDelegate.onFrame(frameTimeNanos)
+        advanceSmoothTransform(frameTimeNanos)
 
         // Propagate to children
         childNodes.forEach { it.onFrame(frameTimeNanos) }
 
+        invokeFrameCallbacks(frameTimeNanos)
+    }
+
+    /** First half of [onFrame], before the children: the smooth-transform glide. */
+    internal fun advanceSmoothTransform(frameTimeNanos: Long) {
+        animationDelegate.onFrame(frameTimeNanos)
+    }
+
+    /** Second half of [onFrame], after the children: the library's hook, then the app's. */
+    internal fun invokeFrameCallbacks(frameTimeNanos: Long) {
         // Library hook first, so a user callback observing this node sees the library's write-back
         // of the same frame rather than the previous one.
         internalOnFrame?.invoke(frameTimeNanos)
@@ -1482,6 +1516,15 @@ open class Node protected constructor(
         // User callback
         onFrame?.invoke(frameTimeNanos)
     }
+
+    /** True while [advanceSmoothTransform] has something to advance. */
+    internal val hasSmoothTransform: Boolean get() = animationDelegate.smoothTransform != null
+
+    /** True while [invokeFrameCallbacks] has something to call. */
+    internal val hasFrameCallbacks: Boolean get() = internalOnFrame != null || onFrame != null
+
+    /** True when this node's class overrides [onFrame]. Fixed per class, read by reflection once. */
+    internal val overridesOnFrame: Boolean get() = overridesOnFrameCached(javaClass)
 
     // ---- Transform change notifications ----
 
