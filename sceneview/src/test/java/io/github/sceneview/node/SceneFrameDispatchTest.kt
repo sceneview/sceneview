@@ -278,6 +278,39 @@ class SceneFrameDispatchTest {
         assertEquals(listOf("killer", "survivor"), log)
     }
 
+    /**
+     * The one place where the dispatch deliberately does not reproduce the walk: a sibling taken
+     * out of the tree by an earlier sibling's callback. The walk iterated the children it had
+     * read on entering their parent, so it ticked that sibling one last time; the dispatch skips
+     * it. Both are pinned here so that neither changes unnoticed.
+     */
+    @Test
+    fun `a sibling detached mid-frame got a last tick from the walk and gets none from the dispatch`() {
+        fun world(log: MutableList<String>): List<Node> {
+            val root = plain()
+            val killer = plain().also { it.parent = root }
+            val detached = plain().also { it.parent = root; it.onFrame = { log += "detached" } }
+            // Under a parent the walk enters after the change: never reached, by either.
+            val later = plain().also { it.parent = root }
+            val nephew = plain().also { it.parent = later; it.onFrame = { log += "nephew" } }
+            plain().also { it.parent = root; it.onFrame = { log += "survivor" } }
+            killer.onFrame = {
+                log += "killer"
+                detached.parent = null
+                nephew.parent = null
+            }
+            return listOf(root)
+        }
+
+        val walked = ArrayList<String>()
+        walk(world(walked), 0L)
+        assertEquals(listOf("killer", "detached", "survivor"), walked)
+
+        val dispatched = ArrayList<String>()
+        SceneFrameDispatch().dispatch(world(dispatched), 0L)
+        assertEquals(listOf("killer", "survivor"), dispatched)
+    }
+
     @Test
     fun `a root stays ticked for the frame even when a callback changes the tree`() {
         val dispatch = SceneFrameDispatch()

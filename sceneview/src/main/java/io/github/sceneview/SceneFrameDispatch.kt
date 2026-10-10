@@ -50,7 +50,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * A callback may attach, detach or destroy nodes, or set another node's callback. The steps left
  * in the plan then belong to a tree that has moved on. They are still run, so that no node which
  * was due a tick loses it, except for a node that has since been taken out of its parent (which
- * is also what destroying it does). A node that *gained* per-frame work during the frame — a
+ * is also what destroying it does). That is a difference from the recursive walk for one case:
+ * the walk iterated the list of children it had read on entering the parent, so a *sibling*
+ * detached or destroyed by an earlier sibling's callback was still ticked on that frame, one last
+ * time; it no longer is. A node that *gained* per-frame work during the frame — a
  * callback set on it, a glide started, or the node itself attached — gets its first tick on the
  * next one, when the plan is rebuilt. The recursive walk gave that first tick on the same frame
  * when the node happened to come later in the walk, and on the next one otherwise.
@@ -72,6 +75,12 @@ class SceneFrameDispatch {
     /**
      * Same effect as `roots.forEach { it.onFrame(frameTimeNanos) }`, at the cost of the nodes
      * that have per-frame work instead of the cost of the tree.
+     *
+     * [roots] is compared **by identity** with the list the plan was built from: the caller must
+     * hand a new list instance whenever the set of roots changes, as both scene loops do (they
+     * publish a fresh `toList()` snapshot per change). A list mutated in place is not noticed: a
+     * root added to it gets no tick until some other write bumps [FrameDispatchEpoch]. Comparing
+     * the contents on every frame would be the per-node cost this class exists to remove.
      */
     fun dispatch(roots: List<Node>, frameTimeNanos: Long) {
         if (dispatching) {
@@ -122,8 +131,9 @@ class SceneFrameDispatch {
         var stale = false
         for (index in 0 until size) {
             val node = nodes[index]
-            // Once the tree has changed under this frame, a node that left it is not ticked:
-            // the walk would not have reached it either.
+            // Once the tree has changed under this frame, a node that left it is not ticked.
+            // The walk would not have reached it either when its parent was entered after the
+            // change; it did still tick a sibling removed while their parent was being iterated.
             if (node == null || (stale && !isStillInTree(node, roots))) continue
             when (kinds[index]) {
                 FRAME_STEP_OVERRIDE -> node.onFrame(frameTimeNanos)
