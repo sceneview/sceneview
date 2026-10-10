@@ -277,7 +277,9 @@ import java.util.concurrent.atomic.AtomicReference
  * @param onTouchEvent             Raw touch event callback with optional hit result.
  * @param permissionHandler        [ARPermissionHandler] for camera permission and ARCore install
  *                                 checks. Auto-created from the host [ComponentActivity][androidx.activity.ComponentActivity]
- *                                 when available. Pass `null` to skip permission checks.
+ *                                 when available, registered under a key of its own
+ *                                 and released when this view leaves composition (#4467).
+ *                                 Pass `null` to skip permission checks.
  * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
@@ -774,9 +776,7 @@ fun ARSceneView(
      */
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
-        remember(activity) { ActivityARPermissionHandler(activity) }
-    },
+    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     /**
      * What to draw over the scene while the camera permission is denied (#3308). Receives an
@@ -2322,9 +2322,7 @@ fun ARScene(
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
-        remember(activity) { ActivityARPermissionHandler(activity) }
-    },
+    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     content: (@Composable ARSceneScope.() -> Unit)? = null
 ) = ARSceneView(
@@ -2431,9 +2429,7 @@ fun ARSceneView(
     surfaceMirrorer: SurfaceMirrorer? = null,
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
-        remember(activity) { ActivityARPermissionHandler(activity) }
-    },
+    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
     cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
         ARCameraPermissionOverlay(it)
