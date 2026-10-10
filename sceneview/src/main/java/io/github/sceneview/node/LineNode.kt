@@ -76,5 +76,7 @@ open class LineNode private constructor(
     fun updateGeometry(
         start: Position = geometry.start,
         end: Position = geometry.end
-    ) = setGeometry(geometry.update(engine, start, end))
+    ) {
+        geometry.update(engine, start, end)
+    }
 }

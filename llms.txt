@@ -1170,6 +1170,19 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
+That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+an update that keeps the vertex count, the per-submesh index counts and the attribute layout
+(normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
+`slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
+node bound to that `Geometry` and destroys the old ones right after. Both are safe; only the second
+allocates. Both go through the same one-upload-in-flight rule (see "Custom geometry" threading
+below): a rebuild asked for while the previous upload is still with Filament waits for it, and
+until it goes out `vertexBuffer`, `indexBuffer`, `primitivesOffsets` and `boundingBox` keep
+describing the buffers still on screen — `vertices` and `primitivesIndices` are already the new
+ones. A `Geometry` passed to several `GeometryNode`s is shared: one `geometry.update(...)`
+updates them all, and it is destroyed with the last node bound to it. An update with no vertex, or
+a path with fewer than 2 points, throws `IllegalArgumentException`.
+
 ### MeshNode — custom geometry
 ```kotlin
 @Composable fun MeshNode(
@@ -1187,6 +1200,8 @@ Build the buffers with `Geometry.Builder`, which takes plain `Geometry.Vertex(po
 SceneView(...) {
     val vertices = remember(resolution) { myGenerator(resolution) }   // List<Geometry.Vertex>
     // Key the Geometry on the vertex COUNT, not on the values: same count = same buffers.
+    // MeshNode borrows the buffers and is NOT re-pointed if an update replaces them, so a
+    // count change must build a new Geometry (as here). Prefer GeometryNode otherwise.
     val geometry = remember(engine, resolution) {
         Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
             .vertices(vertices)
@@ -1195,7 +1210,8 @@ SceneView(...) {
     }
     // Animate by rewriting the existing buffers — no reallocation, no leak.
     SideEffect { geometry.update(engine, vertices) }
-    // MeshNode does NOT own buffers it was handed: free them yourself.
+    // MeshNode does NOT own buffers it was handed: free them yourself. Destruction is
+    // immediate, so declare this BEFORE the MeshNode — it is then disposed after it.
     DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
 
     MeshNode(
@@ -1207,7 +1223,21 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented: a geometry keeps one upload in flight and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two uploads and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented, whether or not the update changes the vertex or index count: a geometry keeps one upload in flight — a rewrite of its buffers or a rebuild of them — and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two updates and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+
+When the topology changes at runtime, hand the `Geometry` to a `GeometryNode` instead of lending its buffers to a `MeshNode`: the node owns it, follows every `geometry.update(...)` — buffer rebuilds included — and destroys it for you.
+```kotlin
+val material = materialLoader.createColorInstance(Color.Red)
+val sphere = Sphere.Builder().stacks(8).slices(8).build(engine)   // one submesh per stack
+val striped = GeometryNode(
+    engine = engine,
+    geometry = sphere,                         // owned by the nodes bound to it from here on
+    materialInstances = List(sphere.primitivesOffsets.size) { material },  // one per submesh…
+)
+val merged = GeometryNode(engine, sphere, materialInstance = material)     // …or one for all
+sphere.update(engine, stacks = 32, slices = 32)   // rebuilds the buffers, re-points both nodes
+```
+`GeometryNode`'s primary constructor takes `mergePrimitives: Boolean` (last parameter): `false` draws the geometry's natural submeshes with one material each, `true` draws every submesh as a single primitive with one material — the single-`materialInstance` constructor sets it for you. Those are the two supported layouts; any other `primitivesOffsets` throws `IllegalArgumentException`. Adding a submesh on a natural-layout node rebuilds its Filament renderable (new submeshes take the last material; a skinning buffer or `InstanceBuffer` set outside `builderApply` is not carried over). `RenderableNode.setGeometry(other)` destroys the geometry it replaces once no other node uses it.
 
 ### ShapeNode — 2D polygon shape
 ```kotlin

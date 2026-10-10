@@ -34,6 +34,24 @@ class GeometryStreamsTest {
         fun consume() = held.removeFirst().invoke()
     }
 
+    // ── What the index buffer is handed ──────────────────────────────────────────────────────────
+
+    @Test
+    fun `the index stream carries the index values, not their positions`() {
+        // #4427 shipped `primitivesIndices.flatMap { it.indices }`: `List.indices` is the range of
+        // valid positions, so every in-place index update uploaded 0, 1, 2, … per primitive.
+        val streams = GeometryStreams.snapshotOf(
+            primitivesIndices = listOf(listOf(2, 1, 0), listOf(3, 2, 1, 7)),
+        )
+
+        assertEquals(listOf(2, 1, 0, 3, 2, 1, 7), streams.flatIndices)
+    }
+
+    @Test
+    fun `an update without indices has no index stream`() {
+        assertNull(GeometryStreams.snapshotOf(vertices = listOf(vertex(0f))).flatIndices)
+    }
+
     // ── The snapshot ─────────────────────────────────────────────────────────────────────────────
 
     @Test

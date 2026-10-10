@@ -11,7 +11,11 @@ import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.components.RenderableInstance
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.geometries.setGeometry
+import io.github.sceneview.geometries.mergedForPrimitiveCount
+import io.github.sceneview.geometries.geometry
+import io.github.sceneview.safeDestroyGeometry
 import io.github.sceneview.math.toVector3Box
+import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.renderableGeneration
 import io.github.sceneview.safeDestroyMaterialInstance
 import io.github.sceneview.safeDestroyRenderable
@@ -29,6 +33,135 @@ open class RenderableNode(
     engine: Engine,
     @FilamentEntity entity: Entity = NULL_ENTITY,
 ) : Node(engine, entity), RenderableComponent {
+
+    private var boundGeometry: Geometry? = null
+    private var mergeGeometryPrimitives = false
+    private var replayGeometryBuilder: RenderableManager.Builder.() -> Unit = {}
+    // Every setLayerMask call folded into one (select, value) pair, replayed on a rebuild. Bits
+    // never selected keep whatever the builder gives them (Filament's 0x01 default, or the
+    // node's own builderApply) instead of being guessed here.
+    private var layerMaskSelect = 0
+    private var layerMaskValue = 0
+
+    private val geometryConsumer = object : Geometry.Consumer {
+        override fun validate(primitiveCount: Int) {
+            require(primitiveCount > 0) { "A rendered geometry requires at least one primitive" }
+            if (!mergeGeometryPrimitives && primitiveCount != this@RenderableNode.primitiveCount) {
+                require(morphTargetCount == 0) {
+                    "Changing primitive count on a morphed renderable is unsupported"
+                }
+            }
+        }
+        override fun rebind() { applyBoundGeometry() }
+    }
+
+    /** Natural submeshes or one merged primitive are the supported dynamic layouts. */
+    internal fun setGeometryRebuildBuilder(builder: RenderableManager.Builder.() -> Unit) {
+        replayGeometryBuilder = builder
+    }
+
+    private fun bindGeometry(
+        geometry: Geometry,
+        offsets: List<IntRange>,
+        merged: Boolean = false
+    ) {
+        // From the offsets, not from `primitivesIndices`: while a rebuild waits for the previous
+        // upload the indices are already the new ones, and the buffers still the old ones.
+        require((merged && offsets == geometry.primitivesOffsets.mergedForPrimitiveCount(1)) ||
+            (!merged && offsets == geometry.primitivesOffsets)) {
+            "Dynamic geometry requires natural primitive offsets or one range covering all indices"
+        }
+        val previous = boundGeometry
+        val previousMerge = mergeGeometryPrimitives
+        if (previous !== geometry) geometry.attach(geometryConsumer)
+        boundGeometry = geometry
+        mergeGeometryPrimitives = merged
+        try {
+            applyBoundGeometry()
+        } catch (failure: Throwable) {
+            boundGeometry = previous
+            mergeGeometryPrimitives = previousMerge
+            if (previous !== geometry) geometry.detach(geometryConsumer)
+            throw failure
+        }
+        if (previous !== geometry) {
+            previous?.detach(geometryConsumer)
+            previous?.let { engine.safeDestroyGeometry(it) }
+        }
+    }
+
+    private fun applyBoundGeometry() {
+        val geometry = boundGeometry ?: return
+        val offsets = if (mergeGeometryPrimitives) {
+            geometry.primitivesOffsets.mergedForPrimitiveCount(1)
+        } else geometry.primitivesOffsets
+        geometryConsumer.validate(geometry.primitivesOffsets.size)
+        if (primitiveCount != offsets.size) rebuildGeometryRenderable(geometry, offsets)
+        renderableManager.setGeometry(renderableInstance, geometry, offsets)
+        onGeometryApplied()
+        onComponentChanged()
+        if (!hasCustomCollisionShape) updateCollisionShape()
+    }
+
+    /**
+     * Called each time the bound geometry has been (re)applied to the renderable — by
+     * [setGeometry] or by a `Geometry.update` on a geometry this node is bound to — with the new
+     * bounding box already pushed to Filament.
+     */
+    internal open fun onGeometryApplied() {}
+
+    // Filament cannot resize a renderable's primitive array with setGeometryAt. Rebuild only
+    // when that array changes, keeping the entity, live materials and accessible render flags.
+    // New submeshes inherit the last material; removed submeshes cease drawing.
+    //
+    // What survives is what Filament lets us read back (priority, channel, culling, fog, shadow
+    // flags, light channels, instance count, materials, blend orders), the layer mask tracked by
+    // setLayerMask, and whatever GeometryNode's builderApply sets. A skinning buffer, bone
+    // matrices, an InstanceBuffer or morph targets configured any other way have no getter and
+    // are NOT carried over: set them in builderApply, or re-apply them after the update.
+    private fun rebuildGeometryRenderable(geometry: Geometry, offsets: List<IntRange>) {
+        val manager = renderableManager
+        val instance = renderableInstance
+        val materials = List(primitiveCount) { getMaterialInstanceAt(it) }
+        val blendOrders = List(primitiveCount) { manager.getBlendOrderAt(instance, it) }
+        val globalBlend = List(primitiveCount) { manager.isGlobalBlendOrderEnabledAt(instance, it) }
+        val priority = manager.getPriority(instance)
+        val channel = manager.getChannel(instance)
+        val culling = manager.isCullingEnabled(instance)
+        val fog = manager.getFogEnabled(instance)
+        val cast = manager.isShadowCaster(instance)
+        val receive = manager.isShadowReceiver(instance)
+        val contact = manager.isScreenSpaceContactShadowsEnabled(instance)
+        val lightChannels = List(8) { manager.getLightChannel(instance, it) }
+        val instanceCount = manager.getInstanceCount(instance)
+        val builder = RenderableManager.Builder(offsets.size)
+            .apply(replayGeometryBuilder)
+            .geometry(geometry, offsets)
+            .priority(priority).channel(channel).culling(culling).fog(fog)
+            .castShadows(cast).receiveShadows(receive).screenSpaceContactShadows(contact)
+            .instances(instanceCount)
+        lightChannels.forEachIndexed { index, enabled -> builder.lightChannel(index, enabled) }
+        if (layerMaskSelect != 0) builder.layerMask(layerMaskSelect, layerMaskValue)
+        offsets.indices.forEach { index ->
+            val source = index.coerceAtMost(materials.lastIndex)
+            materials[source]?.let { builder.material(index, it) }
+            builder.blendOrder(index, blendOrders[source])
+            builder.globalBlendOrderEnabled(index, globalBlend[source])
+        }
+        try {
+            builder.build(engine, entity)
+        } finally {
+            // Replacing a component can compact the manager, invalidating other nodes' handles.
+            engine.bumpRenderableGeneration()
+            _renderableInstance = 0
+        }
+    }
+
+    override fun setLayerMask(select: Int, value: Int) {
+        layerMaskSelect = layerMaskSelect or select
+        layerMaskValue = (layerMaskValue and select.inv()) or (value and select)
+        super.setLayerMask(select, value)
+    }
 
     /**
      * Every mutator inherited from [io.github.sceneview.components.RenderableComponent] that changes what is drawn lands here, and asks the
@@ -142,16 +275,23 @@ open class RenderableNode(
     /**
      * Changes the geometry and re-derives the collision shape from the new bounding box.
      *
-     * This is the single choke point every geometry mutation goes through: all eleven
-     * `updateGeometry` overloads ([GeometryNode], [PlaneNode], [CubeNode], [SphereNode],
-     * [CylinderNode], [ConeNode], [TorusNode], [CapsuleNode], [LineNode], [PathNode],
-     * [ShapeNode]) end in a `setGeometry(...)` call, as does [ViewNode]'s
-     * `updateGeometrySize()`. Refreshing here rather than in `GeometryNode.updateGeometry`
-     * is what makes the fix complete: the shape-specific overloads call `setGeometry`
-     * directly and never route through `GeometryNode.updateGeometry`, so hoisting it there
-     * would have left `CubeNode` — the issue's own repro — still mis-picking.
+     * Binding registers this node with [geometry], and every later change to it — this call, or
+     * a `Geometry.update(...)` from any of the `updateGeometry` overloads ([GeometryNode],
+     * [PlaneNode], [CubeNode], [SphereNode], [CylinderNode], [ConeNode], [TorusNode],
+     * [CapsuleNode], [LineNode], [PathNode], [ShapeNode], [TubeNode]), from [ViewNode]'s
+     * `updateGeometrySize()`, from another node sharing the geometry, or from the app directly —
+     * lands in the same private `applyBoundGeometry()`. That is the single choke point, and it
+     * runs exactly once per change: the overloads call `geometry.update(...)` and nothing else.
+     * Refreshing the collider there rather than in `GeometryNode.updateGeometry` is what makes
+     * the fix complete: the shape-specific overloads never route through
+     * `GeometryNode.updateGeometry`, so hoisting it there would have left `CubeNode` — the
+     * issue's own repro — still mis-picking.
      *
-     * `setGeometry` pushes the new AABB to Filament, which is what culling and rendering use;
+     * The binding also transfers the buffers' lifetime: the geometry previously bound, if any,
+     * is destroyed once no other node references it, and [geometry] is destroyed with the last
+     * node bound to it.
+     *
+     * Rebinding pushes the new AABB to Filament, which is what culling and rendering use;
      * [collisionShape] is separate state that used to keep whatever box the node was built
      * with. A node resized after construction therefore rendered at its new size and picked at
      * its old one (#3194) — most visibly on [ViewNode], whose quad is sized from the measured
@@ -166,16 +306,7 @@ open class RenderableNode(
      * whole vertex buffer.
      */
     override fun setGeometry(geometry: Geometry) {
-        super.setGeometry(geometry)
-        if (!hasCustomCollisionShape) {
-            updateCollisionShape()
-        }
-        // Push source for render-on-demand. New vertices are a new picture, and nothing else
-        // reports it: the node has not moved, so [onTransformChanged] never fires. This is the
-        // funnel every geometry change goes through — `GeometryNode.updateGeometry`, and with it
-        // every `SphereNode(radius = …)` / `CubeNode(size = …)` / `PathNode(points = …)` the
-        // `SceneScope` DSL re-applies when its declared geometry changes.
-        requestRender()
+        bindGeometry(geometry, geometry.primitivesOffsets)
     }
 
     /**
@@ -191,13 +322,12 @@ open class RenderableNode(
      * `internal`: only [GeometryNode]'s merged-primitive constructors need this, all within this
      * module — keeping it internal avoids growing the public API surface for #3855.
      */
-    internal fun setGeometry(geometry: Geometry, offsets: List<IntRange>) {
-        renderableManager.setGeometry(renderableInstance, geometry, offsets)
-        onComponentChanged()
-        if (!hasCustomCollisionShape) {
-            updateCollisionShape()
-        }
-        requestRender()
+    internal fun setGeometry(
+        geometry: Geometry,
+        offsets: List<IntRange>,
+        mergePrimitives: Boolean = offsets != geometry.primitivesOffsets
+    ) {
+        bindGeometry(geometry, offsets, mergePrimitives)
     }
 
     /**
@@ -242,6 +372,11 @@ open class RenderableNode(
         // causing "Invalid texture still bound to MaterialInstance" on the subsequent texture
         // destroy.
         engine.safeDestroyRenderable(entity)
+        boundGeometry?.let {
+            it.detach(geometryConsumer)
+            engine.safeDestroyGeometry(it)
+        }
+        boundGeometry = null
         // Then tear down owned MaterialInstances if the constructor opted in (#1123).
         // safeDestroyMaterialInstance is a no-op (via runCatching) if the instance is already
         // destroyed or invalid — robust against double-destroy.

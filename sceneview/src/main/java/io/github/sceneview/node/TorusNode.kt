@@ -74,5 +74,7 @@ open class TorusNode private constructor(
         center: Position = geometry.center,
         majorSegments: Int = geometry.majorSegments,
         minorSegments: Int = geometry.minorSegments
-    ) = setGeometry(geometry.update(engine, majorRadius, minorRadius, center, majorSegments, minorSegments))
+    ) {
+        geometry.update(engine, majorRadius, minorRadius, center, majorSegments, minorSegments)
+    }
 }
