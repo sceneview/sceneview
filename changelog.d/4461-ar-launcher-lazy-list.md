@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: going back from an AR demo reaches the AR list sooner ([#4461](https://github.com/sceneview/sceneview/issues/4461)).** The AR tab built every one of its demo cards at once, on the frame that starts the way back, so the app held still for well over a second. It now builds only the rows on screen, like the Showcase does, which takes about half a second off the wait on a Pixel 4a.
