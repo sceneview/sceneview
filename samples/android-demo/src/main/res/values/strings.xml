@@ -135,10 +135,12 @@
     <string name="ar_dock_reset_caption">Reset</string>
     <string name="ar_status_scanning">Scanning for surfaces…</string>
     <!-- Placement coaching copy lives in strings_demo_ar_placement.xml (`ar_place_*`). -->
-    <string name="ar_starting_session">Starting AR session…</string>
-    <string name="ar_starting_session_subtitle">Hold up — initializing ARCore.</string>
     <string name="ar_permission_required_title">Camera permission is required to run AR</string>
     <string name="ar_permission_required_subtitle">Grant the permission in system settings, then return to this tab.</string>
+    <string name="ar_permission_allow_subtitle">Allow camera access to start this demo.</string>
+    <string name="ar_permission_blocked_subtitle">Camera access is off for this app. Turn it on in system settings — the demo starts when you come back.</string>
+    <string name="ar_permission_try_again">Try again</string>
+    <string name="ar_permission_open_settings">Open settings</string>
 
     <!-- Featured AR demos on the AR launcher -->
     <string name="featured_ar_placement_title">Place in AR</string>
