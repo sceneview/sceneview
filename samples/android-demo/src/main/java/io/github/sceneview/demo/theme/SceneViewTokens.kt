@@ -439,6 +439,13 @@ object SceneViewTokens {
          */
         const val rowTextStartFraction = 0.44f
 
+        /**
+         * `home-row-whole-dissolve` — the same, for a row that shows its picture whole
+         * (the "What's new" row): the picture stays solid across the band a card holds its
+         * subject in and only its trailing margin dissolves.
+         */
+        const val rowWholeDissolveStart = 0.84f
+
         /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
         val rowTextPaddingEnd = 16.dp
         val rowTextPaddingVertical = 14.dp

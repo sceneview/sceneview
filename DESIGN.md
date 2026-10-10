@@ -180,6 +180,8 @@ never truncated; the card grows.
 | `home-row-media-fraction` | 0.5 | Width of the picture in a catalogue row, full height, edge to edge |
 | `home-row-dissolve` | 0.42 | Where the picture starts dissolving towards the text, as a fraction of its width; cosine ease to 0 at its edge |
 | `home-row-text-start` | 0.44 of the card | Leading edge of a row's text column; 16dp to the trailing edge, 14dp above and below, 4dp title to subtitle |
+| `home-row-whole` | The picture at its own aspect (5 : 4) and the row's height, against the leading edge; text `space-md` after it | The "What's new" row. Its picture stands for a demo the row does not name, so the card is shown whole on every width instead of cropped to half the row — on a tablet that crop kept the middle fifth of the card (#4351). A row its text makes taller widens the picture with it, up to `home-row-media-fraction` |
+| `home-row-whole-dissolve` | 0.84 | Where a whole picture starts dissolving, as a fraction of its width: solid across the band a card holds its subject in, only the trailing margin fades |
 | `home-banner-aspect` | 2 : 1 | A Featured banner's picture, full card width |
 | `home-banner-dissolve` | 0.55 | Where a banner's picture starts dissolving towards its caption, as a fraction of its height |
 | `home-banner-caption-overlap` | 28dp | How far the caption is pulled up into the banner's fade; 16dp across |
