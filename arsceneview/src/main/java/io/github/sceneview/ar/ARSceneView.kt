@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.withFrameNanos
@@ -816,8 +817,11 @@ fun ARSceneView(
     /**
      * Called when the camera permission verdict changes (#4452). A non-null
      * [ARCameraPermissionState] means the session is held back until the camera is granted —
-     * it is the same state the [cameraPermissionOverlay] receives; `null` means the camera
+     * it is the very instance the [cameraPermissionOverlay] receives; `null` means the camera
      * is granted again and AR is starting.
+     *
+     * It is not called when the scene leaves composition, nor after: drop what you keep from
+     * it along with the scene. A state kept past that point does nothing when invoked.
      *
      * Use it to replace your own "initializing" chrome while the camera is denied: without
      * it a host has no way to tell "the session is on its way" from "the session is waiting
@@ -1011,7 +1015,7 @@ fun ARSceneView(
 
     // Camera permission denial (#3308): `null` while granted or not yet answered, otherwise
     // whether the system has stopped asking. Cleared when a session finally comes up.
-    var cameraPermissionDenial by remember { mutableStateOf<Boolean?>(null) }
+    var cameraPermissionState by remember { mutableStateOf<ARCameraPermissionState?>(null) }
     // ARCore availability (#3374): `null` while AR can start or the check is still running,
     // otherwise why it cannot. Cleared when a session finally comes up.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
@@ -1025,7 +1029,7 @@ fun ARSceneView(
         val initialPlaybackDatasetUri = playbackDatasetUri
         ARCore(
             onSessionCreated = { session ->
-                cameraPermissionDenial = null
+                cameraPermissionState = null
                 arCoreAvailability = null
                 cameraStream?.let { session.setCameraTextureNames(it.cameraTextureIds) }
                 // Bind the playback source first — ARCore mandates the dataset is set before
@@ -1180,21 +1184,22 @@ fun ARSceneView(
         )
     }
 
-    val cameraPermissionStateOf = { permanently: Boolean ->
-        ARCameraPermissionState(
-            permanentlyDenied = permanently,
-            request = { arCore.retryCameraPermission(permissionHandler) },
-            openSettings = { arCore.openAppSettings(permissionHandler) },
-        )
-    }
+    // One state per verdict, shared by the overlay and the host. Its actions read the handler
+    // of the latest composition, so a state the host keeps never asks through a stale one.
+    val currentPermissionHandler by rememberUpdatedState(permissionHandler)
     arCore.onCameraPermissionDenied = { permanently ->
-        cameraPermissionDenial = permanently
-        onCameraPermissionStateChanged?.invoke(cameraPermissionStateOf(permanently))
+        val state = ARCameraPermissionState(
+            permanentlyDenied = permanently,
+            request = { arCore.retryCameraPermission(currentPermissionHandler) },
+            openSettings = { arCore.openAppSettings(currentPermissionHandler) },
+        )
+        cameraPermissionState = state
+        onCameraPermissionStateChanged?.invoke(state)
     }
     // The grant takes the explanation down on its own: waiting for a session to be created
     // left "camera access needed" up when the grant was followed by another failure (#4452).
     arCore.onCameraPermissionGranted = {
-        cameraPermissionDenial = null
+        cameraPermissionState = null
         onCameraPermissionStateChanged?.invoke(null)
     }
     // Reassigned on each composition like the denial callback above, so the host lambda is
@@ -1216,6 +1221,9 @@ fun ARSceneView(
 
         onDispose {
             lifecycle.removeObserver(observer)
+            // Before `destroy()`: a late permission answer, or a permission state the host
+            // kept, must not start a session for a scene that is gone (#4452).
+            arCore.detachHost()
             arCore.destroy()
         }
     }
@@ -1742,11 +1750,8 @@ fun ARSceneView(
             )
         }
 
-        val denial = cameraPermissionDenial
-        if (denial != null && cameraPermissionOverlay != null) {
-            val state = remember(denial, permissionHandler) { cameraPermissionStateOf(denial) }
-            cameraPermissionOverlay(state)
-        }
+        val denial = cameraPermissionState
+        if (denial != null && cameraPermissionOverlay != null) cameraPermissionOverlay(denial)
 
         // The camera permission card wins when both apply: granting the camera is the first
         // step, and stacking two explanations over the scene helps nobody (#3374).
@@ -2356,4 +2361,141 @@ fun ARScene(
     permissionHandler = permissionHandler,
     lifecycle = lifecycle,
     content = content
+)
+
+/**
+ * Binary-compatibility shim for the pre-`onCameraPermissionStateChanged` descriptor of
+ * [ARSceneView] (v4.53). The Compose compiler puts every parameter in the JVM signature, so
+ * the new callback retyped the function: this keeps a library compiled against the old
+ * signature linking. It behaves as before, with no camera permission callback.
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the ARSceneView overload that takes `onCameraPermissionStateChanged`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Suppress("LongParameterList")
+@Composable
+fun ARSceneView(
+    modifier: Modifier = Modifier,
+    surfaceType: SurfaceType = SurfaceType.Surface,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
+    sessionFeatures: Set<Session.Feature> = setOf(),
+    playbackDataset: File? = null,
+    playbackDatasetUri: android.net.Uri? = null,
+    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
+    flashMode: Config.FlashMode = Config.FlashMode.OFF,
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
+    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
+    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
+    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,
+    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,
+    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,
+    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
+    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
+    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
+    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
+    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
+    planeRenderer: Boolean = true,
+    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
+    sceneUnderstanding: SceneUnderstanding? = null,
+    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
+    view: View = rememberARView(engine),
+    renderQuality: RenderQuality? = null,
+    isOpaque: Boolean = true,
+    renderer: Renderer = rememberRenderer(engine),
+    scene: Scene = rememberScene(engine),
+    environment: Environment = rememberAREnvironment(engine),
+    mainLightNode: LightNode? = rememberMainLightNode(engine),
+    fillLightNode: LightNode? = rememberFillLightNode(engine),
+    cameraNode: ARCameraNode = rememberARCameraNode(engine),
+    cameraExposure: Float? = null,
+    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
+    viewNodeWindowManager: WindowManager? = null,
+    onSessionCreated: ((session: Session) -> Unit)? = null,
+    onSessionResumed: ((session: Session) -> Unit)? = null,
+    onSessionPaused: ((session: Session) -> Unit)? = null,
+    onSessionFailed: ((exception: Exception) -> Unit)? = null,
+    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
+    onPlaybackFailed: ((exception: Exception) -> Unit)? = null,
+    onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,
+    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
+    onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
+    surfaceMirrorer: SurfaceMirrorer? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
+    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
+    permissionHandler: ARPermissionHandler? = (LocalContext.current as? androidx.activity.ComponentActivity)?.let { activity ->
+        remember(activity) { ActivityARPermissionHandler(activity) }
+    },
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
+        ARCameraPermissionOverlay(it)
+    },
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = {
+        ARCoreAvailabilityOverlay(it)
+    },
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
+    content: (@Composable ARSceneScope.() -> Unit)? = null
+) = ARSceneView(
+    modifier = modifier,
+    surfaceType = surfaceType,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    environmentLoader = environmentLoader,
+    sessionFeatures = sessionFeatures,
+    playbackDataset = playbackDataset,
+    playbackDatasetUri = playbackDatasetUri,
+    sessionCameraConfig = sessionCameraConfig,
+    flashMode = flashMode,
+    planeFindingMode = planeFindingMode,
+    depthMode = depthMode,
+    instantPlacementMode = instantPlacementMode,
+    geospatialMode = geospatialMode,
+    streetscapeGeometryMode = streetscapeGeometryMode,
+    cloudAnchorMode = cloudAnchorMode,
+    augmentedFaceMode = augmentedFaceMode,
+    imageStabilizationMode = imageStabilizationMode,
+    semanticMode = semanticMode,
+    updateMode = updateMode,
+    focusMode = focusMode,
+    sessionConfiguration = sessionConfiguration,
+    planeRenderer = planeRenderer,
+    planeRendererVersion = planeRendererVersion,
+    sceneUnderstanding = sceneUnderstanding,
+    cameraStream = cameraStream,
+    view = view,
+    renderQuality = renderQuality,
+    isOpaque = isOpaque,
+    renderer = renderer,
+    scene = scene,
+    environment = environment,
+    mainLightNode = mainLightNode,
+    fillLightNode = fillLightNode,
+    cameraNode = cameraNode,
+    cameraExposure = cameraExposure,
+    collisionSystem = collisionSystem,
+    viewNodeWindowManager = viewNodeWindowManager,
+    onSessionCreated = onSessionCreated,
+    onSessionResumed = onSessionResumed,
+    onSessionPaused = onSessionPaused,
+    onSessionFailed = onSessionFailed,
+    onSessionFailure = onSessionFailure,
+    onPlaybackFailed = onPlaybackFailed,
+    onConfigDowngraded = onConfigDowngraded,
+    onSessionUpdated = onSessionUpdated,
+    onTrackingFailureChanged = onTrackingFailureChanged,
+    surfaceMirrorer = surfaceMirrorer,
+    onGestureListener = onGestureListener,
+    onTouchEvent = onTouchEvent,
+    permissionHandler = permissionHandler,
+    lifecycle = lifecycle,
+    cameraPermissionOverlay = cameraPermissionOverlay,
+    arCoreAvailabilityOverlay = arCoreAvailabilityOverlay,
+    onARCoreAvailability = onARCoreAvailability,
+    onCameraPermissionStateChanged = null,
+    content = content,
 )

@@ -279,6 +279,10 @@ fun ARSceneView(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = { ARCameraPermissionOverlay(it) },   // Built-in "Camera access needed" card; null draws nothing.
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -1450,7 +1454,11 @@ until its replacement succeeds. Observe `placement.phase`; use `requestPlacement
 removes the wrapper-owned anchor without restarting the camera. Interruption freezes
 manipulation and recovers the existing placement; it does not arm a new request.
 `onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
-capability, tracking, and camera failures. Copy, permissions and asset selection belong
+capability, tracking, and camera failures. A refused camera is explained by
+`ARSceneView`'s own card and the wrappers silence their coaching while it is up; on a
+bare `ARSceneView`, `onCameraPermissionStateChanged` is the matching signal (non-null
+while the session waits for the camera) — hide your own loading chrome on it. Copy,
+permissions and asset selection belong
 to the app. Semantic AR haptics ship in the SDK and are **opt-in**: add
 `ARHapticFeedback(placement)` next to the scene (Swift: `.arHapticFeedback(controller)`)
 — see *Haptic Feedback › Semantic AR events*. A pinch snaps to exactly 100 % within

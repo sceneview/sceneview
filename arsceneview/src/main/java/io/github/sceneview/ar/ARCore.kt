@@ -98,6 +98,18 @@ class ARCore(
     /** `true` between [resume] and [pause]. */
     private var isHostResumed = false
 
+    /** `true` from [detachHost] until the next [create]: nothing may start or publish. */
+    private var isHostDetached = false
+
+    /**
+     * Creates and resumes the session outside a host resume. A seam for JVM tests, which
+     * cannot create an ARCore session.
+     */
+    internal var startSession: (Context) -> Unit = { context ->
+        createSession(context)
+        session?.resume()
+    }
+
     /** Monotonic clock, in nanoseconds. Replaced in tests. */
     internal var nanoTime: () -> Long = System::nanoTime
 
@@ -109,6 +121,9 @@ class ARCore(
     ) {
         /** The host was paused after the request went out — the system dialog took over. */
         var hostPausedSince = false
+
+        /** The host left while the request was out: its answer is for nobody. */
+        var isAbandoned = false
     }
 
     /**
@@ -153,6 +168,7 @@ class ARCore(
     fun create(context: Context, handler: ARPermissionHandler?, features: Set<Session.Feature>) {
         this.features = features
         this.permissionHandler = handler
+        isHostDetached = false
 
         if (handler != null) {
             if (checkPermissionAndInstall(handler)) {
@@ -185,6 +201,28 @@ class ARCore(
         isHostResumed = false
         cameraRequest?.hostPausedSince = true
         session?.pause()
+    }
+
+    /**
+     * The host is gone — `ARSceneView` left composition (#4452). Call it before [destroy].
+     *
+     * [destroy] closes the session and nothing else, and what outlives the host can still
+     * reach this instance: the answer to a camera request that was out, or an
+     * [ARCameraPermissionState] the host kept from `onCameraPermissionStateChanged`. Either
+     * one used to be able to create and resume a session for a scene that no longer exists,
+     * and keep the camera open behind the app. From here until the next [create], a late
+     * answer is dropped, [retryCameraPermission] does nothing and no verdict is published.
+     */
+    internal fun detachHost() {
+        isHostDetached = true
+        isHostResumed = false
+        resumeContext = null
+        cameraRequest?.let {
+            it.isAbandoned = true
+            // Nobody saw its answer: the next host may ask.
+            cameraPermissionRequested = false
+        }
+        cameraRequest = null
     }
 
     /**
@@ -286,7 +324,13 @@ class ARCore(
             startedAtNanos = nanoTime(),
         )
         cameraRequest = request
+        // Android cancels a request it cannot show — another permission is being asked, the
+        // activity is being recreated — with an empty result. That is not an answer.
+        (handler as? ActivityARPermissionHandler)?.onCameraRequestCancelled = {
+            if (cameraRequest === request) cancelPendingCameraRequest()
+        }
         handler.requestCameraPermission { granted ->
+            if (request.isAbandoned || isHostDetached) return@requestCameraPermission
             val isCurrent = cameraRequest === request
             if (isCurrent) cameraRequest = null
             when {
@@ -296,6 +340,16 @@ class ARCore(
                 isCurrent || cameraRequest == null -> onCameraPermissionRefused(handler, request)
             }
         }
+    }
+
+    /**
+     * The pending request was cancelled before the user could answer it. Nobody refused
+     * anything: offer to ask again, and do not count it towards "the dialog is blocked".
+     */
+    internal fun cancelPendingCameraRequest() {
+        cameraRequest ?: return
+        cameraRequest = null
+        publishCameraDenial(permanentlyDenied = false)
     }
 
     private fun onCameraPermissionRefused(handler: ARPermissionHandler, request: CameraRequest) {
@@ -325,9 +379,8 @@ class ARCore(
     /** Creates and resumes the session now when no host resume is coming to do it. */
     private fun startSessionIfHostResumed() {
         val context = resumeContext ?: return
-        if (!isHostResumed || session != null) return
-        createSession(context)
-        session?.resume()
+        if (isHostDetached || !isHostResumed || session != null) return
+        startSession(context)
     }
 
     /** The camera can be used: forget the refusal and take its explanation down. */
@@ -335,7 +388,7 @@ class ARCore(
         cameraRequest = null
         unexplainedCameraRefusals = 0
         isCameraPermissionDenied = false
-        if (publishedCameraDenial != null) {
+        if (publishedCameraDenial != null && !isHostDetached) {
             publishedCameraDenial = null
             onCameraPermissionGranted?.invoke()
         }
@@ -344,7 +397,7 @@ class ARCore(
     /** Publishes a refusal to [onCameraPermissionDenied] when the verdict actually changed. */
     private fun publishCameraDenial(permanentlyDenied: Boolean) {
         isCameraPermissionDenied = true
-        if (publishedCameraDenial == permanentlyDenied) return
+        if (isHostDetached || publishedCameraDenial == permanentlyDenied) return
         publishedCameraDenial = permanentlyDenied
         onCameraPermissionDenied?.invoke(permanentlyDenied)
     }
@@ -439,6 +492,9 @@ class ARCore(
      */
     fun retryCameraPermission(handler: ARPermissionHandler? = permissionHandler) {
         handler ?: return
+        // A state the host kept after the scene left composition must not open a dialog,
+        // let alone a session.
+        if (isHostDetached) return
         cameraRequest = null
         cameraPermissionRequested = false
         // Granted in the meantime, with no pause to resume from: start now.

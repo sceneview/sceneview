@@ -1,12 +1,14 @@
 package io.github.sceneview.ar
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -70,14 +72,21 @@ class ActivityARPermissionHandler(
 
     private var permissionCallback: ((Boolean) -> Unit)? = null
 
+    /**
+     * Called instead of the request's `onResult` when Android cancelled the request without
+     * showing it to the user (#4452) — see [cameraPermissionAnswer].
+     */
+    internal var onCameraRequestCancelled: (() -> Unit)? = null
+
     /** Launcher for the camera permission dialog. */
     val cameraPermissionLauncher: ActivityResultLauncher<String> =
         activity.activityResultRegistry.register(
             "sceneview_camera_permission",
-            ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            permissionCallback?.invoke(isGranted)
+            CameraPermissionContract()
+        ) { answer ->
+            val callback = permissionCallback
             permissionCallback = null
+            if (answer == null) onCameraRequestCancelled?.invoke() else callback?.invoke(answer)
         }
 
     /** Launcher that opens the app settings and clears the "settings requested" flag. */
@@ -118,4 +127,31 @@ class ActivityARPermissionHandler(
         ArCoreApk.getInstance().requestInstall(
             activity, userRequestedInstall
         ) == ArCoreApk.InstallStatus.INSTALL_REQUESTED
+}
+
+/**
+ * What a camera permission result says: `true` granted, `false` refused, `null` when the
+ * result is empty — Android cancelled the request before the user saw it (#4452).
+ *
+ * That happens when another permission request is already on screen, or when the activity is
+ * recreated with the dialog up. `ActivityResultContracts.RequestPermission` reports it as a
+ * plain `false`, and it comes back at once: read as an answer, it is "refused instantly",
+ * which is exactly what a permanently denied permission looks like.
+ */
+internal fun cameraPermissionAnswer(result: Map<String, Boolean>): Boolean? =
+    if (result.isEmpty()) null else result.values.all { it }
+
+/** `RequestPermission`, except that a cancelled request is `null` instead of `false`. */
+private class CameraPermissionContract : ActivityResultContract<String, Boolean?>() {
+    private val delegate = ActivityResultContracts.RequestMultiplePermissions()
+
+    override fun createIntent(context: Context, input: String): Intent =
+        delegate.createIntent(context, arrayOf(input))
+
+    override fun getSynchronousResult(context: Context, input: String): SynchronousResult<Boolean?>? =
+        delegate.getSynchronousResult(context, arrayOf(input))
+            ?.let { SynchronousResult(cameraPermissionAnswer(it.value)) }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Boolean? =
+        cameraPermissionAnswer(delegate.parseResult(resultCode, intent))
 }
