@@ -12,7 +12,7 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
- * Pins the pure depth→plane-clipped mesh math behind [io.github.sceneview.ar.PlaneVisualizerV2]
+ * Pins the pure depth→plane-clipped mesh math of [buildPlaneDepthMeshGeometry]
  * (#2203 PR #2). The ARCore [com.google.ar.core.Frame] / depth [android.media.Image] plumbing
  * cannot run in a JVM unit test, so [buildPlaneDepthMeshGeometry] is `internal` and verified
  * here in isolation — sign errors in the unprojection / matrix-multiply / polygon-clip / slope-

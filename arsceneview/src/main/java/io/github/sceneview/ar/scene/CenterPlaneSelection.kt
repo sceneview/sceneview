@@ -20,7 +20,7 @@ import kotlin.math.abs
  * ### Why this exists
  *
  * `RENDER_CENTER` only needs to answer one question — *which detected floor plane is the
- * camera looking at?* — so that exactly one plane gets its grid highlighted. Until #3339 it
+ * camera looking at?* — so that exactly one plane gets highlighted. Until #3339 it
  * answered it by firing a real ARCore raycast at the centre pixel on every processed frame:
  *
  * ```kotlin
@@ -28,8 +28,8 @@ import kotlin.math.abs
  *     .firstByTypeOrNull(planeTypes = setOf(Plane.Type.HORIZONTAL_UPWARD_FACING))
  * ```
  *
- * `RENDER_CENTER` is the default mode and the plane renderer is on by default, so **every**
- * AR screen ran that raycast continuously. `ARCore` internally attempts a depth sub-test
+ * `RENDER_CENTER` was the default mode then and the plane renderer is on by default, so
+ * **every** AR screen ran that raycast continuously. `ARCore` internally attempts a depth sub-test
  * inside `Frame.hitTest`; on devices where the motion-stereo depth pipeline is unavailable
  * that sub-test fails and ARCore's own native logger emits, per call:
  *
@@ -65,7 +65,6 @@ import kotlin.math.abs
  * immutable [Float3] instead of the mutable, allocating `Vector3` / `Ray` / `RayHit` triple.
  *
  * @see PlaneRenderer
- * @see PlaneRendererV2
  */
 
 /**

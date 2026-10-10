@@ -81,6 +81,9 @@ internal object DeepLinkRouter {
      */
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
         "wall-placement" to "ar-placement",
+        // #4307 — `PlaneRendererV2` became the only plane renderer, so the demo that
+        // showed it off stopped being "V2" and is the Surfaces demo.
+        "ar-plane-renderer-v2" to "ar-surfaces",
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
         // #2239 Batch 1 — Custom Geometry consolidation. The retired

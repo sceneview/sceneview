@@ -299,20 +299,20 @@ class CenterPlaneSelectionTest {
     @Test
     fun `the default rate gate admits one pass every fourth frame at 30 fps`() {
         // Both renderers gate their whole update pass on
-        //     frame.fps(lastProcessedFrame) < maxHitTestPerSecond
-        // with maxHitTestPerSecond defaulting to 10. Comparing against the last *processed*
+        //     frame.fps(lastProcessedFrame) < maxUpdatesPerSecond
+        // with maxUpdatesPerSecond defaulting to 10. Comparing against the last *processed*
         // frame rather than the previous frame is what makes the emergent rate 7.5 Hz rather
         // than 10 Hz — the arithmetic that identified the plane renderer as the source of the
         // 134 ms / 137 ms warning cadence in the #3339 log, and the reason a "10 per second"
         // knob must not be read as a promise of 10 passes per second.
-        val maxHitTestPerSecond = 10
+        val maxUpdatesPerSecond = 10
         val frameIntervalNanos = 33_333_333L // the 30 fps camera stream seen in the log
         var lastProcessed: Long? = null
         val processed = mutableListOf<Long>()
 
         repeat(60) { index ->
             val timestamp = index * frameIntervalNanos
-            if (timestamp.fps(lastProcessed) < maxHitTestPerSecond) {
+            if (timestamp.fps(lastProcessed) < maxUpdatesPerSecond) {
                 lastProcessed = timestamp
                 processed += timestamp
             }

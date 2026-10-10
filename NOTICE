@@ -50,10 +50,8 @@ of sceneview (Collider, CollisionSystem) are derived from the Sceneform SDK for
 Android. They were translated to Kotlin and modified by the SceneView
 contributors.
 
-arsceneview/src/main/assets/textures/plane_renderer.png is taken from the
-Sceneform SDK for Android. arsceneview/src/main/res/drawable-xxxhdpi/
-sceneview_fit_to_scan.png is adapted from the augmented_image_java sample of the
-ARCore SDK for Android.
+arsceneview/src/main/res/drawable-xxxhdpi/sceneview_fit_to_scan.png is adapted
+from the augmented_image_java sample of the ARCore SDK for Android.
 
 arsceneview/src/main/materials/shadow_receiver.mat is a port of ARCore Depth
 Lab's ShadowReceiverMeshShader (Copyright 2020 Google LLC, Apache License 2.0,

@@ -1177,26 +1177,29 @@ demos:
     evidence: >-
       No iOS scene; ARMLObjectLabelDemo.kt:110. Vision on
       ARFrame.capturedImage, a raycast and a billboard cover it (#3653)
-  - id: ar-plane-renderer-v2
+  - id: ar-surfaces
     androidStatus: Working
     iosStatus: android-only
     reason: >-
-      No iOS screen — needs LiDAR-backed plane rendering, added to Android
-      after iOS stopped tracking the catalog. Its coming-soon Scene stub was
-      deleted in #3231.
+      No iOS screen — added to Android after iOS stopped tracking the
+      catalog. Its coming-soon Scene stub was deleted in #3231. Was
+      ar-plane-renderer-v2 until #4307 made that renderer the only one.
     category: PLACE_AR
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPlaneRendererV2Demo.kt
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARSurfacesDemo.kt
     ios: []
     iosFiles: []
     contract: >-
-      AR planes with a V1/V2 switch. V2: depth-driven mesh, PBR and
-      reflections, floor/ceiling/wall-aware look, scan-in ring. V1: the flat
-      grid.
+      Detected surfaces drawn by type: round dots on floors and tables,
+      upright dashes on walls, hollow rings on ceilings, slivers below a
+      minimum size skipped. Tap a floor to place a car; the surfaces fade,
+      the car stays movable (drag, twist, pinch, tap elsewhere), the
+      surfaces return during a drag, and the dock keeps Surfaces and Reset.
     parity: missing
     evidence: >-
-      No iOS scene. ARKit plane classification + sceneDepth could drive it,
-      but SceneViewSwift has only one PlaneVisualizer.
-      ARPlaneRendererV2Demo.kt:141
+      No iOS scene. SceneViewSwift's PlaneVisualizer draws one look for every
+      ARPlaneAnchor; alignment and classification could drive the three
+      marks, and the fade-on-placement with an editable entity is not there.
+      ARSurfacesDemo.kt:180
   - id: ar-raw-depth-point-cloud
     androidStatus: Working
     iosStatus: android-only

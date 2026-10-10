@@ -126,7 +126,7 @@ import java.io.File
  *                              on the real floor instead of floating. Default `false`. Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
  *                              estimation provides one. The catchers attach **only while the
- *                              plane grid is not rendered** — the V1 plane renderer carries its
+ *                              plane grid is not rendered** — the plane renderer carries its
  *                              own coplanar shadow receiver on every tracked plane, so while the
  *                              grid shows, that receiver already catches the contact shadows and
  *                              spawning a second one would z-fight and double-darken them
@@ -208,7 +208,7 @@ fun PlacementScene(
 
     // The plane grid guides discovery, then recedes once the first model is placed (Google AR
     // design guidance — don't keep the floor decorated after it has served its purpose). The
-    // grid also carries the V1 plane renderer's own shadow receiver, so this predicate and the
+    // grid also carries the plane renderer's own shadow receiver, so this predicate and the
     // ShadowReceiverPlane spawn below are mutually exclusive by construction — a plane is never
     // covered by two coplanar shadowMultiplier receivers at once (#2657).
     val placedCount by remember { derivedStateOf { controller.count } }
@@ -348,7 +348,7 @@ fun PlacementScene(
 }
 
 /**
- * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the V1 plane
+ * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the plane
  * renderer's OWN shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a
  * `shadowMultiplier` quad on every tracked plane, `isShadowReceiver = true` by default).
  *
@@ -371,7 +371,7 @@ internal fun shouldRenderPlaneGrid(
  * ([ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]) per tracked plane.
  *
  * Defined as `groundShadows && !`[shouldRenderPlaneGrid] so the two are **mutually exclusive by
- * construction**: while the grid renders, its built-in V1 receiver is the single shadow receiver
+ * construction**: while the grid renders, its built-in receiver is the single shadow receiver
  * on the plane; once the grid is gone (either `planeRenderer = false`, or it faded after the
  * first placement), the catcher takes over as the single receiver. A plane is therefore never
  * covered by two coplanar `shadowMultiplier` receivers at once — the #2657 z-fight +

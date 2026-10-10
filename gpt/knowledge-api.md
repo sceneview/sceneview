@@ -204,8 +204,7 @@ fun ARSceneView(
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
-    planeRenderer: Boolean = true,
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,  // v4.16.1: V1 restored as default — V2 (#2203) shipped briefly as default in v4.16.0 but visual output did not match design intent on real devices. V2 stays available as experimental opt-in (`Version.V2`) while it's polished.
+    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working.
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
@@ -413,27 +412,47 @@ ARSceneView(
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
 
-### Plane rendering — V1 default (proven) + V2 opt-in experimental (#2203)
+### Plane rendering — one renderer, one mark per surface type (#4307)
 
-Two plane-renderer implementations ship side-by-side, selectable via the `planeRendererVersion` parameter on `ARSceneView` (and on the legacy `ARScene` alias). **V1 is the default** — flat polygon textured with a procedural soft grid, battle-tested. **V2 is opt-in experimental**: v4.16.0 briefly shipped V2 as the default but on-device QA showed the visual output not matching the design intent (washed-out grid sheet on real surfaces, missing the promised HDR reflection + relief). v4.16.1 reverted the default to V1 while V2 is polished. The V2 code remains in the codebase for early adopters who want to help shape the redesign.
+`ARSceneView(planeRenderer = true)` (the default) draws every surface ARCore tracks with a field of soft, world-anchored marks, and **the mark says what the surface is** (`Plane.type`):
+
+| `Plane.type`                 | role             | mark                                   |
+|------------------------------|------------------|----------------------------------------|
+| `HORIZONTAL_UPWARD_FACING`   | floor, table     | round white dots, the strongest        |
+| `VERTICAL`                   | wall             | upright blue dashes on staggered rows  |
+| `HORIZONTAL_DOWNWARD_FACING` | ceiling          | hollow warm rings, the quietest        |
+
+Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user; a soft dark halo around every mark (material parameter `contrast`, 0.80 by default) keeps it readable over a white wall or a sunlit floor. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted (it is the reticle); marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and planes subsumed by a larger one are skipped.
+
+There is no second renderer and no version switch: `planeRendererVersion`, `PlaneRendererBase`, `PlaneRendererV2` and `PlaneVisualizerV2` were removed in 4.53.0 — delete the `planeRendererVersion = …` argument, and rename `PlaneRendererV2` → `PlaneRenderer`, `PlaneVisualizerV2` → `PlaneVisualizer`. The old textured grid (`MATERIAL_TEXTURE`, `MATERIAL_COLOR`, `textures/plane_renderer.png`) is gone with it.
+
+**After placement — fade the surfaces, keep the object editable.** `planeRenderer = false` fades the surfaces out; plane *detection* keeps running, so an editable `AnchorNode` still drags, twists, pinches and re-anchors exactly as before:
 
 ```kotlin
-ARSceneView(
-    modifier = Modifier.fillMaxSize(),
-    // Default is V1 — this line is redundant, shown for clarity.
-    planeRendererVersion = PlaneRendererBase.Version.V1,
-) { /* ... */ }
+var anchor by remember { mutableStateOf<Anchor?>(null) }
+var moving by remember { mutableStateOf(false) }
 
-// Opt in to the experimental V2:
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
-    planeRendererVersion = PlaneRendererBase.Version.V2,
-) { /* ... */ }
+    planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    // Surfaces while scanning, and again for the length of a drag.
+    planeRenderer = anchor == null || moving,
+    onGestureListener = rememberOnGestureListener(
+        onMoveBegin = { _, _, node -> if (node != null) moving = true },
+        onMoveEnd = { _, _, _ -> moving = false },
+    ),
+) {
+    anchor?.let { placed ->
+        AnchorNode(anchor = placed, apply = { isEditable = true }) {
+            // ModelNode(...) — drag moves it along the surfaces, twist turns it, pinch scales it.
+        }
+    }
+}
 ```
 
-The V2 path (depth-driven mesh + PBR + HDR cubemap reflection + type-aware shading + scan-in) is implemented but its visual output does not yet match a polished AR product. See [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella + research notes (`.claude/plans/v2-references-study.md`, `v2-google-ar-catalog.md`, `v2-non-google-catalog.md` — the comparative study of how Google ARCore Depth Lab, Apple ARKit / RoomPlan, Niantic Lightship, Snap Lens Studio handle plane visualization). The honest finding: the industry minimizes plane decoration in favour of *making virtual content respect the real geometry*. The V2 redesign will likely follow that path rather than pushing PBR onto the plane itself.
+Never remove the node, drop `isEditable` or tear the session down to "hide the planes": that is what freezes the placed object. Occluding virtual content behind real geometry is a separate topic (depth occlusion, `sceneUnderstanding`), not something the plane marks do.
 
-Showcase demo: `sceneview://demo/ar-plane-renderer-v2` (live V1 ↔ V2 toggle) — kept so contributors can see the current V2 state and compare against V1.
+Showcase demo: `sceneview://demo/ar-surfaces` (the retired `ar-plane-renderer-v2` id still resolves to it).
 
 ### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
 
