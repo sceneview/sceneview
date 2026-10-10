@@ -1,7 +1,9 @@
 package io.github.sceneview
 
 import androidx.annotation.RestrictTo
+import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
+import io.github.sceneview.node.SplatNode
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -22,7 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * "Known to be current" is one number, [FrameDispatchEpoch]: every write that can change what a
  * walk would find — a `childNodes` field, an `onFrame` or `internalOnFrame` slot set or cleared, a
- * smooth transform started or finished — bumps it. A plan remembers the epoch it was built under
+ * node type's own work declared or withdrawn (`Node.hasOwnFrameWork`), a smooth transform started
+ * or finished — bumps it. A plan remembers the epoch it was built under
  * and is thrown away on any other value. Nothing here records which node belongs to which scene,
  * so there is no bookkeeping to get wrong: a change anywhere invalidates every plan, which costs
  * the walk the loop used to do on every frame, and never a missed tick.
@@ -30,20 +33,25 @@ import java.util.concurrent.atomic.AtomicInteger
  * ### The three kinds of step, and why the order is the walk's own
  *
  * [Node.onFrame] does, for a node `n`: its smooth transform, then its children, then its
- * `internalOnFrame` hook and its `onFrame` callback. So a child reads a parent that has already
+ * `internalOnFrame` hook, its `onFrame` callback and its type's own work (`Node.onOwnFrame`). So a child reads a parent that has already
  * glided, and a parent's callback reads children that have already ticked. The plan keeps exactly
  * that: [FRAME_STEP_SMOOTH] for `n` where the walk enters it, [FRAME_STEP_CALLBACKS] for `n`
  * where the walk leaves it, and its children's steps in between, in `childNodes` order.
  *
  * ### Classes that override `onFrame`
  *
- * `Node.onFrame` is public and `open`. A class that overrides it — `ModelNode`, `SplatNode`, or
- * any node type of an app — may do anything there, and reaches its own children through
- * `super.onFrame`. Nothing can be assumed about it, so such a node is a single
+ * `Node.onFrame` is public and `open`. A class that overrides it — a node type of an app — may
+ * do anything there, and reaches its own children through `super.onFrame`. Nothing can be assumed about it, so such a node is a single
  * [FRAME_STEP_OVERRIDE] step: its `onFrame` is called on every frame, in full, and the plan
  * does not look underneath it. The whole subtree below it is ticked by the unchanged recursive
  * [Node.onFrame], exactly as before. Whether a class overrides the method is read once per class,
  * by reflection ([overridesOnFrame]); any doubt answers "it does".
+ *
+ * No node type of the library is one of those any more. `ModelNode` and `SplatNode` were: they
+ * now declare their per-frame work with `Node.hasOwnFrameWork`, which the plan reads like a
+ * callback, so a model at rest has no step at all and the nodes of its glTF are planned one by
+ * one like any other. Both keep an `onFrame` override that only calls `super` — removing a
+ * public method is a change of the binary API — and [overridesOnFrame] knows the two by name.
  *
  * ### A change made while a frame is being handed out
  *
@@ -192,7 +200,10 @@ internal const val FRAME_STEP_OVERRIDE: Byte = 0
 /** The node has a smooth-transform target: advance it. Where the walk enters the node. */
 internal const val FRAME_STEP_SMOOTH: Byte = 1
 
-/** The node has an `internalOnFrame` hook or an `onFrame` callback. Where the walk leaves it. */
+/**
+ * The node has an `internalOnFrame` hook, an `onFrame` callback or work of its own type
+ * (`Node.hasOwnFrameWork`). Where the walk leaves it.
+ */
 internal const val FRAME_STEP_CALLBACKS: Byte = 2
 
 /**
@@ -229,7 +240,8 @@ internal fun overridesOnFrameCached(type: Class<*>): Boolean =
  * means "tick the node the old way", which is slower and never wrong.
  */
 internal fun overridesOnFrame(type: Class<*>): Boolean = try {
-    type.getMethod(ON_FRAME_METHOD, Long::class.javaPrimitiveType).declaringClass != Node::class.java
+    type.getMethod(ON_FRAME_METHOD, Long::class.javaPrimitiveType).declaringClass !in
+        inheritedOnFrameOwners
 } catch (_: ReflectiveOperationException) {
     true
 } catch (_: LinkageError) {
@@ -239,3 +251,15 @@ internal fun overridesOnFrame(type: Class<*>): Boolean = try {
 }
 
 private const val ON_FRAME_METHOD = "onFrame"
+
+/**
+ * The classes whose `onFrame` is [Node]'s own behaviour: [Node], and the two library types that
+ * still declare the method for binary compatibility and do nothing in it but call `super`. A
+ * class that inherits the method from one of them has not overridden it.
+ *
+ * Adding a class here is a promise that its `onFrame` is `super.onFrame(frameTimeNanos)` and
+ * nothing else — the plan stops calling it. `LibraryOnFrameOverridesContractTest` holds every
+ * class of this set to that promise, by reading the compiled body of the method.
+ */
+internal val inheritedOnFrameOwners: Set<Class<*>> =
+    setOf(Node::class.java, ModelNode::class.java, SplatNode::class.java)

@@ -966,6 +966,32 @@ open class Node protected constructor(
         }
 
     /**
+     * True while this node's **type** has per-frame work of its own: [onOwnFrame] is then called
+     * once per frame, after [internalOnFrame] and the public [onFrame] callback.
+     *
+     * It is what a library node type uses instead of overriding the public `onFrame` (#4451). An
+     * override is opaque — the scene has to call it on every frame, and it ticks its whole subtree
+     * itself — whereas this says *when* there is something to do: `ModelNode` raises it while an
+     * animation plays, lowers it once the model is at rest, and a scene of static models then has
+     * nothing to hand a frame to. Like [internalOnFrame] it does **not** mean "keep rendering":
+     * a type that needs frames of its own says so with [addFrameActivityProvider].
+     *
+     * Not a slot: [internalOnFrame] is one, and components attached from outside take it
+     * (`SceneScope.PhysicsNode`, `rememberModelAnimationState`). A node type's own work cannot
+     * live where another component's assignment would discard it.
+     */
+    internal var hasOwnFrameWork: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            // Whether this node has a step in the per-frame plan just changed (#4451).
+            FrameDispatchEpoch.bump()
+        }
+
+    /** The node type's own per-frame work. Called only while [hasOwnFrameWork] is true. */
+    internal open fun onOwnFrame(frameTimeNanos: Long) = Unit
+
+    /**
      * Extra activity terms OR-ed into [isFrameActive]: the one way the library adds a term to a
      * node, whether it owns the node type or not.
      *
@@ -1491,6 +1517,8 @@ open class Node protected constructor(
      * [io.github.sceneview.SceneFrameDispatch], in the same order, and only when it has one; a
      * node with neither is not visited. A class that **overrides** this method is still called on
      * every frame, in full, and reaches its children through `super.onFrame` as it always has.
+     * The library's own node types do not: `ModelNode` and `SplatNode` declare their work with
+     * `hasOwnFrameWork` instead.
      */
     open fun onFrame(frameTimeNanos: Long) {
         // Smooth transform interpolation
@@ -1507,7 +1535,10 @@ open class Node protected constructor(
         animationDelegate.onFrame(frameTimeNanos)
     }
 
-    /** Second half of [onFrame], after the children: the library's hook, then the app's. */
+    /**
+     * Second half of [onFrame], after the children: the library's hook, then the app's, then the
+     * node type's own work.
+     */
     internal fun invokeFrameCallbacks(frameTimeNanos: Long) {
         // Library hook first, so a user callback observing this node sees the library's write-back
         // of the same frame rather than the previous one.
@@ -1515,13 +1546,18 @@ open class Node protected constructor(
 
         // User callback
         onFrame?.invoke(frameTimeNanos)
+
+        // The node type's own work, last: a `ModelNode` updates its bone matrices after a callback
+        // that posed the skeleton, as it did when this was the tail of its `onFrame` override.
+        if (hasOwnFrameWork) onOwnFrame(frameTimeNanos)
     }
 
     /** True while [advanceSmoothTransform] has something to advance. */
     internal val hasSmoothTransform: Boolean get() = animationDelegate.smoothTransform != null
 
     /** True while [invokeFrameCallbacks] has something to call. */
-    internal val hasFrameCallbacks: Boolean get() = internalOnFrame != null || onFrame != null
+    internal val hasFrameCallbacks: Boolean
+        get() = internalOnFrame != null || onFrame != null || hasOwnFrameWork
 
     /** True when this node's class overrides [onFrame]. Fixed per class, read by reflection once. */
     internal val overridesOnFrame: Boolean get() = overridesOnFrameCached(javaClass)

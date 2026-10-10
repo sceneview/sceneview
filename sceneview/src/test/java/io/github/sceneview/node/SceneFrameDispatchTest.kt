@@ -70,6 +70,25 @@ class SceneFrameDispatchTest {
     /** Declares no override of its own, but inherits one. */
     private class InheritsAnOverride(engine: Engine, entity: Int) : OverridingNode(engine, entity)
 
+    /**
+     * A library node type with work of its own, the way `ModelNode` has: declared with
+     * `hasOwnFrameWork`, for a number of frames, and withdrawn by the node itself at the end of
+     * the last one.
+     */
+    private class WorkingNode(engine: Engine, entity: Int) : Node(engine, entity) {
+        var log: ((String) -> Unit)? = null
+        var framesLeft = 0
+            set(value) {
+                field = value
+                hasOwnFrameWork = value > 0
+            }
+
+        override fun onOwnFrame(frameTimeNanos: Long) {
+            log?.invoke("own")
+            framesLeft--
+        }
+    }
+
     /** A node type that adds things, and leaves `onFrame` alone. */
     private class InheritingNode(engine: Engine, entity: Int) : Node(engine, entity)
 
@@ -79,15 +98,13 @@ class SceneFrameDispatchTest {
         roots.forEach { it.onFrame(frameTimeNanos) }
 
     @Test
-    fun `the library's node types that override onFrame are recognised, and only those`() {
-        // These two are ticked in full on every frame: `ModelNode` advances its animator and
-        // pops renderables there, `SplatNode` re-sorts. Everything under them is ticked by
-        // their own `super.onFrame`.
-        assertTrue(overridesOnFrame(ModelNode::class.java))
-        assertTrue(overridesOnFrame(SplatNode::class.java))
-        // The rest inherit `Node.onFrame`. If one overrides it again it is still correct — it
-        // becomes an every-frame node — and this list is where that cost shows up.
+    fun `no node type of the library is an every-frame override`() {
+        // `ModelNode` and `SplatNode` still declare `onFrame`, for binary compatibility, and do
+        // nothing there but call `super`: their work is declared with `hasOwnFrameWork`. The
+        // rest inherit `Node.onFrame`. If one overrides it again it is still correct — it becomes
+        // an every-frame node — and this list is where that cost shows up.
         val inheriting = listOf(
+            ModelNode::class.java, SplatNode::class.java,
             Node::class.java, BillboardNode::class.java, TextNode::class.java,
             ImageNode::class.java, VideoNode::class.java, ViewNode::class.java,
             MeshNode::class.java, CubeNode::class.java, SphereNode::class.java,
@@ -170,6 +187,40 @@ class SceneFrameDispatchTest {
 
         busy.onFrame = null
         dispatch.dispatch(roots, 2L)
+        assertEquals(0, dispatch.stepCount)
+    }
+
+    @Test
+    fun `a node type's own work is a step while it is declared, after the node's callbacks`() {
+        val dispatch = SceneFrameDispatch()
+        val log = ArrayList<String>()
+        val root = plain()
+        val working = WorkingNode(engine, nextEntity++).also { root.addChildNode(it) }
+        working.log = { log += it }
+        val roots = listOf(root)
+
+        dispatch.dispatch(roots, 0L)
+        assertEquals(0, dispatch.stepCount)
+
+        working.onFrame = { log += "callback" }
+        working.internalOnFrame = { log += "internal" }
+        working.framesLeft = 2
+        dispatch.dispatch(roots, 1L)
+        dispatch.dispatch(roots, 2L)
+        // Withdrawn by the node at the end of its second frame: the callbacks go on alone.
+        dispatch.dispatch(roots, 3L)
+        assertEquals(
+            listOf(
+                "internal", "callback", "own",
+                "internal", "callback", "own",
+                "internal", "callback",
+            ),
+            log
+        )
+
+        working.onFrame = null
+        working.internalOnFrame = null
+        dispatch.dispatch(roots, 4L)
         assertEquals(0, dispatch.stepCount)
     }
 
@@ -457,6 +508,8 @@ class SceneFrameDispatchTest {
                 .also { it.log = { event -> log += "$index:$event" } }
             1 -> OverridingAloneNode(engine, nextEntity++)
                 .also { it.log = { event -> log += "$index:$event" } }
+            2, 3 -> WorkingNode(engine, nextEntity++)
+                .also { it.log = { event -> log += "$index:$event" } }
             else -> plain()
         }
 
@@ -468,7 +521,7 @@ class SceneFrameDispatchTest {
             val index = random.nextInt(pool.size)
             val node = pool[index]
             val other = pool[random.nextInt(pool.size)]
-            val op = random.nextInt(13)
+            val op = random.nextInt(14)
             when (op) {
                 in 0..5 -> mutateTree(op, node, other)
                 6 -> roots = pool.shuffled(random).take(random.nextInt(5))
@@ -489,6 +542,9 @@ class SceneFrameDispatchTest {
                     node.destroy()
                     pool[index] = newNode(index)
                 }
+                // A node type's own work, for one to three frames: it withdraws it itself, from
+                // inside the frame, which is what a model does when its last animation ends.
+                12, 13 -> (node as? WorkingNode)?.framesLeft = random.nextInt(4)
                 else -> Unit
             }
             return op

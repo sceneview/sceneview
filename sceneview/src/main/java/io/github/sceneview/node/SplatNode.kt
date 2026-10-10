@@ -307,12 +307,24 @@ open class SplatNode(
         // a change no transform setter reports: stay active until it lands. The sort finishes on
         // its own thread and reports to nobody, so the scene asks on every tick (#3724).
         addFrameActivityProvider { sortJob?.isActive == true }
+        // Whether a re-sort is owed depends on where the camera is, and a camera reports its moves
+        // to nobody — the scene's own, and even less a caller's [cameraPositionProvider]. So the
+        // question is asked on every rendered frame for as long as the node lives: one camera read
+        // and one comparison, which is what a frame with an unmoved camera costs here.
+        hasOwnFrameWork = true
     }
 
+    /**
+     * Kept for binary compatibility, and does nothing of its own: the re-sort moved to
+     * `onOwnFrame` (#4451), so the scene no longer has to call this on every frame to reach it.
+     * `SceneFrameDispatch` relies on this body being `super` alone, and
+     * `LibraryOnFrameOverridesContractTest` fails the build the day it is not.
+     */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
-        maybeResort()
     }
+
+    override fun onOwnFrame(frameTimeNanos: Long) = maybeResort()
 
     /**
      * Kicks a background re-sort when the camera has moved more than ~1% of the cloud radius
@@ -407,6 +419,7 @@ open class SplatNode(
         // on the EngineDestroyQueue (benign today, but future-proof it).
         if (isSplatDestroyed) return
         isSplatDestroyed = true
+        hasOwnFrameWork = false
         coroutineScope.cancel()
         // Renderable components first (while entity ids are still valid), then the entities.
         batchEntities.forEach { engine.safeDestroyRenderable(it) }
