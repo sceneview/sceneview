@@ -40,6 +40,12 @@ class NodeAnimationDelegate(
 
     /** Target transform for smooth interpolation, or `null` when no animation is active. */
     var smoothTransform: Transform? = null
+        set(value) {
+            val changed = (field == null) != (value == null)
+            field = value
+            // Starting or finishing a glide changes whether the scene has to ask this node (#3724).
+            if (changed) node.frameActivityChanged()
+        }
 
     /** Invoked when a smooth transform animation reaches its target. */
     var onSmoothEnd: ((node: Node) -> Unit)? = null

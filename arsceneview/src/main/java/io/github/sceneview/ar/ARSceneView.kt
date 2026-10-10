@@ -69,6 +69,7 @@ import com.google.ar.core.exceptions.PlaybackFailedException
 import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.FrameRateGate
 import io.github.sceneview.RenderInvalidator
+import io.github.sceneview.SceneFrameActivity
 import io.github.sceneview.SceneNodeManager
 import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.SceneRenderer
@@ -1373,6 +1374,10 @@ fun ARSceneView(
 
     val scopeChildNodes: SnapshotStateList<Node> = remember { mutableStateListOf() }
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
+    // The nodes that can ask for a frame, so the loop does not re-walk the tree every tick (#3724).
+    // Same contract as in `SceneView`: fed with `childNodesRef`, cleared when the scene leaves.
+    val frameActivity = remember { SceneFrameActivity() }
+    DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
 
     LaunchedEffect(nodeManager) {
         var prevNodes = emptyList<Node>()
@@ -1381,6 +1386,7 @@ fun ARSceneView(
             (newNodes - prevNodes.toSet()).forEach { nodeManager.addNode(it) }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
+            frameActivity.setRoots(newNodes)
         }
     }
 
@@ -1656,7 +1662,7 @@ fun ARSceneView(
                     // advanced this tick reports `isFrameActive` and keeps the budget topped up.
                     sceneChanged = frameRateGate.shouldRender(
                         frameTimeNanos = frameTimeNanos,
-                        active = childNodes.any { it.isFrameActive } ||
+                        active = frameActivity.hasActiveNode ||
                                 // Not `progress < 1f`: a loader that was never asked for an async
                                 // load reports 0, which reads as "loading" forever — see
                                 // [io.github.sceneview.loaders.ModelLoader.isLoading].

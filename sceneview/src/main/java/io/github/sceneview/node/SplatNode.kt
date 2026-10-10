@@ -302,12 +302,12 @@ open class SplatNode(
             .build(engine, entity)
     }
 
-    /**
-     * A splat re-sort running in the background finishes by swapping the draw order, which is a
-     * change no transform setter reports. Stay active until it lands.
-     */
-    override val isFrameActive: Boolean
-        get() = sortJob?.isActive == true || super.isFrameActive
+    init {
+        // A splat re-sort running in the background finishes by swapping the draw order, which is
+        // a change no transform setter reports: stay active until it lands. The sort finishes on
+        // its own thread and reports to nobody, so the scene asks on every tick (#3724).
+        addFrameActivityProvider { sortJob?.isActive == true }
+    }
 
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)

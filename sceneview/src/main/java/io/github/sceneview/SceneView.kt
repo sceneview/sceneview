@@ -713,6 +713,11 @@ fun SceneView(
     // ── DSL nodes → Filament scene sync ──────────────────────────────────────────────────────────
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
+    // Which of those nodes can ask for a frame, kept so the loop below does not re-walk the whole
+    // tree every tick to find out (#3724). Fed the same list, at the same moment, as
+    // `childNodesRef`; it survives a restart of the effect below and lets go of the nodes on exit.
+    val frameActivity = remember { SceneFrameActivity() }
+    DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -743,6 +748,7 @@ fun SceneView(
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
+            frameActivity.setRoots(newNodes)
             // A node was attached to (or detached from) the live scene — invalidate the same way
             // a surface resize does (#3560). Under [FrameRatePolicy.OnDemand] the frame loop below
             // parks on `shouldRender`, and only the gate can wake it. Before #3560 only
@@ -1087,7 +1093,7 @@ fun SceneView(
                                 gestureInFlight = gestureInFlightRef.get(),
                                 cameraMoved = cameraMoved,
                                 cameraPending = cameraPending,
-                                hasActiveNode = childNodesRef.get().any { it.isFrameActive },
+                                hasActiveNode = frameActivity.hasActiveNode,
                                 // Not `progress < 1f`: Filament reports 0 for a loader that was
                                 // never asked for an async load, which read as "loading" for the
                                 // lifetime of every procedural scene. See [isAsyncLoadPending].
