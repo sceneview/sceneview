@@ -269,6 +269,9 @@ fun ContactShadowPreviewDemo(onBack: () -> Unit) {
         .driving(homeOrbit)
     // The continuity wrapper stays the same when its driven orbit changes, so SceneView cannot
     // observe a reset by identity. Wake the on-demand loop after composition installs the new home.
+    // Today the labels' `onFrame` below is a standing request for frames, so this scene never
+    // parks and Reset comes home without it (#4346, measured on the emulator); the request is
+    // what keeps Reset working the day those labels stop holding the loop awake.
     RequestContactShadowCameraRenderOnHomeChange(
         cameraHomeGeneration = demoState.cameraHomeGeneration,
         homeShot = homeShot,
