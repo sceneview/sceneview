@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
@@ -75,24 +76,37 @@ class ActivityARPermissionHandler private constructor(
     private val activity: ComponentActivity,
     state: ARPermissionRegistrationState,
     isOwnedByView: Boolean,
+    registry: ActivityResultRegistry,
 ) : ARPermissionHandler {
 
     constructor(activity: ComponentActivity) : this(
         activity,
         ARPermissionRegistrationState(SHARED_CAMERA_PERMISSION_KEY),
         isOwnedByView = false,
+        registry = activity.activityResultRegistry,
     )
 
-    /** The handler of one `ARSceneView`: its own key, released with the view (#4467). */
-    internal constructor(activity: ComponentActivity, state: ARPermissionRegistrationState) :
-        this(activity, state, isOwnedByView = true)
+    /**
+     * The handler of one `ARSceneView`: its own key, released with the view (#4467). It
+     * registers on [register] — once composition has kept it — not here.
+     *
+     * @param registry The activity's registry; replaced in JVM tests.
+     */
+    internal constructor(
+        activity: ComponentActivity,
+        state: ARPermissionRegistrationState,
+        registry: ActivityResultRegistry = activity.activityResultRegistry,
+    ) : this(activity, state, isOwnedByView = true, registry = registry)
 
     private val registration = ARPermissionRegistration(
-        registry = activity.activityResultRegistry,
+        registry = registry,
         state = state,
         isOwnedByView = isOwnedByView,
         isCameraGranted = { hasCameraPermission() },
-    )
+    ).also {
+        // Built by the host: registered for good from the start, as it always was.
+        if (!isOwnedByView) it.register()
+    }
 
     /**
      * Called instead of the request's `onResult` when Android cancelled the request without

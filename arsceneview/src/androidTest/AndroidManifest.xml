@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Manual QA rig for #4467, test APK only: two AR views with no permission gate in
+             front of them. No `configChanges`, so a configuration change recreates it. -->
+        <activity
+            android:name="io.github.sceneview.ar.permission.TwoARScenesActivity"
+            android:exported="true" />
+    </application>
+</manifest>

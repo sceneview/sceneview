@@ -7,6 +7,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
@@ -102,7 +103,7 @@ internal class ARPermissionRegistration(
      */
     var inheritsCameraRequest: Boolean =
         state.isCameraRequestOut &&
-            abandonedCameraRequests[registry]?.remove(state.key) != true
+            abandonedCameraRequests[registry]?.contains(state.key) != true
         private set
 
     /** `true` while the launchers are registered. */
@@ -122,13 +123,16 @@ internal class ARPermissionRegistration(
                 .also { settingsLauncher = it }
 
     init {
+        // Restored "out", but released in this very activity: there is nothing to wait for.
         if (!inheritsCameraRequest) state.isCameraRequestOut = false
-        register()
     }
 
     /**
      * Registers both launchers; a no-op when they already are. Registering is also what
      * collects an answer the registry kept while nobody was registered under the key.
+     *
+     * Nothing is registered at construction: a view's instance is built during composition,
+     * and a composition that is abandoned would leave its keys in the registry.
      */
     fun register() {
         cameraPermissionLauncher
@@ -162,6 +166,7 @@ internal class ARPermissionRegistration(
         }
         cameraCallback = onResult
         state.isCameraRequestOut = true
+        abandonedCameraRequests[registry]?.remove(state.key)
         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
@@ -169,18 +174,29 @@ internal class ARPermissionRegistration(
         val callback = cameraCallback
         if (answer != null && callback == null && inheritsCameraRequest) {
             // Delivered while registering, before the recreated view asked: keep it for it.
+            // The request itself is over: were it still saved as "out" and the view never
+            // asked (the camera is granted by now), a later restore would wait for a dialog
+            // that does not exist.
             earlyCameraAnswer = answer
+            state.isCameraRequestOut = false
             return
         }
+        // A cancelled request is not one to take over either: the next one is a real launch.
+        if (answer == null) inheritsCameraRequest = false
         cameraCallback = null
         state.isCameraRequestOut = false
         if (answer == null) onCameraRequestCancelled?.invoke() else callback?.invoke(answer)
     }
 
     /**
-     * The view is gone: unregisters both launchers, so the registry holds nothing for it and
-     * a late answer reaches nobody. Does nothing for a registration the view does not own.
-     * [register], or the next launch, registers again.
+     * The view is gone: unregisters both launchers, so the registry no longer holds a
+     * callback for it and a late answer reaches nobody. Does nothing for a registration the
+     * view does not own. [register], or the next launch, registers again.
+     *
+     * With every request answered, nothing at all is left under the keys. A request that is
+     * still out is different: `ActivityResultRegistry` keeps the key and its request code
+     * until the answer comes, then parks that answer under the key for the rest of the
+     * activity — a few bytes, with no reference to the view.
      */
     fun release() {
         if (!isOwnedByView) return
@@ -211,5 +227,18 @@ internal fun rememberActivityARPermissionHandler(): ARPermissionHandler? {
     val state = rememberSaveable(saver = ARPermissionRegistrationState.Saver) {
         ARPermissionRegistrationState.create()
     }
-    return remember(activity, state) { ActivityARPermissionHandler(activity, state) }
+    return remember(activity, state) {
+        ViewPermissionHandler(ActivityARPermissionHandler(activity, state))
+    }.handler
+}
+
+/**
+ * Ties the registration to what composition actually kept: registered once the handler is
+ * remembered, released when it is forgotten. A composition that is abandoned never
+ * registered, so it has nothing to release.
+ */
+private class ViewPermissionHandler(val handler: ActivityARPermissionHandler) : RememberObserver {
+    override fun onRemembered() = handler.register()
+    override fun onForgotten() = handler.releaseRegistration()
+    override fun onAbandoned() = Unit
 }

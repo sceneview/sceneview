@@ -519,6 +519,8 @@ class ARCore(
      * permission. Only ever call this from an explicit user action (#3308).
      */
     fun openAppSettings(handler: ARPermissionHandler? = permissionHandler) {
+        // Like [retryCameraPermission]: a state kept after the scene left opens nothing.
+        if (isHostDetached) return
         handler?.openAppSettings()
     }
 

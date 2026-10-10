@@ -84,10 +84,33 @@ class ARPermissionRegistrationTest {
 
     private var cameraGranted = false
 
+    /** A view's registration once composition has kept it: built, then registered. */
     private fun viewRegistration(
         registry: ActivityResultRegistry,
         state: ARPermissionRegistrationState = ARPermissionRegistrationState.create(),
     ) = ARPermissionRegistration(registry, state, isOwnedByView = true) { cameraGranted }
+        .also { it.register() }
+
+    private var nowMs = 0L
+
+    /** `true` / `false` for each denial verdict published. */
+    private val verdicts = mutableListOf<Boolean>()
+
+    private fun arCore() = ARCore(
+        onSessionCreated = {},
+        onSessionResumed = {},
+        onSessionPaused = {},
+        onArSessionFailed = {},
+        onSessionConfigChanged = { _, _ -> },
+    ).apply {
+        // Robolectric leaves the camera denied, and no session can be created on the JVM.
+        checkAvailability = false
+        nanoTime = { nowMs * 1_000_000L }
+        onCameraPermissionDenied = { verdicts += it }
+    }
+
+    private fun activity(): ComponentActivity =
+        Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
 
     /** The state as the recreated view gets it back from saved state. */
     private fun ARPermissionRegistrationState.savedAndRestored(): ARPermissionRegistrationState {
@@ -150,7 +173,24 @@ class ARPermissionRegistrationTest {
     // ── A view that left ────────────────────────────────────────────────────
 
     @Test
-    fun `a released view leaves no registration behind`() {
+    fun `a view registers nothing until composition has kept it`() {
+        val registry = RecordingRegistry()
+        val state = ARPermissionRegistrationState.create()
+
+        val built = ARPermissionRegistration(registry, state, isOwnedByView = true) { false }
+        val viewHandler = ActivityARPermissionHandler(activity(), state, registry)
+
+        // Built during composition: an abandoned composition must leave no key behind.
+        assertFalse(built.isRegistered)
+        assertFalse(viewHandler.isRegistered)
+        // The public constructor is not tied to composition and registers at once, as before.
+        assertTrue(ActivityARPermissionHandler(activity()).isRegistered)
+    }
+
+    @Test
+    fun `a released view whose requests were answered leaves nothing in the registry`() {
+        // Only once they were answered: a request still out keeps its key and request code
+        // in the registry until the answer comes — see the next test for what that reaches.
         val registry = RecordingRegistry()
         val registration = viewRegistration(registry)
         registration.requestCamera { }
@@ -322,31 +362,118 @@ class ARPermissionRegistrationTest {
         assertEquals(2, registry.launchedRequestCodes.size)
     }
 
+    @Test
+    fun `an answer parked for a view that never asks is not saved as a request still out`() {
+        val oldRegistry = RecordingRegistry()
+        val state = ARPermissionRegistrationState.create()
+        viewRegistration(oldRegistry, state).requestCamera { }
+        val restoredState = state.savedAndRestored()
+        val newRegistry = oldRegistry.recreated()
+        // Granted while the activity was gone: the recreated view finds the camera granted
+        // and never asks, so nothing but registering reads the parked answer.
+        newRegistry.answer(oldRegistry.launchedRequestCodes.single(), granted = true)
+        cameraGranted = true
+        viewRegistration(newRegistry, restoredState)
+
+        assertFalse(restoredState.isCameraRequestOut)
+
+        // Recreated once more, then the camera is revoked from settings: there is no dialog
+        // to wait for, this request is a real launch.
+        val laterRegistry = newRegistry.recreated()
+        val laterView = viewRegistration(laterRegistry, restoredState.savedAndRestored())
+        cameraGranted = false
+        val answers = mutableListOf<Boolean>()
+        laterView.requestCamera { answers += it }
+
+        assertEquals(1, laterRegistry.launchedRequestCodes.size)
+        laterRegistry.answer(laterRegistry.launchedRequestCodes.single(), granted = false)
+        assertEquals(listOf(false), answers)
+    }
+
+    @Test
+    fun `a request found cancelled after a recreation is not waited for`() {
+        val oldRegistry = RecordingRegistry()
+        val state = ARPermissionRegistrationState.create()
+        viewRegistration(oldRegistry, state).requestCamera { }
+        val restoredState = state.savedAndRestored()
+        val newRegistry = oldRegistry.recreated()
+        // Android cancelled it with an empty result, parked until the view registers.
+        newRegistry.cancel(oldRegistry.launchedRequestCodes.single())
+
+        val newView = viewRegistration(newRegistry, restoredState)
+        val answers = mutableListOf<Boolean>()
+        newView.requestCamera { answers += it }
+
+        assertFalse(newView.inheritsCameraRequest)
+        // Nothing is coming for the old request: this one had to be launched.
+        assertEquals(1, newRegistry.launchedRequestCodes.size)
+        newRegistry.answer(newRegistry.launchedRequestCodes.single(), granted = true)
+        assertEquals(listOf(true), answers)
+    }
+
     // ── ARCore releases the registration with the host ──────────────────────
 
     @Test
     fun `detaching the host releases the view's registration and creating restores it`() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
-        val handler = ActivityARPermissionHandler(activity, ARPermissionRegistrationState.create())
-        val arCore = ARCore(
-            onSessionCreated = {},
-            onSessionResumed = {},
-            onSessionPaused = {},
-            onArSessionFailed = {},
-            onSessionConfigChanged = { _, _ -> },
-        ).apply {
-            checkCameraPermission = false
-            checkAvailability = false
-            permissionHandler = handler
-        }
+        val registry = RecordingRegistry()
+        val activity = activity()
+        val handler =
+            ActivityARPermissionHandler(activity, ARPermissionRegistrationState.create(), registry)
+        val arCore = arCore()
+        arCore.create(activity, handler, emptySet())
         assertTrue(handler.isRegistered)
+        // The camera is denied: creating asked for it, through this view's registration.
+        assertEquals(1, registry.launchedRequestCodes.size)
 
         arCore.detachHost()
         assertFalse(handler.isRegistered)
 
-        // The same view attached again (its lifecycle changed): `create()` registers first.
-        handler.register()
+        // The same view attached again (its lifecycle changed): `create()` registers again,
+        // and its request is answered.
+        arCore.create(activity, handler, emptySet())
         assertTrue(handler.isRegistered)
+        assertEquals(2, registry.launchedRequestCodes.size)
+        nowMs += 5_000
+        registry.answer(registry.launchedRequestCodes.last(), granted = false)
+        assertEquals(1, verdicts.size)
+    }
+
+    @Test
+    fun `a state kept after the host left opens no settings screen`() {
+        val registry = RecordingRegistry()
+        val activity = activity()
+        val handler =
+            ActivityARPermissionHandler(activity, ARPermissionRegistrationState.create(), registry)
+        val arCore = arCore()
+        arCore.permissionHandler = handler
+        handler.register()
+
+        arCore.detachHost()
+        arCore.openAppSettings()
+
+        assertTrue(registry.launchedRequestCodes.isEmpty())
+        assertFalse(handler.isRegistered)
+    }
+
+    @Test
+    fun `a request taken over after a recreation is not read as answered at once`() {
+        val activity = activity()
+        val oldRegistry = RecordingRegistry()
+        val state = ARPermissionRegistrationState.create()
+        ActivityARPermissionHandler(activity, state, oldRegistry).requestCameraPermission { }
+        val requestCode = oldRegistry.launchedRequestCodes.single()
+        // Recreated with the dialog up: the registry and the view's state come from the bundle.
+        val newRegistry = oldRegistry.recreated()
+        val handler = ActivityARPermissionHandler(activity, state.savedAndRestored(), newRegistry)
+
+        arCore().create(activity, handler, emptySet())
+        assertTrue(newRegistry.launchedRequestCodes.isEmpty())
+        // The user refuses 100 ms after the recreation — the dialog had been up for longer.
+        // Timed from `create()`, that is "refused instantly": a blocked dialog, "Open settings".
+        nowMs += 100
+        newRegistry.answer(requestCode, granted = false)
+
+        assertEquals(listOf(false), verdicts)
     }
 
     @Test

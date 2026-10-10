@@ -6603,6 +6603,9 @@ interface ARPermissionHandler {
 
 // Production implementation backed by ComponentActivity:
 class ActivityARPermissionHandler(activity: ComponentActivity) : ARPermissionHandler
+// ARScene builds its own handler when `permissionHandler` is left out: one registration per
+// AR view, released with it. Build one yourself only if you must — this constructor registers
+// under one activity-wide key that is never unregistered, so keep AT MOST ONE per activity.
 ```
 
 ---
