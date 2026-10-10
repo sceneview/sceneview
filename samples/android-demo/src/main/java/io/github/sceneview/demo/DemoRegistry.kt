@@ -216,6 +216,9 @@ val DemoEntry.isArDemo: Boolean
  *    (live capture, room dollhouse) itself.
  *  - `ar-placement` opens on a model chooser with a "View in 3D" way out. It gates its
  *    camera phase itself.
+ *  - `ar-splat-room` is the Rerun demo opened on its room dollhouse, which has a 3D view,
+ *    a list of recordings and an empty state that need no camera. Its AR view is gated by
+ *    the dollhouse screen itself (#4460).
  *  - `ar-xr` renders reference poses on a phone and never opens the camera.
  *
  * Someone who refused the camera must still reach those screens (#4139 review).
@@ -223,6 +226,7 @@ val DemoEntry.isArDemo: Boolean
 internal val AR_DEMOS_WITHOUT_CAMERA_ON_ENTRY: Set<String> = setOf(
     "ar-placement",
     "ar-rerun",
+    "ar-splat-room",
     "ar-xr",
 )
 

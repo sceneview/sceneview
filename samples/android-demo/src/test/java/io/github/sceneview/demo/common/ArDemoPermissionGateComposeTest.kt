@@ -49,7 +49,7 @@ class ArDemoPermissionGateComposeTest {
         composeRule.onNodeWithTag(CONTENT_TAG).assertDoesNotExist()
         composeRule.onNodeWithText(app.getString(R.string.ar_permission_required_title)).assertIsDisplayed()
         // Asking is still possible, so the way out is a button that asks — not settings.
-        composeRule.onNodeWithText(app.getString(R.string.ar_permission_try_again)).assertIsDisplayed()
+        composeRule.onNodeWithText(app.getString(R.string.ar_permission_allow)).assertIsDisplayed()
     }
 
     @Test

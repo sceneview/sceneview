@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,7 +63,6 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
     // its answer is delivered to the recreated activity.
     var promptAt by rememberSaveable { mutableLongStateOf(0L) }
     var promptRationaleBefore by rememberSaveable { mutableStateOf(false) }
-    var unexplainedRefusals by rememberSaveable { mutableIntStateOf(0) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -75,9 +73,7 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
             rationaleBefore = promptRationaleBefore,
             rationaleAfter = rationaleAfter,
             elapsedMs = SystemClock.elapsedRealtime() - promptAt,
-            earlierUnexplainedRefusals = unexplainedRefusals,
         )
-        unexplainedRefusals = if (result || rationaleAfter) 0 else unexplainedRefusals + 1
         granted = result
         rationale = rationaleAfter
     }
@@ -89,10 +85,7 @@ internal fun rememberArCameraPermission(): ArCameraPermission {
             if (event == Lifecycle.Event.ON_RESUME) {
                 granted = grantedNow()
                 rationale = !granted && rationaleNow()
-                if (granted || rationale) {
-                    blocked = false
-                    unexplainedRefusals = 0
-                }
+                if (granted || rationale) blocked = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

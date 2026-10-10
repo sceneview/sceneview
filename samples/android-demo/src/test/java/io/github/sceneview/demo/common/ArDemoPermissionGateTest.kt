@@ -32,7 +32,7 @@ class ArDemoPermissionGateTest {
         )
     }
 
-    /** #4139 (c): back from settings with the camera on, no "Try again" tap in between. */
+    /** #4139 (c): back from settings with the camera on, no tap in between. */
     @Test
     fun `grant after a block shows the demo without another tap`() {
         assertEquals(
@@ -66,13 +66,34 @@ class ArDemoPermissionGateTest {
 
     /** A dialog dismissed with Back looks like a permanent denial to the rationale flag alone. */
     @Test
-    fun `a first dismissed dialog keeps Try again`() {
+    fun `a dismissed dialog keeps the offer to ask`() {
         assertFalse(blocked(elapsedMs = 3_000))
     }
 
+    /**
+     * #4460: two Back presses in a row turned the card into "Open settings" on a Pixel 4a,
+     * with no `USER_FIXED` flag on the permission. There is nothing left to count: a
+     * dismissal is judged the same the first time and the tenth.
+     */
     @Test
-    fun `a first refusal that Android wants explained keeps Try again`() {
+    fun `a dialog dismissed again and again never sends to settings`() {
+        var rationale = false
+        repeat(10) {
+            val isBlocked = blocked(rationaleBefore = rationale, rationaleAfter = rationale, elapsedMs = 1_500)
+            assertFalse("dismissal ${it + 1}", isBlocked)
+        }
+        // The same after one real "Don't allow": the flag is up, and a dismissal leaves it up.
+        rationale = true
+        repeat(10) {
+            assertFalse(blocked(rationaleBefore = rationale, rationaleAfter = rationale, elapsedMs = 1_500))
+        }
+    }
+
+    @Test
+    fun `a first refusal that Android wants explained keeps the offer to ask`() {
         assertFalse(blocked(rationaleAfter = true, elapsedMs = 3_000))
+        // Even answered at once: the flag says Android asks again.
+        assertFalse(blocked(rationaleAfter = true, elapsedMs = 0))
     }
 
     @Test
@@ -83,16 +104,27 @@ class ArDemoPermissionGateTest {
     @Test
     fun `an answer with no dialog is a block`() {
         assertTrue(blocked(elapsedMs = CAMERA_PROMPT_INSTANT_RETURN_MS - 1))
+        // Measured on a Pixel 4a: a blocked request answers in 290 ms idle, 510 ms under load.
+        assertTrue(blocked(elapsedMs = 290))
+        assertTrue(blocked(elapsedMs = 510))
     }
 
+    /** The library's threshold (#4452): 500 ms called a blocked request at 510 ms a dismissal. */
     @Test
-    fun `a second unexplained refusal in a row is a block`() {
-        assertTrue(blocked(elapsedMs = 3_000, earlierUnexplainedRefusals = 1))
+    fun `the instant-return threshold is one second`() {
+        assertEquals(1_000L, CAMERA_PROMPT_INSTANT_RETURN_MS)
+        assertFalse(blocked(elapsedMs = CAMERA_PROMPT_INSTANT_RETURN_MS))
     }
 
     @Test
     fun `a grant is never a block`() {
         assertFalse(blocked(granted = true, rationaleBefore = true, elapsedMs = 0))
+    }
+
+    @Test
+    fun `the card gives the reason only to someone who refused`() {
+        assertEquals(ArCameraAskReason.NotAnswered, arCameraAskReason(shouldShowRationale = false))
+        assertEquals(ArCameraAskReason.Refused, arCameraAskReason(shouldShowRationale = true))
     }
 
     private fun prompt(
@@ -107,6 +139,5 @@ class ArDemoPermissionGateTest {
         rationaleBefore: Boolean = false,
         rationaleAfter: Boolean = false,
         elapsedMs: Long,
-        earlierUnexplainedRefusals: Int = 0,
-    ) = cameraPromptBlocked(granted, rationaleBefore, rationaleAfter, elapsedMs, earlierUnexplainedRefusals)
+    ) = cameraPromptBlocked(granted, rationaleBefore, rationaleAfter, elapsedMs)
 }
