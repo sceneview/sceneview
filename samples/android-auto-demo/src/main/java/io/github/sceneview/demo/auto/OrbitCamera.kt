@@ -42,6 +42,11 @@ internal class OrbitCamera {
             abs(targetDistance - distance) < SETTLE_DISTANCE &&
             appliedFit == fit
 
+    /** Something else moved the camera (Drive mode): the next frame puts it back on its orbit. */
+    fun invalidate() {
+        appliedFit = 0f
+    }
+
     fun orbitBy(dYaw: Float, dPitch: Float) {
         targetYaw += dYaw
         targetPitch = (targetPitch + dPitch).coerceIn(MIN_PITCH, MAX_PITCH)

@@ -9,9 +9,9 @@
          No Car App Library, no `automotive_app_desc`, no `distractionOptimized`. -->
     <application
         android:appCategory="game"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_drive_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/ic_drive_launcher"
         android:theme="@style/Theme.SceneViewSample">
         <!-- No `screenOrientation` and resizable: a head unit is 800x480, 1920x1080 or portrait,
              and a pillarboxed app is rejected (car quality guideline DO-2). A size or density

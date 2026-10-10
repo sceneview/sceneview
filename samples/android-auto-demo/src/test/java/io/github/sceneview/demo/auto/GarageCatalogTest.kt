@@ -36,10 +36,15 @@ class GarageCatalogTest {
     }
 
     @Test
-    fun `a tinted car names the material to tint`() {
-        GarageCatalog.cars.filter { car -> car.paints.any { it is TintPaint } }.forEach { car ->
-            assertTrue("${car.label} has tints but no paintMaterial", car.paintMaterial != null)
+    fun `a car's body is never longer than its model`() {
+        GarageCatalog.cars.forEach { car ->
+            assertTrue("${car.label}: bodyLength over length", car.bodyLength <= car.length)
         }
+    }
+
+    @Test
+    fun `one mood switches the headlights on`() {
+        assertTrue(GarageCatalog.lightings.any { it.headlights })
     }
 
     @Test

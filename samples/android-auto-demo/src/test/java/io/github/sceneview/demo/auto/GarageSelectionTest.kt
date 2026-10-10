@@ -6,7 +6,7 @@ import org.junit.Test
 class GarageSelectionTest {
 
     private val cars = listOf(
-        Car("Two finishes", "a.glb", "credit", paints = listOf(VariantPaint("One", "one"), VariantPaint("Two", "two"))),
+        Car("Two finishes", "a.glb", "credit", paints = listOf(Paint("One", "one"), Paint("Two", "two"))),
         Car("No finish", "b.glb", "credit"),
     )
     private val lightings = listOf(

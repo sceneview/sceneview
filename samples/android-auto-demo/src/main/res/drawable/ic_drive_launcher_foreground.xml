@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!--
+        SceneView logo — isometric 3D cube with viewport brackets
+        Brand blue: #005bc1 (light), #a4c1ff (dark)
+        Design: Material Design 3 Expressive (SceneView design system, see DESIGN.md)
+        Safe zone: 66dp centered (21dp inset on each side)
+    -->
+
+    <!-- Subtle drop shadow under the cube -->
+    <path
+        android:fillColor="#18000000"
+        android:pathData="M54,82 L78,67 L78,66 L54,81 L30,66 L30,67 Z" />
+
+    <!-- Left face — deepest blue (shadow side) -->
+    <path
+        android:fillColor="#003A7D"
+        android:pathData="M54,54 L30,40 L30,66 L54,80 Z" />
+
+    <!-- Right face — medium blue (lit side) -->
+    <path
+        android:fillColor="#3D7FD9"
+        android:pathData="M54,54 L78,40 L78,66 L54,80 Z" />
+
+    <!-- Top face — lightest blue (direct light) -->
+    <path
+        android:fillColor="#A4C1FF"
+        android:pathData="M54,28 L78,42 L54,56 L30,42 Z" />
+
+    <!-- Top face inner highlight for depth -->
+    <path
+        android:fillColor="#BDD3FF"
+        android:pathData="M54,31 L73,42 L54,53 L35,42 Z" />
+
+    <!-- Edge highlights — white strokes for definition -->
+    <!-- Top edges -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#DDEEFF"
+        android:strokeWidth="0.6"
+        android:pathData="M54,28 L78,42 L54,56 L30,42 Z" />
+
+    <!-- Vertical front-left edge -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#BBDDFF"
+        android:strokeWidth="0.4"
+        android:pathData="M30,42 L30,66" />
+
+    <!-- Vertical front-right edge -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#BBDDFF"
+        android:strokeWidth="0.4"
+        android:pathData="M78,42 L78,66" />
+
+    <!-- Bottom edges -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#3377BB"
+        android:strokeWidth="0.4"
+        android:pathData="M54,80 L30,66 M54,80 L78,66" />
+
+    <!-- Viewport bracket — top-left corner -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25,28 L25,22 L31,22" />
+
+    <!-- Viewport bracket — top-right corner -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M83,28 L83,22 L77,22" />
+
+    <!-- Viewport bracket — bottom-left corner -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M25,78 L25,84 L31,84" />
+
+    <!-- Viewport bracket — bottom-right corner -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M83,78 L83,84 L77,84" />
+
+</vector>

@@ -7,6 +7,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -27,6 +28,14 @@ internal object AutoTokens {
     /** `stage-background` — the cover the scene is revealed from, identical in both themes. */
     object Stage {
         val background = Color(0xFF0B0F16)
+        /** `stage-floor` — the floor the car drives on, a step up from the dark around it. */
+        val floor = Color(0xFF1B212B)
+        /** `stage-podium` — light enough for the car's contact shadow to read on it. */
+        val podium = Color(0xFF39424F)
+        /** `stage-marking` — floor paint: the lane dashes and the edge line. */
+        val marking = Color(0xFF8E99AB)
+        /** `stage-pillar` — the concrete at the edge of the light. */
+        val pillar = Color(0xFF2A313C)
     }
 
     /** `DESIGN.md` — Glass Chrome over Media. */
@@ -50,6 +59,8 @@ internal object AutoTokens {
     /** `primary` / `on-primary`, dark-scheme values. */
     object Accent {
         val primary = Color(0xFFA4C1FF)
+        /** `on-primary`, dark scheme — text on an accent-filled control. */
+        val onPrimary = Color(0xFF002F65)
     }
 
     /** `space-*` — 8 dp base unit. */
@@ -75,6 +86,23 @@ internal object AutoTokens {
         val controlMaxWidth = 360.dp
         /** `car-pip` — one step of a control's position indicator. */
         val pip = Space.sm
+        /** `car-action-width` — the one control that starts something instead of stepping. */
+        val actionWidth = 132.dp
+        /** `car-drive-pad` — side of a steering or pedal pad, held down rather than tapped. */
+        val drivePad = 104.dp
+        /** `car-reference-width` / `-height` — the smallest head unit, where the chrome is 1:1. */
+        val referenceWidth = 800.dp
+        val referenceHeight = 480.dp
+        /** `car-chrome-max-scale` — how far the chrome grows with a bigger screen. */
+        const val MAX_CHROME_SCALE = 1.75f
+
+        /**
+         * How much the chrome is magnified on a screen of [width] x [height]: a 1920 x 1080 dp
+         * head unit sits further from the eye than its dp count says, and chrome laid out for
+         * 800 x 480 is small on it.
+         */
+        fun chromeScale(width: Dp, height: Dp): Float =
+            minOf(width / referenceWidth, height / referenceHeight).coerceIn(1f, MAX_CHROME_SCALE)
     }
 
     /** App Type Scale (Android demo): `-0.02em` tracking on display/title. */

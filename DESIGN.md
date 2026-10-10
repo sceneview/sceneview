@@ -671,13 +671,20 @@ with `motion-fade`.
 `samples/android-auto-demo` is shown on a car's screen while parked, touched at arm's
 length. Its chrome is Glass Chrome over Media — same `glass-surface`, `over-media-edge`,
 `on-glass`, `on-glass-muted` and `chrome-scrim`, theme-independent for the same reason —
-with three tokens of its own:
+with tokens of its own:
 
 | Token | Value | Usage |
 |-------|-------|-------|
 | `car-touch-target` | `76dp` | Height of every tappable control. Never the 48dp phone target on a head unit |
 | `car-control-max-width` | `360dp` | A control stops growing here; on a 1920dp screen the row is centred, not stretched into banners |
 | `car-pip` | `8dp` | One step of a control's position indicator (`primary` when current) |
+| `car-action-width` | `132dp` | Width of the one accent control (Drive, Garage): `primary` fill, `on-primary` label |
+| `car-drive-pad` | `104dp` | Side of a held driving pad (steer left/right, brake, go) — a thumb finds it without looking |
+| `car-chrome-reference` | `800 x 480dp` | The head unit the chrome is laid out for. A bigger screen magnifies the whole chrome by `min(width / 800, height / 480)`, clamped to `1..1.75`: at 1920 x 1080 the title and labels are read from the same seat, further away |
+| `car-stage-floor` | #1B212B | Garage floor (apron and road) |
+| `car-stage-podium` | #39424F | Turntable top — lighter than the floor so the contact shadow reads |
+| `car-stage-marking` | #8E99AB | Lane dashes, edge line, pillar bands |
+| `car-stage-pillar` | #2A313C | Pillars around the floor: they give a low camera a horizon |
 
 - **One tap, one step.** A control cycles to its next choice; no picker, no list, no
   slider, nothing that needs a second aimed touch.
@@ -686,6 +693,9 @@ with three tokens of its own:
 - **The 3D stage is the screen.** Chrome is one title block (top start) and one control
   row (bottom), each on a `chrome-scrim` band; the car is lifted into the band between
   them.
+- **Driving is held, not tapped.** In Drive the control row gives way to four pads:
+  steer under the left thumb, brake and go under the right, and the accent control (top
+  end) leaves. A pad acts while it is held and stops when the finger lifts.
 - **The stage is `stage-background` and the accent is the dark-scheme `primary`**, in
   both themes: the garage is a night scene, and the accent is always read on it.
 

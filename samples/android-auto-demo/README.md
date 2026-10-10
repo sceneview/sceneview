@@ -1,13 +1,18 @@
-# SceneView on Android Auto — Night Garage
+# SceneView Drive — SceneView on Android Auto
 
-A prototype: SceneView as an Android Auto **parked app**. One full-screen scene, a car on a
-turntable in a dark garage — drag to orbit, pinch to zoom, three large controls to step through
-the cars, their finishes and the lighting.
+SceneView as an Android Auto **parked app**. One full-screen scene, two ways to be in it:
 
-> **Status: prototype, not verified in a car.** It is proven on an emulator resized to head-unit
-> dimensions (800x480 and 1920x1080 at 160 dpi). Showing it on a head unit needs a phone running
-> Android 15 or later connected to Android Auto or to the Desktop Head Unit — that run has not
-> been done.
+- **Night Garage**, the landing: a car on a turntable in a dark garage — drag to orbit, pinch to
+  zoom, three large controls to step through the cars, their finishes and the lighting.
+- **Drive**, behind the fourth control: the same car comes off the podium onto the garage floor.
+  Steer with the left thumb, throttle and brake with the right, a chase camera behind the car.
+  In the Night lighting the car lights the floor with its own headlights. "Garage" or Back
+  returns to the turntable.
+
+> **Status: not verified in a car.** It is proven on an emulator resized to head-unit dimensions
+> (800x480 and 1920x1080 at 160 dpi), debug and release builds. Showing it on a head unit needs
+> a phone running Android 15 or later connected to Android Auto or to the Desktop Head Unit —
+> that run has not been done.
 
 ## How it reaches the car
 
@@ -50,38 +55,63 @@ adb shell wm size 1920x1080 && adb shell wm density 160    # wide head unit
 adb shell wm size reset && adb shell wm density reset
 ```
 
+## Release build
+
+```bash
+./gradlew :samples:android-auto-demo:bundleRelease -PversionCode=2 -PversionName=0.1.1
+# → samples/android-auto-demo/build/outputs/bundle/release/android-auto-demo-release.aab
+```
+
+The release build is shrunk with R8. `versionCode` and `versionName` default to `1` and `0.1.0`;
+the app has its own version track, independent of the SDK's. The bundle is signed when these four
+environment variables are set, and built unsigned when they are not:
+
+| Variable | Holds |
+|---|---|
+| `SCENEVIEW_AUTO_KEYSTORE_FILE` | Path to the upload keystore |
+| `SCENEVIEW_AUTO_KEYSTORE_PASSWORD` | Its password |
+| `SCENEVIEW_AUTO_KEY_ALIAS` | The key's alias |
+| `SCENEVIEW_AUTO_KEY_PASSWORD` | The key's password |
+
+Nothing publishes this app: no workflow, no script. The bundle is uploaded by hand.
+
 ## Where things are
 
 | File | What it holds |
 |---|---|
-| `GarageActivity.kt` | The screen: loading, reveal, turntable and camera loop, gestures |
-| `GarageScene.kt` | `GarageFloor`, `Turntable { }`, `ParkedCar` — the 3D scene |
+| `GarageActivity.kt` | The screen: loading, reveal, the showroom/Drive switch, the frame loop, gestures |
+| `GarageScene.kt` | `GarageFloor`, `Podium`, `CarMount { }`, `GarageCar` and its headlights — the 3D scene |
 | `GarageStage.kt` | Stage dimensions, in metres |
-| `OrbitCamera.kt` | Eased orbit camera, clamped above the floor, aspect-aware |
+| `DriveModel.kt` | The car on the floor: a kinematic bicycle model, kept between the podium and the edge line |
+| `ChaseCamera.kt` | The camera that trails the car in Drive |
+| `OrbitCamera.kt` | The showroom's eased orbit camera, clamped above the floor, aspect-aware |
 | `GarageCatalog.kt` | Cars, finishes, lightings, and how a finish is applied |
 | `GarageSelection.kt` | What is selected, and its persistence across launches |
-| `GarageChrome.kt` | Title, controls, loading cover |
+| `GarageChrome.kt` | Title, controls, drive pads, loading cover |
 | `AutoTokens.kt` | The `DESIGN.md` tokens the chrome uses — the only place with literals |
 
-`Turntable { }` is the seam for what comes next. Its content lives in turntable space; a driving
-mini-game replaces the turntable's rotation with a vehicle node driven by input and keeps the
-children as they are.
+`CarMount { }` is the one node every car hangs from. Its content is in car space — the model, its
+contact shadow and its headlights are declared once — and the frame loop writes the mount's pose:
+the turntable's angle in the showroom, `DriveModel`'s position and heading on the road.
+
+`DriveModel` has no Android or Filament dependency and is covered by `DriveModelTest`.
 
 ## Assets
 
-Nothing is added to the repository for this sample. `stageGarageAssets` picks six files that
+Nothing is added to the repository for this sample. `stageGarageAssets` picks five files that
 `assets/manifest.json` already registers into `build/generated/garageAssets`; licences and
 authors are in [`assets/CREDITS.md`](../../assets/CREDITS.md).
 
 | Asset | Author | Licence |
 |---|---|---|
 | Car Concept (`CarConcept.glb`) | Darmstadt Graphics Group GmbH | CC BY 4.0 |
-| Ferrari F40 (`ferrari_f40.glb`) | Black Snow | CC BY 4.0 |
 | Toy Car (`khronos_toy_car.glb`) | Guido Odendahl, Eric Chadwick | CC0 1.0 |
-| `studio_2k.hdr`, `studio_warm_2k.hdr`, `rooftop_night_2k.hdr` | Poly Haven | CC0 1.0 |
+| `studio_2k.hdr` (Poly Haven `christmas_photo_studio_07`) | Sergej Majboroda | CC0 1.0 |
+| `studio_warm_2k.hdr` (Poly Haven `studio_small_08`) | Sergej Majboroda | CC0 1.0 |
+| `rooftop_night_2k.hdr` (Poly Haven `rooftop_night`) | Greg Zaal | CC0 1.0 |
 
-The two CC BY cars are credited on screen, next to the car's name.
+The CC BY car is credited on screen, next to its name.
 
-The Car Concept's finishes are the model's own `KHR_materials_variants`. The F40's are tints of
-its single untextured body material. The Toy Car's body is textured, so it keeps its factory
-finish and the Paint control is shown without being tappable.
+The Car Concept's finishes are the model's own `KHR_materials_variants`. The Toy Car's body is
+textured, so it keeps its factory finish and the Paint control is shown without being tappable;
+its display cloth stays in the showroom when the car goes on the road.

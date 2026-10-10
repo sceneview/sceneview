@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">SceneView Night Garage</string>
+    <string name="app_name">SceneView Drive</string>
     <string name="garage_title">Night Garage</string>
     <string name="garage_opening">Opening the garage</string>
-    <string name="garage_loading_car">Loading %1$s</string>
     <string name="garage_control_car">Car</string>
     <string name="garage_control_paint">Paint</string>
     <string name="garage_control_lighting">Lighting</string>
+    <string name="garage_control_drive">Drive</string>
     <string name="garage_paint_factory">Factory finish</string>
     <!-- TalkBack: what a tap on a control does. -->
     <string name="garage_action_next">Next</string>
+    <!-- Drive mode: the eyebrow over the car's name, the way back, and the four pads. -->
+    <string name="drive_title">On the floor</string>
+    <string name="drive_exit">Garage</string>
+    <string name="drive_steer_left">Steer left</string>
+    <string name="drive_steer_right">Steer right</string>
+    <string name="drive_brake">Brake</string>
+    <string name="drive_go">Go</string>
 </resources>
