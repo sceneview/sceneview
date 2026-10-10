@@ -208,6 +208,14 @@ public final class io/github/sceneview/EngineKt {
 	public static final fun sortTransformsIfUnsorted (Lcom/google/android/filament/Engine;)V
 }
 
+public final class io/github/sceneview/EngineRenderInvalidators {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/EngineRenderInvalidators;
+	public final fun register (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
+	public final fun requestRender (Lcom/google/android/filament/Engine;)V
+	public final fun unregister (Lcom/google/android/filament/Engine;Lio/github/sceneview/RenderInvalidator;)V
+}
+
 public abstract interface annotation class io/github/sceneview/ExperimentalSceneViewApi : java/lang/annotation/Annotation {
 }
 
@@ -276,6 +284,40 @@ public final class io/github/sceneview/FramingGate {
 }
 
 public final class io/github/sceneview/FramingGate$Companion {
+}
+
+public final class io/github/sceneview/MediaPlayerException : java/lang/Exception {
+	public static final field $stable I
+	public fun <init> (II)V
+	public final fun getExtra ()I
+	public final fun getWhat ()I
+}
+
+public abstract interface class io/github/sceneview/MediaPlayerState {
+}
+
+public final class io/github/sceneview/MediaPlayerState$Failed : io/github/sceneview/MediaPlayerState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Exception;)V
+	public final fun getCause ()Ljava/lang/Exception;
+}
+
+public final class io/github/sceneview/MediaPlayerState$Preparing : io/github/sceneview/MediaPlayerState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/MediaPlayerState$Preparing;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/MediaPlayerState$Ready : io/github/sceneview/MediaPlayerState {
+	public static final field $stable I
+	public fun <init> (Landroid/media/MediaPlayer;)V
+	public final fun getPlayer ()Landroid/media/MediaPlayer;
+}
+
+public final class io/github/sceneview/MediaPlayerStateKt {
+	public static final fun rememberMediaPlayer (Ljava/lang/String;ZZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/MediaPlayerState;
 }
 
 public final class io/github/sceneview/NodeScope : io/github/sceneview/SceneScope {
@@ -353,8 +395,10 @@ public final class io/github/sceneview/SceneFactoriesKt {
 	public static final fun createEglContext ()Landroid/opengl/EGLContext;
 	public static final fun createEngine (Landroid/opengl/EGLContext;)Lcom/google/android/filament/Engine;
 	public static final fun createEnvironment (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;)Lio/github/sceneview/environment/Environment;
+	public static final fun createEnvironment (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;Ljava/util/List;)Lio/github/sceneview/environment/Environment;
 	public static final fun createEnvironment (Lio/github/sceneview/loaders/EnvironmentLoader;Z)Lio/github/sceneview/environment/Environment;
 	public static synthetic fun createEnvironment$default (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
+	public static synthetic fun createEnvironment$default (Lcom/google/android/filament/Engine;ZLcom/google/android/filament/IndirectLight;Lcom/google/android/filament/Skybox;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
 	public static synthetic fun createEnvironment$default (Lio/github/sceneview/loaders/EnvironmentLoader;ZILjava/lang/Object;)Lio/github/sceneview/environment/Environment;
 	public static final fun createFillLightNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/node/LightNode;
 	public static final fun createMainLightNode (Lcom/google/android/filament/Engine;)Lio/github/sceneview/node/LightNode;
@@ -383,7 +427,6 @@ public final class io/github/sceneview/SceneKt {
 	public static final fun rememberFillLightNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/LightNode;
 	public static final fun rememberMainLightNode (Lcom/google/android/filament/Engine;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/node/LightNode;
 	public static final fun rememberMaterialLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/loaders/MaterialLoader;
-	public static final fun rememberMediaPlayer (Landroid/content/Context;Ljava/lang/String;ZZLandroidx/compose/runtime/Composer;II)Landroid/media/MediaPlayer;
 	public static final fun rememberModelInstance (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Landroidx/compose/runtime/Composer;I)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static final fun rememberModelInstance (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public static final fun rememberModelLoader (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/loaders/ModelLoader;
@@ -474,8 +517,8 @@ public class io/github/sceneview/SceneScope {
 	public final fun TorusNode (FFLdev/romainguy/kotlin/math/Float3;IILcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun TubeNode (Ljava/util/List;FIZZLcom/google/android/filament/MaterialInstance;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
 	public final fun VideoNode (Landroid/media/MediaPlayer;Ljava/lang/Integer;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
-	public final fun VideoNode (Ljava/lang/String;ZZLjava/lang/Integer;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
-	public final fun ViewNode (Lio/github/sceneview/node/ViewNode$WindowManager;ZZLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;III)V
+	public final fun VideoNode (Ljava/lang/String;ZZLjava/lang/Integer;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;III)V
+	public final fun ViewNode (Lio/github/sceneview/node/ViewNode$WindowManager;ZZLdev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;III)V
 	public final fun getEngine ()Lcom/google/android/filament/Engine;
 	public final fun getEnvironmentLoader ()Lio/github/sceneview/loaders/EnvironmentLoader;
 	public final fun getMaterialLoader ()Lio/github/sceneview/loaders/MaterialLoader;
@@ -2433,7 +2476,9 @@ public class io/github/sceneview/node/BillboardNode : io/github/sceneview/node/I
 	public static final field $stable I
 	public fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;Lkotlin/jvm/functions/Function0;)V
 	public synthetic fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;Lkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCameraPositionProvider ()Lkotlin/jvm/functions/Function0;
 	public fun isFrameActive ()Z
+	public final fun setCameraPositionProvider (Lkotlin/jvm/functions/Function0;)V
 	public final fun updateBitmap (Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;)V
 	public static synthetic fun updateBitmap$default (Lio/github/sceneview/node/BillboardNode;Landroid/graphics/Bitmap;Ljava/lang/Float;Ljava/lang/Float;ILjava/lang/Object;)V
 }
@@ -3424,13 +3469,14 @@ public class io/github/sceneview/node/VideoNode : io/github/sceneview/node/Plane
 
 public final class io/github/sceneview/node/ViewNode : io/github/sceneview/node/PlaneNode {
 	public static final field $stable I
-	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;IZZ)V
-	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;IZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;Landroid/view/View;ZZ)V
-	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;Landroid/view/View;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;ZZLkotlin/jvm/functions/Function2;)V
-	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;ZZLkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;IZZLkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;IZZLkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;Landroid/view/View;ZZLkotlin/jvm/functions/Function0;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;Landroid/view/View;ZZLkotlin/jvm/functions/Function0;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;ZZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Lio/github/sceneview/node/ViewNode$WindowManager;Lio/github/sceneview/loaders/MaterialLoader;ZZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun destroy ()V
+	public final fun getCameraPositionProvider ()Lkotlin/jvm/functions/Function0;
 	public final fun getLayout ()Lio/github/sceneview/node/ViewNode$Layout;
 	public fun getMaterialInstance ()Lcom/google/android/filament/MaterialInstance;
 	public final fun getPxPerUnits ()F
@@ -3444,6 +3490,7 @@ public final class io/github/sceneview/node/ViewNode : io/github/sceneview/node/
 	public fun onCapturedTouchEvent (Landroid/view/MotionEvent;)Z
 	public fun onRemovedFromScene (Lcom/google/android/filament/Scene;)V
 	public fun onTouchEvent (Landroid/view/MotionEvent;Lio/github/sceneview/collision/HitResult;)Z
+	public final fun setCameraPositionProvider (Lkotlin/jvm/functions/Function0;)V
 	public fun setMaterialInstance (Lcom/google/android/filament/MaterialInstance;)V
 	public final fun setPxPerUnits (F)V
 	public final fun setTouchForwardingEnabled (Z)V
@@ -3653,6 +3700,23 @@ public final class io/github/sceneview/utils/FileLoader {
 	public final fun setFuelManager (Lcom/github/kittinunf/fuel/core/FuelManager;)V
 }
 
+public final class io/github/sceneview/utils/GlRenderer {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/sceneview/utils/GlRenderer;
+	public static synthetic fun copy$default (Lio/github/sceneview/utils/GlRenderer;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/utils/GlRenderer;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRenderer ()Ljava/lang/String;
+	public final fun getVendor ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isLegacySwiftShader ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/utils/NodeSnapshot {
 	public static final field $stable I
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZILjava/util/List;Ljava/util/Map;)V
@@ -3689,6 +3753,7 @@ public final class io/github/sceneview/utils/OpenGL {
 	public final fun createEglContext (Landroid/opengl/EGLContext;)Landroid/opengl/EGLContext;
 	public final fun createExternalTextureId ()I
 	public final fun destroyEglContext (Landroid/opengl/EGLContext;)V
+	public final fun queryRenderer ()Lio/github/sceneview/utils/GlRenderer;
 }
 
 public final class io/github/sceneview/utils/OpenGLKt {

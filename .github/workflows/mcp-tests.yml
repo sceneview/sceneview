@@ -17,8 +17,9 @@ name: MCP tests
 # Accidental coverage that no reader can verify is what this workflow replaces:
 # the same suite, invoked by name, on a declared trigger.
 #
-# `release.yml` and `mcp-publish.yml` do run `npm test`, but only on a `v*`
-# tag — by then the code is on `main`. Publish-time tests are not merge gates.
+# `release.yml`'s `publish-mcp` job does run `npm test`, but only at publish
+# time (a `v*` tag, or a dispatch on `main`) — by then the code is on `main`.
+# Publish-time tests are not merge gates.
 
 on:
   push:

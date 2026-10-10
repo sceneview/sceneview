@@ -51,6 +51,11 @@ internal class FirebaseDemoAnalytics(context: Context) : DemoAnalytics {
         analytics.setUserProperty(property.key, value)
     }
 
+    override fun setCrashKey(key: CrashKey, value: String) {
+        if (BuildConfig.DEBUG) Log.d(TAG, "crash key ${key.key}=$value")
+        FirebaseCrashlytics.getInstance().setCustomKey(key.key, value)
+    }
+
     override fun setCollectionEnabled(enabled: Boolean) {
         if (BuildConfig.DEBUG) Log.d(TAG, "collection enabled=$enabled")
         analytics.setAnalyticsCollectionEnabled(enabled)

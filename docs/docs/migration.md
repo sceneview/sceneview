@@ -14,6 +14,110 @@ support the project on [Open Collective](https://opencollective.com/sceneview).
 
 ---
 
+## SceneView 4.53.x to 4.54.0 (Android) — `rememberMediaPlayer` returns a `MediaPlayerState`
+
+### The video player is prepared off the main thread, and says when it fails ([#4388](https://github.com/sceneview/sceneview/issues/4388))
+
+`rememberMediaPlayer` used to call the blocking `MediaPlayer.prepare()` during composition — a
+frozen frame for a long clip, an ANR for a slow one — and turned every failure into `null`, which
+was also what it returned for nothing at all: a missing asset and an unsupported codec looked the
+same as a video that was fine, and `VideoNode(videoPath = …)` then rendered nothing without a word.
+
+It now prepares the player with `prepareAsync()` and returns where it stands:
+
+```kotlin
+sealed interface MediaPlayerState {
+    data object Preparing : MediaPlayerState
+    class Ready(val player: MediaPlayer) : MediaPlayerState
+    class Failed(val cause: Exception) : MediaPlayerState
+}
+```
+
+```kotlin
+// Before
+val context = LocalContext.current
+val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4", autoStart = true)
+SceneView {
+    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+}
+
+// After
+SceneView {
+    when (val video = rememberMediaPlayer("videos/promo.mp4", autoPlay = true)) {
+        is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+        is MediaPlayerState.Failed -> Unit // video.cause says why: show your own fallback
+        MediaPlayerState.Preparing -> Unit // not ready yet: show your own placeholder
+    }
+}
+```
+
+`VideoNode(videoPath = …)` keeps its shape and gains `onError`:
+
+```kotlin
+SceneView {
+    VideoNode(
+        videoPath = "videos/promo.mp4",
+        position = Position(z = -2f),
+        onError = { cause -> videoError = cause }
+    )
+}
+```
+
+**Key differences:**
+
+- **`rememberMediaPlayer(context, assetFileLocation, isLooping, autoStart): MediaPlayer?` is
+  removed outright — there is no deprecated overload.** Both video APIs are
+  `@ExperimentalSceneViewApi`, and a nullable player cannot tell "not ready yet" from "never will
+  be". The parameters are now `(fileLocation, isLooping, autoPlay)`: no `context` (it is read from
+  the composition), `assetFileLocation` → `fileLocation`, `autoStart` → `autoPlay` (the name
+  `VideoNode(videoPath, autoPlay)` already used).
+- **The first composition never has a player.** Code that read `player.videoWidth` or called
+  `player.seekTo(…)` right after `rememberMediaPlayer` must move under the
+  `is MediaPlayerState.Ready` branch.
+- **`fileLocation` and `videoPath` accept a URL.** A location with a scheme (`https://`, `file://`,
+  `content://`, `android.resource://`) is streamed or read from there; a location without one is
+  still a path under `assets/`. A streamed URL needs the `android.permission.INTERNET` permission.
+- **`isLooping` and `autoPlay` are reactive.** They were read once; they are now applied each time
+  they change, so `autoPlay = isPlaying` is a play/pause button. If you start and pause the player
+  yourself, pass `autoPlay = false` and leave it there.
+- **A failure reaches you, once.** `MediaPlayerState.Failed.cause` (or `onError`) is the exception
+  thrown while opening the source — a `FileNotFoundException` for a missing asset — or a
+  `MediaPlayerException(what, extra)` with the codes the player reported. It is also logged once,
+  at warning level, under the `MediaPlayerState` tag.
+- **Do not release the player.** It is released when the location changes and when the call leaves
+  the composition, as before. The asset descriptor, which used to leak, is now closed as soon as
+  the player has its source.
+- **Your own `MediaPlayer`** still goes to `VideoNode(player = …)`. Prepare it with
+  `prepareAsync()` and hand it over from `setOnPreparedListener`; `MediaPlayer.create(…)` and
+  `prepare()` inside `remember { }` block the main thread exactly as the old helper did.
+
+### `Node.worldRotation` reads the same Euler angles as `Node.rotation` ([#3745](https://github.com/sceneview/sceneview/issues/3745))
+
+Through 4.53.0 the two getters used two conventions. `rotation` is ZYX and reads back what was
+written; the `worldRotation` getter returned kotlin-math's `Mat4.rotation`, which is YXZ with the
+yaw sign negated. Its setter was ZYX all along, so `node.worldRotation = node.worldRotation`
+turned any node that had yaw.
+
+| Written `rotation` (no parent) | `worldRotation` through 4.53.0 | `worldRotation` now |
+|---|---|---|
+| `(0, 30, 0)` | `(0, -30, 0)` | `(0, 30, 0)` |
+| `(20, 30, 15)` | `(12.05, -33.68, 13.25)` | `(20, 30, 15)` |
+| `(0, 120, 0)` | `(0, -120, 0)` | `(180, 60, 180)` |
+| `(20, 0, 0)`, `(0, 0, 15)` | unchanged | unchanged |
+
+Only the **`worldRotation` getter** changes. `rotation`, `worldQuaternion`, `worldTransform`,
+both setters and what is drawn on screen are untouched.
+
+- **If you negated `worldRotation.y`** to line it up with `rotation.y`, drop the negation.
+- **If you read a heading from `worldRotation.y`**, read it from `worldQuaternion` instead. Y is
+  now the middle angle of a ZYX triple and stays within ±90°: past a quarter turn the same
+  orientation reads as `(180, 60, 180)`, exactly as `rotation` has always done.
+- **If you rebuilt the orientation** with
+  `Quaternion.fromEuler(Rotation(x, -y, z), RotationsOrder.YXZ)`, use
+  `Quaternion.fromEuler(node.worldRotation)` — or `node.worldQuaternion` directly.
+
+---
+
 ## SceneView 4.37.x to 4.38.0 (Android) — `isRendering` replaced by `frameRatePolicy`
 
 ### `SceneView(isRendering:)` is removed; render-on-demand is the default ([#3108](https://github.com/sceneview/sceneview/issues/3108))
@@ -672,6 +776,11 @@ SceneView {
     VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
 }
 ```
+
+!!! note "Changed in 4.54.0"
+    The "Before" lines are the 3.5 API. `rememberMediaPlayer` no longer takes a `context` nor
+    returns a nullable player: see
+    [`rememberMediaPlayer` returns a `MediaPlayerState`](#sceneview-453x-to-4540-android-remembermediaplayer-returns-a-mediaplayerstate).
 
 ### 6. New composables: `ShapeNode` and `PhysicsNode`
 

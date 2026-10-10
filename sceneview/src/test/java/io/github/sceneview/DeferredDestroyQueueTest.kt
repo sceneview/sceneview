@@ -1,17 +1,20 @@
 package io.github.sceneview
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.random.Random
 
 /**
  * Pure-JVM pins for the frame-counting and drain-ordering contract of [DeferredDestroyQueue] —
  * the Filament-free core of [EngineDestroyQueue] (sceneview/sceneview#874).
  *
- * These guarantees are what make `ImageNode.destroy()` / `ViewNode.destroy()` safe:
- * a texture must outlive its `MaterialInstance` by exactly the grace period — destroyed neither
- * too early (native SIGABRT) nor never (GPU-memory leak).
+ * These guarantees are what make `ImageNode.destroy()` / `ViewNode.destroy()` safe: a texture is
+ * kept for the full grace period — destroyed neither too early (native SIGABRT if a material
+ * instance still samples it) nor never (GPU-memory leak) — and that period is counted in frames of
+ * the engine, however many renderers share it (sceneview/sceneview#4359).
  */
 class DeferredDestroyQueueTest {
 
@@ -29,6 +32,203 @@ class DeferredDestroyQueueTest {
         // On the 3rd drain it runs.
         queue.drain() // frame 3
         assertEquals(listOf("a"), log)
+    }
+
+    // ── drainFrame: one engine frame per pass of the renderers, not per renderer (#4359) ────────
+
+    @Test
+    fun twoRenderersOnOneEngineKeepTheFullGracePeriod() {
+        // sceneview/sceneview#4359: every SceneView has its own SceneRenderer, and each one drained
+        // the engine's queue on its own frame. Two views on one engine made three drains out of a
+        // frame and a half, so this resource died during frame 2.
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val main = Any()
+        val pip = Any()
+        val log = mutableListOf<String>()
+        queue.enqueue { log.add("texture") }
+
+        repeat(2) { // engine frames 1 and 2
+            queue.drainFrame(main)
+            queue.drainFrame(pip)
+        }
+        assertTrue("two renderers on one engine shortened the grace period", log.isEmpty())
+
+        queue.drainFrame(main) // engine frame 3 starts when a renderer comes back
+        assertEquals(listOf("texture"), log)
+    }
+
+    @Test
+    fun aResourceEnqueuedBetweenTwoRenderersOfAFrameStillGetsThreeFrames() {
+        // Released by the second view of a frame, after the first one already counted it: the
+        // three frames run from there, so it is still alive when frame 3 has fully rendered.
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val main = Any()
+        val pip = Any()
+        val log = mutableListOf<String>()
+
+        queue.drainFrame(main)
+        queue.enqueue { log.add("texture") }
+        queue.drainFrame(pip)
+        repeat(2) {
+            queue.drainFrame(main)
+            queue.drainFrame(pip)
+        }
+        assertTrue("the resource did not outlive three frames of the engine", log.isEmpty())
+
+        queue.drainFrame(main)
+        assertEquals(listOf("texture"), log)
+    }
+
+    @Test
+    fun threeRenderersOnOneEngineAdvanceOncePerFrame() {
+        // With three views the old count was one drain per third of a frame: a grace period of
+        // exactly one frame.
+        val queue = DeferredDestroyQueue(graceFrames = 0)
+        val renderers = List(3) { Any() }
+
+        repeat(10) { frame ->
+            val advances = renderers.count { queue.advancesOn(it) }
+            assertEquals("engine frame $frame was counted $advances times", 1, advances)
+        }
+    }
+
+    @Test
+    fun aSingleRendererAdvancesOnEveryFrameLikeDrain() {
+        // One view on its engine is the common case and must not change: every frame it reports
+        // is a frame of the engine. Nothing here depends on a frame time, so a caller that hands
+        // `renderFrame` a constant one cannot freeze the queue either.
+        val queue = DeferredDestroyQueue(graceFrames = 3)
+        val only = Any()
+        val log = mutableListOf<String>()
+        queue.enqueue { log.add("a") }
+
+        queue.drainFrame(only) // frame 1
+        queue.drainFrame(only) // frame 2
+        assertTrue("action ran before its grace period elapsed", log.isEmpty())
+        queue.drainFrame(only) // frame 3
+        assertEquals(listOf("a"), log)
+
+        val probe = DeferredDestroyQueue(graceFrames = 0)
+        repeat(50) { assertTrue("a lone renderer skipped a frame", probe.advancesOn(only)) }
+    }
+
+    @Test
+    fun theOrderRenderersReportInDoesNotMatter() {
+        // Compose resumes the frame awaiters in the order they registered, which is not a
+        // contract. Whatever the order, and even if it changes every frame, a frame counts once.
+        val queue = DeferredDestroyQueue(graceFrames = 0)
+        val a = Any()
+        val b = Any()
+        val c = Any()
+        val orders = listOf(
+            listOf(a, b, c), listOf(c, a, b), listOf(b, c, a),
+            listOf(c, b, a), listOf(a, c, b), listOf(a, b, c),
+        )
+
+        orders.forEachIndexed { frame, order ->
+            val advances = order.count { queue.advancesOn(it) }
+            assertEquals("engine frame $frame was counted $advances times", 1, advances)
+        }
+    }
+
+    @Test
+    fun aRendererThatStopsReportingDoesNotStallTheOthers() {
+        // One view paused, parked by FrameRatePolicy.OnDemand or disposed while the other keeps
+        // rendering: the queue must go on at the pace of the one that is left, whether or not the
+        // one that left was the one advancing the counter.
+        val leaver = Any()
+        val stayer = Any()
+        val histories = mapOf(
+            "the leaver reported first" to List(3) { listOf(leaver, stayer) }.flatten(),
+            "the stayer reported first" to List(3) { listOf(stayer, leaver) }.flatten(),
+            // The leaver was alone, then the stayer joined ahead of it in each frame: the leaver
+            // is the one advancing the counter, and the stayer is never the one it finds there.
+            "the stayer joined ahead of it" to
+                listOf(leaver) + List(3) { listOf(stayer, leaver) }.flatten(),
+        )
+
+        for ((history, reports) in histories) {
+            val queue = DeferredDestroyQueue(graceFrames = 0)
+            reports.forEach { queue.drainFrame(it) }
+
+            // The frame in progress when the other one left may already be counted; from the
+            // second report on, every frame of the renderer that is left is a frame of the engine.
+            queue.drainFrame(stayer)
+            repeat(20) {
+                assertTrue(
+                    "the queue stalled after a renderer left ($history)",
+                    queue.advancesOn(stayer)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun aRendererJoiningDoesNotAdvanceTheFrameItJoins() {
+        val queue = DeferredDestroyQueue(graceFrames = 0)
+        val first = Any()
+        val second = Any()
+        repeat(3) { assertTrue(queue.advancesOn(first)) }
+
+        // A second view starts rendering on the same engine, after the first one in each frame.
+        repeat(5) { frame ->
+            assertTrue("frame $frame was not counted", queue.advancesOn(first))
+            assertFalse("frame $frame was counted twice", queue.advancesOn(second))
+        }
+    }
+
+    @Test
+    fun renderersComingAndGoingNeverCountAFrameTwiceNorStallTheQueue() {
+        // The two bounds drainFrame documents, over frames where a random subset of five
+        // renderers reports in a random order — views pausing, parking, being added and removed.
+        // Seeded: a failure reproduces.
+        val random = Random(4359)
+        val queue = DeferredDestroyQueue(graceFrames = 0)
+        val renderers = List(5) { Any() }
+        val advancesSinceLastReport = IntArray(renderers.size) { -1 } // -1: has not reported yet
+
+        repeat(2_000) { frame ->
+            val reporting = renderers.indices.filter { random.nextInt(3) != 0 }.shuffled(random)
+            var advancesThisFrame = 0
+            for (index in reporting) {
+                val advanced = queue.advancesOn(renderers[index])
+                if (advanced) {
+                    advancesThisFrame++
+                    for (other in renderers.indices) {
+                        if (advancesSinceLastReport[other] >= 0) advancesSinceLastReport[other]++
+                    }
+                }
+                // Upper bound on the lag: a renderer that comes back has seen the counter advance
+                // since its previous report, this report included.
+                assertTrue(
+                    "frame $frame: renderer $index rendered two frames, the counter did not move",
+                    advancesSinceLastReport[index] != 0
+                )
+                advancesSinceLastReport[index] = 0
+            }
+            // Upper bound on the count: each renderer reported at most once in this frame.
+            assertTrue(
+                "frame $frame was counted $advancesThisFrame times",
+                advancesThisFrame <= 1
+            )
+        }
+    }
+
+    @Test
+    fun drainStillAdvancesUnconditionally() {
+        // The public no-source drain() is for code that owns the engine's frames itself: every
+        // call is a frame, whatever renderers reported around it.
+        val queue = DeferredDestroyQueue(graceFrames = 0)
+        val renderer = Any()
+        queue.drainFrame(renderer)
+        queue.drainFrame(Any()) // a second renderer joins the frame
+
+        repeat(3) {
+            var advanced = false
+            queue.enqueue { advanced = true }
+            queue.drain()
+            assertTrue("drain() did not advance the frame counter", advanced)
+        }
     }
 
     @Test
@@ -138,5 +338,18 @@ class DeferredDestroyQueueTest {
         assertThrows(IllegalArgumentException::class.java) {
             DeferredDestroyQueue(graceFrames = -1)
         }
+    }
+
+    /**
+     * Reports one frame of [source] and tells whether the frame counter advanced, without reading
+     * the queue's internals: on a queue built with `graceFrames = 0`, an action enqueued now runs
+     * on the very next advance. A probe left behind by a report that did not advance runs later
+     * and only sets its own, already-read flag.
+     */
+    private fun DeferredDestroyQueue.advancesOn(source: Any): Boolean {
+        var advanced = false
+        enqueue { advanced = true }
+        drainFrame(source)
+        return advanced
     }
 }

@@ -73,25 +73,27 @@ val closedPath = remember(engine) {
 
 ## Text labels
 
-`TextNode` renders text to a bitmap and displays it as a camera-facing billboard.
+`TextNode` renders text to a bitmap and displays it on a quad that turns toward the camera
+when it is given a `cameraPositionProvider`.
 
 ```kotlin
-var cameraPos by remember { mutableStateOf(Position()) }
+val cameraNode = rememberCameraNode(engine)
 
 SceneView(
     engine = engine,
     modelLoader = modelLoader,
-    onFrame = { cameraPos = cameraNode.worldPosition }
+    cameraNode = cameraNode
 ) {
     TextNode(
-        materialLoader = materialLoader,
         text = "Hello 3D!",
         fontSize = 48f,
         textColor = android.graphics.Color.WHITE,
         backgroundColor = 0xCC000000.toInt(),
+        typeface = Typeface.DEFAULT_BOLD,
         widthMeters = 0.6f,
         heightMeters = 0.2f,
-        cameraPositionProvider = { cameraPos }
+        // Read by the node on each frame — no Compose state, no recomposition.
+        cameraPositionProvider = { cameraNode.worldPosition }
     )
 }
 ```
@@ -104,9 +106,13 @@ SceneView(
 | `fontSize` | Font size in pixels for the bitmap texture |
 | `textColor` | ARGB text colour |
 | `backgroundColor` | ARGB background fill |
-| `widthMeters` / `heightMeters` | Size of the quad in world space |
-| `cameraPositionProvider` | Lambda returning camera position — label faces the camera |
-| `bitmapWidth` / `bitmapHeight` | Resolution of the backing bitmap (default 512x128) |
+| `typeface` | `android.graphics.Typeface` of the text (default `Typeface.DEFAULT_BOLD`) |
+| `widthMeters` / `heightMeters` | Size of the quad in world space (read once, at creation) |
+| `position` / `scale` | Local transform of the label |
+| `cameraPositionProvider` | Lambda returning camera position — label faces the camera. Without it the label does not turn |
+
+The backing bitmap is 512 × 128 px. `bitmapWidth` / `bitmapHeight` are not parameters of the
+composable: they belong to the constructor of the node class, `io.github.sceneview.node.TextNode`.
 
 ### Positioning labels
 
@@ -114,12 +120,10 @@ Set the label's position like any node:
 
 ```kotlin
 TextNode(
-    materialLoader = materialLoader,
     text = "Earth",
-    cameraPositionProvider = { cameraPos }
-).apply {
-    position = Position(x = 0f, y = 2f, z = 0f)
-}
+    position = Position(x = 0f, y = 2f, z = 0f),
+    cameraPositionProvider = { cameraNode.worldPosition }
+)
 ```
 
 ---
@@ -129,7 +133,7 @@ TextNode(
 A common pattern is annotating a 3D scene with measurement lines and labels:
 
 ```kotlin
-SceneView(engine = engine, modelLoader = modelLoader) {
+SceneView(engine = engine, modelLoader = modelLoader, cameraNode = cameraNode) {
     // Measurement line
     val measureLine = remember(engine) {
         LineNode(engine, start = Position(-1f, 0f, 0f), end = Position(1f, 0f, 0f))
@@ -138,15 +142,13 @@ SceneView(engine = engine, modelLoader = modelLoader) {
 
     // Label at midpoint
     TextNode(
-        materialLoader = materialLoader,
         text = "2.0 m",
         fontSize = 36f,
         widthMeters = 0.4f,
         heightMeters = 0.15f,
-        cameraPositionProvider = { cameraPos }
-    ).apply {
-        position = Position(0f, 0.2f, 0f)
-    }
+        position = Position(0f, 0.2f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
 

@@ -66,10 +66,11 @@ import kotlinx.coroutines.delay
 /**
  * Media: a framed drawable, a muted streamed video and a floating sprite, each named by a TextNode.
  * Orbit to see fixed surfaces go edge-on while captions and the badge face the camera.
- * TextNode and BillboardNode require cameraPositionProvider; their provider is construction-only,
- * so key those nodes on Face camera. VideoNode(player) needs a prepared, owned MediaPlayer: a URL
- * is prepared off the main thread by [rememberStreamedVideo], and until it is, or when it cannot
- * be, the screen says so on a still. It never plays a stand-in.
+ * TextNode and BillboardNode face the camera only with a cameraPositionProvider. Clearing it leaves
+ * a node as it was last turned, so those nodes are keyed on Face camera: rebuilt, they hang at
+ * their resting yaw again. VideoNode(player) needs a prepared MediaPlayer:
+ * `rememberMediaPlayer` prepares the URL off the main thread ([rememberStreamedVideo]), and until
+ * it has, or when it cannot, the screen says so on a still. It never plays a stand-in.
  * QA seeks the attached video to one second while paused; a decoder that cannot finish that seek
  * falls back to muted playback after a bounded wait, so the rest of the gallery remains usable.
  */
@@ -256,7 +257,7 @@ fun TwoDInThreeDMediaDemo(onBack: () -> Unit) {
                         }
                     }
                 } }
-                // Only these nodes are recreated: their immutable provider cannot be swapped in place.
+                // Only these nodes are recreated: a cleared provider would leave them as last turned.
                 key(faceCamera) {
                     val provider: (() -> Position)? = if (faceCamera) ({ eye }) else null
                     val exhibit = gallery[2]

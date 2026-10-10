@@ -26,7 +26,7 @@ name: MCP TypeScript check
 # tsc IS PART OF THE GAP, NOT A BONUS
 # -----------------------------------
 # `npm test` is vitest, which does not type-check, and `npm run build` only ran
-# inside `mcp-publish.yml` / `release.yml` — i.e. at publish time, on a tag. A
+# inside `release.yml`'s `publish-mcp` job — i.e. at publish time. A
 # type error in `mcp/src` could reach npm having been compiled only on a
 # contributor's laptop, the same shape `rn-ts-check.yml` closed for the RN
 # bridge.
@@ -155,9 +155,10 @@ jobs:
           fi
 
       # `npm run build` = prebuild generators + `tsc`. Emitting to `dist/` (as
-      # opposed to `tsc --noEmit`) is deliberate: it is byte-for-byte what
-      # `mcp-publish.yml` runs before publishing, so what is checked here is
-      # what ships.
+      # opposed to `tsc --noEmit`) is deliberate: it is the same generators
+      # and the same `tsc` that `release.yml`'s `publish-mcp` job runs (as
+      # `npm run prepare`) before publishing, so what is checked here is what
+      # ships.
       - name: Type-check (tsc)
         working-directory: mcp
         run: npm run build

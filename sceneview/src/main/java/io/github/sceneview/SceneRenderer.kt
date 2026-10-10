@@ -231,6 +231,17 @@ class SceneRenderer(
         private set
 
     /**
+     * The identity this renderer reports its frames under to the engine's [EngineDestroyQueue],
+     * which is how the queue tells two renderers on one engine from one renderer rendering twice
+     * (sceneview/sceneview#4359).
+     *
+     * A bare token rather than `this`: the queue keeps it until its counter next advances, and it
+     * is reachable from a static map for as long as the engine lives — holding the renderer there
+     * would keep its surface callbacks alive after [destroy] on an engine nobody renders any more.
+     */
+    private val frameSource = Any()
+
+    /**
      * Presents a single frame if a swap chain is available.
      *
      * Call this from a `withFrameNanos` block. The [onBeforeRender] callback is invoked
@@ -261,10 +272,10 @@ class SceneRenderer(
         onBeforeRender()
 
         if (shouldPresent?.invoke() == false) {
-            // Still drain: the queue's grace periods are counted in ticks of real scene time, and a
+            // Still drain: the queue's grace periods are counted in frames of the engine, and a
             // scene that settles into on-demand would otherwise hold destroyed GPU resources until
             // something happened to wake it.
-            EngineDestroyQueue.of(engine).drain()
+            EngineDestroyQueue.of(engine).drainFrame(frameSource)
             return false
         }
 
@@ -283,12 +294,13 @@ class SceneRenderer(
             presented = true
         }
 
-        // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
-        // (render) thread so Filament has reclaimed any MaterialInstance the texture was bound to —
-        // see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from a
-        // Choreographer callback so it advances in lock-step with real rendered frames, and stops
-        // the moment the surface (and thus the render loop) goes away.
-        EngineDestroyQueue.of(engine).drain()
+        // Destroy GPU resources whose grace period has elapsed, after endFrame on the main (render)
+        // thread — see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from
+        // a Choreographer callback so it advances in lock-step with real rendered frames, and
+        // stops the moment the surface (and thus the render loop) goes away. Reported under this
+        // renderer's identity: the queue belongs to the engine, and counts one frame per pass of
+        // the renderers sharing it, not one per renderer (sceneview/sceneview#4359).
+        EngineDestroyQueue.of(engine).drainFrame(frameSource)
 
         return presented
     }

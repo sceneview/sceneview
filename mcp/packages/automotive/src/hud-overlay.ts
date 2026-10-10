@@ -72,11 +72,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
 
@@ -95,7 +96,9 @@ import io.github.sceneview.math.Position
 fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Off-screen window hosting the ViewNode's Compose content — the same instance goes to
+    // SceneView (viewNodeWindowManager) and to the ViewNode (windowManager).
+    val windowManager = rememberViewNodeManager()
 
     // Simulated vehicle data
     var speed by remember { mutableFloatStateOf(0f) }
@@ -112,7 +115,7 @@ ${elements.includes("alerts") ? `    var alerts by remember { mutableStateOf(lis
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
+            viewNodeWindowManager = windowManager,
             onFrame = { frameTimeNanos ->
                 // Simulate speed changes for demo
                 speed = (speed + 0.1f).coerceIn(0f, ${units === "metric" ? "220f" : "140f"})
@@ -120,6 +123,7 @@ ${elements.includes("alerts") ? `    var alerts by remember { mutableStateOf(lis
         ) {
             // HUD rendered as a ViewNode in 3D space
             ViewNode(
+                windowManager = windowManager,
                 position = Position(0f, 0f, -2f)
             ) {
                 HudContent(
@@ -137,6 +141,7 @@ ${elements.includes("alerts") ? `                    alerts = alerts,` : ""}
 
             // Ambient lighting
             LightNode(
+                type = LightManager.Type.DIRECTIONAL,
                 apply = {
                     intensity(50_000f)
                     color(0.9f, 0.95f, 1.0f)
@@ -162,9 +167,11 @@ ${elements.includes("alerts") ? `    alerts: List<String>,` : ""}
     hudColor: Color,
     bgColor: Color
 ) {
+    // The ViewNode window is WRAP_CONTENT: fillMaxWidth() here would resolve to the whole
+    // display width and put a metres-wide quad in the scene, so the HUD gets an explicit width.
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .width(320.dp)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -288,7 +295,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberViewNodeManager
 import io.github.sceneview.math.Position
 
 /**
@@ -302,13 +309,15 @@ import io.github.sceneview.math.Position
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.0.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
+    // Off-screen window hosting the ViewNode's Compose content — the same instance goes to
+    // ARSceneView (viewNodeWindowManager) and to the ViewNode (windowManager).
+    val windowManager = rememberViewNodeManager()
 
     var speed by remember { mutableFloatStateOf(60f) }
     val hudColor = ${nightMode ? `Color(0xFF00FF41)` : `Color(0xFF00BFFF)`}
@@ -318,7 +327,7 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
+            viewNodeWindowManager = windowManager,
             planeRenderer = false,
             onSessionUpdated = { session, frame ->
                 // AR session active
@@ -326,11 +335,13 @@ fun ${composableName}AR() {
         ) {
             // HUD floating in AR space
             ViewNode(
+                windowManager = windowManager,
                 position = Position(0f, 0f, -1.5f)
             ) {
+                // Explicit width: the ViewNode window is WRAP_CONTENT.
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier.width(320.dp).padding(16.dp)
                 ) {
                     Text(
                         text = "\${speed.toInt()} ${speedUnit}",

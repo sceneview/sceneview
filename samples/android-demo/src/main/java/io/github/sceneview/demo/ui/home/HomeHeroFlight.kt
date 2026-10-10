@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.ui.home
 
+import io.github.sceneview.utils.GlRenderer
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -27,6 +28,32 @@ internal data class HeroTier(
         fun forDevice(lowRam: Boolean): HeroTier =
             if (lowRam) HeroTier(HeroTerrainSpec.Light, cinematic = false)
             else HeroTier(HeroTerrainSpec.Full, cinematic = true)
+    }
+}
+
+/**
+ * What fills the hero stage: the flight, or its picture.
+ *
+ * Decided once, from the GL implementation, *before* an engine exists. Filament reports a
+ * shader program it cannot link as a panic that aborts the process, so on a renderer the
+ * flight does not survive, the only safe handling is not to start it (#4411).
+ */
+internal enum class HeroSurface {
+    /** The flight, rendered by SceneView. */
+    Live,
+
+    /** One frame of the flight, as a bundled picture: no engine is created. */
+    Still;
+
+    companion object {
+        /**
+         * [Still] on the legacy guest SwiftShader ([GlRenderer.isLegacySwiftShader]), where
+         * the app aborted in Filament a second after launch on every start, and when
+         * [renderer] is null — no OpenGL ES 3 context at all, so no engine either. [Live]
+         * everywhere else, hardware or not: the emulator's own SwiftShader modes fly it.
+         */
+        fun forRenderer(renderer: GlRenderer?): HeroSurface =
+            if (renderer == null || renderer.isLegacySwiftShader) Still else Live
     }
 }
 

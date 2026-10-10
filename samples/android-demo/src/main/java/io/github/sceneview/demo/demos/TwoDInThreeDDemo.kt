@@ -106,9 +106,12 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
     val originals = remember { RocketPart.entries.associateWith { it.originalMaterial } }
     var choices by remember { mutableStateOf(originals) }
     var alwaysOnTop by remember { mutableStateOf(true) }
+    var faceCamera by remember { mutableStateOf(true) }
     var spinning by remember { mutableStateOf(false) }
     var yaw by remember { mutableFloatStateOf(0f) }
     var anchor by remember { mutableStateOf(Position()) }
+    // Where the card was turned when its part was picked: what it keeps with Face camera off.
+    var resting by remember { mutableStateOf(Rotation()) }
     var pulseRequest by remember { mutableIntStateOf(0) }
     val pulse = remember { Animatable(1f) }
     LaunchedEffect(pulseRequest) {
@@ -153,8 +156,14 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
         rememberMaterialInstance(materials, swatchColors[2], 1f, 0.42f, 0.5f),
         rememberMaterialInstance(materials, swatchColors[3], 1f, 0.18f, 0.5f),
     )
-    var eye by remember { mutableStateOf(Position()) }
     var cardNode by remember { mutableStateOf<ViewNode?>(null) }
+    // What the card faces, read on every frame; the node skips the frames where nothing moved.
+    // Not the eye itself — `{ camera.worldPosition }` — which turns a card this far off the
+    // axis into a parallelogram. A point as far from the card as the eye is from the orbit
+    // target, the same way: the card stays parallel to the screen, a rectangle.
+    val cameraPosition = remember(camera) { {
+        (cardNode?.worldPosition ?: layout.INSPECT_TARGET) + (camera.worldPosition - layout.INSPECT_TARGET)
+    } }
     val touchCapture = remember { arrayOfNulls<ViewNode>(1) }
     LaunchedEffect(cardNode, alwaysOnTop) {
         cardNode?.let {
@@ -202,6 +211,13 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                 Text(stringResource(R.string.demo_two_d_in_three_d_always_on_top))
                 Switch(alwaysOnTop, onCheckedChange = null)
             }
+            Row(Modifier.fillMaxWidth().padding(top = SceneViewTokens.Space.sm)
+                .toggleable(faceCamera, onValueChange = { faceCamera = it }),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.demo_two_d_in_three_d_face_camera))
+                Switch(faceCamera, onCheckedChange = null)
+            }
         },
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -238,10 +254,7 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                 cameraNode = camera, collisionSystem = collisions, viewNodeWindowManager = manager,
                 renderInvalidator = invalidator, autoCenterContent = false,
                 cameraManipulator = manipulator,
-                onFrame = { nanos ->
-                    firstFrame.onFrame(nanos)
-                    if (layout.movedPerceptibly(eye, camera.worldPosition)) eye = camera.worldPosition
-                },
+                onFrame = firstFrame.onFrame,
                 onTouchEvent = { event, nearest ->
                     // Depth priority is visual only. Pick the on-top card before geometry behind it,
                     // then keep its whole stream, including padding and an UP outside its collider.
@@ -267,7 +280,10 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                         selected = part
                         if (part != null) {
                             hasSelected = true
+                            val eye = camera.worldPosition
                             anchor = layout.cardAnchor(part, eye, yaw, cardMeters)
+                            resting = Rotation(x = layout.billboardPitchDegrees(layout.INSPECT_TARGET, eye),
+                                y = layout.billboardYawDegrees(Position(), eye, yaw))
                             pulseRequest++
                         }
                     }
@@ -303,12 +319,12 @@ fun TwoDInThreeDInspectDemo(onBack: () -> Unit) {
                         }
                     } }
                     // Keep the same quad alive while selection moves; an invisible card cannot pick.
-                    // It turns with the eye's bearing on the rocket and leans back to its height, not
-                    // towards the eye itself: the card stays parallel to the screen, a rectangle.
+                    // Face camera on: `cameraPositionProvider` keeps the card square to the screen —
+                    // orbit, or spin the rocket under it, and it follows. Off: `rotation` applies again,
+                    // the angle it had when its part was picked, and the card turns away with the rocket.
                     ViewNode(windowManager = manager, unlit = false, position = anchor,
-                        rotation = Rotation(x = layout.billboardPitchDegrees(layout.INSPECT_TARGET, eye),
-                            y = layout.billboardYawDegrees(Position(), eye, yaw)),
-                        scale = Scale(cardScale), isVisible = selected != null,
+                        rotation = resting, scale = Scale(cardScale), isVisible = selected != null,
+                        cameraPositionProvider = if (faceCamera) cameraPosition else null,
                         apply = { cardNode = this; isHittable = false; isTouchForwardingEnabled = true },
                     ) {
                         SceneViewDemoTheme(darkTheme = dark) {

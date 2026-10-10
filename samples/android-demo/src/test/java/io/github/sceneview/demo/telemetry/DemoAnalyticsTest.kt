@@ -22,6 +22,10 @@ class DemoAnalyticsTest {
         override fun setUserProperty(property: UserProperty, value: String) {
             properties[property] = value
         }
+        val crashKeys = mutableMapOf<CrashKey, String>()
+        override fun setCrashKey(key: CrashKey, value: String) {
+            crashKeys[key] = value
+        }
         override fun setCollectionEnabled(enabled: Boolean) {
             collection += enabled
         }
@@ -46,6 +50,17 @@ class DemoAnalyticsTest {
     }
 
     @Test
+    fun `crash keys follow the same switch, and are cut to a line`() {
+        analytics.setCrashKey(CrashKey.GlRenderer, "Google SwiftShader")
+        analytics.setCrashKey(CrashKey.GlVersion, "v".repeat(900))
+        enabled = false
+        analytics.setCrashKey(CrashKey.Abi, "x86_64")
+        assertEquals("Google SwiftShader", recorder.crashKeys[CrashKey.GlRenderer])
+        assertEquals(200, recorder.crashKeys.getValue(CrashKey.GlVersion).length)
+        assertEquals(setOf(CrashKey.GlRenderer, CrashKey.GlVersion), recorder.crashKeys.keys)
+    }
+
+    @Test
     fun `the opt-out itself always reaches the sink`() {
         enabled = false
         analytics.setCollectionEnabled(false)
@@ -60,12 +75,14 @@ class DemoAnalyticsTest {
             object : DemoAnalytics {
                 override fun log(event: AnalyticsEvent) = error("boom")
                 override fun setUserProperty(property: UserProperty, value: String) = error("boom")
+                override fun setCrashKey(key: CrashKey, value: String) = error("boom")
                 override fun setCollectionEnabled(enabled: Boolean) = error("boom")
                 override fun resetData() = error("boom")
             },
         ) { true }
         throwing.log(AnalyticsEvent.PushPromptShown)
         throwing.setUserProperty(UserProperty.NotifEnabled, "true")
+        throwing.setCrashKey(CrashKey.HeroSurface, "still")
         throwing.setCollectionEnabled(false)
         throwing.resetData()
     }

@@ -66,6 +66,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.Trackable
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.exceptions.PlaybackFailedException
+import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.FrameRateGate
 import io.github.sceneview.RenderInvalidator
 import io.github.sceneview.SceneNodeManager
@@ -935,7 +936,13 @@ fun ARSceneView(
     // is freed too — closing the lifecycle leak that the umbrella audit flagged
     // for long AR sessions with intermittent estimation.
     val builtIndirectLightRef = remember { AtomicReference<IndirectLight?>(null) }
-    DisposableEffect(engine, builtIndirectLightRef, scene) {
+    // Keyed on `environment` too (#4358): the light built from an estimate without reflections
+    // samples the baseline's cubemap, and the baseline now releases that cubemap when it is
+    // destroyed. This effect is remembered after the caller's `rememberAREnvironment`, so it is
+    // disposed first — on a baseline swap as on leaving the screen, the built light is gone
+    // before the texture it reads, and `LaunchedEffect(environment, scene)` below then installs
+    // the new baseline.
+    DisposableEffect(engine, builtIndirectLightRef, scene, environment) {
         onDispose {
             // Defensive ordering (#1814): clear the scene's [IndirectLight] reference BEFORE
             // freeing it. The window between [Engine.destroyIndirectLight] and Compose teardown
@@ -1549,8 +1556,15 @@ fun ARSceneView(
         // through `attachedScene`, so registering here is what makes every push source in
         // `sceneview` — transforms, geometry, materials, visibility — reach the AR loop too.
         SceneRenderInvalidators.register(scene, sceneInvalidator)
-        // Only this view's entry: a SceneView may render the same scene (#3723).
-        onDispose { SceneRenderInvalidators.unregister(scene, sceneInvalidator) }
+        // And by engine, for the one change no node announces: a geometry upload that had to
+        // wait for the previous one and left from a Filament callback (#4365). Without it that
+        // upload is only drawn with the next camera image.
+        EngineRenderInvalidators.register(engine, sceneInvalidator)
+        onDispose {
+            EngineRenderInvalidators.unregister(engine, sceneInvalidator)
+            // Only this view's entry: a SceneView may render the same scene (#3723).
+            SceneRenderInvalidators.unregister(scene, sceneInvalidator)
+        }
     }
 
     // Wire resize and surface callbacks — AR needs additional display geometry + plane renderer.

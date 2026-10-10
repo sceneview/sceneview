@@ -792,6 +792,7 @@ import io.github.sceneview.geometries.Plane // the geometry defaults, not com.go
     fontSize: Float = 48f,
     textColor: Int = android.graphics.Color.WHITE,
     backgroundColor: Int = 0xCC000000.toInt(),
+    typeface: android.graphics.Typeface = android.graphics.Typeface.DEFAULT_BOLD,
     widthMeters: Float = 0.6f,
     heightMeters: Float = 0.2f,
     position: Position = Position(x = 0f),
@@ -801,7 +802,15 @@ import io.github.sceneview.geometries.Plane // the geometry defaults, not com.go
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
-Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `position`, `scale` update on recomposition.
+Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` and
+`cameraPositionProvider` update on recomposition. `widthMeters` and `heightMeters` are read
+**once**, when the node is created — a later value is ignored. The label is drawn into a
+512 × 128 px bitmap; for another resolution build the node class yourself
+(`io.github.sceneview.node.TextNode(…, bitmapWidth, bitmapHeight)`).
+`typeface` takes any `android.graphics.Typeface`, e.g. `Typeface.create("serif", Typeface.ITALIC)`.
+The label turns toward the camera **only** when `cameraPositionProvider` is given
+(`cameraPositionProvider = { cameraNode.worldPosition }`); without one it keeps the orientation
+of its parent. There is no `rotation` parameter. See "Facing the camera" below.
 
 ### BillboardNode — always-facing-camera sprite
 ```kotlin
@@ -816,6 +825,26 @@ Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `position`, `scale
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+Reactive: `position`, `scale` and `cameraPositionProvider` update on recomposition; a new `bitmap`
+rebuilds the node. Without a `cameraPositionProvider` it is a plain image quad that keeps its parent's orientation.
+
+#### Facing the camera — `cameraPositionProvider` on `BillboardNode`, `TextNode` and `ViewNode`
+One parameter, one meaning on the three: `cameraPositionProvider: (() -> Position)? = null`.
+- `null` (default): the node does not turn. Nothing faces the camera unless you ask.
+- Set: a **full look-at**. The front of the quad points at the position you return and its top
+  edge stays toward world `+Y` — yaw and pitch, never roll. Pass
+  `{ cameraNode.worldPosition }` with the `cameraNode` you gave `SceneView`.
+- Yaw only (an upright sign): level the reported position with the node,
+  `{ cameraNode.worldPosition.copy(y = signHeight) }`.
+- Parallel to the screen (a card off the view axis that must stay a rectangle, where facing the
+  eye shows a parallelogram): report a point offset from the node the way the camera is offset
+  from what it looks at, `{ node.worldPosition + (cameraNode.worldPosition - target) }`.
+- It follows the camera, the node **and its parent**: a label on a turntable keeps facing you.
+- Reactive: swap it or set it to `null` on recomposition, or through the node's
+  `cameraPositionProvider` property. `null` stops the turning and leaves the node as last turned.
+- While it is set the node owns its orientation: a `rotation` or `quaternion` written by hand is
+  overwritten. Set the provider through the parameter, not inside `apply`.
+- Free while nothing moves: it does not keep a `FrameRatePolicy.OnDemand` scene awake.
 
 ### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
 Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
@@ -868,24 +897,25 @@ separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
-// Simple — asset path (recommended):
+// Simple — a path or a URL (recommended):
 @ExperimentalSceneViewApi
 @Composable fun VideoNode(
-    videoPath: String,              // e.g. "videos/promo.mp4"
-    autoPlay: Boolean = true,
-    isLooping: Boolean = true,
+    videoPath: String,              // "videos/promo.mp4" (assets), or https:// file:// content://
+    autoPlay: Boolean = true,       // reactive: true plays, false pauses
+    isLooping: Boolean = true,      // reactive
     chromaKeyColor: Int? = null,
     size: Size? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),
+    onError: ((Exception) -> Unit)? = null,   // missing file, unsupported codec, broken stream
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 
 // Advanced — bring your own MediaPlayer:
 @Composable fun VideoNode(
-    player: MediaPlayer,
+    player: MediaPlayer,   // already prepared
     chromaKeyColor: Int? = null,
     size: Size? = null,    // null = auto-sized from video aspect ratio
     position: Position = Position(x = 0f),
@@ -894,23 +924,58 @@ separately under #2646.
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
+
+// The player both overloads are built on:
+@ExperimentalSceneViewApi
+@Composable fun rememberMediaPlayer(
+    fileLocation: String,           // assets path, or a location with a scheme
+    isLooping: Boolean = true,
+    autoPlay: Boolean = true
+): MediaPlayerState
+
+sealed interface MediaPlayerState {
+    data object Preparing : MediaPlayerState
+    class Ready(val player: MediaPlayer) : MediaPlayerState
+    class Failed(val cause: Exception) : MediaPlayerState   // FileNotFoundException, MediaPlayerException(what, extra), …
+}
 ```
+
+The video is prepared off the main thread (`prepareAsync`), never during composition. The node
+appears once the video is prepared; until then, and if it fails, `VideoNode(videoPath)` emits
+nothing — pass `onError` to hear about a failure (called once, on the main thread; also logged
+once under the `MediaPlayerState` tag). The player is released when the location changes and when
+the call leaves the composition: never release it yourself, never keep it past that point.
 
 Usage (simple):
 ```kotlin
+var videoError by remember { mutableStateOf<Exception?>(null) }
+
 SceneView {
-    VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
+    VideoNode(
+        videoPath = "videos/promo.mp4",
+        position = Position(z = -2f),
+        onError = { cause -> videoError = cause }   // render your own message from this state
+    )
 }
 ```
 
-Usage (advanced — custom MediaPlayer):
+Usage (a placeholder while it prepares, a fallback when it fails):
 ```kotlin
-val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
-
-SceneView(...) {
-    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+@Composable
+fun PromoVideo(loadingStill: Bitmap, unavailableStill: Bitmap) {
+    SceneView {
+        when (val video = rememberMediaPlayer("https://example.com/promo.mp4")) {
+            is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+            is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(z = -2f))
+            MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(z = -2f))
+        }
+    }
 }
 ```
+
+Never call the blocking `MediaPlayer.prepare()` or `MediaPlayer.create(…)` inside `remember { }`:
+both parse the file on the main thread, during composition. A streamed URL needs the
+`android.permission.INTERNET` permission.
 
 ### ViewNode — Compose UI in 3D
 **Requires `viewNodeWindowManager` on the parent `SceneView`.**
@@ -921,11 +986,19 @@ SceneView(...) {
     invertFrontFaceWinding: Boolean = false,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),              // the quad is 1 m per 250 px of content at scale 1
+    isVisible: Boolean = true,
+    cameraPositionProvider: (() -> Position)? = null,  // set = the quad faces this position
     apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit    // the Compose UI to render
 )
 ```
+Reactive: `position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider` and `viewContent`
+update on recomposition. `unlit` and `invertFrontFaceWinding` are read **once**, when the node is
+created, and `apply` runs once at the same moment. `rotation` is ignored while
+`cameraPositionProvider` is set and applies again when it goes back to `null` — same semantics as
+`BillboardNode` and `TextNode`, see "Facing the camera" above.
 
 Usage:
 ```kotlin
@@ -1089,7 +1162,7 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented: a geometry keeps one upload in flight and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two uploads and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
 
 ### ShapeNode — 2D polygon shape
 ```kotlin
@@ -2971,9 +3044,11 @@ class CollaborativeSession {
     fun resolve(engine: Engine, session: Session, cloudAnchorId: String,
                 onResolved: ((node: CloudAnchorNode?) -> Unit)? = null)
     fun onFrame(frame: Frame)                         // call from onSessionUpdated — broadcasts camera pose
+    fun broadcastLocalPose(relativePose: Pose)        // same rate limit as onFrame — for non-ARCore hosts
     fun placeNode(nodeKey: String, modelKey: String,
                   translation: FloatArray, quaternion: FloatArray,
                   scale: FloatArray = floatArrayOf(1f, 1f, 1f))
+    fun removeNode(nodeKey: String)                   // removes it on every peer; no-op if the key is not placed
 }
 ```
 
@@ -2995,9 +3070,9 @@ fun MultiplayerARScreen() {
 }
 ```
 
-- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — a node key holds the last write the device has seen (`PlacedNode`), a peer's or its own: `placeNode` on an existing key moves that node, including one a peer placed. Messages carry no logical clock, so two peers writing the *same* key at the same moment are not ordered — prefix node keys with the peer id when several users may move things at once. Stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` never block, so they are safe in the AR render callback: only camera poses are conflated (the newest wins), while a placement, the anchor id and the hello are never dropped by a later line. `broadcastLocalPose(Pose)` is not rate-limited — only `onFrame` honours `poseRateHz`. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
+- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `remove` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. A `node` line ends with a `clock` counter and a `remove` line carries one. Peers up to 4.53.0 interoperate both ways: they ignore `clock` and drop `remove` lines as an unknown type, and their `node` lines, which have no `clock`, are applied in arrival order. All transforms are in the shared anchor's local space so they are comparable across devices.
+- **Conflict policy** — a node key holds one `PlacedNode`, the last write to that key, and "last" is the same on every device: each `placeNode` / `removeNode` carries a per-key counter, set above every counter the writer has seen for that key and never below its wall clock in milliseconds, and equal counters are settled by the greater peer id. Two peers writing the *same* key at the same moment end on the same node whatever order the lines arrive in. `placeNode` on an existing key moves that node, including one a peer placed. `removeNode(nodeKey)` removes a node on every peer, whoever placed it: a placement written before the removal and delivered after it does not bring the node back, and a later `placeNode` places it again. Limits: nodes placed before a device joined are not re-sent to it; with peers up to 4.53.0 in the session, their writes apply in arrival order and they ignore removals; only the `MAX_NODES` most recent removals are remembered. Stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`broadcastLocalPose`/`placeNode`/`removeNode` never block, so they are safe in the AR render callback. Camera poses are limited to `poseRateHz` for `onFrame` and `broadcastLocalPose` alike: the first goes out at once, then one per interval, and the newest pose held back is sent when the interval ends — the pose a device stops on always arrives (`poseRateHz = 0` sends every pose). A placement or removal, the anchor id and the hello are never dropped by a later line of another kind. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.
@@ -3547,6 +3622,17 @@ node.animatePositions(...)
 node.animateRotations(...)
 ```
 
+`rotation` and `worldRotation` use one Euler convention: degrees, ZYX order. Each getter reads
+`toEulerAngles()` of `quaternion` / `worldQuaternion` and each setter writes
+`Quaternion.fromEuler(value)`, so a node with no parent reads the same angles through both, and
+`node.worldRotation = node.worldRotation` leaves it where it is. Y is the middle angle and stays
+within ±90°: a 120° yaw reads `Rotation(180f, 60f, 180f)`, the same orientation. To read a heading,
+compare orientations or interpolate, use `quaternion` / `worldQuaternion`.
+
+Through 4.53.0 the `worldRotation` getter used another convention (YXZ, yaw sign negated, Y within
+±180°): `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`. Code that negated
+`worldRotation.y` to compensate must drop the negation.
+
 ### Editable nodes — Sceneform `TransformableNode` parity
 
 SceneView's gesture-editing API is the direct replacement for Sceneform's
@@ -3854,10 +3940,42 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The cubemaps behind an environment belong to it. Filament frees neither with the `IndirectLight` or
+`Skybox` that samples it, so `EnvironmentLoader.destroyEnvironment` and
+`Engine.safeDestroyEnvironment` release them after the light and the skybox — which is what every
+`remember*Environment` helper calls on disposal and on a key change. Every loader factory (KTX and
+HDR), `createEnvironment(environmentLoader)` and `createAREnvironment` hand their cubemaps over for
+you.
+
+Building the `IndirectLight` from a `KTX1Loader` bundle yourself? Pass the bundle's cubemap in
+`textures`, or one cubemap stays on the GPU each time the environment is rebuilt:
+
+```kotlin
+import com.google.android.filament.utils.KTX1Loader
+import io.github.sceneview.utils.readBuffer
+
+val environment = rememberEnvironment(engine) {
+    val bundle = KTX1Loader.createIndirectLight(
+        engine,
+        context.assets.readBuffer("environments/studio_ibl.ktx"),
+    )
+    createEnvironment(
+        engine = engine,
+        indirectLight = bundle.indirectLight,
+        // Ownership moves to the environment: destroyed with it, after the light.
+        textures = listOfNotNull(bundle.cubemap),
+    )
+}
+```
+
+`environment.copy(skybox = other)` shares the Filament handles and owns no texture: destroy the
+environment it was copied from, never the copy.
 
 ---
 
@@ -3894,7 +4012,7 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
-| `rememberMediaPlayer(context, assetFileLocation)` | `MediaPlayer?` | Auto-lifecycle video player (null while loading) |
+| `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
 
 **AR-specific helpers** (from `arsceneview` module):
 

@@ -27,23 +27,12 @@ import io.github.sceneview.safeDestroyTexture
  *
  * Optionally supports chroma-key (green-screen) compositing via [chromaKeyColor].
  *
+ * In a `SceneView { }` block, declare it with the `VideoNode` composables: `VideoNode(videoPath = …)`
+ * prepares and owns the player, `VideoNode(player = …)` takes one from `rememberMediaPlayer`.
+ *
  * ```kotlin
  * SceneView {
- *     val player = remember {
- *         MediaPlayer().apply {
- *             setDataSource(context, videoUri)
- *             isLooping = true
- *             prepare()
- *             start()
- *         }
- *     }
- *     DisposableEffect(Unit) { onDispose { player.release() } }
- *
- *     VideoNode(
- *         materialLoader = materialLoader,
- *         player = player,
- *         position = Position(z = -2f)
- *     )
+ *     VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
  * }
  * ```
  *

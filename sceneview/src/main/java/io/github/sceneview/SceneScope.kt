@@ -5,7 +5,6 @@
 
 package io.github.sceneview
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaPlayer
 import androidx.annotation.DrawableRes
@@ -17,7 +16,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.ui.platform.LocalContext
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
@@ -1197,17 +1195,31 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── BillboardNode ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * A flat quad node that always faces the camera (billboard behaviour).
+     * A flat quad showing a bitmap, which turns to face the camera when given a
+     * [cameraPositionProvider] (billboard behaviour).
      *
      * Pass a [Bitmap] and optionally explicit [widthMeters]/[heightMeters] to control the world-
-     * space size of the quad. Provide [cameraPositionProvider] so the node can rotate toward the
-     * camera every frame.
+     * space size of the quad.
+     *
+     * **Facing the camera** is opt-in and means the same thing on [BillboardNode], [TextNode] and
+     * [ViewNode]: with a [cameraPositionProvider] the quad does a full look-at — front toward the
+     * camera position, top toward world `+Y`, so it yaws and pitches and never rolls. Without one
+     * it keeps the orientation of its parent.
+     *
+     * ```kotlin
+     * val cameraNode = rememberCameraNode(engine)
+     * SceneView(cameraNode = cameraNode) {
+     *     BillboardNode(bitmap = badge, cameraPositionProvider = { cameraNode.worldPosition })
+     * }
+     * ```
      *
      * @param bitmap                 The bitmap texture to display.
      * @param widthMeters            Quad width in meters (`null` derives from bitmap aspect ratio).
      * @param heightMeters           Quad height in meters (`null` derives from bitmap aspect ratio).
      * @param position               Local position.
-     * @param cameraPositionProvider Lambda returning the camera world position every frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                               (default) leaves the orientation alone. Follows recomposition:
+     *                               pass `null` and back to switch the behaviour off and on.
      * @param apply                  Additional configuration on the [BillboardNodeImpl].
      * @param content                Optional child nodes.
      */
@@ -1244,8 +1256,11 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.requestRender()
             }
         }
+        // Every recomposition, like the callbacks `SceneView` takes: the node was built with the
+        // provider of the FIRST composition, and before #4387 kept it for good.
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
-        // param here: the billboard rotates itself toward the camera every frame.
+        // param here: a billboard is given a `cameraPositionProvider` to orient it.
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
@@ -1258,10 +1273,15 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     // ── TextNode ──────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * A 3D text-label node that always faces the camera.
+     * A 3D text label, which turns to face the camera when given a [cameraPositionProvider].
      *
      * Text is rendered to an Android [android.graphics.Bitmap] via [android.graphics.Canvas] and
-     * displayed on a flat quad that rotates toward the camera each frame.
+     * displayed on a flat quad.
+     *
+     * **Facing the camera** is opt-in and means the same thing on [BillboardNode], [TextNode] and
+     * [ViewNode]: with a [cameraPositionProvider] the quad does a full look-at — front toward the
+     * camera position, top toward world `+Y`, so it yaws and pitches and never rolls. Without one
+     * the label keeps the orientation of its parent.
      *
      * @param text                   The string to display.
      * @param fontSize               Font size in pixels used when rendering the bitmap (default 48).
@@ -1270,7 +1290,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param widthMeters            Quad width in meters (default 0.6).
      * @param heightMeters           Quad height in meters (default 0.2).
      * @param position               Local position.
-     * @param cameraPositionProvider Lambda returning the camera world position every frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                               (default) leaves the orientation alone. Follows recomposition:
+     *                               pass `null` and back to switch the behaviour off and on.
      * @param apply                  Additional configuration on the [TextNodeImpl].
      * @param content                Optional child nodes.
      */
@@ -1317,8 +1339,10 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 node.requestRender()
             }
         }
+        // Every recomposition — see BillboardNode above (#4387).
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
         // Component-keyed transform push — see SphereNode for rationale (#2653). No `rotation`
-        // param here: the text label rotates itself toward the camera every frame.
+        // param here: a label is given a `cameraPositionProvider` to orient it.
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
@@ -1339,20 +1363,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * [android.media.MediaPlayer.OnVideoSizeChangedListener] the geometry is updated automatically.
      *
      * ```kotlin
-     * val player = remember {
-     *     MediaPlayer().apply {
-     *         setDataSource(context, videoUri)
-     *         isLooping = true
-     *         prepare()
-     *         start()
+     * SceneView {
+     *     when (val video = rememberMediaPlayer("videos/promo.mp4")) {
+     *         is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+     *         is MediaPlayerState.Failed -> Unit // video.cause says why
+     *         MediaPlayerState.Preparing -> Unit
      *     }
      * }
-     * DisposableEffect(Unit) { onDispose { player.release() } }
-     *
-     * SceneView {
-     *     VideoNode(player = player, position = Position(z = -2f))
-     * }
      * ```
+     *
+     * [rememberMediaPlayer] prepares the player off the main thread and releases it. A player you
+     * build yourself must be prepared before it gets here — with `prepareAsync()`, never the
+     * blocking `prepare()` during composition — and released by you.
      *
      * @param player           [android.media.MediaPlayer] whose frames are rendered on this node.
      * @param chromaKeyColor   Optional ARGB chroma-key colour for green-screen compositing.
@@ -1393,30 +1415,43 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
     }
 
     /**
-     * Convenience overload that loads a video from an asset file path and manages the
-     * [MediaPlayer] lifecycle automatically.
+     * Plays the video at [videoPath] on a flat plane, and owns its [MediaPlayer].
      *
-     * Mirrors the Android roadmap goal of `VideoNode(videoPath = "videos/promo.mp4", autoPlay = true)`.
-     * Internally uses [rememberMediaPlayer] for lifecycle management and [VideoNode] for rendering.
+     * The video is prepared off the main thread by [rememberMediaPlayer]: the node appears once it
+     * is ready, sized to the video's aspect ratio, and nothing is drawn before that. A video that
+     * cannot be played — missing file, unsupported codec, broken stream — is reported to [onError]
+     * and logged once; the node then stays out of the scene.
      *
      * ```kotlin
      * SceneView {
      *     VideoNode(
      *         videoPath = "videos/promo.mp4",
-     *         position = Position(z = -2f)
+     *         position = Position(z = -2f),
+     *         onError = { cause -> videoError = cause }
      *     )
      * }
      * ```
      *
-     * @param videoPath        Asset file path (e.g. `"videos/promo.mp4"`).
-     * @param autoPlay         Whether to start playback immediately. Default `true`.
-     * @param isLooping        Whether the video should loop. Default `true`.
+     * To draw a placeholder while the video is prepared, or something else when it fails, call
+     * [rememberMediaPlayer] yourself and branch on its [MediaPlayerState].
+     *
+     * @param videoPath        Path to the video relative to the `assets` folder
+     *                         (`"videos/promo.mp4"`), or a location with a scheme: `https://…`,
+     *                         `file://…`, `content://…`, `android.resource://…`.
+     * @param autoPlay         Whether the video plays. Applied when the video becomes ready and
+     *                         each time the value changes: `true` starts playback, `false` pauses
+     *                         it. Default `true`.
+     * @param isLooping        Whether the video loops. Applied when it changes. Default `true`.
      * @param chromaKeyColor   Optional ARGB chroma-key colour for green-screen compositing.
      * @param size             Fixed plane size in world units. `null` = auto-size from video.
      * @param position         World-space position.
      * @param rotation         World-space rotation.
      * @param scale            World-space scale.
-     * @param apply            Additional configuration on the [VideoNodeImpl] instance.
+     * @param onError          Called once when the video cannot be played, with the cause: the
+     *                         exception thrown while opening [videoPath], or a
+     *                         [MediaPlayerException] carrying the codes the player reported.
+     * @param apply            Additional configuration on the [VideoNodeImpl] instance. Runs when
+     *                         the node is created, that is once the video is ready.
      * @param content          Optional child nodes in a [NodeScope].
      */
     @ExperimentalSceneViewApi
@@ -1430,19 +1465,19 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         position: Position = Position(x = 0f),
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
+        onError: ((Exception) -> Unit)? = null,
         apply: VideoNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
-        val context: Context = LocalContext.current
-        val player = rememberMediaPlayer(
-            context = context,
-            assetFileLocation = videoPath,
+        val state = rememberMediaPlayer(
+            fileLocation = videoPath,
             isLooping = isLooping,
-            autoStart = autoPlay
+            autoPlay = autoPlay
         )
-        if (player != null) {
+        MediaPlayerFailureEffect(state, onError)
+        if (state is MediaPlayerState.Ready) {
             VideoNode(
-                player = player,
+                player = state.player,
                 chromaKeyColor = chromaKeyColor,
                 size = size,
                 position = position,
@@ -1497,9 +1532,18 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
      * @param unlit                 If `true`, ignores scene lighting (always fully bright).
      * @param invertFrontFaceWinding Inverts face winding — useful for front-facing AR cameras.
      * @param position              World-space position.
-     * @param rotation              World-space rotation (Euler angles in degrees).
+     * @param rotation              World-space rotation (Euler angles in degrees). Ignored while
+     *                              [cameraPositionProvider] is set, and applied again when it
+     *                              goes back to `null`.
      * @param scale                 Uniform or non-uniform scale.
      * @param isVisible             Whether the node renders this frame.
+     * @param cameraPositionProvider The camera world position to face, read every frame; `null`
+     *                              (default) leaves the orientation to [rotation]. The same
+     *                              parameter, with the same meaning, as on [BillboardNode] and
+     *                              [TextNode] (#4387): a full look-at — front toward the camera
+     *                              position, top toward world `+Y`, so the card yaws and pitches
+     *                              and never rolls. Follows recomposition. Typical value:
+     *                              `{ cameraNode.worldPosition }`.
      * @param apply                 Additional configuration on the [ViewNodeImpl] instance,
      *                              applied once at construction time. For reactive props,
      *                              prefer the top-level [position]/[rotation]/[scale]/[isVisible]
@@ -1516,6 +1560,7 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         rotation: Rotation = Rotation(x = 0f),
         scale: Scale = Scale(1f),
         isVisible: Boolean = true,
+        cameraPositionProvider: (() -> Position)? = null,
         apply: ViewNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null,
         viewContent: @Composable () -> Unit
@@ -1535,17 +1580,25 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
                 materialLoader = materialLoader,
                 unlit = unlit,
                 invertFrontFaceWinding = invertFrontFaceWinding,
+                cameraPositionProvider = cameraPositionProvider,
                 content = { currentViewContent.value() }
             ).apply(apply)
         }
+        // Every recomposition — see BillboardNode above (#4387).
+        SideEffect { node.cameraPositionProvider = cameraPositionProvider }
+        val facesCamera = cameraPositionProvider != null
         // Keyed on scalar components (Float3 is a mutable data class — keying on the wrapper
         // instance can miss in-place mutations of a retained instance; a fresh structurally-equal
         // Position per recomposition keeps the effect idle).
         DisposableEffect(node, position.x, position.y, position.z) {
             node.position = position; onDispose {}
         }
-        DisposableEffect(node, rotation.x, rotation.y, rotation.z) {
-            node.rotation = rotation; onDispose {}
+        // While the node faces the camera it owns its orientation, so `rotation` is not pushed —
+        // it would be undone at the next camera move, after showing for however long the camera
+        // held still. `facesCamera` is a key so that dropping the provider puts `rotation` back.
+        DisposableEffect(node, facesCamera, rotation.x, rotation.y, rotation.z) {
+            if (!facesCamera) node.rotation = rotation
+            onDispose {}
         }
         DisposableEffect(node, scale.x, scale.y, scale.z) {
             node.scale = scale; onDispose {}

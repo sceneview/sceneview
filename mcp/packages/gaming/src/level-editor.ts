@@ -86,7 +86,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.SphereNode
@@ -95,11 +97,10 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberEnvironmentLoader
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 
 /**
  * Procedural level editor — ${theme} theme.
@@ -117,8 +118,9 @@ fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
+    // One colour material shared by the procedural geometry — created once, on the main thread
+    val shapeMaterial = remember(materialLoader) { materialLoader.createColorInstance(Color.Gray) }
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     // Level state: grid of placed blocks
     val levelBlocks = remember { mutableStateListOf<LevelBlock>() }
@@ -140,16 +142,14 @@ fun ${composableName}() {
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/level_hdr.ktx"
                 )!!
             ) {
 ${showGrid ? `                // Grid floor
                 CubeNode(
-                    engine = engine,
-                    materialLoader = materialLoader,
-                    size = Scale(${gridSize}.0f, 0.05f, ${gridSize}.0f),
+                    materialInstance = shapeMaterial,
+                    size = Size(${gridSize}.0f, 0.05f, ${gridSize}.0f),
                     position = Position(0f, -0.025f, 0f)
                 )` : ""}
 
@@ -157,20 +157,17 @@ ${showGrid ? `                // Grid floor
                 for (block in levelBlocks) {
                     when (block.type) {
                         "cube" -> CubeNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
-                            size = Scale(block.scaleX, block.scaleY, block.scaleZ),
+                            materialInstance = shapeMaterial,
+                            size = Size(block.scaleX, block.scaleY, block.scaleZ),
                             position = Position(block.x, block.y, block.z)
                         )
                         "sphere" -> SphereNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
+                            materialInstance = shapeMaterial,
                             radius = block.scaleX * 0.5f,
                             position = Position(block.x, block.y, block.z)
                         )
                         "cylinder" -> CylinderNode(
-                            engine = engine,
-                            materialLoader = materialLoader,
+                            materialInstance = shapeMaterial,
                             radius = block.scaleX * 0.5f,
                             height = block.scaleY,
                             position = Position(block.x, block.y, block.z)
@@ -180,6 +177,7 @@ ${showGrid ? `                // Grid floor
 
                 // Theme-appropriate lighting
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(${themeColors.lightIntensity}f)
                         color(${themeColors.lightColor})
@@ -188,6 +186,7 @@ ${showGrid ? `                // Grid floor
                 )
 
                 LightNode(
+                    type = LightManager.Type.DIRECTIONAL,
                     apply = {
                         intensity(${themeColors.fillIntensity}f)
                         color(${themeColors.fillColor})
@@ -292,15 +291,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.google.ar.core.Frame
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.SphereNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberCollisionSystem
+import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.math.Position
-import io.github.sceneview.math.Scale
 
 /**
  * AR Level Editor — ${options.theme} theme.
@@ -313,14 +312,15 @@ import io.github.sceneview.math.Scale
  *   <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
  *   <meta-data android:name="com.google.ar.core" android:value="required" />
  *
- * Gradle: implementation("io.github.sceneview:arsceneview:4.16.9")
+ * Gradle: implementation("io.github.sceneview:arsceneview:4.53.0")
  */
 @Composable
 fun ${composableName}AR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val materialLoader = rememberMaterialLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     var selectedGeometry by remember { mutableStateOf("cube") }
 
@@ -329,12 +329,17 @@ fun ${composableName}AR() {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
-            collisionSystem = collisionSystem,
             planeRenderer = true,
-            onTapAR = { hitResult ->
-                val anchor = hitResult.createAnchor()
-                // Place selected geometry at tap location
-            }
+            onSessionUpdated = { _, frame -> latestFrame = frame },
+            onGestureListener = rememberOnGestureListener(
+                onSingleTapConfirmed = { e, _ ->
+                    // Hit-test the tap against the latest ARCore frame
+                    latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                        val anchor = hitResult.createAnchor()
+                        // Place selected geometry at tap location
+                    }
+                }
+            )
         ) {
             // AR placed blocks rendered here
         }

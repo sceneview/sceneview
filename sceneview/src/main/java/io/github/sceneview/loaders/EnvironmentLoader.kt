@@ -13,8 +13,7 @@ import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.environment.IBLPrefilter
 import io.github.sceneview.logDeferredTeardown
-import io.github.sceneview.safeDestroyIndirectLight
-import io.github.sceneview.safeDestroySkybox
+import io.github.sceneview.safeDestroyEnvironment
 import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.texture.use
 import io.github.sceneview.utils.loadFileBuffer
@@ -32,7 +31,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.Buffer
 import java.nio.ByteBuffer
-import java.util.IdentityHashMap
 
 /** `Texture.Builder.levels` value Filament clamps to the full mip chain, as HDRLoader does. */
 private const val ALL_MIP_LEVELS = 0xff
@@ -59,17 +57,24 @@ class EnvironmentLoader(
     val iblPrefilter = IBLPrefilter(engine)
 
     private val environments = mutableListOf<Environment>()
-    private val environmentTextures = IdentityHashMap<Environment, List<Texture>>()
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
         skybox: Skybox? = null,
         sphericalHarmonics: FloatArray? = null
+    ) = createEnvironment(indirectLight, skybox, sphericalHarmonics, emptyList())
+
+    private fun createEnvironment(
+        indirectLight: IndirectLight? = null,
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null,
+        textures: List<Texture>,
     ) = Environment(
         indirectLight = indirectLight,
         skybox = skybox,
         sphericalHarmonics = sphericalHarmonics?.toList()
     ).also {
+        it.ownTextures(textures)
         environments += it
     }
 
@@ -251,15 +256,14 @@ class EnvironmentLoader(
                 .environment(it)
                 .build(engine)
         }
-        return createEnvironment(indirectLight = indirectLight, skybox = skybox).also { environment ->
-            // Filament's Skybox and IndirectLight do not own the textures passed to their
-            // builders. Track each distinct cubemap with the aggregate Environment so rapid
-            // remembered-environment swaps release the GPU images as well as the two wrappers.
-            environmentTextures[environment] = buildList {
+        return createEnvironment(
+            indirectLight = indirectLight,
+            skybox = skybox,
+            textures = buildList {
                 add(reflections)
                 if (createSkybox && textureCubemap !== reflections) add(textureCubemap)
-            }
-        }
+            },
+        )
     }
 
     /**
@@ -418,17 +422,20 @@ class EnvironmentLoader(
     fun createKTX1Environment(
         iblBuffer: Buffer? = null,
         skyboxBuffer: Buffer? = null
-    ) = createEnvironment(
-        // Apply the v4.1.0-balanced IBL intensity (#1075) so callers don't need to
-        // remember it; the KTX1Loader-built IBL otherwise inherits Filament's 30k
-        // default which dominates the 10k main + 3k fill light setup.
-        indirectLight = iblBuffer?.let {
-            KTX1Loader.createIndirectLight(engine, it).indirectLight
-                ?.also { ibl -> ibl.intensity = io.github.sceneview.DEFAULT_IBL_INTENSITY }
-        },
-        skybox = skyboxBuffer?.let { KTX1Loader.createSkybox(engine, it).skybox },
-        sphericalHarmonics = iblBuffer?.rewind()?.let { KTX1Loader.getSphericalHarmonics(it) }
-    )
+    ): Environment {
+        val indirectLightBundle = iblBuffer?.let { KTX1Loader.createIndirectLight(engine, it) }
+        val skyboxBundle = skyboxBuffer?.let { KTX1Loader.createSkybox(engine, it) }
+        return createEnvironment(
+            // Apply the v4.1.0-balanced IBL intensity (#1075) so callers don't need to
+            // remember it; the KTX1Loader-built IBL otherwise inherits Filament's 30k
+            // default which dominates the 10k main + 3k fill light setup.
+            indirectLight = indirectLightBundle?.indirectLight
+                ?.also { ibl -> ibl.intensity = io.github.sceneview.DEFAULT_IBL_INTENSITY },
+            skybox = skyboxBundle?.skybox,
+            sphericalHarmonics = iblBuffer?.rewind()?.let { KTX1Loader.getSphericalHarmonics(it) },
+            textures = listOfNotNull(indirectLightBundle?.cubemap, skyboxBundle?.cubemap),
+        )
+    }
 
     /**
      * Utility for producing environment resources from precompiled cmgen generated KTX files.
@@ -579,9 +586,9 @@ class EnvironmentLoader(
         // safe destroys make a second call for the same handles a no-op.
         val environmentIndex = environments.indexOfFirst { it === environment }
         if (environmentIndex != -1) environments.removeAt(environmentIndex)
-        environment.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
-        environment.skybox?.let { engine.safeDestroySkybox(it) }
-        environmentTextures.remove(environment)?.forEach { engine.safeDestroyTexture(it) }
+        // Light and skybox first, then the cubemaps they sample: one implementation, shared with
+        // every caller of `Engine.safeDestroyEnvironment`.
+        engine.safeDestroyEnvironment(environment)
     }
 
     /**
@@ -594,7 +601,6 @@ class EnvironmentLoader(
      */
     fun clear() {
         environments.toList().forEach { destroyEnvironment(it) }
-        environmentTextures.clear()
     }
 
     /**

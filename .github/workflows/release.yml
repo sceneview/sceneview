@@ -5,6 +5,12 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
+    inputs:
+      mcp_only:
+        description: Publish sceneview-mcp only (skip every SDK publisher, the API docs and the GitHub Release)
+        required: false
+        type: boolean
+        default: false
 
 # Only one release at a time
 concurrency:
@@ -36,13 +42,28 @@ jobs:
   #
   # ONE job, and every publisher `needs:` it — including `create-release`,
   # whose `if: always()` would otherwise cut a public GitHub Release out of a
-  # refused version while the publishers sat skipped. That single edge is also
-  # what `check-release-publish-verification.py` contract G pins, so a
-  # publisher added later without it fails CI instead of shipping unguarded.
+  # refused version while the publishers sat skipped. Keeping that single edge
+  # makes the guard the shared entry point for every publication.
   breaking-change-guard:
     name: Breaking-change / patch-bump guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # A manual dispatch only publishes from `main` or from a `v*` tag (#4416).
+    # npm Trusted Publishing matches this workflow FILE, not the ref it runs
+    # on, so a dispatch on a feature branch whose `mcp/package.json` carried an
+    # unpublished version used to publish that branch with valid provenance.
+    # Off those refs this job is skipped, and a skipped `needs:` skips every
+    # publisher below; `create-release` runs under `always()` and is held by
+    # its own `needs.breaking-change-guard.result == 'success'`.
+    #
+    # A tag push is always `refs/tags/v…` (see `on:`), and so is the dispatch
+    # `tag-release.sh` sends (`--ref v$V`): both pass exactly as before.
+    #
+    # What this does NOT cover: a dispatch runs the workflow file of the ref it
+    # is sent to, so a branch that predates this condition, or edits it out,
+    # is not held by it. Closing that takes a GitHub environment with a branch
+    # rule, bound to the npm trusted publisher.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
     steps:
@@ -81,6 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [breaking-change-guard]
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
     steps:
@@ -91,6 +113,7 @@ jobs:
       - name: Check if version already published
         id: check-maven
         run: |
+          set -euo pipefail
           # Maven Central artifacts are immutable — re-publishing the same
           # version always fails with `Component … already exists`. The npm
           # publish jobs below skip-if-published; mirror that here so a
@@ -103,16 +126,28 @@ jobs:
             VERSION=${GITHUB_REF_NAME#v}
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          # HEAD against the published .pom — 200 means already on Central.
-          STATUS=$(curl -sI -o /dev/null -w "%{http_code}" \
-            "https://repo1.maven.org/maven2/io/github/sceneview/sceneview/${VERSION}/sceneview-${VERSION}.pom")
-          if [ "$STATUS" = "200" ]; then
-            echo "::notice::sceneview ${VERSION} already on Maven Central — skipping publish"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Publishing sceneview ${VERSION} (HTTP ${STATUS} on Central probe)"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          # HEAD against the published .pom — 200 means already on Central,
+          # 404 means not there yet. Anything else (5xx, 429, no answer at
+          # all) is NOT "not published": the step fails instead of guessing
+          # (#4416). A curl that exits non-zero is recorded as such rather
+          # than trusted for whatever status it printed before dying.
+          STATUS=$(curl -sSI --retry 3 --max-time 30 -o /dev/null -w "%{http_code}" \
+            "https://repo1.maven.org/maven2/io/github/sceneview/sceneview/${VERSION}/sceneview-${VERSION}.pom") \
+            || STATUS="curl-exit-$?"
+          case "$STATUS" in
+            200)
+              echo "::notice::sceneview ${VERSION} already on Maven Central — skipping publish"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "Publishing sceneview ${VERSION} (not yet on Maven Central)"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Maven Central probe answered ${STATUS} (neither 200 nor 404) — refusing to publish on a guess"
+              exit 1
+              ;;
+          esac
 
       - name: Publish
         if: steps.check-maven.outputs.skip != 'true'
@@ -181,6 +216,7 @@ jobs:
     # public `sceneview.github.io` site, so a refused release must not leave
     # documentation for it standing.
     needs: [breaking-change-guard]
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
     # Cross-workflow serialisation (#1417). This job and docs.yml's `deploy`
@@ -366,8 +402,38 @@ jobs:
   # back to the token (lib/utils/oidc.js returns undefined on every failure).
   # So this change is safe to merge before or after the npmjs.com side is set
   # up — it never makes a publish that works today stop working.
+  #
+  # That fallback is NOT a second way to publish, though. Measured on
+  # 2026-10-08 for sceneview-mcp: NPM_TOKEN alone is still refused with EOTP
+  # ("npm tokens that bypass 2FA are being restricted for account changes and
+  # direct publishing"). A publish succeeds through OIDC or not at all, and
+  # OIDC is only granted to this file.
 
   # ── 3. Publish MCP to npm ──────────────────────────────────────────────────
+  # REPUBLISHING THE MCP BETWEEN SDK RELEASES
+  # sceneview-mcp is on its own version track (#1705) and often has to ship
+  # without an SDK tag. Once the `mcp/package.json` bump is on main, dispatch
+  # THIS workflow on main, scoped to the MCP:
+  #
+  #   gh workflow run release.yml --ref main -f mcp_only=true
+  #
+  # `mcp_only` (#4416) skips every other publisher, the SPM check, the API-docs
+  # job and `create-release` by their own `if:`, so this job is the only one
+  # that can publish. Before the input existed the same dispatch relied on each
+  # publisher finding its own version already on its registry — run 37814936574
+  # (2026-10-08) shipped sceneview-mcp 4.1.2 that way — and that still holds
+  # for a dispatch WITHOUT the input: it publishes EVERY package whose version
+  # on the dispatched ref is not on its registry yet. On a main where
+  # `VERSION_NAME` is bumped but not tagged, it ships the SDK too.
+  #
+  # No `if:` on this job, on purpose: it runs on a tag push, on a full dispatch
+  # and on an MCP-only one. The ref restriction reaches it through `needs:`.
+  #
+  # There is no separate MCP workflow, and there cannot be one. npm accepts ONE
+  # trusted-publishing workflow per package, and sceneview-mcp's is this file.
+  # `mcp-publish.yml` used to be that separate dispatch path; from there the
+  # OIDC exchange was refused, npm fell back to NPM_TOKEN, and the publish
+  # died on EOTP (run 37814710611, 2026-10-08). It was deleted for that reason.
   publish-mcp:
     name: Publish MCP to npm
     runs-on: ubuntu-latest
@@ -387,19 +453,31 @@ jobs:
         id: check-mcp
         working-directory: mcp
         run: |
+          set -euo pipefail
           # MCP has its own version cycle — always use package.json version
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Check the *specific* version rather than the latest dist-tag.
-          # npm view <pkg>@<ver> version returns the version string if it exists,
-          # or exits non-zero / returns empty if it has never been published.
-          PUBLISHED=$(npm view "sceneview-mcp@$VERSION" version 2>/dev/null || echo "")
-          if [ "$PUBLISHED" = "$VERSION" ]; then
+          # `npm view <pkg>@<ver> version` prints the version and exits 0 when it
+          # exists, and exits 1 with `npm error code E404` when it does not.
+          # Any other failure (registry 5xx, auth, no network) is NOT "not
+          # published": the step fails instead of guessing (#4416).
+          NPM_ERROR="${RUNNER_TEMP:-/tmp}/sceneview-mcp-npm-view.err"
+          if PUBLISHED=$(npm view "sceneview-mcp@$VERSION" version 2>"$NPM_ERROR"); then
+            if [ "$PUBLISHED" != "$VERSION" ]; then
+              cat "$NPM_ERROR" >&2
+              echo "::error::npm returned an unexpected version for sceneview-mcp@$VERSION: $PUBLISHED"
+              exit 1
+            fi
             echo "::notice::sceneview-mcp@$VERSION already published — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
+          elif grep -q 'code E404' "$NPM_ERROR"; then
             echo "Publishing sceneview-mcp@$VERSION (not yet on npm)"
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$NPM_ERROR" >&2
+            echo "::error::npm registry probe failed; refusing to publish sceneview-mcp@$VERSION"
+            exit 1
           fi
 
       - name: Build
@@ -440,6 +518,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [breaking-change-guard]
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
       id-token: write # npm Trusted Publishing (OIDC), see the note above publish-mcp (#3302)
@@ -456,22 +535,40 @@ jobs:
       - name: Check if version already published
         id: check-web
         run: |
+          set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION=$(node -p "require('./sceneview-web/package.json').version" 2>/dev/null || echo "0.0.0")
+            # No `|| echo "0.0.0"` fallback (#4416): an unreadable package.json
+            # used to turn into an attempt to publish sceneview-web@0.0.0.
+            VERSION=$(node -p "require('./sceneview-web/package.json').version") || VERSION=""
           else
             VERSION=${GITHUB_REF_NAME#v}
           fi
+          if [ -z "$VERSION" ] || [ "$VERSION" = "undefined" ]; then
+            echo "::error::Could not read a version for sceneview-web (sceneview-web/package.json on a dispatch, the tag on a push) — refusing to publish"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Check the *specific* version rather than the latest dist-tag.
-          # npm view <pkg>@<ver> version returns the version string if it exists,
-          # or exits non-zero / returns empty if it has never been published.
-          PUBLISHED=$(npm view "sceneview-web@$VERSION" version 2>/dev/null || echo "")
-          if [ "$PUBLISHED" = "$VERSION" ]; then
+          # `npm view <pkg>@<ver> version` prints the version and exits 0 when it
+          # exists, and exits 1 with `npm error code E404` when it does not.
+          # Any other failure (registry 5xx, auth, no network) is NOT "not
+          # published": the step fails instead of guessing (#4416).
+          NPM_ERROR="${RUNNER_TEMP:-/tmp}/sceneview-web-npm-view.err"
+          if PUBLISHED=$(npm view "sceneview-web@$VERSION" version 2>"$NPM_ERROR"); then
+            if [ "$PUBLISHED" != "$VERSION" ]; then
+              cat "$NPM_ERROR" >&2
+              echo "::error::npm returned an unexpected version for sceneview-web@$VERSION: $PUBLISHED"
+              exit 1
+            fi
             echo "::notice::sceneview-web@$VERSION already published — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
+          elif grep -q 'code E404' "$NPM_ERROR"; then
             echo "Publishing sceneview-web@$VERSION (not yet on npm)"
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$NPM_ERROR" >&2
+            echo "::error::npm registry probe failed; refusing to publish sceneview-web@$VERSION"
+            exit 1
           fi
 
       - name: Build sceneview-web JS library
@@ -550,6 +647,7 @@ jobs:
     # the tag straight onto npm, where every consumer's `^` range takes a patch
     # without review.
     needs: [breaking-change-guard]
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
       id-token: write # npm Trusted Publishing (OIDC), see the note above publish-mcp (#3302)
@@ -564,6 +662,7 @@ jobs:
       - name: Check if version already published
         id: check-rn
         run: |
+          set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION=$(node -p "require('./react-native/react-native-sceneview/package.json').version")
           else
@@ -572,14 +671,24 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # @sceneview-sdk/react-native is scoped; we check the specific
           # version rather than the latest dist-tag so a re-run after a
-          # partial failure becomes idempotent.
-          PUBLISHED=$(npm view "@sceneview-sdk/react-native@$VERSION" version 2>/dev/null || echo "")
-          if [ "$PUBLISHED" = "$VERSION" ]; then
+          # partial failure becomes idempotent. Only `npm error code E404`
+          # means "not published"; any other failure fails the step (#4416).
+          NPM_ERROR="${RUNNER_TEMP:-/tmp}/react-native-npm-view.err"
+          if PUBLISHED=$(npm view "@sceneview-sdk/react-native@$VERSION" version 2>"$NPM_ERROR"); then
+            if [ "$PUBLISHED" != "$VERSION" ]; then
+              cat "$NPM_ERROR" >&2
+              echo "::error::npm returned an unexpected version for @sceneview-sdk/react-native@$VERSION: $PUBLISHED"
+              exit 1
+            fi
             echo "::notice::@sceneview-sdk/react-native@$VERSION already published — skipping"
             echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
+          elif grep -q 'code E404' "$NPM_ERROR"; then
             echo "Publishing @sceneview-sdk/react-native@$VERSION (not yet on npm)"
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$NPM_ERROR" >&2
+            echo "::error::npm registry probe failed; refusing to publish @sceneview-sdk/react-native@$VERSION"
+            exit 1
           fi
 
       - name: Sync package version from VERSION_NAME
@@ -635,10 +744,13 @@ jobs:
     name: Validate SceneViewSwift SPM tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Runs on both tag pushes AND workflow_dispatch — previously gated on
-    # `startsWith(github.ref, 'refs/tags/v')` which made it SKIP on dispatch,
-    # which then blocked `create-release` (whose gate required
-    # `validate-spm.result == 'success'` strictly). Closes FU11 (#1003 follow-up).
+    # Runs on tag pushes AND on a full workflow_dispatch: gating it on
+    # `startsWith(github.ref, 'refs/tags/v')` once made it SKIP on dispatch
+    # and block `create-release`, whose gate then required a strict
+    # `validate-spm.result == 'success'` (FU11, #1003 follow-up). Only an
+    # MCP-only dispatch skips it (#4416) — `create-release` is skipped on that
+    # path too, and its gate now accepts a skipped validate-spm anyway.
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
     steps:
@@ -700,8 +812,8 @@ jobs:
   # an accounts.google.com URL and "Waiting for your authorization...".
   #
   # The step below does that exchange explicitly rather than pulling in a
-  # second SDK action, so the one thing that was missing is visible in the
-  # job that needs it. Pinned by check-release-publish-verification.py.
+  # second SDK action, keeping the missing piece visible in the job that needs
+  # it and the credential exchange auditable.
   #
   # In `create-release`'s needs-gate since the first publish landed
   # (flutter_sceneview 4.24.0, a manual debut — a brand-new package cannot
@@ -718,6 +830,7 @@ jobs:
     # had actually landed.
     timeout-minutes: 20
     needs: [breaking-change-guard]
+    if: github.event_name != 'workflow_dispatch' || !inputs.mcp_only
     permissions:
       contents: read
       id-token: write # OIDC token exchange for pub.dev automated publishing
@@ -727,6 +840,7 @@ jobs:
       - name: Check if version already published
         id: check-pub
         run: |
+          set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             VERSION=$(grep -E '^version:' flutter/sceneview_flutter/pubspec.yaml | awk '{print $2}')
           else
@@ -736,16 +850,40 @@ jobs:
           # pub.dev versions are immutable — mirror the npm publishers'
           # skip-if-published so a workflow_dispatch retry after a partial
           # failure stays idempotent.
-          PUBLISHED=$(curl -sf "https://pub.dev/api/packages/flutter_sceneview" \
-            | python3 -c "import json,sys; print(any(v['version'] == '$VERSION' for v in json.load(sys.stdin)['versions']))" \
-            2>/dev/null || echo "False")
-          if [ "$PUBLISHED" = "True" ]; then
-            echo "::notice::flutter_sceneview $VERSION already on pub.dev — skipping"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Publishing flutter_sceneview $VERSION (not yet on pub.dev)"
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          #
+          # 200 with the version listed → skip; 200 without it, or 404 → publish.
+          # Anything else (5xx, 429, no answer, a body that is not the expected
+          # JSON) is NOT "not published": the step fails instead of guessing
+          # (#4416).
+          RESPONSE="${RUNNER_TEMP:-/tmp}/flutter_sceneview-pub-response.json"
+          STATUS=$(curl -sS --retry 3 --max-time 30 -o "$RESPONSE" -w '%{http_code}' \
+            "https://pub.dev/api/packages/flutter_sceneview") \
+            || STATUS="curl-exit-$?"
+          case "$STATUS" in
+            200)
+              PUBLISHED=$(VERSION="$VERSION" python3 -c \
+                'import json,os,sys; print(any(v["version"] == os.environ["VERSION"] for v in json.load(sys.stdin)["versions"]))' \
+                < "$RESPONSE") || PUBLISHED="unreadable"
+              if [ "$PUBLISHED" = "True" ]; then
+                echo "::notice::flutter_sceneview $VERSION already on pub.dev — skipping"
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+              elif [ "$PUBLISHED" = "False" ]; then
+                echo "Publishing flutter_sceneview $VERSION (not yet on pub.dev)"
+                echo "skip=false" >> "$GITHUB_OUTPUT"
+              else
+                echo "::error::pub.dev answered 200 with a body that is not the package's version list — refusing to publish on a guess"
+                exit 1
+              fi
+              ;;
+            404)
+              echo "Publishing flutter_sceneview $VERSION (package not yet on pub.dev)"
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::pub.dev probe answered ${STATUS} (neither 200 nor 404) — refusing to publish on a guess"
+              exit 1
+              ;;
+          esac
 
       - uses: subosito/flutter-action@v2
         if: steps.check-pub.outputs.skip != 'true'
@@ -913,6 +1051,7 @@ jobs:
       && needs.publish-rn.result != 'cancelled'
       && needs.validate-spm.result != 'failure'
       && needs.validate-spm.result != 'cancelled'
+      && (github.event_name != 'workflow_dispatch' || !inputs.mcp_only)
       && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write

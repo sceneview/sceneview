@@ -81,9 +81,9 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    Required on every demo and drives the "New" marker — see
  *                    [DemoFreshness]. Back-filled from git history (the first
  *                    release tag containing the demo's first commit). Work
- *                    merged between two releases declares the current
- *                    `VERSION_NAME`: [io.github.sceneview.demo.DemoFreshnessTest]
- *                    fails on a version newer than the build.
+ *                    merged between two releases declares the next version,
+ *                    which may be one minor ahead of `VERSION_NAME` until the
+ *                    release bump. See [DemoFreshness].
  * @param updatedIn   Release in which this demo's **user-visible behaviour**
  *                    last changed — a rebuild, a new control, a fixed render.
  *                    Drives the "Updated" marker. Not "any commit that touched

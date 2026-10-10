@@ -1325,15 +1325,20 @@ shell:
       captures (12 imagesets shared with Android, tools/demo-previews/README.md).
       The header turns to glass once scrolled (ShowcaseTab.swift
       HeaderGround: iOS 26 Liquid Glass, ultraThinMaterial before) since
-      #4208. Still diverges: single HomeHero instead of the pager; the hero
-      (heroDemoId model-viewer, ShowcaseTab.swift) comes back as a Featured
-      banner because `featured` draws every HomeCatalogue.featuredIds, and
-      the banners are listed again in the sections, where Android shows a
-      demo once (#4312); the What's-new row (no picture on iOS) still
-      selects the filter (openWhatsNew) instead of opening the sheet
-      (#4312); the What's-new chip toggles but a section chip does not, and
-      a filtered list has no "Show all N samples" (#4312); and six broken
-      demos are kept off the home (HomeCatalogue.hiddenFromHome)
+      #4208. Since #4312, HomeTopSections in HomeFilter.swift assigns each
+      picture once, hero then Featured then fresh ids; All omits banner rows,
+      while a chip or search lists every match. On screen the order is
+      Android's: hero, What's-new row, Featured. The What's-new row opens
+      WhatsNewSheet over the Home as it stands (a chosen chip stays chosen;
+      the sheet waits for the release notes, Android's contentReady), every
+      selected filter chip toggles back to All, and a chip-filtered list ends
+      on "Show all N samples" (whole catalogue count, clears the chip, hidden
+      while searching as on Android; iOS also returns to the top of Home).
+      HomeFilterTests.swift mirrors Android's decision tests. Remaining
+      differences: a single Models HomeHero instead of the two-page pager
+      (Cosmos remains a banner); the What's-new row has no picture and retains
+      the total fresh count even when all fresh pictures appeared above;
+      Android Back handling has no iOS equivalent.
   - surface: ar-view
     category: SHELL
     android: samples/android-demo/src/main/java/io/github/sceneview/demo/ui/ArViewTab.kt
@@ -1374,12 +1379,19 @@ shell:
       - samples/ios-demo/SceneViewDemo/Views/Tabs/AboutTab.swift
     contract: >-
       Identity (mark, version, tagline), Support card (Open Collective, GitHub
-      Sponsors), groups Learn / App (Send feedback, Release notes) / Legal
-      (License, Credits), footer
+      Sponsors), groups More apps (each app's own store listing: Google Play
+      on Android, App Store on iOS — only apps live on that store) / Learn /
+      App (Send feedback, Release notes) / Legal (License, Credits), footer
     parity: diverges
     evidence: >-
-      iOS: 5 flat cards, no groups, no Send feedback, no Release notes
-      AboutTab.swift:95-134; other tagline :78; Android RootScreen.kt:381-440;
+      iOS: 5 flat cards, no Learn / App / Legal groups, no Send feedback, no
+      Release notes; AboutTab.swift `aboutCards`; other tagline in `identity`;
+      Android RootScreen.kt:381-440.
+      More apps group on both: Android lists 3D AR Model Viewer and Will It
+      Fit (Google Play); iOS lists 3D AR Model Viewer only (`MoreApp.all`,
+      App Store id 6790808866) — Will It Fit has no App Store release, and an
+      iOS app does not link another store. On iOS the group sits under the
+      identity block, where Android has it under the support card;
       no Support card on iOS by design: App Review rejected 4.48.0 under
       guideline 3.1.1 (donation links outside In-App Purchase), #4197.
       The identity mark is a 3D stage since #4215 (`AboutTab.swift`'s

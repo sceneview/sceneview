@@ -5,8 +5,10 @@ package io.github.sceneview.demo.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +74,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.snap
@@ -422,6 +425,20 @@ private fun AboutTabContent() {
             ).show()
         }
     }
+    // The Play Store app first — it opens on the listing with no chooser — then the same
+    // listing through `openLink`, which carries the no-browser fallback. Logged once either
+    // way, as a `store` outbound link like every other one on this screen.
+    val openStoreListing: (String) -> Unit = { packageName ->
+        val marketUrl = "market://details?id=$packageName"
+        val opened = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(marketUrl)))
+        }.isSuccess
+        if (opened) {
+            logOutboundLink(marketUrl)
+        } else {
+            openLink("https://play.google.com/store/apps/details?id=$packageName")
+        }
+    }
     // #1152 Stage 3 — CC-BY attribution for every streamed Sketchfab model.
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
     if (showCreditsSheet) {
@@ -444,6 +461,12 @@ private fun AboutTabContent() {
     ) {
         AboutIdentity()
         AboutSupportCard(openLink = openLink)
+        AboutGroup(title = stringResource(R.string.about_group_more_apps)) {
+            MORE_APPS.forEachIndexed { index, app ->
+                if (index > 0) AboutRowDivider(startInset = SceneViewTokens.About.appDividerInset)
+                AboutAppRow(app = app, onClick = { openStoreListing(app.packageName) })
+            }
+        }
         AboutGroup(title = stringResource(R.string.about_group_learn)) {
             AboutActionRow(
                 icon = Icons.Outlined.MenuBook,
@@ -684,9 +707,9 @@ private fun AboutGroup(title: String, content: @Composable ColumnScope.() -> Uni
 
 /** Hairline between two rows of an [AboutGroup], inset past the leading glyph. */
 @Composable
-private fun AboutRowDivider() {
+private fun AboutRowDivider(startInset: Dp = SceneViewTokens.About.dividerInset) {
     HorizontalDivider(
-        modifier = Modifier.padding(start = SceneViewTokens.About.dividerInset),
+        modifier = Modifier.padding(start = startInset),
         color = MaterialTheme.colorScheme.outlineVariant,
     )
 }
@@ -742,6 +765,104 @@ private fun AboutActionRow(
             modifier = Modifier.size(
                 if (external) SceneViewTokens.About.rowAffordance else SceneViewTokens.About.rowIcon,
             ),
+        )
+    }
+}
+
+/**
+ * Another published app built with SceneView, as one row of the "More apps" group.
+ *
+ * [packageName] is the whole link: the row opens that package's Google Play listing.
+ */
+private data class MoreApp(
+    val packageName: String,
+    @DrawableRes val icon: Int,
+    @StringRes val name: Int,
+    @StringRes val description: Int,
+)
+
+/**
+ * The maintainer's other apps on Google Play, both built on this SDK. Each [MoreApp.icon]
+ * is that app's own launcher icon, taken from its listing — never a stand-in glyph.
+ */
+private val MORE_APPS = listOf(
+    MoreApp(
+        packageName = "com.gorisse.thomas.arcamera",
+        icon = R.drawable.about_app_ar_model_viewer,
+        name = R.string.about_app_ar_model_viewer_name,
+        description = R.string.about_app_ar_model_viewer_description,
+    ),
+    MoreApp(
+        packageName = "com.gorisse.thomas.willitfit",
+        icon = R.drawable.about_app_will_it_fit,
+        name = R.string.about_app_will_it_fit_name,
+        description = R.string.about_app_will_it_fit_description,
+    ),
+)
+
+/**
+ * One app of the "More apps" group: its launcher icon, its name, one line on what it
+ * does, and the same open-in-new affordance as every row that leaves the app.
+ *
+ * It lives in a plain [AboutGroup] on purpose. The support card is the one emphasised
+ * surface of the screen (#3565); a second tinted card for these would compete with it,
+ * so the only colour here is the icons themselves. No price, no badge, no "new".
+ */
+@Composable
+private fun AboutAppRow(app: MoreApp, onClick: () -> Unit) {
+    val iconShape = RoundedCornerShape(SceneViewTokens.Radius.xs)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                role = Role.Button,
+                onClickLabel = stringResource(R.string.about_more_apps_open),
+                onClick = onClick,
+            )
+            .heightIn(min = SceneViewTokens.Layout.touchTarget)
+            // `space-md` on all four sides, where an action row takes `space-sm`
+            // vertically: this row is three lines of text, and at 8 dp the name sits
+            // against the card's rounded corner.
+            .padding(SceneViewTokens.Space.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+    ) {
+        Image(
+            painter = painterResource(app.icon),
+            // Decorative for the same reason as an action row's glyph: the name beside
+            // it is already the row's accessible name.
+            contentDescription = null,
+            modifier = Modifier
+                .size(SceneViewTokens.About.appIcon)
+                // Both icons are dark tiles; on the dark `surface-container` their edge
+                // is a tonal step too small to read, so a hairline draws it. Around the
+                // icon, not over it: painted on top, the light-theme hairline is a pale
+                // ring eating into a dark picture.
+                .border(
+                    width = SceneViewTokens.Layout.hairlineWidth,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = iconShape,
+                )
+                .padding(SceneViewTokens.Layout.hairlineWidth)
+                .clip(iconShape),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(app.name),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(app.description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(SceneViewTokens.About.rowAffordance),
         )
     }
 }

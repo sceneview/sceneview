@@ -1,5 +1,7 @@
 package io.github.sceneview.geometries
 
+import android.os.Handler
+import android.os.Looper
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
@@ -9,6 +11,7 @@ import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Float2
 import dev.romainguy.kotlin.math.max
 import dev.romainguy.kotlin.math.min
+import io.github.sceneview.EngineRenderInvalidators
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.math.Box
 import io.github.sceneview.math.Color
@@ -19,6 +22,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
+import java.util.concurrent.Executor
 
 typealias UvCoordinate = Float2
 typealias UvScale = Float2
@@ -182,34 +186,236 @@ open class Geometry internal constructor(
     val indices: List<Int>
         get() = primitivesIndices.flatten()
 
+    /**
+     * Back-pressure on the in-place uploads below: one in flight, the rest collapsed into the
+     * latest — see [LatestWinsUploadGate] for why a geometry cannot simply hand Filament every
+     * update it is given (#4365).
+     */
+    private val uploads = LatestWinsUploadGate<GeometryUpload>(
+        merge = { pending, next -> pending.mergedWith(next) },
+        canUpload = { it.targets(vertexBuffer, indexBuffer) },
+        upload = { upload, onReleased -> upload.issue(vertexBuffer, indexBuffer, onReleased) },
+        // This upload left from a Filament callback, not from a node call, so no node asked for
+        // a frame: without this a render-on-demand view would keep showing the superseded state.
+        onDeferredUpload = { EngineRenderInvalidators.requestRender(it.engine) },
+    )
+
+    /**
+     * `true` once Filament holds the vertices and indices last set on this geometry and has let
+     * go of the buffers they were uploaded from.
+     */
+    internal val isUploadSettled: Boolean
+        get() = uploads.isIdle
+
+    /**
+     * Replaces the vertices. Same count and attributes as the geometry was built with.
+     *
+     * [vertices] and [boundingBox] change immediately. The upload itself is handed to Filament
+     * right away when the previous one has been consumed; otherwise it waits for it, and only the
+     * most recent call is kept — see [update].
+     *
+     * To change vertices **and** indices, call [update] with both rather than this and
+     * [setPrimitivesIndices] in turn: two calls are two uploads, and a frame can be drawn between
+     * them with the new vertices on the old indices.
+     */
     fun setVertices(engine: Engine, vertices: List<Vertex>) {
-        this.vertices = vertices
-        boundingBox = vertexBuffer.setVertices(engine, vertices)
+        applyVertices(vertices)
+        uploads.submit(GeometryUpload(engine, GeometryStreams.snapshotOf(vertices = vertices)))
     }
 
+    /**
+     * Replaces the indices. Uploaded under the same policy as [setVertices] — and, like it, as an
+     * upload of its own: use [update] to change vertices and indices in the same frame.
+     */
     fun setPrimitivesIndices(engine: Engine, primitivesIndices: List<List<Int>>) {
-        this.primitivesIndices = primitivesIndices
-        primitivesOffsets = primitivesIndices.getOffsets()
-        indexBuffer.setIndices(engine, primitivesIndices.flatMap { it.indices })
+        applyPrimitivesIndices(primitivesIndices)
+        val streams = GeometryStreams.snapshotOf(primitivesIndices = primitivesIndices)
+        uploads.submit(GeometryUpload(engine, streams))
     }
 
+    /**
+     * Updates the vertices and / or the indices in place. Anything equal to the current value is
+     * skipped.
+     *
+     * Safe to call at any rate, including faster than frames are presented — an animation driven
+     * from Compose's frame clock while the view has no surface yet, or while the GPU is behind.
+     * Filament keeps every buffer it is handed pinned until its backend thread has consumed it,
+     * so a geometry holds **one** upload in flight and remembers only the latest state set while
+     * it waits. That state is uploaded as soon as the previous upload is released; the ones set
+     * in between are dropped without ever reaching Filament.
+     *
+     * What a frame can show, as a result:
+     * - Vertices and indices passed to **one** call are uploaded together, so no frame mixes one
+     *   call's vertices with another's indices. That does not hold for [setVertices] followed by
+     *   [setPrimitivesIndices], which are two uploads.
+     * - Two calls made before a frame is drawn are no longer guaranteed to land in that same
+     *   frame: the first is already with Filament, so the frame may show it, and the latest state
+     *   follows on the next one. The last state set is always the one that ends up on screen.
+     *
+     * The lists are read during the call: a `MutableList` can be refilled and passed again
+     * afterwards without changing an upload that is still waiting.
+     */
     fun update(
         engine: Engine,
         vertices: List<Vertex> = this.vertices,
         primitivesIndices: List<List<Int>> = this.primitivesIndices
     ) = apply {
-        if (this.vertices != vertices) {
-            setVertices(engine, vertices)
-        }
-        if (this.primitivesIndices != primitivesIndices) {
-            setPrimitivesIndices(engine, primitivesIndices)
+        val verticesChanged = this.vertices != vertices
+        val indicesChanged = this.primitivesIndices != primitivesIndices
+        if (verticesChanged) applyVertices(vertices)
+        if (indicesChanged) applyPrimitivesIndices(primitivesIndices)
+        if (verticesChanged || indicesChanged) {
+            uploads.submit(
+                GeometryUpload(
+                    engine,
+                    GeometryStreams.snapshotOf(
+                        vertices = vertices.takeIf { verticesChanged },
+                        primitivesIndices = primitivesIndices.takeIf { indicesChanged },
+                    )
+                )
+            )
         }
     }
+
+    private fun applyVertices(vertices: List<Vertex>) {
+        // Checked here, at the call site, because the upload may not happen inside this call.
+        vertices.requireUniformAttributes()
+        boundingBox = vertices.boundingBox()
+        this.vertices = vertices
+    }
+
+    private fun applyPrimitivesIndices(primitivesIndices: List<List<Int>>) {
+        this.primitivesIndices = primitivesIndices
+        primitivesOffsets = primitivesIndices.getOffsets()
+    }
+}
+
+/**
+ * The data of one in-place upload of a [Geometry]: the streams that changed, `null` for the ones
+ * that did not.
+ *
+ * Only built through [snapshotOf]: an upload can wait for the previous one to be released, long
+ * after the call that asked for it returned, and must still carry what that call was given.
+ *
+ * Free of any Filament type so that the snapshot and the merge are tested on the JVM.
+ */
+internal class GeometryStreams private constructor(
+    val vertices: List<Geometry.Vertex>?,
+    val primitivesIndices: List<List<Int>>?,
+) {
+    /** The newest of each stream: a vertex or index list fully replaces the one before it. */
+    fun mergedWith(next: GeometryStreams) = GeometryStreams(
+        vertices = next.vertices ?: vertices,
+        primitivesIndices = next.primitivesIndices ?: primitivesIndices,
+    )
+
+    companion object {
+        /**
+         * Copies the lists, so that a caller refilling its own `MutableList` afterwards does not
+         * rewrite an upload that has not left yet. The index lists are copied one level down for
+         * the same reason. The vertices themselves are shared, not cloned: a [Geometry.Vertex] is
+         * replaced, not edited, by every geometry builder.
+         */
+        fun snapshotOf(
+            vertices: List<Geometry.Vertex>? = null,
+            primitivesIndices: List<List<Int>>? = null,
+        ) = GeometryStreams(
+            vertices = vertices?.toList(),
+            primitivesIndices = primitivesIndices?.map { it.toList() },
+        )
+    }
+}
+
+/** One in-place upload of a [Geometry]: its [streams], and the engine to hand them to. */
+private class GeometryUpload(val engine: Engine, val streams: GeometryStreams) {
+    private val vertices get() = streams.vertices
+    private val primitivesIndices get() = streams.primitivesIndices
+
+    fun mergedWith(next: GeometryUpload) =
+        GeometryUpload(next.engine, streams.mergedWith(next.streams))
+
+    /**
+     * Whether the buffers are still there to upload into. Asked from a Filament callback, some
+     * time after the update was requested: the engine or the geometry may be gone by then.
+     */
+    fun targets(vertexBuffer: VertexBuffer, indexBuffer: IndexBuffer): Boolean = runCatching {
+        engine.isValid &&
+            (vertices == null || engine.isValidVertexBuffer(vertexBuffer)) &&
+            (primitivesIndices == null || engine.isValidIndexBuffer(indexBuffer))
+    }.getOrDefault(false)
+
+    /**
+     * Hands every changed stream to Filament and calls [onReleased] once Filament has released
+     * all of them.
+     */
+    fun issue(vertexBuffer: VertexBuffer, indexBuffer: IndexBuffer, onReleased: () -> Unit) {
+        val streamCount =
+            (vertices?.attributeStreamCount ?: 0) + (if (primitivesIndices != null) 1 else 0)
+        val countdown = ReleaseCountdown(streamCount, onReleased)
+        val released = Runnable { countdown.release() }
+        val handler = releaseThreadHandler()
+        vertices?.let { vertexBuffer.uploadVertices(engine, it, handler, released) }
+        primitivesIndices?.let { primitivesIndices ->
+            indexBuffer.uploadIndices(
+                engine, primitivesIndices.flatMap { it.indices }, handler, released
+            )
+        }
+    }
+}
+
+private val mainThreadHandler by lazy { Handler(Looper.getMainLooper()) }
+
+/**
+ * Where Filament reports a released buffer — a [Handler] or an [Executor], it takes either: the
+ * thread the upload was issued from, which is the thread that owns the engine and the only one
+ * allowed to issue the next upload. Falls back to the main thread for a caller without a
+ * [Looper], and for one whose looper has quit by the time the buffer is released — a release that
+ * is never delivered would leave the geometry's gate closed for good.
+ */
+private fun releaseThreadHandler(): Any {
+    val looper = Looper.myLooper() ?: return mainThreadHandler
+    if (looper === Looper.getMainLooper()) return mainThreadHandler
+    val handler = Handler(looper)
+    return Executor { released -> if (!handler.post(released)) mainThreadHandler.post(released) }
 }
 
 val List<Geometry.Vertex>.hasNormals get() = any { it.normal != null }
 val List<Geometry.Vertex>.hasUvCoordinates get() = any { it.uvCoordinate != null }
 val List<Geometry.Vertex>.hasColors get() = any { it.color != null }
+
+/** How many `setBufferAt` calls these vertices take: position, plus each optional stream. */
+private val List<Geometry.Vertex>.attributeStreamCount: Int
+    get() = 1 +
+        (if (hasNormals) 1 else 0) +
+        (if (hasUvCoordinates) 1 else 0) +
+        (if (hasColors) 1 else 0)
+
+private fun missingAttribute(name: String): Nothing = error(
+    "Geometry attribute '$name' missing on a vertex while other vertices declare one — every " +
+        "vertex must declare a $name or none should (partial vertex declarations are not " +
+        "supported)."
+)
+
+/** Throws what [uploadVertices] would, without building a buffer. */
+private fun List<Geometry.Vertex>.requireUniformAttributes() {
+    if (hasNormals && any { it.normal == null }) missingAttribute("normal")
+    if (hasUvCoordinates && any { it.uvCoordinate == null }) missingAttribute("uvCoordinate")
+    if (hasColors && any { it.color == null }) missingAttribute("color")
+}
+
+/** The axis-aligned bounding box of the positions, in one pass. */
+private fun List<Geometry.Vertex>.boundingBox(): Box {
+    var minPosition = Position(first().position)
+    var maxPosition = Position(first().position)
+    forEach { vertex ->
+        minPosition = min(minPosition, vertex.position)
+        maxPosition = max(maxPosition, vertex.position)
+    }
+
+    val halfExtent = (maxPosition - minPosition) / 2.0f
+    val center = minPosition + halfExtent
+    return Box(center, halfExtent)
+}
 
 /**
  * A fresh **direct** float buffer of [count] floats, filled by [fill] and left ready to read.
@@ -249,7 +455,30 @@ internal fun directIntBuffer(count: Int, fill: IntBuffer.() -> Unit): IntBuffer 
         .asIntBuffer()
         .apply(fill)
 
+/**
+ * Uploads [vertices] into this buffer — one `setBufferAt` per attribute stream — and returns their
+ * bounding box.
+ *
+ * Every call pins its buffers until Filament's backend thread has consumed them, so calling this
+ * faster than frames are presented piles pins up without bound (#4365). [Geometry.update] is the
+ * rate-safe way to animate a geometry.
+ */
 fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): Box {
+    uploadVertices(engine, vertices, handler = null, onStreamReleased = null)
+    return vertices.boundingBox()
+}
+
+/**
+ * The upload behind [setVertices]. [onStreamReleased] runs on [handler] — an Android [Handler] or
+ * a `java.util.concurrent.Executor`, as Filament takes them — once per attribute stream, when
+ * Filament has let go of that stream's buffer.
+ */
+private fun VertexBuffer.uploadVertices(
+    engine: Engine,
+    vertices: List<Geometry.Vertex>,
+    handler: Any?,
+    onStreamReleased: Runnable?,
+) {
     var bufferIndex = 0
 
     // Create position Buffer
@@ -260,7 +489,7 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
             // Make sure the cursor is pointing in the right place in the byte buffer
             flip()
         }, 0,
-        vertices.size * kPositionSize
+        vertices.size * kPositionSize, handler, onStreamReleased
     )
 
     // Create tangents Buffer
@@ -270,16 +499,12 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
             engine, bufferIndex,
             directFloatBuffer(vertices.size * kTangentSize) {
                 vertices.forEach { vertex ->
-                    val normal = vertex.normal ?: error(
-                        "Geometry attribute 'normal' missing on a vertex while other vertices " +
-                            "declare one — every vertex must declare a normal or none should " +
-                            "(partial vertex declarations are not supported)."
-                    )
+                    val normal = vertex.normal ?: missingAttribute("normal")
                     put(normalToTangent(normal).toFloatArray())
                 }
                 flip()
             }, 0,
-            vertices.size * kTangentSize
+            vertices.size * kTangentSize, handler, onStreamReleased
         )
     }
 
@@ -290,16 +515,12 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
             engine, bufferIndex,
             directFloatBuffer(vertices.size * kUVSize) {
                 vertices.forEach { vertex ->
-                    val uvCoordinate = vertex.uvCoordinate ?: error(
-                        "Geometry attribute 'uvCoordinate' missing on a vertex while other " +
-                            "vertices declare one — every vertex must declare a uvCoordinate or " +
-                            "none should (partial vertex declarations are not supported)."
-                    )
+                    val uvCoordinate = vertex.uvCoordinate ?: missingAttribute("uvCoordinate")
                     put(uvCoordinate.toFloatArray())
                 }
                 rewind()
             }, 0,
-            vertices.size * kUVSize
+            vertices.size * kUVSize, handler, onStreamReleased
         )
     }
 
@@ -310,35 +531,29 @@ fun VertexBuffer.setVertices(engine: Engine, vertices: List<Geometry.Vertex>): B
             engine, bufferIndex,
             directFloatBuffer(vertices.size * kColorSize) {
                 vertices.forEach { vertex ->
-                    val color = vertex.color ?: error(
-                        "Geometry attribute 'color' missing on a vertex while other vertices " +
-                            "declare one — every vertex must declare a color or none should " +
-                            "(partial vertex declarations are not supported)."
-                    )
+                    val color = vertex.color ?: missingAttribute("color")
                     put(color.toFloatArray())
                 }
                 rewind()
             }, 0,
-            vertices.size * kColorSize
+            vertices.size * kColorSize, handler, onStreamReleased
         )
     }
-
-    // Calculate the Aabb in one pass through the vertices.
-    var minPosition = Position(vertices.first().position)
-    var maxPosition = Position(vertices.first().position)
-    vertices.forEach { vertex ->
-        minPosition = min(minPosition, vertex.position)
-        maxPosition = max(maxPosition, vertex.position)
-    }
-
-    val halfExtent = (maxPosition - minPosition) / 2.0f
-    val center = minPosition + halfExtent
-    return Box(center, halfExtent)
 }
 
 fun IndexBuffer.setIndices(
     engine: Engine,
     indices: List<Int>
+) {
+    uploadIndices(engine, indices, handler = null, onReleased = null)
+}
+
+/** The upload behind [setIndices]; [handler] and [onReleased] as in [uploadVertices]. */
+private fun IndexBuffer.uploadIndices(
+    engine: Engine,
+    indices: List<Int>,
+    handler: Any?,
+    onReleased: Runnable?,
 ) {
     // Fill the index buffer with the data. Direct for the same reason as directFloatBuffer above
     // — see there.
@@ -347,7 +562,8 @@ fun IndexBuffer.setIndices(
         directIntBuffer(indices.size) {
             indices.forEach { put(it) }
             flip()
-        }
+        },
+        0, indices.size, handler, onReleased
     )
 }
 

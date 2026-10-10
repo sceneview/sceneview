@@ -47,7 +47,7 @@ Run sidecar with `--save` to write a shareable `.rrd` instead of spawning the li
 
 ## Built on SceneView SDK
 
-- Android: `io.github.sceneview:arsceneview:4.0.0` (Compose + ARCore)
+- Android: `io.github.sceneview:arsceneview:4.53.0` (Compose + ARCore)
 - iOS: SceneViewSwift ARSceneView (SwiftUI + ARKit)
 
 ## Links

@@ -46,7 +46,7 @@ Artifact versions: `io.github.sceneview:sceneview:4.53.0` and `io.github.scenevi
 
 **Content nodes**
 
-- [TextNode](#textnode) — SDF text
+- [TextNode](#textnode) — camera-facing text label
 - [ImageNode](#imagenode) — textured quad
 - [VideoNode](#videonode) — video texture
 - [BillboardNode](#billboardnode) — always-face-camera
@@ -430,11 +430,52 @@ ViewNode(
     invertFrontFaceWinding: Boolean = false,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
-    apply: ViewNodeImpl.() -> Unit = {},
+    scale: Scale = Scale(1f),
+    isVisible: Boolean = true,
+    cameraPositionProvider: (() -> Position)? = null,
+    apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit
 )
 ```
+
+`position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider` and `viewContent` follow
+recomposition. `unlit` and `invertFrontFaceWinding` are read once, when the node is created, and
+`apply` runs once at the same moment. At `scale = Scale(1f)` the quad measures 1 m per 250 px of
+content, so a card usually wants a `scale` well under 1.
+
+### Facing the camera
+
+Pass `cameraPositionProvider`, the parameter [BillboardNode](#billboardnode) and
+[TextNode](#textnode) take, with the same meaning: the card turns to face the position you
+return — yaw and pitch, never roll — and follows an orbiting camera, a moving card and a rotating
+parent by itself.
+
+```kotlin
+val windowManager = rememberViewNodeManager()
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode, viewNodeWindowManager = windowManager) {
+    ViewNode(
+        windowManager = windowManager,
+        position = Position(0f, 0.4f, 0f),
+        scale = Scale(0.12f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    ) {
+        Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") }
+    }
+}
+```
+
+`rotation` is ignored while a provider is set and applies again when it goes back to `null`. For
+an upright card that only turns about the vertical axis, report the camera levelled with it:
+`{ cameraNode.worldPosition.copy(y = 0.4f) }`.
+
+A card beside the model, off the view axis, faces the eye at an angle to the screen and reads as
+a parallelogram. To keep it parallel to the screen — a rectangle — report a point offset from the
+card the way the camera is offset from its orbit target:
+`{ card.worldPosition + (cameraNode.worldPosition - target) }`, `card` being the node kept from
+`apply`. The 2D in 3D demo's Inspect card does this.
 
 ### Example
 
@@ -686,20 +727,54 @@ MeshNode(
 
 ## TextNode
 
-SDF-based 3D text. Crisp at any distance, scales cleanly.
+A one-line text label. The text is drawn with Android `Canvas` into a bitmap — centred, on a
+rounded background — and shown on a flat quad that can turn toward the camera.
+
+### Signature
 
 ```kotlin
 TextNode(
-    text = "Hello, SceneView!",
-    size = 0.3f,                           // character height in meters
-    position = Position(0f, 1.5f, -2f),
-    materialInstance = remember(materialLoader) {
-        materialLoader.createColorInstance(Color.White, unlit = true)
-    }
+    text: String,
+    fontSize: Float = 48f,                 // pixels in the label bitmap, not metres
+    textColor: Int = android.graphics.Color.WHITE,
+    backgroundColor: Int = 0xCC000000.toInt(),
+    typeface: android.graphics.Typeface = android.graphics.Typeface.DEFAULT_BOLD,
+    widthMeters: Float = 0.6f,
+    heightMeters: Float = 0.2f,
+    position: Position = Position(x = 0f),
+    scale: Scale = Scale(1f),
+    cameraPositionProvider: (() -> Position)? = null,
+    apply: TextNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
 
-For reactive Compose-style text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
+### Example
+
+```kotlin
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    TextNode(
+        text = "Hello, SceneView!",
+        typeface = Typeface.create("serif", Typeface.ITALIC),
+        position = Position(0f, 1.5f, -2f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
+}
+```
+
+### Gotchas
+
+- **It faces the camera only when given a `cameraPositionProvider`.** Without one the label
+  keeps its parent's orientation. There is no `rotation` parameter.
+- **`text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` and
+  `cameraPositionProvider` follow recomposition.** `widthMeters` and `heightMeters` are read
+  once, when the node is created.
+- **The size of the label is `widthMeters` × `heightMeters`**, not `fontSize`: the bitmap is
+  512 × 128 px and is stretched over the quad, so keep the 4:1 ratio or the glyphs deform.
+
+For multi-line or styled text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
 
 ---
 
@@ -719,36 +794,77 @@ ImageNode(
 
 ## VideoNode
 
-Plays a `MediaPlayer` video onto a 3D quad. Supports optional chroma keying (green-screen removal).
+Plays a video onto a 3D quad. Supports optional chroma keying (green-screen removal).
 
 ```kotlin
-val mediaPlayer = remember {
-    MediaPlayer.create(context, R.raw.my_video).apply { isLooping = true }
-}
-DisposableEffect(mediaPlayer) {
-    mediaPlayer.start()
-    onDispose { mediaPlayer.release() }
-}
-
 VideoNode(
-    player = mediaPlayer,
+    videoPath = "videos/promo.mp4", // under assets/, or an https://, file:// or content:// location
+    autoPlay = isPlaying,           // reactive: true plays, false pauses
     size = Size(x = 1.6f, y = 0.9f),
     chromaKeyColor = android.graphics.Color.GREEN, // optional green-screen key
-    position = Position(0f, 1f, -2f)
+    position = Position(0f, 1f, -2f),
+    onError = { cause -> videoError = cause }      // missing file, unsupported codec, broken stream
 )
 ```
+
+The video is prepared off the main thread: the node appears once it is ready, and until then, or
+if it fails, it emits nothing. To show a placeholder and a fallback, hold the player yourself —
+`rememberMediaPlayer` returns where it stands:
+
+```kotlin
+when (val video = rememberMediaPlayer("videos/promo.mp4")) {
+    is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(0f, 1f, -2f))
+    is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(0f, 1f, -2f))
+    MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(0f, 1f, -2f))
+}
+```
+
+The player is released when the location changes and when the call leaves the composition. Both
+APIs are `@ExperimentalSceneViewApi`.
+
+!!! warning "Never prepare a player inside `remember { }`"
+    `MediaPlayer.create(…)` and `MediaPlayer.prepare()` parse the file on the calling thread: in
+    `remember { }` that is the main thread, during composition. `VideoNode(player = …)` takes a
+    player you prepared with `prepareAsync()`.
 
 ---
 
 ## BillboardNode
 
-A wrapper that makes its children always face the camera. Commonly used for in-world labels.
+A bitmap on a flat quad that turns toward the camera — an [ImageNode](#imagenode) that
+re-orients itself every frame. It faces the camera only when given a `cameraPositionProvider`.
+[TextNode](#textnode) is a `BillboardNode` whose bitmap is rendered from a string.
 
 ```kotlin
-BillboardNode(position = Position(0f, 2f, 0f)) {
-    TextNode(text = "Tap me", size = 0.15f)
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    BillboardNode(
+        bitmap = markerBitmap,
+        widthMeters = 0.4f,
+        heightMeters = 0.4f,
+        position = Position(0f, 2f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
+
+### What "facing the camera" means
+
+The same on `BillboardNode`, `TextNode` and [ViewNode](#viewnode), which all take
+`cameraPositionProvider: (() -> Position)? = null`:
+
+- **A full look-at.** The front of the quad points at the position you return and its top edge
+  stays toward world `+Y`: it yaws and pitches, and never rolls.
+- **Yaw only**, for an upright sign: report the camera levelled with the node,
+  `{ cameraNode.worldPosition.copy(y = signHeight) }`.
+- **It follows the camera, the node and its parent.** A label on a turntable keeps facing you.
+- **It follows recomposition.** Swap the provider, or pass `null` to stop turning: the node stays
+  as it was last turned. The node class exposes the same thing as a `cameraPositionProvider`
+  property.
+- **While it is set, the node owns its orientation.** A `rotation` or `quaternion` written by
+  hand is overwritten. Set the provider through the parameter, not inside `apply`.
+- **It costs nothing while nothing moves**: a `FrameRatePolicy.OnDemand` scene still parks.
 
 ---
 
@@ -981,10 +1097,12 @@ ModelNode(
         position = Position(0f, 2f, 0f),
         apply = { intensity(30_000f); color(1f, 0.8f, 0.5f) }
     )
-    // This billboard label follows the ship too.
-    BillboardNode(position = Position(0f, 2.5f, 0f)) {
-        TextNode(text = "SS SceneView", size = 0.2f)
-    }
+    // This label follows the ship too, and turns toward the camera.
+    TextNode(
+        text = "SS SceneView",
+        position = Position(0f, 2.5f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
 

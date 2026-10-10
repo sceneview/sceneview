@@ -273,10 +273,10 @@ mechanism (EV-stop post-process via CIColorControls) — do not copy values acro
 | `PlaneNode` | `size: Size`, `materialInstance` |
 | `LightNode` | `type: LightManager.Type`, `apply = { intensity(); color(); castShadows() }` |
 | `ImageNode` | `imageFileLocation` / `imageResId` / `bitmap`, `size` |
-| `VideoNode` | `videoPath` (simple) / `player: MediaPlayer` (advanced), `chromaKeyColor`, `size` |
-| `ViewNode` | `windowManager`, content = `@Composable` |
-| `TextNode` | `text`, `fontSize`, `textColor`, `backgroundColor`, `widthMeters` |
-| `BillboardNode` | `bitmap`, `widthMeters`, `heightMeters` |
+| `VideoNode` | `videoPath` (asset path or URL, with `autoPlay`, `isLooping`, `onError`) / `player: MediaPlayer` (advanced), `chromaKeyColor`, `size` |
+| `ViewNode` | `windowManager`, `unlit`, `position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider`, content = `@Composable` |
+| `TextNode` | `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `widthMeters`, `heightMeters`, `cameraPositionProvider` |
+| `BillboardNode` | `bitmap`, `widthMeters`, `heightMeters`, `cameraPositionProvider` |
 | `LineNode` | `start`, `end`, `materialInstance` |
 | `PathNode` | `points: List<Position>`, `closed`, `materialInstance` |
 | `DynamicSkyNode` | `timeOfDay` (0-24), `turbidity`, `sunIntensity` |

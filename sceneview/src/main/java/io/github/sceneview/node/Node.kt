@@ -52,6 +52,41 @@ import io.github.sceneview.transformState
 import io.github.sceneview.safeRecycleEntity
 
 /**
+ * The TRS a [Node] caches for its world matrix, plus the Euler reading of that rotation.
+ *
+ * Kept out of [Node] so the decomposition can be pinned on the JVM: a [Node] needs a Filament
+ * engine, this does not (`NodeRotationConventionTest`, #3745).
+ */
+internal class WorldDecomposition(
+    val position: Position,
+    val quaternion: Quaternion,
+    val scale: Scale,
+    val rotation: Rotation,
+)
+
+/**
+ * Decomposes a world matrix the way [Node.worldPosition], [Node.worldQuaternion],
+ * [Node.worldScale] and [Node.worldRotation] report it.
+ */
+internal fun decomposeWorld(world: Transform): WorldDecomposition {
+    // `Mat4.quaternion` normalises the basis columns first and uses the orthogonal polar
+    // factor only when they reveal shear. The kotlin-math `toQuaternion()` member runs the
+    // trace method on the raw basis, which folds any scale — uniform included — into the
+    // extracted rotation (#3738, #3744).
+    val quaternion = world.quaternion
+    return WorldDecomposition(
+        position = world.position,
+        quaternion = quaternion,
+        scale = world.scale,
+        // Euler angles come from the quaternion, like `Node.rotation`: degrees, ZYX, the inverse
+        // of `Quaternion.fromEuler`. kotlin-math's `Mat4.rotation` is a different convention (YXZ
+        // with the yaw sign negated), so reading it here made a root node with
+        // `rotation = Rotation(y = 30f)` report `worldRotation.y == -30f` (#3745).
+        rotation = quaternion.toEulerAngles(),
+    )
+}
+
+/**
  * A Node represents a transformation within the scene graph's hierarchy.
  *
  * It can contain a renderable for the rendering engine to render.
@@ -301,18 +336,11 @@ open class Node protected constructor(
     private fun refreshWorldCache(): Transform {
         val world = transformManager.getWorldTransform(transformInstance)
         _worldTransform = world
-        _worldPosition = world.position
-        // `Mat4.quaternion` normalises the basis columns first and uses the orthogonal polar
-        // factor only when they reveal shear. The kotlin-math `toQuaternion()` member runs the
-        // trace method on the raw basis, which folds any scale — uniform included — into the
-        // extracted rotation (#3738, #3744).
-        _worldQuaternion = world.quaternion
-        _worldScale = world.scale
-        // Extract Euler directly from the matrix (not via the quaternion) to stay
-        // bit-equivalent to the pre-cache `worldTransform.rotation` behavior — the
-        // matrix→quaternion→Euler path can pick a different branch near gimbal lock
-        // (e.g. 179.9° vs -180.1°) and break callers that compare successive readings.
-        _worldRotation = world.rotation
+        val decomposed = decomposeWorld(world)
+        _worldPosition = decomposed.position
+        _worldQuaternion = decomposed.quaternion
+        _worldScale = decomposed.scale
+        _worldRotation = decomposed.rotation
         return world
     }
 
@@ -477,9 +505,8 @@ open class Node protected constructor(
      * internal callers are one-shot (animator setup, debug inspection). See #2328 (N2).
      *
      * **Euler convention:** degrees, ZYX order — the getter is `quaternion.toEulerAngles()` and the
-     * setter `Quaternion.fromEuler(value)`, so it reads back what was written. This is **not** the
-     * convention of the [worldRotation] getter, even on a node with no parent (#3745): compare
-     * orientations through [quaternion] / [worldQuaternion], not through Euler angles.
+     * setter is `Quaternion.fromEuler(value)`, so it reads back what was written. [worldRotation]
+     * uses the same convention.
      *
      * @see transform
      */
@@ -495,22 +522,18 @@ open class Node protected constructor(
      * The world rotation of this component (i.e. relative to the scene root).
      * This is the composition of this component's local rotation with its parent's world rotation.
      *
-     * The getter decomposes Euler angles straight from the world matrix. Unlike [worldQuaternion],
-     * it does not run a polar decomposition, so a sheared basis can still produce approximate
-     * Euler angles. The setter goes through [worldQuaternion] and inherits its documented mirror
-     * and collapse caveats.
+     * The getter derives its Euler angles from [worldQuaternion], so it inherits that property's
+     * polar-decomposition, mirror, and collapsed-axis caveats.
      *
-     * **Euler convention (#3745):** the getter and the setter do not use the same one.
-     * - The getter is kotlin-math's `Mat4.rotation`: degrees, **YXZ order with the Y (yaw) sign
-     *   negated**. A root node with `rotation = Rotation(y = 30f)` reads `worldRotation` as
-     *   `Rotation(y = -30f)`; a compound rotation reads as different numbers altogether. A pure X or
-     *   pure Z rotation reads the same as [rotation].
-     * - The setter is `worldQuaternion = Quaternion.fromEuler(value)`: degrees, ZYX, like [rotation].
+     * **Euler convention:** degrees, ZYX order, the same as [rotation] — the getter is
+     * `worldQuaternion.toEulerAngles()` and the setter `worldQuaternion = Quaternion.fromEuler(value)`.
+     * A node with no parent reads the same angles through [rotation] and [worldRotation], and
+     * `node.worldRotation = node.worldRotation` leaves the node where it is.
      *
-     * So `node.worldRotation = node.worldRotation` turns a node that has any yaw. Kept as is because
-     * major version 4 is frozen; `NodeRotationConventionTest` pins it. Read and write world
-     * orientation through [worldQuaternion], or pass the value through
-     * `Quaternion.fromEuler(Rotation(x, -y, z), RotationsOrder.YXZ)` to rebuild the orientation.
+     * Like [rotation], Y is the middle angle and stays within ±90°: a yaw past that reads as an
+     * equivalent triple (a 120° yaw reads `(180, 60, 180)`). Until #3745 the getter returned
+     * kotlin-math's `Mat4.rotation` instead — YXZ with the yaw sign negated, Y within ±180°. Code
+     * that read a heading from `worldRotation.y` should read it from [worldQuaternion].
      *
      * @see worldTransform
      */

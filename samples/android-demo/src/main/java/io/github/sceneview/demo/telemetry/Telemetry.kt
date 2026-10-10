@@ -81,6 +81,7 @@ object Telemetry {
             override fun log(event: AnalyticsEvent) = delegate.log(event)
             override fun setUserProperty(property: UserProperty, value: String) =
                 delegate.setUserProperty(property, value)
+            override fun setCrashKey(key: CrashKey, value: String) = delegate.setCrashKey(key, value)
             override fun setCollectionEnabled(enabled: Boolean) = delegate.setCollectionEnabled(enabled)
             override fun resetData() = delegate.resetData()
         },

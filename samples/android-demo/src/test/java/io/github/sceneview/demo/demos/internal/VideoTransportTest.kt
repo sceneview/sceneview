@@ -7,7 +7,7 @@ class VideoTransportTest {
 
     @Test
     fun `a video that could not be prepared is not shown playing`() {
-        // `rememberMediaPlayer` returned null: the demo starts with playback requested and failed.
+        // `rememberMediaPlayer` ended in `Failed`: the demo starts with playback requested and failed.
         assertEquals(
             VideoTransport(playing = false, enabled = false),
             videoTransport(requested = true, failed = true, qa = false, seekFallback = false),

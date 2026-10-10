@@ -4,6 +4,7 @@ import androidx.annotation.RestrictTo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import com.google.android.filament.Engine
 import com.google.android.filament.Scene
 import java.util.WeakHashMap
 
@@ -252,6 +253,39 @@ object SceneRenderInvalidators {
      * them all.
      */
     fun of(scene: Scene): RenderInvalidator? = registry.latest(scene)
+}
+
+/**
+ * Wakes the views rendering with an [Engine], for a change that reaches Filament **outside any
+ * node call** and therefore has no [io.github.sceneview.node.Node.attachedScene] to go through.
+ *
+ * The one such change today is a deferred geometry upload (#4365): a
+ * [io.github.sceneview.geometries.Geometry] holds a single upload in flight, and the state set
+ * while it waited leaves from a Filament release callback. By then the node's own frame request
+ * has been spent on a frame that still showed the previous state, and a geometry — unlike a node —
+ * does not know which scenes draw it. It does know its engine.
+ *
+ * Coarser than [SceneRenderInvalidators] on purpose: every view on the engine draws one more
+ * frame. Views sharing an engine are few, and a frame that changes nothing is cheap next to a
+ * view left showing stale geometry.
+ *
+ * Library-group API, not app API: `arsceneview` registers its view here too.
+ */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+object EngineRenderInvalidators {
+
+    private val registry = InvalidatorRegistry<Engine>()
+
+    /** Adds [invalidator] to the views woken for [engine]. Registering it twice is a no-op. */
+    fun register(engine: Engine, invalidator: RenderInvalidator) =
+        registry.register(engine, invalidator)
+
+    /** Removes [invalidator] from [engine] and leaves any other view on it registered. */
+    fun unregister(engine: Engine, invalidator: RenderInvalidator) =
+        registry.unregister(engine, invalidator)
+
+    /** Wakes every view rendering with [engine]. A no-op when none is registered. */
+    fun requestRender(engine: Engine) = registry.requestRender(engine)
 }
 
 /**

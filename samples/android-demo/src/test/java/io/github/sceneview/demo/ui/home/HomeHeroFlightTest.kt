@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.ui.home
 
+import io.github.sceneview.utils.GlRenderer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -122,6 +123,35 @@ class HomeHeroFlightTest {
         assertEquals(0f, tilt.x, 0.05f)
         tilt.reset()
         assertEquals(0f, tilt.x, 0f)
+    }
+
+    @Test
+    fun `the flight is not started on the legacy guest SwiftShader, nor without a GL context`() {
+        // What the x86_64 virtual devices of #4411 report: Android 11's own SwiftShader GLES.
+        val guestSwiftShader =
+            GlRenderer("Google Inc.", "Google SwiftShader", "OpenGL ES 3.0 SwiftShader 4.1.0.7")
+        assertEquals(HeroSurface.Still, HeroSurface.forRenderer(guestSwiftShader))
+        assertEquals(HeroSurface.Still, HeroSurface.forRenderer(null))
+    }
+
+    @Test
+    fun `every other renderer flies, the emulator's software ones included`() {
+        val renderers = listOf(
+            GlRenderer("Qualcomm", "Adreno (TM) 740", "OpenGL ES 3.2 V@0676.42"),
+            GlRenderer("ARM", "Mali-G78", "OpenGL ES 3.2 v1.r44p0-01eac0"),
+            // `-gpu swiftshader_indirect`: the device-QA emulator and the CI golden leg.
+            GlRenderer(
+                "Google (Google Inc.)",
+                "Android Emulator OpenGL ES Translator (Google SwiftShader)",
+                "OpenGL ES 3.0 (OpenGL ES 3.0 SwiftShader 4.0.0.1)",
+            ),
+            GlRenderer(
+                "Google (Apple)",
+                "Android Emulator OpenGL ES Translator (Apple M2)",
+                "OpenGL ES 3.0 (4.1 Metal - 89.3)",
+            ),
+        )
+        renderers.forEach { assertEquals(it.renderer, HeroSurface.Live, HeroSurface.forRenderer(it)) }
     }
 
     @Test
