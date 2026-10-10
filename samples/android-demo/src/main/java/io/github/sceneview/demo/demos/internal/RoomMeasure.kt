@@ -100,6 +100,47 @@ class RoomMeasure(val corners: FloatArray, val width: Float, val depth: Float, v
 }
 
 /**
+ * The room to show while it is still being scanned. ARCore merges and regrows its planes
+ * mid-walk, so the figure found on one frame can jump, or vanish, and be back on the next:
+ * a figure that differs from the one shown replaces it only once it has differed for
+ * [CHANGE_HOLD_SECONDS], which is also the longest the readout ever trails the scan. The first
+ * room shows at once, and a room that is only being refined (each side within
+ * [CHANGE_TOLERANCE_M]) is followed without delay.
+ */
+class SteadyRoomMeasure {
+    private var shown: RoomMeasure? = null
+    private var differsSince = Float.NaN
+    private var lastTime = Float.NaN
+
+    /** The room to show at [time] seconds, [found] being the one measured there. */
+    fun update(found: RoomMeasure?, time: Float): RoomMeasure? {
+        // The clock ran back: another scan, nothing of the last one holds.
+        if (time < lastTime) shown = null
+        lastTime = time
+        val settled = shown == null || sameFigure(found, shown)
+        if (!settled && differsSince.isNaN()) differsSince = time
+        if (settled || time - differsSince >= CHANGE_HOLD_SECONDS) {
+            // A room refined keeps its latest figure; a room lost for good is shown as lost.
+            if (found != null || !settled) shown = found
+            differsSince = Float.NaN
+        }
+        return shown
+    }
+
+    private fun sameFigure(a: RoomMeasure?, b: RoomMeasure?): Boolean =
+        if (a == null || b == null) a == null && b == null
+        else abs(a.width - b.width) <= CHANGE_TOLERANCE_M && abs(a.depth - b.depth) <= CHANGE_TOLERANCE_M
+
+    companion object {
+        /** A plane merge settles in a few frames; a wall just found stays. */
+        const val CHANGE_HOLD_SECONDS = 0.75f
+
+        /** Under this on each side, two measures are the same room, refined. */
+        const val CHANGE_TOLERANCE_M = 0.15f
+    }
+}
+
+/**
  * A [RoomMeasure] drawn on the floor as an architect's plan draws it: on the two sides facing
  * the viewer, a dimension line a little outside the room, extension lines out from its corners,
  * a slash at each end, and the length written beyond the line, reading from outside.
