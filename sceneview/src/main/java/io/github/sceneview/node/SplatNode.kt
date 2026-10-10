@@ -306,8 +306,11 @@ open class SplatNode(
      * A splat re-sort running in the background finishes by swapping the draw order, which is a
      * change no transform setter reports. Stay active until it lands.
      */
-    override val isFrameActive: Boolean
-        get() = sortJob?.isActive == true || super.isFrameActive
+    override val isSelfFrameActive: Boolean
+        get() = sortJob?.isActive == true || super.isSelfFrameActive
+
+    /** The sort finishes on its own thread and reports to nobody, so the scene always asks. */
+    override val mayBeSelfFrameActive: Boolean get() = true
 
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)

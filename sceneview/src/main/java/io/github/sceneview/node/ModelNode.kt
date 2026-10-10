@@ -516,8 +516,11 @@ open class ModelNode(
      * [io.github.sceneview.FrameRatePolicy.OnDemand]: the skinning / morphing write-back happens in
      * [onFrame] below, which no transform setter goes through, so nothing else would invalidate.
      */
-    override val isFrameActive: Boolean
-        get() = playingAnimations.isNotEmpty() || super.isFrameActive
+    override val isSelfFrameActive: Boolean
+        get() = playingAnimations.isNotEmpty() || super.isSelfFrameActive
+
+    /** [playingAnimations] is a public mutable map: nothing reports a write to it, so always ask. */
+    override val mayBeSelfFrameActive: Boolean get() = true
 
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)

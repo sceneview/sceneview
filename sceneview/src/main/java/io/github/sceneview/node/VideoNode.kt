@@ -144,10 +144,13 @@ open class VideoNode(
      * `isPlaying` false throughout, so a parked scene kept showing the frame from before the seek.
      * [SurfaceFrameSignal] answers for those — every frame the surface receives, playing or not.
      */
-    override val isFrameActive: Boolean
+    override val isSelfFrameActive: Boolean
         get() = frameSignal.isActive(
             forcedActive = runCatching { player.isPlaying }.getOrDefault(false)
-        ) || super.isFrameActive
+        ) || super.isSelfFrameActive
+
+    /** A player starts, seeks and stops without telling this node, so the scene always asks. */
+    override val mayBeSelfFrameActive: Boolean get() = true
 
     private val onVideoSizeChanged = MediaPlayer.OnVideoSizeChangedListener { _, width, height ->
         if (size == null && width > 0 && height > 0) {

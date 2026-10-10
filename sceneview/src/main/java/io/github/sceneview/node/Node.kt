@@ -18,6 +18,7 @@ import dev.romainguy.kotlin.math.lookTowards
 import io.github.sceneview.Entity
 import io.github.sceneview.EntityInstance
 import io.github.sceneview.FilamentEntity
+import io.github.sceneview.FrameActivityTracker
 import io.github.sceneview.SceneRenderInvalidators
 import io.github.sceneview.animation.NodeAnimator
 import io.github.sceneview.collision.Collider
@@ -726,6 +727,11 @@ open class Node protected constructor(
                 val removedNodes = field - value
                 val addedNodes = value - field
                 field = value
+                // First, and before any hook below can throw: the trackers mirror this field
+                // (#3724), so they hear about every write to it, whatever happens afterwards.
+                frameActivityTrackers.forEach {
+                    it.onChildrenChanged(this, removedNodes, addedNodes)
+                }
                 removedNodes.forEach { child ->
                     if (child.parent == this@Node) {
                         child.parent = null
@@ -919,6 +925,11 @@ open class Node protected constructor(
      * is on screen in the same frame — no one-frame lag.
      */
     var onFrame: ((frameTimeNanos: Long) -> Unit)? = null
+        set(value) {
+            val changed = (field == null) != (value == null)
+            field = value
+            if (changed) frameActivityChanged()
+        }
     var onAddedToScene: ((scene: Scene) -> Unit)? = null
     var onRemovedFromScene: ((scene: Scene) -> Unit)? = null
 
@@ -952,7 +963,31 @@ open class Node protected constructor(
     /** Registers [provider] as an extra [isFrameActive] term. Returns a handle that removes it. */
     internal fun addFrameActivityProvider(provider: () -> Boolean): () -> Unit {
         frameActivityProviders += provider
-        return { frameActivityProviders -= provider }
+        frameActivityChanged()
+        return {
+            frameActivityProviders -= provider
+            frameActivityChanged()
+        }
+    }
+
+    /**
+     * The scenes currently counting this node, so the render loop can find the frame-active nodes
+     * without walking the tree (#3724). Empty for a node in no scene; one entry otherwise.
+     * Maintained by [FrameActivityTracker] alone.
+     */
+    internal var frameActivityTrackers: List<FrameActivityTracker<Node>> = emptyList()
+
+    /**
+     * Tells the tracking scenes that [mayBeSelfFrameActive] may have changed.
+     *
+     * Called from the three places a base-class term appears or disappears: the [onFrame] slot,
+     * the smooth-transform target, and the [frameActivityProviders] list. It moves the node in or
+     * out of the set the loop asks; it never decides the answer, so a missed call can only cost
+     * the node a place in that set — which is why every term a setter cannot see keeps its node in
+     * the set permanently instead of calling this.
+     */
+    internal fun frameActivityChanged() {
+        frameActivityTrackers.forEach { it.update(this) }
     }
 
     // ---- Derived transforms ----
@@ -1377,6 +1412,11 @@ open class Node protected constructor(
      * transform still converging and a user [onFrame] callback. Subclasses that animate by other
      * means override it.
      *
+     * The loop does not reach this getter by walking the tree (#3724): it asks each node for its
+     * own terms, and skips the nodes that have none. A node type that overrides this getter is the
+     * exception — nothing can be assumed about an override, so that node is asked here, in full,
+     * on every tick. Keep an override cheap.
+     *
      * **`Node.onFrame` pins the loop; `SceneView(onFrame = …)` does not.** The asymmetry is
      * deliberate and it is the one thing to remember about the two callbacks that share a name.
      * `SceneView`'s is an observer, handed each frame *after* it was presented. This one is a
@@ -1391,10 +1431,35 @@ open class Node protected constructor(
      * reported busy only costs frames.
      */
     open val isFrameActive: Boolean
+        get() = isSelfFrameActive || childNodes.any { it.isFrameActive }
+
+    /**
+     * [isFrameActive] without the descent into [childNodes]: this node's own terms only.
+     *
+     * The library's node types add their term here rather than overriding [isFrameActive], which
+     * keeps that getter's shape known — "own terms, or any child" — and lets the render loop ask
+     * each node for itself instead of re-walking the tree every tick (#3724). A node type that
+     * adds a term here must also say so in [mayBeSelfFrameActive].
+     */
+    internal open val isSelfFrameActive: Boolean
         get() = animationDelegate.smoothTransform != null ||
                 onFrame != null ||
-                frameActivityProviders.any { it() } ||
-                childNodes.any { it.isFrameActive }
+                frameActivityProviders.any { it() }
+
+    /**
+     * False only when [isSelfFrameActive] is false **and** cannot turn true without a call to
+     * [frameActivityChanged] — the test for leaving this node out of the set the loop asks.
+     *
+     * The base terms qualify: a transform target and an [onFrame] slot are set through setters
+     * that report, and a provider is registered through a function that does. What a provider
+     * *returns* is not reported by anyone, so a node holding one stays in the set for as long as
+     * it holds it. A subclass whose own term is read rather than set — a playing animation, a
+     * pending surface frame, a camera that moved — returns `true` here, always.
+     */
+    internal open val mayBeSelfFrameActive: Boolean
+        get() = animationDelegate.smoothTransform != null ||
+                onFrame != null ||
+                frameActivityProviders.isNotEmpty()
 
     // ---- Per-frame lifecycle ----
 
