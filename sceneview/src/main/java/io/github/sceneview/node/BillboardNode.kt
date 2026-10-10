@@ -77,18 +77,14 @@ open class BillboardNode(
             cameraFacing.cameraPositionProvider = value
         }
 
-    /** True while the camera is somewhere this node has not yet turned to face (#3718). */
-    override val isSelfFrameActive: Boolean
-        get() = cameraFacing.isPending || super.isSelfFrameActive
-
-    /** The camera moves without telling this node, so the scene always asks it (#3724). */
-    override val mayBeSelfFrameActive: Boolean get() = true
-
     init {
         // `internalOnFrame`, not `onFrame`: the public slot belongs to the caller (setting it on a
         // BillboardNode used to silently overwrite this) and it pins the render loop. The shared
-        // [CameraFacing] answers for its own activity through `isSelfFrameActive` above.
+        // [CameraFacing] answers for its own activity through the provider below.
         internalOnFrame = { _ -> cameraFacing.onFrame() }
+        // Frame-active while the camera is somewhere this node has not yet turned to face (#3718).
+        // The camera moves without telling this node, so the scene asks on every tick (#3724).
+        addFrameActivityProvider { cameraFacing.isPending }
     }
 
     /**

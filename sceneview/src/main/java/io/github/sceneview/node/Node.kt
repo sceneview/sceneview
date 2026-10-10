@@ -952,11 +952,17 @@ open class Node protected constructor(
     internal var internalOnFrame: ((frameTimeNanos: Long) -> Unit)? = null
 
     /**
-     * Extra activity terms OR-ed into [isFrameActive], for library components that attach to a node
-     * they do not own and therefore cannot override the property.
+     * Extra activity terms OR-ed into [isFrameActive]: the one way the library adds a term to a
+     * node, whether it owns the node type or not.
      *
-     * `SceneScope.PhysicsNode` is the case: it drives an arbitrary caller-supplied node, needs
-     * frames while its body is in flight, and needs to stop asking once the body has settled.
+     * A node type registers its own from `init` — `ModelNode` for a playing animation, `VideoNode`
+     * for a frame landing on its surface. A component attached to a node it does not own does the
+     * same from outside: `SceneScope.PhysicsNode` drives an arbitrary caller-supplied node, needs
+     * frames while its body is in flight, and stops asking once the body has settled.
+     *
+     * One mechanism on purpose (#3724): a node holding a provider is asked on every tick, so a term
+     * added this way cannot be left out of the set the render loop asks. There is no second
+     * member to remember.
      */
     private val frameActivityProviders = mutableListOf<() -> Boolean>()
 
@@ -980,11 +986,10 @@ open class Node protected constructor(
     /**
      * Tells the tracking scenes that [mayBeSelfFrameActive] may have changed.
      *
-     * Called from the three places a base-class term appears or disappears: the [onFrame] slot,
-     * the smooth-transform target, and the [frameActivityProviders] list. It moves the node in or
-     * out of the set the loop asks; it never decides the answer, so a missed call can only cost
-     * the node a place in that set — which is why every term a setter cannot see keeps its node in
-     * the set permanently instead of calling this.
+     * Called from the three places a term appears or disappears: the [onFrame] slot, the
+     * smooth-transform target, and the [frameActivityProviders] list. It moves the node in or out
+     * of the set the loop asks; it never decides the answer — what a provider returns is read on
+     * every tick, by nobody's leave.
      */
     internal fun frameActivityChanged() {
         frameActivityTrackers.forEach { it.update(this) }
@@ -1436,12 +1441,13 @@ open class Node protected constructor(
     /**
      * [isFrameActive] without the descent into [childNodes]: this node's own terms only.
      *
-     * The library's node types add their term here rather than overriding [isFrameActive], which
-     * keeps that getter's shape known — "own terms, or any child" — and lets the render loop ask
-     * each node for itself instead of re-walking the tree every tick (#3724). A node type that
-     * adds a term here must also say so in [mayBeSelfFrameActive].
+     * Final, and so is [mayBeSelfFrameActive] right below: the two are one definition read two
+     * ways, and they only stay in step if nobody can change one of them. The library's node types
+     * add their term with [addFrameActivityProvider] rather than by overriding anything, which
+     * keeps the shape of [isFrameActive] known — "own terms, or any child" — and lets the render
+     * loop ask each node for itself instead of re-walking the tree every tick (#3724).
      */
-    internal open val isSelfFrameActive: Boolean
+    internal val isSelfFrameActive: Boolean
         get() = animationDelegate.smoothTransform != null ||
                 onFrame != null ||
                 frameActivityProviders.any { it() }
@@ -1450,13 +1456,12 @@ open class Node protected constructor(
      * False only when [isSelfFrameActive] is false **and** cannot turn true without a call to
      * [frameActivityChanged] — the test for leaving this node out of the set the loop asks.
      *
-     * The base terms qualify: a transform target and an [onFrame] slot are set through setters
-     * that report, and a provider is registered through a function that does. What a provider
-     * *returns* is not reported by anyone, so a node holding one stays in the set for as long as
-     * it holds it. A subclass whose own term is read rather than set — a playing animation, a
-     * pending surface frame, a camera that moved — returns `true` here, always.
+     * Term for term the same three as [isSelfFrameActive], each read as "is there one" instead of
+     * "is it true now": a transform target and an [onFrame] slot are set through setters that
+     * report, and a provider is registered through a function that does. What a provider *returns*
+     * is reported by nobody, so a node holding one stays in the set for as long as it holds it.
      */
-    internal open val mayBeSelfFrameActive: Boolean
+    internal val mayBeSelfFrameActive: Boolean
         get() = animationDelegate.smoothTransform != null ||
                 onFrame != null ||
                 frameActivityProviders.isNotEmpty()

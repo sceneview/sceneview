@@ -173,11 +173,13 @@ class ViewNode(
      * drawing lets the scene park with it. Nothing about the embedded UI is frozen — the loop is
      * simply not awake for frames the view is not producing.
      */
-    override val isSelfFrameActive: Boolean
-        get() = frameSignal.isActive() || cameraFacing.isPending || super.isSelfFrameActive
+    private fun isViewFrameActive(): Boolean = frameSignal.isActive() || cameraFacing.isPending
 
-    /** The view draws and the camera moves without telling this node: the scene always asks. */
-    override val mayBeSelfFrameActive: Boolean get() = true
+    init {
+        // The view draws and the camera moves without telling this node: registered as a provider,
+        // so the scene asks on every tick (#3724).
+        addFrameActivityProvider(::isViewFrameActive)
+    }
 
     private val cameraFacing = CameraFacing(NodeCameraFacingTarget(this), cameraPositionProvider)
 
@@ -260,7 +262,7 @@ class ViewNode(
             Handler(Looper.getMainLooper())
         )
         // The library's own frame hook, not the public `onFrame`: that one pins the render loop.
-        // `isSelfFrameActive` above answers for the activity instead.
+        // the activity provider above answers for the activity instead.
         internalOnFrame = { _ -> cameraFacing.onFrame() }
     }
 

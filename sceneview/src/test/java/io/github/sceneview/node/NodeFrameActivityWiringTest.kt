@@ -12,6 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.lang.reflect.Modifier
 import kotlin.random.Random
 
 /**
@@ -47,8 +48,10 @@ class NodeFrameActivityWiringTest {
     /** A term nobody reports, added the way the library's node types add theirs. */
     private class PolledNode(engine: Engine, entity: Int) : Node(engine, entity) {
         var term = false
-        override val isSelfFrameActive: Boolean get() = term || super.isSelfFrameActive
-        override val mayBeSelfFrameActive: Boolean get() = true
+
+        init {
+            addFrameActivityProvider { term }
+        }
     }
 
     /** An app's node type, overriding the public getter the documented way. */
@@ -81,6 +84,18 @@ class NodeFrameActivityWiringTest {
             assertFalse("${type.simpleName} overrides isFrameActive", overridesIsFrameActive(type))
         }
         assertFalse(overridesIsFrameActive(PolledNode::class.java))
+    }
+
+    @Test
+    fun `the two halves of a node's own terms cannot be overridden apart`() {
+        // `isSelfFrameActive` is the answer, `mayBeSelfFrameActive` decides who is asked. A node
+        // type able to add a term to the first and not the second would park mid-animation, so
+        // both are final and a term is added with `addFrameActivityProvider`, which feeds both.
+        val halves = Node::class.java.declaredMethods.filter {
+            it.name.startsWith("isSelfFrameActive") || it.name.startsWith("getMayBeSelfFrameActive")
+        }
+        assertEquals(halves.map { it.name }.toString(), 2, halves.size)
+        halves.forEach { assertTrue("${it.name} is open", Modifier.isFinal(it.modifiers)) }
     }
 
     @Test
@@ -148,6 +163,34 @@ class NodeFrameActivityWiringTest {
         assertFalse(activity.hasActiveNode)
         assertTrue(root.childNodes.isEmpty())
         assertTrue(leaf.frameActivityTrackers.isEmpty())
+    }
+
+    @Test
+    fun `a child left under two parents by a throwing hook survives leaving one of them`() {
+        val activity = SceneFrameActivity()
+        val first = plain()
+        val second = plain()
+        activity.setRoots(listOf(first, second))
+        val shared = plain().also { it.parent = first; it.onFrame = {} }
+        val failing = plain()
+        // What `SceneNodeManager` hangs on every node: a hook that runs app code and may throw.
+        second.onChildAdded += { child -> check(child !== failing) { "onAddedToScene threw" } }
+
+        // The field is written, `failing` is attached, its hook throws — and `shared`, next in
+        // line, is never taken out of `first`. It now sits in both parents' `childNodes`.
+        assertTrue(runCatching { second.childNodes = second.childNodes + failing + shared }.isFailure)
+        assertTrue(shared in first.childNodes && shared in second.childNodes)
+        assertEquals(walk(listOf(first, second)), activity.hasActiveNode)
+
+        // Leaving the second parent must not park the scene: the first still holds the node.
+        second.childNodes = second.childNodes - shared
+        assertTrue(shared in first.childNodes)
+        assertTrue(walk(listOf(first, second)))
+        assertTrue(activity.hasActiveNode)
+
+        first.childNodes = first.childNodes - shared
+        assertFalse(activity.hasActiveNode)
+        assertTrue(shared.frameActivityTrackers.isEmpty())
     }
 
     @Test

@@ -38,9 +38,15 @@ import java.util.IdentityHashMap
  *
  * Membership mirrors the `childNodes` field, not the `parent` pointer: [onChildrenChanged] is
  * called from the one place that field is written, straight after the write and before any hook a
- * caller could throw from. A node is tracked while it is one of the scene's [setRoots] or a child
- * of a tracked transparent node — both are remembered separately, so a root re-parented under
- * another root and taken out again is still a root.
+ * caller could throw from. A node is tracked while it is one of the scene's [setRoots] or sits in
+ * the `childNodes` of a tracked transparent node — both are remembered separately, so a root
+ * re-parented under another root and taken out again is still a root.
+ *
+ * "A parent" is plural on purpose. A node has one `parent`, but it can sit in two nodes'
+ * `childNodes` at once: for an instant on every move made by assigning `childNodes`, and for good
+ * when a hook throws half-way through one — the write to the new parent's field has happened, the
+ * removal from the old one never runs. The walk reaches that node through either, so every
+ * tracked parent holding it is recorded and it is let go only when the last one drops it.
  *
  * Generic over the node type so the algorithm runs in plain JVM tests: `Node` needs a Filament
  * engine, the bookkeeping does not.
@@ -77,10 +83,10 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
     private val roots = IdentityHashMap<T, Unit>()
 
     /**
-     * Every tracked node, mapped to the tracked transparent parent it is currently a child of, or
-     * to [NoParent] when it is tracked as a root only.
+     * Every tracked node, mapped to the tracked transparent nodes whose `childNodes` hold it right
+     * now: one in the normal case, none for a node tracked as a root only.
      */
-    private val tracked = IdentityHashMap<T, Any>()
+    private val tracked = IdentityHashMap<T, ArrayList<T>>()
 
     /** The tracked nodes that are asked. Value: whether the node is opaque. */
     private val candidates = IdentityHashMap<T, Boolean>()
@@ -90,8 +96,6 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
     private var snapshot: Snapshot? = null
 
     private class Snapshot(val opaque: Array<Any?>, val transparent: Array<Any?>)
-
-    private object NoParent
 
     /**
      * True when any root is frame-active — the same answer as `roots.any { it.isFrameActive }`.
@@ -126,7 +130,7 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
             roots.keys.filter { it !in next }.forEach { root ->
                 roots.remove(root)
                 // Still a child of a tracked node: it stays, for that reason alone now.
-                if (tracked[root] === NoParent) untrack(root)
+                if (tracked[root]?.isEmpty() == true) untrack(root)
             }
             nodes.forEach { root ->
                 if (root !in roots) {
@@ -144,14 +148,7 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
     fun onChildrenChanged(parent: T, removed: Collection<T>, added: Collection<T>) {
         synchronized(lock) {
             if (parent !in tracked || access.isOpaque(parent)) return
-            removed.forEach { child ->
-                // A child moved straight from one parent to another is already recorded under the
-                // new one by the time the old one reports the removal — leave that record alone.
-                if (tracked[child] === parent) {
-                    tracked[child] = NoParent
-                    if (child !in roots) untrack(child)
-                }
-            }
+            removed.forEach { child -> release(child, from = parent) }
             added.forEach { child -> track(child, via = parent) }
         }
     }
@@ -169,12 +166,14 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
     }
 
     private fun track(node: T, via: T?) {
-        if (node in tracked) {
-            // Already here as a root, or under another parent a moment ago. Its subtree is tracked.
-            if (via != null) tracked[node] = via
+        val parents = tracked[node]
+        if (parents != null) {
+            // Already here as a root, or under another parent. Its subtree is tracked: only the
+            // new reason to keep it is recorded.
+            if (via != null && parents.none { it === via }) parents += via
             return
         }
-        tracked[node] = via ?: NoParent
+        tracked[node] = ArrayList<T>(1).also { if (via != null) it += via }
         access.addTracker(node, this)
         if (access.isOpaque(node)) {
             candidates[node] = true
@@ -195,12 +194,16 @@ internal class FrameActivityTracker<T : Any>(private val access: Access<T>) {
         access.removeTracker(node, this)
         if (candidates.remove(node) != null) snapshot = null
         if (access.isOpaque(node)) return
-        access.children(node).forEach { child ->
-            if (tracked[child] === node) {
-                tracked[child] = NoParent
-                if (child !in roots) untrack(child)
-            }
-        }
+        access.children(node).forEach { child -> release(child, from = node) }
+    }
+
+    /** [from] no longer holds [child]: forget that reason, and the child with it if it was the last. */
+    private fun release(child: T, from: T) {
+        val parents = tracked[child] ?: return
+        val index = parents.indexOfFirst { it === from }
+        if (index < 0) return
+        parents.removeAt(index)
+        if (parents.isEmpty() && child !in roots) untrack(child)
     }
 
     private fun buildSnapshot(): Snapshot {

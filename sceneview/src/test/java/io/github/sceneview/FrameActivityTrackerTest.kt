@@ -25,7 +25,7 @@ class FrameActivityTrackerTest {
         /** `Node`, `MeshNode`, … — base terms only, each reported by its setter. */
         Plain,
 
-        /** `ModelNode`, `VideoNode`, … — a term nobody reports, added to `isSelfFrameActive`. */
+        /** `ModelNode`, `VideoNode`, … — a term nobody reports, held for the node's whole life. */
         Polled,
 
         /** An app's node type overriding the public getter and calling `super`. */
@@ -146,14 +146,13 @@ class FrameActivityTrackerTest {
             runCatching { parent = null }
         }
 
-        fun isSelfOrDescendantOf(other: FakeNode): Boolean {
-            var node: FakeNode? = this
-            while (node != null) {
-                if (node === other) return true
-                node = node.parent
-            }
-            return false
-        }
+        /**
+         * True when [other] is this node or below it — read from `childNodes`, as the walk does,
+         * and not from `parent`: after a failed attach the two disagree, and it is `childNodes`
+         * that must stay free of cycles.
+         */
+        fun holds(other: FakeNode): Boolean =
+            this === other || childNodes.any { it.holds(other) }
 
         override fun toString() = name
     }
@@ -525,6 +524,33 @@ class FrameActivityTrackerTest {
     }
 
     @Test
+    fun `a child left under two parents by a failed attach survives leaving one of them`() {
+        val scene = FakeScene()
+        val first = FakeNode("first")
+        val second = FakeNode("second")
+        scene.roots = listOf(first, second)
+        val shared = FakeNode("shared").also { it.parent = first; it.onFrame = {} }
+        val failing = FakeNode("failing").also { it.failNextParentWrite = true }
+
+        // `second.childNodes = second.childNodes + failing + shared`: the field is written, then
+        // the hook of `failing` throws before `shared` is taken out of `first`. `shared` now sits
+        // in both parents' `childNodes`, and the walk reaches it through either.
+        assertTrue(runCatching { second.childNodes = second.childNodes + failing + shared }.isFailure)
+        assertTrue(shared in first.childNodes && shared in second.childNodes)
+        scene.assertExact("with a child under two parents")
+
+        // Leaving the second parent must not cost it its place: the first still holds it.
+        second.childNodes = second.childNodes - shared
+        assertTrue(shared in first.childNodes)
+        scene.assertExact("after the child left one of its two parents")
+        assertTrue(scene.tracker.hasActiveNodes)
+
+        first.childNodes = first.childNodes - shared
+        scene.assertExact("after the child left both")
+        assertFalse(scene.tracker.hasActiveNodes)
+    }
+
+    @Test
     fun `a getter that mutates the tree while it is being asked`() {
         val scene = FakeScene()
         val root = FakeNode("root")
@@ -607,6 +633,14 @@ class FrameActivityTrackerTest {
 
     // ---- Everything at once ----
 
+    /** Adds [failing] then [after] under [parent]; [failing]'s hook throws once it is in the field. */
+    private fun attachWithFailingHook(parent: FakeNode, failing: FakeNode, after: FakeNode) {
+        val children = listOf(failing, after).filter { !it.holds(parent) }
+        failing.failNextParentWrite = true
+        runCatching { parent.childNodes = parent.childNodes + children }
+        failing.failNextParentWrite = false
+    }
+
     @Test
     fun `random add, remove, reparent, destroy and toggle sequences match the tree walk`() {
         for (seed in SEEDS) {
@@ -621,15 +655,15 @@ class FrameActivityTrackerTest {
             repeat(STEPS) { step ->
                 val node = pool[random.nextInt(pool.size)]
                 val other = pool[random.nextInt(pool.size)]
-                val op = random.nextInt(14)
+                val op = random.nextInt(15)
                 when (op) {
                     // Reparent through the `parent` setter (old parent reports first).
-                    0, 1 -> if (!other.isSelfOrDescendantOf(node)) node.parent = other
+                    0, 1 -> if (!node.holds(other)) node.parent = other
                     2 -> node.parent = null
                     // Reparent through `childNodes` (new parent reports first), several at once.
                     3 -> {
                         val children = pool.shuffled(random).take(random.nextInt(4))
-                            .filter { !node.isSelfOrDescendantOf(it) }
+                            .filter { !it.holds(node) }
                         node.childNodes = children.toSet()
                     }
                     // The scene's root list is replaced wholesale, as the collector does.
@@ -660,7 +694,10 @@ class FrameActivityTrackerTest {
                         pool[pool.indexOf(node)] = newNode()
                     }
                     // Destroyed while still on a scene's root list.
-                    else -> node.destroy()
+                    13 -> node.destroy()
+                    // An attach that throws half-way: `other` is in the field but its hook failed,
+                    // and whatever came after it is left under two parents at once.
+                    else -> attachWithFailingHook(node, other, pool[random.nextInt(pool.size)])
                 }
                 scenes.forEachIndexed { index, scene ->
                     scene.assertExact("(seed $seed, step $step, op $op, scene $index)")

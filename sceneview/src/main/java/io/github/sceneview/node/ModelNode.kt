@@ -511,16 +511,13 @@ open class ModelNode(
         renderableNodes.forEach { it.setGlobalBlendOrderEnabled(enabled) }
     }
 
-    /**
-     * A glTF animation in flight keeps the scene rendering under
-     * [io.github.sceneview.FrameRatePolicy.OnDemand]: the skinning / morphing write-back happens in
-     * [onFrame] below, which no transform setter goes through, so nothing else would invalidate.
-     */
-    override val isSelfFrameActive: Boolean
-        get() = playingAnimations.isNotEmpty() || super.isSelfFrameActive
-
-    /** [playingAnimations] is a public mutable map: nothing reports a write to it, so always ask. */
-    override val mayBeSelfFrameActive: Boolean get() = true
+    init {
+        // A glTF animation in flight keeps the scene rendering under `FrameRatePolicy.OnDemand`:
+        // the skinning / morphing write-back happens in `onFrame` below, which no transform setter
+        // goes through, so nothing else would invalidate. `playingAnimations` is a public mutable
+        // map — nothing reports a write to it — so the scene asks on every tick (#3724).
+        addFrameActivityProvider { playingAnimations.isNotEmpty() }
+    }
 
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
