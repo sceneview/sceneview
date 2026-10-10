@@ -258,7 +258,8 @@ private const val ON_FRAME_METHOD = "onFrame"
  * class that inherits the method from one of them has not overridden it.
  *
  * Adding a class here is a promise that its `onFrame` is `super.onFrame(frameTimeNanos)` and
- * nothing else — the plan stops calling it.
+ * nothing else — the plan stops calling it. `LibraryOnFrameOverridesContractTest` holds every
+ * class of this set to that promise, by reading the compiled body of the method.
  */
-private val inheritedOnFrameOwners: Set<Class<*>> =
+internal val inheritedOnFrameOwners: Set<Class<*>> =
     setOf(Node::class.java, ModelNode::class.java, SplatNode::class.java)

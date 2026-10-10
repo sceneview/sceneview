@@ -1,8 +1,6 @@
 package io.github.sceneview.node
 
 import com.google.android.filament.Engine
-import com.google.android.filament.gltfio.Animator
-import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.FilamentInstance
 import io.github.sceneview.SceneFrameDispatch
 import io.github.sceneview.model.ModelInstance
@@ -44,12 +42,7 @@ class ModelNodeFrameWorkTest {
 
     @Before
     fun createEngineWithoutJni() {
-        val constructor = Engine::class.java.getDeclaredConstructor(
-            Long::class.javaPrimitiveType,
-            Engine.Config::class.java
-        )
-        constructor.isAccessible = true
-        engine = constructor.newInstance(1L, null)
+        engine = FilamentWithoutJni.engine()
     }
 
     @After
@@ -57,26 +50,7 @@ class ModelNodeFrameWorkTest {
         RiggedInstance.skinCount = 0
     }
 
-    private fun modelInstance(): ModelInstance {
-        val asset = FilamentAsset::class.java
-            .getDeclaredConstructor(Engine::class.java, Long::class.javaPrimitiveType)
-            .apply { isAccessible = true }
-            .newInstance(engine, 1L)
-        val instance = FilamentInstance::class.java
-            .getDeclaredConstructor(FilamentAsset::class.java, Long::class.javaPrimitiveType)
-            .apply { isAccessible = true }
-            .newInstance(asset, 1L)
-        // The instance would build its animator around the zero the native lookup returns here,
-        // and an animator refuses to work on a null handle: hand it one that has a handle.
-        val animator = Animator::class.java
-            .getDeclaredConstructor(Long::class.javaPrimitiveType)
-            .apply { isAccessible = true }
-            .newInstance(1L)
-        FilamentInstance::class.java.getDeclaredField("mAnimator")
-            .apply { isAccessible = true }
-            .set(instance, animator)
-        return instance
-    }
+    private fun modelInstance() = FilamentWithoutJni.modelInstance(engine)
 
     private fun model() = ModelNode(modelInstance())
 
@@ -181,6 +155,42 @@ class ModelNodeFrameWorkTest {
             assertEquals("addition $index", 1, model.playingAnimations.size)
             frame(roots)
             assertTrue("addition $index was not played", model.playingAnimations.isEmpty())
+        }
+    }
+
+    @Test
+    fun `every way of removing from playingAnimations lets the model rest`() {
+        // Removals are not reported to the model, on purpose: a model with an entry is being
+        // given frames, and finds the map empty at the end of the next one.
+        val removals = listOf<(ModelNode) -> Unit>(
+            { it.playingAnimations.remove(0) },
+            { it.playingAnimations.clear() },
+            { it.playingAnimations.keys.remove(0) },
+            { it.playingAnimations.values.clear() },
+            { it.playingAnimations.entries.removeIf { entry -> entry.key == 0 } },
+            { model ->
+                val entries = model.playingAnimations.entries.iterator()
+                entries.next()
+                entries.remove()
+            },
+            { model ->
+                val keys = model.playingAnimations.keys.iterator()
+                keys.next()
+                keys.remove()
+            },
+        )
+        removals.forEachIndexed { index, remove ->
+            val model = model()
+            val roots = listOf<Node>(model)
+            model.playingAnimations[0] = ModelNode.PlayingAnimation(loop = true)
+            frame(roots)
+            assertEquals("removal $index", 1, dispatch.stepCount)
+
+            remove(model)
+            assertTrue("removal $index", model.playingAnimations.isEmpty())
+            frame(roots)
+            frame(roots)
+            assertEquals("removal $index left the model a step", 0, dispatch.stepCount)
         }
     }
 

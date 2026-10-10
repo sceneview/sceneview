@@ -316,8 +316,9 @@ open class SplatNode(
 
     /**
      * Kept for binary compatibility, and does nothing of its own: the re-sort moved to
-     * [onOwnFrame] (#4451), so the scene no longer has to call this on every frame to reach it.
-     * `SceneFrameDispatch` relies on this body being `super` alone.
+     * `onOwnFrame` (#4451), so the scene no longer has to call this on every frame to reach it.
+     * `SceneFrameDispatch` relies on this body being `super` alone, and
+     * `LibraryOnFrameOverridesContractTest` fails the build the day it is not.
      */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)

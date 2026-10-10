@@ -1518,7 +1518,7 @@ open class Node protected constructor(
      * node with neither is not visited. A class that **overrides** this method is still called on
      * every frame, in full, and reaches its children through `super.onFrame` as it always has.
      * The library's own node types do not: `ModelNode` and `SplatNode` declare their work with
-     * [hasOwnFrameWork] instead.
+     * `hasOwnFrameWork` instead.
      */
     open fun onFrame(frameTimeNanos: Long) {
         // Smooth transform interpolation

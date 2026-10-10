@@ -103,10 +103,14 @@ open class ModelNode(
          * Takes this renderable out of [permanentlyValidEntities] after its geometry or bounding
          * box was written, and asks for the frame that re-scans it: a model at rest is not ticked
          * (#4451).
+         *
+         * The frame is asked for on the **model** — `sanitizeEmptyBoundingBoxes` is the model's
+         * work. This sub-node has none of its own, and an unqualified `hasOwnFrameWork` here
+         * would be this sub-node's: a step that does nothing, on a model that stays asleep.
          */
         private fun unlatchBoundingBox() {
             permanentlyValidEntities -= entity
-            hasOwnFrameWork = true
+            this@ModelNode.hasOwnFrameWork = true
         }
 
         override fun setGeometry(geometry: Geometry) {
@@ -227,6 +231,11 @@ open class ModelNode(
      * back a view of it. Add an entry through this property (or [playAnimation]) rather than
      * through a reference kept to the assigned map — an entry that appears behind the node's back
      * in a model that was at rest is only picked up once something else gives the node a frame.
+     * The same goes for one map assigned to two models: each sees only what is added through its
+     * own property.
+     *
+     * Main thread only, reads and writes alike: the map has never been thread-safe, and the model
+     * decides at the end of each of its frames whether it still needs the next one.
      */
     var playingAnimations: MutableMap<Int, PlayingAnimation> =
         mutableMapOf<Int, PlayingAnimation>().observedBy(this) { hasOwnFrameWork = true }
@@ -269,7 +278,7 @@ open class ModelNode(
     private val hasSkins: Boolean = modelInstance.skinCount > 0
 
     /**
-     * Whether a frame has something to do on this model — what [hasOwnFrameWork] is set to at the
+     * Whether a frame has something to do on this model — what `hasOwnFrameWork` is set to at the
      * end of construction and of every frame it ran on. Any of:
      *
      * - **an animation is in [playingAnimations]** — paused ones included;
@@ -280,9 +289,15 @@ open class ModelNode(
      *   one that is empty for now, or one with morph targets, which is never latched.
      *
      * A fully loaded model with no skin, no morph target and nothing playing answers `false`, and
-     * the scene then has no step for it. What raises the flag again without waiting for a frame:
-     * an entry added to [playingAnimations], and a geometry or bounding-box write on one of
-     * [renderableNodes].
+     * the scene then has no step for it. Two writes raise the model's flag again at once, since a
+     * model at rest has no frame on which to find them:
+     *
+     * - an entry added to [playingAnimations] through the property or [playAnimation];
+     * - a geometry or bounding-box write on one of [renderableNodes] — `setGeometry`,
+     *   `setGeometryAt`, `axisAlignedBoundingBox`, or a `Geometry.update` on a geometry bound to
+     *   it — which takes that renderable out of [permanentlyValidEntities].
+     *
+     * Read on the main thread only, like everything it reads.
      */
     private val needsFrame: Boolean
         get() = playingAnimations.isNotEmpty() || hasSkins ||
@@ -386,6 +401,8 @@ open class ModelNode(
      * @param speed The rate at which the `animation` plays. Reverses the `animation` if negative.
      * Pauses the `animation` if zero.
      * @param loop Specifies if the `animation` should repeat forever.
+     *
+     * Main thread only, like every write to [playingAnimations].
      *
      * @see Animator.getAnimationCount
      */
@@ -579,9 +596,10 @@ open class ModelNode(
 
     /**
      * Kept for binary compatibility, and does nothing of its own: the model's per-frame work
-     * moved to [onOwnFrame] (#4451), so the scene no longer has to call this on every frame —
+     * moved to `onOwnFrame` (#4451), so the scene no longer has to call this on every frame —
      * and walk every node of the glTF under it — to reach that work.
-     * `SceneFrameDispatch` relies on this body being `super` alone.
+     * `SceneFrameDispatch` relies on this body being `super` alone, and
+     * `LibraryOnFrameOverridesContractTest` fails the build the day it is not.
      */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
@@ -654,7 +672,7 @@ open class ModelNode(
      * the sub-node invalidation explicit at this level should the parenting ever change.
      *
      * The genuinely-needed invalidation for animation is the `wasAnimating` pass in
-     * [onOwnFrame]: glTF animation writes sub-node transforms straight into Filament,
+     * `onOwnFrame`: glTF animation writes sub-node transforms straight into Filament,
      * bypassing the [Node] setters that would otherwise trigger this propagation (#2264).
      */
     override fun onWorldTransformChanged() {
