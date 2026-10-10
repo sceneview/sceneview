@@ -3668,6 +3668,17 @@ node.animatePositions(...)
 node.animateRotations(...)
 ```
 
+`rotation` and `worldRotation` use one Euler convention: degrees, ZYX order. Each getter reads
+`toEulerAngles()` of `quaternion` / `worldQuaternion` and each setter writes
+`Quaternion.fromEuler(value)`, so a node with no parent reads the same angles through both, and
+`node.worldRotation = node.worldRotation` leaves it where it is. Y is the middle angle and stays
+within ±90°: a 120° yaw reads `Rotation(180f, 60f, 180f)`, the same orientation. To read a heading,
+compare orientations or interpolate, use `quaternion` / `worldQuaternion`.
+
+Through 4.53.0 the `worldRotation` getter used another convention (YXZ, yaw sign negated, Y within
+±180°): `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`. Code that negated
+`worldRotation.y` to compensate must drop the negation.
+
 ### Editable nodes — Sceneform `TransformableNode` parity
 
 SceneView's gesture-editing API is the direct replacement for Sceneform's

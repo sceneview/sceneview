@@ -91,6 +91,31 @@ SceneView {
   `prepareAsync()` and hand it over from `setOnPreparedListener`; `MediaPlayer.create(…)` and
   `prepare()` inside `remember { }` block the main thread exactly as the old helper did.
 
+### `Node.worldRotation` reads the same Euler angles as `Node.rotation` ([#3745](https://github.com/sceneview/sceneview/issues/3745))
+
+Through 4.53.0 the two getters used two conventions. `rotation` is ZYX and reads back what was
+written; the `worldRotation` getter returned kotlin-math's `Mat4.rotation`, which is YXZ with the
+yaw sign negated. Its setter was ZYX all along, so `node.worldRotation = node.worldRotation`
+turned any node that had yaw.
+
+| Written `rotation` (no parent) | `worldRotation` through 4.53.0 | `worldRotation` now |
+|---|---|---|
+| `(0, 30, 0)` | `(0, -30, 0)` | `(0, 30, 0)` |
+| `(20, 30, 15)` | `(12.05, -33.68, 13.25)` | `(20, 30, 15)` |
+| `(0, 120, 0)` | `(0, -120, 0)` | `(180, 60, 180)` |
+| `(20, 0, 0)`, `(0, 0, 15)` | unchanged | unchanged |
+
+Only the **`worldRotation` getter** changes. `rotation`, `worldQuaternion`, `worldTransform`,
+both setters and what is drawn on screen are untouched.
+
+- **If you negated `worldRotation.y`** to line it up with `rotation.y`, drop the negation.
+- **If you read a heading from `worldRotation.y`**, read it from `worldQuaternion` instead. Y is
+  now the middle angle of a ZYX triple and stays within ±90°: past a quarter turn the same
+  orientation reads as `(180, 60, 180)`, exactly as `rotation` has always done.
+- **If you rebuilt the orientation** with
+  `Quaternion.fromEuler(Rotation(x, -y, z), RotationsOrder.YXZ)`, use
+  `Quaternion.fromEuler(node.worldRotation)` — or `node.worldQuaternion` directly.
+
 ---
 
 ## SceneView 4.37.x to 4.38.0 (Android) — `isRendering` replaced by `frameRatePolicy`

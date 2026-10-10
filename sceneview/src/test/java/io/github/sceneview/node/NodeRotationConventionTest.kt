@@ -1,7 +1,6 @@
 package io.github.sceneview.node
 
 import dev.romainguy.kotlin.math.Quaternion
-import dev.romainguy.kotlin.math.RotationsOrder
 import dev.romainguy.kotlin.math.dot
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -15,110 +14,127 @@ import kotlin.math.acos
 import kotlin.math.min
 
 /**
- * Pins the Euler conventions of [Node.rotation] and [Node.worldRotation] for a node with no
- * parent (#3745).
+ * Pins the one Euler convention shared by [Node.rotation] and [Node.worldRotation] (#3745).
  *
- * A [Node] needs a native Filament engine, so this reproduces the two getters' exact expressions
- * on the JVM:
+ * A [Node] needs a native Filament engine, so the JVM cannot build one. What it can call is
+ * [decomposeWorld], the production function `Node.refreshWorldCache()` fills `worldRotation` from:
+ * every world reading below goes through it, with the world matrix Filament would hand back
+ * (for a node with no parent, the local matrix; under a parent, `parent * local`).
  *
- * - `rotation` reads `quaternion.toEulerAngles()` — ZYX, the same order its setter
- *   (`Quaternion.fromEuler`) writes, so it reads back what was written.
- * - `worldRotation` reads `world.rotation`, the kotlin-math `Mat4.rotation` decomposition of the
- *   world matrix. For a root node the world matrix is the local one,
- *   `Transform(position, quaternion, scale)`, so the two getters see the same orientation.
- *
- * Measured result: they only agree for a pure X or pure Z rotation. `Mat4.rotation` returns
- * YXZ-order angles with the Y (yaw) sign negated, so a pure yaw of 30° reads back as -30° and a
- * compound rotation reads back as different numbers altogether. Its setter goes through
- * `Quaternion.fromEuler` (ZYX), so `node.worldRotation = node.worldRotation` turns a root node.
- *
- * Major version 4 is frozen, so this test documents the current behaviour rather than changing it.
- * If either getter is ever aligned (5.0), this test is the one expected to change.
+ * Counter-test, run when this was written: with `rotation = world.rotation` put back in
+ * [decomposeWorld], all five tests go red on their assertions — `expected:<30.0> but
+ * was:<-30.000006>` for the pure yaw. `NodeRotationConventionInstrumentedTest` asks the same
+ * question of real nodes, on a device.
  */
 class NodeRotationConventionTest {
 
-    /** `Node.rotation` getter for a node whose local quaternion was set from [written]. */
-    private fun localRead(written: Rotation): Rotation = Quaternion.fromEuler(written).toEulerAngles()
+    /** What `Node.worldRotation` reads for a node whose world matrix is [world]. */
+    private fun worldRotationOf(world: Transform): Rotation = decomposeWorld(world).rotation
 
-    /** `Node.worldRotation` getter for a root node whose local quaternion was set from [written]. */
-    private fun rootWorldRead(written: Rotation): Rotation =
-        Transform(Position(), Quaternion.fromEuler(written), Scale(1f)).rotation
+    /** World matrix of a node with no parent whose `rotation` was set to [written]. */
+    private fun rootWorld(written: Rotation, scale: Scale = Scale(1f)): Transform =
+        Transform(Position(1f, 2f, 3f), Quaternion.fromEuler(written), scale)
 
     /** Angle, in degrees, between two orientations (sign-insensitive). */
     private fun angleBetween(a: Quaternion, b: Quaternion): Double =
         Math.toDegrees(2.0 * acos(min(1.0, abs(dot(a, b)).toDouble())))
 
-    private fun assertRotationEquals(expected: Rotation, actual: Rotation) {
-        assertEquals("x of $actual", expected.x, actual.x, EPS)
-        assertEquals("y of $actual", expected.y, actual.y, EPS)
-        assertEquals("z of $actual", expected.z, actual.z, EPS)
+    private fun assertRotationEquals(message: String, expected: Rotation, actual: Rotation) {
+        assertEquals("$message — x of $actual", expected.x, actual.x, EPS)
+        assertEquals("$message — y of $actual", expected.y, actual.y, EPS)
+        assertEquals("$message — z of $actual", expected.z, actual.z, EPS)
     }
 
     @Test
-    fun `rotation reads back what was written`() {
-        CASES.forEach { written -> assertRotationEquals(written, localRead(written)) }
-    }
-
-    @Test
-    fun `root worldRotation agrees with rotation for a pure pitch or roll`() {
-        listOf(Rotation(x = 20f), Rotation(z = 15f)).forEach { written ->
-            assertRotationEquals(localRead(written), rootWorldRead(written))
+    fun `a root node reads through worldRotation the angles written to rotation`() {
+        // The issue's headline: `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`.
+        CASES.forEach { written ->
+            assertRotationEquals("written $written", written, worldRotationOf(rootWorld(written)))
         }
     }
 
     @Test
-    fun `root worldRotation negates a pure yaw`() {
-        val written = Rotation(y = 30f)
-
-        assertRotationEquals(Rotation(y = 30f), localRead(written))
-        assertRotationEquals(Rotation(y = -30f), rootWorldRead(written))
-    }
-
-    @Test
-    fun `root worldRotation and rotation disagree on a compound rotation`() {
-        val written = Rotation(x = 20f, y = 30f, z = 15f)
-
-        assertRotationEquals(written, localRead(written))
-        // Measured 2026-09-27: (12.05, -33.68, 13.25).
-        assertRotationEquals(Rotation(x = 12.049748f, y = -33.681595f, z = 13.249608f), rootWorldRead(written))
-    }
-
-    @Test
-    fun `root worldRotation is YXZ order with the yaw sign negated`() {
+    fun `worldRotation is the Euler reading of worldQuaternion, like rotation is of quaternion`() {
         CASES.forEach { written ->
-            val world = rootWorldRead(written)
-            val rebuilt = Quaternion.fromEuler(Rotation(world.x, -world.y, world.z), RotationsOrder.YXZ)
-            assertTrue(
-                "$written read back as $world, which is not YXZ with negated yaw",
-                angleBetween(Quaternion.fromEuler(written), rebuilt) < ANGLE_TOLERANCE_DEG
+            val decomposed = decomposeWorld(rootWorld(written))
+
+            assertRotationEquals(
+                "written $written",
+                decomposed.quaternion.toEulerAngles(),
+                decomposed.rotation,
             )
         }
     }
 
     @Test
-    fun `writing a root node's worldRotation back to itself turns it`() {
-        // The setter is `worldQuaternion = Quaternion.fromEuler(value)` (ZYX), so feeding it the
-        // getter's YXZ, yaw-negated angles lands on another orientation.
-        val written = Rotation(x = 20f, y = 30f, z = 15f)
-        val before = Quaternion.fromEuler(written)
-        val after = Quaternion.fromEuler(rootWorldRead(written))
+    fun `scale does not change what worldRotation reads`() {
+        CASES.forEach { written ->
+            assertRotationEquals(
+                "written $written under a non-uniform scale",
+                written,
+                worldRotationOf(rootWorld(written, Scale(2f, 3f, 0.5f))),
+            )
+        }
+    }
 
-        assertTrue(angleBetween(before, after) > 60.0)
+    @Test
+    fun `writing worldRotation back to itself keeps the orientation`() {
+        // The setter is `worldQuaternion = Quaternion.fromEuler(value)`. With the two conventions,
+        // `node.worldRotation = node.worldRotation` turned the compound case by 64 degrees.
+        // Yaws past 90 degrees read as an equivalent triple, so compare orientations, not angles.
+        (CASES + BEYOND_QUARTER_TURN).forEach { written ->
+            val original = Quaternion.fromEuler(written)
+            val readBack = worldRotationOf(rootWorld(written))
+
+            val drift = angleBetween(original, Quaternion.fromEuler(readBack))
+            assertTrue(
+                "$written read $readBack, which rebuilds an orientation $drift degrees away",
+                drift < ANGLE_TOLERANCE_DEG,
+            )
+        }
+    }
+
+    @Test
+    fun `a child reads the composition of its parent and its own rotation`() {
+        val parent = Transform(
+            Position(0f, 1f, 0f),
+            Quaternion.fromEuler(Rotation(x = -12f, y = 35f, z = 8f)),
+            Scale(1f),
+        )
+
+        CASES.forEach { local ->
+            val localQuaternion = Quaternion.fromEuler(local)
+            val world = parent * Transform(Position(), localQuaternion, Scale(1f))
+            val expected = decomposeWorld(parent).quaternion * localQuaternion
+
+            val drift = angleBetween(expected, Quaternion.fromEuler(worldRotationOf(world)))
+            assertTrue(
+                "child $local read ${worldRotationOf(world)}, $drift degrees off its world orientation",
+                drift < ANGLE_TOLERANCE_DEG,
+            )
+        }
     }
 
     private companion object {
         const val EPS = 1e-3f
-
-        /** Float `acos` near 1 costs a few hundredths of a degree on its own. */
         const val ANGLE_TOLERANCE_DEG = 0.1
 
+        /** Y within ±90 degrees: the range in which ZYX Euler angles read back as written. */
         val CASES = listOf(
             Rotation(y = 30f),
+            Rotation(y = -75f),
             Rotation(x = 20f),
             Rotation(z = 15f),
             Rotation(x = 20f, y = 30f, z = 15f),
             Rotation(x = 10f, y = 45f),
             Rotation(y = 45f, z = 10f),
+        )
+
+        val BEYOND_QUARTER_TURN = listOf(
+            Rotation(y = 120f),
+            Rotation(y = -135f),
+            Rotation(y = 179.9f),
+            Rotation(x = 20f, y = 150f, z = 15f),
         )
     }
 }
