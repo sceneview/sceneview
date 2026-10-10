@@ -99,15 +99,25 @@ open class ModelNode(
         // entity from the latch on every such mutation makes the next [sanitizeEmptyBoundingBoxes]
         // pass re-scan it and re-detect the empty AABB before Filament can crash on it (#2311).
 
+        /**
+         * Takes this renderable out of [permanentlyValidEntities] after its geometry or bounding
+         * box was written, and asks for the frame that re-scans it: a model at rest is not ticked
+         * (#4451).
+         */
+        private fun unlatchBoundingBox() {
+            permanentlyValidEntities -= entity
+            hasOwnFrameWork = true
+        }
+
         override fun setGeometry(geometry: Geometry) {
             super.setGeometry(geometry)
-            permanentlyValidEntities -= entity
+            unlatchBoundingBox()
         }
 
         // A bound geometry also changes through `Geometry.update`, which rebinds this renderable
         // — new bounding box included — without going through `setGeometry` (#4344).
         override fun onGeometryApplied() {
-            permanentlyValidEntities -= entity
+            unlatchBoundingBox()
         }
 
         override fun setGeometryAt(
@@ -119,14 +129,14 @@ open class ModelNode(
             count: Int
         ) {
             super.setGeometryAt(primitiveIndex, type, vertices, indices, offset, count)
-            permanentlyValidEntities -= entity
+            unlatchBoundingBox()
         }
 
         override var axisAlignedBoundingBox: Box
             get() = super.axisAlignedBoundingBox
             set(value) {
                 super.axisAlignedBoundingBox = value
-                permanentlyValidEntities -= entity
+                unlatchBoundingBox()
             }
     }
 
@@ -179,7 +189,7 @@ open class ModelNode(
     val model get() = modelInstance.model
 
     /**
-     * Called when an exception occurs during [onFrame] (e.g. bone matrix update, popRenderable).
+     * Called when an exception occurs during the model's frame (e.g. bone matrix update, popRenderable).
      *
      * Set this to handle frame errors programmatically (crash reporting, analytics, UI feedback).
      * When `null` (default), errors are logged via `android.util.Log.e`.
@@ -208,7 +218,23 @@ open class ModelNode(
      */
     val animationCount get() = animator.animationCount
 
-    var playingAnimations = mutableMapOf<Int, PlayingAnimation>()
+    /**
+     * The animations in flight, by animation index. Filled by [playAnimation], emptied by
+     * [stopAnimation] and by a non-looping animation reaching its end; it can also be written
+     * directly.
+     *
+     * A map assigned here is read and written through: the node keeps it as its storage and hands
+     * back a view of it. Add an entry through this property (or [playAnimation]) rather than
+     * through a reference kept to the assigned map — an entry that appears behind the node's back
+     * in a model that was at rest is only picked up once something else gives the node a frame.
+     */
+    var playingAnimations: MutableMap<Int, PlayingAnimation> =
+        mutableMapOf<Int, PlayingAnimation>().observedBy(this) { hasOwnFrameWork = true }
+        set(value) {
+            // Seen through a view that raises `hasOwnFrameWork` on every entry added.
+            field = value.observedBy(this) { hasOwnFrameWork = true }
+            if (value.isNotEmpty()) hasOwnFrameWork = true
+        }
 
     /**
      * Tracks renderable entities whose AABB was empty and had culling/shadows disabled.
@@ -238,6 +264,29 @@ open class ModelNode(
      * re-scans the entity and re-detects the empty AABB before Filament can crash on it.
      */
     private val permanentlyValidEntities = mutableSetOf<Entity>()
+
+    /** Skins are created with the instance; read once rather than over JNI on every frame. */
+    private val hasSkins: Boolean = modelInstance.skinCount > 0
+
+    /**
+     * Whether a frame has something to do on this model — what [hasOwnFrameWork] is set to at the
+     * end of construction and of every frame it ran on. Any of:
+     *
+     * - **an animation is in [playingAnimations]** — paused ones included;
+     * - **the model has a skin**: its bone matrices are recomputed on every frame, which is what
+     *   lets a skeleton posed by any means — a joint node moved, [animator] driven directly —
+     *   reach the mesh. Nothing reports those writes, so a rigged model is ticked at rest too;
+     * - **a renderable's bounding box is still being watched** by [sanitizeEmptyBoundingBoxes]:
+     *   one that is empty for now, or one with morph targets, which is never latched.
+     *
+     * A fully loaded model with no skin, no morph target and nothing playing answers `false`, and
+     * the scene then has no step for it. What raises the flag again without waiting for a frame:
+     * an entry added to [playingAnimations], and a geometry or bounding-box write on one of
+     * [renderableNodes].
+     */
+    private val needsFrame: Boolean
+        get() = playingAnimations.isNotEmpty() || hasSkins ||
+            permanentlyValidEntities.size != renderableNodes.size
 
     /**
      * Gets the skin count of this instance.
@@ -519,15 +568,31 @@ open class ModelNode(
 
     init {
         // A glTF animation in flight keeps the scene rendering under `FrameRatePolicy.OnDemand`:
-        // the skinning / morphing write-back happens in `onFrame` below, which no transform setter
+        // the skinning / morphing write-back happens in `onOwnFrame` below, which no transform setter
         // goes through, so nothing else would invalidate. `playingAnimations` is a public mutable
         // map — nothing reports a write to it — so the scene asks on every tick (#3724).
         addFrameActivityProvider { playingAnimations.isNotEmpty() }
+        // `autoAnimate` raised it already when it started something; a rigged or still-loading
+        // model raises it here, and a static one leaves it down.
+        hasOwnFrameWork = needsFrame
     }
 
+    /**
+     * Kept for binary compatibility, and does nothing of its own: the model's per-frame work
+     * moved to [onOwnFrame] (#4451), so the scene no longer has to call this on every frame —
+     * and walk every node of the glTF under it — to reach that work.
+     * `SceneFrameDispatch` relies on this body being `super` alone.
+     */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
+    }
 
+    /**
+     * The model's frame: renderables that became ready, the playing animations, the bone
+     * matrices. Runs after the node's `onFrame` callback, as it did when it was the tail of the
+     * `onFrame` override, and only while [needsFrame] says there is a reason to.
+     */
+    override fun onOwnFrame(frameTimeNanos: Long) {
         try {
             // Capture BEFORE applyAnimations(): a non-looping animation removes itself
             // from `playingAnimations` on the same frame it writes its final pose, so a
@@ -540,7 +605,9 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
-                applyAnimations(frameTimeNanos)
+                applyAnimations(
+                    animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
+                )
                 animator.updateBoneMatrices()
             } finally {
                 // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
@@ -570,6 +637,9 @@ open class ModelNode(
             onFrameError?.invoke(e)
                 ?: android.util.Log.e("SceneView", "ModelNode.onFrame error", e)
         }
+        // After the work, so the frame on which a non-looping animation wrote its last pose and
+        // left `playingAnimations` is the last one the model asks for.
+        hasOwnFrameWork = needsFrame
     }
 
     /**
@@ -584,7 +654,7 @@ open class ModelNode(
      * the sub-node invalidation explicit at this level should the parenting ever change.
      *
      * The genuinely-needed invalidation for animation is the `wasAnimating` pass in
-     * [onFrame]: glTF animation writes sub-node transforms straight into Filament,
+     * [onOwnFrame]: glTF animation writes sub-node transforms straight into Filament,
      * bypassing the [Node] setters that would otherwise trigger this propagation (#2264).
      */
     override fun onWorldTransformChanged() {
@@ -606,7 +676,7 @@ open class ModelNode(
      *
      * Once the AABB becomes valid (non-empty), culling and shadows are re-enabled.
      *
-     * **Per-frame cost (#2273).** This runs from [onFrame] every frame. To avoid issuing a
+     * **Per-frame cost (#2273).** This runs from [onOwnFrame] on every frame the model is ticked. To avoid issuing a
      * `getInstance` + `getAxisAlignedBoundingBox` JNI call (plus a `FloatArray(3)` allocation)
      * per renderable on every frame forever, a renderable is latched into
      * [permanentlyValidEntities] and skipped on subsequent frames **once, and only once, it is
@@ -625,7 +695,7 @@ open class ModelNode(
         // Skinning is a model-level property: if any skin exists, conservatively treat every
         // renderable as runtime-mutable (we can't cheaply map an entity to its skin), so none
         // get latched and the full per-frame check is preserved.
-        val modelHasSkins = modelInstance.skinCount > 0
+        val modelHasSkins = hasSkins
         val box = Box()
         renderableNodes.forEach { renderableNode ->
             // Already proven valid and static: never needs re-checking, skip the JNI calls.
@@ -689,39 +759,47 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
 
-    private fun applyAnimations(frameTimeNanos: Long) {
-        val animator = animator
-        // `forEach` over the map walks the backing LinkedHashMap.Entry nodes (which are persistent
-        // — not boxed per frame; the Int key was boxed once at insert in playAnimation()). Finished
-        // non-looping animations are collected into the reusable [finishedAnimationIndices] scratch
-        // and removed after the walk, replacing the prior `iterator.remove()` mutation-during-
-        // iteration. Behaviour is identical: a finished animation still has its final pose applied
-        // this frame before it is dropped.
-        playingAnimations.forEach { (index, animation) ->
-            if (animation.speed == 0f) return@forEach
+/**
+ * Applies every animation of [playing] at [frameTimeNanos] through [animator], then drops the
+ * non-looping ones that reached their end. [finished] is the caller's scratch list, left empty.
+ */
+private fun applyAnimations(
+    animator: Animator,
+    playing: MutableMap<Int, ModelNode.PlayingAnimation>,
+    finished: ArrayList<Int>,
+    frameTimeNanos: Long
+) {
+    // `forEach` over the map walks the backing LinkedHashMap.Entry nodes (which are persistent
+    // — not boxed per frame; the Int key was boxed once at insert in playAnimation()). Finished
+    // non-looping animations are collected into the reusable [finished] scratch and removed
+    // after the walk, replacing the prior `iterator.remove()` mutation-during-iteration.
+    // Behaviour is identical: a finished animation still has its final pose applied this frame
+    // before it is dropped.
+    playing.forEach { (index, animation) ->
+        if (animation.speed == 0f) return@forEach
 
-            val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
-            val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
-            val animationDuration = animator.getAnimationDuration(index)
-            val animationTime: Float = if (animation.speed > 0) {
-                adjustedTimeSeconds
-            } else {
-                animationDuration - adjustedTimeSeconds
-            }
-
-            animator.applyAnimation(index, animationTime)
-
-            if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
-                finishedAnimationIndices.add(index)
-            }
+        val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
+        val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
+        val animationDuration = animator.getAnimationDuration(index)
+        val animationTime: Float = if (animation.speed > 0) {
+            adjustedTimeSeconds
+        } else {
+            animationDuration - adjustedTimeSeconds
         }
-        if (finishedAnimationIndices.isNotEmpty()) {
-            for (i in finishedAnimationIndices.indices) {
-                playingAnimations.remove(finishedAnimationIndices[i])
-            }
-            finishedAnimationIndices.clear()
+
+        animator.applyAnimation(index, animationTime)
+
+        if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
+            finished.add(index)
         }
+    }
+    if (finished.isNotEmpty()) {
+        for (i in finished.indices) {
+            playing.remove(finished[i])
+        }
+        finished.clear()
     }
 }
 
