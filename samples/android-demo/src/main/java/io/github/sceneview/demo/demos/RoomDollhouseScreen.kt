@@ -257,6 +257,8 @@ internal fun RoomDollhouseScreen(
         title = stringResource(R.string.demo_ar_splat_room_title),
         onBack = onBack,
         firstFrameRendered = ready,
+        // The permission card stands where the camera view would be: no scene to call ready.
+        hasScene = !(inRoom && !camera.granted),
         loadingLabel = DollhouseCopy.OPENING,
         // The camera feed is media; the 3D view, the empty state and the error follow the theme.
         themedStage = !inRoom,

@@ -38,7 +38,7 @@ logs `first-frame slug=… elapsedMs=…` in the job's `logcat.txt`.
 | --- | --- |
 | `splatpreview_default` | Correct render, but not reproducible: the splat is framed differently from one run to the next (54.7 % of pixels differed from its recording in run 36416690269, 54.9 % between the two attempts of run 38044621943). No single capture can be its reference. |
 
-## Known gap: "Scene ready" comes before the models (#4448)
+## "Scene ready" came before the models (#4448, closed by #4459)
 
 Seven runs of 2026-10-10 on the same code gave **two pictures** for several
 screens, by runner speed. On the fast runners the capture holds the whole scene;
@@ -54,10 +54,25 @@ on the slow ones it is taken before a model, or the environment, is in it:
 | `materials_default` | the blurred sky behind the spheres (1 of 7) |
 
 The references here are the complete picture, so a run that captures early goes
-red, and it should: the picture it took is not the screen. The cause is the
-readiness signal, not the renderer — "Scene ready" follows the first presented
+red, and it should: the picture it took is not the screen. The cause was the
+readiness signal, not the renderer — "Scene ready" followed the first presented
 frame (and, on the screens that pass `sceneReady`, the HDR), never the models.
-Until a screen holds "Scene ready" for its models too, expect these cases to
-flip with the runner. One reference still matches the early state:
-`geometry_default` passes on the slow runners and fails by 5.4 % on the fast
-ones. Re-record it once the gap is closed, not before.
+
+Since #4459 each of these screens holds "Scene ready" for what its picture
+needs — the model instances, their textures (`ModelLoader.isLoading`), the
+environment, the decoded splat — and, when any of it landed after a frame had
+already been presented, for one backend drain behind the first frame that
+carries it. A load that reports a failure shows a "could not load" card on the
+stage, and the test fails on that card by name; a load that is merely slow shows
+"Still loading part of this scene…" after 30 s and is never captured as ready.
+
+First CI run with #4459 (38082396646, 2026-10-10): 13 of the 14 gated cases
+matched. One more run is not a proof of stability; read the next ones.
+
+- `geometry_default` was the early state. With #4459 the capture carries the
+  environment's highlights on the shapes and differed from the old reference by
+  5.38 %, as predicted; the reference here is that run's capture.
+  `customgeometry_default` matched as it was.
+- `splatpreview_default` now waits for the decoded scan, which removes the
+  empty-stage capture but is not known to explain a 54.9 % difference in
+  framing. It stays out of the gate until seen stable.

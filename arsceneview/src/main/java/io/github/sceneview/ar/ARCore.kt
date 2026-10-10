@@ -60,8 +60,24 @@ class ARCore(
      * Nothing is opened automatically any more: before #3308 a denial jumped straight to the
      * system App Info screen with a toast, backgrounding the activity with no explanation.
      * [ARSceneView] wires this to its built-in `cameraPermissionOverlay`.
+     *
+     * Since #4452 it is invoked each time the verdict changes — from "ask again" to "open
+     * settings" and back — and `permanentlyDenied` no longer mirrors
+     * [ARPermissionHandler.shouldShowPermissionRationale] alone: a dialog the user dismissed
+     * without answering leaves no rationale flag either, and is not a permanent denial (see
+     * [isCameraPromptBlocked]).
      */
     var onCameraPermissionDenied: ((permanentlyDenied: Boolean) -> Unit)? = null
+
+    /**
+     * Called on the main thread when a denial reported through [onCameraPermissionDenied] no
+     * longer holds — the camera was granted, from the dialog or from system settings (#4452).
+     *
+     * Before #4452 only a successfully created session took the explanation down, so a grant
+     * followed by anything else (ARCore missing, a session that fails) left "camera access
+     * needed" on screen over the real reason.
+     */
+    var onCameraPermissionGranted: (() -> Unit)? = null
 
     /**
      * `true` after the user denied the camera permission and until it is granted — while
@@ -69,6 +85,46 @@ class ARCore(
      */
     var isCameraPermissionDenied: Boolean = false
         private set
+
+    /** The last verdict sent to [onCameraPermissionDenied]; `null` while nothing is denied. */
+    private var publishedCameraDenial: Boolean? = null
+
+    /** The camera request that has not been answered yet, if any. */
+    private var cameraRequest: CameraRequest? = null
+
+    /** Refusals in a row that came back with no rationale flag — see [isCameraPromptBlocked]. */
+    private var unexplainedCameraRefusals = 0
+
+    /** `true` between [resume] and [pause]. */
+    private var isHostResumed = false
+
+    /** `true` from [detachHost] until the next [create]: nothing may start or publish. */
+    private var isHostDetached = false
+
+    /**
+     * Creates and resumes the session outside a host resume. A seam for JVM tests, which
+     * cannot create an ARCore session.
+     */
+    internal var startSession: (Context) -> Unit = { context ->
+        createSession(context)
+        session?.resume()
+    }
+
+    /** Monotonic clock, in nanoseconds. Replaced in tests. */
+    internal var nanoTime: () -> Long = System::nanoTime
+
+    /** What a camera request started from, so its answer can be read in context. */
+    private class CameraRequest(
+        val handler: ARPermissionHandler,
+        val rationaleBefore: Boolean,
+        val startedAtNanos: Long,
+    ) {
+        /** The host was paused after the request went out — the system dialog took over. */
+        var hostPausedSince = false
+
+        /** The host left while the request was out: its answer is for nobody. */
+        var isAbandoned = false
+    }
 
     /**
      * Called on the main thread whenever the ARCore availability verdict changes (#3374).
@@ -94,6 +150,9 @@ class ARCore(
     /** Last context a session was created from, so a retry can create another one. */
     private var lastContext: Context? = null
 
+    /** Context of the last [resume], so a grant that arrives while resumed can start AR. */
+    private var resumeContext: Context? = null
+
     internal var session: ARSession? = null
         private set
 
@@ -109,6 +168,7 @@ class ARCore(
     fun create(context: Context, handler: ARPermissionHandler?, features: Set<Session.Feature>) {
         this.features = features
         this.permissionHandler = handler
+        isHostDetached = false
 
         if (handler != null) {
             if (checkPermissionAndInstall(handler)) {
@@ -126,6 +186,8 @@ class ARCore(
      * @param handler Permission handler, or `null` to skip permission checks.
      */
     fun resume(context: Context, handler: ARPermissionHandler?) {
+        isHostResumed = true
+        resumeContext = context
         if (session == null) {
             if (handler == null || checkPermissionAndInstall(handler)) {
                 createSession(context)
@@ -136,7 +198,31 @@ class ARCore(
 
     /** Pauses the current ARCore session. */
     fun pause() {
+        isHostResumed = false
+        cameraRequest?.hostPausedSince = true
         session?.pause()
+    }
+
+    /**
+     * The host is gone — `ARSceneView` left composition (#4452). Call it before [destroy].
+     *
+     * [destroy] closes the session and nothing else, and what outlives the host can still
+     * reach this instance: the answer to a camera request that was out, or an
+     * [ARCameraPermissionState] the host kept from `onCameraPermissionStateChanged`. Either
+     * one used to be able to create and resume a session for a scene that no longer exists,
+     * and keep the camera open behind the app. From here until the next [create], a late
+     * answer is dropped, [retryCameraPermission] does nothing and no verdict is published.
+     */
+    internal fun detachHost() {
+        isHostDetached = true
+        isHostResumed = false
+        resumeContext = null
+        cameraRequest?.let {
+            it.isAbandoned = true
+            // Nobody saw its answer: the next host may ask.
+            cameraPermissionRequested = false
+        }
+        cameraRequest = null
     }
 
     /**
@@ -188,7 +274,7 @@ class ARCore(
             // `Session()` throw `CameraNotAvailable` on the next resume.
             return false
         }
-        isCameraPermissionDenied = false
+        onCameraPermissionAvailable()
         return try {
             checkARCoreInstall(handler)
         } catch (e: Exception) {
@@ -200,20 +286,120 @@ class ARCore(
         }
     }
 
-    /** Asks for the camera permission at most once per instance. */
+    /**
+     * Asks for the camera permission once per instance, and never loses track of the answer
+     * (#4452).
+     *
+     * A request used to be latched the moment it went out, and the explanation only ever came
+     * from its answer: an answer that did not arrive — the handler was replaced, another
+     * registration took the result — left the session held back with nothing on screen, and
+     * no later resume asked again or said why.
+     */
     private fun requestCameraPermissionOnce(handler: ARPermissionHandler) {
-        if (cameraPermissionRequested) return
-        cameraPermissionRequested = true
-        handler.requestCameraPermission { granted ->
-            isCameraPermissionDenied = !granted
-            if (!granted) {
-                // `shouldShowPermissionRationale()` is historically inverted on this
-                // interface: it answers `true` once the system stops asking.
-                onCameraPermissionDenied?.invoke(handler.shouldShowPermissionRationale())
-            }
-            // On grant the dialog's dismissal resumes the activity, and `resume()` creates
-            // the session through [checkARCoreInstall].
+        val pending = cameraRequest
+        if (pending != null) {
+            // The system dialog pauses the host and its answer is delivered before the host
+            // resumes. Being here on a resume that followed that pause — or with another
+            // handler than the one that was asked — means the answer is not coming.
+            if (pending.handler === handler && !pending.hostPausedSince) return
+            cameraRequest = null
+            // Nothing says the dialog is blocked: offer to ask again.
+            publishCameraDenial(permanentlyDenied = false)
+            return
         }
+        if (cameraPermissionRequested) {
+            // Already refused. A rationale flag raised since then (the answer went to another
+            // registration, say) means the dialog will show: do not keep sending to settings.
+            if (publishedCameraDenial == true && !handler.shouldShowPermissionRationale()) {
+                publishCameraDenial(permanentlyDenied = false)
+            }
+            return
+        }
+        cameraPermissionRequested = true
+        val request = CameraRequest(
+            handler = handler,
+            // `shouldShowPermissionRationale()` is historically inverted on this interface:
+            // it answers `true` when there is NO rationale to show.
+            rationaleBefore = !handler.shouldShowPermissionRationale(),
+            startedAtNanos = nanoTime(),
+        )
+        cameraRequest = request
+        // Android cancels a request it cannot show — another permission is being asked, the
+        // activity is being recreated — with an empty result. That is not an answer.
+        (handler as? ActivityARPermissionHandler)?.onCameraRequestCancelled = {
+            if (cameraRequest === request) cancelPendingCameraRequest()
+        }
+        handler.requestCameraPermission { granted ->
+            if (request.isAbandoned || isHostDetached) return@requestCameraPermission
+            val isCurrent = cameraRequest === request
+            if (isCurrent) cameraRequest = null
+            when {
+                granted -> onCameraPermissionGrantedByUser(handler)
+                // A late refusal for a request that was given up on still knows more than
+                // "no answer" did — unless a newer request is out.
+                isCurrent || cameraRequest == null -> onCameraPermissionRefused(handler, request)
+            }
+        }
+    }
+
+    /**
+     * The pending request was cancelled before the user could answer it. Nobody refused
+     * anything: offer to ask again, and do not count it towards "the dialog is blocked".
+     */
+    internal fun cancelPendingCameraRequest() {
+        cameraRequest ?: return
+        cameraRequest = null
+        publishCameraDenial(permanentlyDenied = false)
+    }
+
+    private fun onCameraPermissionRefused(handler: ARPermissionHandler, request: CameraRequest) {
+        val rationaleAfter = !handler.shouldShowPermissionRationale()
+        val blocked = isCameraPromptBlocked(
+            rationaleBefore = request.rationaleBefore,
+            rationaleAfter = rationaleAfter,
+            elapsedMs = (nanoTime() - request.startedAtNanos) / NANOS_PER_MILLI,
+            earlierUnexplainedRefusals = unexplainedCameraRefusals,
+        )
+        unexplainedCameraRefusals = if (rationaleAfter) 0 else unexplainedCameraRefusals + 1
+        publishCameraDenial(permanentlyDenied = blocked)
+    }
+
+    /**
+     * The dialog was answered with a grant. Its dismissal normally resumes the host, and
+     * [resume] creates the session; a handler that never paused the host (an in-app prompt,
+     * a late answer) gets the session started from here instead.
+     */
+    private fun onCameraPermissionGrantedByUser(handler: ARPermissionHandler) {
+        onCameraPermissionAvailable()
+        if (isHostResumed && session == null && checkPermissionAndInstall(handler)) {
+            startSessionIfHostResumed()
+        }
+    }
+
+    /** Creates and resumes the session now when no host resume is coming to do it. */
+    private fun startSessionIfHostResumed() {
+        val context = resumeContext ?: return
+        if (isHostDetached || !isHostResumed || session != null) return
+        startSession(context)
+    }
+
+    /** The camera can be used: forget the refusal and take its explanation down. */
+    private fun onCameraPermissionAvailable() {
+        cameraRequest = null
+        unexplainedCameraRefusals = 0
+        isCameraPermissionDenied = false
+        if (publishedCameraDenial != null && !isHostDetached) {
+            publishedCameraDenial = null
+            onCameraPermissionGranted?.invoke()
+        }
+    }
+
+    /** Publishes a refusal to [onCameraPermissionDenied] when the verdict actually changed. */
+    private fun publishCameraDenial(permanentlyDenied: Boolean) {
+        isCameraPermissionDenied = true
+        if (isHostDetached || publishedCameraDenial == permanentlyDenied) return
+        publishedCameraDenial = permanentlyDenied
+        onCameraPermissionDenied?.invoke(permanentlyDenied)
     }
 
     /**
@@ -298,14 +484,21 @@ class ARCore(
 
     /**
      * Shows the camera permission dialog again after a denial reported through
-     * [onCameraPermissionDenied]. A grant resumes the activity, which creates the session.
+     * [onCameraPermissionDenied]. A grant resumes the activity, which creates the session;
+     * when the camera was granted in the meantime no dialog shows and the session starts
+     * right away (#4452).
      *
      * @param handler the permission handler; defaults to the one passed to [create].
      */
     fun retryCameraPermission(handler: ARPermissionHandler? = permissionHandler) {
         handler ?: return
+        // A state the host kept after the scene left composition must not open a dialog,
+        // let alone a session.
+        if (isHostDetached) return
+        cameraRequest = null
         cameraPermissionRequested = false
-        checkPermissionAndInstall(handler)
+        // Granted in the meantime, with no pause to resume from: start now.
+        if (checkPermissionAndInstall(handler)) startSessionIfHostResumed()
     }
 
     /**
@@ -395,6 +588,40 @@ fun TrackingFailureReason.getDescription(context: Context) = when (this) {
     TrackingFailureReason.CAMERA_UNAVAILABLE -> context.getString(R.string.sceneview_camera_unavailable_message)
     else -> context.getString(R.string.sceneview_unknown_tracking_failure, this)
 }
+
+/** Below this, a refusal came back too fast for a dialog to have been read and answered. */
+internal const val CAMERA_PROMPT_INSTANT_RETURN_MS = 1000L
+
+private const val NANOS_PER_MILLI = 1_000_000L
+
+/**
+ * Whether a refused camera request means Android has stopped showing its dialog (#4452).
+ *
+ * Android has no "permanently denied" query. A refusal with no rationale flag is what a
+ * permanent denial looks like — and also what a dialog dismissed with Back, or with a tap
+ * outside it, looks like. Reading the flag alone sent the second kind to system settings
+ * with "camera access was turned off", when asking again would simply have worked. The two
+ * are told apart by what surrounds the answer:
+ *  - the rationale flag was up before and is down after: that was the second refusal;
+ *  - the answer came back at once ([CAMERA_PROMPT_INSTANT_RETURN_MS]): no dialog was shown.
+ *    A Pixel 4a answers a blocked request in 290 ms on an idle screen and 510 ms while a
+ *    scene is still loading; nobody reads and dismisses a dialog inside a second;
+ *  - it is the second such answer in a row ([earlierUnexplainedRefusals]): whichever it was,
+ *    asking again is not getting anywhere, so settings is the way out.
+ *
+ * A first slow, unexplained refusal is therefore not blocked: a dismissed dialog keeps its
+ * "ask again".
+ */
+internal fun isCameraPromptBlocked(
+    rationaleBefore: Boolean,
+    rationaleAfter: Boolean,
+    elapsedMs: Long,
+    earlierUnexplainedRefusals: Int,
+): Boolean = !rationaleAfter && (
+    rationaleBefore ||
+        elapsedMs < CAMERA_PROMPT_INSTANT_RETURN_MS ||
+        earlierUnexplainedRefusals >= 1
+    )
 
 /**
  * Pause-then-close for an ARCore session (#4026), split out so the order is a JVM test.

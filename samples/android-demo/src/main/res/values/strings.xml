@@ -342,6 +342,8 @@
     <string name="demo_loading_stalled_title">Still loading…</string>
     <string name="demo_loading_stalled_body">The scene has not rendered a frame yet.</string>
     <string name="demo_loading_retry">Retry</string>
+    <string name="demo_content_slow">Still loading part of this scene…</string>
+    <string name="demo_content_failed">Part of this scene could not load. Return to the catalog and reopen this demo to try again.</string>
     <!-- Loading narration (#3825): each line names the step the code is in at that moment,
          and a trailing ellipsis is animated by NarrationText. Never add a line for a step
          the code does not actually run. -->

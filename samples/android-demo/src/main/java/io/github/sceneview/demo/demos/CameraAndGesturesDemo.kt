@@ -172,6 +172,9 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
     // "Scene ready" waits for the studio HDR too: without it the helmet is lit by the neutral
     // fallback, a frame a capture must not keep (#4174).
     val firstFrame = rememberFirstFrameState(engine)
+    // And for the subjects: all three are loaded up front so a swap is instant, and the rig
+    // frames nothing until they are in (#4459).
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = allLoaded)
     val baseEnvironment = rememberModelDemoEnvironment(environmentLoader, firstFrame)
     val environment = remember(baseEnvironment, skybox) { baseEnvironment.copy(skybox = skybox) }
 
@@ -285,6 +288,7 @@ fun CameraAndGesturesDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.camera_gestures_loading),
         onReset = resetAll,
         // The stage sky follows the theme, so the chrome over it does too (`DESIGN.md` → Themed

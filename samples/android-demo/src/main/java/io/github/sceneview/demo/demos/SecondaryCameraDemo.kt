@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.theme.SceneViewTokens
+import android.util.Log
 import androidx.annotation.StringRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -102,6 +103,8 @@ private const val EDIT_GLIDE_MILLIS = 450
 /** The point both cameras aim at: the stage's centre, a little above the floor. */
 private val STAGE_CENTRE = Position(0f, 0.2f, 0f)
 
+private const val TAG = "SecondaryCameraDemo"
+
 /** Look-down of the main camera's home shot. */
 private const val MAIN_ELEVATION_DEGREES = 24f
 
@@ -193,7 +196,8 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
     val stageSkybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
     StageSkyFog(mainView, sky, renderInvalidator::requestRender)
     StageSkyFog(pipView, sky, pipRenderInvalidator::requestRender)
-    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader)
+    val firstFrame = rememberFirstFrameState(engine)
+    val baseEnvironment = rememberModelDemoEnvironment(environmentLoader, firstFrame)
     val environment = remember(baseEnvironment, stageSkybox) {
         baseEnvironment.copy(skybox = stageSkybox)
     }
@@ -212,7 +216,8 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
     }
 
     // One GLB parse, two resource-sharing instances — see invariant #1.
-    val instances = rememberInstancedHelmet(modelLoader, count = 2)
+    val helmet = rememberInstancedHelmet(modelLoader, count = 2)
+    val instances = helmet?.getOrNull().orEmpty()
     val mainInstance = instances.getOrNull(0)
     val pipInstance = instances.getOrNull(1)
 
@@ -277,21 +282,33 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
         }
     }
 
-    val firstFrame = rememberFirstFrameState(engine)
+    // "Scene ready" is two views of one helmet (#4459): both instances and their textures, and
+    // the inset having presented a frame that carries its own.
+    var insetShowsHelmet by remember { mutableStateOf(false) }
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = instances.size == 2)
+    firstFrame.holdUntil(landed = insetShowsHelmet, what = "inset view")
+    LaunchedEffect(helmet, firstFrame) {
+        if (helmet?.isFailure == true) firstFrame.reportContentFailed()
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_secondary_camera_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         bottomOverlay = {
-            DemoStatusBanner(
-                text = when (lastEdit) {
-                    EditSource.MAIN -> stringResource(R.string.demo_secondary_camera_status_main_edit)
-                    EditSource.PIP -> stringResource(R.string.demo_secondary_camera_status_pip_edit)
-                    null -> stringResource(R.string.demo_secondary_camera_status_prompt)
-                },
-                tone = DemoStatusTone.Guidance,
-            )
+            // No helmet, nothing to move: the stage already says the load failed.
+            if (helmet?.isFailure != true) {
+                DemoStatusBanner(
+                    text = when (lastEdit) {
+                        EditSource.MAIN -> stringResource(R.string.demo_secondary_camera_status_main_edit)
+                        EditSource.PIP -> stringResource(R.string.demo_secondary_camera_status_pip_edit)
+                        null -> stringResource(R.string.demo_secondary_camera_status_prompt)
+                    },
+                    tone = DemoStatusTone.Guidance,
+                )
+            }
         },
         controls = {
             Text(
@@ -372,6 +389,13 @@ fun SecondaryCameraDemo(onBack: () -> Unit) {
                     environmentLoader = environmentLoader,
                     environment = environment,
                     renderInvalidator = pipRenderInvalidator,
+                    onFrame = {
+                        if (!insetShowsHelmet && pipInstance != null && !modelLoader.isLoading) {
+                            insetShowsHelmet = true
+                            // The main view may have parked: it has to see the answer.
+                            renderInvalidator.requestRender()
+                        }
+                    },
                     cameraNode = pipCameraNode,
                     cameraManipulator = null,
                     // The helmet moves; re-centring on the scene's bounds would move the stage.
@@ -519,21 +543,28 @@ private fun rayPassesWithin(ray: Ray, point: Float3, radius: Float): Boolean {
  * Mirrors the threading contract of `rememberModelInstance`: the asset bytes
  * are read on [Dispatchers.IO], then `createInstancedModel` (a `@MainThread`
  * Filament call) runs back on the composition's main dispatcher inside
- * [produceState]. Returns an empty list while loading.
+ * [produceState]. Returns `null` while loading, and a failure — not an empty list — when the
+ * asset cannot be read or parsed, so the screen can say so instead of showing an empty stage
+ * (#4459).
  */
 @Composable
 private fun rememberInstancedHelmet(
     modelLoader: ModelLoader,
     count: Int,
-): List<ModelInstance> {
+): Result<List<ModelInstance>>? {
     val context = LocalContext.current
-    return produceState(emptyList(), modelLoader, count) {
+    return produceState<Result<List<ModelInstance>>?>(null, modelLoader, count) {
         val buffer = withContext(Dispatchers.IO) {
-            runCatching { context.assets.readBuffer(HELMET_ASSET) }.getOrNull()
-        } ?: return@produceState
-        value = runCatching { modelLoader.createInstancedModel(buffer, count) }
-            .getOrNull()
-            .orEmpty()
+            runCatching { context.assets.readBuffer(HELMET_ASSET) }
+        }
+        value = buffer.mapCatching { bytes ->
+            modelLoader.createInstancedModel(bytes, count).also { created ->
+                check(created.size == count) { "expected $count instances, got ${created.size}" }
+            }
+        }.onFailure { error ->
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Log.w(TAG, "Failed to load $HELMET_ASSET", error)
+        }
     }.value
 }
 

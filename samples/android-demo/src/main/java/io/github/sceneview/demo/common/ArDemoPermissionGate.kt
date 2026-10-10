@@ -135,7 +135,8 @@ private fun ArPermissionScreen(
 ) {
     // No dock: its "Settings" pill opens the demo's own sheet, which has nothing in it here
     // and reads as the way to the *system* settings the card is talking about.
-    DemoScaffold(title = title, onBack = onBack, dockHidden = true) {
+    // No scene either: the viewport must not announce "Scene ready" over a permission card.
+    DemoScaffold(title = title, onBack = onBack, dockHidden = true, hasScene = false) {
         ArPermissionStage(detail, action, onAction)
     }
 }
