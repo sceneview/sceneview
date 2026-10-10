@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo: the home's "What's new" row shows the lead demo's card whole.** The row drew the card cropped to its leading half, so Geometry's seven shapes lost the bottom of their last row on a phone and were down to three cut shapes on a tablet. The card now keeps its own shape at the row's height, on a phone and on a tablet, in both themes, and the text starts right after it (#4351).
