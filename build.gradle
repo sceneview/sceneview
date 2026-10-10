@@ -38,6 +38,7 @@ apiValidation {
         "common",
         "android-demo",
         "android-tv-demo",
+        "android-auto-demo",
         "desktop-demo",
         // sceneview-web is a JS-only KMP module published to npm, not Maven.
         // Its single `js(IR)` target has no JVM/bytecode surface for the

@@ -192,6 +192,7 @@ fun MultiModelScene() {
 |---|---|---|---|
 | `android-demo/` | Android (Jetpack Compose) | `./gradlew :samples:android-demo:bundleRelease` | ✓ |
 | `android-tv-demo/` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` | ✓ |
+| `android-auto-demo/` | Android Auto (parked app) — prototype, not verified in a car | `./gradlew :samples:android-auto-demo:assembleDebug` | |
 | `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo.xcodeproj` | ✓ |
 | `web-demo/` | Web (Kotlin/JS + Filament.js) | `./gradlew :samples:web-demo:jsBrowserProductionWebpack` | ✓ |
 | `desktop-demo/` | Desktop (Compose) — `SceneViewer` via filament-kmp, JDK 22+ | `./gradlew :samples:desktop-demo:run` | |

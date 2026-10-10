@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android Auto "parked app": the only car category whose app draws its own pixels. The
+         activity runs on the phone (Android 15+) and is shown on the head unit while the car is
+         parked. Two declarations make it one, both from developer.android.com/training/cars/parked:
+         `android:appCategory="game"` on the application (games are the only parked category
+         Android Auto supports) and `CAR_LAUNCHER` on the activity's MAIN filter.
+         No Car App Library, no `automotive_app_desc`, no `distractionOptimized`. -->
+    <application
+        android:appCategory="game"
+        android:icon="@mipmap/ic_drive_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_drive_launcher"
+        android:theme="@style/Theme.SceneViewSample">
+        <!-- No `screenOrientation` and resizable: a head unit is 800x480, 1920x1080 or portrait,
+             and a pillarboxed app is rejected (car quality guideline DO-2). A size or density
+             change is handled in place so the scene is never rebuilt by a resize. -->
+        <activity
+            android:name=".GarageActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:resizeableActivity="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
