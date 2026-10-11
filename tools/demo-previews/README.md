@@ -147,6 +147,23 @@ raw, kept or rejected, with its exact prompt, ref and reason is archived outside
 Regenerating one of these from `prompts.json` gives a new sample, not these pixels: check the
 new pair on the home rows in both themes before committing it.
 
+### Dark AR cards re-cropped out of a baked frame (#4351)
+
+Two dark cards carried a frame inside the picture, which the art direction forbids and which
+showed as a light band on a dark row: `preview_ar_scene_mesh_dark.webp` was a phone mock-up
+on a cream field, `preview_ar_raw_depth_point_cloud_dark.webp` a picture on a beige mat. Both
+are now a 5:4 crop of the committed picture taken inside that frame, with no new generation —
+the scene, light and colours are the ones already shipped, enlarged about 1.5×:
+
+```
+cwebp -crop 215 125 485 388 -resize 800 640 -q 85   # ar_scene_mesh, dark
+cwebp -crop 118 94 565 452 -resize 800 640 -q 85    # ar_raw_depth_point_cloud, dark
+```
+
+The source of each crop is the file as it was before that change (`git show
+b1dc1dc59:samples/android-demo/src/main/res/drawable-nodpi/<name>.webp`, decoded with
+`dwebp`). The light halves had no frame and are untouched.
+
 ## iOS imagesets
 
 The iOS demo reads the same art from `samples/ios-demo/SceneViewDemo/Assets.xcassets/
