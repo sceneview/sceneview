@@ -709,6 +709,7 @@ private fun StudioSection(
         onBack = { if (inspecting) changeMode(MaterialsMode.Gallery) else onBack() },
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
@@ -1315,12 +1316,15 @@ private fun OcclusionSection(
     var occluderVisible by remember { mutableStateOf(false) }
 
     val firstFrame = rememberFirstFrameState(engine)
+    // The section is a helmet cut by a plane: without the helmet there is nothing to cut (#4459).
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = helmetInstance != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = stringResource(
             if (occluderVisible) {

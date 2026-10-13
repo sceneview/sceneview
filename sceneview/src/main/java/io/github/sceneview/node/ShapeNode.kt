@@ -138,7 +138,7 @@ open class ShapeNode private constructor(
         normal: Direction = geometry.normal,
         uvScale: UvScale = geometry.uvScale,
         color: Color? = geometry.color
-    ) = setGeometry(
+    ) {
         geometry.update(engine, polygonPath, polygonHoles, delaunayPoints, normal, uvScale, color)
-    )
+    }
 }

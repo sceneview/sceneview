@@ -91,6 +91,7 @@ import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
+import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
 import io.github.sceneview.demo.common.trackingFailureMessage
@@ -416,25 +417,35 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
                 onDismissNotice = { notice = null },
             ),
         )
-        RerunScreen.Live -> RerunLiveScreen(
+        // Capture is the camera, and so is ARCore's MP4 playback as the library runs it:
+        // `ARCore.checkPermissionAndInstall` holds every session back without the permission.
+        // The landing page, the replays and the shared files around it never ask (#4139).
+        // A QA state stages this screen without a session, so it stages it without the gate.
+        RerunScreen.Live -> ArDemoPermissionGate(
+            title = stringResource(R.string.demo_ar_rerun_title),
             onBack = leaveLive,
-            onScanned = { scan, title, pack ->
-                sessionsVersion++
-                if (recordingForDollhouse) {
-                    recordingForDollhouse = false
-                    openDollhouse(null, title, scan)
-                } else {
-                    openScan(scan, title, pack)
-                }
-            },
-            store = store,
-            sample = sample,
-            engine = engine,
-            modelLoader = modelLoader,
-            materialLoader = materialLoader,
-            arPlaybackDataset = arPlaybackDataset,
-            qaState = qaState,
-        )
+            enabled = qaState == null,
+        ) {
+            RerunLiveScreen(
+                onBack = leaveLive,
+                onScanned = { scan, title, pack ->
+                    sessionsVersion++
+                    if (recordingForDollhouse) {
+                        recordingForDollhouse = false
+                        openDollhouse(null, title, scan)
+                    } else {
+                        openScan(scan, title, pack)
+                    }
+                },
+                store = store,
+                sample = sample,
+                engine = engine,
+                modelLoader = modelLoader,
+                materialLoader = materialLoader,
+                arPlaybackDataset = arPlaybackDataset,
+                qaState = qaState,
+            )
+        }
         RerunScreen.Replay -> RerunReplayScreen(
             onBack = toLanding,
             mode = mode,

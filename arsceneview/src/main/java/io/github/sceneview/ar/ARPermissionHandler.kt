@@ -1,12 +1,15 @@
 package io.github.sceneview.ar
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -59,33 +62,78 @@ interface ARPermissionHandler {
  * Production [ARPermissionHandler] backed by a [ComponentActivity].
  *
  * Registers an [ActivityResultLauncher] for the camera permission and delegates ARCore
- * install requests to the host activity. Typical usage: create one instance in
- * [ARCore.create] and store it for the session lifetime.
+ * install requests to the host activity.
+ *
+ * `ARScene` builds its own instance when you pass none, registered under a key that belongs
+ * to that one AR view, saved with it and released when it leaves composition (#4467). An
+ * instance built with this constructor registers under one activity-wide key and is never
+ * unregistered: keep **at most one** alive per activity, or the answer to a camera request
+ * made through one can reach another.
  *
  * @param activity The host activity used for permission requests and ARCore install.
  */
-class ActivityARPermissionHandler(
-    private val activity: ComponentActivity
+class ActivityARPermissionHandler private constructor(
+    private val activity: ComponentActivity,
+    state: ARPermissionRegistrationState,
+    isOwnedByView: Boolean,
+    registry: ActivityResultRegistry,
 ) : ARPermissionHandler {
 
-    private var permissionCallback: ((Boolean) -> Unit)? = null
+    constructor(activity: ComponentActivity) : this(
+        activity,
+        ARPermissionRegistrationState(SHARED_CAMERA_PERMISSION_KEY),
+        isOwnedByView = false,
+        registry = activity.activityResultRegistry,
+    )
+
+    /**
+     * The handler of one `ARSceneView`: its own key, released with the view (#4467). It
+     * registers on [register] — once composition has kept it — not here.
+     *
+     * @param registry The activity's registry; replaced in JVM tests.
+     */
+    internal constructor(
+        activity: ComponentActivity,
+        state: ARPermissionRegistrationState,
+        registry: ActivityResultRegistry = activity.activityResultRegistry,
+    ) : this(activity, state, isOwnedByView = true, registry = registry)
+
+    private val registration = ARPermissionRegistration(
+        registry = registry,
+        state = state,
+        isOwnedByView = isOwnedByView,
+        isCameraGranted = { hasCameraPermission() },
+    ).also {
+        // Built by the host: registered for good from the start, as it always was.
+        if (!isOwnedByView) it.register()
+    }
+
+    /**
+     * Called instead of the request's `onResult` when Android cancelled the request without
+     * showing it to the user (#4452) — see [cameraPermissionAnswer].
+     */
+    internal var onCameraRequestCancelled: (() -> Unit)?
+        get() = registration.onCameraRequestCancelled
+        set(value) { registration.onCameraRequestCancelled = value }
+
+    /** See [ARPermissionRegistration.inheritsCameraRequest]. */
+    internal val inheritsCameraRequest: Boolean get() = registration.inheritsCameraRequest
+
+    internal val isRegistered: Boolean get() = registration.isRegistered
 
     /** Launcher for the camera permission dialog. */
-    val cameraPermissionLauncher: ActivityResultLauncher<String> =
-        activity.activityResultRegistry.register(
-            "sceneview_camera_permission",
-            ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            permissionCallback?.invoke(isGranted)
-            permissionCallback = null
-        }
+    val cameraPermissionLauncher: ActivityResultLauncher<String>
+        get() = registration.cameraPermissionLauncher
 
     /** Launcher that opens the app settings and clears the "settings requested" flag. */
-    val appSettingsLauncher: ActivityResultLauncher<Intent> =
-        activity.activityResultRegistry.register(
-            "sceneview_app_settings",
-            ActivityResultContracts.StartActivityForResult()
-        ) { /* no-op — the onResume cycle will re-check permission */ }
+    val appSettingsLauncher: ActivityResultLauncher<Intent>
+        get() = registration.appSettingsLauncher
+
+    /** Registers the launchers again after [releaseRegistration]; otherwise a no-op. */
+    internal fun register() = registration.register()
+
+    /** See [ARPermissionRegistration.release]. */
+    internal fun releaseRegistration() = registration.release()
 
     override fun hasCameraPermission(): Boolean =
         ContextCompat.checkSelfPermission(
@@ -93,8 +141,7 @@ class ActivityARPermissionHandler(
         ) == PackageManager.PERMISSION_GRANTED
 
     override fun requestCameraPermission(onResult: (granted: Boolean) -> Unit) {
-        permissionCallback = onResult
-        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        registration.requestCamera(onResult)
     }
 
     override fun shouldShowPermissionRationale(): Boolean =
@@ -118,4 +165,31 @@ class ActivityARPermissionHandler(
         ArCoreApk.getInstance().requestInstall(
             activity, userRequestedInstall
         ) == ArCoreApk.InstallStatus.INSTALL_REQUESTED
+}
+
+/**
+ * What a camera permission result says: `true` granted, `false` refused, `null` when the
+ * result is empty — Android cancelled the request before the user saw it (#4452).
+ *
+ * That happens when another permission request is already on screen, or when the activity is
+ * recreated with the dialog up. `ActivityResultContracts.RequestPermission` reports it as a
+ * plain `false`, and it comes back at once: read as an answer, it is "refused instantly",
+ * which is exactly what a permanently denied permission looks like.
+ */
+internal fun cameraPermissionAnswer(result: Map<String, Boolean>): Boolean? =
+    if (result.isEmpty()) null else result.values.all { it }
+
+/** `RequestPermission`, except that a cancelled request is `null` instead of `false`. */
+internal class CameraPermissionContract : ActivityResultContract<String, Boolean?>() {
+    private val delegate = ActivityResultContracts.RequestMultiplePermissions()
+
+    override fun createIntent(context: Context, input: String): Intent =
+        delegate.createIntent(context, arrayOf(input))
+
+    override fun getSynchronousResult(context: Context, input: String): SynchronousResult<Boolean?>? =
+        delegate.getSynchronousResult(context, arrayOf(input))
+            ?.let { SynchronousResult(cameraPermissionAnswer(it.value)) }
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Boolean? =
+        cameraPermissionAnswer(delegate.parseResult(resultCode, intent))
 }

@@ -323,6 +323,13 @@ class DemoRenderingScreenshotTest {
      * gaussians through `SplatParser`, then uploads its data textures before the first
      * instanced draw. The scene is static once loaded (the camera only moves on user drag, and
      * there is no spin loop), so the wait is for loading, not for motion to settle.
+     *
+     * "Loaded" includes the node's painter's sort (#4459): the points start in the file's order
+     * and are re-ordered for the camera on a background thread, so the same camera gave two
+     * pictures depending on whether the capture fell before or after that order reached the
+     * screen. The demo now names itself "Scene ready" only on frames drawn with no sort in
+     * flight, and never moves its camera after the first frame, so the order it parks on is
+     * the one sorted for the home pose.
      */
     @Test
     fun splatPreviewDemo_default_state() {
@@ -489,6 +496,26 @@ class DemoRenderingScreenshotTest {
         // flag the library's render tests use (#803, #912). Skipped-with-a-reason is the
         // honest verdict there; a permanent red that means "wrong hardware" trains
         // everyone to ignore the leg.
+        // The app says "Scene ready" over a failed load on purpose, so the user is told and
+        // the screen is not left waiting. That is a verdict for a person, not a picture to
+        // compare or record: a golden of a stage missing its model is the bug of #4459.
+        if (device.hasObject(By.textContains(CONTENT_FAILED_CARD_TEXT))) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_content_failed_to_load")
+            throw AssertionError(
+                "Demo '$demoSlug' displayed its \"$CONTENT_FAILED_CARD_TEXT\" card: a model or " +
+                    "environment failed to load, so the stage is not the scene of $goldenName. " +
+                    "Capture saved to $savedTo.",
+            )
+        }
+        if (!settled && device.hasObject(By.textContains(CONTENT_SLOW_CARD_TEXT))) {
+            val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_content_still_loading")
+            throw AssertionError(
+                "Demo '$demoSlug' was still showing its \"$CONTENT_SLOW_CARD_TEXT\" card after " +
+                    "${settleBudgetMs}ms: a model or environment had not landed, so the stage is " +
+                    "not the scene of $goldenName. Capture saved to $savedTo.",
+            )
+        }
+
         if (!settled && device.hasObject(By.textContains(STALL_CARD_TEXT))) {
             val savedTo = saveToDeviceForReview(rawCapture, "${goldenName}_never_rendered_a_frame")
             val message = "Demo '$demoSlug' displayed its \"$STALL_CARD_TEXT\" card: the " +
@@ -784,6 +811,16 @@ class DemoRenderingScreenshotTest {
          */
         const val STALL_CARD_TEXT = "The scene has not rendered a frame yet."
 
+        /**
+         * The start of `R.string.demo_content_failed`: a load the demo saw fail. The scene is
+         * "ready" with this card up, so it is checked for on its own. Moves with the string,
+         * like [STALL_CARD_TEXT].
+         */
+        const val CONTENT_FAILED_CARD_TEXT = "Part of this scene could not load."
+
+        /** `R.string.demo_content_slow`: a load still in flight past the app's own wait. */
+        const val CONTENT_SLOW_CARD_TEXT = "Still loading part of this scene"
+
         /** Every demo slug in `DemoRegistry` is lower-kebab; nothing here reaches a shell unchecked. */
         val DEMO_SLUG_PATTERN = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 
@@ -821,6 +858,11 @@ class DemoRenderingScreenshotTest {
          */
         val SWANGLE_BASELINED_GOLDENS: Set<String> = setOf(
             "animationphysics_default",
+            // Six cases re-baselined for #4448 from the captures of run 38073545804, each one
+            // the screen with all of its content in it and each matched by at least one other
+            // run of the same day: camera-gestures (Camera | PiP switch, #4282), debug-overlay
+            // and secondary-camera (floor and light stage, #4111), fog and lighting (stage
+            // fading into the sky, #4156), model-viewer (navy stage, #4179).
             "cameragestures_default",
             "customgeometry_default",
             "debugoverlay_default",
@@ -829,17 +871,22 @@ class DemoRenderingScreenshotTest {
             // first-run capture of run 37154919481.
             "geometry_default",
             "lighting_default",
+            // First baselined for #4448, from the first-run capture of run 38073545804: the
+            // helmet is in it, and run 38065275881 gave the same picture.
+            "lightinglab_default",
             "linespaths_default",
             "materials_default",
             "modelviewer_default",
             "pickingcollision_default",
             "secondarycamera_default",
+            // First baselined for #4459, once the scan opens framed and sorted in one step:
+            // runs 38090189401, 38090195575 and 38090201359 gave the same picture (51 px of
+            // 2 488 320 apart at most). It was out until then: 54.7 % of pixels moved between
+            // runs when the sort order chased a camera glide.
+            "splatpreview_default",
             // Re-baselined after the Inspect and Media rewrite (the rocket replaces the helmet
             // and its cards), from the first-run capture of run 37677981378.
             "twodinthreed_default",
-            // lightinglab_default: rejected — the helmet is missing from the CI capture.
-            // splatpreview_default: rejected — its framing differs run to run (54.7 % of
-            // pixels in run 36416690269), so no single capture is a reference.
         )
 
         // How long we allow the demo screen to compose after `am start` — covers a cold

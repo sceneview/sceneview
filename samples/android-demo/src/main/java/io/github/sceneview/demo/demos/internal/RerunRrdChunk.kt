@@ -3,12 +3,22 @@ package io.github.sceneview.demo.demos.internal
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 
-/** One Rerun chunk: rows of components on one entity, on the `time` timeline or static. */
+/** A timeline a chunk's rows are indexed on: its name and its Arrow type. */
+internal enum class RerunTimeline(val timelineName: String, val type: RerunArrowType) {
+    /** The recording's clock: a duration, in nanoseconds since the session started. */
+    TIME(RerunRrdWriter.TIMELINE, RerunArrowType.DurationNanoseconds),
+
+    /** A blueprint's own sequence, which Rerun's SDKs write as `0`. */
+    BLUEPRINT(RerunRrdBlueprint.TIMELINE, RerunArrowType.Int64),
+}
+
+/** One Rerun chunk: rows of components on one entity, on a [timeline] or static. */
 internal class RerunChunk(
     val entityPath: String,
     val components: List<RerunComponentColumn>,
-    /** Nanoseconds on [RerunRrdWriter.TIMELINE], one per row; `null` for static data. */
+    /** One index value per row on [timeline] (nanoseconds on `time`); `null` for static data. */
     val times: List<Long>? = null,
+    val timeline: RerunTimeline = RerunTimeline.TIME,
 ) {
     val rowCount: Int get() = times?.size ?: 1
 
@@ -33,11 +43,11 @@ internal class RerunChunk(
         times?.let { times ->
             val sorted = times.zipWithNext().all { (a, b) -> a <= b }
             fields += RerunArrowField(
-                name = RerunRrdWriter.TIMELINE,
-                type = RerunArrowType.DurationNanoseconds,
+                name = timeline.timelineName,
+                type = timeline.type,
                 nullable = true,
                 metadata = mapOf(
-                    "rerun:index_name" to RerunRrdWriter.TIMELINE,
+                    "rerun:index_name" to timeline.timelineName,
                     "rerun:is_sorted" to sorted.toString(),
                     "rerun:kind" to "index",
                 ),
@@ -62,11 +72,17 @@ internal class RerunChunk(
     }
 }
 
-/** One component column: a list per row, each list holding that row's instances. */
+/**
+ * One component column: a list per row, each list holding that row's instances.
+ *
+ * [archetype] and [componentType] are short names in Rerun's `rerun.archetypes` and
+ * `rerun.components` (`Points3D`, `Color`), or full names when they hold a dot: a blueprint's
+ * columns live in `rerun.blueprint.archetypes` and mostly `rerun.blueprint.components`.
+ */
 internal class RerunComponentColumn private constructor(
-    val archetype: String,
+    archetype: String,
     val name: String,
-    val componentType: String,
+    componentType: String,
     /** The type of one instance (the list's `item`). */
     val item: RerunArrowField,
     counts: List<Int>,
@@ -74,7 +90,10 @@ internal class RerunComponentColumn private constructor(
 ) {
     val array: RerunArrowArray = RerunArrowArray.list(counts, values)
 
-    val fieldName: String get() = "$archetype:$name"
+    private val archetypeName = qualified(archetype, "rerun.archetypes")
+    private val componentTypeName = qualified(componentType, "rerun.components")
+
+    val fieldName: String = "${archetype.substringAfterLast('.')}:$name"
 
     val field: RerunArrowField
         get() = RerunArrowField(
@@ -82,14 +101,16 @@ internal class RerunComponentColumn private constructor(
             type = RerunArrowType.ListOf(item),
             nullable = true,
             metadata = mapOf(
-                "rerun:archetype" to "rerun.archetypes.$archetype",
+                "rerun:archetype" to archetypeName,
                 "rerun:component" to fieldName,
-                "rerun:component_type" to "rerun.components.$componentType",
+                "rerun:component_type" to componentTypeName,
                 "rerun:kind" to "data",
             ),
         )
 
     companion object {
+        private fun qualified(name: String, namespace: String) = if ('.' in name) name else "$namespace.$name"
+
         private fun sizedItem(type: RerunArrowType, size: Int) = RerunArrowField.item(
             RerunArrowType.FixedSizeList(RerunArrowField.item(type, nullable = false), size),
             nullable = true,
@@ -115,6 +136,13 @@ internal class RerunComponentColumn private constructor(
                     RerunArrowArray.uint8s(concat(rows.map { it.toList() }).toByteArray()),
                 ),
             )
+
+        /** `uint8` instances, one list per row: a blueprint's enums (container kind, panel state). */
+        fun u8s(archetype: String, name: String, type: String, rows: List<ByteArray>) = RerunComponentColumn(
+            archetype, name, type, RerunArrowField.item(RerunArrowType.UInt8, nullable = true),
+            rows.map { it.size },
+            RerunArrowArray.uint8s(concat(rows.map { it.toList() }).toByteArray()),
+        )
 
         fun u32Vectors(archetype: String, name: String, type: String, rows: List<IntArray>, size: Int) =
             RerunComponentColumn(

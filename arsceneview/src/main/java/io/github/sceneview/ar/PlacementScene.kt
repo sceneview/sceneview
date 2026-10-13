@@ -201,6 +201,11 @@ fun PlacementScene(
     var isTracking by remember { mutableStateOf(false) }
     var anyPlaneTracked by remember { mutableStateOf(false) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    // A card of ARSceneView's is explaining why AR is not running — camera refused, ARCore
+    // missing. The coaching is silent meanwhile: it used to sit on "Getting ready" over that
+    // card for good, since a session that never starts never finds a surface (#4452).
+    var cameraDenied by remember { mutableStateOf(false) }
+    var arCoreUnavailable by remember { mutableStateOf(false) }
 
     // Live session — captured so `groundShadows` can enumerate detected planes for shadow
     // catchers. Only needed when that feature is on.
@@ -247,6 +252,8 @@ fun PlacementScene(
                 }
             },
             onTrackingFailureChanged = { reason -> if (coaching) trackingFailure = reason },
+            onARCoreAvailability = { arCoreUnavailable = it != null },
+            onCameraPermissionStateChanged = { cameraDenied = it != null },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event: MotionEvent, node ->
                     // A tap on an existing scene node is a gesture on that node (drag / scale /
@@ -332,13 +339,17 @@ fun PlacementScene(
             // The card measures the safe area itself but cannot see the host's own bottom
             // chrome, drawn outside this composable (#3712 / #3735). Its own 16 dp gutter is
             // the default clearance, so only the excess is passed on.
+            val guidance = rememberArGuidanceState(
+                cameraReady = cameraReady,
+                isTracking = isTracking,
+                surfaceFound = anyPlaneTracked,
+                trackingFailureReason = trackingFailure,
+            )
             ARCoachingOverlay(
-                guidance = rememberArGuidanceState(
-                    cameraReady = cameraReady,
-                    isTracking = isTracking,
-                    surfaceFound = anyPlaneTracked,
-                    trackingFailureReason = trackingFailure,
-                ),
+                cue = if (cameraDenied || arCoreUnavailable) ArGuidanceCue.NONE else guidance.cue,
+                surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
                 contentPadding = PaddingValues(
                     bottom = (coachingBottomClearance - GUIDE_BOTTOM_CLEARANCE).coerceAtLeast(0.dp),
                 ),

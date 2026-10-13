@@ -387,32 +387,32 @@
         {
           "file": "Environments/rooftop_night.hdr",
           "name": "Rooftop Night",
-          "author": "Poly Haven",
+          "author": "Greg Zaal",
           "license": "CC0-1.0",
-          "licenseUrl": "https://polyhaven.com/license",
-          "sourceUrl": "https://polyhaven.com",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/rooftop_night",
           "size": 6509158,
-          "note": "Poly Haven publishes its whole library under CC0-1.0"
+          "note": "Verified 2026-10-10 against the Poly Haven download: a 1024x512 downsample of rooftop_night_2k.hdr (median pixel difference 0.3%) (#4453)"
         },
         {
           "file": "Environments/studio.hdr",
           "name": "Studio",
-          "author": "Poly Haven",
+          "author": "Sergej Majboroda",
           "license": "CC0-1.0",
-          "licenseUrl": "https://polyhaven.com/license",
-          "sourceUrl": "https://polyhaven.com",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/christmas_photo_studio_07",
           "size": 6470014,
-          "note": "Poly Haven publishes its whole library under CC0-1.0"
+          "note": "Verified 2026-10-10 against the Poly Haven download: pixel-identical to christmas_photo_studio_07_1k.hdr (#4453)"
         },
         {
           "file": "Environments/studio_warm.hdr",
           "name": "Studio Warm",
-          "author": "Poly Haven",
+          "author": "Sergej Majboroda",
           "license": "CC0-1.0",
-          "licenseUrl": "https://polyhaven.com/license",
-          "sourceUrl": "https://polyhaven.com",
+          "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+          "sourceUrl": "https://polyhaven.com/a/studio_small_08",
           "size": 5930381,
-          "note": "Poly Haven publishes its whole library under CC0-1.0"
+          "note": "Verified 2026-10-10 against the Poly Haven download: pixel-identical to studio_small_08_1k.hdr (#4453)"
         },
         {
           "file": "Environments/sunset.hdr",

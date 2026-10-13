@@ -10,10 +10,7 @@
     <string name="demo_ar_geospatial_anchors_subtitle">Place objects at outdoor locations</string>
     <!-- Permission card (#3990). -->
     <string name="demo_ar_geospatial_permissions_requesting">Requesting permissions…</string>
-    <string name="demo_ar_geospatial_permission_camera_title">Camera access is off</string>
-    <string name="demo_ar_geospatial_permission_camera_detail">AR draws on the camera image, so this demo needs the camera to start.</string>
     <string name="demo_ar_geospatial_permission_location_title">Precise location is off</string>
     <string name="demo_ar_geospatial_permission_location_detail">Geospatial anchors are placed by latitude and longitude, so this demo needs your precise location.</string>
     <string name="demo_ar_geospatial_permission_allow">Allow</string>
-    <string name="demo_ar_geospatial_permission_open_settings">Open settings</string>
 </resources>

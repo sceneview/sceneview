@@ -180,6 +180,9 @@ never truncated; the card grows.
 | `home-row-media-fraction` | 0.5 | Width of the picture in a catalogue row, full height, edge to edge |
 | `home-row-dissolve` | 0.42 | Where the picture starts dissolving towards the text, as a fraction of its width; cosine ease to 0 at its edge |
 | `home-row-text-start` | 0.44 of the card | Leading edge of a row's text column; 16dp to the trailing edge, 14dp above and below, 4dp title to subtitle |
+| `home-row-whole` | The picture at its own aspect (5 : 4) and the row's height, against the leading edge; then `home-row-whole-melt`; then the text | The "What's new" row. Its picture stands for a demo the row does not name, so the card is shown whole on every width instead of cropped to half the row — on a tablet that crop kept the middle fifth of the card (#4351). A row its text makes taller widens the picture with it, up to `home-row-media-fraction` |
+| `home-row-whole-dissolve` | 0.84 | Where a whole picture starts giving way, as a fraction of its width: solid across the band a card holds its subject in, only the trailing margin fades — into the picture's own edge colour, which is itself already melting into the row |
+| `home-row-whole-melt` | 32dp (`space-xl`) | The strip after a whole picture: the picture's edge colour (the mean of its trailing pixel column, sampled, never a constant) carries on past the picture and melts into the row's tint. One cosine ease runs from `home-row-whole-dissolve` to the end of the strip, so most of the melt takes its room from the row, not from the picture — a fade held inside the picture's margin read as a hard band where a dark card meets a pale row. The text starts after the strip; `space-2xl` breaks the subtitle onto a second line at 411dp |
 | `home-banner-aspect` | 2 : 1 | A Featured banner's picture, full card width |
 | `home-banner-dissolve` | 0.55 | Where a banner's picture starts dissolving towards its caption, as a fraction of its height |
 | `home-banner-caption-overlap` | 28dp | How far the caption is pulled up into the banner's fade; 16dp across |
@@ -626,6 +629,10 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
     sharp image; 88 % leaves the scene as a silhouette.
   - **The dock fades out while a glass sheet is open.** Seen through the glass it
     read as a row of live buttons that were not there.
+  - **A snackbar is drawn above the sheet, never under it (#4019).** It floats
+    `space-md` above the dock at rest and `space-md` above the sheet's top edge while
+    the sheet is up, over the scene it reports on; it never climbs past the identity
+    row. Under the glass, "Demo reset" was a grey ghost across the sliders.
   - The Model Viewer's Lighting sheet uses the same glass fill and no scrim.
     Browsing sheets (model picker, credits, what's new) stay opaque and modal — you
     read those, you do not watch something change behind them.
@@ -665,6 +672,39 @@ with `motion-fade`.
   under centred text (`SceneActionBar`).
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
+
+### Car Chrome (Android Auto demo)
+
+`samples/android-auto-demo` is shown on a car's screen while parked, touched at arm's
+length. Its chrome is Glass Chrome over Media — same `glass-surface`, `over-media-edge`,
+`on-glass`, `on-glass-muted` and `chrome-scrim`, theme-independent for the same reason —
+with tokens of its own:
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `car-touch-target` | `76dp` | Height of every tappable control. Never the 48dp phone target on a head unit |
+| `car-control-max-width` | `360dp` | A control stops growing here; on a 1920dp screen the row is centred, not stretched into banners |
+| `car-pip` | `8dp` | One step of a control's position indicator (`primary` when current) |
+| `car-action-width` | `132dp` | Width of the one accent control (Drive, Garage): `primary` fill, `on-primary` label |
+| `car-drive-pad` | `104dp` | Side of a held driving pad (steer left/right, brake, go) — a thumb finds it without looking |
+| `car-chrome-reference` | `800 x 480dp` | The head unit the chrome is laid out for. A bigger screen magnifies the whole chrome by `min(width / 800, height / 480)`, clamped to `1..1.75`: at 1920 x 1080 the title and labels are read from the same seat, further away |
+| `car-stage-floor` | #1B212B | Garage floor (apron and road) |
+| `car-stage-podium` | #39424F | Turntable top — lighter than the floor so the contact shadow reads |
+| `car-stage-marking` | #8E99AB | Lane dashes, edge line, pillar bands |
+| `car-stage-pillar` | #2A313C | Pillars around the floor: they give a low camera a horizon |
+
+- **One tap, one step.** A control cycles to its next choice; no picker, no list, no
+  slider, nothing that needs a second aimed touch.
+- **A control with a single choice is shown, not tappable** — its value in
+  `on-glass-muted`, no pips — so the row never changes shape between two cars.
+- **The 3D stage is the screen.** Chrome is one title block (top start) and one control
+  row (bottom), each on a `chrome-scrim` band; the car is lifted into the band between
+  them.
+- **Driving is held, not tapped.** In Drive the control row gives way to four pads:
+  steer under the left thumb, brake and go under the right, and the accent control (top
+  end) leaves. A pad acts while it is held and stops when the finger lifts.
+- **The stage is `stage-background` and the accent is the dark-scheme `primary`**, in
+  both themes: the garage is a night scene, and the accent is always read on it.
 
 ### Demo Scaffold (iOS demo)
 

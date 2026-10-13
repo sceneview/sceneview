@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.53.0)
+  Source of truth: /llms.txt  (SceneView 4.55.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.53.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.55.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -234,6 +234,10 @@ fun ARSceneView(
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
     lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = { ARCameraPermissionOverlay(it) },   // Built-in "Camera access needed" card; null draws nothing.
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
@@ -1125,6 +1129,19 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
+That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+an update that keeps the vertex count, the per-submesh index counts and the attribute layout
+(normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
+`slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
+node bound to that `Geometry` and destroys the old ones right after. Both are safe; only the second
+allocates. Both go through the same one-upload-in-flight rule (see "Custom geometry" threading
+below): a rebuild asked for while the previous upload is still with Filament waits for it, and
+until it goes out `vertexBuffer`, `indexBuffer`, `primitivesOffsets` and `boundingBox` keep
+describing the buffers still on screen — `vertices` and `primitivesIndices` are already the new
+ones. A `Geometry` passed to several `GeometryNode`s is shared: one `geometry.update(...)`
+updates them all, and it is destroyed with the last node bound to it. An update with no vertex, or
+a path with fewer than 2 points, throws `IllegalArgumentException`.
+
 ### MeshNode — custom geometry
 ```kotlin
 @Composable fun MeshNode(
@@ -1142,6 +1159,8 @@ Build the buffers with `Geometry.Builder`, which takes plain `Geometry.Vertex(po
 SceneView(...) {
     val vertices = remember(resolution) { myGenerator(resolution) }   // List<Geometry.Vertex>
     // Key the Geometry on the vertex COUNT, not on the values: same count = same buffers.
+    // MeshNode borrows the buffers and is NOT re-pointed if an update replaces them, so a
+    // count change must build a new Geometry (as here). Prefer GeometryNode otherwise.
     val geometry = remember(engine, resolution) {
         Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
             .vertices(vertices)
@@ -1150,7 +1169,8 @@ SceneView(...) {
     }
     // Animate by rewriting the existing buffers — no reallocation, no leak.
     SideEffect { geometry.update(engine, vertices) }
-    // MeshNode does NOT own buffers it was handed: free them yourself.
+    // MeshNode does NOT own buffers it was handed: free them yourself. Destruction is
+    // immediate, so declare this BEFORE the MeshNode — it is then disposed after it.
     DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
 
     MeshNode(
@@ -1162,7 +1182,21 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented, whether or not the update changes the vertex or index count: a geometry keeps one upload in flight — a rewrite of its buffers or a rebuild of them — and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two updates and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+
+When the topology changes at runtime, hand the `Geometry` to a `GeometryNode` instead of lending its buffers to a `MeshNode`: the node owns it, follows every `geometry.update(...)` — buffer rebuilds included — and destroys it for you.
+```kotlin
+val material = materialLoader.createColorInstance(Color.Red)
+val sphere = Sphere.Builder().stacks(8).slices(8).build(engine)   // one submesh per stack
+val striped = GeometryNode(
+    engine = engine,
+    geometry = sphere,                         // owned by the nodes bound to it from here on
+    materialInstances = List(sphere.primitivesOffsets.size) { material },  // one per submesh…
+)
+val merged = GeometryNode(engine, sphere, materialInstance = material)     // …or one for all
+sphere.update(engine, stacks = 32, slices = 32)   // rebuilds the buffers, re-points both nodes
+```
+`GeometryNode`'s primary constructor takes `mergePrimitives: Boolean` (last parameter): `false` draws the geometry's natural submeshes with one material each, `true` draws every submesh as a single primitive with one material — the single-`materialInstance` constructor sets it for you. Those are the two supported layouts; any other `primitivesOffsets` throws `IllegalArgumentException`. Adding a submesh on a natural-layout node rebuilds its Filament renderable (new submeshes take the last material; a skinning buffer or `InstanceBuffer` set outside `builderApply` is not carried over). `RenderableNode.setGeometry(other)` destroys the geometry it replaces once no other node uses it.
 
 ### ShapeNode — 2D polygon shape
 ```kotlin
@@ -1375,7 +1409,11 @@ until its replacement succeeds. Observe `placement.phase`; use `requestPlacement
 removes the wrapper-owned anchor without restarting the camera. Interruption freezes
 manipulation and recovers the existing placement; it does not arm a new request.
 `onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
-capability, tracking, and camera failures. Copy, permissions and asset selection belong
+capability, tracking, and camera failures. A refused camera is explained by
+`ARSceneView`'s own card and the wrappers silence their coaching while it is up; on a
+bare `ARSceneView`, `onCameraPermissionStateChanged` is the matching signal (non-null
+while the session waits for the camera) — hide your own loading chrome on it. Copy,
+permissions and asset selection belong
 to the app. Semantic AR haptics ship in the SDK and are **opt-in**: add
 `ARHapticFeedback(placement)` next to the scene (Swift: `.arHapticFeedback(controller)`)
 — see *Haptic Feedback › Semantic AR events*. A pinch snaps to exactly 100 % within
@@ -3622,6 +3660,17 @@ node.animatePositions(...)
 node.animateRotations(...)
 ```
 
+`rotation` and `worldRotation` use one Euler convention: degrees, ZYX order. Each getter reads
+`toEulerAngles()` of `quaternion` / `worldQuaternion` and each setter writes
+`Quaternion.fromEuler(value)`, so a node with no parent reads the same angles through both, and
+`node.worldRotation = node.worldRotation` leaves it where it is. Y is the middle angle and stays
+within ±90°: a 120° yaw reads `Rotation(180f, 60f, 180f)`, the same orientation. To read a heading,
+compare orientations or interpolate, use `quaternion` / `worldQuaternion`.
+
+Through 4.53.0 the `worldRotation` getter used another convention (YXZ, yaw sign negated, Y within
+±180°): `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`. Code that negated
+`worldRotation.y` to compensate must drop the negation.
+
 ### Editable nodes — Sceneform `TransformableNode` parity
 
 SceneView's gesture-editing API is the direct replacement for Sceneform's
@@ -3929,10 +3978,42 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The cubemaps behind an environment belong to it. Filament frees neither with the `IndirectLight` or
+`Skybox` that samples it, so `EnvironmentLoader.destroyEnvironment` and
+`Engine.safeDestroyEnvironment` release them after the light and the skybox — which is what every
+`remember*Environment` helper calls on disposal and on a key change. Every loader factory (KTX and
+HDR), `createEnvironment(environmentLoader)` and `createAREnvironment` hand their cubemaps over for
+you.
+
+Building the `IndirectLight` from a `KTX1Loader` bundle yourself? Pass the bundle's cubemap in
+`textures`, or one cubemap stays on the GPU each time the environment is rebuilt:
+
+```kotlin
+import com.google.android.filament.utils.KTX1Loader
+import io.github.sceneview.utils.readBuffer
+
+val environment = rememberEnvironment(engine) {
+    val bundle = KTX1Loader.createIndirectLight(
+        engine,
+        context.assets.readBuffer("environments/studio_ibl.ktx"),
+    )
+    createEnvironment(
+        engine = engine,
+        indirectLight = bundle.indirectLight,
+        // Ownership moves to the environment: destroyed with it, after the light.
+        textures = listOfNotNull(bundle.cubemap),
+    )
+}
+```
+
+`environment.copy(skybox = other)` shares the Filament handles and owns no texture: destroy the
+environment it was copied from, never the copy.
 
 ---
 
@@ -4655,7 +4736,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.53.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.55.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -4860,7 +4941,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.53.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.55.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -5492,7 +5573,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.53.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.55.0")
 ```
 
 Import: `import SceneViewSwift`

@@ -180,6 +180,7 @@ fun CustomGeometryDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         // The live proof that the mesh is generated, not loaded: the counts move with the
         // Segments slider, under the user's thumb.
         peekHeader = meshCountsLabel(parameters.segments),

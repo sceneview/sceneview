@@ -29,6 +29,7 @@ samples/
 │
 ├── android-demo/                # Android showcase — Kotlin + Jetpack Compose (Filament)
 ├── android-tv-demo/             # Android TV — D-pad controls, Compose TV
+├── android-auto-demo/           # Android Auto parked app — "Night Garage" prototype
 ├── ios-demo/                    # iOS / macOS / visionOS — SwiftUI + RealityKit
 ├── web-demo/                    # Web — Kotlin/JS + Filament.js (WASM), WebXR
 ├── desktop-demo/                # Desktop — Compose Desktop `SceneViewer` (filament-kmp)

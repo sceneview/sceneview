@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Automotive MCP: the HUD and dashboard generators wire the `ViewNode` window manager ([#4418](https://github.com/sceneview/sceneview/pull/4418)).** `get_hud_overlay` (3D and AR) and `get_dashboard_3d` emitted `ViewNode(position = …) { … }` without its required `windowManager` argument, inside a scene without `viewNodeWindowManager`. The generated code now declares `val windowManager = rememberViewNodeManager()`, passes it to the scene and to every `ViewNode`, and gives the HUD an explicit width instead of a root `fillMaxWidth()`.

@@ -6,3 +6,16 @@
 
 # SceneView collision system — uses reflection for shape intersection
 -keep class io.github.sceneview.collision.** { *; }
+
+# Render-on-demand reads, once per Node class, whether the class overrides `isFrameActive`
+# (#3724). Renaming the getter does not break anything — the lookup then falls back to asking
+# every node of that class in full — but keeping the name keeps the fast path.
+-keepclassmembernames class io.github.sceneview.node.Node { boolean isFrameActive(); }
+-keepclassmembernames class * extends io.github.sceneview.node.Node { boolean isFrameActive(); }
+
+# The render loop reads, once per Node class, whether the class overrides `onFrame(long)`
+# (#4451): a class that does is called on every frame, the others only when they have per-frame
+# work. The lookup is by name, so the name must survive shrinking. A failed lookup is safe — the
+# node is then ticked the old way — but slower.
+-keepclassmembernames class io.github.sceneview.node.Node { void onFrame(long); }
+-keepclassmembernames class * extends io.github.sceneview.node.Node { void onFrame(long); }

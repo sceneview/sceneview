@@ -12,7 +12,7 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **85** (plus 8 pending metadata, 8 pending license review).
+Total models: **88** (plus 5 pending metadata, 8 pending license review).
 
 ---
 
@@ -106,6 +106,9 @@ Total models: **85** (plus 8 pending metadata, 8 pending license review).
 
 - **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Rooftop Night](https://polyhaven.com/a/rooftop_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Studio](https://polyhaven.com/a/christmas_photo_studio_07)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Studio Warm](https://polyhaven.com/a/studio_small_08)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Fab
@@ -136,7 +139,7 @@ Replace or remove before the next store publication:
 
 ---
 
-## Missing metadata (8 entries)
+## Missing metadata (5 entries)
 
 These entries in `catalog.json` lack at least one of `author`, `license`,
 `sourceUrl`, or use a license this script does not recognise. Fill in the
@@ -144,10 +147,7 @@ missing fields so they can be credited properly:
 
 - `khronos_duck` — missing: license `SCEA Shared Source License` unrecognised
 - `cozy_living_room` — missing: author
-- `rooftop_night` — missing: author, license, sourceUrl
-- `studio` — missing: author, license, sourceUrl
 - `sunset` — missing: author, license, sourceUrl
 - `outdoor_cloudy` — missing: author, license, sourceUrl
-- `studio_warm` — missing: author, license, sourceUrl
 - `autumn_field` — missing: author, license, sourceUrl
 

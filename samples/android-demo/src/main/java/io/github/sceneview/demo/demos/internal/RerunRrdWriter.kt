@@ -9,8 +9,9 @@ private typealias Column = RerunComponentColumn
 
 /**
  * Writes a [RerunExportScene] as a Rerun `.rrd` recording (`rerun space.rrd` opens it), in pure
- * Kotlin: no Rerun SDK, no protobuf or Arrow library. The iOS demo's `RerunRRDWriter`, chunk for
- * chunk, so both apps export a capture to the same bytes (the store source aside).
+ * Kotlin: no Rerun SDK, no protobuf or Arrow library. The iOS demo's `RerunRRDWriter` writes the
+ * same recording chunk for chunk (the store source aside), but not yet the default layout
+ * ([RerunRrdBlueprint]) this writer puts before it.
  *
  * Targets the `.rrd` format of Rerun **0.38.1** (`RRF2` framing, sorbet `0.1.3` chunks),
  * uncompressed, without the optional footer — viewers read such a file with a full scan, the way
@@ -32,6 +33,9 @@ private typealias Column = RerunComponentColumn
  * - `world/planes/<id>` — the outline (`LineStrips3D`) and, when the plane has a photo, the
  *   textured polygon (`Mesh3D`), static.
  * - `world/anchors/<id>` — the pose (`Transform3D`) and a small labelled box (`Boxes3D`), static.
+ *
+ * The file opens on a default layout ([RerunRrdBlueprint]): the room in 3D beside the camera's
+ * photos, instead of whatever views the viewer would guess.
  */
 object RerunRrdWriter {
     /** The Rerun release whose format this writer emits: 0.38.1. */
@@ -59,7 +63,9 @@ object RerunRrdWriter {
 
     private const val KIND_SET_STORE_INFO = 1L
     private const val KIND_ARROW_MSG = 2L
+    private const val KIND_BLUEPRINT_ACTIVATION = 3L
     private const val STORE_KIND_RECORDING = 1L
+    private const val STORE_KIND_BLUEPRINT = 2L
     private const val STORE_SOURCE_KIND_OTHER = 6L
     private const val COMPRESSION_NONE = 1L
     private const val ENCODING_ARROW_IPC = 1L
@@ -86,11 +92,20 @@ object RerunRrdWriter {
             throw PointColorCountMismatch(scene.points.size, scene.pointColors.size)
         }
         val ids = RerunTuidSequence(recordingId)
-        val store = StoreIdentity(applicationId, recordingId.toString().lowercase())
+        val store = StoreIdentity(STORE_KIND_RECORDING, applicationId, recordingId.toString().lowercase())
+        val blueprint = StoreIdentity(STORE_KIND_BLUEPRINT, applicationId, RerunRrdBlueprint.storeId(recordingId))
+        val chunks = chunks(scene, codec)
+        val hasPhotos = chunks.any { chunk -> chunk.components.any { it.fieldName == "EncodedImage:blob" } }
         val out = LittleEndian()
         out.bytes(streamHeader())
+        // The blueprint first, as the Rerun SDKs write it, so the viewer has the layout before data.
+        appendMessage(KIND_SET_STORE_INFO, setStoreInfo(blueprint, ids.next()), out)
+        for (chunk in RerunRrdBlueprint.chunks(recordingId, hasPhotos)) {
+            appendMessage(KIND_ARROW_MSG, arrowMessage(chunk, blueprint, ids), out)
+        }
+        appendMessage(KIND_BLUEPRINT_ACTIVATION, blueprintActivation(blueprint), out)
         appendMessage(KIND_SET_STORE_INFO, setStoreInfo(store, ids.next()), out)
-        for (chunk in chunks(scene, codec)) appendMessage(KIND_ARROW_MSG, arrowMessage(chunk, store, ids), out)
+        for (chunk in chunks) appendMessage(KIND_ARROW_MSG, arrowMessage(chunk, store, ids), out)
         return out.toByteArray()
     }
 
@@ -109,12 +124,12 @@ object RerunRrdWriter {
         out.bytes(payload)
     }
 
-    private class StoreIdentity(val applicationId: String, val recordingId: String)
+    private class StoreIdentity(val kind: Long, val applicationId: String, val id: String)
 
-    /** `rerun.common.v1alpha1.StoreId`: a recording (kind 1), its id and application. */
+    /** `rerun.common.v1alpha1.StoreId`: a recording (kind 1) or a blueprint (2), its id and application. */
     private fun RerunProtobufWriter.storeId(store: StoreIdentity) {
-        uint64(1, STORE_KIND_RECORDING)
-        string(2, store.recordingId)
+        uint64(1, store.kind)
+        string(2, store.id)
         message(3) { string(1, store.applicationId) }
     }
 
@@ -137,6 +152,17 @@ object RerunRrdWriter {
                 int32(1, VERSION_MAJOR or (VERSION_MINOR shl Byte.SIZE_BITS) or (VERSION_PATCH shl Short.SIZE_BITS))
             }
         }
+        return proto.bytes
+    }
+
+    /**
+     * `rerun.log_msg.v1alpha1.BlueprintActivationCommand`: [blueprint] becomes the application's
+     * default (`make_default`), without overriding a layout the user saved (`make_active` unset).
+     */
+    private fun blueprintActivation(blueprint: StoreIdentity): ByteArray {
+        val proto = RerunProtobufWriter()
+        proto.message(1) { storeId(blueprint) }
+        proto.bool(3, true)
         return proto.bytes
     }
 

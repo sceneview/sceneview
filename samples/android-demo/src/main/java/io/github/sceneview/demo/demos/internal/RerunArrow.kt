@@ -19,6 +19,9 @@ internal sealed class RerunArrowType {
     data object UInt32 : RerunArrowType()
     data object Float32 : RerunArrowType()
 
+    /** `int64`: Rerun's type for a sequence timeline (a blueprint's `blueprint` index). */
+    data object Int64 : RerunArrowType()
+
     /** `duration[ns]`: Rerun's type for a duration timeline. */
     data object DurationNanoseconds : RerunArrowType()
     data object Utf8 : RerunArrowType()
@@ -203,6 +206,7 @@ internal object RerunArrowIpc {
     private fun typeDescription(type: RerunArrowType): Triple<Int, Node, List<RerunArrowField>> = when (type) {
         RerunArrowType.UInt8 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(8), 1 to Slot.Bool(false))), emptyList())
         RerunArrowType.UInt32 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(32), 1 to Slot.Bool(false))), emptyList())
+        RerunArrowType.Int64 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(64), 1 to Slot.Bool(true))), emptyList())
         RerunArrowType.Float32 -> Triple(3, Node.Table(mapOf(0 to Slot.I16(1))), emptyList()) // SINGLE
         RerunArrowType.DurationNanoseconds -> Triple(18, Node.Table(mapOf(0 to Slot.I16(3))), emptyList())
         RerunArrowType.Utf8 -> Triple(5, Node.Table(emptyMap()), emptyList())

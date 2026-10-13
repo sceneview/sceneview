@@ -558,21 +558,16 @@ private fun configureStreetscapeGeometry(
 // ─── Permission gate ─────────────────────────────────────────────────────────
 
 /**
- * Gates the AR scene mount on both CAMERA and ACCESS_FINE_LOCATION being granted.
+ * Gates the AR scene mount on ACCESS_FINE_LOCATION being granted: without it
+ * `Session.configure(GeospatialMode.ENABLED)` throws
+ * `FineLocationPermissionNotGrantedException`.
  *
- * Streetscape Geometry crashes on either:
- *   1. CAMERA missing → ARSceneView session creation aborts
- *   2. FINE_LOCATION missing → `Session.configure(GeospatialMode.ENABLED)` throws
- *      `FineLocationPermissionNotGrantedException`
+ * The camera is not asked here: this demo only composes behind the AR demos' camera gate
+ * (`DemoEntry.opensCameraOnEntry`, #4139), which also keeps the two system dialogs one
+ * after the other — Android drops a request made while another is on screen.
  *
- * Mounting `ARSceneView` before both are granted produces a race where its own lifecycle
- * observer requests CAMERA in parallel with our LOCATION request, and Android drops one
- * ("Can request only one set of permissions at a time"). The fix is to *not* mount it
- * until both permissions resolve — this gate holds the composition while the system
- * dialogs are processed sequentially by a single launcher.
- *
- * [granted] is only composed once both are granted, so each mode's `rememberEngine` still
- * lives at that mode's own call site — the gate hoists nothing.
+ * [granted] is only composed once the location is granted, so each mode's `rememberEngine`
+ * still lives at that mode's own call site — the gate hoists nothing.
  */
 @Composable
 private fun GeospatialPermissionGate(
@@ -583,13 +578,6 @@ private fun GeospatialPermissionGate(
 ) {
     val context = LocalContext.current
 
-    var cameraGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
     var fineLocationGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -597,41 +585,28 @@ private fun GeospatialPermissionGate(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
-    var permissionsResolved by remember { mutableStateOf(cameraGranted && fineLocationGranted) }
+    var permissionsResolved by remember { mutableStateOf(fineLocationGranted) }
     var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
-    val cameraDeniedMessage = stringResource(R.string.demo_ar_scene_mesh_camera_denied)
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
+        contract = ActivityResultContracts.RequestPermission()
     ) { result ->
-        cameraGranted = result[Manifest.permission.CAMERA] ?: cameraGranted
-        fineLocationGranted =
-            result[Manifest.permission.ACCESS_FINE_LOCATION] ?: fineLocationGranted
-        permissionDeniedMessage = when {
-            !cameraGranted -> cameraDeniedMessage
-            !fineLocationGranted -> deniedReason
-            else -> null
-        }
+        fineLocationGranted = result
+        permissionDeniedMessage = deniedReason.takeUnless { result }
         permissionsResolved = true
     }
 
     LaunchedEffect(Unit) {
-        if (cameraGranted && fineLocationGranted) {
-            permissionsResolved = true
-            return@LaunchedEffect
+        if (!fineLocationGranted) {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
-        val toRequest = buildList {
-            if (!cameraGranted) add(Manifest.permission.CAMERA)
-            if (!fineLocationGranted) add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        permissionLauncher.launch(toRequest.toTypedArray())
     }
 
     // Permission gate — a status UI with Retry + Open Settings buttons. ARSceneView is
     // *not* composed in this branch, which keeps it from racing our own permission
     // request. QA finding 2026-05-11: the gate used to show only the error text, so the
     // user was stuck with no way out except Back.
-    if (!permissionsResolved || !cameraGranted || !fineLocationGranted) {
+    if (!permissionsResolved || !fineLocationGranted) {
         DemoScaffold(title = title, onBack = onBack) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
@@ -662,19 +637,9 @@ private fun GeospatialPermissionGate(
                                 // when the user hits "Don't allow" but changes their mind
                                 // without going to Settings — Android re-prompts up to
                                 // twice before silent denial.
-                                val toRequest = buildList {
-                                    if (!cameraGranted) {
-                                        add(Manifest.permission.CAMERA)
-                                    }
-                                    if (!fineLocationGranted) {
-                                        add(Manifest.permission.ACCESS_FINE_LOCATION)
-                                    }
-                                }
-                                if (toRequest.isNotEmpty()) {
-                                    permissionDeniedMessage = null
-                                    permissionsResolved = false
-                                    permissionLauncher.launch(toRequest.toTypedArray())
-                                }
+                                permissionDeniedMessage = null
+                                permissionsResolved = false
+                                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }) { Text(stringResource(R.string.demo_ar_scene_mesh_retry)) }
                             Button(onClick = {
                                 // Open Settings: deep-link to the app's permission page so
@@ -686,7 +651,7 @@ private fun GeospatialPermissionGate(
                                     android.net.Uri.fromParts("package", context.packageName, null)
                                 ).apply { flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK }
                                 context.startActivity(intent)
-                            }) { Text(stringResource(R.string.demo_ar_scene_mesh_open_settings)) }
+                            }) { Text(stringResource(R.string.ar_permission_open_settings)) }
                         }
                     }
                 }

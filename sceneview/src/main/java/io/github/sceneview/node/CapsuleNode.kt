@@ -74,5 +74,7 @@ open class CapsuleNode private constructor(
         center: Position = geometry.center,
         capStacks: Int = geometry.capStacks,
         sideSlices: Int = geometry.sideSlices
-    ) = setGeometry(geometry.update(engine, radius, height, center, capStacks, sideSlices))
+    ) {
+        geometry.update(engine, radius, height, center, capStacks, sideSlices)
+    }
 }

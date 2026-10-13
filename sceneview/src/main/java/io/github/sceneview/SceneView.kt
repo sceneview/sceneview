@@ -500,7 +500,11 @@ fun SceneView(
     DisposableEffect(frameRateGate, sceneInvalidator, scene) {
         sceneInvalidator.attach(frameRateGate)
         SceneRenderInvalidators.register(scene, sceneInvalidator)
+        // And by engine, for the one change no node announces: a geometry upload that had to
+        // wait for the previous one and left from a Filament callback (#4365).
+        EngineRenderInvalidators.register(engine, sceneInvalidator)
         onDispose {
+            EngineRenderInvalidators.unregister(engine, sceneInvalidator)
             // Only this view's entry: another view may render the same scene (#3723).
             SceneRenderInvalidators.unregister(scene, sceneInvalidator)
             sceneInvalidator.detach(frameRateGate)
@@ -709,6 +713,14 @@ fun SceneView(
     // ── DSL nodes → Filament scene sync ──────────────────────────────────────────────────────────
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
+    // Which of those nodes can ask for a frame, kept so the loop below does not re-walk the whole
+    // tree every tick to find out (#3724). Fed the same list, at the same moment, as
+    // `childNodesRef`; it survives a restart of the effect below and lets go of the nodes on exit.
+    val frameActivity = remember { SceneFrameActivity() }
+    DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
+    // Hands each frame to the nodes that have per-frame work, instead of walking the tree (#4451).
+    val frameDispatch = remember { SceneFrameDispatch() }
+    DisposableEffect(frameDispatch) { onDispose { frameDispatch.clear() } }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -739,6 +751,7 @@ fun SceneView(
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
+            frameActivity.setRoots(newNodes)
             // A node was attached to (or detached from) the live scene — invalidate the same way
             // a surface resize does (#3560). Under [FrameRatePolicy.OnDemand] the frame loop below
             // parks on `shouldRender`, and only the gate can wake it. Before #3560 only
@@ -1083,7 +1096,7 @@ fun SceneView(
                                 gestureInFlight = gestureInFlightRef.get(),
                                 cameraMoved = cameraMoved,
                                 cameraPending = cameraPending,
-                                hasActiveNode = childNodesRef.get().any { it.isFrameActive },
+                                hasActiveNode = frameActivity.hasActiveNode,
                                 // Not `progress < 1f`: Filament reports 0 for a loader that was
                                 // never asked for an async load, which read as "loading" for the
                                 // lifetime of every procedural scene. See [isAsyncLoadPending].
@@ -1126,7 +1139,7 @@ fun SceneView(
                         // TransformManager already sorted and reindex nothing (Engine.kt).
                         engine.sortTransformsIfUnsorted()
                         modelLoader.updateLoad()
-                        childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+                        frameDispatch.dispatch(childNodesRef.get(), frameTimeNanos)
 
                         // One time step for everything this loop advances itself: capped, so a
                         // stall does not spend an ease in one frame, and nominal after a park —

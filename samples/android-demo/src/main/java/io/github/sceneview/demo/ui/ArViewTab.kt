@@ -5,16 +5,13 @@
 
 package io.github.sceneview.demo.ui
 
-import android.Manifest
 import android.app.Activity
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,11 +21,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -50,6 +48,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -63,12 +62,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.annotation.StringRes
-import androidx.core.content.ContextCompat
 import com.google.ar.core.ArCoreApk
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
+import io.github.sceneview.demo.common.rememberArCameraPermission
 import io.github.sceneview.demo.common.placement.TapToPlaceExperience
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
@@ -142,22 +142,11 @@ fun ArViewTabContent(
     val context = LocalContext.current
 
     // ---------- Permission gate ----------
-    var cameraGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA,
-            ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var permissionsResolved by remember { mutableStateOf(cameraGranted) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        cameraGranted = granted
-        permissionsResolved = true
-    }
+    // The same holder as the AR demos' gate (#4139): re-read on every resume, and it knows
+    // when Android has stopped showing its dialog, so the launcher's button can lead to
+    // system settings instead of doing nothing.
+    val camera = rememberArCameraPermission()
+    val cameraGranted = camera.granted
 
     // ---------- ARCore availability + launcher gate ----------
     //
@@ -236,39 +225,21 @@ fun ArViewTabContent(
         ArLauncherScreen(
             availability = arCoreAvailability,
             cameraGranted = cameraGranted,
-            onRequestCamera = {
-                permissionLauncher.launch(Manifest.permission.CAMERA)
-            },
+            cameraBlocked = camera.blocked,
+            onRequestCamera = camera.request,
+            onOpenSettings = camera.openSettings,
             onStartArSession = { sessionStarted = true },
             onArDemoClick = onDemoClick,
         )
         return
     }
 
-    // From this point the user has tapped "Start AR Camera". Re-request the
-    // permission if the system revoked it between launcher and now (process
-    // resumed from background, settings toggled in another tab, etc.). If the
-    // user denies, we don't strand them on a dead placeholder — flip
-    // sessionStarted back to false so the launcher's "Grant Camera Access"
-    // CTA becomes available again.
-    LaunchedEffect(sessionStarted) {
-        if (sessionStarted && !cameraGranted) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        } else if (sessionStarted && cameraGranted) {
-            permissionsResolved = true
-        }
-    }
-
-    if (permissionsResolved && !cameraGranted) {
-        // Permission was definitively denied. Drop back to the launcher so
-        // the user can retry from the CTA instead of getting stuck on a
-        // generic "Camera permission is required" placeholder with no
-        // affordance.
-        sessionStarted = false
-        return
-    }
-    if (!permissionsResolved) {
-        ArPermissionPlaceholder(granted = false)
+    // From this point the user has tapped "Start AR Camera". If the camera is gone by now
+    // (revoked in system settings while the app was in the background, or a session restored
+    // after process death), drop back to the launcher: its button asks again, or leads to
+    // settings, instead of a dead screen.
+    if (!cameraGranted) {
+        SideEffect { sessionStarted = false }
         return
     }
 
@@ -392,7 +363,10 @@ fun ArViewTabContent(
 private fun ArLauncherScreen(
     availability: ArCoreApk.Availability?,
     cameraGranted: Boolean,
+    /** Android no longer shows its dialog: only system settings turn the camera on. */
+    cameraBlocked: Boolean,
     onRequestCamera: () -> Unit,
+    onOpenSettings: () -> Unit,
     onStartArSession: () -> Unit,
     onArDemoClick: (String) -> Unit,
 ) {
@@ -419,6 +393,7 @@ private fun ArLauncherScreen(
 
     val ctaLabel = when {
         isChecking -> stringResource(R.string.ar_cta_checking)
+        !cameraGranted && cameraBlocked -> stringResource(R.string.ar_permission_open_settings)
         !cameraGranted -> stringResource(R.string.ar_cta_grant_camera)
         else -> stringResource(R.string.ar_cta_start_camera)
     }
@@ -431,22 +406,48 @@ private fun ArLauncherScreen(
     val ctaEnabled = !isChecking && arSupported
     val showCta = availability != ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
 
-    val scroll = rememberScrollState()
+    // Featured grid — the curator's pick (FEATURED_AR_DEMOS). Each card is the Home's own
+    // `DemoMediaCard`: the demo's preview picture with its caption on frosted glass, not a
+    // category icon on a gradient band, so the AR tab reads as the same app as the Showcase
+    // and Explore (#3993). The featured tiles keep their curated title and subtitle over the
+    // registry entry's picture and status.
+    val featured = remember { FEATURED_AR_DEMOS.toDemoEntries() }
+    val featuredRows = remember(featured) { featured.chunked(AR_GRID_COLUMNS) }
+    // All AR demos — every AR entry in ALL_DEMOS, minus the ones already shown in Featured.
+    // Pre-#2231 these were reachable only via the Samples tab → half the AR feature surface
+    // was hidden on this screen. Since #2239 split AR across four catalogue sections the test
+    // is [isArDemo], not one category equality.
+    val listedDemos = rememberListedDemos()
+    val remainingArDemos = remember(featured, listedDemos) {
+        val featuredIds = featured.map { it.id }.toSet()
+        listedDemos
+            .filter { it.isArDemo }
+            .filterNot { it.id in featuredIds }
+    }
+    val remainingRows = remember(remainingArDemos) { remainingArDemos.chunked(AR_GRID_COLUMNS) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(
-                start = 20.dp,
-                end = 20.dp,
-                top = 12.dp,
-                bottom = LIST_BOTTOM_GUTTER,
-            ),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    // A lazy list, one item per grid row (#4461): the tab lists every AR demo, and coming back
+    // from one rebuilds this screen from nothing on the very frame that starts the exit
+    // transition. Composing, measuring and drawing two dozen picture cards in that frame — each
+    // one decoding its preview and laying out its row's captions — held the main thread for
+    // most of a second, so the transition was never drawn. Only the rows on screen exist now;
+    // the scroll position is saved with the list state, as it was with the scroll state.
+    //
+    // The gaps the old `Column(spacedBy)` put between its children are each item's own top
+    // padding, so the screen measures exactly as it did.
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            end = 20.dp,
+            top = 12.dp,
+            bottom = LIST_BOTTOM_GUTTER,
+        ),
     ) {
         // Compact hero — icon + title on one line, tagline below. Cards
         // get the screen real estate, not chrome.
+        item(key = "hero", contentType = "hero") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -493,10 +494,14 @@ private fun ArLauncherScreen(
                 )
             }
         }
+        }
 
         // Status line + CTA
+        item(key = "status", contentType = "status") {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .padding(top = AR_LAUNCHER_SECTION_GAP)
+                .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             color = if (arSupported || isChecking) {
                 MaterialTheme.colorScheme.surfaceContainerLow
@@ -541,12 +546,19 @@ private fun ArLauncherScreen(
                 }
 
                 if (showCta) {
+                    if (!cameraGranted && cameraBlocked && !isChecking) {
+                        Text(
+                            text = stringResource(R.string.ar_permission_required_subtitle),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Button(
                         onClick = {
-                            if (!cameraGranted) {
-                                onRequestCamera()
-                            } else {
-                                onStartArSession()
+                            when {
+                                cameraGranted -> onStartArSession()
+                                cameraBlocked -> onOpenSettings()
+                                else -> onRequestCamera()
                             }
                         },
                         enabled = ctaEnabled,
@@ -571,82 +583,111 @@ private fun ArLauncherScreen(
             }
         }
 
+        }
+
         // Featured section title — kept under the existing `ar_try_an_ar_demo`
         // string (translated as "Featured" in en, "Mises en avant" in fr, …)
         // because the legacy callers / a11y bots key off it.
-        Text(
-            text = stringResource(R.string.ar_featured_section),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-        )
-
-        // Featured grid — the curator's pick (FEATURED_AR_DEMOS, 6 cards). Each card is
-        // the Home's own `DemoMediaCard`: the demo's preview picture with its caption on
-        // frosted glass, not a category icon on a gradient band, so the AR tab reads as
-        // the same app as the Showcase and Explore (#3993). The featured tiles keep their
-        // curated title and subtitle over the registry entry's picture and status.
-        val featured = remember { FEATURED_AR_DEMOS.toDemoEntries() }
-        val featuredIds = remember(featured) { featured.map { it.id }.toSet() }
-        ArDemoGrid(demos = featured, onArDemoClick = onArDemoClick)
-
-        // All AR demos — every AR entry in ALL_DEMOS, minus the ones already shown
-        // in Featured. Pre-#2231 these were reachable only via the Samples tab →
-        // half the AR feature surface was hidden on this screen. Since #2239 split AR
-        // across four catalogue sections the test is [isArDemo], not one category
-        // equality.
-        val listedDemos = rememberListedDemos()
-        val remainingArDemos = remember(featuredIds, listedDemos) {
-            listedDemos
-                .filter { it.isArDemo }
-                .filterNot { it.id in featuredIds }
-        }
-        if (remainingArDemos.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = stringResource(
-                    R.string.ar_all_demos_section,
-                    remainingArDemos.size + featured.size,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+        item(key = "featured-title", contentType = "section-title") {
+            ArSectionTitle(
+                text = stringResource(R.string.ar_featured_section),
+                gapAbove = AR_LAUNCHER_SECTION_GAP,
             )
-            ArDemoGrid(demos = remainingArDemos, onArDemoClick = onArDemoClick)
+        }
+        arDemoRows(section = "featured", rows = featuredRows, onArDemoClick = onArDemoClick)
+
+        if (remainingRows.isNotEmpty()) {
+            item(key = "all-title", contentType = "section-title") {
+                ArSectionTitle(
+                    text = stringResource(
+                        R.string.ar_all_demos_section,
+                        remainingArDemos.size + featured.size,
+                    ),
+                    // The gap after the featured grid, the 8 dp break between the two
+                    // sections, and the gap before the title.
+                    gapAbove = AR_LAUNCHER_SECTION_GAP + 8.dp + AR_LAUNCHER_SECTION_GAP,
+                )
+            }
+            arDemoRows(section = "all", rows = remainingRows, onArDemoClick = onArDemoClick)
         }
 
-        Spacer(Modifier.height(12.dp))
+        item(key = "end", contentType = "end") {
+            Spacer(Modifier.height(AR_LAUNCHER_SECTION_GAP + 12.dp))
+        }
+    }
+}
+
+/** The gap the launcher keeps between two of its blocks (hero, status card, title, grid). */
+private val AR_LAUNCHER_SECTION_GAP = 14.dp
+
+/** The launcher's demo grid is two cards wide. */
+private const val AR_GRID_COLUMNS = 2
+
+/** "Featured" / "All AR demos (n)" above a grid of the launcher. */
+@Composable
+private fun ArSectionTitle(text: String, gapAbove: Dp) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(start = 4.dp, top = gapAbove + 4.dp),
+    )
+}
+
+/**
+ * One section of the launcher's grid, a lazy item per row of [AR_GRID_COLUMNS] cards: the
+ * first row sits one section gap under its title, the others one
+ * [SceneViewTokens.Home.gridGutter] under the row above.
+ */
+private fun LazyListScope.arDemoRows(
+    section: String,
+    rows: List<List<DemoEntry>>,
+    onArDemoClick: (String) -> Unit,
+) {
+    itemsIndexed(
+        items = rows,
+        key = { _, row -> "$section-${row.first().id}" },
+        contentType = { _, _ -> "demo-row" },
+    ) { index, row ->
+        ArDemoRow(
+            row = row,
+            onArDemoClick = onArDemoClick,
+            modifier = Modifier.padding(
+                top = if (index == 0) AR_LAUNCHER_SECTION_GAP else SceneViewTokens.Home.gridGutter,
+            ),
+        )
     }
 }
 
 /**
- * Two columns of `DemoMediaCard` — the Home's catalogue card, preview picture on top and
- * caption on the picture's own frosted glass — with the [SceneViewTokens.Home.gridGutter]
- * gutter. A row's two captions share one floor (`rowPeers`), so the cards of a row end level
- * whatever their subtitles' length. A card carries the same "New" / "Updated" marker as on
- * the Home, from the same [freshness] rule.
+ * One row of the launcher's grid: [AR_GRID_COLUMNS] `DemoMediaCard`s — the Home's catalogue
+ * card, preview picture on top and caption on the picture's own frosted glass — with the
+ * [SceneViewTokens.Home.gridGutter] gutter between them. The row's captions share one floor
+ * (`rowPeers`), so its cards end level whatever their subtitles' length. A card carries the
+ * same "New" / "Updated" marker as on the Home, from the same [freshness] rule.
  */
 @Composable
-private fun ArDemoGrid(demos: List<DemoEntry>, onArDemoClick: (String) -> Unit) {
-    val gutter = SceneViewTokens.Home.gridGutter
-    Column(verticalArrangement = Arrangement.spacedBy(gutter)) {
-        demos.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(gutter)) {
-                row.forEach { demo ->
-                    DemoMediaCard(
-                        demo = demo,
-                        onClick = { onArDemoClick(demo.id) },
-                        modifier = Modifier.weight(1f),
-                        freshness = demo.freshness(BuildConfig.VERSION_NAME),
-                        mediaAlignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
-                        rowPeers = { row },
-                    )
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
+private fun ArDemoRow(
+    row: List<DemoEntry>,
+    onArDemoClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Home.gridGutter),
+    ) {
+        row.forEach { demo ->
+            DemoMediaCard(
+                demo = demo,
+                onClick = { onArDemoClick(demo.id) },
+                modifier = Modifier.weight(1f),
+                freshness = demo.freshness(BuildConfig.VERSION_NAME),
+                mediaAlignment = FEATURED_MEDIA_ALIGNMENT[demo.id] ?: Alignment.Center,
+                rowPeers = { row },
+            )
         }
+        repeat(AR_GRID_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
     }
 }
 
@@ -701,46 +742,3 @@ private val FEATURED_AR_DEMOS = listOf(
 )
 // Samples step 0 dropped the `ar-pose` tile: Free pose is a mode of `ar-placement`, which
 // the grid below already lists.
-
-@Composable
-private fun ArPermissionPlaceholder(granted: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Cached,
-                contentDescription = null,
-                modifier = Modifier.size(56.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = if (granted) {
-                    stringResource(R.string.ar_starting_session)
-                } else {
-                    stringResource(R.string.ar_permission_required_title)
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = if (granted) {
-                    stringResource(R.string.ar_starting_session_subtitle)
-                } else {
-                    stringResource(R.string.ar_permission_required_subtitle)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-    }
-}

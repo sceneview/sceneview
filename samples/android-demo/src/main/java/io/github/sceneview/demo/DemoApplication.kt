@@ -21,4 +21,10 @@ class DemoApplication : Application() {
         super.onCreate()
         if (!BuildConfig.DEBUG) Telemetry.ensureInit(this)
     }
+
+    /** In the background and asked for memory: the decoded preview pictures go first. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_BACKGROUND) DemoPreviews.trimMemory()
+    }
 }

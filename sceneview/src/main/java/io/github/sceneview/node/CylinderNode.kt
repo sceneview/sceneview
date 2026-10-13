@@ -90,5 +90,7 @@ open class CylinderNode private constructor(
         height: Float = geometry.height,
         center: Position = geometry.center,
         sideCount: Int = geometry.sideCount
-    ) = setGeometry(geometry.update(engine, radius, height, center, sideCount))
+    ) {
+        geometry.update(engine, radius, height, center, sideCount)
+    }
 }

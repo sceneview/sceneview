@@ -2,6 +2,7 @@ package io.github.sceneview.geometries
 
 import dev.romainguy.kotlin.math.Float3
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -165,6 +166,40 @@ class PathGeometryTest {
             assertEquals(i, flat[i * 2])
             assertEquals(i + 1, flat[i * 2 + 1])
         }
+    }
+
+    // ── Degenerate paths are refused before they reach Filament (#4344) ──────
+
+    @Test
+    fun `getVertices refuses an empty path`() {
+        // Zero vertices would be a zero-sized VertexBuffer: a native abort, not an exception.
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            Path.getVertices(emptyList())
+        }
+        assertEquals("Path requires at least 2 points", failure.message)
+    }
+
+    @Test
+    fun `getVertices refuses a single point`() {
+        // One point is one vertex and no segment: an empty IndexBuffer.
+        assertThrows(IllegalArgumentException::class.java) {
+            Path.getVertices(listOf(Float3(0f)))
+        }
+    }
+
+    @Test
+    fun `update validates its points before it uploads anything`() {
+        // Path.update cannot run on the JVM (it needs an Engine), so pin the order in the source:
+        // the vertices — and with them the guard above — are computed as an argument, before the
+        // base update touches a buffer and before this path's own state is overwritten.
+        val body = java.io.File("src/main/java/io/github/sceneview/geometries/Path.kt").readText()
+            .substringAfter("fun update(", missingDelimiterValue = "")
+            .substringBefore("\n    }")
+        assertTrue("Path.update must exist", body.isNotEmpty())
+        val guard = body.indexOf("vertices = getVertices(points)")
+        val stateWrite = body.indexOf("this.points = points")
+        assertTrue("Path.update must derive its vertices through getVertices", guard >= 0)
+        assertTrue("the guard must run before the path's state is overwritten", guard < stateWrite)
     }
 
     @Test

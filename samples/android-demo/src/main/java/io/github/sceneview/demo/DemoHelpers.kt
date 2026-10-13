@@ -448,29 +448,63 @@ fun rememberArPlaybackDataset(): File? {
  * The viewport's "Scene ready" name is a different promise: the render goldens and device
  * QA capture on it, and a capture of the fallback-lit frames is a wrong capture. A demo
  * that loads an HDR calls [holdUntil] with "has it landed?", and [sceneReady] turns `true`
- * once the scene is [rendered] and the content has landed. The wait is bounded: at most
- * [CONTENT_WAIT_TIMEOUT_MS] from the first frame presented without the content, after
- * which a load that failed (and so never lands) is treated as absent, never as a hang.
+ * once the scene is [rendered] and the content has landed. The wait is never silent: past
+ * [CONTENT_WAIT_TIMEOUT_MS] from the first frame presented without the content, the stage
+ * says the scene is still loading.
+ *
+ * ### "Scene ready" waits for the models too, and for the frame that shows them (#4459)
+ *
+ * The HDR was the only content the signal waited on, so a demo was "ready" with an empty
+ * stage whenever its models landed after the first frames — on the CI's software GL, in three
+ * to five runs of seven. A demo now names each thing its picture needs ([holdUntil] with a
+ * `what`, [holdUntilModels] for glTF models, whose textures finish decoding after the
+ * instance exists), and all of them have to land.
+ *
+ * Landing is not showing. The frame that carries the content is only *submitted* when
+ * `onFrame` reports it, so once content landed after a frame had already been presented
+ * without it, "Scene ready" also waits for one backend drain behind that frame — the same
+ * question the cover asks of the first frames.
+ *
+ * A stage that is not all there is no longer silent either. [contentIssue] is
+ * [DemoContentIssue.Failed] as soon as a demo that caught the error calls
+ * [reportContentFailed], and the scene is then ready as it is. It is [DemoContentIssue.Slow]
+ * when the wait expires with a load still in flight: the scene keeps waiting, and the card
+ * leaves on its own when the content lands. `DemoScaffold` says either over the stage.
  *
  * @property rendered Drives the loading cover — `false` until the scene is really on
  *                    screen, then `true`. Never goes back to `false`.
  * @property sceneReady Drives the "Scene ready" name — [rendered], plus the content passed
- *                      to [holdUntil] has landed. Never goes back to `false`.
+ *                      to [holdUntil] has landed and been drawn. Never goes back to `false`.
+ * @property contentIssue What to say over the stage, `null` when there is nothing to say.
  * @property onFrame Pass straight to `SceneView(onFrame = …)`. Cheap after the
  *                   first call.
  */
 class FirstFrameState internal constructor(
     private val renderedState: androidx.compose.runtime.MutableState<Boolean>,
     private val backendDrain: BackendDrainWait? = null,
+    private val contentDrain: BackendDrainWait? = null,
 ) : androidx.compose.runtime.RememberObserver {
     /** How many frames the scene has presented so far, capped once [rendered] latches. */
     private var presentedFrames: Int = 0
 
-    /** `false` while content "Scene ready" must show is still loading; see [holdUntil]. */
-    private var contentLanded: Boolean = true
+    /** What "Scene ready" is held for, by name, and whether each has landed; see [holdUntil]. */
+    private val holds = LinkedHashMap<String, Boolean>()
+
+    /** Asked on every frame: is a model's texture load still in flight? See [holdUntilModels]. */
+    private var texturesPending: (() -> Boolean)? = null
+
+    /** `false` while content "Scene ready" must show is still loading. */
+    private val contentLanded: Boolean
+        get() = holds.values.all { it } && texturesPending?.invoke() != true
 
     /** Set once the content wait is over: frames count whether the content landed or not. */
     private var contentWaitOver: Boolean = false
+
+    /** The frame that first carried late content has been executed by the backend. */
+    private var contentDrawn: Boolean = false
+
+    private val contentIssueState: androidx.compose.runtime.MutableState<DemoContentIssue?> =
+        androidx.compose.runtime.mutableStateOf(null)
 
     /**
      * `true` once the scene has presented a frame while its content was still loading. The
@@ -487,6 +521,8 @@ class FirstFrameState internal constructor(
 
     val sceneReady: androidx.compose.runtime.State<Boolean> get() = sceneReadyState
 
+    val contentIssue: androidx.compose.runtime.State<DemoContentIssue?> get() = contentIssueState
+
     val onFrame: (frameTimeNanos: Long) -> Unit = {
         if (!renderedState.value) {
             // The cover's rule, content or not: it lifts on the frame it lifted on before the
@@ -494,9 +530,15 @@ class FirstFrameState internal constructor(
             if (presentedFrames < READY_PRESENTED_FRAMES) presentedFrames++
             if (presentedFrames >= READY_PRESENTED_FRAMES) latch()
         }
+        // Nothing below is asked once the scene is ready: `contentLanded` reaches the model
+        // loader, and a ready scene presents frames for as long as it is on screen.
         if (!sceneReadyState.value) {
-            if (contentLanded || contentWaitOver) {
+            if (contentWaitOver) {
                 markSceneReady()
+            } else if (contentLanded) {
+                // Late, and here after all: the "still loading" card goes with the wait.
+                if (contentIssueState.value == DemoContentIssue.Slow) contentIssueState.value = null
+                onFrameWithContent()
             } else if (!waitingOnContent.value) {
                 // A frame without the content: real pixels, but not the demo's picture.
                 waitingOnContent.value = true
@@ -508,27 +550,89 @@ class FirstFrameState internal constructor(
      * Holds [sceneReady] at `false` until [landed] is `true` — pass "has this demo's HDR
      * environment been applied?". Call it from composition, where that answer is read, so it
      * follows the state. The cover ([rendered]) does not wait for it. [sceneReady] turns
-     * `true` on the first frame presented once the content has landed and the scene is
-     * [rendered], bounded by [CONTENT_WAIT_TIMEOUT_MS]; once `true` it stays `true` whatever
+     * `true` once the content has landed, a frame carrying it has been drawn and the scene is
+     * [rendered], or the demo has called [reportContentFailed]; once `true` it stays `true` whatever
      * [landed] does next (an environment swap is not a cold start).
+     *
+     * A demo that waits on several things names each with [what]: every one has to land, and
+     * a later call with the same name replaces the earlier answer.
      */
-    fun holdUntil(landed: Boolean) {
-        contentLanded = landed
+    fun holdUntil(landed: Boolean, what: String = HOLD_ENVIRONMENT) {
+        holds[what] = landed
     }
 
     /**
-     * The bounded wait is over and the content has still not landed: stop holding. The
-     * scene may have parked since its last frame, so this marks it ready directly (or as
-     * soon as the cover's drain completes) rather than waiting for a frame that is never
-     * going to be presented.
+     * Holds [sceneReady] until the demo's glTF models are in the scene. [instancesLoaded] is
+     * "does every instance this screen draws exist?", read in composition; [modelLoader]
+     * answers the part an instance cannot — gltfio decodes textures after the instance is
+     * returned, so a model can be in the scene for several frames without its materials.
      */
-    internal fun contentWaitExpired() {
+    fun holdUntilModels(
+        modelLoader: io.github.sceneview.loaders.ModelLoader,
+        instancesLoaded: Boolean,
+    ) = holdUntilModels(instancesLoaded) { modelLoader.isLoading }
+
+    /** [holdUntilModels] with the loader's answer as a lambda, asked on every frame. */
+    internal fun holdUntilModels(instancesLoaded: Boolean, texturesPending: () -> Boolean) {
+        holds[HOLD_MODELS] = instancesLoaded
+        this.texturesPending = texturesPending
+    }
+
+    /**
+     * The demo knows a load failed (it caught the error, rather than waiting on a `null` that
+     * never changes): stop holding and say so now, instead of at the end of the bounded wait.
+     */
+    fun reportContentFailed() {
+        contentIssueState.value = DemoContentIssue.Failed
         contentWaitOver = true
         markSceneReady()
     }
 
+    /**
+     * [CONTENT_WAIT_TIMEOUT_MS] have passed since the first frame without the content. Nobody
+     * reported a failure, so the load is slow, not lost: say so ([DemoContentIssue.Slow]) and
+     * keep holding. "Scene ready" stays `false` until the content lands or the demo calls
+     * [reportContentFailed] — a capture of a half-loaded stage is the capture this exists to
+     * prevent, and "could not load" over a load still in flight would be a lie.
+     *
+     * Safe to call again: [rememberFirstFrameState] does, for the scene that parked before
+     * its content landed and so has no frame left to notice it on.
+     */
+    internal fun contentWaitExpired() {
+        if (sceneReadyState.value || contentIssueState.value == DemoContentIssue.Failed) return
+        if (contentLanded) {
+            // Landed since the last presented frame, and the scene has parked: nothing is late.
+            contentIssueState.value = null
+            contentWaitOver = true
+            markSceneReady()
+        } else {
+            contentIssueState.value = DemoContentIssue.Slow
+        }
+    }
+
+    /** A frame was presented with every held content landed. */
+    private fun onFrameWithContent() {
+        if (!waitingOnContent.value || contentDrawn) {
+            // Never presented a frame without the content: the cover's own drain is behind
+            // frames that carried it.
+            markSceneReady()
+            return
+        }
+        // Content that landed after a frame without it: this frame is the first to carry it,
+        // and it is only submitted. Ask the backend, once; later frames find the fence out.
+        val drain = contentDrain
+        if (drain == null) onContentDrawn() else drain.start(::onContentDrawn)
+    }
+
+    private fun onContentDrawn() {
+        contentDrawn = true
+        markSceneReady()
+    }
+
     private fun markSceneReady() {
-        if (renderedState.value) sceneReadyState.value = true
+        if (!renderedState.value) return
+        val shown = !waitingOnContent.value || contentDrawn
+        if (contentWaitOver || (contentLanded && shown)) sceneReadyState.value = true
     }
 
     private fun latch() {
@@ -544,18 +648,34 @@ class FirstFrameState internal constructor(
     private fun onDrained() {
         renderedState.value = true
         // A scene can park on the frame that latched: "Scene ready" must not wait for another.
-        if (contentLanded || contentWaitOver) sceneReadyState.value = true
+        markSceneReady()
     }
 
     override fun onRemembered() = Unit
 
     override fun onForgotten() {
         backendDrain?.cancel()
+        contentDrain?.cancel()
     }
 
     override fun onAbandoned() {
         backendDrain?.cancel()
+        contentDrain?.cancel()
     }
+
+    private companion object {
+        const val HOLD_ENVIRONMENT = "environment"
+        const val HOLD_MODELS = "models"
+    }
+}
+
+/** What `DemoScaffold` says over a stage whose content is not all there; see [FirstFrameState]. */
+enum class DemoContentIssue {
+    /** The bounded wait is over and a load is still in flight. Clears itself when it lands. */
+    Slow,
+
+    /** A demo reported that a load failed. Never taken back. */
+    Failed,
 }
 
 /**
@@ -571,18 +691,20 @@ class FirstFrameState internal constructor(
 private const val READY_PRESENTED_FRAMES = 2
 
 /**
- * Longest [FirstFrameState.holdUntil] holds "Scene ready" for content that has not landed,
- * counted from the first frame the scene presented without it.
+ * Longest [FirstFrameState.holdUntil] holds "Scene ready" in silence for content that has not
+ * landed, counted from the first frame the scene presented without it.
  *
  * A bundled HDR lands in well under a second on a phone. The budget is sized for the other
  * end: a debuggable build decodes the HDR in interpreted Kotlin, and on the CI's software GL
  * that decode competes with the rasteriser for the same cores while the IBL prefilter queues
  * behind the first shader link — #4174 measured a debug decode at up to 17 s on a loaded
- * host. Past this, the load is treated as failed and the scene shows without it; the
- * scaffold's "Still loading…" card has been up since its own 12 s mark by then, so the wait
- * is never a silent one.
+ * host. Past this the stage says the scene is still loading and goes on waiting: only a demo
+ * that caught the error may call a load failed.
  */
 internal const val CONTENT_WAIT_TIMEOUT_MS = 30_000L
+
+/** How often a scene that is [DemoContentIssue.Slow] and presenting no frame is asked again. */
+private const val CONTENT_SLOW_RECHECK_MS = 500L
 
 /**
  * Is the viewport showing something worth looking at?
@@ -616,7 +738,11 @@ fun rememberFirstFrameState(
         androidx.compose.runtime.mutableStateOf(false)
     }
     val state = androidx.compose.runtime.remember(engine) {
-        FirstFrameState(rendered, engine?.let(::filamentBackendDrainWait))
+        FirstFrameState(
+            rendered,
+            backendDrain = engine?.let(::filamentBackendDrainWait),
+            contentDrain = engine?.let(::filamentBackendDrainWait),
+        )
     }
     // The bound on FirstFrameState.holdUntil: it starts at the first frame presented without
     // the content, so a demo that never holds never starts it.
@@ -633,9 +759,15 @@ fun rememberFirstFrameState(
         } else {
             android.util.Log.w(
                 FIRST_FRAME_LOG_TAG,
-                "content did not land within ${heldMs}ms of the first frame; showing the scene without it",
+                "content did not land within ${heldMs}ms of the first frame; " +
+                    "saying so over the stage and still waiting",
             )
-            state.contentWaitExpired()
+            // Asked again at a slow beat rather than once: a scene that parked before the
+            // content landed presents no frame to take the card down on.
+            while (!state.sceneReady.value) {
+                state.contentWaitExpired()
+                kotlinx.coroutines.delay(CONTENT_SLOW_RECHECK_MS)
+            }
         }
     }
     return state

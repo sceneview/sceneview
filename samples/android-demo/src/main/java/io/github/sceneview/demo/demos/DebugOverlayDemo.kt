@@ -65,6 +65,7 @@ import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.utils.rememberDebugStats
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.cos
@@ -82,12 +83,10 @@ import kotlin.math.tan
  *  - Presets spawn 1, 10, 100, 500, or 1000 procedural [SphereNode]s arranged in a
  *    10×10×N grid.
  *  - **Stress test** ramps from 1 → [STRESS_TARGET] over [STRESS_DURATION_MS] so users
- *    can watch the FPS sparkline collapse in real time. The cap is intentionally well
- *    below the OOM threshold for mid-range Android devices — each [SphereNode] allocates
- *    its own VertexBuffer + IndexBuffer (24×24 sphere ≈ 1 152 tris) and Filament's
- *    per-renderable bookkeeping makes anything above ~3 000 nodes a one-way ticket to
- *    `OutOfMemoryError`. v2 caps at 2 000 with try/catch around the spawn loop so a
- *    flaky device stops gracefully instead of taking the whole app down.
+ *    can watch the FPS sparkline react in real time. The cap is what keeps the ramp inside
+ *    the Java heap: each [SphereNode] builds and keeps its own geometry (24×24 sphere ≈
+ *    1 152 tris), vertex and index lists included, and that is what runs out first — see
+ *    [STRESS_TARGET] for the measurement.
  *
  * v2 fixes (from Pixel 9 review):
  *  1. **Single-sphere framing** — count=1 was invisible because the auto-fit clamp gave
@@ -98,8 +97,8 @@ import kotlin.math.tan
  *  2. **Smooth dolly between presets** — one manipulator per auto-fit distance, eased into by
  *     the screen's single camera writer ([rememberContinuousCameraManipulator]): the camera
  *     dollies from the pose on screen, along the line of sight the user set.
- *  3. **Stress-test crash hardened** — cap lowered 5 000 → 2 000, spawn wrapped in
- *     try/catch with graceful auto-stop + Logcat tag `DebugOverlayDemo` for debugging.
+ *  3. **Stress-test crash hardened** — cap lowered 5 000 → 2 000, then to 1 000 once the
+ *     ramp was measured ([STRESS_TARGET]); Logcat tag `DebugOverlayDemo` for debugging.
  *
  * Spawn is **progressive**: nodes are added in batches of [SPAWN_BATCH_SIZE] per frame
  * via a `LaunchedEffect`, with a "Spawning X / N…" progress bar — preset buttons stay
@@ -221,9 +220,9 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
 
     // Progressive spawn: incrementally bring `currentCount` toward `targetCount` so the
     // user sees nodes appear in real time instead of staring at a frozen UI thread.
-    // Wrapped in try/catch — a flaky device that throws OOM during the stress ramp
-    // aborts the spawn gracefully and stops the test, instead of taking the whole demo
-    // down with it.
+    // The catch reports what this coroutine itself throws. The spheres are built by the
+    // composition, not here, so it is the cap ([STRESS_TARGET]) that keeps the ramp inside
+    // the heap, not this catch.
     LaunchedEffect(targetCount) {
         if (currentCount > targetCount) {
             // Shrinking — drop instantly (cheap, no frame-spread needed).
@@ -239,9 +238,14 @@ fun DebugOverlayDemo(onBack: () -> Unit) {
                 // gives the visible "filling up" effect.
                 delay(SPAWN_FRAME_DELAY_MS)
             }
+        } catch (e: CancellationException) {
+            // A new target restarts this effect, and the stress ramp sets one every tick:
+            // that is the effect working, not a failed spawn. Caught as a failure, it
+            // stopped every stress test within its first few ticks, at 16 to 39 spheres.
+            throw e
         } catch (t: Throwable) {
-            // OOM / Filament JNI failure during ramp — auto-stop and fall back to a
-            // safe count so the user can recover with a button.
+            // A real failure during the ramp — stop the test and say so, so the user can
+            // recover with a preset.
             Log.e(TAG, "Spawn aborted at $currentCount / $targetCount", t)
             stressRunning = false
             stressAborted = true
@@ -732,13 +736,19 @@ private const val SPAWN_FRAME_DELAY_MS = 16L
 private const val FPS_HISTORY_SIZE = 120
 
 /**
- * Stress test: linear ramp 1 → 2 000 over 10 s. v1 used 5 000, which OOM'd Pixel-class
- * devices — each [SphereNode] holds its own VertexBuffer + IndexBuffer (24×24 sphere ≈
- * 4 KB GPU + 5 KB JVM bookkeeping), so 5 000 ≈ 45 MB of native buffers + Filament's
- * per-renderable overhead, on top of the existing scene state. 2 000 is a comfortable
- * upper bound that still produces a clearly visible perf cliff.
+ * Stress test: linear ramp 1 → 1 000 over 10 s, the same count as the largest preset.
+ *
+ * The limit is the Java heap, not the frame rate. Each [SphereNode] keeps its own geometry,
+ * vertex and index lists included: about 115 KB of Java heap per 24×24 sphere, measured on
+ * the QA emulator (192 MB heap, 2026-10-12). 1 000 spheres settle near 130 MB and peak under
+ * 160 MB while spawning, three runs back to back, at 47 to 60 fps. The earlier cap of 2 000
+ * was never reached there: past ~1 450 spheres the heap sat at 191 MB of 192, the collector
+ * ran back to back, a frame took seconds, and the run stalled near 1 590 or died with an
+ * `OutOfMemoryError`. Spawning slower cannot help — at that rate 2 000 spheres hold about
+ * 230 MB at rest — so the cap is what changed. Raise it only with a geometry shared across
+ * nodes.
  */
-private const val STRESS_TARGET = 2_000
+private const val STRESS_TARGET = 1_000
 private const val STRESS_DURATION_MS = 10_000L
 private const val STRESS_TICK_MS = 50L
 

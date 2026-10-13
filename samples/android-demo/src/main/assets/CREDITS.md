@@ -50,8 +50,14 @@ Assets bundled: **38**.
 
 - `environments/chinese_garden_2k.hdr` — **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.8 MB)
 - `environments/night_sky_2k.hdr` — **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.7 MB)
+- `environments/rooftop_night_2k.hdr` — **[Rooftop Night](https://polyhaven.com/a/rooftop_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.6 MB)  
+  Verified 2026-10-10 against the Poly Haven download: a 1024x512 downsample of rooftop_night_2k.hdr (median pixel difference 0.3%) (#4453)
 - `environments/sky_on_fire_2k.hdr` — **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.5 MB)  
   Poly Haven 1k HDR, rolled so the sunset sits behind the viewer's model and scaled to 0.45x radiance so the sky keeps its colour under the viewer's exposure
+- `environments/studio_2k.hdr` — **[Studio](https://polyhaven.com/a/christmas_photo_studio_07)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.7 MB)  
+  Verified 2026-10-10 against the Poly Haven download: pixel-identical to christmas_photo_studio_07_1k.hdr (#4453)
+- `environments/studio_warm_2k.hdr` — **[Studio Warm](https://polyhaven.com/a/studio_small_08)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (1.5 MB)  
+  Verified 2026-10-10 against the Poly Haven download: pixel-identical to studio_small_08_1k.hdr (#4453)
 
 ## Other bundled assets
 
@@ -103,9 +109,6 @@ Assets bundled: **38**.
 per-asset author is shown where `assets/catalog.json` records one.
 
 - `environments/outdoor_cloudy_2k.hdr` — **Outdoor Cloudy** (1.6 MB)
-- `environments/rooftop_night_2k.hdr` — **Rooftop Night** (1.6 MB)
-- `environments/studio_2k.hdr` — **Studio** (1.7 MB)
-- `environments/studio_warm_2k.hdr` — **Studio Warm** (1.5 MB)
 - `environments/sunset_2k.hdr` — **Seascape** (1.2 MB)
 
 ## HD pack (downloaded after install)
