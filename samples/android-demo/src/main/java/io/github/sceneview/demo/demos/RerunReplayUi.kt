@@ -56,13 +56,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
@@ -183,9 +188,10 @@ internal fun RerunCameraView(
 ) {
     val index by remember(media) { derivedStateOf { media.trace.imageIndexAt(session.time) } }
     val path = if (index < 0) null else media.trace.imagePath(index)
-    var full by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(path) {
-        if (path != null) decodeFrame(media, path)?.let { full = it.asImageBitmap() }
+    var full by remember(media) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(media, path) {
+        if (path == null || path !in media.manifest.media) full = null
+        else decodeFrame(media, path)?.let { full = it.asImageBitmap() }
     }
     val shown = full ?: path?.let { thumbnails[it] }
     Box(modifier.background(LocalStageChrome.current.ground).testTag(RERUN_CAMERA_VIEW_TAG)) {
@@ -196,6 +202,15 @@ internal fun RerunCameraView(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().blur(BACKDROP_BLUR).alpha(BACKDROP_ALPHA),
+            )
+        }
+        if (media.trace.imageCount == 0) {
+            // A scan shared without its photos: the view says so instead of staying blank.
+            Text(
+                text = stringResource(R.string.room_scan_no_photos),
+                style = SceneViewTokens.Type.body.copy(color = LocalStageChrome.current.onGlass),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.Center).padding(Space.lg).testTag(RERUN_CAMERA_EMPTY_TAG),
             )
         }
         shown?.let {
@@ -385,5 +400,6 @@ private const val LAYERS_TITLE = "Layers"
 /** The layers section of the replay's settings sheet. */
 internal const val RERUN_LAYERS_TAG = "rerun_replay_layers"
 internal const val RERUN_CAMERA_VIEW_TAG = "rerun_camera_view"
+internal const val RERUN_CAMERA_EMPTY_TAG = "rerun_camera_empty"
 internal const val RERUN_FILMSTRIP_TAG = "rerun_filmstrip"
 internal const val RERUN_FILMSTRIP_STRIP_TAG = "rerun_filmstrip_strip"

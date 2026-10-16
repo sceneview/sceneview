@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="room_scan_share">Share</string>
+    <string name="room_scan_close">Close</string>
+    <string name="room_scan_place">Place</string>
+    <string name="room_scan_share_privacy">This file contains photos of your room and the path you walked. Anyone you send it to can see them.</string>
+    <string name="room_scan_share_privacy_without_photos">The surfaces and points in this file are still images of your room, with the path you walked. Anyone you send it to can see them.</string>
+    <string name="room_scan_include_photos">Include photos</string>
+    <string name="room_scan_file_size">File size</string>
+    <string name="room_scan_file_size_unknown">Unknown</string>
+    <string name="room_scan_share_preparing">Preparing file…</string>
+    <string name="room_scan_share_failed">This file could not be prepared. Close and try again.</string>
+    <string name="room_scan_no_photos">No camera images in this scan.</string>
+</resources>
