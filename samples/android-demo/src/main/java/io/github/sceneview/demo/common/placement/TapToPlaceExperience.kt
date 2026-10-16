@@ -13,6 +13,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import io.github.sceneview.ar.AutoPlacementNode
+import io.github.sceneview.ar.ARSceneScope
+import io.github.sceneview.ar.AutoPlacementResult
+import io.github.sceneview.demo.demos.DollhouseBuild
+import io.github.sceneview.demo.demos.DollhouseReplay
+import io.github.sceneview.demo.demos.loadRerunReplay
+import io.github.sceneview.demo.demos.loadRerunSession
+import io.github.sceneview.demo.demos.rerunSessionStore
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import com.google.android.filament.Engine
 import io.github.sceneview.haptic.rememberHapticFeedback
@@ -66,7 +79,11 @@ fun TapToPlaceExperience(
     onModelPlaced: ((PlacementSpec) -> Unit)? = null,
     onViewIn3D: (() -> Unit)? = null,
     onRestartSession: (() -> Unit)? = null,
+    roomPlaying: Boolean = true,
 ) {
+    val context = LocalContext.current
+    var roomBuild by remember { mutableStateOf<DollhouseBuild?>(null) }
+    var roomAsset by remember { mutableStateOf<String?>(null) }
     val armed = models.armed(picker)
     val haptic = rememberHapticFeedback()
     val telemetrySampleId = LocalSampleId.current ?: AR_VIEW_SAMPLE_ID
@@ -94,6 +111,33 @@ fun TapToPlaceExperience(
         state.controller.withdrawRequest()
         state.modelLoading = true
         state.modelError = false
+        if (model.roomRecordingId != null) {
+            val build = try {
+                val media = if (model.roomRecordingId == BUNDLED_ROOM_RECORDING_ID) {
+                    loadRerunReplay(context)
+                } else {
+                    val capture = withContext(Dispatchers.IO) {
+                        rerunSessionStore(context).capture(model.roomRecordingId)
+                    }
+                    capture?.let { loadRerunSession(it) }
+                }
+                media?.let { withContext(Dispatchers.Default) { DollhouseBuild.of(it) } }
+                    ?.takeIf { it.room != null }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+            if (!state.controller.acceptsAsset(ticket)) return@LaunchedEffect
+            state.modelLoading = false
+            if (build == null) {
+                state.modelError = true
+                return@LaunchedEffect
+            }
+            roomBuild = build
+            roomAsset = model.assetLocation
+            state.modelInstance = null
+            val accepted = state.offerAsset(ticket, PlacementSpec(model.assetLocation, model.displayName))
+            if (accepted && replacing) haptic.selection()
+            return@LaunchedEffect
+        }
         val instance = try { modelLoader.loadModelInstance(model.assetLocation) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { null }
@@ -107,6 +151,8 @@ fun TapToPlaceExperience(
             logModelLoadFailed(telemetrySampleId, ModelLoadFailure.DecodeFailed)
             return@LaunchedEffect
         }
+        roomBuild = null
+        roomAsset = null
         state.modelInstance = instance
         val accepted = state.offerAsset(
             ticket = ticket,
@@ -129,6 +175,21 @@ fun TapToPlaceExperience(
         onDispose { state.clearAll(); state.modelInstance = null }
     }
 
+    val build = roomBuild
+    val placedRoomContent: (@Composable ARSceneScope.(AutoPlacementResult) -> Unit)? =
+        if (build == null) null else { placement ->
+            AutoPlacementNode(
+                placement = placement, state = state.controller,
+                onInvalidMove = { state.dragOffSurface = it },
+                onScaleChanged = { percent, atBase, _ ->
+                    state.scalePercent = percent
+                    state.isRealWorldSize = atBase
+                },
+            ) {
+                DollhouseReplay(build, engine, materialLoader, playing = roomPlaying)
+            }
+        }
+
     Box(modifier = modifier.fillMaxSize()) {
         TapToPlaceArSession(
             state = state,
@@ -138,6 +199,8 @@ fun TapToPlaceExperience(
             onModelPlaced = onModelPlaced,
             onViewIn3D = onViewIn3D,
             onRestartSession = onRestartSession,
+            replacementAssetLocation = roomAsset,
+            placedContent = placedRoomContent,
         )
     }
 

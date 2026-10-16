@@ -223,32 +223,56 @@ fun PlacementChooserScreen(
             // `emulator-5554`: the capped version cut the catalogue off mid-way through the
             // streamed rows. `ModelPickerSheet` reached the same conclusion for the same
             // reason (#3324) — the whole screen scrolls, the grid does not.
-            models.chunked(CHOOSER_COLUMNS).forEach { row ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = SceneViewTokens.Space.sm),
-                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                ) {
-                    row.forEach { model ->
-                        Box(modifier = Modifier.weight(1f)) {
-                            PlacementModelCard(
-                                model = model,
-                                selected = model.id == picker.selectedId,
-                                onClick = { picker.selectedId = model.id },
-                            )
-                        }
-                    }
-                    // A trailing odd row keeps its card at column width instead of stretching
-                    // it across the screen.
-                    repeat(CHOOSER_COLUMNS - row.size) {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
+            //
+            // Room recordings, when the demo offers any, come first under their own heading
+            // — the same two sections the in-AR sheet draws.
+            val rooms = models.filter { it.roomRecordingId != null }
+            val objects = models.filter { it.roomRecordingId == null }
+            if (rooms.isNotEmpty()) {
+                PickerSectionHeader(
+                    title = stringResource(R.string.ar_picker_your_rooms),
+                    caption = stringResource(R.string.ar_picker_record_room)
+                        .takeIf { rooms.any { it.inviteRoomScan } },
+                    modifier = Modifier.padding(bottom = SceneViewTokens.Space.sm),
+                )
+                ChooserCardRows(rooms, picker)
+                PickerSectionHeader(
+                    title = stringResource(R.string.ar_picker_models),
+                    modifier = Modifier.padding(bottom = SceneViewTokens.Space.sm),
+                )
             }
+            ChooserCardRows(objects, picker)
 
             }
             Spacer(Modifier.height(SceneViewTokens.Space.md))
+        }
+    }
+}
+
+/** [models] as rows of [CHOOSER_COLUMNS] cards; a tap arms the model. */
+@Composable
+private fun ChooserCardRows(models: List<PlacementModel>, picker: PlacementPickerState) {
+    models.chunked(CHOOSER_COLUMNS).forEach { row ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = SceneViewTokens.Space.sm),
+            horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        ) {
+            row.forEach { model ->
+                Box(modifier = Modifier.weight(1f)) {
+                    PlacementModelCard(
+                        model = model,
+                        selected = model.id == picker.selectedId,
+                        onClick = { picker.selectedId = model.id },
+                    )
+                }
+            }
+            // A trailing odd row keeps its card at column width instead of stretching
+            // it across the screen.
+            repeat(CHOOSER_COLUMNS - row.size) {
+                Spacer(Modifier.weight(1f))
+            }
         }
     }
 }
