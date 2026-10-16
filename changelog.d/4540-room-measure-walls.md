@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **android-demo**: Room Scan's room figure (the live "Room W × D m · A m²" line) stops at the walls. ARCore grows a floor plane past the wall it meets, and a stray floor patch under the real floor could hide the floor above it: either way the room read up to twice its area. A floor that overflows a wall is now cut at that wall, and the floor is taken where most of it was found, not at its lowest patch (#4540).

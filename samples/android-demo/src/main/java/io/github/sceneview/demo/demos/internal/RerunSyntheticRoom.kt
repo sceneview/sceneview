@@ -68,6 +68,45 @@ sealed interface SyntheticShape {
         }
 
         override fun color(x: Float, y: Float, z: Float) = paint(x, y, z)
+
+        /** Whether ([x], [y], [z]) lies inside the room, walls included. */
+        fun contains(x: Float, y: Float, z: Float) =
+            x in min.x..max.x && y in min.y..max.y && z in min.z..max.z
+    }
+
+    /**
+     * The inside of [rooms] taken together: an L, a T, an open plan — axis-aligned boxes that
+     * overlap or touch where one opens into the next. A ray crosses from box to box through those
+     * openings and stops on the first wall no other box carries it past.
+     */
+    class Rooms(
+        val rooms: List<Room>,
+        private val paint: (x: Float, y: Float, z: Float) -> Int,
+    ) : SyntheticShape {
+        override fun hit(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float): Float {
+            var t = 0f
+            repeat(rooms.size + 1) {
+                val px = ox + dx * (t + STEP)
+                val py = oy + dy * (t + STEP)
+                val pz = oz + dz * (t + STEP)
+                var exit = -1f
+                for (room in rooms) {
+                    if (!room.contains(px, py, pz)) continue
+                    exit = maxOf(exit, t + STEP + room.hit(px, py, pz, dx, dy, dz))
+                }
+                // Inside no box: the wall just reached is the one seen.
+                if (exit < 0f) return if (t > 0f) t else Float.POSITIVE_INFINITY
+                t = exit
+            }
+            return t
+        }
+
+        override fun color(x: Float, y: Float, z: Float) = paint(x, y, z)
+
+        private companion object {
+            /** How far past a box's wall a ray looks for the next box. */
+            const val STEP = 1e-4f
+        }
     }
 
     /** A sphere seen from outside. */
@@ -160,9 +199,9 @@ object RerunSyntheticRoom {
     /** The scan's depth frames, in the order a phone would take them. */
     fun frames(): Sequence<DepthFrame> = poses().asSequence().map { scene.render(it) }
 
-    /** Camera poses: every [YAW_STEPS]th of a turn, at [PITCHES_DEG], from [STOPS]. */
-    fun poses(): List<DebugPose> = buildList {
-        for (stop in STOPS) {
+    /** Camera poses: every [YAW_STEPS]th of a turn, at [PITCHES_DEG], from each of [stops]. */
+    fun poses(stops: List<Vec3> = STOPS): List<DebugPose> = buildList {
+        for (stop in stops) {
             for (pitchDeg in PITCHES_DEG) {
                 for (step in 0 until YAW_STEPS) {
                     val yaw = Math.toRadians(step * FULL_TURN_DEG / YAW_STEPS).toFloat()
@@ -214,7 +253,8 @@ object RerunSyntheticRoom {
         return if (plank % 2 == 0) OAK else OAK_DARK
     }
 
-    private val STOPS = listOf(Vec3(0f, 1.4f, 0.6f), Vec3(-0.7f, 1.3f, 0.2f), Vec3(0.7f, 1.5f, 1.1f))
+    /** Where the scan stands: three spots a walk around the furnished room stops at. */
+    val STOPS = listOf(Vec3(0f, 1.4f, 0.6f), Vec3(-0.7f, 1.3f, 0.2f), Vec3(0.7f, 1.5f, 1.1f))
     private val PITCHES_DEG = listOf(-40, -12, 18)
     private const val YAW_STEPS = 30
     private const val FULL_TURN_DEG = 360.0

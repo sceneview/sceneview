@@ -77,6 +77,48 @@ class RoomMeasureTest {
         assertNull(RoomMeasure.of(listOf(strip), floorY))
     }
 
+    /** A flat floor patch over ([a0], [b0])–([a1], [b1]) of the turned room, at height [y]. */
+    private fun floor(id: Int, a0: Float, b0: Float, a1: Float, b1: Float, yaw: Float, y: Float = floorY): DebugPlane {
+        val corners = listOf(a0 to b0, a1 to b0, a1 to b1, a0 to b1).map { (a, b) -> turned(a, b, yaw) }
+        return DebugPlane(id, DebugPlaneKind.Floor, corners.flatMap { listOf(it[0], y, it[1]) }.toFloatArray())
+    }
+
+    @Test
+    fun `a floor grown through its walls stops at them`() {
+        // ARCore grows a floor plane past the wall it meets, by a metre on a phone: the rectangle
+        // around that floor read 6.4 × 4.6 m for this 3.4 × 4.1 m room, 29 m² for 14.
+        val yaw = Math.toRadians(20.0).toFloat()
+        val overflow = floor(9, -1f, -0.5f, 5.4f, 4.1f, yaw)
+        val measure = RoomMeasure.of(room(yaw) + overflow, floorY)!!
+        assertEquals(3.4f, measure.width, 0.02f)
+        assertEquals(4.1f, measure.depth, 0.02f)
+        assertEquals(3.4f * 4.1f, measure.area, 3.4f * 4.1f * 0.03f)
+    }
+
+    @Test
+    fun `a stray patch under the floor does not hide the floor over it`() {
+        // The lowest patch ARCore found sat 42 cm under the floor; standing on it, the measure
+        // kept none of the floor's own patches and read only as far as its one wall.
+        val decoyY = floorY - 0.42f
+        val planes = listOf(
+            wall(1, 0f, 0f, 3.4f, 0f, 0f),
+            floor(5, 1f, 1f, 1.8f, 1.6f, 0f, decoyY),
+            floor(6, 0f, 0f, 3.4f, 4.1f, 0f),
+        )
+        val measure = RoomMeasure.of(planes, decoyY)!!
+        assertEquals(3.4f, measure.width, 0.02f)
+        assertEquals(4.1f, measure.depth, 0.02f)
+    }
+
+    @Test
+    fun `a wall inside the room does not cut it`() {
+        // A partition only half as long as the room, in the room's inner half: not its edge.
+        val inner = wall(5, 1f, 2f, 2.4f, 2f, 0f)
+        val measure = RoomMeasure.of(room(0f) + inner, floorY)!!
+        assertEquals(3.4f, measure.width, 0.02f)
+        assertEquals(4.1f, measure.depth, 0.02f)
+    }
+
     @Test
     fun `figures read as a plan writes them`() {
         assertEquals("3.4 m", RoomMeasure.metres(3.43f))

@@ -36,10 +36,13 @@ import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.SquareFoot
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded._3dRotation
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -208,12 +211,15 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             when {
                 startInDollhouse || qaState in DOLLHOUSE_QA_STATES -> RerunScreen.Dollhouse
                 qaReplay != null || qaState == QA_STATE_MODEL_SYNTHETIC -> RerunScreen.Replay
+                qaState in PLAN_QA_STATES -> RerunScreen.Replay
                 arPlaybackDataset != null || qaState in LIVE_QA_STATES -> RerunScreen.Live
                 else -> RerunScreen.Landing
             },
         )
     }
-    var mode by remember { mutableStateOf(qaReplay?.mode ?: RerunMode.Scene) }
+    var mode by remember {
+        mutableStateOf(qaReplay?.mode ?: if (qaState in PLAN_QA_STATES) RerunMode.Plan else RerunMode.Scene)
+    }
 
     // The sample lives here, above every screen: the landing turns it, the replay plays it, and
     // the QA record take is fed from it.
@@ -230,7 +236,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
     var openingFile by remember { mutableStateOf(false) }
 
     // What the replay shows: the sample, or one of your scans — the same view either way.
-    var showingScan by remember { mutableStateOf(false) }
+    var showingScan by remember { mutableStateOf(qaState in PLAN_QA_STATES) }
     var scanMedia by remember { mutableStateOf<RerunReplayMedia?>(null) }
     // The replay is titled after the session it shows, as the card that opened it is.
     var scanTitle by remember { mutableStateOf(ScanCopy.REPLAY_TITLE) }
@@ -375,6 +381,25 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             }
         }
     }
+    // QA's Plan view: the ray-cast room, kept as a scan would be, then opened on its plan.
+    if (qaState in PLAN_QA_STATES) {
+        LaunchedEffect(Unit) {
+            val pack = syntheticPlanCapture(partial = qaState == QA_STATE_PLAN_PARTIAL)
+            val kept = withContext(Dispatchers.IO) {
+                // It replaces the one session it kept the time before, whose id it wrote beside
+                // the sessions — never another session, whatever that one is titled.
+                val mine = File(store.root, QA_PLAN_MARKER)
+                val last = runCatching { mine.readText().trim() }.getOrNull()
+                store.list().firstOrNull { it.id == last && it.title == QA_PLAN_TITLE }?.let { store.delete(it.id) }
+                store.save(pack, QA_PLAN_TITLE, RerunSessionSource.Recorded).also { mine.writeText(it.id) }
+            }
+            sessionsVersion++
+            val opened = loadRerunSession(pack) ?: return@LaunchedEffect
+            openScan(opened, kept.title, pack)
+            scanId = kept.id
+            mode = RerunMode.Plan
+        }
+    }
     // A file opened here ("Open file") or handed over by another app: kept as a session, then
     // replayed — or, when it is not one this app reads, the landing says why.
     val importFile = { uri: Uri ->
@@ -477,6 +502,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
             media = media,
             isScan = showingScan,
             scanTitle = scanTitle,
+            scanDate = planDate(sessions?.firstOrNull { it.id == scanId }?.info?.createdAt),
             session = replaySession,
             orbit = replayOrbit,
             stageBand = stageBand,
@@ -534,8 +560,8 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
  */
 private enum class RerunScreen { Landing, Live, Replay, Dollhouse }
 
-/** The replay's three views. */
-private enum class RerunMode { Scene, Map, Camera }
+/** The replay's views; Plan — the room's survey and floor plan (#4540) — is a scan's only. */
+private enum class RerunMode { Scene, Map, Plan, Camera }
 
 /**
  * The landing, laid out as the iOS demo's: "Scan a room in 3D", "Record your room", the sample
@@ -574,6 +600,7 @@ private fun RerunReplayScreen(
     media: RerunReplayMedia?,
     isScan: Boolean,
     scanTitle: String,
+    scanDate: String?,
     revealed: Boolean,
     onRevealed: () -> Unit,
     session: ArDebugSession,
@@ -615,7 +642,12 @@ private fun RerunReplayScreen(
     val band = measured ?: stageBand
     SideEffect { orbit.band = band }
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
-    val ready = media != null && (revealed || mode == RerunMode.Camera)
+    val flat = mode == RerunMode.Camera || mode == RerunMode.Plan
+    val ready = media != null && (revealed || flat)
+    // The plan (#4540): measured once it is asked for, kept while the other views are looked at.
+    var planWanted by remember(media) { mutableStateOf(false) }
+    if (mode == RerunMode.Plan) SideEffect { planWanted = true }
+    val survey = rememberRoomSurvey(media, planWanted)
     LaunchedEffect(ready) { if (ready) onRevealed() }
     val readyState = rememberUpdatedState(ready)
     val filmstripIn = rememberReveal(revealed, delayMillis = REVEAL_STAGGER_MS)
@@ -653,6 +685,20 @@ private fun RerunReplayScreen(
         onBack = onBack,
         controls = {
             RerunSheet {
+                // A scan's dock holds its views and View in AR: its files are exported from here,
+                // at the head of the sheet — on screen as it opens, before anything is scrolled.
+                if (onViewInAr != null) {
+                    FilledTonalButton(
+                        onClick = onExport,
+                        enabled = media != null,
+                        modifier = Modifier.fillMaxWidth().testTag(RERUN_EXPORT_FILES_TAG),
+                    ) {
+                        Icon(Icons.Rounded.IosShare, contentDescription = null)
+                        Spacer(Modifier.size(Space.sm))
+                        Text(stringResource(R.string.demo_ar_rerun_export_files))
+                    }
+                    Spacer(Modifier.size(Space.md))
+                }
                 // What the 3D view draws: the points of your scan or its surface, then its layers.
                 if (surfaceSource != null) {
                     RerunSurfaceSwitch(surface, onWanted = { surfaceWanted = it }, title = title)
@@ -660,17 +706,22 @@ private fun RerunReplayScreen(
                 RerunLayersSection(session)
             }
         },
+        // Over the plan the sheet lies on a table of figures, not on a scene: no glass to read through.
+        opaqueSheet = mode == RerunMode.Plan,
         firstFrameRendered = readyState,
         loadingLabel = if (isScan) ScanCopy.LOADING else RERUN_REPLAY_LOADING,
         themedStage = true,
         // The room has the screen (#4379): a tap on the stage hides the header, the timeline and
         // the dock, and another brings them back.
-        chromeToggleOnTap = true,
+        // The plan is read and scrolled, not looked through: its chrome stays.
+        chromeToggleOnTap = mode != RerunMode.Plan,
         overlaysFollowChrome = true,
         // Room Scan shows no mode switch on any of its screens (#4397).
         modeSwitch = null,
         topOverlay = {
-            if (media != null && compact) {
+            if (mode == RerunMode.Plan) {
+                Unit // the plan has no timeline
+            } else if (media != null && compact) {
                 Row(Modifier.fillMaxWidth()) {
                     Spacer(Modifier.weight(1f))
                     RerunTimelineBar(
@@ -692,7 +743,9 @@ private fun RerunReplayScreen(
             }
         },
         bottomOverlay = {
-            if (media != null && compact) {
+            if (mode == RerunMode.Plan) {
+                Unit
+            } else if (media != null && compact) {
                 // Nothing to draw: the timeline stands in the corner. This marks where the dock
                 // starts under the room.
                 Spacer(Modifier.fillMaxWidth().onGloballyPositioned { pillTop = it.positionInRoot().y })
@@ -728,6 +781,14 @@ private fun RerunReplayScreen(
                 onClick = { onMode(RerunMode.Map) },
                 selected = mode == RerunMode.Map,
             ),
+            // Your own scan only: the sample has no depth to measure walls on.
+            DockItem(
+                icon = Icons.Rounded.SquareFoot,
+                label = stringResource(R.string.demo_ar_rerun_plan_dock_label),
+                caption = stringResource(R.string.demo_ar_rerun_plan_dock_caption),
+                onClick = { onMode(RerunMode.Plan) },
+                selected = mode == RerunMode.Plan,
+            ).takeIf { isScan },
             DockItem(
                 icon = Icons.Rounded.Movie,
                 label = "Camera frames",
@@ -735,8 +796,6 @@ private fun RerunReplayScreen(
                 onClick = { onMode(RerunMode.Camera) },
                 selected = mode == RerunMode.Camera,
             ),
-            // With View in AR as the accent, Export stays one tap away in the dock.
-            export.takeIf { onViewInAr != null },
         ),
         // Your own room stands on a table in AR (#4075); the sample offers its files instead.
         dockAccent = onViewInAr?.let {
@@ -752,6 +811,7 @@ private fun RerunReplayScreen(
         when {
             media == null -> Unit // the scaffold's cover says it is loading
             mode == RerunMode.Camera -> RerunCameraView(media, thumbnails, session, Modifier.fillMaxSize())
+            mode == RerunMode.Plan -> RerunPlanView(survey, title, scanDate)
             else -> ArDebugSceneView(
                 session = session,
                 orbit = orbit,
@@ -1694,6 +1754,19 @@ private const val QA_STATE_DOLLHOUSE_3D = "dollhouse-3d"
 
 /** The final model built from the ray-cast room: the emulator's view of the model screen, which it cannot scan. */
 private const val QA_STATE_MODEL_SYNTHETIC = "model-synthetic"
+
+/** A stored scan of the ray-cast room, opened on its Plan view (#4540): four walls and the ceiling seen. */
+private const val QA_STATE_PLAN_SYNTHETIC = "plan-synthetic"
+
+/** The same room with one wall and the ceiling never scanned: the plan says what is missing. */
+private const val QA_STATE_PLAN_PARTIAL = "plan-partial"
+
+private val PLAN_QA_STATES = setOf(QA_STATE_PLAN_SYNTHETIC, QA_STATE_PLAN_PARTIAL)
+
+/** Beside the sessions, the id of the one session QA's Plan states kept: the only one they replace. */
+private const val QA_PLAN_MARKER = "qa-plan-session.txt"
+
+private const val RERUN_EXPORT_FILES_TAG = "rerun-export-files"
 
 /** The QA states that open straight on the live AR screen. */
 private val LIVE_QA_STATES =

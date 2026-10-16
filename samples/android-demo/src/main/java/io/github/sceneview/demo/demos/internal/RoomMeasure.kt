@@ -29,40 +29,143 @@ class RoomMeasure(val corners: FloatArray, val width: Float, val depth: Float, v
         const val MIN_SIDE_M = 0.6f
 
         /**
-         * The room around [planes]' floor (the patches at [floorY], see [PlaneLayering.isGround])
-         * and walls, `null` when they hold no floor and no wall, or span less than [MIN_SIDE_M].
+         * The room around [planes]' floor and walls, `null` when they hold no floor and no wall,
+         * or span less than [MIN_SIDE_M].
+         *
+         * The floor is the level of the largest floor patch near [floorY] (see [groundOf]): on a
+         * phone, the lowest patch ARCore found once sat 42 cm under the real floor, and the
+         * measure, standing on it, kept none of the floor's own patches.
          *
          * The walls give the directions: each votes for its own, weighted by its width, modulo a
          * quarter turn — a room's walls stand square, so a wall and the one across the corner
          * agree. Without a wall, the floor patches' edges vote the same way.
+         *
+         * A side the floor overflows stops at its wall (see [clampToWalls]): ARCore grows a floor
+         * plane past the wall it meets, by a metre on a phone, and the rectangle around that
+         * floor read 56 m² for a room of under 40.
          */
         fun of(planes: List<DebugPlane>, floorY: Float): RoomMeasure? {
             val walls = planes.filter { it.kind == DebugPlaneKind.Wall && it.vertexCount >= 3 }
-            val floors = planes.filter { PlaneLayering.isGround(it, floorY) }
+            val groundY = groundOf(planes, floorY)
+            val floors = planes.filter { PlaneLayering.isGround(it, groundY) }
             if (walls.isEmpty() && floors.isEmpty()) return null
             val yaw = squareYaw(if (walls.isNotEmpty()) walls else floors)
             val c = cos(yaw)
             val s = sin(yaw)
-            var minA = Float.MAX_VALUE
-            var maxA = -Float.MAX_VALUE
-            var minB = Float.MAX_VALUE
-            var maxB = -Float.MAX_VALUE
+            val box = floatArrayOf(Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE)
             for (plane in walls + floors) for (i in 0 until plane.vertexCount) {
                 val x = plane.polygon[i * 3]
                 val z = plane.polygon[i * 3 + 2]
                 // In the room's own axes: a along the walls' direction, b across it.
                 val a = x * c + z * s
                 val b = -x * s + z * c
-                minA = minOf(minA, a); maxA = maxOf(maxA, a)
-                minB = minOf(minB, b); maxB = maxOf(maxB, b)
+                box[0] = minOf(box[0], a); box[1] = maxOf(box[1], a)
+                box[2] = minOf(box[2], b); box[3] = maxOf(box[3], b)
             }
-            val width = maxA - minA
-            val depth = maxB - minB
+            clampToWalls(box, walls, c, s)
+            val minA = box[0]
+            val minB = box[2]
+            val width = box[1] - minA
+            val depth = box[3] - minB
             if (width < MIN_SIDE_M || depth < MIN_SIDE_M) return null
             fun corner(a: Float, b: Float) = floatArrayOf(a * c - b * s, a * s + b * c)
+            val maxA = box[1]
+            val maxB = box[3]
             val corners = corner(minA, minB) + corner(maxA, minB) + corner(maxA, maxB) + corner(minA, maxB)
             return RoomMeasure(corners, width, depth, yaw)
         }
+
+        /**
+         * The floor's height: [floorY], unless a floor patch of at least [MIN_GROUND_M2] lies up
+         * to [GROUND_RISE_M] over it and covers more than the patches at [floorY] together — the
+         * floor is where most of it was found, not its lowest stray patch. A table top is smaller
+         * than that, a seat higher.
+         */
+        internal fun groundOf(planes: List<DebugPlane>, floorY: Float): Float {
+            val floors = planes.filter { it.kind == DebugPlaneKind.Floor && it.vertexCount >= 3 }
+            val atFloor = floors.filter { PlaneLayering.isGround(it, floorY) }.sumOf { areaXz(it).toDouble() }
+            val largest = floors
+                .filter { meanY(it) - floorY in 0f..GROUND_RISE_M }
+                .maxByOrNull { areaXz(it) } ?: return floorY
+            val area = areaXz(largest)
+            return if (area >= MIN_GROUND_M2 && area > atFloor) meanY(largest) else floorY
+        }
+
+        /**
+         * Pulls each side of [box] (`[minA, maxA, minB, maxB]`, the room's axes `a = x·c + z·s`,
+         * `b = -x·s + z·c`) in to the outermost wall standing on that side, when one stands
+         * inside the box's outer half there: what lies past the walls is floor ARCore grew
+         * through them. A wall is read as the line it stands on — its mean across, over its
+         * length along — and only a wall at least [MIN_SIDE_M] long counts.
+         */
+        private fun clampToWalls(box: FloatArray, walls: List<DebugPlane>, c: Float, s: Float) {
+            val midA = (box[0] + box[1]) / 2f
+            val midB = (box[2] + box[3]) / 2f
+            var lowA = Float.NaN
+            var highA = Float.NaN
+            var lowB = Float.NaN
+            var highB = Float.NaN
+            for (wall in walls) {
+                var a0 = Float.MAX_VALUE
+                var a1 = -Float.MAX_VALUE
+                var b0 = Float.MAX_VALUE
+                var b1 = -Float.MAX_VALUE
+                var sumA = 0f
+                var sumB = 0f
+                for (i in 0 until wall.vertexCount) {
+                    val x = wall.polygon[i * 3]
+                    val z = wall.polygon[i * 3 + 2]
+                    val a = x * c + z * s
+                    val b = -x * s + z * c
+                    a0 = minOf(a0, a); a1 = maxOf(a1, a)
+                    b0 = minOf(b0, b); b1 = maxOf(b1, b)
+                    sumA += a
+                    sumB += b
+                }
+                val n = wall.vertexCount
+                val alongA = a1 - a0 >= b1 - b0
+                // A wall shorter than a room's side is a stub, not the room's edge.
+                if (maxOf(a1 - a0, b1 - b0) < MIN_SIDE_M) continue
+                if (alongA) {
+                    // Along a: a wall across b, on the line b = its mean.
+                    val at = sumB / n
+                    if (at < midB) lowB = if (lowB.isNaN()) at else minOf(lowB, at)
+                    else highB = if (highB.isNaN()) at else maxOf(highB, at)
+                } else {
+                    val at = sumA / n
+                    if (at < midA) lowA = if (lowA.isNaN()) at else minOf(lowA, at)
+                    else highA = if (highA.isNaN()) at else maxOf(highA, at)
+                }
+            }
+            if (!lowA.isNaN()) box[0] = maxOf(box[0], lowA)
+            if (!highA.isNaN()) box[1] = minOf(box[1], highA)
+            if (!lowB.isNaN()) box[2] = maxOf(box[2], lowB)
+            if (!highB.isNaN()) box[3] = minOf(box[3], highB)
+        }
+
+        /** [plane]'s area seen from above, m²: its polygon's shoelace over x and z. */
+        private fun areaXz(plane: DebugPlane): Float {
+            var twice = 0f
+            val p = plane.polygon
+            val n = plane.vertexCount
+            for (i in 0 until n) {
+                val j = (i + 1) % n
+                twice += p[i * 3] * p[j * 3 + 2] - p[j * 3] * p[i * 3 + 2]
+            }
+            return abs(twice) / 2f
+        }
+
+        private fun meanY(plane: DebugPlane): Float {
+            var sum = 0f
+            for (i in 0 until plane.vertexCount) sum += plane.polygon[i * 3 + 1]
+            return sum / plane.vertexCount
+        }
+
+        /** A floor patch smaller than this is a table top or a step, not where the floor is. */
+        const val MIN_GROUND_M2 = 1.5f
+
+        /** The floor is looked for up to this far over the lowest floor patch: under a seat. */
+        const val GROUND_RISE_M = 0.6f
 
         /**
          * The direction [planes] stand square to, in `[-π/4, π/4]`: each plane's edges vote

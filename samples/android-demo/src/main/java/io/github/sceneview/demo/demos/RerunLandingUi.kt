@@ -131,7 +131,7 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
                 // The list ends a gutter above everything the scaffold floats at the bottom —
                 // the mode pill and the settings button — so its last session scrolls clear.
                 .padding(
-                    top = HeaderClearance,
+                    top = RerunHeaderClearance,
                     bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) +
                         Space.md,
                 )
@@ -140,7 +140,7 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = PageMaxWidth)
+                    .widthIn(max = RerunPageMaxWidth)
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(Space.md),
             ) {
@@ -460,8 +460,11 @@ private fun SessionCard(
 }
 
 /** The demo header's row — back button and title — which the page scrolls under. */
-private val HeaderClearance = SceneViewTokens.Layout.touchTarget + Space.md * 2
-private val PageMaxWidth = 560.dp
+/** What the header's pills take at the top of a Room Scan page: the landing's and the plan's. */
+internal val RerunHeaderClearance = SceneViewTokens.Layout.touchTarget + Space.md * 2
+
+/** The widest a Room Scan page of text is laid out: the landing's and the plan's. */
+internal val RerunPageMaxWidth = 560.dp
 private val RecordCardHeight = Space.x4l
 private val RecordWellSize = 56.dp
 private val GlassActionHeight = 56.dp

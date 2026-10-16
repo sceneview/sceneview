@@ -557,6 +557,10 @@ fun DemoScaffold(
     overlaysFollowChrome: Boolean = false,
     dockHidden: Boolean = false,
     themedStage: Boolean = false,
+    // The settings sheet's glass lets a scene read through it. Over a stage of text — a table of
+    // figures — the rows behind would read through the sheet's own: such a stage asks for the
+    // opaque `surface-container` a browsing sheet has.
+    opaqueSheet: Boolean = false,
     recorder: SceneRecorderState? = null,
     // The consolidated card's mode pill. A demo with screens of its own passes `null` on the ones
     // past its landing: the pill switches the whole demo, which is not on offer mid-replay.
@@ -821,7 +825,11 @@ fun DemoScaffold(
                     topStart = SceneViewTokens.Radius.xl,
                     topEnd = SceneViewTokens.Radius.xl,
                 ),
-                sheetContainerColor = DemoSheetDefaults.glassContainerColor(),
+                sheetContainerColor = if (opaqueSheet) {
+                    MaterialTheme.colorScheme.surfaceContainer
+                } else {
+                    DemoSheetDefaults.glassContainerColor()
+                },
                 sheetContentColor = MaterialTheme.colorScheme.onSurface,
                 // Tonal elevation would tint the glass towards primary and a shadow would draw a
                 // dark band over the scene along the sheet's edge; the glass carries the edge.

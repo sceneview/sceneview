@@ -1162,6 +1162,25 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   is still pinned dark (#3907). Streaming to a computer is an
   advanced option in the sheet, under its own heading; its status card shows only once
   connected.
+- **Plan view: a page of figures, not a scene (#4540).** A scan's third view is a scrolling
+  page on the themed stage's ground, max width 560 dp like the landing: the dimensioned
+  plan in a glass `radius-md` card, the survey's table, what the scan lacks, then the two
+  shares. *Nothing reads under the header:* its pills float without a ground of their own,
+  so the page starts below them and is clipped there — text never scrolls behind a pill.
+  *The settings sheet is opaque here* (`surface-container`, no glass): over a table of
+  figures a glass sheet shows two texts at once. "Export 3D files" stands at the head of
+  the sheet, on screen as it opens. *On its side* the table scrolls beside the plan. Where the
+  header and the dock leave the height the flattest plan asks for (a tablet), the plan is
+  fitted whole to its card. A phone on its side leaves a strip: the plan keeps its size,
+  scrolls on its own and says so on its card — it is never squeezed to fit.
+  *The plan's labels stop growing at font scale 1.3:* they sit on a drawing to scale, where
+  a wall 1 m long has only so much room, and at ×2 they would cover the outline they
+  dimension. Every figure the plan carries is repeated in the table under it, which follows
+  the system font scale in full. *Marks:* a measured figure carries "±", an estimate "≈"
+  and no "±", an unseen wall is dashed and reads "not seen", a figure the scan cannot give
+  reads "not measured"; one note says what "≈" means and one that "±" is the scatter of the
+  scan, not an accuracy — the same marks and the same notes on the screen, in the PDF and
+  in the shared text.
 
 ### Tabs
 - Padding: 10px 20px
