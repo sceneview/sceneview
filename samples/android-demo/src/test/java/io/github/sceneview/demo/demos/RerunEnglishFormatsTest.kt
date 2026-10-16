@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
+import io.github.sceneview.demo.demos.internal.RerunMesh
 import io.github.sceneview.demo.demos.internal.RerunSessionSource
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.RoomMeasure
@@ -84,6 +85,7 @@ class RerunEnglishFormatsTest {
     @Test
     fun `the surface's caption carries no size, and no comma, on a French phone`() {
         val build = RerunModelBuild(
+            mesh = RerunMesh(FloatArray(0), FloatArray(0), IntArray(0), IntArray(0)),
             glb = ByteArray(0),
             bounds = floatArrayOf(0f, 0f, 0f, 3.3f, 1.2f, 3.7f),
             triangles = 24_300,

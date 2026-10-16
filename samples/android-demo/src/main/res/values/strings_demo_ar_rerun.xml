@@ -27,4 +27,14 @@
     <string name="demo_ar_rerun_discard_detail">What you have scanned so far will be lost.</string>
     <string name="demo_ar_rerun_discard_confirm">Discard</string>
     <string name="demo_ar_rerun_discard_dismiss">Keep scanning</string>
+    <!-- What sharing the surface says, on the same caption line, when the lighter copy is not
+         what went out. -->
+    <!-- Too little memory to simplify the mesh: the whole one was shared. -->
+    <string name="demo_ar_rerun_share_whole">Shared in full: not enough memory to lighten it.</string>
+    <!-- Too little memory to write even the whole mesh: nothing was shared. -->
+    <string name="demo_ar_rerun_share_out_of_memory">Not enough memory to share the surface.</string>
+    <!-- The file could not be written, or handed to the share sheet. -->
+    <string name="demo_ar_rerun_share_failed">The surface could not be shared.</string>
+    <!-- The mesh was lightened, but the simplifier stopped well above its triangle target. -->
+    <string name="demo_ar_rerun_share_still_heavy">Shared lighter, but still heavier than planned.</string>
 </resources>

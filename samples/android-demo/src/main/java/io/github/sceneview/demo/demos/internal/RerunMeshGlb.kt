@@ -8,26 +8,62 @@ import kotlin.math.pow
  * The final model of a scan ([RerunMesh]) as one glTF 2.0 binary: a single `room` mesh, indexed
  * triangles with `POSITION`, `NORMAL` and `COLOR_0` (normalised `UNSIGNED_BYTE` RGBA, linear, as
  * glTF requires) and one matte, lit, single-sided material that multiplies the vertex colours.
- * Metres, Y up, the session's world space: what Blender, three.js and SceneView open as they are.
+ * Metres, Y up; shared exports rest at Y=0 and are centred in X/Z, without rescaling.
  */
 object RerunMeshGlb {
     const val MIME_TYPE = "model/gltf-binary"
 
-    /** The `.glb` bytes of [mesh]. */
-    fun write(mesh: RerunMesh, generator: String = "SceneView Rerun"): ByteArray {
+    /** The full mesh in the session's world space: what the replay's own 3D view draws. */
+    fun write(mesh: RerunMesh, generator: String = "SceneView Rerun"): ByteArray =
+        writeShared(mesh, generator, fullResolution = true, floorOrigin = false)
+
+    /**
+     * The model a share sends: [mesh] simplified to [targetTriangles] ([RerunMeshSimplifier]) unless
+     * [fullResolution], and with [floorOrigin] resting on Y=0 and centred in X/Z — what a viewer
+     * that drops a model on a table expects. The floor is the mesh's lowest point, not a fitted
+     * plane. Blocking CPU work: run it on a worker; [onReduced] is told how many triangles are
+     * written; [progress] follows the simplification and stops it by throwing. [mesh] is not modified.
+     */
+    fun writeShared(
+        mesh: RerunMesh,
+        generator: String = "SceneView Rerun",
+        fullResolution: Boolean = false,
+        targetTriangles: Int = RerunMeshSimplifier.DEFAULT_TARGET_TRIANGLES,
+        floorOrigin: Boolean = true,
+        onReduced: (triangles: Int) -> Unit = {},
+        progress: (Float) -> Unit = {},
+    ): ByteArray {
+        require(mesh.triangleCount > 0) { "a GLB mesh must contain triangles" }
+        val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles, progress)
+        require(reduced.triangleCount > 0) { "simplification must retain a surface" }
+        onReduced(reduced.triangleCount)
+        val exported = if (floorOrigin) {
+            val bounds = reduced.bounds()
+            val origin = floatArrayOf((bounds[0] + bounds[3]) / 2, bounds[1], (bounds[2] + bounds[5]) / 2)
+            val positions = FloatArray(reduced.positions.size) { reduced.positions[it] - origin[it % 3] }
+            RerunMesh(positions, reduced.normals, reduced.colors, reduced.indices)
+        } else {
+            reduced
+        }
+        return encode(exported, generator)
+    }
+
+    private fun encode(mesh: RerunMesh, generator: String): ByteArray {
         val n = mesh.vertexCount
+        // 65535 is the reserved primitive-restart value and is forbidden in glTF indices.
+        val shortIndices = n <= 65535
         val positionBytes = n * 12
         val normalBytes = n * 12
         val colorBytes = n * 4
-        val indexBytes = mesh.indices.size * 4
-        val bin = binary(mesh, positionBytes + normalBytes + colorBytes + indexBytes)
+        val indexBytes = mesh.indices.size * if (shortIndices) 2 else 4
+        val bin = binary(mesh, positionBytes + normalBytes + colorBytes + indexBytes, shortIndices)
         val views = listOf(
             view(0, positionBytes, ARRAY_BUFFER, stride = 12),
             view(positionBytes, normalBytes, ARRAY_BUFFER, stride = 12),
             view(positionBytes + normalBytes, colorBytes, ARRAY_BUFFER, stride = 4),
             view(positionBytes + normalBytes + colorBytes, indexBytes, ELEMENT_ARRAY_BUFFER, stride = null),
         )
-        val accessors = accessors(mesh)
+        val accessors = accessors(mesh, shortIndices)
         val json = jsonOf(
             "asset" to jsonOf("version" to "2.0", "generator" to generator),
             "scene" to 0,
@@ -63,7 +99,7 @@ object RerunMeshGlb {
         return glb(RerunJson.write(json).toByteArray(Charsets.UTF_8), bin.array())
     }
 
-    private fun accessors(mesh: RerunMesh): List<JsonMap> {
+    private fun accessors(mesh: RerunMesh, shortIndices: Boolean): List<JsonMap> {
         val n = mesh.vertexCount
         val b = mesh.bounds()
         return listOf(
@@ -78,13 +114,13 @@ object RerunMeshGlb {
                 "count" to n, "type" to "VEC4",
             ),
             jsonOf(
-                "bufferView" to 3, "componentType" to UNSIGNED_INT,
+                "bufferView" to 3, "componentType" to if (shortIndices) UNSIGNED_SHORT else UNSIGNED_INT,
                 "count" to mesh.indices.size, "type" to "SCALAR",
             ),
         )
     }
 
-    private fun binary(mesh: RerunMesh, size: Int): ByteBuffer {
+    private fun binary(mesh: RerunMesh, size: Int, shortIndices: Boolean): ByteBuffer {
         val bin = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
         mesh.positions.forEach { bin.putFloat(it) }
         mesh.normals.forEach { bin.putFloat(it) }
@@ -94,7 +130,7 @@ object RerunMeshGlb {
             bin.put(LINEAR[c and 0xFF])
             bin.put(0xFF.toByte())
         }
-        mesh.indices.forEach { bin.putInt(it) }
+        mesh.indices.forEach { if (shortIndices) bin.putShort(it.toShort()) else bin.putInt(it) }
         return bin
     }
 
@@ -144,6 +180,7 @@ object RerunMeshGlb {
     private const val ELEMENT_ARRAY_BUFFER = 34963
     private const val FLOAT = 5126
     private const val UNSIGNED_BYTE = 5121
+    private const val UNSIGNED_SHORT = 5123
     private const val UNSIGNED_INT = 5125
     private const val TRIANGLES = 4
 }
