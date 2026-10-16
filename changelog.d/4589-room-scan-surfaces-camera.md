@@ -1,0 +1,4 @@
+<!-- category: Fixed -->
+- **Android demo: Room Scan no longer paints the furniture onto the floor and walls of a textured room, and a double-tap brings the room back as soon as it opens ([#4589](https://github.com/sceneview/sceneview/pull/4589)).**
+  Each photo now knows what stands between it and a plane — the scan's own points and the other planes — and paints only what it actually saw: grazing photos are left out, the best ones by angle and distance are blended, and a plane's texture stops where the photos stop, with a plain grey edge instead of a smeared colour. On the bundled test room, the texels painted with furniture drop from 37 % to under 1 % on the floor and to none on the walls.
+  A double-tap during the opening camera move, or while it waits behind the loading cover, used to do nothing until the move ended; it now brings the room back at once, like everywhere else in the app.

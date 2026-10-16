@@ -14,6 +14,7 @@ import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.ArDebugLogWriter
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
+import io.github.sceneview.demo.demos.internal.BakeOcclusion
 import io.github.sceneview.demo.demos.internal.BakePhoto
 import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
@@ -84,7 +85,10 @@ internal object RerunCaptureBuilder {
         fun photo(index: Int): BakePhoto? = decoded.getOrPut(index) { decodePhoto(photos[index]) }
 
         val viewpoint = centroid(whole.trail)
-        val baked = trace.lastPlanes().mapNotNull { plane -> bakePlane(plane, viewpoint, photos, lens, ::photo) }
+        val planes = trace.lastPlanes()
+        // What stands in front of a plane hides it from a photo: its own dense cloud and the other planes.
+        val occlusion = BakeOcclusion.of(dense, planes)
+        val baked = planes.mapNotNull { plane -> bakePlane(plane, viewpoint, photos, lens, occlusion, ::photo) }
         val denseCloud = dense?.takeIf { device != null && it.count > 0 }
         val denseBlob = denseCloud?.let { listOf(ReplayDense.PATH to SvpcCodec.encode(it)) }.orEmpty()
         val (archive, spans) = ScanArchive.pack(
@@ -117,16 +121,19 @@ internal object RerunCaptureBuilder {
         viewpoint: Vec3?,
         photos: List<ScanPhoto>,
         lens: ReplayLens,
+        occlusion: BakeOcclusion?,
         photo: (Int) -> BakePhoto?,
     ): Pair<ReplayPlaneTexture, ByteArray>? {
         val rect = PlaneBake.rectOf(plane, viewpoint) ?: return null
         val (width, height) = PlaneBake.sizeOf(rect)
         val picked = PlaneBake.pickPhotos(rect, photos.map { it.pose }, lens).mapNotNull(photo)
-        val texels = PlaneBake.bake(rect, width, height, picked, lens) ?: return null
-        val bitmap = Bitmap.createBitmap(texels, width, height, Bitmap.Config.ARGB_8888)
+        val baked = PlaneBake.bake(rect, width, height, picked, lens, occlusion, plane.id) ?: return null
+        val bitmap = Bitmap.createBitmap(baked.argb, baked.width, baked.height, Bitmap.Config.ARGB_8888)
         val jpeg = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
         bitmap.recycle()
-        val texture = ReplayPlaneTexture(plane.id, "planes/plane-${plane.id}.jpg", rect.origin, rect.u, rect.v)
+        // Cropped to what the photos saw: the texture's own rectangle, not the polygon's.
+        val area = baked.rect
+        val texture = ReplayPlaneTexture(plane.id, "planes/plane-${plane.id}.jpg", area.origin, area.u, area.v)
         return texture to jpeg.toByteArray()
     }
 

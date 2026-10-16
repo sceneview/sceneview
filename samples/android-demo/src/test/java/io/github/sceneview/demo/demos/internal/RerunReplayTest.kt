@@ -201,6 +201,26 @@ class RerunReplayTest {
     }
 
     @Test
+    fun `a double-tap during the entrance, held or playing, brings the room back at once`() {
+        for (held in listOf(true, false)) {
+            val camera = ArDebugOrbitCamera(drift = false)
+            camera.setViewport(1080, 2400)
+            camera.home = OrbitPose(azimuthDegrees = 40f, elevationDegrees = 28f, distance = 3f)
+            camera.frontAzimuth = 40f
+            camera.playIntro(ReplayIntro.startFor(camera.home), held = held)
+            repeat(10) { camera.update(1f / 60f) }
+
+            camera.doubleTapZoom(0, 0, zoomIn = true)
+            assertFalse(camera.introPlaying)
+            assertTrue(camera.following)
+            // Well before the crane would have landed: the room is home already.
+            repeat(120) { camera.update(1f / 60f) }
+            assertEquals(3f, camera.pose.distance, 0.05f)
+            assertEquals(40f, camera.pose.azimuthDegrees, 1f)
+        }
+    }
+
+    @Test
     fun `a touch cuts the entrance short`() {
         val camera = ArDebugOrbitCamera(drift = false)
         camera.home = OrbitPose(distance = 3f)

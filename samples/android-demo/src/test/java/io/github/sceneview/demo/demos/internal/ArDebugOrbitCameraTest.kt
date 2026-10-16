@@ -617,6 +617,45 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `a stage that changes under a camera the finger left frames the room again, from that side`() {
+        val camera = ArDebugOrbitCamera(drift = false)
+        camera.setViewport(1080, 2400)
+        camera.frontAzimuth = 60f
+        camera.recenter()
+        camera.home = camera.home.copy(elevationDegrees = 30f, distance = 5f)
+        repeat(240) { camera.update(1f / 60f) }
+        camera.grabBegin(500, 1000, strafe = false)
+        camera.grabUpdate(700, 1000)
+        camera.update(1f / 60f)
+        camera.grabEnd()
+        camera.scrollBegin(0, 0, 100f)
+        camera.scrollUpdate(0, 0, 100f, 200f)
+        val left = camera.pose
+        assertFalse(camera.following)
+
+        // The same band set again, as each recomposition does, leaves the finger's view alone.
+        camera.band = camera.band.copy()
+        camera.setViewport(1080, 2400)
+        assertFalse(camera.following)
+
+        // Small card to large, phone turned, chrome moved: framed again, on the side it was left.
+        for (change in listOf<(ArDebugOrbitCamera) -> Unit>(
+            { it.setViewport(2400, 1080) },
+            { it.band = OrbitBand.stage(aspect = 2f) },
+        )) {
+            camera.grabBegin(500, 1000, strafe = false)
+            camera.grabEnd()
+            assertFalse(camera.following)
+            change(camera)
+            assertTrue(camera.following)
+            camera.home = camera.home.copy(distance = 7f)
+            repeat(240) { camera.update(1f / 60f) }
+            assertEquals(7f, camera.pose.distance, 1e-2f)
+            assertEquals(left.azimuthDegrees, camera.pose.azimuthDegrees, 1e-2f)
+        }
+    }
+
+    @Test
     fun `a pinch zooms within range before any scene is known`() {
         val camera = ArDebugOrbitCamera(drift = false)
         camera.scrollBegin(0, 0, 100f)
