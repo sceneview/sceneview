@@ -26,8 +26,11 @@ import io.github.sceneview.demo.demos.internal.ReplayLens
 import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
+import io.github.sceneview.demo.demos.internal.ScanCoverage
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
+import io.github.sceneview.demo.demos.internal.ScanLight
+import io.github.sceneview.demo.demos.internal.ScanMotion
 import io.github.sceneview.demo.demos.internal.ScanProjection
 import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
@@ -123,6 +126,42 @@ internal class ScanCapture private constructor(
      * hold, so the HUD's count and the session's are one figure. `0` without raw depth.
      */
     val denseCount: Int get() = denseTotal.get()
+
+    /**
+     * What the camera has really seen of the room, cell by cell, from the feature points and
+     * the raw depth: the paint over the camera and "Room N% covered" ([ScanCoverage]).
+     */
+    val coverage = ScanCoverage()
+
+    /** How fast the phone turns and moves: the coach's "Slow down", and what a look is worth. */
+    val motion = ScanMotion()
+
+    /** The camera image's brightness at the latest feature-point frame, 0–1; `NaN` before one. */
+    @Volatile
+    var luma = Float.NaN
+        private set
+
+    /** How many feature points ARCore gave at the latest feature-point frame; `-1` before one. */
+    @Volatile
+    var framePoints = -1
+        private set
+
+    private var lastDisplay: DebugPose? = null
+
+    /** The camera's display-oriented pose at [nanos]: the motion the coach reads. Main thread. */
+    fun observePose(nanos: Long, display: DebugPose) {
+        motion.update(nanos, display)
+        coverage.motionFactor = motion.lookFactor
+        lastDisplay = display
+    }
+
+    /** One feature-point frame: its points paint the room, its [image] gives the light. Main thread. */
+    fun observePoints(xyz: FloatArray, confidence: FloatArray, image: ScanImage?) {
+        framePoints = confidence.size
+        if (image != null) luma = ScanLight.meanLuma(image.yuv)
+        val camera = lastDisplay ?: return
+        if (confidence.isNotEmpty()) coverage.observePoints(camera, xyz, confidence)
+    }
 
     /**
      * The dense map as the live 3D card draws it: a snapshot taken after a fusion at most every
@@ -293,6 +332,7 @@ internal class ScanCapture private constructor(
         fuseJob = scope.launch(Dispatchers.Default) {
             try {
                 val samples = DepthBackProjection.project(frame)
+                coverage.observeDepth(frame.pose, samples)
                 val stats = fusion.add(samples)
                 intake.count(
                     when {

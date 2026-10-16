@@ -75,4 +75,17 @@
     <string name="demo_ar_rerun_plan_content_description">Floor plan of the room</string>
     <!-- A scan's settings sheet: its files (.rrd, .glb, .ply), whatever view is on screen. -->
     <string name="demo_ar_rerun_export_files">Export 3D files</string>
+
+    <!-- The scan's line (#4590): how much of the room the scan has really seen — its walls all
+         around, its floor and its ceiling. %1$d a percentage. -->
+    <string name="demo_ar_rerun_scan_covered">Room %1$d%% covered</string>
+    <!-- The coach over the shutter during a scan (#4590): one line at a time, the most urgent
+         first. Words a user can act on: never "tracking", "plane", "points" or "features". -->
+    <string name="demo_ar_rerun_coach_slow_down">Move slowly to capture more detail</string>
+    <string name="demo_ar_rerun_coach_more_light">Too dark — turn on more light</string>
+    <string name="demo_ar_rerun_coach_step_back">Too close — step back a little</string>
+    <string name="demo_ar_rerun_coach_move_closer">Too far — move closer</string>
+    <string name="demo_ar_rerun_coach_more_detail">Aim at an area with more detail</string>
+    <string name="demo_ar_rerun_coach_hold_here">Hold here a moment to fill it in</string>
+    <string name="demo_ar_rerun_coach_covered">Room covered — tap stop to finish</string>
 </resources>

@@ -59,6 +59,10 @@ class YuvFrame(
         val chroma = (yy shr 1) * uvRowStride + (x shr 1) * uvPixelStride
         return ScanColor.yuvToArgb(luma, u.get(chroma).toInt() and 0xFF, v.get(chroma).toInt() and 0xFF)
     }
+
+    /** The brightness at pixel ([px], [py]), 0–255; coordinates are clamped to the image. */
+    fun luma(px: Int, py: Int): Int =
+        y.get(py.coerceIn(0, height - 1) * yRowStride + px.coerceIn(0, width - 1)).toInt() and 0xFF
 }
 
 /** Colour conversion of the camera's frames. */

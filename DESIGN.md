@@ -1120,8 +1120,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
 - **A scan in progress: the camera is the screen, the room is rebuilt on glass.** Two
   pieces of chrome share one row under the header, and nothing else stands over the camera
   but the shutter. *The line* is one 36 dp glass pill at the start of the row: the `danger`
-  dot, the clock in `type-card` and the point count in `type-caption`, both in tabular
-  figures. *The live 3D card* stands at the end of the row, 44 % of it wide
+  dot, the clock in `type-card` and "Room N% covered" in `type-caption`, both in tabular
+  figures. QA recordings without a room capture show only the dot and clock. *The live 3D card* stands at the end of the row, 44 % of it wide
   (`DebugView.liveCardShare`), `radius-lg`, with the over-media edge and no shadow: the
   same view the replay opens on, drawn with **no ground of its own** — a translucent
   `SceneView` (no skybox, clear alpha 0) over `DebugView.liveGlass`, the stage ground at
@@ -1132,18 +1132,29 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   grows with the same spring — no other motion. The only red is `danger` (the dot and the
   shutter). While recording the dock is empty: nothing may leave a scan half-taken. The
   privacy line ("Everything stays on your phone.") ends the idle copy.
-- **A scan's figures can be trusted, and a spent budget says so.** The pill counts points
-  as "246k points"; from 80 % of what the scan can hold it counts against it, "412k /
-  500k"; at the limit it reads "500k · full" in `accent-guidance` and one line in the same
-  colour stands under the pill until the scan ends: "Point limit reached — new areas add no
-  more points." (the photo limit and both limits have theirs). A count that has stopped
-  never reads as a frozen screen. The notice stays, so it stands beside the 3D card, in the
-  width the card leaves, and costs the camera no height; the stop hint over the shutter
-  ("Tap to stop and open your scan in 3D") leaves after 8 s. On its side, the notice stands
-  under the pill in its corner. The settings sheet holds what is read once: points and
-  photos against their budgets, the scan's kind, and **surfaces found as an area**
-  ("14 m²") — never ARCore's count of plane objects, which falls from 4 to 1 each time
-  patches of one floor merge.
+- **Coverage stays on the room (#4590).** Unpainted areas have not been observed; small
+  hexagon dots mark a first pass and grow as steady observations add detail. Four world-anchored
+  batches use `accent-progress`: tiers 1–3 have diameters of 0.16 / 0.26 / 0.36 of a coverage
+  cell at alpha 0.45 / 0.55 / 0.65; tier 4 fills a 0.9-cell square at alpha 0.35. Marks sit at
+  grid centres projected onto the measured surface. New cells flash in `on-scrim` at alpha
+  0.9 and fade over 600 ms, in three rotating batches. Geometry uploads at most every 200 ms,
+  only when coverage changes. The SDK plane grid hides during recording so it cannot be
+  mistaken for captured detail. These over-camera tokens are the same in light and dark.
+- **One coach line over the shutter (#4590).** Finishing takes priority, then advice while
+  recording, then the stop hint during the first 8 s. The `scrimDark` pill holds a
+  `Layout.dockIconSize` icon, `Space.sm` gap and `type-body` words in `on-scrim`, with
+  `motionFade` between lines. "Move slowly to capture more detail" explains the benefit;
+  entering that advice gives one threshold haptic. Action icons use `accent-guidance`,
+  "Hold here" uses `accent-progress`, and "Covered" uses `accent-success`. The coach stays
+  silent when tracking is lost so ARCore's own guidance can be read. Coverage is an estimate
+  of observed walls, floor and ceiling, not a guarantee of a complete reconstruction.
+- **A spent budget says so; raw figures stay in settings.** When a budget is spent, one
+  `accent-guidance` line under the pill explains it: "Point limit reached — new areas add no
+  more points." (the photo limit and both limits have theirs). The notice stays beside the
+  3D card, in the width the card leaves, and costs the camera no height. On its side, the
+  notice stands under the pill in its corner. The settings sheet holds points and photos
+  against their budgets, the scan's kind, and **surfaces found as an area** ("14 m²") — never
+  ARCore's count of plane objects, which falls from 4 to 1 each time patches of one floor merge.
 - **One flow, like a capture app (Polycam, Scaniverse, Reality Composer), laid out as the
   iOS demo's (#4068).** The demo opens on a scrolling page on the themed stage's ground, max width
   560 dp, clear of the header and the settings button: `type-display` "Scan a room in 3D"

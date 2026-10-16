@@ -2,16 +2,19 @@
 
 package io.github.sceneview.demo.demos
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,10 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,6 +65,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.ArDebugSession
+import io.github.sceneview.demo.demos.internal.ScanAdvice
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanFigures
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -80,21 +85,18 @@ import kotlinx.coroutines.delay
 
 /*
  * A room being scanned, over the camera it is scanned with. The camera is the screen: one glass
- * line says a scan is running, for how long and how many points it holds; the room being rebuilt
+ * line says a scan is running, for how long and how much of the room it covers; the room being rebuilt
  * stands beside it on glass, the camera showing through, and grows to the row's width on a tap;
  * a limit reached says so under the line; the shutter keeps the bottom. The counts — never read
  * while walking a room — are rows of the settings sheet.
  */
 
-/**
- * A scan in progress, on one line of glass: the red recording dot, the clock, and the points
- * the scan holds ([ScanCopy.pointsLine]) — counted against their budget once it is in sight, and
- * `full` when it is spent, so a count that has stopped does not read as a frozen screen.
- */
+/** The recording dot, clock and room coverage; QA recordings have no coverage estimate. */
 @Composable
-internal fun ScanHud(seconds: Float, figures: ScanFigures, modifier: Modifier = Modifier) {
+internal fun ScanHud(seconds: Float, percent: Int?, modifier: Modifier = Modifier) {
     val clock = ArDebugFormat.clock(seconds)
-    val spoken = "Scanning for $clock, ${ScanCopy.pointsSpoken(figures.points, figures.pointBudget)}"
+    val covered = percent?.let { stringResource(R.string.demo_ar_rerun_scan_covered, it) }
+    val spoken = if (covered == null) "Scanning for $clock" else "Scanning for $clock, $covered"
     GlassPill(
         modifier = modifier.testTag(SCAN_HUD_TAG).clearAndSetSemantics { contentDescription = spoken },
         // The line stands where the camera is brightest (a ceiling, a window): its own scrim.
@@ -102,19 +104,16 @@ internal fun ScanHud(seconds: Float, figures: ScanFigures, modifier: Modifier = 
     ) {
         Box(Modifier.size(ScanDotSize).background(ArOverlay.accentRecord, CircleShape))
         Spacer(Modifier.width(Space.sm))
-        // Tabular figures: the pill does not twitch as the seconds turn.
         Text(text = clock, style = SceneViewTokens.Type.card.copy(fontFeatureSettings = "tnum"), maxLines = 1)
-        Spacer(Modifier.width(Space.sm))
-        Text(
-            text = ScanCopy.pointsLine(figures.points, figures.pointBudget),
-            // A spent budget reads in the colour of the notice that explains it.
-            style = SceneViewTokens.Type.caption.copy(
-                fontFeatureSettings = "tnum",
-                color = if (figures.pointsFull) ArOverlay.accentGuidance else Color.Unspecified,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (covered != null) {
+            Spacer(Modifier.width(Space.sm))
+            Text(
+                text = covered,
+                style = SceneViewTokens.Type.caption.copy(fontFeatureSettings = "tnum"),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -339,9 +338,8 @@ internal fun ScanStage(
 }
 
 /**
- * Record, and the one line over it: a wait while the scan is packed, or how to stop — which
- * leaves after [STOP_HINT_MS] and gives the camera its height back. Nothing while idle (the
- * status card says what Record does).
+ * Record, with one line above it: finishing first, then the coach, then the stop hint during
+ * the first [STOP_HINT_MS]. Nothing while idle (the status card says what Record does).
  */
 @Composable
 internal fun ScanShutter(
@@ -350,7 +348,15 @@ internal fun ScanShutter(
     startEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    advice: ScanAdvice? = null,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val activeAdvice = advice.takeIf { recording && !finishing }
+    LaunchedEffect(activeAdvice) {
+        if (activeAdvice == ScanAdvice.SlowDown) {
+            haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+        }
+    }
     var hinting by remember(recording) { mutableStateOf(recording) }
     LaunchedEffect(recording) {
         if (recording) {
@@ -360,29 +366,50 @@ internal fun ScanShutter(
     }
     val line = when {
         finishing -> ScanCopy.FINISHING
+        activeAdvice != null -> stringResource(activeAdvice.line)
         recording && hinting -> ScanCopy.STOP_HINT
         else -> null
     }
     // The line that is leaving is still the one drawn while it fades.
-    var shown by remember { mutableStateOf(line) }
-    if (line != null) shown = line
+    var shown by remember { mutableStateOf(line to activeAdvice) }
+    if (line != null) shown = line to activeAdvice
+    val adviceFade = motionFade<Float>()
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         AnimatedVisibility(visible = line != null, enter = fadeIn(motionFade()), exit = fadeOut(motionFade())) {
-            Text(
-                text = shown.orEmpty(),
-                style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .padding(horizontal = Space.md)
-                    .widthIn(max = ArOverlay.maxWidth)
-                    .background(ArOverlay.scrimDark, RoundedCornerShape(SceneViewTokens.Radius.lg))
-                    .padding(horizontal = Space.md, vertical = Space.sm)
-                    .testTag(SCAN_LINE_TAG),
-            )
+            AnimatedContent(
+                targetState = shown,
+                transitionSpec = { fadeIn(adviceFade) togetherWith fadeOut(adviceFade) },
+                label = "scan-advice",
+            ) { (text, reason) ->
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = Space.md)
+                        .widthIn(max = ArOverlay.maxWidth)
+                        .background(ArOverlay.scrimDark, RoundedCornerShape(SceneViewTokens.Radius.lg))
+                        .padding(horizontal = Space.md, vertical = Space.sm)
+                        .testTag(SCAN_LINE_TAG),
+                    horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (reason != null) {
+                        Icon(
+                            imageVector = reason.icon,
+                            contentDescription = null,
+                            tint = reason.tint,
+                            modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize),
+                        )
+                    }
+                    Text(
+                        text = text.orEmpty(),
+                        style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
         }
         RecordShutter(
             isRecording = recording,

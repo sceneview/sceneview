@@ -176,6 +176,7 @@ internal class ArDebugRecorder {
         trace.addPose(nanos, display)
 
         val capture = scan?.takeIf { it.trace === trace }
+        capture?.observePose(nanos, display)
         capture?.recordDepthStats(nanos)
         val pointsDue = pointsGate.isDue(nanos)
         val photoDue = capture?.wantsPhoto(display) == true
@@ -226,6 +227,9 @@ internal class ArDebugRecorder {
                     }
                     val colors = if (scan != null && image != null) scan.colors(image, xyz) else null
                     trace.addPoints(nanos, xyz, confidence, colors)
+                    scan?.observePoints(xyz, confidence, image)
+                } else {
+                    scan?.observePoints(FloatArray(0), FloatArray(0), image)
                 }
             }
         }

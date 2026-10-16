@@ -48,6 +48,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -934,6 +935,7 @@ private fun RerunLiveScreen(
     // SceneView from a free camera. The dock's "3D view" opens it full-screen.
     val debugSession = remember { ArDebugSession() }
     val debugRecorder = remember { ArDebugRecorder() }
+    val guide = remember { ScanGuide() }
     val debugOrbit = remember { ArDebugOrbitCamera(drift = qaState == null) }
     var debugFullScreen by remember { mutableStateOf(qaDebug?.fullScreen == true) }
 
@@ -1207,7 +1209,7 @@ private fun RerunLiveScreen(
                         ScanHud(
                             seconds = scan?.elapsedSeconds(ScanClock.readAt(now, stoppedNanos))
                                 ?: debugSession.stats.duration,
-                            figures = scanFigures,
+                            percent = scan?.let { guide.percent },
                         )
                     } else {
                         ScanStartingHud(cameraReady)
@@ -1291,6 +1293,7 @@ private fun RerunLiveScreen(
                         startEnabled = isTracking,
                         onStart = onStartScan,
                         onStop = onStopScan,
+                        advice = if (isTracking) guide.advice else null,
                     )
                 }
             }
@@ -1321,6 +1324,9 @@ private fun RerunLiveScreen(
             ),
         ),
     ) {
+        // Declared before ARSceneView so its nodes detach before these materials are released.
+        val paint = remember(engine, materialLoader) { ScanCoverageScene(engine, materialLoader) }
+        DisposableEffect(paint) { onDispose { paint.destroy() } }
         val cameraStream = rememberARCameraStream(materialLoader)
         // QA camera backdrop (#3308): the emulator delivers no camera frame.
         val qaBackdrop = rememberQaCameraBackdropActive(cameraReady)
@@ -1335,7 +1341,7 @@ private fun RerunLiveScreen(
                 surfaceType = qaCameraBackdropSurfaceType(),
                 cameraStream = if (qaBackdrop) null else cameraStream,
                 playbackDataset = arPlaybackDataset,
-                planeRenderer = true,
+                planeRenderer = !recording,
                 sessionConfiguration = { session: Session, config: Config ->
                     config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -1358,7 +1364,9 @@ private fun RerunLiveScreen(
                     // A room scan rides on the same pass until Stop: then it takes no more photos.
                     if (qaDebug == null && !qaRecord) {
                         debugRecorder.record(debugSession.trace, session, frame, anchors, scan.takeUnless { finishing })
+                        guide.onFrame(scan.takeUnless { finishing }, isTracking, trackingFailureReason)
                     }
+                    paint.update(scan?.coverage, System.nanoTime())
                 },
                 // A forced QA state hides the SDK's "Couldn't start AR" card so the screen
                 // can be captured on the emulator, which never starts AR (#2754).
@@ -1389,6 +1397,7 @@ private fun RerunLiveScreen(
                     }
                 )
             ) {
+                key(paint) { Node(apply = { paint.nodes.forEach { addChildNode(it) } }) }
                 anchors.forEach { anchor ->
                     // One model instance per placement: a Filament instance can only hang
                     // off one node, so a shared one showed a single dog however many taps.
