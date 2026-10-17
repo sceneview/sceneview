@@ -101,21 +101,10 @@ class ArDebugFramingFitTest {
         }
     }
 
-    @Test
-    fun `the sphere framing it replaces cut a square room on an upright phone`() {
-        // The room of the issue's capture, near enough: as wide as it is deep, on a 5.8" screen.
-        val bounds = box(floatArrayOf(4f, 2.4f, 4f))
-        val before = ArDebugFraming.home(
-            bounds, 35f, fov, 0.46f,
-            elevationDegrees = 40f,
-            margin = ArDebugFraming.REPLAY_MARGIN,
-        )
-        val seen = projected(bounds, before, 0.46f)
-        assertTrue("the old framing held the room after all", seen[0] < -1f || seen[2] > 1f)
-
-        val after = ArDebugFraming.fit(bounds, 35f, 40f, fov, 0.46f)
-        assertTrue("the fit should stand further back", after.distance > before.distance)
-    }
+    // The sphere-and-margin `home(…, margin = REPLAY_MARGIN)` this fit replaced for the dollhouse is
+    // gone from the replay too (it projects the box's corners into an `OrbitBand` now), so the
+    // test that measured the old framing cutting a square room has nothing left to measure. The
+    // square room on an upright phone is one of the cases of the two tests above.
 
     @Test
     fun `the angles asked for are the angles kept`() {

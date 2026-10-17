@@ -67,6 +67,27 @@ class ArDebugSessionTest {
     }
 
     @Test
+    fun `a session played without the 3D view counts where its cursor stands`() {
+        val session = ArDebugSession(tenSeconds())
+        // Nothing has drawn it yet: the timeline has no length to scrub.
+        assertEquals(0f, session.stats.duration, 0f)
+        session.scrubTo(4f)
+        session.count(session.trace.frameAt(session.time))
+
+        assertEquals(10f, session.stats.duration, 1e-3f)
+        assertEquals(4f, session.stats.time, 1e-3f)
+        // 2 cm every tenth of a second: 80 cm walked in four seconds.
+        assertEquals(0.8f, session.stats.pathMetres, 1e-3f)
+        assertTrue(session.stats.tracking)
+        assertEquals(null, session.stats.room)
+
+        session.scrubTo(9f)
+        session.count(session.trace.frameAt(session.time), points = 1234, floorY = 0f)
+        assertEquals(9f, session.stats.time, 1e-3f)
+        assertEquals(1234, session.stats.mapPoints)
+    }
+
+    @Test
     fun `a frame hitch does not jump the replay`() {
         val session = ArDebugSession(tenSeconds())
         session.scrubTo(1f)

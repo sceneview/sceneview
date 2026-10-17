@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos.internal
 
+import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
@@ -148,7 +149,7 @@ data class ArDebugStyle(
         (pixels * metresPerPixel).coerceIn(minMetres, maxMetres)
 
     val mapPointRadius get() = px(2.4f, 0.004f, 0.05f)
-    val livePointRadius get() = px(3.8f, 0.006f, 0.07f)
+    val livePointRadius get() = px(3.0f, 0.006f, 0.07f)
     val trailRadius get() = px(2.2f * trailWeight, 0.004f * trailWeight, 0.05f * trailWeight)
     val trailHeadRadius get() = px(3.4f * trailWeight, 0.006f * trailWeight, 0.08f * trailWeight)
     val frustumEdge get() = px(1.3f, 0.002f, 0.03f)
@@ -666,4 +667,102 @@ object ArDebugGeometry {
         for (anchor in frame.anchors) add(anchor.pose.x, anchor.pose.y, anchor.pose.z)
         return if (any) b else null
     }
+
+    /**
+     * Bounds of what a finished recording shows: [contentBounds], grown to the body of its point
+     * map and of its dense cloud ([dense], flat xyz). The clouds are measured by [robustBounds],
+     * so the room they draw is framed whole and a stray point a street away is not.
+     *
+     * The dense cloud is trimmed far less than the point map ([DENSE_TRIM]): it is already kept
+     * to what the depth sensor saw twice within a few metres, and a room's walls are its
+     * outermost points — the point map's trim cut the thinnest wall off the frame, and the room
+     * ran past the edge of the screen.
+     */
+    fun subjectBounds(frame: ArDebugFrame, dense: FloatArray? = null): FloatArray? {
+        val bodies = listOfNotNull(
+            frame.mapPoints?.let { robustBounds(it, ROBUST_TRIM) },
+            dense?.let { robustBounds(it, DENSE_TRIM) },
+        )
+        return bodies.fold(contentBounds(frame)) { bounds, body ->
+            bounds?.let { b ->
+                FloatArray(6) { if (it < 3) min(b[it], body[it]) else max(b[it], body[it]) }
+            } ?: body
+        }
+    }
+
+    /**
+     * The box holding the body of a point cloud ([positions], flat xyz): on each axis, from its
+     * [trim] quantile to the opposite one, read on at most [ROBUST_SAMPLES] points spread
+     * across the cloud. `null` under [ROBUST_MIN_POINTS] points — too few to tell a body from
+     * its strays.
+     */
+    fun robustBounds(positions: FloatArray, trim: Float = ROBUST_TRIM): FloatArray? {
+        val count = positions.size / 3
+        if (count < ROBUST_MIN_POINTS) return null
+        val samples = min(count, ROBUST_SAMPLES)
+        val axis = FloatArray(samples)
+        val out = FloatArray(6)
+        for (a in 0 until 3) {
+            for (i in 0 until samples) {
+                val index = (i.toLong() * count / samples).toInt()
+                axis[i] = positions[index * 3 + a]
+            }
+            axis.sort()
+            val cut = (samples * trim).toInt()
+            out[a] = axis[cut]
+            out[a + 3] = axis[samples - 1 - cut]
+        }
+        return out.takeIf { box -> box.all { it.isFinite() } }
+    }
+
+    /**
+     * The heading of a room's walls about +Y, in degrees within ±45: the direction its vertical
+     * [planes] run along, each weighing as much as it is long — walls a quarter-turn apart agree,
+     * which is what makes a room a rectangle. `null` when no wall is long enough to tell.
+     */
+    fun roomYawDegrees(planes: List<DebugPlane>): Float? {
+        var sumSin = 0.0
+        var sumCos = 0.0
+        for (plane in planes) {
+            val (dx, dz) = wallRun(plane) ?: continue
+            val length = sqrt(dx * dx + dz * dz)
+            // Four times the angle folds the wall's two directions and its neighbours' onto one.
+            val folded = 4.0 * atan2(dx.toDouble(), dz.toDouble())
+            sumSin += length * sin(folded)
+            sumCos += length * cos(folded)
+        }
+        if (sumSin == 0.0 && sumCos == 0.0) return null
+        return Math.toDegrees(atan2(sumSin, sumCos) / 4.0).toFloat()
+    }
+
+    /**
+     * The run of a wall seen from above — a segment, from one to the other of its two farthest
+     * vertices, as `(dx, dz)` — or `null` for a plane that is no wall, or too short to tell.
+     */
+    private fun wallRun(plane: DebugPlane): Pair<Float, Float>? {
+        if (plane.kind != DebugPlaneKind.Wall) return null
+        var best = 0f
+        var run: Pair<Float, Float>? = null
+        for (i in 0 until plane.vertexCount) for (j in i + 1 until plane.vertexCount) {
+            val x = plane.polygon[j * 3] - plane.polygon[i * 3]
+            val z = plane.polygon[j * 3 + 2] - plane.polygon[i * 3 + 2]
+            val length = x * x + z * z
+            if (length > best) {
+                best = length
+                run = x to z
+            }
+        }
+        return run?.takeIf { sqrt(best) >= ROOM_YAW_MIN_WALL_M }
+    }
+
+    /** The share of a cloud left out at each end of an axis by [robustBounds]. */
+    const val ROBUST_TRIM = 0.04f
+
+    /** The same for a dense cloud, which holds few strays: a wall is more than this of a room. */
+    const val DENSE_TRIM = 0.005f
+    const val ROBUST_SAMPLES = 4096
+    const val ROBUST_MIN_POINTS = 32
+
+    /** A wall shorter than this, seen from above, has no heading worth squaring a map with. */
+    const val ROOM_YAW_MIN_WALL_M = 0.5f
 }

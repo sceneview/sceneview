@@ -101,7 +101,7 @@ class RoomMeasureTest {
         val measure = RoomMeasure.of(room(0.4f), floorY)!!
         val mesh = DebugMesh()
         val offset = 0.2f
-        MeasureDrawing.addDimension(mesh, measure, 0, floorY, offset, 0.01f, textHeight = 0.12f, textWidth = 0.3f)
+        MeasureDrawing.addDimension(mesh, measure, 0, floorY, MeasureSize(0.12f, offset), 0.01f, labelWidthPx = 320f)
         assertTrue(mesh.triangleCount > 0)
         val c = measure.corners
         val cx = (c[0] + c[2] + c[4] + c[6]) / 4f
@@ -127,7 +127,7 @@ class RoomMeasureTest {
     fun `lines sample the solid strip and labels read upright, the atlas read bottom-up`() {
         val measure = RoomMeasure.of(room(0.4f), floorY)!!
         val mesh = DebugMesh()
-        MeasureDrawing.addDimension(mesh, measure, 1, floorY, 0.2f, 0.01f, textHeight = 0.12f, textWidth = 0.3f)
+        MeasureDrawing.addDimension(mesh, measure, 1, floorY, MeasureSize(0.12f, 0.2f), 0.01f, labelWidthPx = 320f)
         fun row(vertex: Int) = (1f - mesh.uvs[vertex * 2 + 1]) * MeasureDrawing.ATLAS_HEIGHT
         // The first ribbon is the dimension line: its four corners inside the solid strip.
         for (i in 0 until 4) {

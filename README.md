@@ -40,7 +40,7 @@ API or the doc gets fixed.
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
 [Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
-[Rerun AR Replay](https://sceneview.github.io/open?demo=ar-rerun), a real AR session rebuilt in 3D.
+[Room Scan](https://sceneview.github.io/open?demo=ar-rerun), your room scanned and replayed in 3D.
 
 ---
 
@@ -522,6 +522,7 @@ concept by concept (`ArFragment` → `ARSceneView { }`, `ModelRenderable` →
   at your desk with `ARSceneView(playbackDataset = file)`. See
   [`docs/docs/ar-recording.md`](docs/docs/ar-recording.md) and the
   [Record & Playback demo](samples/android-demo/RECORDING_PLAYBACK.md).
+<<<<<<< HEAD
 - **Hosted Rerun viewer** — tap **Save & Share** in the AR Rerun demo, host the `.rrd` file at
   an https address that ends in `.rrd`, and open
   `https://sceneview.github.io/rerun/?url=<encoded-url>` to scrub the session frame by frame in a
@@ -529,6 +530,11 @@ concept by concept (`ArFragment` → `ARSceneView { }`, `ModelRenderable` →
   GitHub repository's `raw.githubusercontent.com` link and GitHub Pages do, a GitHub release
   asset does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule that allows
   `https://sceneview.github.io`. Architecture and the Kotlin API
+=======
+- **Hosted Rerun viewer** — tap **Save & Share** in the Room Scan demo, host the `.rrd` file on
+  any public URL, and open `https://sceneview.github.io/rerun/?url=<encoded-url>` to scrub the
+  session frame by frame in a browser, with no local install. Architecture and the Kotlin API
+>>>>>>> origin/feat/room-scan-integration
   (`RerunBridge.requestSaveAndShare`) are in the *AR Debug — Rerun.io* section of
   [`llms.txt`](./llms.txt).
 

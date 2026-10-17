@@ -350,8 +350,11 @@ internal fun RecordShutter(
     startEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    // False once Stop has been taken and the take is being packed: the square greys out the
+    // way the disc does before the camera has its bearings.
+    stopEnabled: Boolean = true,
 ) {
-    val tappable = isRecording || startEnabled
+    val tappable = if (isRecording) stopEnabled else startEnabled
     val haptic = rememberHapticFeedback()
     val label = stringResource(if (isRecording) R.string.ar_rec_stop_recording else R.string.ar_rec_start_recording)
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
