@@ -287,7 +287,7 @@ class KeyframeGate(
         const val MIN_STEP_M = 0.15f
         const val MIN_TURN_DEGREES = 10f
 
-        /** 300 photos of 240×320: about 5 MB of JPEG and 23 MB of thumbnails. */
+        /** Photo count bound; encoded byte and resolution limits live in [ScanPhotoPolicy]. */
         const val MAX_PHOTOS = 300
     }
 }

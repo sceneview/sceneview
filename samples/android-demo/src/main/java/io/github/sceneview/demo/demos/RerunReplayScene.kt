@@ -37,6 +37,7 @@ import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -177,8 +178,21 @@ private suspend fun openReplay(
     val thumbnails = (0 until trace.imageCount).map { i ->
         async(Dispatchers.Default) {
             val path = trace.imagePath(i)
-            val options = BitmapFactory.Options().apply { inSampleSize = THUMBNAIL_SAMPLE_SIZE }
-            shell.decode(path, options)?.let { path to it }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            shell.decode(path, bounds)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = ScanPhotoPolicy.thumbnailSample(bounds.outWidth, bounds.outHeight)
+            }
+            shell.decode(path, options)?.let { decoded ->
+                // A sharp photo's thumbnail is as large as its neighbours': 120x160, not a power of two off.
+                val (width, height) = ScanPhotoPolicy.thumbnailSize(bounds.outWidth, bounds.outHeight)
+                val sized = if (bounds.outWidth > 0 && (decoded.width != width || decoded.height != height)) {
+                    Bitmap.createScaledBitmap(decoded, width, height, true).also { decoded.recycle() }
+                } else {
+                    decoded
+                }
+                path to sized
+            }
         }
     }
     RerunReplayMedia(
@@ -255,9 +269,6 @@ internal fun warmUpReplay(engine: Engine, materialLoader: MaterialLoader) {
 
 /** The off-screen warm-up's size: past bloom's seven halvings, nothing more. */
 private const val WARM_UP_SIZE = 128
-
-/** 240×320 frames at a half: 120×160, ~77 KB each — the 184 of them fit in 14 MB. */
-private const val THUMBNAIL_SAMPLE_SIZE = 2
 
 /**
  * The replay's textured layers, kept in step with an [ArDebugFrame] like `ArDebugLayers`: each

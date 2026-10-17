@@ -28,7 +28,10 @@ import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
+import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.ScanProjection
+import io.github.sceneview.demo.demos.internal.ScanSharpPicker
 import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +84,11 @@ internal class ScanCapture private constructor(
     }
 
     private val gate = KeyframeGate()
-    private val photoSize = ScanProjection.photoSize(lens, PHOTO_LONG_SIDE)
+    private val photoMotion = ScanPhotoMotion()
+    private val sharpPicker = ScanSharpPicker()
+
+    /** Whether the camera was calm at the latest tracked frame: what a sharp photo waits for. */
+    private var calm = false
     private val jpegs = ConcurrentHashMap<String, ByteArray>()
     private val thumbnails = ConcurrentHashMap<String, Bitmap>()
 
@@ -148,7 +155,12 @@ internal class ScanCapture private constructor(
     val isPhotoLimitReached: Boolean get() = gate.isFull
 
     /** Whether the camera at [display] should take a photo now. */
-    fun wantsPhoto(display: DebugPose): Boolean = inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    fun wantsPhoto(nanos: Long, display: DebugPose): Boolean {
+        // Measured on every tracked frame, so the motion between two consecutive frames is always
+        // known. It only decides whether the photo is a sharp one: the cadence is the gate's alone.
+        calm = photoMotion.isCalm(nanos, display)
+        return inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    }
 
     /** The camera image of [frame], or `null` when ARCore has none to give this frame. */
     fun acquire(frame: Frame): ScanImage? = runCatching {
@@ -169,6 +181,8 @@ internal class ScanCapture private constructor(
      */
     fun takePhoto(nanos: Long, image: ScanImage, display: DebugPose) {
         val path = ScanArchive.photoPath(gate.count)
+        val sharp = sharpPicker.nextIsSharp(calm)
+        sharpPicker.accept(sharp)
         val pixels = image.copy()
         val sensor = image.sensor
         gate.accept(display)
@@ -177,14 +191,28 @@ internal class ScanCapture private constructor(
         inFlight.incrementAndGet()
         jobs += scope.launch(Dispatchers.Default) {
             try {
-                val (width, height) = photoSize
+                val size = ScanPhotoPolicy.targetSize(sharp, lens, pixels.width, pixels.height)
+                val (width, height) = size
                 val argb = ScanProjection.uprightImage(pixels, intrinsics, sensor, display, lens, width, height)
                 val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-                val jpeg = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, jpeg)
-                jpegs[path] = jpeg.toByteArray()
-                thumbnails[path] = Bitmap.createScaledBitmap(bitmap, width / 2, height / 2, true)
-                bitmap.recycle()
+                try {
+                    val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
+                        val scaled = if (w == width && h == height) bitmap
+                        else Bitmap.createScaledBitmap(bitmap, w, h, true)
+                        try {
+                            val out = ByteArrayOutputStream()
+                            if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
+                        } finally {
+                            if (scaled !== bitmap) scaled.recycle()
+                        }
+                    } ?: return@launch
+                    jpegs[path] = encoded.bytes
+                    // Same small live thumbnails as before, even when the stored photo is sharp.
+                    val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
+                    thumbnails[path] = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
+                } finally {
+                    bitmap.recycle()
+                }
             } finally {
                 inFlight.decrementAndGet()
             }
@@ -340,10 +368,12 @@ internal class ScanCapture private constructor(
         fuseJob?.join()
         model?.join()
         trace.journal?.lastOrNull()?.let { recordDepthStats(it.nanos) }
-        val events = trace.journal?.toList().orEmpty()
+        val journal = trace.journal?.toList().orEmpty()
         trace.journal = null
         jobs.toList().joinAll()
         if (trace.isEmpty) return null
+        // A photo whose encoding failed has no media: its image event does not reach the saved scan.
+        val events = journal.filterNot { it is ArDebugEvent.Image && jpegs[it.path] == null }
         val photos = events.filterIsInstance<ArDebugEvent.Image>().mapNotNull { image ->
             val jpeg = jpegs[image.path] ?: return@mapNotNull null
             val pose = poses[image.path] ?: return@mapNotNull null
@@ -409,10 +439,6 @@ internal class ScanCapture private constructor(
          * draw, so the card keeps its frame rate while the camera and the fusion run.
          */
         const val LIVE_DENSE_MAX_SURFELS = 150_000
-
-        /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
-        private const val PHOTO_LONG_SIDE = 320
-        private const val JPEG_QUALITY = 85
 
         /** Photos being encoded at once; past it a keyframe waits for the next frame. */
         private const val MAX_IN_FLIGHT = 3

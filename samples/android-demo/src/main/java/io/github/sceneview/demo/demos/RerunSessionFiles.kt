@@ -35,6 +35,7 @@ import io.github.sceneview.demo.demos.internal.RerunSessionStore
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -170,7 +171,15 @@ internal class LandingSession(val info: RerunStoredSession, val thumbnail: Image
 internal suspend fun RerunSessionStore.landingSessions(): List<LandingSession> = withContext(Dispatchers.IO) {
     list().map { info ->
         val thumbnail = thumbnail(info.id)?.let { file ->
-            runCatching { BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull()
+            runCatching {
+                // The first photo may be a sharp one: decoded at a card's size, never whole.
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.path, bounds)
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = ScanPhotoPolicy.previewSample(bounds.outWidth, bounds.outHeight)
+                }
+                BitmapFactory.decodeFile(file.path, options)?.asImageBitmap()
+            }.getOrNull()
         }
         LandingSession(info, thumbnail)
     }
