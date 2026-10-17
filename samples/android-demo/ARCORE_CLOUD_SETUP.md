@@ -118,13 +118,23 @@ Forks and PRs from forks won't have the secret — the demo's runtime check disa
 
 ## What "no Streetscape geometry visible" means
 
-Even with everything wired correctly, you'll see no overlay if any of these fail:
+Even with everything wired correctly, nothing is drawn until a whole chain holds. The status banner at the bottom of the Scene Mesh and Streetscape screens names the first link that does not, one sentence per cause:
 
-- **No Street View VPS coverage in your area.** Strasbourg city centre / Paris / NYC / Tokyo work; suburbs and rural areas often don't.
-- **Indoor.** Geospatial needs a clear-ish sky view to compute its localization.
-- **Tracking still initializing.** The first 5-30 seconds after launch the device is calibrating its IMU; the banner status will say "Looking for streetscape geometry…" or "Initializing geospatial…".
+| Banner | Cause | What to do |
+|---|---|---|
+| `Geospatial failed: ERROR_NOT_AUTHORIZED…` | The key restriction does not list this package + signing SHA-1 (store build and `.qa` debug build are two separate entries), or the ARCore API / billing is off. | Section 3 above. |
+| `Location is off on this phone…` | The system Location switch, not the app permission. | Quick Settings → Location. |
+| `Finding your location…`, then `Still no location fix…` | Earth is enabled but has no position — indoors, or no sky view. | Step outside. |
+| `No Google Street View coverage at this spot…` | `Session.checkVpsAvailabilityAsync` answered `UNAVAILABLE` for Earth's position. City centres are covered; suburbs and rural areas often are not. | Try another street. |
+| `Street View covers this spot, but nothing has loaded yet…` | Covered, localized, and still no geometry: the camera is indoors, behind a window, or not looking at buildings. | Pan across the buildings opposite, from outdoors. |
+| `Update Google Play Services for AR…` / `…internal error…` | `Earth.EarthState` is an error other than the two Cloud ones. | Update ARCore, or reopen the demo. |
 
-The status banner at the bottom of the demo distinguishes these cases — read it before assuming the integration is broken.
+The same inputs are logged once per change, never with a position, so a report can be read instead of guessed:
+
+```bash
+adb logcat -s ARSceneGeometryDemo/Streetscape ARSceneGeometryDemo/Mesh
+# status: camera=TRACKING earth=ENABLED earthTracking=true locationSwitch=on cloud=Available coverage=Available geometries=0 waitedLong=true
+```
 
 ## Permissions
 

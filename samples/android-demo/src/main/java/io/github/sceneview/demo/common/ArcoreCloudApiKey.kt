@@ -48,7 +48,8 @@ const val ARCORE_API_KEY_MISSING_MESSAGE =
  */
 fun arcoreApiKeyRejectedMessage(operation: String): String =
     "$operation failed: ERROR_NOT_AUTHORIZED. The ARCore Cloud API key is rejecting " +
-        "this APK. Check SHA-1 + billing + ARCore API restrictions in ARCORE_CLOUD_SETUP.md."
+        "this APK. Its Android restriction must list this app's package name with the SHA-1 " +
+        "that signed it; billing and the ARCore API are in ARCORE_CLOUD_SETUP.md."
 
 /**
  * Whether the build wired an ARCore Cloud API key into the manifest.

@@ -39,6 +39,14 @@
 
     <!-- Shared status copy — both modes run the same Geospatial session. -->
     <string name="demo_ar_scene_mesh_scanning">Scanning environment…</string>
+    <!-- Why nothing is drawn yet, one sentence per cause instead of one for all of them.
+         In the order the screen rules them out: the phone's Location switch, Earth's
+         position, Street View imagery at that position, then what the camera sees. -->
+    <string name="demo_ar_scene_mesh_location_off">Location is off on this phone. Turn it on in Quick Settings so the demo can find the buildings around you.</string>
+    <string name="demo_ar_scene_mesh_localizing">Finding your location…</string>
+    <string name="demo_ar_scene_mesh_not_localized">Still no location fix. Step outside, where the phone can see the sky and the building fronts.</string>
+    <string name="demo_ar_scene_mesh_no_coverage">No Google Street View coverage at this spot, so there is no building geometry here. Try another street.</string>
+    <string name="demo_ar_scene_mesh_covered_nothing_in_view">Street View covers this spot, but nothing has loaded yet. From outdoors, slowly pan across the buildings opposite — it does not work indoors.</string>
     <string name="demo_ar_scene_mesh_geospatial_unavailable">%1$s — try outdoors near mapped buildings. This feature also needs cloud setup.</string>
 
     <!-- Permission gate. Both modes need CAMERA + ACCESS_FINE_LOCATION before an
