@@ -23,7 +23,7 @@ object ModelThumbnails {
         // both GLBs still ship, and any surface that names them by stem still gets a
         // thumbnail rather than a placeholder.
         "shiba" to R.drawable.model_thumb_shiba,
-        "threejs_soldier" to R.drawable.model_thumb_threejs_soldier,
+        "quaternius_ranger" to R.drawable.model_thumb_quaternius_ranger,
         // HD pack scans with no bundled stand-in: keyed by the entry's `thumbnailStem`, rendered
         // from the downloaded GLB itself. The viewer also shows them on the stage until it loads.
         "hd_apollo11_exterior" to R.drawable.model_thumb_hd_apollo11_exterior,

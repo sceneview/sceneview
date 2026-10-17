@@ -3036,16 +3036,17 @@
       "cameraDistance": 1.5
     },
     {
-      "id": "threejs_soldier",
-      "name": "Soldier",
-      "source": "threejs",
-      "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
-      "author": "Tomás Laulhé (modified by Don McCurdy)",
+      "id": "quaternius_ranger",
+      "name": "Ranger",
+      "_comment": "Built for the demos from three free Standard packs by Quaternius, all CC0: the Male_Ranger outfit of 'Modular Character Outfits - Fantasy' (https://quaternius.com/packs/modularcharacteroutfitsfantasy.html) the head, eyes and eyebrows of Superhero_Male from 'Universal Base Characters' (https://quaternius.com/packs/universalbasecharacters.html), since the outfit ships without a head, and five clips of the 'Universal Animation Library' (https://quaternius.com/packs/universalanimationlibrary.html); all three packs share one skeleton. Clips renamed Idle, Walk, Run (Jog_Fwd_Loop), Sprint, Dance. Replaces threejs_soldier, a Mixamo character that was credited CC0 by mistake (#4586).",
+      "source": "quaternius",
+      "sourceUrl": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+      "author": "Quaternius",
       "license": "CC0-1.0",
       "formats": {
         "glb": {
-          "file": "models/glb/threejs_soldier.glb",
-          "size": "1.3MB"
+          "file": "models/glb/quaternius_ranger.glb",
+          "size": "5.7MB"
         }
       },
       "tags": [
@@ -3056,10 +3057,9 @@
       ],
       "usedIn": [
         "android-demo",
-        "android-tv-demo",
-        "ios-demo"
+        "android-tv-demo"
       ],
-      "defaultScale": 0.3,
+      "defaultScale": 1.0,
       "cameraDistance": 2.5
     },
     {

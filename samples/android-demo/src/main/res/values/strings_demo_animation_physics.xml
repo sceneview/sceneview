@@ -8,7 +8,7 @@
     <string name="demo_animation_physics_title">Animation</string>
     <string name="demo_animation_physics_subtitle">Play character animations under cinematic camera shots</string>
     <string name="demo_animation_physics_subject_fox_bundled">Fox</string>
-    <string name="demo_animation_physics_subject_soldier">Soldier</string>
+    <string name="demo_animation_physics_subject_ranger">Ranger</string>
     <string name="demo_animation_physics_subject_robot">Walking robot</string>
     <string name="demo_animation_physics_subject_knight">Dancing knight</string>
     <string name="demo_animation_physics_subject_cat">Idle cat</string>

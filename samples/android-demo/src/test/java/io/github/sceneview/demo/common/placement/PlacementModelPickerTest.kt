@@ -20,9 +20,9 @@ class PlacementModelPickerTest {
 
     private val catalogue = listOf(
         PlacementModel(
-            id = "soldier",
-            displayName = "Soldier",
-            assetLocation = "models/threejs_soldier.glb",
+            id = "ranger",
+            displayName = "Ranger",
+            assetLocation = "models/quaternius_ranger.glb",
         ),
     )
 
@@ -37,7 +37,7 @@ class PlacementModelPickerTest {
         // The catalogue's own row is armed instead — see the caller's fallback lookup.
         assertNull(
             resolveRequestedExtraPlacementRow(
-                requestedModel = "models/threejs_soldier.glb",
+                requestedModel = "models/quaternius_ranger.glb",
                 catalogue = catalogue,
             ),
         )
@@ -46,7 +46,7 @@ class PlacementModelPickerTest {
     @Test
     fun `a bare file stem already in the catalogue needs no extra row`() {
         assertNull(
-            resolveRequestedExtraPlacementRow(requestedModel = "threejs_soldier", catalogue = catalogue),
+            resolveRequestedExtraPlacementRow(requestedModel = "quaternius_ranger", catalogue = catalogue),
         )
     }
 

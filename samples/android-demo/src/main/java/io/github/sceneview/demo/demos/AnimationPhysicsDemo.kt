@@ -177,8 +177,8 @@ private data class AnimationModel(
 /**
  * Carousel of 6 animated models for [AnimationSection].
  *
- * Slot 0 is the bundled Khronos Fox (Survey, Walk, Run); slot 1 the historical
- * `threejs_soldier.glb` (bundled, 4 animations: 0=Idle, 1=Run, 2=TPose, 3=Walk).
+ * Slot 0 is the bundled Khronos Fox (Survey, Walk, Run); slot 1 the bundled Quaternius
+ * Ranger `quaternius_ranger.glb` (CC0, 5 clips: 0=Idle, 1=Walk, 2=Run, 3=Sprint, 4=Dance).
  * The next 4 slots stream the 4 entries from
  * the `animation` category of [SampleAssets] — each carries at least one
  * baked animation so the play/pause/speed/loop controls have something to
@@ -186,7 +186,7 @@ private data class AnimationModel(
  *
  * Streamed slots fall back to their registered bundled GLB when offline so
  * the demo always renders five carousel options (the bundled fallback for
- * three of the four streamed slugs is `threejs_soldier.glb` / `shiba.glb` /
+ * three of the four streamed slugs is `quaternius_ranger.glb` / `shiba.glb` /
  * `khronos_fox.glb` — those still ship in the APK).
  */
 private val ANIMATION_MODELS: List<AnimationModel> = run {
@@ -206,13 +206,12 @@ private val ANIMATION_MODELS: List<AnimationModel> = run {
             defaultAnimationIndex = 0,
         ),
         AnimationModel(
-            nameRes = R.string.demo_animation_physics_subject_soldier,
-            bundledAssetPath = "models/threejs_soldier.glb",
+            nameRes = R.string.demo_animation_physics_subject_ranger,
+            bundledAssetPath = "models/quaternius_ranger.glb",
             scaleToUnits = 1.0f,
-            // 3 = "Walk" — the strongest first-impression animation on the
-            // soldier rig (the cinematic REVEAL pull-back pairs with a walking
-            // subject). Kept as the historical default for visual stability.
-            defaultAnimationIndex = 3,
+            // 1 = "Walk" — the strongest first-impression clip on this rig, as it was on
+            // the three.js Soldier it replaced (#4586).
+            defaultAnimationIndex = 1,
         ),
         AnimationModel(
             nameRes = R.string.demo_animation_physics_subject_robot,
@@ -1008,9 +1007,9 @@ private fun AnimationSection(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
             // Model carousel — switches the active animated subject. Slot 0 is
-            // the bundled threejs soldier; slots 1–4 stream from the `animation`
-            // category of SampleAssets. Streamed slots fall back to the bundled
-            // soldier / shiba / fox GLBs when no Sketchfab key is configured.
+            // the bundled Khronos Fox, slot 1 the bundled Quaternius Ranger; the rest
+            // stream from the `animation` category of SampleAssets and fall back to the
+            // bundled ranger / shiba / fox GLBs when no Sketchfab key is configured.
             Text(stringResource(R.string.demo_animation_physics_subject), style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Row(

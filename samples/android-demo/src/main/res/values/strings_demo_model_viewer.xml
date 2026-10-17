@@ -40,7 +40,7 @@
     <string name="demo_model_desc_olive_dish">Olives under a glass lid</string>
     <string name="demo_model_desc_lantern">Wooden post, metal lantern</string>
     <string name="demo_model_desc_toy_car">Clearcoat car on velvet</string>
-    <string name="demo_model_desc_soldier">Walk, run and idle clips</string>
+    <string name="demo_model_desc_ranger">Idle, walk, run, sprint and dance clips</string>
 
     <!-- Multi-Model section — formerly the `multi-model` demo. Its title is the name the Models
          sheet's card uses too, so the card and the screen it opens agree (#3828). -->

@@ -217,7 +217,7 @@ bash .claude/scripts/capture-play-store-screenshots.sh \
 That demo renders whatever the Sketchfab resolver hands back. **With** a key
 (`SKETCHFAB_API_KEY`, or `sketchfab.api.key` in `local.properties`) it streams the
 `park` category — the photoreal scanned oaks the slot exists for. **Without** one it
-substitutes each slug's bundled fallback: a lantern, a lantern, a shiba, a soldier.
+substitutes each slug's bundled fallback: a lantern, a lantern, a shiba, a ranger.
 Same demo id, same layout, an entirely different picture — and nothing in the
 capture path can tell the two apart, because the frame renders fully, the foreground
 guard passes, and centre-variance is high either way. The script now WARNs when the

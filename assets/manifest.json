@@ -237,6 +237,15 @@
       "author": "Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/quaternius_ranger.glb",
+      "scope": "android",
+      "sha256": "e936bd22068b5cc41727389b450c24de252fd8195aa92d7ada94f9ae19064c1c",
+      "size": 5680796,
+      "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+      "license": "CC0-1.0",
+      "author": "Quaternius"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/shiba.glb",
       "scope": "android",
       "sha256": "21215a951c2d8b171b4c9500369bf01a60aeaa346a1e89091213396768bffed3",
@@ -244,15 +253,6 @@
       "source": "https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c",
       "license": "CC-BY-4.0",
       "author": "zixisun51"
-    },
-    {
-      "path": "samples/android-demo/src/main/assets/models/threejs_soldier.glb",
-      "scope": "android",
-      "sha256": "cdd26ddebc758a66e1317190571a5a8206689d0d4a658924e07ad370ad492fc6",
-      "size": 2338396,
-      "source": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
-      "license": "CC0-1.0",
-      "author": "Tomás Laulhé (modified by Don McCurdy)"
     },
     {
       "path": "samples/android-demo/src/main/assets/splats/raccoon_family.spz",

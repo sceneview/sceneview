@@ -301,13 +301,13 @@ demos:
       - samples/ios-demo/SceneViewDemo/Views/Demos/AnimationDemo.swift
     contract: >-
       Animation (the Physics tab left for `rolling-balls` in #4083): Fox,
-      Soldier + 4 streamed models, play/pause/speed/loop, camera
+      Ranger + 4 streamed models, play/pause/speed/loop, camera
       Hero/Reveal/Vertigo/Tracking/Free
     parity: diverges
     evidence: >-
       iOS (#4236) is the Fox only, offline, on a lit studio stage: Survey/Walk/Run
       clips with a 0.35 s crossfade, play/pause, speed 0.25-2x, Loop/Once
-      (khronos_fox_clips.usdz, trimmed AnimationViews). Android-only: the Soldier
+      (khronos_fox_clips.usdz, trimmed AnimationViews). Android-only: the Ranger
       and streamed subjects, scrub, camera shots, brightness and two-clip blend
   - id: rolling-balls
     androidStatus: Working
@@ -917,7 +917,7 @@ demos:
       Gallery scene left in #4039)
     parity: diverges
     evidence: >-
-      Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Soldier
+      Models Fox/Hovercar/Butterfly vs Sofa/Chair/Dish/Ranger
       (ModelViewerDemo.swift:37-44 vs .kt:277-283); lands on outdoor_cloudy
       sky (.swift:69,150); Park is a mode (MultiModelDemo, step 0), Gallery
       left; Browse→ExploreTab (.swift:368); HD

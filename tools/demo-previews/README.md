@@ -341,11 +341,12 @@ draw no alpha.
 The sheet's "Scenes" row holds one card, the Park, in two files: the sheet shows the one this
 build will load (`SketchfabConfig.apiKey`), so the card is what the scene opens on (#4039).
 
-- `model_picker_park.webp`: the bundled fallback models only (soldier, sheen chair, lantern,
-  shiba), what a **keyless** build loads. Emulator capture (Pixel_7a, 1080×2400) of
-  `--es demo multi-model --ez qa_mode true` (orbit frozen) after `pm clear` with Wi-Fi and data
-  off, so a keyed build falls back too. Window x 0–1080, y 790–1654, resized to 600×480 and
-  encoded with `cwebp -q 85`.
+- `model_picker_park.webp`: the bundled fallback models only (Quaternius Ranger, sheen chair,
+  lantern, shiba), what a **keyless** build loads. Emulator capture (Pixel_7a, 1280×2856) of
+  `--es demo multi-model --ez qa_mode true` (orbit and animations frozen) after `pm clear` with
+  Wi-Fi and data off, so a keyed build falls back too. Full-width 5:4 window x 0–1280,
+  y 955–1979 (the Ranger's hood to the shiba), resized to 600×480 and encoded as WebP q85
+  (#4586).
 - `model_picker_park_streamed.webp`: a **keyed** debug build, so the four streamed `park`
   registry models. Same capture online, window x 0–1080, y 880–1744, same resize and encoding.
   The image shows CC-BY 4.0 models, credited where the app credits them, under "Park

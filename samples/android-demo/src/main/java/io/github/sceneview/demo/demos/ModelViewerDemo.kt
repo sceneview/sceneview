@@ -284,9 +284,10 @@ private val BUNDLED_VIEWER_MODELS = listOf(
     BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
     BundledViewerModel("models/khronos_lantern.glb", "Lantern", R.string.demo_model_desc_lantern),
     BundledViewerModel("models/khronos_toy_car.glb", "Toy Car", R.string.demo_model_desc_toy_car),
-    // The three.js Soldier is authored facing -Z: from the viewer's +Z camera it showed its back,
-    // while its picker card showed a face (#3828).
-    BundledViewerModel("models/threejs_soldier.glb", "Soldier", R.string.demo_model_desc_soldier, frontYaw = 180f),
+    // Quaternius Ranger, CC0 (#4586): it replaced the three.js Soldier, a Mixamo character. It is
+    // authored facing +Z, toward the viewer's camera, so it needs no frontYaw (the Soldier faced -Z
+    // and needed 180°, #3828).
+    BundledViewerModel("models/quaternius_ranger.glb", "Ranger", R.string.demo_model_desc_ranger),
 )
 
 /**
@@ -2436,7 +2437,7 @@ private val PARK_LAWN_COLOR = Color(0xFF435646)
 //
 // ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
 // the `park` category — oaks, bench, lamp and fern. Without one it substitutes each
-// slug's BUNDLED fallback: a soldier, the sheen chair, a lantern and a shiba. Same demo id,
+// slug's BUNDLED fallback: the Ranger, the sheen chair, a lantern and a shiba. Same demo id,
 // same layout, completely different picture — worth knowing before reading a
 // screenshot of this section as evidence of anything (#2913). The chip label names
 // the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
@@ -2468,7 +2469,7 @@ private val PARK_LAWN_COLOR = Color(0xFF435646)
 // The previous "tabletop" composition (shiba + lantern + helmet + dragon, all
 // bundled) is replaced by the streamed `park` category from [SampleAssets].
 // Offline fallback is per-slug (`shiba.glb` / `khronos_lantern.glb` /
-// `threejs_soldier.glb` etc.) so the demo still renders four nodes when no
+// `quaternius_ranger.glb` etc.) so the demo still renders four nodes when no
 // Sketchfab key is configured — the visual swap is documented in the CHANGELOG
 // but the user-visible behaviour stays "4 nodes, 4 chips, 1 spin toggle".
 //

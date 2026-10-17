@@ -174,7 +174,6 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 ## Threejs
 
 - **[Expressive Robot](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive)** by Tomás Laulhé (Quaternius), modified by Don McCurdy — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
-- **[Soldier](https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb)** by Tomás Laulhé (modified by Don McCurdy) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Google-Scanned-Objects
 
@@ -183,6 +182,10 @@ Total models: **144** (plus 6 pending metadata, 8 pending license review).
 - **[Reebok FUELTRAIN](https://app.gazebosim.org/GoogleResearch/fuel/models/Reebok_FUELTRAIN)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[UGG Classic Tall boot](https://app.gazebosim.org/GoogleResearch/fuel/models/UGG_Classic_Tall_Womens_Boots_Chestnut_7)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Ultimate Ears BOOM speaker](https://app.gazebosim.org/GoogleResearch/fuel/models/Logitech_Ultimate_Ears_Boom_Wireless_Speaker_Night_Black)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Quaternius
+
+- **[Ranger](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html)** by Quaternius — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ---
 
