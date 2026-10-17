@@ -42,11 +42,15 @@ import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberARCameraStream
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.CatalogueProductPill
+import io.github.sceneview.demo.common.CatalogueProducts
+import io.github.sceneview.demo.common.rememberCatalogueProduct
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.rememberARView
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.sample.ui.LabeledSlider
@@ -92,7 +96,10 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     // unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    val toyCarInstance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+    // A real product at its real size to focus on: the Nike Air Jordan 1 from the catalogue
+    // (#4560), fetched from the HD pack. Seen three-quarter, toe to heel gives the focus depth to
+    // travel along — the sneaker product shot.
+    val sneaker = rememberCatalogueProduct(modelLoader, CatalogueProducts.AIR_JORDAN_1)
 
     // ── User-facing knobs ────────────────────────────────────────────────────────────────────
     var dofEnabled by remember { mutableStateOf(true) }
@@ -221,6 +228,8 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                 Text("Reset")
             }
         },
+        // Until the sneaker is in, its pill names it and narrates the download.
+        bottomOverlay = { if (!arSessionUnavailable) CatalogueProductPill(sneaker) },
         // HUD pill — shows the current focus distance so screenshots make the
         // before/after diff obvious.
         topOverlay = {
@@ -290,17 +299,31 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
                     }
                 )
             ) {
-                // A single placement-free toy car at 1 m in front of the user gives a stable
-                // virtual reference object to focus on against the real-world background. Plane
-                // tap-to-place is intentionally not wired here — the demo's point is the DoF
-                // effect, not anchor placement (which has its own dedicated demos).
-                toyCarInstance?.let { instance ->
+                // A single placement-free sneaker 1 m in front of where the session started (the
+                // world origin is the phone's first pose, looking down -Z), a little below eye
+                // level, gives a stable virtual reference object to focus on against the
+                // real-world background. Plane tap-to-place is intentionally not wired here — the
+                // demo's point is the DoF effect, not anchor placement (which has its own
+                // dedicated demos).
+                sneaker.instance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
-                        scaleToUnits = 0.3f,
+                        scaleToUnits = sneaker.realSizeMetres,
+                        position = Position(y = SNEAKER_DROP_METERS, z = -SNEAKER_DISTANCE_METERS),
+                        // Three-quarter, as the catalogue card shows it.
+                        rotation = Rotation(y = SNEAKER_YAW_DEGREES),
                     )
                 }
             }
         }
     }
 }
+
+/** How far ahead of the session's first pose the sneaker stands, in metres. */
+private const val SNEAKER_DISTANCE_METERS = 1.0f
+
+/** How far below that pose — a hand-held phone's height over a table-top. */
+private const val SNEAKER_DROP_METERS = -0.3f
+
+/** The catalogue's three-quarter turn (the Model Viewer's `CATALOGUE_FRONT_YAW`). */
+private const val SNEAKER_YAW_DEGREES = -30f

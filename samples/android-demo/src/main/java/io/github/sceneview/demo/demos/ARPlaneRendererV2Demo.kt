@@ -29,13 +29,16 @@ import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.CatalogueProductPill
+import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
+import io.github.sceneview.demo.common.rememberCatalogueProduct
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 
@@ -48,9 +51,12 @@ import io.github.sceneview.rememberOnGestureListener
  * status banner says what is on screen right now:
  *
  * 1. **Scanning** — dots appear on each surface the phone finds.
- * 2. **Found** — tap to place the toy car (the bright spot marks the floor you face).
- * 3. **Placed** — the planes fade out (`planeRenderer = false`); tap to pick the car up and
+ * 2. **Found** — tap to place the sofa (the bright spot marks the floor you face).
+ * 3. **Placed** — the planes fade out (`planeRenderer = false`); tap to pick the sofa up and
  *    they fade back in.
+ *
+ * The sofa is a real product at its real size — the IKEA NOCKEBY from the catalogue (#4560),
+ * fetched from the HD pack — so the floor reads at the scale of the room it is in.
  *
  * Floors, walls (`HORIZONTAL_AND_VERTICAL` plane finding) and ceilings each get their own dot
  * style from the SDK — no legend needed, the difference is on the surfaces.
@@ -64,6 +70,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
     // Replay a recorded ARCore dataset when the device-QA harness deep-links this demo
     // with `--es ar_playback_file <path>` (#1576). `null` for every normal launch.
     val arPlaybackDataset = rememberArPlaybackDataset()
+    val sofa = rememberCatalogueProduct(modelLoader, CatalogueProducts.IKEA_NOCKEBY_SOFA)
 
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var planeDetected by remember { mutableStateOf(false) }
@@ -94,6 +101,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
         onBack = onBack,
         bottomOverlay = {
             val trackingLost = trackingFailureReason != null && placedAnchor == null
+            // Until the sofa is in, its pill names it and narrates the download.
+            if (arCoreAvailability == null) CatalogueProductPill(sofa)
             DemoStatusBanner(
                 // #3341: on a device ARCore has ruled out, the SDK card carries the reason.
                 text = when {
@@ -101,7 +110,8 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     guidance.isCoaching -> null
                     trackingLost -> stringResource(R.string.ar_plane_v2_status_move)
                     placedAnchor != null -> stringResource(R.string.ar_plane_v2_status_placed)
-                    planeDetected -> stringResource(R.string.ar_plane_v2_status_found)
+                    // Surface found but the sofa not in yet: its pill says why a tap waits.
+                    planeDetected -> sofa.instance?.let { stringResource(R.string.ar_plane_v2_status_found) }
                     else -> stringResource(R.string.ar_plane_v2_status_scanning)
                 },
                 tone = if (trackingLost) DemoStatusTone.Guidance else DemoStatusTone.Progress,
@@ -116,7 +126,7 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 playbackDataset = arPlaybackDataset,
-                // Placing the car fades the surfaces out; picking it up fades them back in.
+                // Placing the sofa fades the surfaces out; picking it up fades them back in.
                 planeRenderer = placedAnchor == null,
                 planeRendererVersion = PlaneRendererBase.Version.V2,
                 sessionConfiguration = { _: Session, config: Config ->
@@ -137,10 +147,10 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
                     onSingleTapConfirmed = { event: MotionEvent, _ ->
                         val placed = placedAnchor
                         if (placed != null) {
-                            // Pick the car up: the surfaces fade back in.
+                            // Pick the sofa up: the surfaces fade back in.
                             placed.detach()
                             placedAnchor = null
-                        } else {
+                        } else if (sofa.instance != null) {
                             placedAnchor = latestFrame.frame?.placeOnPlane(event)
                         }
                     }
@@ -148,9 +158,15 @@ fun ARPlaneRendererV2Demo(onBack: () -> Unit) {
             ) {
                 placedAnchor?.let { anchor ->
                     key(anchor) {
-                        val car = rememberModelInstance(modelLoader, TOY_CAR_ASSET)
                         AnchorNode(anchor = anchor) {
-                            car?.let { ModelNode(modelInstance = it, scaleToUnits = TOY_CAR_SIZE_METERS) }
+                            sofa.instance?.let {
+                                // Real size, standing on the floor (bottom of its box on the anchor).
+                                ModelNode(
+                                    modelInstance = it,
+                                    scaleToUnits = sofa.realSizeMetres,
+                                    centerOrigin = Position(y = -1f),
+                                )
+                            }
                         }
                     }
                 }
@@ -185,6 +201,4 @@ private fun Frame.placeOnPlane(event: MotionEvent): Anchor? {
     }?.createAnchor()
 }
 
-private const val TOY_CAR_ASSET = "models/khronos_toy_car.glb"
-private const val TOY_CAR_SIZE_METERS = 0.25f
 private const val MAX_PLACE_DISTANCE_METERS = 5.0f

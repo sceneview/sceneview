@@ -55,6 +55,8 @@
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>
+    <!-- Placement Scene: the product is placed at its real size, not the 0.3 m preview. -->
+    <string name="ar_place_real_size">Actual size</string>
     <!-- Closes every "View in 3D" preview sheet (PlacementPreviewSheet, #3884). -->
     <string name="ar_place_close_preview">Close preview</string>
 
