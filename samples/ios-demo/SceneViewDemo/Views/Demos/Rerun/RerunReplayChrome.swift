@@ -2,207 +2,47 @@
 import SwiftUI
 import UIKit
 
-// The replay's chrome, the iOS twin of Android's `RerunReplayUi.kt`: the HUD card, the corner
-// card that swaps between the camera and the 3D view, the full camera view and the filmstrip.
-// Every card sits on `ar-scrim` in its dark value in both themes: the ground under it is always
-// the stage (`Stage.background`) or a camera frame, never the page.
+// The replay's chrome, the iOS twin of Android's `RerunReplayUi.kt` since #4379: the scene keeps
+// the screen. One glass timeline bar floats over it (above the dock in portrait, beside the title
+// in landscape), the camera view is one dock cell away, and everything read once — the layers
+// and their figures, the room's size — is a row of the settings sheet. A tap on the stage puts
+// all of it away.
 
 private typealias Space = SceneViewTokens.Space
-private typealias ARChrome = SceneViewTokens.ARChrome
+private typealias Glass = SceneViewTokens.Glass
 
 /// Tokens of the replay chrome that are not already in `SceneViewTokens`.
 enum RerunChromeMetrics {
-    /// `ar-scrim`, dark — Android's `ArOverlay.scrimDark` (`#E0000000`) in both themes.
-    static let scrim = ARChrome.scrim(.dark)
-    static let border = ARChrome.border(.dark)
-    /// The same scrim at 55 %: the part of the filmstrip still to come, and the camera
-    /// view's blurred backdrop.
+    /// The part of the filmstrip still to come, and the camera view's blurred backdrop.
     static let dimAlpha: Double = 0.55
-    /// A hidden HUD group.
-    static let hiddenAlpha: Double = 0.45
-    /// The HUD's colour dots.
-    static let dot: CGFloat = Space.xs + Space.xs / 2
+    /// A layer's colour dot in the settings sheet.
+    static let dot: CGFloat = Space.sm + Space.xs / 2
     /// The filmstrip's frames are portrait camera frames.
     static let frameAspect: CGFloat = 3.0 / 4.0
-    static let stripHeight: CGFloat = SceneViewTokens.Layout.touchTarget + Space.sm
+    /// The timeline is one touch target tall; its strip keeps `space-xs` of glass above and below.
+    static let barHeight: CGFloat = SceneViewTokens.Layout.touchTarget
+    static let stripHeight: CGFloat = barHeight - Space.sm
     static let playheadWidth: CGFloat = Space.xs - Space.xs / 4
     /// `ArOverlay.maxWidth`.
     static let maxWidth: CGFloat = 480
-}
-
-private extension View {
-    /// The AR Overlay Card ground: scrim, `radius-lg`, hairline.
-    func rerunCard(radius: CGFloat = SceneViewTokens.Radius.lg) -> some View {
-        background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(RerunChromeMetrics.scrim))
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(RerunChromeMetrics.border, lineWidth: ARChrome.borderWidth)
-            )
-    }
-}
-
-// MARK: - HUD
-
-/// Tracking state, clock and fps, then the four figures — each one a toggle for its group.
-struct RerunReplayHud: View {
-    let session: RerunReplaySession
-
-    var body: some View {
-        let stats = session.stats
-        VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(spacing: Space.sm) {
-                Circle()
-                    .fill(stats.tracking ? ARChrome.success : ARChrome.onScrimDim)
-                    .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
-                    .accessibilityHidden(true)
-                Text(stats.tracking ? "Tracking" : "Initializing")
-                    .font(SceneViewTokens.TypeScale.captionSemibold)
-                    .foregroundStyle(ARChrome.onScrim)
-                Spacer(minLength: Space.sm)
-                Text("\(RerunFormat.clock(stats.time)) · \(session.fps) fps")
-                    .font(SceneViewTokens.TypeScale.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrimDim)
-            }
-            .accessibilityElement(children: .combine)
-            HStack(alignment: .top, spacing: Space.sm) {
-                figure("Path", RerunFormat.distance(stats.pathMetres), SceneViewTokens.DebugView.trailNew, .trail)
-                figure("Planes", "\(stats.planes)", SceneViewTokens.DebugView.floorOutline, .planes)
-                figure("Points", RerunFormat.compactCount(stats.mapPoints), SceneViewTokens.DebugView.mapPoint, .points)
-                figure("Anchors", "\(stats.anchors)", SceneViewTokens.DebugView.anchor, .anchors)
-            }
-        }
-        .padding(.horizontal, Space.md)
-        .padding(.vertical, Space.sm + Space.xs)
-        .rerunCard()
-        .accessibilityIdentifier("rerun-hud")
-    }
-
-    private func figure(_ label: String, _ value: String, _ color: UInt32, _ group: RerunGroup) -> some View {
-        let on = session.isVisible(group)
-        return Button {
-            withAnimation(SceneViewTokens.Motion.expressive(SceneViewTokens.Motion.short)) { session.toggle(group) }
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value)
-                    .font(SceneViewTokens.TypeScale.card)
-                    .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrim)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                HStack(spacing: Space.xs) {
-                    Circle()
-                        .fill(on ? SceneViewTokens.DebugView.color(color) : ARChrome.meterTrack)
-                        .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
-                    Text(label)
-                        .font(SceneViewTokens.TypeScale.caption)
-                        .foregroundStyle(ARChrome.onScrimDim)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(on ? 1 : RerunChromeMetrics.hiddenAlpha)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(label) \(value)")
-        .accessibilityValue(on ? "Shown" : "Hidden")
-        .accessibilityHint("Shows or hides this layer")
-    }
-}
-
-// MARK: - Corner cards
-
-/// A caption pill at a card's bottom-leading corner.
-private struct RerunCardLabel: View {
-    let text: String
-    var icon: String?
-
-    var body: some View {
-        HStack(spacing: Space.xs) {
-            Text(text)
-            if let icon {
-                Image(systemName: icon).imageScale(.small)
-            }
-        }
-        .font(SceneViewTokens.TypeScale.captionSemibold)
-        .foregroundStyle(ARChrome.onScrim)
-        .padding(.horizontal, Space.sm)
-        .padding(.vertical, Space.xs / 2)
-        .background(Capsule().fill(RerunChromeMetrics.scrim))
-        .padding(Space.sm)
-        .accessibilityHidden(true)
-    }
-}
-
-/// The camera frame at the playhead, in the corner of the 3D view. Tapping opens the camera view.
-struct RerunCameraCard: View {
-    let session: RerunReplaySession
-    let onOpen: () -> Void
-
-    var body: some View {
-        let size = SceneViewTokens.DebugView.pipSize
-        Button(action: onOpen) {
-            ZStack(alignment: .bottomLeading) {
-                SceneViewTokens.Stage.background
-                if let image = session.thumbnail(session.currentImagePath) {
-                    Color.clear.overlay {
-                        Image(decorative: image, scale: 1)
-                            .resizable()
-                            .scaledToFill()
-                    }
-                    .clipped()
-                }
-                RerunCardLabel(text: "Camera")
-            }
-            .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                    .strokeBorder(RerunChromeMetrics.border, lineWidth: ARChrome.borderWidth)
-            )
-        }
-        .buttonStyle(PressScaleButtonStyle())
-        .accessibilityLabel("Open the camera view")
-        .accessibilityIdentifier("rerun-camera-card")
-    }
-}
-
-/// The camera view's corner: the 3D room, small and untouchable. Tapping goes back to it.
-struct RerunPipCard: View {
-    let session: RerunReplaySession
-    var drift = true
-    let onExpand: () -> Void
-
-    var body: some View {
-        let size = SceneViewTokens.DebugView.pipSize
-        ZStack(alignment: .bottomLeading) {
-            RerunReplayStage(session: session, compact: true, drift: drift)
-            RerunCardLabel(text: "3D", icon: "arrow.up.left.and.arrow.down.right")
-        }
-        .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
-                .strokeBorder(RerunChromeMetrics.border, lineWidth: ARChrome.borderWidth)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
-        .onTapGesture(perform: onExpand)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Open the 3D view")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, onExpand)
-        .accessibilityIdentifier("rerun-pip")
-    }
+    /// The figures of the settings sheet refresh four times a second.
+    static let statsInterval: Double = 0.25
 }
 
 // MARK: - Camera view
 
 /// The recorded frame at the playhead, whole, over a blurred copy of itself.
+///
+/// No 3D stage renders while it is up, so it runs the session's clock itself.
 struct RerunCameraView: View {
     let session: RerunReplaySession
+    var chromeHidden = false
+    /// A tap anywhere on the frame: the host hides or shows its chrome.
+    var onTap: () -> Void = {}
     /// The last full-size frame; kept until the next one has decoded so the view never blinks.
     @State private var full: CGImage?
+    /// What the settings sheet hides of the view's bottom, 0 while it is closed.
+    @Environment(\.demoControlsCover) private var sheetCover
 
     var body: some View {
         let path = session.currentImagePath
@@ -214,7 +54,7 @@ struct RerunCameraView: View {
                     Image(decorative: thumbnail, scale: 1)
                         .resizable()
                         .scaledToFill()
-                        .blur(radius: SceneViewTokens.Space.lg + SceneViewTokens.Space.sm)
+                        .blur(radius: Space.lg + Space.sm)
                 }
                 .clipped()
                 .opacity(RerunChromeMetrics.dimAlpha)
@@ -226,66 +66,83 @@ struct RerunCameraView: View {
             }
         }
         .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .onTapGesture { if sheetCover == 0 { onTap() } }
         .task(id: path) {
             guard let path, let image = await session.fullFrame(path), !Task.isCancelled else { return }
             full = image
         }
+        .task { await runClock() }
         .accessibilityElement()
         .accessibilityLabel("The camera frame recorded at this moment")
+        .accessibilityHint(chromeHidden ? "Double-tap to show the controls." : "Double-tap to hide the controls.")
         .accessibilityAddTraits(.isImage)
+        .accessibilityAction(.default, onTap)
+    }
+
+    /// The playhead and the sheet's figures, kept moving the way the 3D stage's render loop does.
+    private func runClock() async {
+        var last = CACurrentMediaTime()
+        var statsAt = last
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(16))
+            let now = CACurrentMediaTime()
+            session.tick(Float(now - last))
+            last = now
+            if now - statsAt >= RerunChromeMetrics.statsInterval {
+                statsAt = now
+                session.count(session.pack.trace.frameAt(session.time))
+            }
+        }
     }
 }
 
-// MARK: - Filmstrip
+// MARK: - Timeline
 
-/// Play / pause, what is on screen and the clock, over a strip of the session's frames that
-/// scrubs under the finger.
-struct RerunFilmstripCard: View {
+/// The replay's one bar: play / pause, a strip of the session's frames that scrubs under the
+/// finger, and the clock — one touch target tall, on glass.
+struct RerunTimelineBar: View {
     let session: RerunReplaySession
-    let title: String
-    let caption: String
 
     @State private var scrubbing = false
     @State private var resumeAfterScrub = false
 
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous)
+    }
+
     var body: some View {
-        VStack(spacing: Space.sm) {
-            HStack(spacing: Space.sm) {
-                Button { session.togglePlay() } label: {
-                    Image(systemName: session.playing ? "pause.fill" : "play.fill")
-                        .font(SceneViewTokens.TypeScale.card)
-                        .foregroundStyle(ARChrome.onScrim)
-                        .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(session.playing ? "Pause" : "Play")
-                .accessibilityIdentifier("rerun-play")
-                .padding(.leading, -Space.sm)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(title)
-                        .font(SceneViewTokens.TypeScale.bodySemibold)
-                        .foregroundStyle(ARChrome.onScrim)
-                        .lineLimit(1)
-                    Text(caption)
-                        .font(SceneViewTokens.TypeScale.captionRegular)
-                        .foregroundStyle(ARChrome.onScrimDim)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: Space.sm)
-                Text("\(RerunFormat.clock(session.time)) / \(RerunFormat.clock(session.duration))")
-                    .font(SceneViewTokens.TypeScale.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(ARChrome.onScrimDim)
-                    .accessibilityHidden(true)
+        HStack(spacing: 0) {
+            Button { session.togglePlay() } label: {
+                Image(systemName: session.playing ? "pause.fill" : "play.fill")
+                    .font(SceneViewTokens.TypeScale.card)
+                    .foregroundStyle(Glass.onGlass)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: RerunChromeMetrics.barHeight, height: RerunChromeMetrics.barHeight)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(PressScaleButtonStyle(scale: SceneViewTokens.Spring.chromePressScale))
+            .accessibilityLabel(session.playing ? "Pause" : "Play")
+            .accessibilityIdentifier("rerun-play")
             strip
+            Text("\(RerunFormat.clock(session.time)) / \(RerunFormat.clock(session.duration))")
+                .font(SceneViewTokens.TypeScale.caption)
+                .monospacedDigit()
+                .foregroundStyle(Glass.onGlassMuted)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.leading, Space.sm)
+                .accessibilityHidden(true)
         }
-        .padding(.horizontal, Space.md)
-        .padding(.top, Space.xs)
-        .padding(.bottom, Space.md)
+        .padding(.trailing, Space.md)
+        .frame(height: RerunChromeMetrics.barHeight)
         .frame(maxWidth: RerunChromeMetrics.maxWidth)
-        .rerunCard()
+        .glassBackground(in: shape, id: "rerun-timeline")
+        // The glass around the strip is the bar's, not the stage's: a tap there hides nothing.
+        .contentShape(shape)
+        .onTapGesture {}
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("rerun-timeline")
     }
 
     private var strip: some View {
@@ -297,7 +154,7 @@ struct RerunFilmstripCard: View {
             let progress = session.duration > 0 ? CGFloat(session.time / session.duration) : 0
             let slotWidth = width / CGFloat(max(frames.count, 1))
             ZStack(alignment: .leading) {
-                ARChrome.meterTrack
+                SceneViewTokens.ARChrome.meterTrack
                 HStack(spacing: 0) {
                     ForEach(Array(frames.enumerated()), id: \.offset) { _, index in
                         Color.clear
@@ -310,10 +167,10 @@ struct RerunFilmstripCard: View {
                             .clipped()
                     }
                 }
-                Color.black.opacity(RerunChromeMetrics.dimAlpha)
+                SceneViewTokens.Stage.background.opacity(RerunChromeMetrics.dimAlpha)
                     .frame(width: width * (1 - min(max(progress, 0), 1)))
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                ARChrome.onScrim
+                Glass.onGlass
                     .frame(width: RerunChromeMetrics.playheadWidth, height: height)
                     .offset(x: min(max(progress * width - RerunChromeMetrics.playheadWidth / 2, 0),
                                    width - RerunChromeMetrics.playheadWidth))
@@ -351,6 +208,102 @@ struct RerunFilmstripCard: View {
     }
 }
 
+// MARK: - Settings rows
+
+/// What the replay's settings sheet reads out, once: the four layers with their figures at the
+/// playhead — each one a switch for its layer — and the room's size.
+struct RerunReplaySettings: View {
+    let session: RerunReplaySession
+
+    private typealias Palette = SceneViewTokens.HomeColor
+    private typealias Debug = SceneViewTokens.DebugView
+
+    var body: some View {
+        let stats = session.stats
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Layers")
+                .font(SceneViewTokens.TypeScale.captionSemibold)
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            layer("Path", RerunFormat.distance(stats.pathMetres), Debug.trailNew, .trail)
+            layer("Planes", "\(stats.planes)", Debug.floorOutline, .planes)
+            layer("Points", RerunFormat.count(stats.mapPoints), Debug.mapPoint, .points)
+            layer("Anchors", "\(stats.anchors)", Debug.anchor, .anchors)
+            if let room = session.room {
+                RerunSheetFigure(label: "Room", value: room.summary) {
+                    Image(systemName: "ruler").foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("rerun-room-size")
+            }
+        }
+    }
+
+    private func layer(_ label: String, _ value: String, _ color: UInt32, _ group: RerunGroup) -> some View {
+        Toggle(isOn: Binding(get: { session.isVisible(group) },
+                             set: { shown in if shown != session.isVisible(group) { session.toggle(group) } })) {
+            HStack(spacing: Space.md) {
+                RerunLayerDot(color: color)
+                Text(label)
+                    .font(.body)
+                    .foregroundStyle(Palette.onSurface)
+                Spacer(minLength: Space.sm)
+                Text(value)
+                    .font(.body)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(Palette.primary)
+        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+        .accessibilityLabel("\(label), \(value)")
+        .accessibilityHint("Shows or hides this layer")
+        .accessibilityIdentifier("rerun-layer-\(label.lowercased())")
+    }
+}
+
+/// The colour a layer is drawn in, in the sheet rows' icon column.
+struct RerunLayerDot: View {
+    let color: UInt32
+
+    var body: some View {
+        // The ring keeps a pale layer (the points are near white) readable on a light sheet.
+        Circle()
+            .fill(SceneViewTokens.DebugView.color(color))
+            .overlay(Circle().strokeBorder(SceneViewTokens.HomeColor.controlOutline,
+                                           lineWidth: SceneViewTokens.Glass.borderWidth))
+            .frame(width: RerunChromeMetrics.dot, height: RerunChromeMetrics.dot)
+            .frame(width: Space.lg)
+            .accessibilityHidden(true)
+    }
+}
+
+/// One figure of the settings sheet, read once: icon column, label, value.
+struct RerunSheetFigure<Icon: View>: View {
+    let label: String
+    let value: String
+    @ViewBuilder let icon: () -> Icon
+
+    var body: some View {
+        HStack(spacing: Space.md) {
+            icon()
+                .frame(width: Space.lg)
+                .accessibilityHidden(true)
+            Text(label)
+                .font(.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            Spacer(minLength: Space.sm)
+            Text(value)
+                .font(.body)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .foregroundStyle(.secondary)
+        }
+        .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - Loading
 
 struct RerunReplayLoading: View {
@@ -358,10 +311,10 @@ struct RerunReplayLoading: View {
         ZStack {
             SceneViewTokens.Stage.background
             VStack(spacing: Space.md) {
-                ProgressView().tint(ARChrome.onScrim)
+                ProgressView().tint(SceneViewTokens.ARChrome.onScrim)
                 Text("Loading the recorded session…")
                     .font(SceneViewTokens.TypeScale.body)
-                    .foregroundStyle(ARChrome.onScrimDim)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
             }
         }
         .ignoresSafeArea()

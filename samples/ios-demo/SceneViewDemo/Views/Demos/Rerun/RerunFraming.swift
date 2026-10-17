@@ -5,7 +5,8 @@ import simd
  * How the replay's camera moves: an orbit around the recorded room that frames it by itself —
  * a crane-in entrance, then a slow turntable drift — until the first touch, and back on a
  * double tap. The iOS twin of Android's `ArDebugOrbitCamera`, `ArDebugFraming`, `CameraRig`
- * and `ReplayIntro` (#4059), with the same constants so both apps shoot the same film.
+ * and `ReplayIntro` (#4059): the same angles and the same entrance. Home is fitted to what
+ * is drawn of the room, in the rectangle the chrome leaves, not to its bounding sphere.
  *
  * Pure Swift: the stage feeds it frame times and gestures and reads back a pose.
  */
@@ -61,6 +62,60 @@ struct RerunOrbitPose: Equatable, Sendable {
     }
 }
 
+/// What the replay frames: the take's path, planes and anchors.
+struct RerunSubject: Equatable, Sendable {
+    /// The middle of their bounds.
+    var centre: SIMD3<Float>
+    /// Every point the picture has to hold.
+    var points: [SIMD3<Float>]
+}
+
+/// One run of the picture — side to side, or bottom to top — and the points that must stand in
+/// it. A point is where it stands along the run, over the tangent of that half field of view,
+/// and how deep it is, both from the subject's middle; the run's ends are in the picture's own
+/// units, 1 being half the view.
+private struct RerunSpan {
+    let low: Float
+    let high: Float
+    private var over = -Float.greatestFiniteMagnitude
+    private var under = -Float.greatestFiniteMagnitude
+
+    init(low: Float, high: Float) {
+        self.low = low
+        self.high = high
+    }
+
+    mutating func hold(_ along: Float, _ depth: Float) {
+        over = max(over, along - high * depth)
+        under = max(under, low * depth - along)
+    }
+
+    /// The distance from which the points run exactly from one end to the other.
+    var reach: Float { (over + under) / (high - low) }
+
+    /// How far the picture is moved along the run, from `distance`, to put the points midway
+    /// between its ends. `axis` picks the run in `seen`, whose `z` is the depth.
+    func shift(_ seen: [SIMD3<Float>], axis: Int, distance: Float) -> Float {
+        // The shifts that keep every point inside one end and the other.
+        var least = under + low * distance
+        var most = high * distance - over
+        guard least.isFinite, most.isFinite else { return (low + high) / 2 * distance }
+        guard least < most else { return (least + most) / 2 }
+        for _ in 0..<RerunFraming.centringSteps {
+            let shift = (least + most) / 2
+            var first = Float.greatestFiniteMagnitude
+            var last = -Float.greatestFiniteMagnitude
+            for point in seen {
+                let at = (point[axis] + shift) / max(distance + point.z, RerunFraming.minDistance)
+                first = min(first, at)
+                last = max(last, at)
+            }
+            if first + last < low + high { least = shift } else { most = shift }
+        }
+        return (least + most) / 2
+    }
+}
+
 /// Where "home" is, and how the camera eases there.
 enum RerunFraming {
     static let minDistance: Float = 0.25
@@ -72,9 +127,13 @@ enum RerunFraming {
     static let homeAzimuth: Float = 35
     /// The map's near-vertical view: a floor plan, with just enough tilt to keep depth.
     static let mapElevation: Float = 84
-    static let homeMargin: Float = 0.92
-    /// A recording's bounds are known up front: it fills the stage between HUD and filmstrip.
-    static let replayMargin: Float = 0.66
+    /// The least of the view's height a chrome may leave to the room before the framing stops
+    /// backing away from it.
+    static let minBand: Float = 0.3
+    /// A small session (the phone barely moved) still gets a room-sized view.
+    static let minSubjectRadius: Float = 0.8
+    /// Halvings that settle where the room sits in the band: past a ten-thousandth of it.
+    static let centringSteps = 14
     /// Exponential approach to home, per second: ~95 % in one second.
     static let approachRate: Float = 3
     /// The SDK's default lens — 28 mm on a 24 mm-tall sensor, ~46.4° vertical.
@@ -90,24 +149,57 @@ enum RerunFraming {
         return out
     }
 
-    /// The pose that frames `bounds` (min, max) at `azimuth`: the bounding sphere fits the
-    /// narrower field of view, so a tall phone and a small inset both see everything.
-    static func home(bounds: (SIMD3<Float>, SIMD3<Float>)?, azimuth: Float, verticalFov: Float = verticalFov,
-                     aspect: Float, elevation: Float = homeElevation, margin: Float = homeMargin) -> RerunOrbitPose {
-        guard let (lo, hi) = bounds else {
+    /// The pose that fits `subject` in the clear rectangle of the view from `azimuth` and
+    /// `elevation`, and the lift — a share of the view's height — that centres it there.
+    ///
+    /// The rectangle is the view less `inset` on every side (shares of its width and of its
+    /// height) and, in height, only the `band` no chrome stands on, whose middle sits `bandLift`
+    /// of the view's height above the view's own. What is fitted is every point of the subject
+    /// as this camera sees it, not a sphere around them: the camera stands as close as the
+    /// first pair of edges the room reaches allows — the sides on a tall window, the band's top
+    /// and bottom on a wide one — and the room is centred between the other pair. Side to side
+    /// that moves the pose's target; in height it is the lift, so the room keeps turning around
+    /// its own middle. (A room seen from above shows more near floor than far ceiling: looked
+    /// at through its centre, it sits low.)
+    static func fit(_ subject: RerunSubject?, azimuth: Float, elevation: Float = homeElevation,
+                    verticalFov: Float = verticalFov, aspect: Float, band: Float = 1, bandLift: Float = 0,
+                    inset: SIMD2<Float> = .zero) -> (pose: RerunOrbitPose, lift: Float) {
+        guard let subject, !subject.points.isEmpty else {
             var pose = defaultPose
             pose.azimuth = azimuth
             pose.elevation = elevation
-            return pose
+            return (pose, bandLift)
         }
-        let extent = hi - lo
-        // A small session (the phone barely moved) still gets a room-sized view.
-        let radius = max(0.8, simd_length(extent) / 2)
-        let halfVertical = verticalFov * .pi / 360
-        let halfHorizontal = atan(tan(halfVertical) * min(max(aspect, 0.2), 5))
-        let halfFov = min(halfVertical, halfHorizontal)
-        return clamp(RerunOrbitPose(target: (lo + hi) / 2, azimuth: azimuth, elevation: elevation,
-                                    distance: radius / sin(halfFov) * margin))
+        var pose = clamp(RerunOrbitPose(target: subject.centre, azimuth: azimuth, elevation: elevation, distance: 1))
+        let forward = simd_normalize(pose.target - pose.eye)
+        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let tanVertical = tan(verticalFov * .pi / 360)
+        let tanHorizontal = tanVertical * min(max(aspect, 0.2), 5)
+        let halfWidth = max(1 - 2 * inset.x, minBand)
+        let halfHeight = max(min(max(band, minBand), 1) - 2 * inset.y, minBand / 2)
+        var across = RerunSpan(low: -halfWidth, high: halfWidth)
+        var upward = RerunSpan(low: 2 * bandLift - halfHeight, high: 2 * bandLift + halfHeight)
+
+        var seen: [SIMD3<Float>] = []
+        seen.reserveCapacity(subject.points.count)
+        var near = -Float.greatestFiniteMagnitude
+        for point in subject.points {
+            let offset = point - subject.centre
+            let depth = simd_dot(offset, forward)
+            let at = SIMD3(simd_dot(offset, right) / tanHorizontal, simd_dot(offset, up) / tanVertical, depth)
+            seen.append(at)
+            across.hold(at.x, depth)
+            upward.hold(at.y, depth)
+            near = max(near, -depth)
+        }
+        // A session where the phone barely moved is framed as a room would be.
+        let least = minSubjectRadius / min(halfWidth * tanHorizontal, halfHeight * tanVertical)
+        pose.distance = max(max(across.reach, upward.reach), max(near + minDistance, least))
+        pose = clamp(pose)
+        let distance = pose.distance
+        pose.target = subject.centre - right * (across.shift(seen, axis: 0, distance: distance) * tanHorizontal)
+        return (pose, upward.shift(seen, axis: 1, distance: distance) / (2 * distance))
     }
 
     /// One frame of the ease from `pose` to `home`, snapping once close.
@@ -347,7 +439,7 @@ struct RerunOrbitController: Sendable {
     }
 
     /// Eye and look-at target with the picture lifted by `lift` of the view's height — a pedestal
-    /// move along the camera's own up, so the room sits in the clear band between HUD and strip.
+    /// move along the camera's own up, so the room sits in the middle of the clear band.
     func eyeAndTarget(lift: Float, heightPixels: Float, verticalFov: Float = RerunFraming.verticalFov)
         -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
         let eye = pose.eye

@@ -87,7 +87,7 @@ not AR-session playback), which replaced the former AR Recording card.
 | AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | The same bundled helmet and placement flow; toggle person occlusion without restarting tracking |
 | Body anchor tracking | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Follow a detected body anchor — anchor pose, not per-joint data |
 | AR Scene Mesh | [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift) | LiDAR scene reconstruction mesh |
-| Rerun AR Replay | [`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift) | Record a room, replay it in 3D, and export it to `.rrd`, `.glb`, `.usdz` and `.ply` |
+| Room Scan | [`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift) | Record a room, replay it in 3D, and export it to `.rrd`, `.glb`, `.usdz` and `.ply` |
 
 ---
 

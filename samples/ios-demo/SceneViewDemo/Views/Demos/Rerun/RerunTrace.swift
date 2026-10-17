@@ -698,7 +698,7 @@ struct RerunPlayback: Equatable, Sendable {
 
 // MARK: - Figures
 
-/// The figures the HUD shows: time, path walked, and what the session has mapped.
+/// The figures the settings sheet shows: time, path walked, and what the session has mapped.
 struct RerunStats: Equatable, Sendable {
     var time: Float = 0
     var pathMetres: Float = 0
@@ -766,28 +766,99 @@ func rerunFilmstripFrames(count: Int, slots: Int) -> [Int] {
     return (0..<slots).map { k in (k * (count - 1) + (slots - 1) / 2) / (slots - 1) }
 }
 
-/// Frames per second, averaged over half a second so the figure reads rather than flickers.
-struct RerunFpsMeter: Sendable {
-    var window: Double = 0.5
-    private var windowStart: Double?
-    private var frames = 0
-    private(set) var fps = 0
+/// A recorded room, measured like a floor plan: the rectangle its floor and walls stand in,
+/// squared to the walls, `width` × `depth` metres. The iOS twin of Android's `RoomMeasure`,
+/// with the same rules so both apps read the same session to the same figures.
+struct RerunRoomMeasure: Equatable, Sendable {
+    var width: Float
+    var depth: Float
+    /// The walls' direction: the angle of the width side from +X, radians, in `[-π/4, π/4]`.
+    var yaw: Float
 
-    init() {}
+    /// The rectangle's area, m².
+    var area: Float { width * depth }
 
-    /// Counts a frame at `seconds`; returns `true` when ``fps`` changed.
-    mutating func tick(_ seconds: Double) -> Bool {
-        guard let start = windowStart else {
-            windowStart = seconds
-            return false
+    /// `3.4 × 4.1 m · 14 m²`: the room as a floor plan names it.
+    var summary: String {
+        "\(Self.metres(width, unit: false)) × \(Self.metres(depth)) · \(Self.squareMetres(area))"
+    }
+
+    /// A room is at least this wide on each side: under it, a table top is not a room.
+    static let minSide: Float = 0.6
+    /// A horizontal patch within this of the floor is floor (Android's `GROUND_BAND_M`); higher,
+    /// it is a seat or a table.
+    static let groundBand: Float = 0.08
+
+    /// The room around `planes`' walls and the floor patches at `floorY`, `nil` when they hold
+    /// no floor and no wall, or span less than ``minSide``.
+    ///
+    /// The walls give the directions: each votes for its own, weighted by its width, modulo a
+    /// quarter turn — a room's walls stand square, so a wall and the one across the corner
+    /// agree. Without a wall, the floor patches' edges vote the same way.
+    static func of(_ planes: [RerunPlane], floorY: Float) -> RerunRoomMeasure? {
+        let walls = planes.filter { $0.kind == .wall && $0.polygon.count >= 3 }
+        let floors = planes.filter { isGround($0, floorY: floorY) }
+        guard !walls.isEmpty || !floors.isEmpty else { return nil }
+        let yaw = squareYaw(walls.isEmpty ? floors : walls)
+        let c = cos(yaw)
+        let s = sin(yaw)
+        var minA = Float.greatestFiniteMagnitude
+        var maxA = -Float.greatestFiniteMagnitude
+        var minB = Float.greatestFiniteMagnitude
+        var maxB = -Float.greatestFiniteMagnitude
+        for plane in walls + floors {
+            for p in plane.polygon {
+                // In the room's own axes: a along the walls' direction, b across it.
+                let a = p.x * c + p.z * s
+                let b = -p.x * s + p.z * c
+                minA = min(minA, a); maxA = max(maxA, a)
+                minB = min(minB, b); maxB = max(maxB, b)
+            }
         }
-        frames += 1
-        let elapsed = seconds - start
-        guard elapsed >= window else { return false }
-        let next = Int((Double(frames) / elapsed).rounded())
-        frames = 0
-        windowStart = seconds
-        defer { fps = next }
-        return next != fps
+        let width = maxA - minA
+        let depth = maxB - minB
+        guard width >= minSide, depth >= minSide else { return nil }
+        return RerunRoomMeasure(width: width, depth: depth, yaw: yaw)
+    }
+
+    /// A floor patch lying on the floor itself, not on a seat or a table.
+    static func isGround(_ plane: RerunPlane, floorY: Float) -> Bool {
+        guard plane.kind == .floor, plane.polygon.count >= 3 else { return false }
+        let height = plane.polygon.reduce(0) { $0 + $1.y } / Float(plane.polygon.count)
+        return abs(height - floorY) <= groundBand
+    }
+
+    /// The direction `planes` stand square to, in `[-π/4, π/4]`: each plane's edges vote
+    /// `4·angle` weighted by their length, so edges a quarter turn apart vote alike.
+    static func squareYaw(_ planes: [RerunPlane]) -> Float {
+        var sx = 0.0
+        var sy = 0.0
+        for plane in planes {
+            let n = plane.polygon.count
+            for i in 0..<n {
+                let from = plane.polygon[i]
+                let to = plane.polygon[(i + 1) % n]
+                let dx = to.x - from.x
+                let dz = to.z - from.z
+                let length = hypot(dx, dz)
+                if length < 1e-4 { continue }
+                let angle = Double(atan2(dz, dx)) * 4
+                sx += Double(length) * cos(angle)
+                sy += Double(length) * sin(angle)
+            }
+        }
+        if abs(sx) < 1e-9 && abs(sy) < 1e-9 { return 0 }
+        return Float(atan2(sy, sx) / 4)
+    }
+
+    /// `3.4 m`, `12 m`: a tenth of a metre under 10 m, the metre past it.
+    static func metres(_ m: Float, unit: Bool = true) -> String {
+        let value = String(format: m < 10 ? "%.1f" : "%.0f", locale: Locale(identifier: "en_US"), m)
+        return unit ? "\(value) m" : value
+    }
+
+    /// `14 m²`, `2.5 m²`.
+    static func squareMetres(_ m2: Float) -> String {
+        String(format: m2 < 10 ? "%.1f m²" : "%.0f m²", locale: Locale(identifier: "en_US"), max(m2, 0))
     }
 }
