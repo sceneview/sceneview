@@ -7,4 +7,11 @@
 <resources>
     <string name="demo_ar_rerun_title">Rerun AR Replay</string>
     <string name="demo_ar_rerun_subtitle">Watch a real AR session rebuild itself in 3D</string>
+    <!-- A tapped object of a scan's replay (#4485): its box, length × depth × height. -->
+    <string name="demo_ar_rerun_object_size">%1$s × %2$s × %3$s m</string>
+    <string name="demo_ar_rerun_object_size_caption">Length × depth × height</string>
+    <string name="demo_ar_rerun_object_size_description">Selected object: %1$s metres long, %2$s deep, %3$s high</string>
+    <!-- The tap found something no single box holds: a region running into its neighbours. -->
+    <string name="demo_ar_rerun_object_too_large">Too big for one box</string>
+    <string name="demo_ar_rerun_object_too_large_caption">Tap a single piece of furniture</string>
 </resources>

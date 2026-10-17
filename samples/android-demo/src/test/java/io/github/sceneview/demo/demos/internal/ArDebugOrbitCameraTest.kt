@@ -106,6 +106,60 @@ class ArDebugOrbitCameraTest {
     }
 
     @Test
+    fun `a finger down stops the turntable where it is, as a drag does`() {
+        val camera = ArDebugOrbitCamera(drift = true)
+        camera.setViewport(1080, 2400)
+        camera.home = OrbitPose(azimuthDegrees = 60f, elevationDegrees = 30f, distance = 5f)
+        repeat(240) { camera.update(1f / 60f) }
+        val turned = camera.pose.azimuthDegrees
+        repeat(60) { camera.update(1f / 60f) }
+        assertTrue("the room turns by itself", abs(camera.pose.azimuthDegrees - turned) > 3f)
+
+        camera.hold()
+        assertFalse(camera.following)
+        val held = camera.pose
+        repeat(240) { camera.update(1f / 60f) }
+        assertEquals(held, camera.pose)
+    }
+
+    @Test
+    fun `the finger down of a double-tap does not stop the recenter it asked for`() {
+        val camera = ArDebugOrbitCamera(drift = true)
+        camera.setViewport(1080, 2400)
+        camera.home = OrbitPose(azimuthDegrees = 60f, elevationDegrees = 30f, distance = 5f)
+        camera.fingerDown()
+        assertFalse(camera.following)
+        // The second tap: the double-tap is told first, its finger down right after.
+        camera.doubleTapZoom(540, 1200, zoomIn = true)
+        camera.fingerDown()
+        assertTrue(camera.following)
+        camera.update(1f / 60f)
+        camera.fingerDown()
+        assertFalse("the next finger stops it again", camera.following)
+    }
+
+    @Test
+    fun `steady, a recenter reframes and the room does not start turning again`() {
+        val camera = ArDebugOrbitCamera(drift = true)
+        camera.setViewport(1080, 2400)
+        camera.home = OrbitPose(azimuthDegrees = 60f, elevationDegrees = 30f, distance = 5f)
+        camera.hold()
+        camera.steady = true
+        camera.home = camera.home.copy(distance = 9f)
+        camera.recenter()
+        assertTrue(camera.following)
+        val heading = camera.home.azimuthDegrees
+        repeat(480) { camera.update(1f / 60f) }
+        assertEquals("reframed", 9f, camera.pose.distance, 1e-2f)
+        assertEquals("and still", heading, camera.pose.azimuthDegrees, 1e-2f)
+
+        // Nothing picked any more: the turntable is back.
+        camera.steady = false
+        repeat(240) { camera.update(1f / 60f) }
+        assertTrue(abs(camera.pose.azimuthDegrees - heading) > 3f)
+    }
+
+    @Test
     fun `a pinch zooms within range`() {
         val camera = ArDebugOrbitCamera(drift = false)
         camera.scrollBegin(0, 0, 100f)

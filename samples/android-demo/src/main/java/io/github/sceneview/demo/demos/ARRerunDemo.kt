@@ -63,6 +63,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -573,6 +574,8 @@ private fun RerunReplayScreen(
     onBuildModel: (() -> Unit)? = null,
 ) {
     val thumbnails = remember(media) { media?.thumbnails?.mapValues { it.value.asImageBitmap() }.orEmpty() }
+    // The object tapped in the 3D view or the map is still the one picked back from the Camera view.
+    val selection = remember(media) { ScanSelection() }
     // The camera frames are pictures, ready with the files; the 3D view says when it has drawn.
     val ready = media != null && (revealed || mode == RerunMode.Camera)
     LaunchedEffect(ready) { if (ready) onRevealed() }
@@ -705,6 +708,16 @@ private fun RerunReplayScreen(
                 modifier = Modifier.fillMaxSize(),
                 replay = media,
                 onShown = onRevealed,
+                selection = selection,
+                // The Camera card of the 3D view, with the padding that hangs it in its corner.
+                cornerCard = if (mode == RerunMode.Scene) {
+                    DpSize(
+                        SceneViewTokens.DebugView.pipWidth + Space.md,
+                        SceneViewTokens.DebugView.pipHeight + Space.sm * 2,
+                    )
+                } else {
+                    DpSize.Zero
+                },
             )
         }
     }
