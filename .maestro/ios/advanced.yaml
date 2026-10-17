@@ -38,8 +38,10 @@ appId: io.github.sceneview.demo
 - runFlow:
     file: flows/demo-settings.yaml
     env:
+      # The retired Lighting Lab id (#4603): proves the old link lands on
+      # Lighting, whose sheet now carries the lab's reflection switch.
       DEMO_ID: lighting-lab
-      DEMO_NAME: Lighting Lab
+      DEMO_NAME: Lighting
       ASSERT_TEXT: "Local reflections"
 - runFlow:
     file: flows/demo-noassert.yaml

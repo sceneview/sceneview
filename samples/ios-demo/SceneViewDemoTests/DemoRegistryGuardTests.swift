@@ -273,7 +273,8 @@ final class DemoRegistryGuardTests: XCTestCase {
     /// that never got updated; L0.6 (#2804) then added umbrella aliases for
     /// the #2239-regrouped ids. `physics` joined as a retired-scene alias when
     /// the RealityKit cubes were replaced by the Rolling Balls tray (#4083),
-    /// and `reflection-probes` when the Lighting Lab replaced it.
+    /// and `reflection-probes` when the Lighting Lab replaced it; #4603 then folded
+    /// the lab into Lighting, so `lighting-lab` joined and both open Lighting.
     ///
     /// The samples audit (step 0, 48 → 34 cards) added one alias per absorbed
     /// iOS card. `camera-gestures` and `animation-physics` stopped being
@@ -289,7 +290,8 @@ final class DemoRegistryGuardTests: XCTestCase {
             "picking-collision": "collision",
             "two-d-in-three-d": "text",
             "physics": "rolling-balls",
-            "reflection-probes": "lighting-lab",
+            "lighting-lab": "lighting",
+            "reflection-probes": "lighting",
             "ar-record-playback": "ar-rerun",
             "ar-recording": "ar-rerun",
             "wall-placement": "ar-placement",

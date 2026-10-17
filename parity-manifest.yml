@@ -859,8 +859,11 @@ demos:
       left in step 0; their ids open the matching rig. #4603 folded Android's
       `lighting-lab` card in (IBL intensity, sky switch, reflection probe,
       SSAO, fog, MSAA/FXAA, dithering under every rig) and dropped its row;
-      iOS still ships LightingLabDemo.swift as a separate card, to fold the
-      same way
+      iOS folded LightingLabDemo.swift the same way: IBL intensity and sky
+      switch on the Image rig, the sunset reflection probe under every rig,
+      Sky and Reflections in the dock, `lighting-lab` and `reflection-probes`
+      aliased to `lighting`. No fog, SSAO, MSAA/FXAA or dithering: RealityView
+      on iOS exposes none, stated in the sheet
   - id: lines-paths
     androidStatus: Working
     iosStatus: working

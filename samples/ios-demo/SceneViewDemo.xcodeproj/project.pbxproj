@@ -81,7 +81,6 @@
 		D215E74EDFD5224A0D611C49 /* MaterialsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC97EA31B851CDE641C29F3C /* MaterialsScene.swift */; };
 		63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */; };
 		BEA1469B6B63E6A1C636864B /* RollingBallsScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24EDDD0A932E79C5088AEF26 /* RollingBallsScene.swift */; };
-		D5304A7821A99E09C8746927 /* LightingLabScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC5EEABA6D7A33E6E4C2ED2 /* LightingLabScene.swift */; };
 		DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0C8E686D511E4A17E75291 /* ShapeExtrudeScene.swift */; };
 		A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C1442A5E282461B7581066 /* SpatialAudioScene.swift */; };
 		1CFD879D196F1D23142D7ACD /* TextScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1600DF1563900D4EB6820A33 /* TextScene.swift */; };
@@ -155,7 +154,6 @@
 		E500000000000000000000F3 /* qrcode.png in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F3 /* qrcode.png */; };
 		E500000000000000000000F4 /* BundledCredits.json in Resources */ = {isa = PBXBuildFile; fileRef = E600000000000000000000F4 /* BundledCredits.json */; };
 		C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D0 /* ShapeExtrudeDemo.swift */; };
-		C100000000000000000000D1 /* LightingLabDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D1 /* LightingLabDemo.swift */; };
 		C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D2 /* VideoTextureDemo.swift */; };
 		C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D3 /* OcclusionMaterialDemo.swift */; };
 		C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C200000000000000000000D5 /* DebugOverlayDemo.swift */; };
@@ -227,7 +225,7 @@
 		E10000000000000000000008 /* chinese_garden.hdr in Resources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000008 /* chinese_garden.hdr */; };
 		F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000002 /* AppStoreUpdaterTests.swift */; };
 		F00000000000000000000077 /* LabeledSliderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000076 /* LabeledSliderTests.swift */; };
-		A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* LightingLabDemoTests.swift */; };
+		A20000000000000000003159 /* LightingReflectionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000003158 /* LightingReflectionsTests.swift */; };
 		A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000004210 /* RollingBallsSimulationTests.swift */; };
 		F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000060 /* SketchfabService+Tests.swift */; };
 		F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */; };
@@ -353,7 +351,7 @@
 		F10000000000000000000002 /* SceneViewDemoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SceneViewDemoUITests.swift; path = SceneViewDemoUITests/SceneViewDemoUITests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000002 /* AppStoreUpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppStoreUpdaterTests.swift; path = SceneViewDemoTests/AppStoreUpdaterTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000076 /* LabeledSliderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LabeledSliderTests.swift; path = SceneViewDemoTests/LabeledSliderTests.swift; sourceTree = SOURCE_ROOT; };
-		A20000000000000000003158 /* LightingLabDemoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabDemoTests.swift; path = SceneViewDemoTests/LightingLabDemoTests.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000003158 /* LightingReflectionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingReflectionsTests.swift; path = SceneViewDemoTests/LightingReflectionsTests.swift; sourceTree = SOURCE_ROOT; };
 		A20000000000000000004210 /* RollingBallsSimulationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsSimulationTests.swift; path = SceneViewDemoTests/RollingBallsSimulationTests.swift; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000060 /* SketchfabService+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabService+Tests.swift"; path = "SceneViewDemo/Services/SketchfabService+Tests.swift"; sourceTree = SOURCE_ROOT; };
 		F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SketchfabAssetResolver+Tests.swift"; path = "SceneViewDemo/Services/SketchfabAssetResolver+Tests.swift"; sourceTree = SOURCE_ROOT; };
@@ -416,7 +414,6 @@
 		E600000000000000000000F3 /* qrcode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = qrcode.png; sourceTree = "<group>"; };
 		E600000000000000000000F4 /* BundledCredits.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BundledCredits.json; sourceTree = "<group>"; };
 		C200000000000000000000D0 /* ShapeExtrudeDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeExtrudeDemo.swift; sourceTree = "<group>"; };
-		C200000000000000000000D1 /* LightingLabDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightingLabDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D2 /* VideoTextureDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTextureDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D3 /* OcclusionMaterialDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcclusionMaterialDemo.swift; sourceTree = "<group>"; };
 		C200000000000000000000D5 /* DebugOverlayDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayDemo.swift; sourceTree = "<group>"; };
@@ -503,7 +500,6 @@
 		BC97EA31B851CDE641C29F3C /* MaterialsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MaterialsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/MaterialsScene.swift; sourceTree = SOURCE_ROOT; };
 		4B05E7EA7457BA4E219A3B18 /* ModelViewerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ModelViewerScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ModelViewerScene.swift; sourceTree = SOURCE_ROOT; };
 		24EDDD0A932E79C5088AEF26 /* RollingBallsScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RollingBallsScene.swift; path = SceneViewDemo/Views/Demos/Scenes/RollingBallsScene.swift; sourceTree = SOURCE_ROOT; };
-		BAC5EEABA6D7A33E6E4C2ED2 /* LightingLabScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LightingLabScene.swift; path = SceneViewDemo/Views/Demos/Scenes/LightingLabScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000D6 /* DebugOverlayScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugOverlayScene.swift; path = SceneViewDemo/Views/Demos/Scenes/DebugOverlayScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000F8 /* ArPeopleOcclusionScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArPeopleOcclusionScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArPeopleOcclusionScene.swift; sourceTree = SOURCE_ROOT; };
 		C200000000000000000000F9 /* ArBodyTrackerScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ArBodyTrackerScene.swift; path = SceneViewDemo/Views/Demos/Scenes/ArBodyTrackerScene.swift; sourceTree = SOURCE_ROOT; };
@@ -673,7 +669,7 @@
 				E35862000000000000003586 /* ExploreSearchModelTests.swift */,
 				B10000000000000000003584 /* ViewerAssetTests.swift */,
 				C4E5A0000000000000000005 /* ViewerEntranceTests.swift */,
-				A20000000000000000003158 /* LightingLabDemoTests.swift */,
+				A20000000000000000003158 /* LightingReflectionsTests.swift */,
 				A20000000000000000004210 /* RollingBallsSimulationTests.swift */,
 				F00000000000000000000060 /* SketchfabService+Tests.swift */,
 				F00000000000000000000070 /* SketchfabAssetResolver+Tests.swift */,
@@ -813,7 +809,6 @@
 				C200000000000000000000F1 /* ARAugmentedFacesDemo.swift */,
 				C200000000000000000000F2 /* ARDepthOcclusionDemo.swift */,
 				C200000000000000000000D0 /* ShapeExtrudeDemo.swift */,
-				C200000000000000000000D1 /* LightingLabDemo.swift */,
 				C200000000000000000000D2 /* VideoTextureDemo.swift */,
 				C200000000000000000000D3 /* OcclusionMaterialDemo.swift */,
 				C200000000000000000000D5 /* DebugOverlayDemo.swift */,
@@ -1340,7 +1335,6 @@
 				C100000000000000000000F6 /* ARPlaneNodeDemo.swift in Sources */,
 				C100000000000000000000F7 /* ARPointCloudDemo.swift in Sources */,
 				C100000000000000000000D0 /* ShapeExtrudeDemo.swift in Sources */,
-				C100000000000000000000D1 /* LightingLabDemo.swift in Sources */,
 				C100000000000000000000D2 /* VideoTextureDemo.swift in Sources */,
 				C100000000000000000000D3 /* OcclusionMaterialDemo.swift in Sources */,
 				C100000000000000000000D5 /* DebugOverlayDemo.swift in Sources */,
@@ -1399,7 +1393,6 @@
 				63639070635D8E5F607E8E11 /* ModelViewerScene.swift in Sources */,
 				BEA1469B6B63E6A1C636864B /* RollingBallsScene.swift in Sources */,
 				5A1A70000000000000000003 /* SplatPreviewScene.swift in Sources */,
-				D5304A7821A99E09C8746927 /* LightingLabScene.swift in Sources */,
 				DD3FF7C0836D9DD90C767D6D /* ShapeExtrudeScene.swift in Sources */,
 				A3BAB0EC281F966421D8019A /* SpatialAudioScene.swift in Sources */,
 				1CFD879D196F1D23142D7ACD /* TextScene.swift in Sources */,
@@ -1435,7 +1428,7 @@
 				FB100000000000000000000C /* PushCenterTests.swift in Sources */,
 				FB1000000000000000000010 /* ConsentTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
-				A20000000000000000003159 /* LightingLabDemoTests.swift in Sources */,
+				A20000000000000000003159 /* LightingReflectionsTests.swift in Sources */,
 				A20000000000000000004211 /* RollingBallsSimulationTests.swift in Sources */,
 				F00000000000000000000061 /* SketchfabService+Tests.swift in Sources */,
 				F00000000000000000000071 /* SketchfabAssetResolver+Tests.swift in Sources */,
