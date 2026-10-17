@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -149,7 +150,9 @@ internal fun ScanStage(
 
 /**
  * Record, and the one line under it: nothing while idle (the status card says what Record does),
- * how to stop while recording, and a wait while the scan is packed.
+ * how to stop while recording, and a wait while the scan is packed. A depth scan fuses its room
+ * again before it is packed: [finishProgress] is how far that is, 0 to 1, read as it is drawn,
+ * and the wait shows it as a bar; `null` for a scan with nothing to fuse.
  */
 @Composable
 internal fun ScanShutter(
@@ -158,6 +161,7 @@ internal fun ScanShutter(
     startEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    finishProgress: (() -> Float)? = null,
 ) {
     val hint = when {
         finishing -> ScanCopy.FINISHING
@@ -170,20 +174,49 @@ internal fun ScanShutter(
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
         if (hint != null) {
-            Text(
-                text = hint,
-                style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
-                textAlign = TextAlign.Center,
+            Column(
                 modifier = Modifier
                     .background(ArOverlay.scrimDark, CircleShape)
                     .padding(horizontal = Space.md, vertical = Space.sm),
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                Text(
+                    text = hint,
+                    style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
+                    textAlign = TextAlign.Center,
+                )
+                if (finishing && finishProgress != null) ScanFinishBar(finishProgress)
+            }
         }
         RecordShutter(
             isRecording = recording,
             startEnabled = startEnabled && !finishing,
             onStart = onStart,
             onStop = { if (!finishing) onStop() },
+        )
+    }
+}
+
+/**
+ * The wait after Stop, measured while the room is fused again, then unmeasured while the scan is
+ * packed and saved. The bar is the replay card's, at the width Material gives it.
+ */
+@Composable
+private fun ScanFinishBar(progress: () -> Float) {
+    if (progress() < 1f) {
+        LinearProgressIndicator(
+            progress = progress,
+            modifier = Modifier.testTag(SCAN_FINISH_BAR_TAG),
+            color = ArOverlay.accentProgress,
+            trackColor = ArOverlay.meterTrack,
+            drawStopIndicator = {},
+        )
+    } else {
+        LinearProgressIndicator(
+            modifier = Modifier.testTag(SCAN_FINISH_BAR_TAG),
+            color = ArOverlay.accentProgress,
+            trackColor = ArOverlay.meterTrack,
         )
     }
 }
@@ -200,4 +233,5 @@ private const val SCAN_STAGE_ASPECT = 1.35f
 private val ScanDotSize = Space.md - Space.xs / 2
 
 internal const val SCAN_HUD_TAG = "ar_rerun_scan_hud"
+internal const val SCAN_FINISH_BAR_TAG = "ar_rerun_scan_finish_bar"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"

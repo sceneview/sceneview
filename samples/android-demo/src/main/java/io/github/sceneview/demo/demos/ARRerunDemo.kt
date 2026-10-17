@@ -1032,6 +1032,7 @@ private fun RerunLiveScreen(
                         startEnabled = isTracking,
                         onStart = onStartScan,
                         onStop = onStopScan,
+                        finishProgress = scan?.takeIf { it.rawDepth }?.let { capture -> { capture.finishProgress } },
                     )
                 }
             }

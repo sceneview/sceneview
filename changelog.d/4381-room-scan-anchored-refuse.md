@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Demo app: Room Scan no longer shows the wall you started on twice ([#4381](https://github.com/sceneview/sceneview/pull/4381)).** When you stop a scan, the room is put together once more with the positions ARCore has corrected along the way, so a wall you come back to lines up with its first pass in the dense cloud and in the 3D model. "Building your scan…" now shows a progress bar while that runs; what you see while scanning is unchanged, and existing scans remain readable.

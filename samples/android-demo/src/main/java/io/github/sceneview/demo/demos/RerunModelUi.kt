@@ -111,9 +111,9 @@ internal sealed interface RerunModelSource {
 }
 
 /**
- * The recording's TSDF, fed the same raw-depth copies as the surfel map — the depth image's own
- * lens, fresh depth only — on its own worker: a frame that arrives while one integrates is left
- * to the surfel map alone, so neither slows the other.
+ * The recording's TSDF. The scan's final fusion fills it when the scan stops, from every kept
+ * raw-depth frame on the pose ARCore gives it by then (`ScanCapture.finish`). [offer] is the feed
+ * it had while recording, a frame at a time on the pose of its moment: nothing calls it any more.
  */
 internal class RerunLiveModel {
     val tsdf = RerunTsdf()

@@ -188,7 +188,7 @@ internal class ArDebugRecorder {
                 recordPoints(trace, nanos, frame, capture, image)
             }
             if (capture != null && photoDue && image != null) capture.takePhoto(nanos, image, display)
-            if (capture != null && depth != null) capture.fuseDepth(depth, image)
+            if (capture != null && depth != null) capture.fuseDepth(depth, image, session)
         } finally {
             image?.close()
             depth?.close()
