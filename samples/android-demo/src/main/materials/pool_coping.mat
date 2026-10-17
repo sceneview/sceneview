@@ -1,0 +1,121 @@
+// pool_coping.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The light stone coping around the in-ground pool AR demo: 50 cm slabs with
+//             mitred corners and thin joints, each slab a touch lighter or darker than the
+//             next, a fine weathered grain, and, with the pool lights on, the glow the lamps
+//             throw on the bullnose near them.
+// Used by:    samples/android-demo ARPoolDemo — nothing in the SDK.
+// Parameters:
+//   halfWidth    — float, half the inner width of the pool; the side walls stand at ±halfWidth.
+//   zNear, zFar  — float, z of the deep-end wall and of the shallow-end wall (zFar < zNear).
+//   stone        — float3, linear RGB of the stone.
+//   lights       — float [0,1], the two underwater lamps of pool_liner.mat: 0 off, 1 fully on.
+//   daylight     — float [0,1], the share of the scene's light the stone receives, as in
+//                  pool_liner.mat: 1 by day, 6 % at night, daylight² on the specular light.
+//                  It never dims the lamps' glow.
+//   opacity      — float [0,1], the placement fade-in; 1 once the pool has landed.
+// Fade blending with depth writes, so the coping fades in with the pool and still draws like an
+// opaque surface once it has landed; transparent shadows keep it casting its shadow into the
+// pool, at the strength of its opacity.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+material {
+    "name" : "Pool Coping",
+    "parameters" : [
+        { "type" : "float",  "name" : "halfWidth" },
+        { "type" : "float",  "name" : "zNear" },
+        { "type" : "float",  "name" : "zFar" },
+        { "type" : "float3", "name" : "stone" },
+        { "type" : "float",  "name" : "lights" },
+        { "type" : "float",  "name" : "daylight" },
+        { "type" : "float",  "name" : "opacity" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ { "name" : "objectPosition", "precision" : "high" } ],
+    "shadingModel" : "lit",
+    "blending" : "fade",
+    "depthWrite" : true,
+    "transparentShadow" : true,
+    "specularAntiAliasing" : true
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.objectPosition = float4(getPosition().xyz, 0.0);
+    }
+}
+fragment {
+    highp float stoneHash(highp float3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    float stoneNoise(highp float3 x) {
+        highp float3 i = floor(x);
+        highp float3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+                mix(mix(stoneHash(i), stoneHash(i + float3(1.0, 0.0, 0.0)), f.x),
+                        mix(stoneHash(i + float3(0.0, 1.0, 0.0)), stoneHash(i + float3(1.0, 1.0, 0.0)), f.x),
+                        f.y),
+                mix(mix(stoneHash(i + float3(0.0, 0.0, 1.0)), stoneHash(i + float3(1.0, 0.0, 1.0)), f.x),
+                        mix(stoneHash(i + float3(0.0, 1.0, 1.0)), stoneHash(i + float3(1.0, 1.0, 1.0)), f.x),
+                        f.y),
+                f.z);
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        highp float3 p = variable_objectPosition.xyz;
+        float zMid = 0.5 * (materialParams.zNear + materialParams.zFar);
+        float halfLength = 0.5 * (materialParams.zNear - materialParams.zFar);
+        // How far outside the water's edge, across the side runs and across the end runs.
+        float dx = abs(p.x) - materialParams.halfWidth;
+        float dz = abs(p.z - zMid) - halfLength;
+        bool sideRun = dx > dz;
+
+        // Slabs every 50 cm along each run, mitred at the four corners.
+        highp float along = sideRun ? p.z - zMid : p.x;
+        highp float u = along / 0.5;
+        highp float slab = floor(u + 0.5);
+        float jointDistance = abs(u - slab) * 0.5;
+        if (dx > -0.03 && dz > -0.03) {
+            jointDistance = min(jointDistance, abs(dx - dz) * 0.7071);
+        }
+        float joint = 1.0 - smoothstep(0.002, 0.004, jointDistance);
+        float run = sideRun ? (p.x > 0.0 ? 100.0 : 200.0) : (p.z > zMid ? 300.0 : 400.0);
+        float3 color = materialParams.stone * (0.92 + 0.16 * stoneHash(float3(slab + run, 7.0, 3.0)));
+
+        // Weathered grain; the fine octave fades out before it can shimmer.
+        float coarse = stoneNoise(p * 40.0);
+        float fine = stoneNoise(p * 160.0);
+        float fineFade = 1.0 - smoothstep(0.4, 1.0, length(fwidth(p * 160.0)));
+        color *= 0.9 + 0.12 * coarse + 0.06 * fine * fineFade;
+        color *= mix(1.0, 0.55, joint);
+
+        float opacity = materialParams.opacity;
+        float daylight = materialParams.daylight;
+        material.baseColor = float4(color * (opacity * daylight), opacity);
+        material.roughness = mix(0.78, 0.9, coarse);
+        material.reflectance = 0.4;
+        // The specular light goes by daylight², as on the liner (pool_liner.mat).
+        material.specularFactor = daylight * daylight;
+        material.specularColorFactor = float3(1.0);
+
+        // The lamps, 40 cm under the water in the side walls three quarters of the way to the
+        // shallow end, catch the inner edge only above and around them; the rest of the stone
+        // keeps whatever light the scene has.
+        if (materialParams.lights > 0.0) {
+            float zLamp = mix(materialParams.zNear, materialParams.zFar, 0.75);
+            float rim = 1.0 - smoothstep(-0.025, 0.01, max(dx, dz));
+            float near = 0.0;
+            for (int i = 0; i < 2; i++) {
+                float side = i == 0 ? -1.0 : 1.0;
+                highp float3 toLamp = float3(side * materialParams.halfWidth, -0.55, zLamp) - p;
+                near += exp(-dot(toLamp, toLamp) / 1.2);
+            }
+            float3 glow = float3(0.05, 0.35, 0.45) * (0.4 * rim * near * materialParams.lights);
+            material.emissive = float4(glow, 0.0);
+        }
+    }
+}

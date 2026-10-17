@@ -93,6 +93,21 @@ class AutoPlacementState {
      */
     var showsSelectionRing: Boolean by mutableStateOf(true)
 
+    /**
+     * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
+     *
+     * Set `false` for anything that must stay at real size (furniture, a pool, a shed): the
+     * pinch, [scaleTo] and the double-tap stop resizing it, move and rotate keep working, and
+     * an object already resized animates back to 100 %. Same meaning as Quick Look's
+     * `allowsContentScaling = false`, Scene Viewer's `resizable=false` and model-viewer's
+     * `ar-scale="fixed"`.
+     *
+     * ```kotlin
+     * val state = remember { AutoPlacementState().apply { allowsScaling = false } }
+     * ```
+     */
+    var allowsScaling: Boolean by mutableStateOf(true)
+
     /** Gesture-driven haptic events (snap, limit, invalid move); set by [ARHapticFeedback]. */
     internal var gestureHapticSink: ((io.github.sceneview.haptic.ARHapticEvent) -> Unit)? = null
     private val canManipulate: Boolean
@@ -107,22 +122,28 @@ class AutoPlacementState {
         if (canManipulate && degrees.isFinite()) rotateAction?.invoke(degrees)
     }
 
-    /** Accessibility alternative: uniform base-size multiplier, clamped to 25–400%. */
+    /**
+     * Accessibility alternative: uniform base-size multiplier, clamped to 25–400%. Ignored
+     * while [allowsScaling] is `false`.
+     */
     fun scaleTo(factor: Float) {
-        if (canManipulate && factor.isFinite()) scaleAction?.invoke(factor.coerceIn(0.25f, 4f))
+        if (allowsScaling && canManipulate && factor.isFinite()) {
+            scaleAction?.invoke(factor.coerceIn(0.25f, 4f))
+        }
     }
 
     /**
      * The double-tap on the placed object: selects it, then animates it back to exactly
      * 100 % if it was resized — or, already at 100 %, back to the size the user had pinched
      * it to before (a toggle, not a one-way reset). Never resized, it plays the 100 %
-     * rebound so the tap is acknowledged. Wire it to `onDoubleTap` when the tapped node is
-     * the placed model; [AutoPlacementScene] already does.
+     * rebound so the tap is acknowledged. While [allowsScaling] is `false` it only selects.
+     * Wire it to `onDoubleTap` when the tapped node is the placed model;
+     * [AutoPlacementScene] already does.
      */
     fun toggleBaseScale() {
         if (!hasPlacement || (phase != PlacementPhase.PLACED && phase != PlacementPhase.ADJUSTING)) return
         isSelected = true
-        scaleToggleAction?.invoke()
+        if (allowsScaling) scaleToggleAction?.invoke()
     }
 
     var phase: PlacementPhase by mutableStateOf(PlacementPhase.INITIALIZING)

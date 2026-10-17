@@ -381,6 +381,34 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/tray_wood.mat` (Rolling Balls board)",
     },
+    "pool_liner.filamat": {
+        "name": "pool_liner.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_liner.mat` (Pool in the garden)",
+    },
+    "pool_water.filamat": {
+        "name": "pool_water.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_water.mat` (Pool in the garden)",
+    },
+    "pool_coping.filamat": {
+        "name": "pool_coping.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_coping.mat` (Pool in the garden)",
+    },
+    "pool_night_veil.filamat": {
+        "name": "pool_night_veil.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_night_veil.mat` (Pool in the garden)",
+    },
     # Hand-authored 1 kB 3MF fixtures for the web /open page (#3512).
     "printed-icosahedron.3mf": {
         "name": "printed-icosahedron.3mf",

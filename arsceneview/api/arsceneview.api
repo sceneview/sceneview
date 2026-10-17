@@ -736,6 +736,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun deselectPlacement ()V
 	public final fun dismiss ()V
 	public final fun endAdjustment ()V
+	public final fun getAllowsScaling ()Z
 	public final fun getHasCameraFrame ()Z
 	public final fun getHasPlacement ()Z
 	public final fun getPhase ()Lio/github/sceneview/ar/PlacementPhase;
@@ -761,6 +762,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun scaleTo (F)V
 	public final fun selectModel ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun selectPlacement ()V
+	public final fun setAllowsScaling (Z)V
 	public final fun setShowsSelectionRing (Z)V
 	public final fun toggleBaseScale ()V
 	public final fun withdrawRequest ()V
@@ -1533,6 +1535,7 @@ public class io/github/sceneview/ar/camera/ARCameraStream : io/github/sceneview/
 	public static final field CAMERA_PRIORITY_BACKGROUND I
 	public static final field CAMERA_PRIORITY_DEPTH_PRIME I
 	public static final field Companion Lio/github/sceneview/ar/camera/ARCameraStream$Companion;
+	public static final field OCCLUDER_PRIORITY I
 	public fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Lio/github/sceneview/loaders/MaterialLoader;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun destroy ()V
@@ -1558,6 +1561,7 @@ public class io/github/sceneview/ar/camera/ARCameraStream : io/github/sceneview/
 	public fun getRenderableManager ()Lcom/google/android/filament/RenderableManager;
 	public final fun getStandardMaterial ()Lcom/google/android/filament/Material;
 	public final fun isDepthOcclusionEnabled ()Z
+	public final fun isOccluderMeshEnabled ()Z
 	public final fun isPersonOcclusionEnabled ()Z
 	public fun isShadowCaster ()Z
 	public fun isShadowReceiver ()Z
@@ -1586,6 +1590,7 @@ public class io/github/sceneview/ar/camera/ARCameraStream : io/github/sceneview/
 	public fun setMaterialInstances (Lcom/google/android/filament/MaterialInstance;)V
 	public fun setMaterialInstances (Ljava/util/List;)V
 	public fun setMorphWeights ([FI)V
+	public final fun setOccluderMeshEnabled (Z)V
 	public final fun setPersonOcclusionEnabled (Z)V
 	public final fun setPersonOcclusionMaterial (Lcom/google/android/filament/Material;)V
 	public fun setPriority (I)V

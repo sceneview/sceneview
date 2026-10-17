@@ -64,7 +64,9 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-03, after iOS and Android samples step 0): 43 rows, 31 working / 0 stub / 12 android-only.
+# Current ledger (2026-10-14): 44 rows, 31 working / 0 stub / 13 android-only.
+# (2026-10-14, +1 android-only: `ar-pool`, Pool in the garden — no iOS screen yet.)
+# (2026-10-03, after iOS and Android samples step 0: 43 rows, 31 working / 0 stub / 12 android-only.)
 # (2026-10-02, iOS samples step 0: 49 -> 35 iOS cards, `secondary-camera` included. Every
 #  absorbed iOS card is now a mode of the card that absorbed it and its id an alias, so no
 #  row changes status; the `ios:` lists name the 35 scene ids only. iOS allowedIds:
@@ -1035,7 +1037,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (12) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (13) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1279,6 +1281,33 @@ demos:
     evidence: >-
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
+  - id: ar-pool
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      No iOS screen. Added to Android on 2026-10-14 with the occluder-mesh
+      seam (`ARCameraStream.isOccluderMeshEnabled`) it is built on; not
+      ported (#2798).
+    category: PLACE_AR
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ARPoolDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      A real-size in-ground pool placed by the shared automatic-placement
+      flow and dug into the real ground: an invisible occlusion hull around
+      the liner keeps the camera's lawn on screen everywhere but the opening,
+      so the walls, Roman steps and floor show only through it, under a stone
+      coping. Transparent water with ripples, caustics, sky reflection and
+      depth tint; 6 x 3, 8 x 4 and 10 x 5 m presets, 1.2-1.5 m deep; white,
+      sand, light grey or blue liner; optional night mode: a transparent
+      black veil over the camera image darkens the garden, the pool's own
+      surfaces dim with it, and two underwater lamps light the water around
+      them. Drag and twist; pinch never resizes it (real size is locked).
+    parity: missing
+    evidence: >-
+      No iOS scene; ARPoolDemo.kt. RealityKit's OcclusionMaterial on a mesh
+      built from the same PoolGeometry hull is the iOS equivalent of the
+      occluder; the pool shell ports as a MeshResource
 
 # ─── iOS-only scenes, no Android row: 0 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as

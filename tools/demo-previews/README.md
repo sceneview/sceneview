@@ -87,6 +87,14 @@ room as a miniature: an emulator capture (Pixel_7a, 1080×2400) of the dollhouse
 AR half cannot run on the emulator (#2754). Crop: the full-width 1080×864 band from y = 958
 (5:4), resized to 800×640, WebP q82.
 
+`ar-pool` cannot run its AR session on the emulator either (#2754), so its card is the pool
+the `pool_preview` QA state draws without one: an emulator capture (Pixel_7a, 1280×2856) of
+`--es demo ar-pool --ez qa_mode true --es qa_state pool_preview`, the default 8 × 4 m pool
+with the white liner, one per theme. Crop: the full-width 1280×1024 band from y = 700 (5:4)
+— the far coping, the waterline mosaic, the Roman steps and the water with its caustics,
+none of the demo's chrome — resized to 800×640, WebP q80. The stage is the backdrop photo
+in both themes, so the two cards differ only by where the animated caustics were.
+
 `rolling-balls` became its own demo in #4083 and has no render golden: its card is an
 emulator capture (Pixel_7a, 1080×2400) of the opening shot a few seconds after launch — the
 wooden board (maple field, walnut frame, since the redesign) and the rubber, glass and steel

@@ -519,4 +519,42 @@ class AutoPlacementStateTest {
     @Test fun `the selection ring is on by default`() {
         assertTrue(AutoPlacementState().showsSelectionRing)
     }
+
+    @Test fun `resizing is allowed by default`() {
+        assertTrue(AutoPlacementState().allowsScaling)
+    }
+
+    @Test fun `a real-size lock ignores scaleTo but keeps move and rotate`() {
+        val state = AutoPlacementState()
+        val scales = mutableListOf<Float>()
+        var rotations = 0
+        state.scaleAction = { scales += it }
+        state.rotateAction = { rotations++ }
+        state.moveAction = { _, _ -> true }
+        state.requestPlacement()
+        state.onFrame(FrameInput(0, true, true)) { true }
+        state.selectPlacement()
+        state.allowsScaling = false
+        state.scaleTo(2f)
+        assertTrue("a locked size never reaches the pivot", scales.isEmpty())
+        state.rotateBy(15f)
+        assertEquals(1, rotations)
+        assertTrue(state.moveBy(0.1f, 0f))
+        state.allowsScaling = true
+        state.scaleTo(2f)
+        assertEquals(listOf(2f), scales)
+    }
+
+    @Test fun `a real-size lock turns the double-tap into a plain selection`() {
+        val state = AutoPlacementState()
+        var toggles = 0
+        state.scaleToggleAction = { toggles++ }
+        state.allowsScaling = false
+        state.requestPlacement()
+        state.onFrame(FrameInput(0, true, true)) { true }
+        state.deselectPlacement()
+        state.toggleBaseScale()
+        assertEquals("no resize while the size is locked", 0, toggles)
+        assertTrue("the double-tap still selects the object", state.isSelected)
+    }
 }

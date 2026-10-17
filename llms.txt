@@ -1446,6 +1446,11 @@ cannot fade).
 while rotating/scaling, and constrains dragging to supported plane geometry. Its
 0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
 trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+For content that must stay at real size (furniture, a pool, a shed), set
+`placement.allowsScaling = false` — `remember { AutoPlacementState().apply { allowsScaling = false } }`:
+the pinch, the double-tap and `scaleTo` stop resizing it, drag and twist still move and turn
+it, and an object already resized animates back to 100 % (Quick Look's
+`allowsContentScaling = false`, Scene Viewer's `resizable=false`).
 
 For asynchronous selection, call `placement.selectModel()` before loading and attach
 only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
@@ -2882,6 +2887,47 @@ instead.
 
 Sample: `ARPeopleOcclusionDemo` (Android demo registry id `ar-people-occlusion`) — place a
 model, walk a person in front of it; a HUD shows the live `PERSON`-pixel fraction.
+
+### Occluder meshes — content dug into the real ground or cut into a wall
+
+An occluder mesh is geometry you model yourself with `materialLoader.createOcclusionInstance()`
+— not the real-world mesh ARKit reconstructs for its occlusion. It writes depth and no colour.
+In AR, set `ARCameraStream.isOccluderMeshEnabled = true` so the camera feed is drawn **first**:
+the mesh then shows the camera image through it and hides only the virtual content behind it.
+Without the flag the feed is drawn last, at the far plane, and the mesh leaves a black hole.
+
+For content below the ground (a pool, a pit, a trench), wrap it in an open-topped **hull**
+just outside its walls. Every line of sight that enters the ground outside the opening meets
+the hull first, so the real ground stays on screen there; through the opening, the content
+shows.
+
+```kotlin
+import io.github.sceneview.ar.camera.ARCameraStream
+
+val cameraStream = rememberARCameraStream(materialLoader) {
+    createARCameraStream(materialLoader).apply { isOccluderMeshEnabled = true }
+}
+val occluder = remember(materialLoader) { materialLoader.createOcclusionInstance() }
+// In the ARSceneView content, under the same anchor as the dug-in content:
+MeshNode(
+    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+    vertexBuffer = hull.vertexBuffer, indexBuffer = hull.indexBuffer,
+    materialInstance = occluder,
+    apply = {
+        setPriority(ARCameraStream.OCCLUDER_PRIORITY) // after the feed, before the content
+        isTouchable = false                           // taps reach the ground behind it
+    },
+)
+```
+
+Leave `isDepthOcclusionEnabled` off for content below the ground: ARCore's depth is the ground
+surface, which is in front of everything dug under it, so it would hide the content. Depth and
+people occlusion already draw the feed first, so the flag changes nothing while either is on.
+Cost: one full-screen overdraw. Pair it with `allowsScaling = false` (see *Automatic
+placement*) when the size is the point.
+
+Sample: `ARPoolDemo` (Android demo registry id `ar-pool`) — an in-ground pool at real size,
+dug into the lawn.
 
 ### AugmentedImageNode — image tracking
 ```kotlin
@@ -6358,6 +6404,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
 - `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
 - `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
+- `ar-pool` — Pool in the garden. A real-size pool dug into your lawn.
 - `ar-measure` — Measure. Add two points, read the distance.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
 - `ar-plane-renderer-v2` — Plane Renderer V2. Soft dots show each surface your phone finds.

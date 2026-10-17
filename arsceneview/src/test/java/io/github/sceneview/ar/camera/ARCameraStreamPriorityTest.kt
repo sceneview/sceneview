@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Pure-JVM sentinel for the camera-stream draw-priority contract that makes
- * depth occlusion actually occlude (#1617).
+ * occlusion actually occlude (#1617).
  *
  * The bug: [ARCameraStream] always built its renderable with Filament
  * `priority(7)` (drawn **last**). That is correct for the flat camera
@@ -21,20 +21,20 @@ import org.junit.Test
  * after every virtual object had already passed its depth test against an
  * empty buffer, so nothing was ever occluded.
  *
+ * Occluder meshes (`MaterialLoader.createOcclusionInstance`, enabled through
+ * `ARCameraStream.isOccluderMeshEnabled`) need the same ordering for the
+ * opposite reason: the mesh writes depth and no colour, so a feed drawn after
+ * it fails the depth test there and leaves a black hole.
+ *
  * The real `RenderableManager.setPriority` is a Filament JNI call needing a
  * native engine, which a pure-JVM unit test can't load. What we pin here is
- * the *priority-selection logic* — the same `depthEnabled ? PRIME : BACKGROUND`
- * decision the setter applies.
+ * the *priority-selection logic* — [cameraStreamPriority], the exact function
+ * the setters call.
  */
 class ARCameraStreamPriorityTest {
 
-    /** Mirror of `ARCameraStream.applyCameraStreamPriority`'s selection. */
-    private fun priorityFor(depthOcclusionEnabled: Boolean): Int =
-        if (depthOcclusionEnabled) {
-            ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME
-        } else {
-            ARCameraStream.CAMERA_PRIORITY_BACKGROUND
-        }
+    /** Filament's priority when a renderable never calls `priority(…)`. */
+    private val defaultRenderablePriority = 4
 
     @Test
     fun `priority constants stay inside Filament's valid 0-7 range`() {
@@ -46,6 +46,10 @@ class ARCameraStreamPriorityTest {
             "depth-prime priority must be a valid Filament priority",
             ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME in 0..7
         )
+        assertTrue(
+            "occluder priority must be a valid Filament priority",
+            ARCameraStream.OCCLUDER_PRIORITY in 0..7
+        )
     }
 
     @Test
@@ -55,19 +59,49 @@ class ARCameraStreamPriorityTest {
         assertEquals(
             "depth-on must use the lowest priority so it draws first",
             0,
-            priorityFor(depthOcclusionEnabled = true)
+            cameraStreamPriority(depthOcclusion = true, personOcclusion = false, occluderMesh = false)
         )
     }
 
     @Test
-    fun `depth occlusion OFF draws the camera quad last to minimise overdraw`() {
+    fun `people occlusion ON draws the camera quad first`() {
+        assertEquals(
+            0,
+            cameraStreamPriority(depthOcclusion = false, personOcclusion = true, occluderMesh = false)
+        )
+    }
+
+    @Test
+    fun `occluder mesh ON draws the camera quad first so occluders cut into the feed`() {
+        assertEquals(
+            "an occluder mesh drawn over an already-drawn feed shows the feed, not a hole",
+            0,
+            cameraStreamPriority(depthOcclusion = false, personOcclusion = false, occluderMesh = true)
+        )
+    }
+
+    @Test
+    fun `every occlusion mode OFF draws the camera quad last to minimise overdraw`() {
         // Filament priority 7 = drawn last. The flat opaque background is
         // early-Z rejected wherever virtual geometry already drew.
         assertEquals(
-            "depth-off must use the highest priority so it draws last",
+            "occlusion-off must use the highest priority so it draws last",
             7,
-            priorityFor(depthOcclusionEnabled = false)
+            cameraStreamPriority(depthOcclusion = false, personOcclusion = false, occluderMesh = false)
         )
+    }
+
+    @Test
+    fun `any combination with an occlusion mode ON draws the camera quad first`() {
+        val flags = listOf(false, true)
+        for (depth in flags) for (person in flags) for (occluder in flags) {
+            if (!depth && !person && !occluder) continue
+            assertEquals(
+                "depth=$depth person=$person occluder=$occluder",
+                ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME,
+                cameraStreamPriority(depth, person, occluder)
+            )
+        }
     }
 
     @Test
@@ -77,6 +111,18 @@ class ARCameraStreamPriorityTest {
         assertTrue(
             "depth-prime must sort before background in Filament draw order",
             ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME < ARCameraStream.CAMERA_PRIORITY_BACKGROUND
+        )
+    }
+
+    @Test
+    fun `occluder draws after the camera feed and before default-priority content`() {
+        assertTrue(
+            "the occluder must write depth over a feed that is already drawn",
+            ARCameraStream.OCCLUDER_PRIORITY > ARCameraStream.CAMERA_PRIORITY_DEPTH_PRIME
+        )
+        assertTrue(
+            "the occluder must write depth before the content it hides is drawn",
+            ARCameraStream.OCCLUDER_PRIORITY < defaultRenderablePriority
         )
     }
 }
