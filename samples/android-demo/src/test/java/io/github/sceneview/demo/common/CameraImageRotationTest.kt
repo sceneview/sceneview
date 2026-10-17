@@ -5,14 +5,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Pure-JVM tests for the `Surface.ROTATION_*` -> rotation-degrees mapping shared by
- * `ar-ml-object-label` (ML Kit) and `ar-body-tracker` (MediaPipe) to correct ARCore's raw
- * sensor-orientation CPU camera image before feeding it into either vision pipeline.
+ * Pure-JVM tests for the `Surface.ROTATION_*` -> rotation-degrees mapping `ar-ml-object-label`
+ * (ML Kit) uses to correct ARCore's raw sensor-orientation CPU camera image before feeding
+ * it into its vision pipeline.
  *
- * `ar-body-tracker` shipped without this correction (#3266): its bitmap conversion never
- * accounted for rotation, so a person standing upright in front of the camera appeared
- * sideways to the pose model, which almost never found a body. This mapping is the fix, so
- * every rotation case is pinned here.
+ * `ar-body-tracker` shipped without such a correction (#3266) and then used this mapping;
+ * since the Squat Coach rewrite it reads the rotation straight from ARCore's display
+ * transform instead (`UprightFrame`, pinned by `UprightFrameTest`).
  */
 class CameraImageRotationTest {
 

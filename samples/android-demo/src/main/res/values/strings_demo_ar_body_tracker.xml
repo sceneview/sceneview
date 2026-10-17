@@ -1,17 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `ar-body-tracker` demo (registered by
+<!-- Strings for the `ar-body-tracker` demo — the Squat Coach (registered by
      `ArBodyTrackerFragment.kt`). Android's resource merger fans every
      `res/values/*.xml` file in, so `R.string.demo_ar_body_tracker_title` etc.
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_body_tracker_title">AR Body Tracker</string>
-    <string name="demo_ar_body_tracker_subtitle">Follow a person with a live skeleton</string>
-    <string name="demo_ar_body_tracker_explainer">Point the camera at a person. MediaPipe Pose Landmarker runs on-device on the AR camera image and SceneView projects the landmarks onto a 17-joint ARKit-parity skeleton. Note: ARCore has no native body tracking — this is an image-space pose overlay, not a world-anchored 3D skeleton like ARKit.</string>
-    <string name="demo_ar_body_tracker_status_aim">Aim the camera at a person</string>
-    <string name="demo_ar_body_tracker_status_tracked">Body tracked — %1$d joints</string>
-    <string name="demo_ar_body_tracker_status_no_model">Body tracking is unavailable right now — the rest of the AR scene still works.</string>
-    <!-- Persistent in-viewport hint pill: shown when the camera feed is live but no body is
-         detected yet. Kept brief so it fits on one line at bodyMedium size (#2485). -->
-    <string name="demo_ar_body_tracker_hint_aim">Point camera at a person — full body visible</string>
+    <string name="demo_ar_body_tracker_title">Squat Coach</string>
+    <string name="demo_ar_body_tracker_subtitle">Counts your squats and tells you when to go lower</string>
+    <string name="demo_ar_body_tracker_explainer">Prop the phone up, step back until your whole body is on screen, and squat. Each rep counts when your knees bend past about 100° and you stand back up. The pose is read on the phone, from the camera image — nothing leaves the device. Reset sets the count back to zero.</string>
+    <string name="demo_ar_body_tracker_status_no_model">Squat counting is unavailable right now — the camera still works.</string>
+    <!-- Shown while the camera is live but no legs are visible yet. One line at card size. -->
+    <string name="demo_ar_body_tracker_hint_aim">Step back until your whole body is on screen</string>
+    <string name="demo_squat_feedback_ready">Ready — squat when you are</string>
+    <string name="demo_squat_feedback_lower">Lower</string>
+    <string name="demo_squat_feedback_stand_up">Good depth — stand up</string>
+    <string name="demo_squat_feedback_rep">Nice rep!</string>
+    <string name="demo_squat_feedback_shallow">Not deep enough — that one didn’t count</string>
+    <string name="demo_squat_reps_label">Reps</string>
+    <string name="demo_squat_knee_angle">Knee %1$d°</string>
+    <string name="demo_squat_knee_hidden">Knees out of view</string>
+    <string name="demo_squat_depth_description">Squat depth %1$d percent</string>
 </resources>
