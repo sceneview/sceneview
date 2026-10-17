@@ -122,7 +122,7 @@ struct SceneViewDemoApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     /// A document handed to the app. A SceneView scan or a Rerun recording (`.svscan`,
-    /// `.rrd`) opens in the Rerun demo, which keeps it as one of "Your sessions"; any other
+    /// `.rrd`) opens in the Room Scan demo, which keeps it as one of "Your sessions"; any other
     /// file opens in the 3D viewer.
     private func open(_ url: URL) {
         #if os(iOS)

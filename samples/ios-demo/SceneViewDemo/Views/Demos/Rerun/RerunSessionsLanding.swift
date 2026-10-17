@@ -2,11 +2,10 @@
 import SwiftUI
 import UIKit
 
-/// The Rerun demo's first screen: record your own room (the primary action), watch the sample
+/// Room Scan's first screen: record your own room (the primary action), watch the sample
 /// session, open a scan or `.rrd` file, and every session kept on this iPhone.
 ///
-/// It sits on the dark stage in both themes, like the replay it leads to, so it pins the dark
-/// scheme and uses the glass foregrounds.
+/// Its stage and cards follow the system theme, like the replay it leads to.
 struct RerunSessionsLanding: View {
     let sessions: [RerunStoredSession]
     let store: RerunSessionStore
@@ -29,7 +28,7 @@ struct RerunSessionsLanding: View {
 
     var body: some View {
         ZStack {
-            SceneViewTokens.Stage.background.ignoresSafeArea()
+            SceneViewTokens.RoomScan.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     header
@@ -44,7 +43,6 @@ struct RerunSessionsLanding: View {
             }
             .scrollIndicators(.hidden)
         }
-        .environment(\.colorScheme, .dark)
         .confirmationDialog(
             pendingDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -68,12 +66,12 @@ struct RerunSessionsLanding: View {
             Text("Scan a room in 3D")
                 .font(SceneViewTokens.TypeScale.display)
                 .tracking(SceneViewTokens.TypeScale.displayTracking)
-                .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                .foregroundStyle(SceneViewTokens.RoomScan.text)
                 .accessibilityAddTraits(.isHeader)
             Text("Walk around with your iPhone. SceneView keeps the camera's path, its photos, the "
                  + "surfaces and the points, then replays the room in 3D.")
                 .font(SceneViewTokens.TypeScale.body)
-                .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -134,19 +132,19 @@ struct RerunSessionsLanding: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Your sessions")
                     .font(SceneViewTokens.TypeScale.card)
-                    .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                    .foregroundStyle(SceneViewTokens.RoomScan.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if !sessions.isEmpty {
                     Text("On this iPhone")
                         .font(SceneViewTokens.TypeScale.captionRegular)
-                        .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                        .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                 }
             }
             if let notice {
                 Label(notice, systemImage: "exclamationmark.triangle.fill")
                     .font(SceneViewTokens.TypeScale.captionRegular)
-                    .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                    .foregroundStyle(SceneViewTokens.RoomScan.text)
                     .padding(Space.sm + Space.xs)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(SceneViewTokens.HomeColor.danger.opacity(0.24),
@@ -158,7 +156,7 @@ struct RerunSessionsLanding: View {
                     ProgressView()
                     Text("Opening file…")
                         .font(SceneViewTokens.TypeScale.bodyMedium)
-                        .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                        .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                 }
                 .padding(Space.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -182,18 +180,18 @@ struct RerunSessionsLanding: View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Label("No sessions yet", systemImage: "square.stack.3d.up")
                 .font(SceneViewTokens.TypeScale.bodySemibold)
-                .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                .foregroundStyle(SceneViewTokens.RoomScan.text)
             Text("Rooms you record are kept here, on this iPhone, until you delete them. "
                  + "You can also open a .svscan or .rrd file.")
                 .font(SceneViewTokens.TypeScale.captionRegular)
-                .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(Space.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(
             RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                .strokeBorder(SceneViewTokens.Glass.border,
+                .strokeBorder(SceneViewTokens.RoomScan.border,
                               style: StrokeStyle(lineWidth: SceneViewTokens.Glass.borderWidth, dash: [6, 4]))
         )
         .accessibilityElement(children: .combine)
@@ -237,16 +235,16 @@ struct RerunSessionCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(session.title)
                             .font(SceneViewTokens.TypeScale.card)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                            .foregroundStyle(SceneViewTokens.RoomScan.text)
                             .lineLimit(1)
                         Text(Self.origin(session))
                             .font(SceneViewTokens.TypeScale.captionRegular)
-                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                            .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                             .lineLimit(1)
                         Text(Self.figures(session))
                             .font(SceneViewTokens.TypeScale.caption)
                             .monospacedDigit()
-                            .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                            .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
                     }
@@ -262,7 +260,7 @@ struct RerunSessionCard: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(SceneViewTokens.TypeScale.bodySemibold)
-                    .foregroundStyle(SceneViewTokens.Glass.onGlass)
+                    .foregroundStyle(SceneViewTokens.RoomScan.text)
                     .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
                     .contentShape(Rectangle())
             }
@@ -292,7 +290,7 @@ struct RerunSessionCard: View {
 
     private var thumb: some View {
         ZStack {
-            SceneViewTokens.Glass.surface
+            SceneViewTokens.RoomScan.card
             if let thumbnail {
                 Image(uiImage: thumbnail)
                     .resizable()
@@ -300,7 +298,7 @@ struct RerunSessionCard: View {
             } else {
                 Image(systemName: "cube.transparent")
                     .font(SceneViewTokens.TypeScale.title)
-                    .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+                    .foregroundStyle(SceneViewTokens.RoomScan.secondaryText)
             }
         }
         .frame(width: LandingTokens.thumbnailSize, height: LandingTokens.thumbnailSize)
@@ -341,15 +339,15 @@ private enum LandingTokens {
     static let thumbnailPixels = CGSize(width: 192, height: 192)
 }
 
-/// Glass fill and border for a landing card on the dark stage.
+/// Token container and border for a landing card on the themed stage.
 private struct LandingCard: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(SceneViewTokens.Glass.surface,
+            .background(SceneViewTokens.RoomScan.card,
                         in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                    .strokeBorder(SceneViewTokens.Glass.border, lineWidth: SceneViewTokens.Glass.borderWidth)
+                    .strokeBorder(SceneViewTokens.RoomScan.border, lineWidth: SceneViewTokens.Glass.borderWidth)
             )
     }
 }
@@ -359,13 +357,13 @@ private struct LandingGlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(SceneViewTokens.TypeScale.bodySemibold)
-            .foregroundStyle(SceneViewTokens.Glass.onGlass)
+            .foregroundStyle(SceneViewTokens.RoomScan.text)
             .lineLimit(1)
             .minimumScaleFactor(0.85)
             .padding(.horizontal, SceneViewTokens.Space.md)
             .frame(minHeight: SceneViewTokens.Layout.touchTarget)
-            .background(SceneViewTokens.Glass.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(SceneViewTokens.Glass.border, lineWidth: SceneViewTokens.Glass.borderWidth))
+            .background(SceneViewTokens.RoomScan.card, in: Capsule())
+            .overlay(Capsule().strokeBorder(SceneViewTokens.RoomScan.border, lineWidth: SceneViewTokens.Glass.borderWidth))
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }

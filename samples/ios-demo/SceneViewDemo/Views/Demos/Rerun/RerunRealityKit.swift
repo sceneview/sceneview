@@ -1,7 +1,7 @@
 import Metal
 import RealityKit
 
-/// RealityKit resources shared by the Rerun replay (iOS only) and the Real-World Scan demo
+/// RealityKit resources shared by the Room Scan replay (iOS only) and the Real-World Scan demo
 /// (iOS and macOS). Kept outside `RerunReplayStage.swift`'s `#if os(iOS)` so both platforms
 /// build the same mesh from the same shared geometry.
 @MainActor

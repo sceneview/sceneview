@@ -649,6 +649,11 @@ struct RerunPlayback: Equatable, Sendable {
 
     init(duration: Float) { self.duration = duration }
 
+    /// The automatic camera moves whenever the replay plays: the looping end hold is not a pause.
+    var cameraAdvances: Bool { playing }
+
+    mutating func pause() { playing = false }
+
     /// Scrubbing pauses on the frame the finger is on.
     mutating func scrub(to seconds: Float) {
         playing = false

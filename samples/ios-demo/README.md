@@ -29,7 +29,7 @@ The `sceneview://` scheme is registered in `Info.plist > CFBundleURLTypes`.
 From the macOS host shell:
 
 ```bash
-# Open the AR Rerun debug demo on the booted simulator
+# Open the Room Scan demo on the booted simulator
 xcrun simctl openurl booted sceneview://demo/ar-rerun
 
 # Same for any demo id — list of legal ids in
