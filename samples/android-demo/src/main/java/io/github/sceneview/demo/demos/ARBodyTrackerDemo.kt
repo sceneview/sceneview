@@ -24,8 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
@@ -43,13 +45,17 @@ import io.github.sceneview.ar.arcore.cameraImage
 import io.github.sceneview.ar.body.BodyPose
 import io.github.sceneview.ar.body.Joint
 import io.github.sceneview.ar.body.SKELETON_BONES
+import io.github.sceneview.ar.camera.CameraImageSize
+import io.github.sceneview.ar.camera.CameraImageToViewMapping
+import io.github.sceneview.ar.camera.cameraImageToViewMapping
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
-import io.github.sceneview.demo.common.displayRotationDegrees
+import io.github.sceneview.demo.common.CameraImageRotation
 import io.github.sceneview.demo.common.trackingFailureMessage
+import io.github.sceneview.demo.demos.internal.CameraMappingProbe
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -91,10 +97,29 @@ import java.io.ByteArrayOutputStream
  * landmarker showed a person lying sideways. MediaPipe's pose model is not rotation-invariant —
  * fed a 90°-off frame it almost never found a body, which is why the demo "did nothing" no
  * matter how a person stood in front of the camera. The fix passes the same
- * [io.github.sceneview.demo.common.displayRotationDegrees] used by `ar-ml-object-label`'s ML
+ * [io.github.sceneview.demo.common.CameraImageRotation] used by `ar-ml-object-label`'s ML
  * Kit pipeline as an [ImageProcessingOptions] rotation hint to [PoseLandmarker.detect] — that
- * lets MediaPipe correct for the rotation internally (landmarks come back already normalised to
- * the upright, on-screen orientation) instead of physically rotating the bitmap.
+ * lets MediaPipe correct for inference without physically rotating the bitmap.
+ *
+ * **Which image the landmarks are normalized to.** The *unrotated* input bitmap, not the
+ * upright image the model saw — so the overlay maps them with
+ * [CameraImageToViewMapping.mapImageNormalized], which applies the sensor rotation and the
+ * preview crop, and not with `mapNormalized`, which would undo a rotation that was never
+ * applied to the coordinates. This is what MediaPipe's sources say at the pinned version
+ * (`mediapipe-tasks-vision` 0.10.26, tag `v0.10.26` of `google-ai-edge/mediapipe`):
+ *  - `mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarker_graph.cc`, on the graph's
+ *    landmark outputs: "All returned coordinates are in the unrotated and uncropped input
+ *    image coordinates system."
+ *  - `mediapipe/tasks/java/com/google/mediapipe/tasks/vision/core/BaseVisionTaskApi.java`,
+ *    `convertToNormalizedRect`: the rotation of [ImageProcessingOptions] is not applied to the
+ *    image; it becomes the rotation of a region-of-interest rectangle laid over the input image
+ *    (`setRotation(-(float) Math.PI * rotationDegrees / 180.0f)`).
+ *  - `mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarks_detector_graph.cc`: the
+ *    landmarks found in that rotated crop are projected back onto the input image through the
+ *    same rectangle (`LandmarkProjectionCalculator`).
+ *
+ * Read in the sources, not yet observed on a phone: the device check is to raise the right arm
+ * and see the skeleton's arm rise on the same side, in portrait and in both landscapes.
  *
  * ### Model asset
  *
@@ -147,6 +172,14 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var bodyPose by remember { mutableStateOf(BodyPose(emptyMap())) }
+    var bodyMapping by remember { mutableStateOf<CameraImageToViewMapping?>(null) }
+    // Only compared, in one log line per orientation, with where the mapping puts the image
+    // centre (see [CameraMappingProbe]); the mapping itself comes from ARCore's display geometry.
+    var viewSize by remember { mutableStateOf(IntSize.Zero) }
+    val mappingProbe = remember { CameraMappingProbe() }
+
+    // Sensor mount read once per camera id, not once per landmarker pass.
+    val imageRotation = remember(context) { CameraImageRotation(context) }
 
     // Landmarker throttle — minimum gap between detector runs so we don't starve the
     // renderer. ~6 fps is plenty for a live skeleton overlay.
@@ -236,7 +269,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
             DemoStatusBanner(statusText, tone = statusTone)
         },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().onSizeChanged { viewSize = it }) {
             ARSceneView(
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
@@ -249,7 +282,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                     config.planeFindingMode = Config.PlaneFindingMode.DISABLED
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
-                onSessionUpdated = { _, frame: Frame ->
+                onSessionUpdated = { session, frame: Frame ->
                     // First callback = camera is delivering frames; dismiss the init scrim.
                     if (!cameraReady) cameraReady = true
                     if (landmarker == null) return@ARSceneView
@@ -263,6 +296,12 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                     val cameraImage = frame.cameraImage() ?: return@ARSceneView
                     bodyPose = cameraImage.use { image ->
                         runCatching {
+                            val rotationDegrees = imageRotation.degrees(session)
+                            val mapping = frame.cameraImageToViewMapping(
+                                imageSize = CameraImageSize(image.width, image.height),
+                                inputRotationDegrees = rotationDegrees,
+                            )
+                            mappingProbe.report(mapping, viewSize.width, viewSize.height)
                             val bitmap = image.toBitmap()
                             val mpImage = BitmapImageBuilder(bitmap).build()
                             // #3266: the bitmap is still in ARCore's raw sensor orientation —
@@ -270,7 +309,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                             // sees an upright person instead of one lying sideways. See the
                             // "Rotation (#3266)" note on the file kdoc.
                             val imageProcessingOptions = ImageProcessingOptions.builder()
-                                .setRotationDegrees(displayRotationDegrees(context))
+                                .setRotationDegrees(rotationDegrees)
                                 .build()
                             val result = landmarker.detect(mpImage, imageProcessingOptions)
                             // First (and only — numPoses=1) pose, adapted to the
@@ -284,7 +323,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
                                     visibility = lm.visibility().orElse(0f),
                                 )
                             }
-                            BodyPose.fromMediaPipeLandmarks(raw)
+                            BodyPose.fromMediaPipeLandmarks(raw).also { bodyMapping = mapping }
                         }.getOrDefault(BodyPose(emptyMap()))
                     }
                 },
@@ -292,10 +331,11 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
             )
 
             // 2D skeleton overlay — drawn from the image-space BodyPose landmarks. The
-            // MediaPipe x/y are already normalised [0,1] across the camera frame, so we
-            // scale them straight to the Canvas size.
+            // MediaPipe x/y stay normalized to the unrotated input bitmap. The mapping captured
+            // from the same ARCore frame applies sensor rotation and the camera preview crop.
             SkeletonOverlay(
                 pose = bodyPose,
+                mapping = bodyMapping,
                 modifier = Modifier.fillMaxSize(),
             )
 
@@ -312,24 +352,28 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
 
 /** Draws the live skeleton from an image-space [BodyPose] onto a full-screen Compose [Canvas]. */
 @Composable
-private fun SkeletonOverlay(pose: BodyPose, modifier: Modifier) {
+private fun SkeletonOverlay(
+    pose: BodyPose,
+    mapping: CameraImageToViewMapping?,
+    modifier: Modifier,
+) {
     // SceneView accent blue — matches the demo design language.
     val boneColor = Color(0xFF4C8DFF)
     val jointColor = Color(0xFFFFC400)
     Canvas(modifier = modifier) {
-        if (!pose.isTracked) return@Canvas
-        val w = size.width
-        val h = size.height
+        if (!pose.isTracked || mapping == null) return@Canvas
 
         // Bones first so joint dots sit on top of the lines.
         SKELETON_BONES.forEach { (a, b) ->
             val la = pose[a]
             val lb = pose[b]
             if (la != null && lb != null) {
+                val start = mapping.mapImageNormalized(la.x, la.y)
+                val end = mapping.mapImageNormalized(lb.x, lb.y)
                 drawLine(
                     color = boneColor,
-                    start = Offset(la.x * w, la.y * h),
-                    end = Offset(lb.x * w, lb.y * h),
+                    start = Offset(start.x, start.y),
+                    end = Offset(end.x, end.y),
                     strokeWidth = 8f,
                     cap = Stroke.DefaultCap,
                 )
@@ -337,10 +381,11 @@ private fun SkeletonOverlay(pose: BodyPose, modifier: Modifier) {
         }
         Joint.entries.forEach { joint ->
             pose[joint]?.let { lm ->
+                val point = mapping.mapImageNormalized(lm.x, lm.y)
                 drawCircle(
                     color = jointColor,
                     radius = 12f,
-                    center = Offset(lm.x * w, lm.y * h),
+                    center = Offset(point.x, point.y),
                 )
             }
         }
