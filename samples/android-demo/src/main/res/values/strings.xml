@@ -354,6 +354,9 @@
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_open">Open demo settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>
+    <!-- #4558: the identity row's last button gives the 3D view the whole screen. -->
+    <string name="demo_full_screen_cd">Full screen</string>
+    <string name="demo_full_screen_exit_cd">Exit full screen</string>
     <string name="demo_settings_reset">Reset</string>
     <string name="demo_settings_reset_cd">Reset demo settings to defaults</string>
     <!-- The settings sheet has no scrim to tap (#3827), so it carries its own close. -->

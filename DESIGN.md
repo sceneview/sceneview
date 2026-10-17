@@ -725,6 +725,18 @@ with `motion-fade`.
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
 
+#### Full screen (Android demo, #4558)
+
+Every scene screen built on `DemoScaffold` carries a full-screen control: a
+`glass-icon-button` (`Fullscreen` glyph, "Full screen") at the trailing end of the
+identity row, so it sits where the back button's mirror would be on every demo. One tap
+fades the identity row, the dock, both scene slots (`topOverlay`, `bottomOverlay`) and
+the settings sheet out with `motion-fade`, and hides the system bars (transient on swipe).
+The scene keeps the whole screen; nothing else is drawn but one `glass-icon-button`
+(`FullscreenExit`, "Exit full screen") on a `chrome-scrim` ground in the top trailing
+corner, inside the safe-drawing inset. That button and system Back both bring everything
+back. The control lives in the scaffold, never in a sample.
+
 ### Car Chrome (Android Auto demo)
 
 `samples/android-auto-demo` is shown on a car's screen while parked, touched at arm's

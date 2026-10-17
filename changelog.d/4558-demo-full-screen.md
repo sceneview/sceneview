@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Android demo: every 3D and AR sample now has a full-screen control ([#4558](https://github.com/sceneview/sceneview/issues/4558)).** A button at the top right of each demo hides the title, the dock, the cards and panels and the system bars, so the scene gets the whole screen. One exit button in the corner, or system Back, brings everything back. It lives once in `DemoScaffold`, so every sample gets it.
