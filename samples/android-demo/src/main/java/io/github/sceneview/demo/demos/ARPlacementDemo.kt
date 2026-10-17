@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
@@ -27,6 +28,8 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.placement.BUNDLED_PLACEMENT_MODELS
+import io.github.sceneview.demo.common.placement.DOWNLOADABLE_REAL_PRODUCTS
+import io.github.sceneview.demo.common.placement.downloadablePlacementRow
 import io.github.sceneview.demo.common.placement.PlacementChooserScreen
 import io.github.sceneview.demo.common.placement.OPENED_FILE_PLACEMENT_ROW_ID
 import io.github.sceneview.demo.common.placement.PlacementFlowPhase
@@ -39,22 +42,14 @@ import io.github.sceneview.demo.common.placement.rememberPlacementFlowState
 import io.github.sceneview.demo.common.placement.rememberPlacementPickerState
 import io.github.sceneview.demo.common.placement.rememberTapToPlaceState
 import io.github.sceneview.demo.common.placement.resolveRequestedExtraPlacementRow
-import io.github.sceneview.demo.sketchfab.AssetSourceProbe
-import io.github.sceneview.demo.sketchfab.SampleAssets
-import io.github.sceneview.demo.sketchfab.SketchfabAssetResolver
-import io.github.sceneview.demo.sketchfab.SketchfabConfig
-import io.github.sceneview.demo.sketchfab.SketchfabService
-import io.github.sceneview.demo.sketchfab.SketchfabSlug
+import io.github.sceneview.demo.hdpack.HdPack
+import io.github.sceneview.demo.hdpack.rememberHdPackStore
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelLoader
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * `ar-placement` — **the** AR placement flow of the demo app
@@ -97,8 +92,9 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * ## What this file still contributes over the AR View tab
  *
- *  - **A richer catalogue** — the six bundled models of [BUNDLED_PLACEMENT_MODELS] plus the
- *    six streamed CC-BY Sketchfab rows of `SampleAssets.byCategory["ar_placement"]` (#1152).
+ *  - **A richer catalogue** — the bundled real products of [BUNDLED_PLACEMENT_MODELS] plus
+ *    the rest of the HD pack's everyday products, downloaded when chosen (#4560). The six
+ *    streamed Sketchfab `ar_placement` rows (#1152) it used to append are no longer offered.
  *  - **The asset-source chip**, reporting where the *armed* row's bytes came from (#2953).
  *  - **The QA tracking-failure shim** ([ForceTrackingFailureMenu], #1881).
  *
@@ -184,101 +180,43 @@ fun ARPlacementDemo(onBack: () -> Unit) {
             availability == ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD
     }
 
-    // Streamed `ar_placement` slugs from SampleAssets (#1152 Stage 2).
-    val placementSlugs = remember { SampleAssets.byCategory["ar_placement"].orEmpty() }
-
-    // Warm the `ar_placement` cache so taps land instantly once the user picks a row. The
-    // resolver dedupes concurrent calls, so when the per-selection resolve fires below it
-    // picks up the already-staged file. Now that the chooser precedes the camera, this has a
-    // whole screen's worth of dwell time to land in.
-    LaunchedEffect(Unit) {
-        runCatching {
-            SketchfabAssetResolver.getInstance(context).prefetchAll("ar_placement")
-        }
+    // The everyday catalogue (#4560): the bundled real products first, then the rest of the
+    // HD pack's everyday shelves — furniture, cars, bikes, home, tech, fashion — each at its
+    // real size. An HD row that is not on disk yet is `pending`: choosing it starts its
+    // download, the card says so, and the session places nothing until the real file lands.
+    val hdStore = rememberHdPackStore()
+    val readyIds: Set<String> by remember(hdStore) {
+        hdStore?.readyIds ?: MutableStateFlow(emptySet<String>())
+    }.collectAsState()
+    val armedHdId = remember(picker.selectedId, hdStore) {
+        picker.selectedId.takeIf { id -> hdStore?.manifest?.asset(id) != null }
+    }
+    LaunchedEffect(armedHdId, readyIds) {
+        if (armedHdId != null && armedHdId !in readyIds) HdPack.downloadNow(context, armedHdId)
+    }
+    val models: List<PlacementModel> = remember(requestedExtraRow, hdStore, readyIds, armedHdId) {
+        val downloadable = hdStore?.let { store ->
+            DOWNLOADABLE_REAL_PRODUCTS.mapNotNull { product ->
+                val asset = store.manifest.asset(product.id) ?: return@mapNotNull null
+                val ready = product.id in readyIds
+                product.downloadablePlacementRow(
+                    fileLocation = "file://${store.fileFor(asset).absolutePath}",
+                    ready = ready,
+                    downloading = !ready && product.id == armedHdId,
+                )
+            }
+        }.orEmpty()
+        listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + downloadable
     }
 
-    // Which streamed slug (if any) the picker currently has armed.
-    val armedSlug: SketchfabSlug? = remember(placementSlugs, picker.selectedId) {
-        placementSlugs.firstOrNull { streamedModelId(it) == picker.selectedId }
-    }
-
-    // Resolve the armed slug to a local file — `null` while downloading / staging. Only
-    // the armed one is resolved: the other five have no bytes to fetch until they are
-    // picked, and prefetch above already warmed the cache for them.
-    val armedFile: File? = armedSlug?.let { slug ->
-        produceState<File?>(initialValue = null, key1 = slug.uid) {
-            value = runCatching {
-                SketchfabAssetResolver.getInstance(context).resolve(slug)
-            }.getOrNull()
-        }.value
-    }
-
-    // Each streamed row's OWN Sketchfab thumbnail (#3987), keyed by uid. Until a row's URL is
-    // known — no API key, offline, metadata in flight — its card shows the generic glyph,
-    // never the picture of its bundled fallback, which is a different model.
-    val streamedThumbnails: Map<String, String> by produceState(
-        initialValue = StreamedPlacementThumbnails.known(),
-        key1 = placementSlugs,
-    ) {
-        value = StreamedPlacementThumbnails.resolve(SketchfabService.getInstance(context), placementSlugs)
-    }
-
-    // The catalogue the picker offers. A streamed row that has not landed yet carries its
-    // OWN bundled fallback as `assetLocation` (never null), so a tap during the download
-    // places that slug's stand-in rather than nothing — and the row is flagged `pending`
-    // so the bar and the card both say "Streaming …" instead of lying about it.
-    val models: List<PlacementModel> = remember(
-        placementSlugs,
-        armedSlug,
-        armedFile,
-        requestedExtraRow,
-        streamedThumbnails,
-    ) {
-        listOfNotNull(requestedExtraRow) + BUNDLED_PLACEMENT_MODELS + placementSlugs.map { slug ->
-            val isArmed = slug.uid == armedSlug?.uid
-            PlacementModel(
-                id = streamedModelId(slug),
-                displayName = slug.displayName,
-                assetLocation = if (isArmed && armedFile != null) {
-                    "file://${armedFile.absolutePath}"
-                } else {
-                    slug.fallbackBundledPath
-                },
-                // Real-world size for the pinch read-out's 100 % (#3326). The registry
-                // already records each slug's expected post-load bounding-**sphere radius**
-                // in metres (it is what `boundsAreSane` validates a download against), so the
-                // object's extent is twice it. That is a measured number about the actual
-                // asset, which is exactly what a flat 0.3 m for every row was not.
-                realWorldSizeMeters = slug.scaleToUnits * 2f,
-                source = PlacementModelSource.Streamed,
-                pending = isArmed && armedFile == null,
-                thumbnailUrl = streamedThumbnails[slug.uid],
-            )
-        }
-    }
-
-    // Per-demo offline indicator chip (#1152 Stage 3), reporting the ARMED row.
-    //
-    // For a streamed row the origin is MEASURED from the file the resolver handed back,
-    // never inferred from `SketchfabConfig.apiKey` (#2953): a key can be present and the
-    // resolve still land on the bundled fallback — no network, aeroplane mode, a 4xx, the
-    // WAF — and this chip would then claim "Streamed (cached)" over the stand-in the next
-    // tap actually places. `loaded` is the FILE here, not a parsed `ModelInstance`: a tap
-    // places whatever `armedFile` holds, so that is the moment the chip has something true
-    // to say. See [AssetSourceProbe].
-    val assetSource = if (requestedExtraRow?.id == OPENED_FILE_PLACEMENT_ROW_ID &&
-        picker.selectedId == requestedExtraRow.id
-    ) {
-        // The user's own file: neither bundled nor streamed. No chip rather than a wrong one.
-        null
-    } else if (armedSlug == null) {
-        AssetSourceState.Bundled
-    } else {
-        AssetSourceProbe.of(
-            resolvedFile = armedFile,
-            hasApiKey = SketchfabConfig.apiKey != null,
-            loaded = armedFile != null,
-        )
+    // Per-demo origin chip (#1152 Stage 3), reporting the ARMED row: bundled bytes, or an HD
+    // pack file that is on disk ("Streamed") or still downloading ("Streaming").
+    val armedRow = models.firstOrNull { it.id == picker.selectedId }
+    val assetSource = when {
+        armedRow == null || armedRow.id == OPENED_FILE_PLACEMENT_ROW_ID -> null
+        armedRow.source != PlacementModelSource.Downloadable -> AssetSourceState.Bundled
+        armedRow.pending -> AssetSourceState.Streaming
+        else -> AssetSourceState.Streamed
     }
 
     // One back ladder for both phases, so the camera can never be exited by accident and the
@@ -407,37 +345,4 @@ fun ARPlacementDemo(onBack: () -> Unit) {
     }
 }
 
-/**
- * Picker id for a streamed slug. Prefixed so a Sketchfab uid can never collide with a
- * bundled row's id, and stable across catalogue rebuilds.
- */
-private fun streamedModelId(slug: SketchfabSlug): String = "streamed:${slug.uid}"
-
 internal val AR_PLACEMENT_SURFACE_MODES = listOf("place", "wall")
-
-/**
- * Process-wide memo of the streamed `ar_placement` rows' Sketchfab thumbnail URLs (#3987), so
- * reopening the demo does not re-ask the API for six pictures it already knows. A uid whose
- * lookup failed is simply absent and is retried on the next open.
- */
-private object StreamedPlacementThumbnails {
-    /** Smallest render width that stays sharp in an 80 dp picker tile at xxhdpi. */
-    private const val MIN_WIDTH_PX = 256
-
-    private val urls = ConcurrentHashMap<String, String>()
-
-    fun known(): Map<String, String> = urls.toMap()
-
-    suspend fun resolve(service: SketchfabService, slugs: List<SketchfabSlug>): Map<String, String> {
-        coroutineScope {
-            slugs.filter { !urls.containsKey(it.uid) }.map { slug ->
-                async {
-                    runCatching { service.model(slug.uid).thumbnailUrl(MIN_WIDTH_PX) }
-                        .getOrNull()
-                        ?.let { urls[slug.uid] = it }
-                }
-            }.awaitAll()
-        }
-        return urls.toMap()
-    }
-}

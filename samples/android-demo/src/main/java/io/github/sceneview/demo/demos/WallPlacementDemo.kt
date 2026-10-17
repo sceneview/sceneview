@@ -1,11 +1,15 @@
 package io.github.sceneview.demo.demos
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.SystemClock
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.google.android.filament.Engine
 import com.google.ar.core.TrackingFailureReason
@@ -196,8 +200,11 @@ private val TV_SCREEN = Size(1.20f, 0.68f, 0.01f)
 /** The screen's centre, proud of the body's front face (z = 0.04) by half its own depth. */
 private const val TV_SCREEN_CENTER_Z = 0.045f
 
-/** Brings the authored 1.26 m TV to the demo's 0.3 m preview size, not a 55-inch claim. */
-private const val WALL_TV_SCALE = 0.3f / 1.26f
+/**
+ * The TV is drawn at its real size: the authored body is a 55-inch TV, 1.26 m by 0.74 m (#4560).
+ * It used to be shrunk to a 0.3 m preview, which read as a toy rather than a TV on the wall.
+ */
+private const val WALL_TV_SCALE = 1f
 
 /** The TV as drawn: width, height and depth in metres, screen included. */
 internal val wallTvExtent: Size = Size(
@@ -209,9 +216,9 @@ internal val wallTvExtent: Size = Size(
 /**
  * "View in 3D": the TV in the shared studio preview (#3864, #3884).
  *
- * The TV is near-black on purpose, like a real one and like iOS: the studio room is the backdrop
- * it reads against and the reflection that makes the glossy screen look like a screen. It is not
- * selectable here, so a drag that starts on it orbits the camera.
+ * The TV body is near-black like a real one and like iOS, and its screen shows a picture (QA
+ * 2026-10-17, #4531) so it reads as a TV and not as a black rectangle. It is not selectable
+ * here, so a drag that starts on it orbits the camera.
  */
 @Composable
 internal fun WallTvPreviewSheet(
@@ -231,7 +238,7 @@ internal fun WallTvPreviewSheet(
 }
 
 /**
- * Same authored geometry/materials as iOS; the base size is a 0.3 m preview, not a 55-inch claim.
+ * Same authored geometry/materials as iOS, drawn at the real size of a 55-inch TV (#4560).
  *
  * [selectable] routes a touch on the TV to the placement: in AR its parts are editable so a drag
  * on them reaches `AutoPlacementNode`'s pivot. SceneView never hands a touch on an editable node
@@ -269,5 +276,41 @@ private fun SceneScope.WallTV(opacity: Float = 1f, selectable: Boolean = true) {
             materialInstance = screen,
             apply = fixedChild,
         )
+        // QA 2026-10-17 (9:12), #4531: the screen was a black slab, so the object read as "a
+        // black rectangle" rather than as a TV. It now shows a picture — the demo's own
+        // hero still, cropped to the panel's 16:9 — on a plane just proud of the glass. It
+        // appears once the entrance fade is past half-way, so it never floats ahead of a
+        // body that is still transparent.
+        if (opacity > TV_PICTURE_MIN_OPACITY) {
+            val context = LocalContext.current
+            val picture = remember(context) { tvScreenPicture(context) }
+            ImageNode(
+                bitmap = picture,
+                size = Size(TV_SCREEN.x, TV_SCREEN.y),
+                position = Position(0f, TV_BODY.y / 2f, TV_PICTURE_Z),
+                apply = {
+                    isEditable = selectable
+                    isPositionEditable = false
+                    isRotationEditable = false
+                    isScaleEditable = false
+                },
+            )
+        }
     }
+}
+
+/** The screen picture's plane: in front of the glass by a millimetre, so it never z-fights it. */
+private const val TV_PICTURE_Z = TV_SCREEN_CENTER_Z + 0.005f + 0.001f
+
+/** Entrance-fade opacity past which the picture is drawn on the screen. */
+private const val TV_PICTURE_MIN_OPACITY = 0.5f
+
+/** The panel's aspect ratio, 1.20 m by 0.68 m. */
+private const val TV_SCREEN_ASPECT = 1.20f / 0.68f
+
+/** The hero still, centre-cropped to the screen's aspect ratio. */
+private fun tvScreenPicture(context: Context): Bitmap {
+    val source = BitmapFactory.decodeResource(context.resources, R.drawable.home_hero_still)
+    val cropHeight = (source.width / TV_SCREEN_ASPECT).toInt().coerceAtMost(source.height)
+    return Bitmap.createBitmap(source, 0, (source.height - cropHeight) / 2, source.width, cropHeight)
 }

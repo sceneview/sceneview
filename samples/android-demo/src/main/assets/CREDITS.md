@@ -15,7 +15,7 @@ Re-run that script after adding, removing or re-compressing a bundled asset;
 `ci.yml` → `build` (step "Check asset credits") fails if this file and the
 assets disagree.
 
-Assets bundled: **42**.
+Assets bundled: **49**.
 
 > **Optimization note (#934, #2305).** The bundled GLBs and HDRs are compressed
 > for a lean APK while preserving on-device visual quality:
@@ -34,6 +34,11 @@ Assets bundled: **42**.
 
 ## 3D models
 
+- `models/dyson_hot_cool_fan.glb` — **[Dyson Hot+Cool fan](https://sketchfab.com/3d-models/dyson-hotcool-fan-f31f9a62d4f64d2293d3e3969a30737e)** by Mr. Max — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (278 KB)
+- `models/ikea_kallax_shelf.glb` — **[IKEA KALLAX shelf](https://sketchfab.com/3d-models/kallax-shelf-e2d30124563947608a500df26f77b659)** by CN Entertainment — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (10 KB)
+- `models/ikea_linnmon_alex_desk.glb` — **[IKEA LINNMON / ALEX desk](https://sketchfab.com/3d-models/ikea-linnmonalex-desk-902aa1b8083741bdbc2b09e092c2b39a)** by janicezhao — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (437 KB)
+- `models/ikea_nockeby_sofa.glb` — **[IKEA NOCKEBY sofa](https://sketchfab.com/3d-models/sofa-ikea-nockeby-db5d6bbf7f34482ca1be89456fcc4070)** by Filipe.Soares — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (739 KB)
+- `models/jbl_charge_speaker.glb` — **[JBL Charge speaker](https://app.gazebosim.org/GoogleResearch/fuel/models/JBL_Charge_Speaker_portable_wireless_wired_Green)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (547 KB)
 - `models/khronos_damaged_helmet.glb` — **[Damaged Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/DamagedHelmet)** by theblueturtle_ (original, CC-BY-NC-4.0); ctxwing (rebuild, CC-BY-4.0) — [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (3.5 MB)
 - `models/khronos_fox.glb` — **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (96 KB)
 - `models/khronos_glam_velvet_sofa.glb` — **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (3.1 MB)
@@ -44,7 +49,9 @@ Assets bundled: **42**.
 - `models/night_circuit.glb` — **[Night circuit (Khronos Car Concept on a SceneView set)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)** by Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (4.2 MB)  
   The Car Concept on the night circuit built by `tools/scenes/circuit/build.sh`, the android-demo home hero (#3948)
 - `models/shiba.glb` — **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (669 KB)
+- `models/tesla_model_3.glb` — **[Tesla Model 3](https://sketchfab.com/3d-models/tesla-model-3-123c10f376ec4f18b93c73afc382808b)** by David_Holiday — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (549 KB)
 - `models/threejs_soldier.glb` — **[Soldier](https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb)** by Tomás Laulhé (modified by Don McCurdy) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) (2.3 MB)
+- `models/ue_boom_speaker.glb` — **[Ultimate Ears BOOM speaker](https://app.gazebosim.org/GoogleResearch/fuel/models/Logitech_Ultimate_Ears_Boom_Wireless_Speaker_Night_Black)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) (367 KB)
 - `splats/rainbow_sphere.ply` — **[rainbow_sphere.ply](https://github.com/sceneview/sceneview/blob/main/LICENSE)** by SceneView project — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (448 KB)  
   Generated procedurally by `tools/generate-splat-sphere.py`
 

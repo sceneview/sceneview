@@ -23,15 +23,16 @@ class WallTvPreviewTest {
     private val fov = io.github.sceneview.verticalFovDegreesForFocalLength(28.0)
 
     /** Share of the square preview's width the TV spans with the camera [distance] metres away. */
-    private fun widthFill(distance: Float): Float {
+    private fun widthFill(distance: Float, width: Float = wallTvExtent.x): Float {
         val halfFrame = distance * tan(Math.toRadians(fov) / 2.0).toFloat()
-        return (wallTvExtent.x / 2f) / halfFrame
+        return (width / 2f) / halfFrame
     }
 
     @Test
-    fun `the stock camera pose left the TV a small rectangle in the middle`() {
-        // What the bug report shows: "a tiny black rectangle in the middle".
-        assertTrue(widthFill(2.78f) < 0.2f)
+    fun `the stock camera pose left the 0_3 m preview TV a small rectangle in the middle`() {
+        // What the #3864 bug report shows: "a tiny black rectangle in the middle", with the TV
+        // still shrunk to its old 0.3 m preview width.
+        assertTrue(widthFill(2.78f, width = 0.3f) < 0.2f)
     }
 
     @Test
@@ -42,8 +43,8 @@ class WallTvPreviewTest {
     }
 
     @Test
-    fun `the framed TV is the 0_3 m preview the sheet states`() {
-        assertEquals(0.3f, wallTvExtent.x, 1e-6f)
+    fun `the framed TV is the real 55-inch TV the sheet states`() {
+        assertEquals(1.26f, wallTvExtent.x, 1e-6f)
         assertTrue(wallTvExtent.y < wallTvExtent.x)
         assertTrue(wallTvExtent.z < wallTvExtent.y)
     }

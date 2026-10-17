@@ -23,7 +23,7 @@
 
     <!-- In-AR chrome. -->
     <string name="ar_placement_change_model">Change model</string>
-    <string name="ar_placement_catalogue_note">Bundled models work offline. Online models download when selected and appear once the download completes.</string>
+    <string name="ar_placement_catalogue_note">Every product arrives at its real size. The first ones work offline; the others download when you choose them and appear once the download completes.</string>
 
     <!-- Automatic placement (plan §2.2) — the exact copy of the state machine. Shared by
          the AR View tab and the `ar-placement` demo through `TapToPlaceStatusOverlays`. -->
@@ -55,6 +55,8 @@
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>
+    <!-- #4560: the one-call demo places a real product. %1$s is its name. -->
+    <string name="ar_place_actual_size_product">%1$s, actual size</string>
     <!-- Closes every "View in 3D" preview sheet (PlacementPreviewSheet, #3884). -->
     <string name="ar_place_close_preview">Close preview</string>
 

@@ -20,6 +20,8 @@ import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberAutoPlacementState
 import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.placement.BUNDLED_REAL_PRODUCTS
+import io.github.sceneview.demo.common.placement.bundledPlacementRow
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
@@ -29,12 +31,15 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 
-/** The additive automatic-placement convenience API, using the shared 0.3 m Toy Car preview. */
+/**
+ * The additive automatic-placement convenience API, placing a real product — the IKEA NOCKEBY
+ * sofa — at its real 2.30 m (#4560), where it used to place a 0.3 m Toy Car preview.
+ */
 @Composable
 fun PlacementSceneDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val instance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+    val instance = rememberModelInstance(modelLoader, ONE_CALL_PRODUCT.bundledPlacementRow().assetLocation)
     val state = rememberAutoPlacementState()
     // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
     // only tells the demo when to keep its own pill quiet, from the same tracking reason.
@@ -60,7 +65,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             DemoStatusBanner(text = message?.let { stringResource(it) }, tone = DemoStatusTone.Guidance)
         },
         controls = {
-            Text(stringResource(R.string.ar_place_preview_size))
+            Text(stringResource(R.string.ar_place_actual_size_product, ONE_CALL_PRODUCT.displayName))
             TextButton(onClick = { state.resetPlacement(SystemClock.uptimeMillis()) }) {
                 Text(stringResource(R.string.ar_dock_reset_label))
             }
@@ -82,7 +87,12 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             playbackDataset = playback,
             onTrackingFailureChanged = { trackingFailure = it },
         ) { placement ->
-            instance?.let { AutoPlacementModel(placement, state, it) }
+            instance?.let {
+                AutoPlacementModel(placement, state, it, scaleToUnits = ONE_CALL_PRODUCT.sizeMeters)
+            }
         }
     }
 }
+
+/** The product the one-call demo places: the catalogue's first, at its real size (#4560). */
+private val ONE_CALL_PRODUCT = BUNDLED_REAL_PRODUCTS.first()

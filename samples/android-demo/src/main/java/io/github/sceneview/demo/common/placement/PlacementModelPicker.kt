@@ -67,7 +67,13 @@ import kotlinx.coroutines.launch
  * row may still be downloading, and until it lands nothing is placed — the session keeps
  * scanning and places the real file when it arrives.
  */
-enum class PlacementModelSource { Bundled, Streamed }
+enum class PlacementModelSource {
+    Bundled,
+    Streamed,
+
+    /** An HD pack product (#4560): fetched the first time it is chosen, then kept on disk. */
+    Downloadable,
+}
 
 /**
  * One row of the canonical placement model picker.
@@ -120,6 +126,13 @@ data class PlacementModel(
      * never the picture of its bundled fallback, which is a different model (#3987).
      */
     val thumbnailUrl: String? = null,
+    /** `true` while a [PlacementModelSource.Downloadable] row's file is being fetched. */
+    val downloading: Boolean = false,
+    /**
+     * Key of this row's bundled picture in `ModelThumbnails` when it is not the asset's own
+     * file stem — the real products use the HD pack's `hd_<stem>` renders (#4560).
+     */
+    val thumbnailStem: String? = null,
 ) {
     companion object {
         /**
@@ -132,73 +145,18 @@ data class PlacementModel(
 }
 
 /**
- * The one bundled catalogue both placement entry points offer.
+ * The one bundled catalogue both placement entry points offer: real, everyday products at their
+ * real size (#4560) — an IKEA sofa, a KALLAX shelf, a desk, a Dyson fan, two speakers and a
+ * Tesla Model 3 — see [BUNDLED_REAL_PRODUCTS].
  *
- * Before this list existed the AR View tab carried `AR_MODELS` (6 entries, helmet first)
- * and `ARPlacementDemo` carried `MODEL_CYCLE` (5 entries) — two hand-maintained lists for
- * one feature, which is the divergence #2482 is about. The surviving content is
- * `MODEL_CYCLE`'s, because it is the audited one: #2023 removed the Damaged Helmet from it
- * on the grounds that a helmet hovering over a floor reads as a test payload rather than
- * as content someone meant to put in the room. That audit never reached the AR View tab's
- * own list. It does now.
- *
- * Every entry is a grounded object — a character, a piece of furniture or a household item
- * — with a distinct silhouette and material, so cycling the picker visibly changes the room.
- *
- * **What the catalogue offers, and why (#3324).** Two rows used to be untextured low-poly
- * animals (`khronos_fox`, `shiba`): flat vertex colours and a single base-colour map, which
- * is exactly what "the default models aren't great" describes — they say nothing about what
- * Filament can render, and a fox in a living room is not a thing anyone places. They are
- * replaced by three Khronos glTF-Sample-Assets pieces that each drive a *different* material
- * model — sheen (velvet), sheen + specular, and iridescence + transmission + volume — so the
- * six rows now read as a small showroom rather than as a conformance suite. (Verified on
- * `emulator-5554`: both sheen rows read as velvet. The dish's iridescent shell renders as a
- * dark glossy form there with no thin-film shift — correct geometry, scale and metal, but
- * the iridescence contribution does not appear on that emulator's ES 3.0 GL translator, and
- * has not yet been confirmed on a real GPU.) Both GLBs stay
- * in the APK: `SampleAssets` still uses them as offline fallbacks and `ARGeospatialAnchorsDemo`
- * loads the fox directly, so nothing is deleted, only re-curated.
+ * Before #4560 this list opened on the Khronos / three.js sample assets (Toy Car, Soldier,
+ * Velvet Sofa, Sheen Chair, Lantern, Olive Dish), every one forced to a 0.3 m "preview size".
+ * They read as test payloads, and nothing in the room was the size it would really be. Those
+ * GLBs stay in the APK — `SampleAssets` and other demos still load them — they are only no
+ * longer offered for placement.
  */
-val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
-    PlacementModel(
-        id = "toy-car",
-        displayName = "Toy Car",
-        assetLocation = "models/khronos_toy_car.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    // Bundled showcases share a 0.3 m longest-axis preview on Android and iOS.
-    // An explicitly imported or measured viewer selection retains its selected size basis.
-    PlacementModel(
-        id = "soldier",
-        displayName = "Soldier",
-        assetLocation = "models/threejs_soldier.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    PlacementModel(
-        id = "velvet-sofa",
-        displayName = "Velvet Sofa",
-        assetLocation = "models/khronos_glam_velvet_sofa.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    PlacementModel(
-        id = "sheen-chair",
-        displayName = "Sheen Chair",
-        assetLocation = "models/khronos_sheen_chair.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    PlacementModel(
-        id = "lantern",
-        displayName = "Lantern",
-        assetLocation = "models/khronos_lantern.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-    PlacementModel(
-        id = "olive-dish",
-        displayName = "Olive Dish",
-        assetLocation = "models/khronos_iridescent_dish.glb",
-        realWorldSizeMeters = 0.3f, // documented showcase preview
-    ),
-)
+val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> =
+    BUNDLED_REAL_PRODUCTS.map { it.bundledPlacementRow() }
 
 /**
  * Resolves the Model Viewer's "View in AR" handoff (#3493) — and "Open with SceneView"'s
@@ -332,7 +290,9 @@ fun List<PlacementModel>.armed(picker: PlacementPickerState): PlacementModel? =
  */
 @Composable
 fun placementModelLabel(model: PlacementModel): String =
-    if (model.pending) {
+    if (model.pending && model.source == PlacementModelSource.Downloadable) {
+        stringResource(R.string.ar_picker_downloading, model.displayName)
+    } else if (model.pending) {
         stringResource(R.string.ar_picker_streaming, model.displayName)
     } else {
         model.displayName
@@ -417,7 +377,7 @@ fun PlacementModelPickerSheet(
  * ([PlacementModel.thumbnailUrl]) or the generic AR glyph instead.
  */
 internal fun placementThumbnailResFor(model: PlacementModel): Int? =
-    model.assetLocation
+    model.thumbnailStem?.let(ModelThumbnails::resourceFor) ?: model.assetLocation
         .takeIf { model.source == PlacementModelSource.Bundled && !it.startsWith("file://") }
         ?.let { ModelThumbnails.resourceFor(it.substringAfterLast('/').substringBeforeLast('.')) }
 
@@ -509,24 +469,37 @@ internal fun PlacementModelCard(
                 },
                 maxLines = 1,
             )
-            // Only the streamed rows carry a caption: "bundled" is the unremarkable
-            // default, and a caption on every card would be noise the eye has to filter
-            // before it can compare two models.
-            if (model.source == PlacementModelSource.Streamed) {
+            // The caption says what a user cannot read off the picture: the real size the
+            // product arrives at (#4560), and — for the HD pack rows — that it downloads first.
+            // Streamed rows keep their "Streamed" wording (#3987).
+            placementCardCaption(model)?.let { caption ->
                 Text(
-                    text = stringResource(
-                        if (model.pending) {
-                            R.string.ar_picker_source_streaming
-                        } else {
-                            R.string.ar_picker_source_streamed
-                        }
-                    ),
+                    text = caption,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
             }
         }
+    }
+}
+
+/** The one-line caption under a picker card's name, or `null` when it has nothing to add. */
+@Composable
+private fun placementCardCaption(model: PlacementModel): String? {
+    val size = formatRealSize(model.realWorldSizeMeters).takeIf { model.sizeIsMeasured }
+    return when (model.source) {
+        PlacementModelSource.Streamed -> stringResource(
+            if (model.pending) R.string.ar_picker_source_streaming else R.string.ar_picker_source_streamed,
+        )
+
+        PlacementModelSource.Downloadable -> when {
+            model.downloading -> stringResource(R.string.ar_picker_source_downloading)
+            model.pending -> stringResource(R.string.ar_picker_caption_download, size.orEmpty())
+            else -> size
+        }
+
+        PlacementModelSource.Bundled -> size
     }
 }
 

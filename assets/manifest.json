@@ -165,6 +165,51 @@
       "author": "Poly Haven"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/dyson_hot_cool_fan.glb",
+      "scope": "android",
+      "sha256": "356a8b7d8d0f21883d9853388ca4fc18b08bbdf54b1dcedcc3ad3d7a2a59aadf",
+      "size": 277924,
+      "source": "https://sketchfab.com/3d-models/dyson-hotcool-fan-f31f9a62d4f64d2293d3e3969a30737e",
+      "license": "CC-BY-4.0",
+      "author": "Mr. Max"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/ikea_kallax_shelf.glb",
+      "scope": "android",
+      "sha256": "dc67977aff03663962087499780bc7f23d7eef4c0d92dcd02411c127439748e7",
+      "size": 9960,
+      "source": "https://sketchfab.com/3d-models/kallax-shelf-e2d30124563947608a500df26f77b659",
+      "license": "CC-BY-4.0",
+      "author": "CN Entertainment"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/ikea_linnmon_alex_desk.glb",
+      "scope": "android",
+      "sha256": "28fcae86aae568e1269e50c0adfd29273518024a3c62f8be0a5880dbe2eaf582",
+      "size": 436536,
+      "source": "https://sketchfab.com/3d-models/ikea-linnmonalex-desk-902aa1b8083741bdbc2b09e092c2b39a",
+      "license": "CC-BY-4.0",
+      "author": "janicezhao"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/ikea_nockeby_sofa.glb",
+      "scope": "android",
+      "sha256": "c7d93b628d16d4c9e38f2ff4c4ca7ba9d59495287c0765697662d87c9f74eaf9",
+      "size": 738800,
+      "source": "https://sketchfab.com/3d-models/sofa-ikea-nockeby-db5d6bbf7f34482ca1be89456fcc4070",
+      "license": "CC-BY-4.0",
+      "author": "Filipe.Soares"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/jbl_charge_speaker.glb",
+      "scope": "android",
+      "sha256": "555e607119ba55a232966e20ed783dbba09d0b724ae4c4dfadd04c3db418b06e",
+      "size": 546752,
+      "source": "https://app.gazebosim.org/GoogleResearch/fuel/models/JBL_Charge_Speaker_portable_wireless_wired_Green",
+      "license": "CC-BY-4.0",
+      "author": "Google LLC"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/khronos_damaged_helmet.glb",
       "scope": "android",
       "sha256": "ae1c83ada65823f4f562d5c791843fa30e837dd5ded1766105b56a0654fdc5bb",
@@ -246,6 +291,15 @@
       "author": "zixisun51"
     },
     {
+      "path": "samples/android-demo/src/main/assets/models/tesla_model_3.glb",
+      "scope": "android",
+      "sha256": "63667916bfda2c94517cd1d2e61ff50288b37a1de346f249eb2c23e3fd8a5659",
+      "size": 549128,
+      "source": "https://sketchfab.com/3d-models/tesla-model-3-123c10f376ec4f18b93c73afc382808b",
+      "license": "CC-BY-4.0",
+      "author": "David_Holiday"
+    },
+    {
       "path": "samples/android-demo/src/main/assets/models/threejs_soldier.glb",
       "scope": "android",
       "sha256": "cdd26ddebc758a66e1317190571a5a8206689d0d4a658924e07ad370ad492fc6",
@@ -253,6 +307,15 @@
       "source": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
       "license": "CC0-1.0",
       "author": "Tomás Laulhé (modified by Don McCurdy)"
+    },
+    {
+      "path": "samples/android-demo/src/main/assets/models/ue_boom_speaker.glb",
+      "scope": "android",
+      "sha256": "a75e97a096f82c79144affcd8db0021428a53d36012f823a484a5aadd7129a4f",
+      "size": 366592,
+      "source": "https://app.gazebosim.org/GoogleResearch/fuel/models/Logitech_Ultimate_Ears_Boom_Wireless_Speaker_Night_Black",
+      "license": "CC-BY-4.0",
+      "author": "Google LLC"
     },
     {
       "path": "samples/android-demo/src/main/assets/splats/raccoon_family.spz",

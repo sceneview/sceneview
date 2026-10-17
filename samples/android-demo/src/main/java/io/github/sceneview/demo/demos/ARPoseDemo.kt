@@ -34,7 +34,9 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.common.Axes3DNode
+import io.github.sceneview.demo.common.placement.BUNDLED_REAL_PRODUCTS
 import io.github.sceneview.demo.common.placement.PlacementAvailabilityOverlay
+import io.github.sceneview.demo.common.placement.bundledPlacementRow
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -60,13 +62,11 @@ fun ARPoseDemo(onBack: () -> Unit) {
     // `rememberArPlaybackDataset` - so live AR is completely unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // Real bundled GLB instead of the old placeholder cube/sphere (#1618). The Khronos
-    // Lantern is a hanging-light object — a model that intuitively "sits at a precise
-    // point in space", which is exactly the concept this pose-placement demo teaches.
-    // It is PBR-textured (metal + emissive) so it reads as a finished asset under
-    // ARCore's ENVIRONMENTAL_HDR estimation. `rememberModelInstance` loads on the main
-    // thread and returns null while the GLB decodes — handled below.
-    val lanternInstance = rememberModelInstance(modelLoader, "models/khronos_lantern.glb")
+    // A real product at its real size (#4560): the Dyson Hot+Cool fan, 63 cm, from the
+    // same catalogue as AR Placement — where this demo used to pose the Khronos Lantern
+    // sample asset at a 0.3 m preview. `rememberModelInstance` loads on the main thread
+    // and returns null while the GLB decodes — handled below.
+    val productInstance = rememberModelInstance(modelLoader, POSE_PRODUCT.bundledPlacementRow().assetLocation)
 
     // Sliders hold the user-tweakable *offset* from the pose captured in front of
     // the camera on first tracked frame. Keeping the offset small and centred means
@@ -127,7 +127,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
         // (e.g. ARDepthVisualizationDemo). Shown only once the pose is placed so the
         // numbers appear alongside the lantern they describe.
         topOverlay = {
-            if (isTracking && basePose != null) {
+            if (basePose != null) {
                 // Chrome over the camera feed is theme-independent and takes the glass
                 // tokens (#3683), never a copied surface literal: `chrome-scrim` for the fill
                 // (white text on it over a white wall is still ~5.6:1) and `over-media-edge`
@@ -180,8 +180,13 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     }
                 }
             ) {
+                // #3508 / QA 2026-10-17 ("the object disappears"): the object used to be drawn
+                // only while the camera reported TRACKING, so every PAUSED frame — a fast turn,
+                // a dim corner — removed it from the scene and it popped back a moment later.
+                // The pose is in world space and ARCore keeps it across a pause, so the object
+                // stays drawn once its base pose exists.
                 val base = basePose
-                if (isTracking && base != null) {
+                if (base != null) {
                     // Cache the placed Pose across recompositions — without remember,
                     // each slider drag allocates a new Pose + two FloatArray instances
                     // per frame.
@@ -203,15 +208,14 @@ fun ARPoseDemo(onBack: () -> Unit) {
                             thickness = 0.005f,
                         )
                     }
-                    // The lantern — a real bundled GLB placed at the slider-driven pose.
-                    // `scaleToUnits = 0.3f` fits it to a 0.3 m cube so it reads clearly
-                    // at 1 m from the camera. `rememberModelInstance` returns null while
-                    // the GLB is still decoding, so guard with `?.let`.
-                    lanternInstance?.let { instance ->
+                    // The product, placed at the slider-driven pose at its real size.
+                    // `rememberModelInstance` returns null while the GLB is still decoding,
+                    // so guard with `?.let`.
+                    productInstance?.let { instance ->
                         PoseNode(pose = objectPose) {
                             ModelNode(
                                 modelInstance = instance,
-                                scaleToUnits = 0.3f,
+                                scaleToUnits = POSE_PRODUCT.sizeMeters,
                                 // The lantern sits centred on the slider-driven pose. A previous
                                 // `centerOrigin = Position(0, -1, 0)` (bottom-align) here was a
                                 // silent no-op — the composable discarded it (fixed library-side) —
@@ -231,3 +235,6 @@ fun ARPoseDemo(onBack: () -> Unit) {
         }
     }
 }
+
+/** The product this demo poses: the Dyson Hot+Cool fan, at its real 63 cm (#4560). */
+private val POSE_PRODUCT = BUNDLED_REAL_PRODUCTS.first { it.id == "dyson-hot-cool-fan" }
