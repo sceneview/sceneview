@@ -93,4 +93,27 @@ class AskFailureTest {
             messages.distinct().size,
         )
     }
+
+    @Test
+    fun `AICore setup codes are retryable, not a device verdict (#2648)`() {
+        listOf(601 /* BINDING_FAILURE */, 606 /* FEATURE_NOT_FOUND */).forEach { code ->
+            val failure = AskFailure.ofErrorCode(code)
+            assertEquals("code $code", AskFailure.AicoreNotReady, failure)
+            assertFalse("code $code must stay retryable", failure.isTerminal)
+        }
+    }
+
+    @Test
+    fun `the error code is found down the cause chain (#2648)`() {
+        val wrapped = RuntimeException("outer", GenAiException(IllegalStateException("inner"), 606))
+        assertEquals(606, AskFailure.errorCodeOf(wrapped))
+        assertEquals(AskFailure.AicoreNotReady, AskFailure.of(wrapped))
+        assertEquals(null, AskFailure.errorCodeOf(IllegalStateException("no code")))
+    }
+
+    @Test
+    fun `terminal failures name their unavailable reason (#2648)`() {
+        assertEquals(AskUnavailableReason.NotSupported, AskFailure.ModelUnavailable.unavailableReason())
+        assertEquals(AskUnavailableReason.NeedsSystemUpdate, AskFailure.NeedsSystemUpdate.unavailableReason())
+    }
 }
