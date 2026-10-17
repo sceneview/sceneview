@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the "On your table" AR mode of `rolling-balls` (RollingBallsTableDemo.kt).
+     It was the `ar-depth-collider` card until the AR catalogue clean-up, wave 1.
+     Drop and Reset reuse the Balls mode's strings in strings_demo_rolling_balls.xml. -->
+<resources>
+    <string name="demo_rolling_balls_table_dropped">Balls dropped: %1$d</string>
+    <string name="demo_rolling_balls_drop_five">Drop 5</string>
+    <string name="demo_rolling_balls_table_explainer">Aim at the floor or a table, then tap Drop. The balls bounce off the real surfaces the camera sees in depth: DepthCollider turns ARCore\'s depth image into the floor the physics step lands on.</string>
+    <string name="demo_rolling_balls_table_show_depth">Show the depth surface</string>
+</resources>

@@ -23,6 +23,11 @@ import io.github.sceneview.demo.demos.ARGeospatialAnchorsDemo
  * Samples step 0 moved Streetscape here from `ar-scene-mesh` as the second mode
  * (`?tab=streetscape`, launch tab 2; the retired `ar-streetscape` link lands on it). Launch
  * tabs 0 and 1 stay with [ARGeospatialAnchorsDemo]: terrain and rooftop.
+ *
+ * The AR catalogue clean-up, wave 1, folded the rest of `ar-scene-mesh` ("Scene Geometry")
+ * into that mode as its "Colour buildings & terrain" switch: on, the classified
+ * `SceneMeshNode` with its legend; off, the raw `StreetscapeGeometryNode`. The
+ * `ar-scene-mesh` link opens the Streetscape mode with the switch on.
  */
 object ArGeospatialAnchorsFragment : DemoFragment {
     val modes = listOf(

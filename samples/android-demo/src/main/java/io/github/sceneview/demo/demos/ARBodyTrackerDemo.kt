@@ -91,7 +91,7 @@ import java.io.ByteArrayOutputStream
  * landmarker showed a person lying sideways. MediaPipe's pose model is not rotation-invariant —
  * fed a 90°-off frame it almost never found a body, which is why the demo "did nothing" no
  * matter how a person stood in front of the camera. The fix passes the same
- * [io.github.sceneview.demo.common.displayRotationDegrees] used by `ar-ml-object-label`'s ML
+ * [io.github.sceneview.demo.common.displayRotationDegrees] used by the retired `ar-ml-object-label`'s ML
  * Kit pipeline as an [ImageProcessingOptions] rotation hint to [PoseLandmarker.detect] — that
  * lets MediaPipe correct for the rotation internally (landmarks come back already normalised to
  * the upright, on-screen orientation) instead of physically rotating the bitmap.

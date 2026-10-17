@@ -2357,9 +2357,9 @@ LaunchedEffect(Unit) {
 ```
 
 ```kotlin notest external ML Kit dependency (com.google.mlkit) — not on the SDK classpath
-// ML Kit object detection on the CPU image — see ARMLObjectLabelDemo
-// (samples/android-demo/.../demos/ARMLObjectLabelDemo.kt) for the full pattern:
-// throttled per-frame dispatch, anchor de-dup, label bitmap caching, anchor cleanup.
+// ML Kit object detection on the CPU image (add com.google.mlkit:object-detection).
+// In a real screen: throttle the per-frame dispatch, de-duplicate anchors, cache the
+// label bitmaps and detach anchors you no longer show.
 onSessionUpdated = { _, frame ->
     val cameraImage = frame.cameraImage() ?: return@onSessionUpdated
     val rotation = mapDisplayRotationDegrees(context.display.rotation)
@@ -3471,7 +3471,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: the **Streetscape** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
+Demo: the **Streetscape** mode of the `ar-geospatial-anchors` card (`samples/android-demo/.../ARSceneGeometryDemo.kt`), with its "Colour buildings & terrain" switch off. Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
 ### SceneMeshNode — classified building / terrain mesh (ARKit ARMeshAnchor parity)
 
@@ -3511,7 +3511,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: the **Mesh** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Its Streetscape mode renders the same trackables through the raw `StreetscapeGeometryNode`, so the two are one screen away from each other.
+Demo: the **Streetscape** mode of the `ar-geospatial-anchors` card (`samples/android-demo/.../ARSceneGeometryDemo.kt`), with its "Colour buildings & terrain" switch on (the default). Turning the switch off renders the same trackables through the raw `StreetscapeGeometryNode`, so the two are one tap away from each other.
 
 ### Geospatial Depth — extend environment depth accuracy to ~65 m
 
@@ -6381,14 +6381,10 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
 - `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
 - `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
-- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
 - `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
 - `ar-point-cloud` — Point Cloud. See the points your camera tracks.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
-- `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
 - `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
-- `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
 - `ar-xr` — Android XR (preview). Hand skeleton and face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->

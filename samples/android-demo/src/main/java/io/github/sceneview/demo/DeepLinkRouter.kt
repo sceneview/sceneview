@@ -164,8 +164,8 @@ internal object DeepLinkRouter {
         // reaches through the `rememberView` handle, so the fold moved a 181-line
         // card with no modes of its own under the card literally named "Lighting
         // Lab". Since #3496 fog is a switch on the lab's one bench rather than a
-        // mode, so the alias no longer pre-selects anything. `ARFogNode` keeps
-        // `FogNode` demonstrated in AR (`ar-fog`). Since #4603 that switch lives
+        // mode, so the alias no longer pre-selects anything.
+        // Since #4603 that switch lives
         // in `lighting`, so the alias follows it.
         "fog" to "lighting",
         // #2239 catalogue regroup — `gesture-feedback-preview` merged into
@@ -187,7 +187,8 @@ internal object DeepLinkRouter {
         // which node consumes the trackable — the classified `SceneMeshNode` or its raw
         // `StreetscapeGeometryNode` base. Samples step 0 then moved the Streetscape mode
         // to `ar-geospatial-anchors`: the raw Streetscape trackables sit with the Geospatial
-        // anchors, and `ar-scene-mesh` keeps the classified `SceneMeshNode` alone.
+        // anchors, and `ar-scene-mesh` kept the classified `SceneMeshNode` alone until
+        // wave 1 folded it back in as the Streetscape colour switch.
         "ar-streetscape" to "ar-geospatial-anchors",
         // Samples step 0 — consolidation before any redesign (samples audit, 2026-10-02).
         // Each retired card is a mode of the card that absorbed it; the mode is
@@ -206,6 +207,20 @@ internal object DeepLinkRouter {
         // `video-recording` became the shared Record action of `DemoScaffold`; its link
         // opens Cosmos with the Record pill shown ([ALIAS_OPENS_RECORD]).
         "video-recording" to "cosmos",
+        // AR catalogue clean-up, wave 1 (samples audit, 2026-10-17). Four AR cards left
+        // the catalogue; each old link opens the sample that now carries its subject.
+        // ML Kit Object Labels named five coarse categories and anchored them on the wall
+        // behind the object: Point & Ask answers the same "what is this?" with Gemini Nano.
+        "ar-ml-object-label" to "point-and-ask",
+        // AR Fog was a post-effect with no scene around it. `ARFogNode` stays in the SDK;
+        // the fog the card showed is the Fog switch of `lighting` (density and colour).
+        "ar-fog" to "lighting",
+        // Scene Geometry was the Streetscape mode with a second material. It is now that
+        // mode's "Colour buildings & terrain" switch, on by default ([ALIAS_INITIAL_TAB]).
+        "ar-scene-mesh" to "ar-geospatial-anchors",
+        // Depth Collider's balls bouncing off the real depth mesh are the "On your table"
+        // AR mode of Rolling Balls ([ALIAS_INITIAL_TAB]).
+        "ar-depth-collider" to "rolling-balls",
     )
 
     /**
@@ -266,6 +281,8 @@ internal object DeepLinkRouter {
         // ar-geospatial-anchors — launch tab 2 is the Streetscape mode since samples
         // step 0 (tabs 0 and 1 stay Terrain and Rooftop inside the Anchors mode).
         "ar-streetscape" to 2,
+        // Wave 1 — Scene Geometry is the Streetscape mode with its colour switch on.
+        "ar-scene-mesh" to 2,
         // Samples step 0. ar-placement — launch tab 2 is the Free pose mode (tabs 0 and 1
         // stay the floor and wall placements inside the Place mode).
         "ar-pose" to 2,
@@ -273,8 +290,9 @@ internal object DeepLinkRouter {
         "placement-scene" to 3,
         // camera-gestures — [Camera, PiP].
         "secondary-camera" to 1,
-        // rolling-balls — [Balls, Pendulum].
+        // rolling-balls — [Balls, Pendulum, On your table].
         "double-pendulum" to 1,
+        "ar-depth-collider" to 2,
         // ar-rerun — [Rerun, Session MP4].
         "ar-record-playback" to 1,
         // ar-cloud-anchor — [Cloud anchors, Collaborative].
@@ -297,7 +315,7 @@ internal object DeepLinkRouter {
         // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
         "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
         "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
-        "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1),
+        "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1, "table" to 2),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),
         "ar-cloud-anchor" to mapOf("cloud-anchors" to 0, "collaborative" to 1),
         "ar-geospatial-anchors" to mapOf("anchors" to 0, "terrain" to 0, "streetscape" to 2),

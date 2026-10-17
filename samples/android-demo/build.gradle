@@ -438,13 +438,6 @@ dependencies {
     releaseImplementation libs.firebase.crashlytics.ndk
     implementation libs.firebase.messaging
 
-    // ML Kit Object Detection — bundled model so ARMLObjectLabelDemo works
-    // offline. The default options classify generic categories (Home good,
-    // Fashion good, Food, Place, Plant). For finer labels callers can plug
-    // in a custom TFLite model via ObjectDetectorOptions / CustomObjectDetectorOptions.
-    // See ARMLObjectLabelDemo (#1737).
-    implementation libs.mlkit.object.detection
-
     // ML Kit GenAI Prompt API — Gemini Nano on-device for the Point & Ask demo.
     // Zero bundled weights (the model lives in the system AICore app); availability
     // is runtime-gated per device and the demo degrades honestly when AICore is

@@ -943,8 +943,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Keep the camera world position fresh so every anchored answer card can
-                    // billboard toward the viewer (#3276) — same pattern as `ARMLObjectLabelDemo`'s
-                    // `cameraPosition`. The pose translation is the camera eye position in world
+                    // billboard toward the viewer (#3276) — same pattern as the retired ML Kit
+                    // Object Labels demo's `cameraPosition`. The pose translation is the camera eye position in world
                     // space, all a billboard needs to orient toward.
                     val camPose = frame.camera.pose.position
                     cameraPosition[0] = camPose.x

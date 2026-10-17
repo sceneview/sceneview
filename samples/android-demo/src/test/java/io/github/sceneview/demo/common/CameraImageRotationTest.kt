@@ -6,7 +6,7 @@ import org.junit.Test
 
 /**
  * Pure-JVM tests for the `Surface.ROTATION_*` -> rotation-degrees mapping shared by
- * `ar-ml-object-label` (ML Kit) and `ar-body-tracker` (MediaPipe) to correct ARCore's raw
+ * the retired `ar-ml-object-label` (ML Kit) and `ar-body-tracker` (MediaPipe) to correct ARCore's raw
  * sensor-orientation CPU camera image before feeding it into either vision pipeline.
  *
  * `ar-body-tracker` shipped without this correction (#3266): its bitmap conversion never

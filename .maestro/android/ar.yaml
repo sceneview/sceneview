@@ -17,6 +17,12 @@
 # `ar-streetscape` leg is KEPT and drives the retired id, which ALIAS_INITIAL_TAB
 # lands on the Streetscape mode, while the `ar-scene-mesh` leg exercises the mesh.
 #
+# Wave 1 of the AR catalogue clean-up (2026-10-17) retired four AR cards. Their legs
+# are KEPT on the retired ids, each proving its alias: `ar-scene-mesh` lands on the
+# Streetscape mode of `ar-geospatial-anchors` with the colour switch on,
+# `ar-depth-collider` on the On your table mode of `rolling-balls`, `ar-fog` on
+# `lighting` and `ar-ml-object-label` on `point-and-ask`.
+#
 # Samples step 0 (2026-10-02) retired `ar-pose` and `placement-scene` (→ `ar-placement`,
 # Free pose and One call modes), `ar-record-playback` (→ `ar-rerun`, Session MP4 mode), `ar-collaborative`
 # (→ `ar-cloud-anchor`, Collaborative mode) and `ar-hand-tracking` / `ar-xr-face`
@@ -145,12 +151,12 @@ appId: io.github.sceneview.demo.qa
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-fog
-      DEMO_NAME: AR Fog
+      DEMO_NAME: AR Fog alias - Lighting
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-depth-collider
-      DEMO_NAME: Depth Collider
+      DEMO_NAME: Depth Collider alias - Rolling Balls on your table
 - runFlow:
     file: flows/demo.yaml
     env:
@@ -180,7 +186,7 @@ appId: io.github.sceneview.demo.qa
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-scene-mesh
-      DEMO_NAME: AR Scene Geometry - Mesh mode
+      DEMO_NAME: Scene Geometry alias - Streetscape colours
 - runFlow:
     file: flows/demo.yaml
     env:
@@ -190,7 +196,7 @@ appId: io.github.sceneview.demo.qa
     file: flows/demo.yaml
     env:
       DEMO_ID: ar-ml-object-label
-      DEMO_NAME: ML Kit Object Labels
+      DEMO_NAME: ML Kit Object Labels alias - Point and Ask
 - runFlow:
     file: flows/demo.yaml
     env:

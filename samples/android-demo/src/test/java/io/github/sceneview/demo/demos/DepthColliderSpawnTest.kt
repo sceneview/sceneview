@@ -6,9 +6,9 @@ import org.junit.Test
 import kotlin.math.sqrt
 
 /**
- * Pure-JVM tests for [depthColliderSpawn] — the geometry behind the Depth Collider demo's Drop
- * button (#3217). Pins that a ball always starts in front of the user and is thrown away from
- * them, including the case the bug report describes: the phone aimed steeply at the floor.
+ * Pure-JVM tests for [depthColliderSpawn] — the geometry behind the Drop button of the Rolling
+ * Balls On your table mode (#3217). Pins that a ball always starts in front of the user and is
+ * thrown away from them, including the case the bug report describes: the phone aimed steeply at the floor.
  */
 class DepthColliderSpawnTest {
 

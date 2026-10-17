@@ -172,6 +172,6 @@ setup.
 ## Related
 
 - `ar-placement` — automatically place a model on the first usable surface
-- `ar-depth-collider` — the depth mesh, rendered
+- `rolling-balls`, On your table mode — balls bouncing off the depth mesh
 - `ar-raw-depth-point-cloud` — what the depth sensor actually returns
 - [`AR_TESTING.md`](AR_TESTING.md) — running the AR demos on device and on the AR emulator

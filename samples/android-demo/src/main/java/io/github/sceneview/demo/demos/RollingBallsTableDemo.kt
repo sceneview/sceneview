@@ -1,13 +1,8 @@
 package io.github.sceneview.demo.demos
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -18,10 +13,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.ar.core.Config
 import com.google.ar.core.Pose
 import io.github.sceneview.ar.ARCoreAvailability
@@ -32,7 +25,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.SceneAction
 import io.github.sceneview.demo.common.SceneActionBar
-import io.github.sceneview.demo.SceneViewColors
+import io.github.sceneview.demo.demos.internal.TrayStage
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.PhysicsNode
 import io.github.sceneview.node.SphereNode
@@ -41,6 +34,10 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.sample.rememberMaterialInstance
 
 /**
+ * The **On your table** mode of the `rolling-balls` card: the rubber balls of the tray, dropped
+ * into the room around the user. This was the `ar-depth-collider` card until the AR catalogue
+ * clean-up, wave 1; its link opens this mode through [io.github.sceneview.demo.DeepLinkRouter].
+ *
  * Visual acceptance for [#1713](https://github.com/sceneview/sceneview/issues/1713) — a
  * depth-driven physics collider. Drops bouncy balls into the AR scene; each ball uses
  * [io.github.sceneview.ar.physics.DepthCollider] as its [PhysicsNode] `floorProvider` so it
@@ -67,10 +64,10 @@ import io.github.sceneview.sample.rememberMaterialInstance
  * gate before merging.
  */
 @Composable
-fun ARDepthColliderDemo(onBack: () -> Unit) {
+fun RollingBallsTableDemo(onBack: () -> Unit) {
     var ballCount by remember { mutableIntStateOf(0) }
     var generation by remember { mutableIntStateOf(0) }
-    // Dev toggle (#1875): the depth mesh is hidden by default so the demo's focus stays on the
+    // Settings toggle (#1875): the depth mesh is hidden by default so the demo's focus stays on the
     // bouncing balls — the dotted grid of depth samples on every real surface was distracting and
     // visually ambiguous (a user couldn't tell if it was a debug overlay, the collider's spheres,
     // or part of the AR scene). Toggling this on re-renders the underlying DepthMeshNode for
@@ -102,34 +99,27 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
     DemoScaffold(
-        title = stringResource(R.string.demo_ar_depth_collider_title),
+        title = stringResource(R.string.demo_rolling_balls_title),
         onBack = onBack,
-        peekHeader = if (ballCount > 0) "Balls dropped: $ballCount" else null,
+        peekHeader = if (ballCount > 0) {
+            stringResource(R.string.demo_rolling_balls_table_dropped, ballCount)
+        } else {
+            null
+        },
         // The Drop / Drop 5 / Reset actions are the demo's core interaction, so
         // they live on-screen via SceneActionBar (#1964). The sheet keeps only
-        // the "Show depth mesh" dev toggle — genuine secondary configuration.
+        // the "Show depth surface" toggle — genuine secondary configuration.
         controls = {
             Text(
-                text = "Aim at the floor or a table, then tap Drop. Balls bounce off real geometry " +
-                    "via DepthCollider (#1713).",
+                text = stringResource(R.string.demo_rolling_balls_table_explainer),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = "Show depth mesh (dev)",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Switch(
-                    checked = showDepthMesh,
-                    onCheckedChange = { showDepthMesh = it },
-                )
-            }
+            SwitchRow(
+                label = stringResource(R.string.demo_rolling_balls_table_show_depth),
+                checked = showDepthMesh,
+                onCheckedChange = { showDepthMesh = it },
+            )
         },
         // Primary actions on-screen (#1964) — Drop / Drop 5 / Reset are the demo's core
         // interaction. Hosted by the scaffold's `bottomOverlay` slot so the bar is laid
@@ -137,16 +127,16 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
         // Reset is disabled until at least one ball is dropped.
         bottomOverlay = {
             SceneActionBar(
-                SceneAction("Drop", onClick = {
+                SceneAction(stringResource(R.string.demo_rolling_balls_drop), onClick = {
                     spawnAnchorRef.value = latestCameraPoseRef.value
                     ballCount++
                 }),
-                SceneAction("Drop 5", onClick = {
+                SceneAction(stringResource(R.string.demo_rolling_balls_drop_five), onClick = {
                     spawnAnchorRef.value = latestCameraPoseRef.value
                     ballCount += 5
                 }),
                 SceneAction(
-                    label = "Reset",
+                    label = stringResource(R.string.demo_rolling_balls_reset),
                     onClick = {
                         ballCount = 0
                         spawnAnchorRef.value = null
@@ -236,10 +226,17 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                     }
                 }
 
-                val ballMaterial = rememberMaterialInstance(
-                    materialLoader,
-                    SceneViewColors.Ramp4[0],
-                )
+                // The tray's five rubber colours (coral, azure, amber, mint, orchid), one per
+                // ball in turn, so a "Drop 5" row reads as the same handful of sweets the
+                // Balls mode rolls on its board.
+                val ballMaterials = TrayStage.RUBBER_COLORS.map { colour ->
+                    rememberMaterialInstance(
+                        materialLoader,
+                        color = colour,
+                        metallic = 0f,
+                        roughness = TrayStage.RUBBER_ROUGHNESS,
+                    )
+                }
 
                 // Anchor the spawn at the camera's pose **at the moment Drop was tapped**
                 // (#1874). `spawnAnchorRef` is updated by the button handlers; if the device
@@ -279,7 +276,7 @@ fun ARDepthColliderDemo(onBack: () -> Unit) {
                     var nodeRef by remember(i) { mutableStateOf<SphereNode?>(null) }
                     SphereNode(
                         radius = 0.05f,
-                        materialInstance = ballMaterial,
+                        materialInstance = ballMaterials[i % ballMaterials.size],
                         position = spawn.position,
                         apply = {
                             nodeRef = this

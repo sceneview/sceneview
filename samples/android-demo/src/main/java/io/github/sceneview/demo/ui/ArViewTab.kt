@@ -730,9 +730,9 @@ private val FEATURED_AR_DEMOS = listOf(
     // filters on the listed demos minus the featured ids, so a retired id here would show
     // the same demo twice under two different names.
     FeaturedArDemo(
-        id = "ar-scene-mesh",
-        titleRes = R.string.featured_ar_scene_geometry_title,
-        subtitleRes = R.string.featured_ar_scene_geometry_subtitle,
+        id = "ar-geospatial-anchors",
+        titleRes = R.string.featured_ar_geospatial_title,
+        subtitleRes = R.string.featured_ar_geospatial_subtitle,
     ),
     FeaturedArDemo(
         id = "ar-depth-occlusion",

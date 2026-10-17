@@ -186,7 +186,8 @@ class ARCompletenessDefaultsTest {
             "demos/ARRecordPlaybackDemo.kt",
             "demos/ARRerunDemo.kt",
             "demos/ARRooftopAnchorDemo.kt",
-            // #3463 merged ARSceneMeshDemo + ARStreetscapeDemo into this one file.
+            // #3463 merged ARSceneMeshDemo + ARStreetscapeDemo into this one file; wave 1
+            // of the AR catalogue clean-up made the mesh a switch of the Streetscape mode.
             "demos/ARSceneGeometryDemo.kt",
             "demos/ARTerrainAnchorDemo.kt",
             "demos/OrbitalARDemo.kt",

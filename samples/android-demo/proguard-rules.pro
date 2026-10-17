@@ -57,7 +57,7 @@
 -dontwarn autovalue.shaded.**
 -dontwarn com.google.auto.value.**
 
-# ── ML Kit: component registrars (object detection, GenAI Prompt) ────────────
+# ── ML Kit: component registrars (GenAI Prompt) ──────────────────────────────
 # ML Kit wires itself up at process start: `MlKitInitProvider` hands the
 # `ComponentRegistrar` class names listed in the merged manifest to
 # `ComponentDiscovery`, which instantiates each one reflectively through its
