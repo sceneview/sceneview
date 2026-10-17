@@ -219,8 +219,8 @@ appId: io.github.sceneview.demo.qa
 - runFlow:
     file: flows/demo.yaml
     env:
-      DEMO_ID: ar-plane-renderer-v2
-      DEMO_NAME: AR Plane Renderer V2
+      DEMO_ID: ar-surfaces
+      DEMO_NAME: AR Surfaces
 - runFlow:
     file: flows/demo.yaml
     env:

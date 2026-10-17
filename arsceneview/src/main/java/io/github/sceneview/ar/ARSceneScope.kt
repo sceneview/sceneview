@@ -1039,7 +1039,7 @@ class ARSceneScope internal constructor(
      * ```
      *
      * **Never keep `ShadowReceiverPlane`s and `planeRenderer = true` live on the same plane** —
-     * the V1 plane renderer attaches its own coplanar `shadowMultiplier` shadow receiver to every
+     * the plane renderer attaches its own coplanar `shadowMultiplier` shadow receiver to every
      * tracked plane, so stacking both z-fights and double-darkens the shadow (0.4 × 0.4 ≈
      * near-black, #2657). Gate them mutually exclusively (grid while scanning, catchers after
      * placement), or use [PlacementScene], which enforces the exclusion for you.

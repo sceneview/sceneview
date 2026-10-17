@@ -8,11 +8,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for [PlaneVisualizerV2]'s pure-JVM parts: the per-plane animation
+ * Unit tests for [PlaneVisualizer]'s pure-JVM parts: the per-plane animation
  * ([PlaneRevealAnimation] — fade, focus, reveal front chasing a growing plane) and the polygon
  * scan-radius computation. No Filament Engine, no ARCore Session.
  */
-class PlaneVisualizerV2Test {
+class PlaneVisualizerTest {
 
     private val frame = 1f / 60f
 
@@ -78,7 +78,7 @@ class PlaneVisualizerV2Test {
         assertTrue("the front starts at the centre: ${anim.revealRadius}", anim.revealRadius < 0.1f)
         assertTrue("the front is on screen: ${anim.scanProgress}", anim.scanProgress < 1f)
 
-        anim.run(PlaneVisualizerV2.SCAN_IN_DURATION_MS / 1000f)
+        anim.run(PlaneVisualizer.SCAN_IN_DURATION_MS / 1000f)
         assertEquals(2f, anim.revealRadius, REVEAL_CAUGHT_UP_M)
 
         anim.run(FRONT_GLOW_SECONDS + 2 * frame)

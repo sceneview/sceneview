@@ -7,13 +7,12 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Vertex-attribute contract between each plane visualizer's mesh and the materials its renderer
+ * Vertex-attribute contract between the plane visualizer's mesh and the materials its renderer
  * applies to that mesh (#3186 / #3188 log signature).
  *
  * ## What broke
  *
- * [PlaneVisualizer] (V1 — the default plane renderer since v4.16.1) declared a POSITION-only
- * `VertexBuffer`, while [io.github.sceneview.ar.scene.PlaneRenderer] applies
+ * The plane visualizer of the time declared a POSITION-only `VertexBuffer`, while [io.github.sceneview.ar.scene.PlaneRenderer] applies
  * `materials/plane_renderer_shadow.filamat` to it. That blob is a `shadowMultiplier : true`
  * material, and Filament unconditionally adds `TANGENTS` to a shadow-multiplier material's
  * required attributes — so every detected plane's shadow submesh logged
@@ -35,10 +34,10 @@ import java.io.File
  *
  * So this reads the two facts from their sources of truth and compares them:
  *  * **required** — the `MAT_REQA` chunk of each committed `.filamat` blob,
- *  * **declared** — the `VertexBuffer.VertexAttribute.*` set in each visualizer's Kotlin source.
+ *  * **declared** — the `VertexBuffer.VertexAttribute.*` set in [PlaneVisualizer]'s source.
  *
- * It generalises: any future material added to a plane renderer, or any attribute dropped from a
- * visualizer, fails here rather than on a user's device log.
+ * It generalises: any future material added to the plane renderer, or any attribute dropped from
+ * the visualizer, fails here rather than on a user's device log.
  */
 class PlaneVisualizerAttributeContractTest {
 
@@ -55,16 +54,10 @@ class PlaneVisualizerAttributeContractTest {
 
     private val pipelines = listOf(
         PlanePipeline(
-            label = "V1",
+            label = "PlaneRenderer",
             visualizerClass = "PlaneVisualizer",
             renderer = File("src/main/java/io/github/sceneview/ar/scene/PlaneRenderer.kt"),
             visualizer = File("src/main/java/io/github/sceneview/ar/PlaneVisualizer.kt")
-        ),
-        PlanePipeline(
-            label = "V2",
-            visualizerClass = "PlaneVisualizerV2",
-            renderer = File("src/main/java/io/github/sceneview/ar/scene/PlaneRendererV2.kt"),
-            visualizer = File("src/main/java/io/github/sceneview/ar/PlaneVisualizerV2.kt")
         )
     )
 
@@ -157,7 +150,7 @@ class PlaneVisualizerAttributeContractTest {
         // A declared attribute whose buffer index is out of `bufferCount` range, or a buffer that
         // is allocated but never bound, is the other half of the same failure: Filament reads an
         // unset buffer. Keeping the two numbers equal keeps the "one attribute, one buffer"
-        // layout both visualizers use (and that `geometries/Geometry.kt` uses too).
+        // layout the visualizer uses (and that `geometries/Geometry.kt` uses too).
         pipelines.forEach { pipeline ->
             val source = stripComments(pipeline.visualizer.readText())
             val attributeCount = Regex("""\.attribute\(""").findAll(source).count()
@@ -176,11 +169,11 @@ class PlaneVisualizerAttributeContractTest {
     }
 
     @Test
-    fun `V1 uploads its constant tangent frame once, not per frame`() {
+    fun `the visualizer uploads its constant tangent frame once, not per frame`() {
         // Declaring TANGENTS without ever filling the buffer trades the warning for an unset
-        // buffer. V1's frame is constant (its mesh is flat in the plane's own frame and the pose
-        // rides on the entity transform), so the upload belongs at construction — the per-frame
-        // path must stay one POSITION upload + one index upload, as it was before the fix.
+        // buffer. The frame is constant (the mesh is flat in the plane's own frame and the pose
+        // rides on the entity transform), so the upload belongs at construction — the mesh
+        // rebuild must stay one POSITION upload + one index upload.
         val source = stripComments(File("src/main/java/io/github/sceneview/ar/PlaneVisualizer.kt").readText())
         val uploads = Regex("""setBufferAt\(\s*engine,\s*BUFFER_INDEX_TANGENT""").findAll(source).count()
         assertEquals(
@@ -190,9 +183,10 @@ class PlaneVisualizerAttributeContractTest {
             uploads
         )
         assertTrue(
-            "The TANGENTS upload must sit in the `init { }` block, before updateGeometry() — " +
-                "the per-frame path must not grow a second upload.",
-            source.indexOf("BUFFER_INDEX_TANGENT,") < source.indexOf("private fun updateGeometry")
+            "The TANGENTS upload must sit in the `init { }` block, before rebuildMesh() — " +
+                "the rebuild path must not grow a second upload.",
+            source.indexOf("private fun rebuildMesh") > 0 &&
+                source.lastIndexOf("BUFFER_INDEX_TANGENT,") < source.indexOf("private fun rebuildMesh")
         )
     }
 

@@ -81,7 +81,7 @@ All `rememberXxx` helpers from the base `sceneview` module are also available.
 |---|---|
 | `ARCameraStream` | Renders the device camera feed as the scene background. Supports depth occlusion. |
 | `LightEstimator` | Per-frame real-world lighting estimation (ambient intensity or environmental HDR). |
-| `PlaneRenderer` | Visualizes detected ARCore planes with configurable material and shadow receiving. |
+| `PlaneRenderer` | Draws detected ARCore planes as soft world-anchored marks — dots on floors, upright dashes on walls, rings on ceilings — and receives shadows. |
 
 ## Features
 

@@ -17,7 +17,6 @@
 package io.github.sceneview.ar
 
 import android.content.Context.WINDOW_SERVICE
-import android.util.Size
 import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.TextureView
@@ -91,8 +90,6 @@ import io.github.sceneview.ar.node.PointCloudNode
 import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.ar.scene.PlaneRenderer
-import io.github.sceneview.ar.scene.PlaneRendererBase
-import io.github.sceneview.ar.scene.PlaneRendererV2
 import io.github.sceneview.ar.scene.SceneUnderstanding
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
@@ -222,15 +219,11 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 is replaced by ARCore's real-environment estimate once stable.
  *                                 Front-camera sessions still force `DISABLED` regardless. Override
  *                                 inside this callback to choose a different mode if needed (#1063).
- * @param planeRenderer            Whether to render the AR plane grid overlay.
- * @param planeRendererVersion     Selects which plane-renderer implementation backs the AR
- *                                 session — see [PlaneRendererBase.Version]. **Default is
- *                                 [PlaneRendererBase.Version.V1]** as of v4.16.1. V2 ships
- *                                 in this release as an experimental opt-in: on-device QA
- *                                 in v4.16.0 showed its output not matching the design
- *                                 intent, so the default was reverted while V2 is polished.
- *                                 Opt in via `Version.V2`. See
- *                                 [#2203](https://github.com/sceneview/sceneview/issues/2203).
+ * @param planeRenderer            Whether to draw the surfaces ARCore detects, with
+ *                                 [PlaneRenderer]: round dots on floors, upright dashes on
+ *                                 walls, hollow rings on ceilings. Turning it off fades the
+ *                                 surfaces out; plane detection, hit tests and gestures on
+ *                                 placed nodes keep working.
  * @param cameraStream             [ARCameraStream] for camera texture rendering and occlusion.
  * @param view                     Filament [View] for this scene. Use [rememberARView] (default),
  *                                 which is tuned so the live camera background round-trips back to
@@ -564,28 +557,10 @@ fun ARSceneView(
      */
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     /**
-     * Enable the plane renderer.
+     * Draw the surfaces ARCore detects, with [PlaneRenderer]. Turning it off fades them out;
+     * plane detection, hit tests and gestures on placed nodes keep working.
      */
     planeRenderer: Boolean = true,
-    /**
-     * Selects which plane-renderer implementation backs the AR session — see
-     * [PlaneRendererBase.Version].
-     *
-     * **Default is [PlaneRendererBase.Version.V1]** as of v4.16.1. V2 (depth-driven PBR mesh
-     * lit by ARCore's HDR estimate, type-aware shading, 800 ms scan-in ring) ships in this
-     * release as an **opt-in experimental** renderer — on-device QA on a Pixel 9 in v4.16.0
-     * showed the V2 visual output not matching the design intent, so the default was reverted
-     * to V1 in v4.16.1 while V2 is polished. See
-     * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella.
-     *
-     * To opt in to V2 (and feed back on the polish work):
-     * `ARScene(planeRendererVersion = PlaneRendererBase.Version.V2)`.
-     *
-     * Changing this value triggers a renderer rebuild (it is wired into the surrounding
-     * `remember(...)` keys), so toggling is safe but **not free** — pick once at the
-     * composition root.
-     */
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
     /**
      * Grouped scene-understanding flags (#1767) — mirrors RealityKit's
      * `ARView.environment.sceneUnderstanding.options`. When non-null, the four
@@ -857,13 +832,8 @@ fun ARSceneView(
 
     // ── AR subsystems ─────────────────────────────────────────────────────────────────────────────
 
-    // V1 is the default plane renderer again as of v4.16.1 (#2203). V2 stays as an
-    // opt-in experimental renderer pending visual polish.
-    val arPlaneRenderer: PlaneRendererBase = remember(engine, materialLoader, scene, planeRendererVersion) {
-        when (planeRendererVersion) {
-            PlaneRendererBase.Version.V1 -> PlaneRenderer(engine, materialLoader, scene)
-            PlaneRendererBase.Version.V2 -> PlaneRendererV2(engine, materialLoader, scene)
-        }
+    val arPlaneRenderer = remember(engine, materialLoader, scene) {
+        PlaneRenderer(engine, materialLoader, scene)
     }
     val lightEstimator = remember(engine, environmentLoader) {
         LightEstimator(engine, environmentLoader.iblPrefilter)
@@ -1619,7 +1589,6 @@ fun ARSceneView(
         sceneRenderer.onSurfaceResized = { width, height ->
             cameraNode.updateProjection()
             arCore.session?.setDisplayGeometry(display.rotation, width, height)
-            arPlaneRenderer.viewSize = Size(width, height)
             // New swap chain, no pixels in it — owe it a frame even if ARCore has nothing new to
             // say (see `arFramesOwed` below).
             arFramesOwed.set(1)
@@ -1815,7 +1784,7 @@ private fun onARFrame(
     lightEstimator: LightEstimator?,
     mainLightNode: LightNode?,
     environment: Environment,
-    arPlaneRenderer: PlaneRendererBase,
+    arPlaneRenderer: PlaneRenderer,
     childNodes: List<Node>,
     baselineMainLightColorRef: AtomicReference<io.github.sceneview.math.Color?>,
     baselineMainLightIntensityRef: AtomicReference<Float?>,
@@ -2339,7 +2308,7 @@ private fun ARScenePreview(modifier: Modifier) {
  * @deprecated Use [ARSceneView] instead. This function is a direct alias provided for backward
  * compatibility with code written against earlier SceneView versions.
  */
-@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, planeRendererVersion, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
+@Deprecated("Use ARSceneView instead", ReplaceWith("ARSceneView(modifier, surfaceType, engine, modelLoader, materialLoader, environmentLoader, sessionFeatures, playbackDataset, sessionCameraConfig, flashMode, sessionConfiguration, planeRenderer, cameraStream, view, isOpaque, renderer, scene, environment, mainLightNode, fillLightNode, cameraNode, cameraExposure, collisionSystem, viewNodeWindowManager, onSessionCreated, onSessionResumed, onSessionPaused, onSessionFailed, onPlaybackFailed, onSessionUpdated, onTrackingFailureChanged, onGestureListener, onTouchEvent, permissionHandler, lifecycle, content)"))
 @Composable
 fun ARScene(
     modifier: Modifier = Modifier,
@@ -2354,7 +2323,6 @@ fun ARScene(
     flashMode: Config.FlashMode = Config.FlashMode.OFF,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
     planeRenderer: Boolean = true,
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
     isOpaque: Boolean = true,
@@ -2392,7 +2360,6 @@ fun ARScene(
     flashMode = flashMode,
     sessionConfiguration = sessionConfiguration,
     planeRenderer = planeRenderer,
-    planeRendererVersion = planeRendererVersion,
     cameraStream = cameraStream,
     view = view,
     isOpaque = isOpaque,
@@ -2417,139 +2384,4 @@ fun ARScene(
     permissionHandler = permissionHandler,
     lifecycle = lifecycle,
     content = content
-)
-
-/**
- * Binary-compatibility shim for the pre-`onCameraPermissionStateChanged` descriptor of
- * [ARSceneView] (v4.53). The Compose compiler puts every parameter in the JVM signature, so
- * the new callback retyped the function: this keeps a library compiled against the old
- * signature linking. It behaves as before, with no camera permission callback.
- */
-@Deprecated(
-    "Binary-compatibility overload. Use the ARSceneView overload that takes `onCameraPermissionStateChanged`.",
-    level = DeprecationLevel.HIDDEN,
-)
-@Suppress("LongParameterList")
-@Composable
-fun ARSceneView(
-    modifier: Modifier = Modifier,
-    surfaceType: SurfaceType = SurfaceType.Surface,
-    engine: Engine = rememberEngine(),
-    modelLoader: ModelLoader = rememberModelLoader(engine),
-    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
-    environmentLoader: EnvironmentLoader = rememberEnvironmentLoader(engine),
-    sessionFeatures: Set<Session.Feature> = setOf(),
-    playbackDataset: File? = null,
-    playbackDatasetUri: android.net.Uri? = null,
-    sessionCameraConfig: ((Session) -> CameraConfig)? = ::highestResolutionCameraConfig,
-    flashMode: Config.FlashMode = Config.FlashMode.OFF,
-    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
-    depthMode: Config.DepthMode = Config.DepthMode.DISABLED,
-    instantPlacementMode: Config.InstantPlacementMode = Config.InstantPlacementMode.DISABLED,
-    geospatialMode: Config.GeospatialMode = Config.GeospatialMode.DISABLED,
-    streetscapeGeometryMode: Config.StreetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED,
-    cloudAnchorMode: Config.CloudAnchorMode = Config.CloudAnchorMode.DISABLED,
-    augmentedFaceMode: Config.AugmentedFaceMode = Config.AugmentedFaceMode.DISABLED,
-    imageStabilizationMode: Config.ImageStabilizationMode = Config.ImageStabilizationMode.OFF,
-    semanticMode: Config.SemanticMode = Config.SemanticMode.DISABLED,
-    updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
-    focusMode: Config.FocusMode = Config.FocusMode.AUTO,
-    sessionConfiguration: ((session: Session, Config) -> Unit)? = null,
-    planeRenderer: Boolean = true,
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,
-    sceneUnderstanding: SceneUnderstanding? = null,
-    cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
-    view: View = rememberARView(engine),
-    renderQuality: RenderQuality? = null,
-    isOpaque: Boolean = true,
-    renderer: Renderer = rememberRenderer(engine),
-    scene: Scene = rememberScene(engine),
-    environment: Environment = rememberAREnvironment(engine),
-    mainLightNode: LightNode? = rememberMainLightNode(engine),
-    fillLightNode: LightNode? = rememberFillLightNode(engine),
-    cameraNode: ARCameraNode = rememberARCameraNode(engine),
-    cameraExposure: Float? = null,
-    collisionSystem: CollisionSystem = rememberCollisionSystem(view),
-    viewNodeWindowManager: WindowManager? = null,
-    onSessionCreated: ((session: Session) -> Unit)? = null,
-    onSessionResumed: ((session: Session) -> Unit)? = null,
-    onSessionPaused: ((session: Session) -> Unit)? = null,
-    onSessionFailed: ((exception: Exception) -> Unit)? = null,
-    onSessionFailure: ((failure: ARSessionFailure) -> Unit)? = null,
-    onPlaybackFailed: ((exception: Exception) -> Unit)? = null,
-    onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,
-    onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
-    onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,
-    onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
-    onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
-    permissionHandler: ARPermissionHandler? = rememberActivityARPermissionHandler(),
-    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
-    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = {
-        ARCameraPermissionOverlay(it)
-    },
-    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = {
-        ARCoreAvailabilityOverlay(it)
-    },
-    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,
-    content: (@Composable ARSceneScope.() -> Unit)? = null
-) = ARSceneView(
-    modifier = modifier,
-    surfaceType = surfaceType,
-    engine = engine,
-    modelLoader = modelLoader,
-    materialLoader = materialLoader,
-    environmentLoader = environmentLoader,
-    sessionFeatures = sessionFeatures,
-    playbackDataset = playbackDataset,
-    playbackDatasetUri = playbackDatasetUri,
-    sessionCameraConfig = sessionCameraConfig,
-    flashMode = flashMode,
-    planeFindingMode = planeFindingMode,
-    depthMode = depthMode,
-    instantPlacementMode = instantPlacementMode,
-    geospatialMode = geospatialMode,
-    streetscapeGeometryMode = streetscapeGeometryMode,
-    cloudAnchorMode = cloudAnchorMode,
-    augmentedFaceMode = augmentedFaceMode,
-    imageStabilizationMode = imageStabilizationMode,
-    semanticMode = semanticMode,
-    updateMode = updateMode,
-    focusMode = focusMode,
-    sessionConfiguration = sessionConfiguration,
-    planeRenderer = planeRenderer,
-    planeRendererVersion = planeRendererVersion,
-    sceneUnderstanding = sceneUnderstanding,
-    cameraStream = cameraStream,
-    view = view,
-    renderQuality = renderQuality,
-    isOpaque = isOpaque,
-    renderer = renderer,
-    scene = scene,
-    environment = environment,
-    mainLightNode = mainLightNode,
-    fillLightNode = fillLightNode,
-    cameraNode = cameraNode,
-    cameraExposure = cameraExposure,
-    collisionSystem = collisionSystem,
-    viewNodeWindowManager = viewNodeWindowManager,
-    onSessionCreated = onSessionCreated,
-    onSessionResumed = onSessionResumed,
-    onSessionPaused = onSessionPaused,
-    onSessionFailed = onSessionFailed,
-    onSessionFailure = onSessionFailure,
-    onPlaybackFailed = onPlaybackFailed,
-    onConfigDowngraded = onConfigDowngraded,
-    onSessionUpdated = onSessionUpdated,
-    onTrackingFailureChanged = onTrackingFailureChanged,
-    surfaceMirrorer = surfaceMirrorer,
-    onGestureListener = onGestureListener,
-    onTouchEvent = onTouchEvent,
-    permissionHandler = permissionHandler,
-    lifecycle = lifecycle,
-    cameraPermissionOverlay = cameraPermissionOverlay,
-    arCoreAvailabilityOverlay = arCoreAvailabilityOverlay,
-    onARCoreAvailability = onARCoreAvailability,
-    onCameraPermissionStateChanged = null,
-    content = content,
 )

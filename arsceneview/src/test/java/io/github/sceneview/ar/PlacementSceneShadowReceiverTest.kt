@@ -11,7 +11,7 @@ import org.junit.Test
  *
  * `PlacementScene(groundShadows = true)` used to spawn a
  * [io.github.sceneview.ar.ARSceneScope.ShadowReceiverPlane] on every detected plane regardless of
- * whether the plane grid was rendering. The V1 plane renderer attaches its OWN shadow receiver
+ * whether the plane grid was rendering. The plane renderer attaches its OWN shadow receiver
  * (`plane_renderer_shadow.filamat`, a `shadowMultiplier` quad lifted to `y = 0.005`) to every
  * tracked plane, and `ShadowReceiverPlane` adds a SECOND `shadowMultiplier` quad
  * (`shadow_receiver.filamat`, also lifted to `y += 0.005`) on the same plane. For a horizontal
@@ -27,7 +27,7 @@ import org.junit.Test
  *
  * The visible/Filament-bound rendering is device territory, but the gating decision is a pure
  * function of the composable's flags plus `placedCount`, so it is pinned headlessly: for **every**
- * flag combination and placement count, the plane grid (which carries the V1 shadow receiver) and
+ * flag combination and placement count, the plane grid (which carries the renderer's shadow receiver) and
  * the `ShadowReceiverPlane` catcher are **mutually exclusive** — a plane is therefore never
  * covered by two coplanar `shadowMultiplier` receivers at once.
  *
@@ -49,7 +49,7 @@ class PlacementSceneShadowReceiverTest {
                         assertFalse(
                             "planeRenderer=$planeRenderer fadePlaneOnFirstPlacement=$fade " +
                                 "groundShadows=$groundShadows placedCount=$placedCount stacks " +
-                                "two shadow receivers on the same plane (grid's V1 receiver + " +
+                                "two shadow receivers on the same plane (grid's receiver + " +
                                 "ShadowReceiverPlane) — the #2657 double-darken/z-fight",
                             shouldRenderPlaneGrid(planeRenderer, fade, placedCount) &&
                                 shouldCatchGroundShadows(
@@ -71,7 +71,7 @@ class PlacementSceneShadowReceiverTest {
             shouldRenderPlaneGrid(true, true, 0),
         )
         assertFalse(
-            "no ShadowReceiverPlane while the grid (and its V1 receiver) shows",
+            "no ShadowReceiverPlane while the grid (and its receiver) shows",
             shouldCatchGroundShadows(true, true, true, 0),
         )
         assertFalse(
@@ -87,7 +87,7 @@ class PlacementSceneShadowReceiverTest {
     @Test
     fun `permanent grid keeps its own receiver as the single shadow receiver`() {
         // The previously latent footgun: planeRenderer=true + fadePlaneOnFirstPlacement=false +
-        // groundShadows=true. The grid never recedes, so its built-in V1 receiver serves the
+        // groundShadows=true. The grid never recedes, so its built-in receiver serves the
         // contact shadows and the dedicated catcher must never spawn — at any count.
         for (placedCount in 0..25) {
             assertTrue(
@@ -103,7 +103,7 @@ class PlacementSceneShadowReceiverTest {
 
     @Test
     fun `without the grid the catcher is live from the start`() {
-        // planeRenderer=false: no V1 receiver exists, so groundShadows spawns the catcher
+        // planeRenderer=false: no built-in receiver exists, so groundShadows spawns the catcher
         // immediately — before and after placement.
         for (placedCount in 0..25) {
             assertFalse(shouldRenderPlaneGrid(false, true, placedCount))
