@@ -30,6 +30,7 @@ import io.github.sceneview.demo.fragments.ArPlacementFragment
 import io.github.sceneview.demo.fragments.ArRerunFragment
 import io.github.sceneview.demo.fragments.ArXrFragment
 import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
+import io.github.sceneview.demo.fragments.FingerDrawingFragment
 import io.github.sceneview.demo.fragments.RollingBallsFragment
 import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 
@@ -185,6 +186,7 @@ internal val SAMPLE_MODES: Map<String, List<String>> = mapOf(
     "cosmos" to COSMOS_MODES,
     "camera-gestures" to CameraAndGesturesFragment.modes.map { it.key },
     "rolling-balls" to RollingBallsFragment.modes.map { it.key },
+    "finger-drawing" to FingerDrawingFragment.modes.map { it.key },
     "ar-rerun" to ArRerunFragment.modes.map { it.key },
     "ar-cloud-anchor" to ArCloudAnchorFragment.modes.map { it.key },
     "ar-xr" to ArXrFragment.modes.map { it.key },

@@ -63,6 +63,10 @@ object DemoPreviews {
         "contact-shadow-preview" to PreviewPair(R.drawable.preview_contact_shadow_preview_light, R.drawable.preview_contact_shadow_preview_dark),
         "custom-geometry" to PreviewPair(R.drawable.preview_custom_geometry_light, R.drawable.preview_custom_geometry_dark),
         "debug-overlay" to PreviewPair(R.drawable.preview_debug_overlay_light, R.drawable.preview_debug_overlay_dark),
+        "finger-drawing" to PreviewPair(
+            R.drawable.preview_finger_drawing_light,
+            R.drawable.preview_finger_drawing_dark,
+        ),
         "geometry" to PreviewPair(R.drawable.preview_geometry_light, R.drawable.preview_geometry_dark),
         "lighting" to PreviewPair(R.drawable.preview_lighting_light, R.drawable.preview_lighting_dark),
         "lighting-lab" to PreviewPair(R.drawable.preview_lighting_lab_light, R.drawable.preview_lighting_lab_dark),

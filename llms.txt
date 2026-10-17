@@ -6342,6 +6342,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `lighting` — Lighting. Compare studio light, daylight and reflections.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `lines-paths` — Lines & Paths. Follow animated curves and paths.
+- `finger-drawing` — Finger Drawing. Paint in the air, then walk around it.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
 - `two-d-in-three-d` — 2D in 3D. Live UI, text, images and video in a 3D scene.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.

@@ -20,4 +20,6 @@
     <string name="demo_mode_face">Face</string>
     <string name="demo_mode_inspect">Inspect</string>
     <string name="demo_mode_media">Media</string>
+    <string name="demo_mode_3d">3D</string>
+    <string name="demo_mode_ar">AR</string>
 </resources>

@@ -297,6 +297,8 @@ internal object DeepLinkRouter {
         "ar-cloud-anchor" to mapOf("cloud-anchors" to 0, "collaborative" to 1),
         "ar-geospatial-anchors" to mapOf("anchors" to 0, "terrain" to 0, "streetscape" to 2),
         "ar-xr" to mapOf("hands" to 0, "face" to 1),
+        // finger-drawing — [3D, AR] (#4082).
+        "finger-drawing" to mapOf("3d" to 0, "ar" to 1),
     )
 
     /**
@@ -329,6 +331,7 @@ internal object DeepLinkRouter {
         "ar-rerun",
         "ar-cloud-anchor",
         "ar-xr",
+        "finger-drawing",
     )
 
     /**

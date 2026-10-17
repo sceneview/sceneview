@@ -122,6 +122,15 @@ band from y = 794, resized to 800×640, WebP q85 (`cwebp -crop 0 794 1280 1024 -
 640`). One capture per theme: the stage and the card both follow the app theme, so the dark
 card is the dark stage with the dark card surface. Its prompt is gone from `prompts.json`.
 
+`finger-drawing` (#4082) has nothing to show until someone draws, so its card is a drawing:
+an emulator capture (Pixel_7a, 1280×2856) of `sceneview://demo/finger-drawing` after four
+strokes injected as touch events — an Azure spiral and an Amber star at the default 12 dp,
+then a Coral heart and a row of Mint loops at 21 dp — and, in Orbit, one 140 px drag to the
+left so the tubes show their volume. Crop: the full-width 1280×1024 band from y = 803,
+resized to 800×640, WebP q85 (`cwebp -crop 0 803 1280 1024 -resize 800 640`). One capture
+per theme of the same drawing: the stage follows the app theme, so the dark card is the dark
+stage. Android only until the iOS screen exists (#3907).
+
 ### Cards generated from real captures (2026-09-30)
 
 Eight cards were still weak after #4235: a flat side-on fox on a grey stage, a black frame

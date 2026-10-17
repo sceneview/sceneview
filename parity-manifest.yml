@@ -64,7 +64,7 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-03, after iOS and Android samples step 0): 43 rows, 31 working / 0 stub / 12 android-only.
+# Current ledger (2026-10-13, after `finger-drawing`, #4082): 44 rows, 31 working / 0 stub / 13 android-only.
 # (2026-10-02, iOS samples step 0: 49 -> 35 iOS cards, `secondary-camera` included. Every
 #  absorbed iOS card is now a mode of the card that absorbed it and its id an alias, so no
 #  row changes status; the `ios:` lists name the 35 scene ids only. iOS allowedIds:
@@ -79,6 +79,7 @@
 #  `secondary-camera` scene is listed in `camera-gestures`' `ios:`.)
 # (android-only -> working: `splat-preview`, drawn as a point cloud on iOS — no splat renderer yet.)
 # (+1 android-only: `ar-splat-room`, #4023 — a dollhouse of your Rerun recording since #4075.)
+# (+1 android-only: `finger-drawing`, #4082 — 3D and AR modes; iOS counterpart in #3907.)
 # (+1 working: `cosmos` — iOS port with SceneViewSwift `.bloom`, iOS 26+ for the glow.)
 # (android-only -> working: `contact-shadow-preview` — procedural contact-shadow quads.)
 # (android-only -> working: `secondary-camera` — two SceneViews over one shared state, cloned helmet.)
@@ -1035,7 +1036,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (12) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (13) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1279,6 +1280,27 @@ demos:
     evidence: >-
       The iOS Rerun demo records and replays sessions but has no View in AR
       action; an iOS port reuses its replay layers under an anchor
+  - id: finger-drawing
+    androidStatus: Working
+    iosStatus: android-only
+    reason: >-
+      No iOS screen yet. Added to Android first in #4082; the iOS counterpart
+      is tracked in #3907.
+    category: CREATE
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/FingerDrawingDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      Draw with one finger: each stroke is a smooth round tube, thicker where
+      the finger is slow, on a plane through the stage centre facing the
+      camera; Orbit turns the stage and the next stroke lies on the new
+      plane. AR mode: strokes painted 35 cm in front of the phone and hung on
+      anchors. Colour (five), Thickness, Undo and Clear in the sheet.
+    parity: missing
+    evidence: >-
+      No iOS scene; FingerDrawingDemo.kt, FingerDrawingArDemo.kt,
+      internal/FingerDrawing.kt. MeshResource from a MeshDescriptor and an
+      AnchorEntity cover it (#3907)
 
 # ─── iOS-only scenes, no Android row: 0 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as
