@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **Android demo: a scanned room shows its relief in Room Scan ([#4391](https://github.com/sceneview/sceneview/pull/4391)).** The dense colour cloud of a scan — in the replay, in the dollhouse and while the scan records — was drawn in the flat colours of the photos, so a white wall and the white ceiling it meets ran into each other. Each patch of the cloud is now shaded by the way it faces and has rounded corners: walls, floor, ceiling and furniture read as separate surfaces, from any angle, in the light and the dark theme.

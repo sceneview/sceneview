@@ -9,6 +9,9 @@ import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -230,7 +233,178 @@ class DenseCloudTest {
         assertEquals(listOf(0x10, 0x20, 0x30, 0xFF), (4 until 8).map { atlas[it].toInt() and 0xFF })
     }
 
+    // rerun_surfel.mat has no normal attribute: it reads the corner off the vertex index and the
+    // surfel's side off the quad's winding. The three tests below are that contract.
+
+    @Test
+    fun `surfel i owns vertices 4i to 4i+3, laid as the corners the shader reads from the index`() {
+        val cloud = surfelCloud()
+        val mesh = DenseSurfels.mesh(cloud, VOXEL)
+        assertEquals(cloud.count * 4, mesh.vertexCount)
+        assertEquals(cloud.count * 6, mesh.indexCount)
+        val half = VOXEL * DenseSurfels.HALF_SIDE_VOXELS
+        for (i in 0 until cloud.count) {
+            val centre = Vec3(cloud.positions[i * 3], cloud.positions[i * 3 + 1], cloud.positions[i * 3 + 2])
+            val normal = Vec3(cloud.normals!![i * 3], cloud.normals!![i * 3 + 1], cloud.normals!![i * 3 + 2])
+            val corners = List(4) { mesh.position(i * 4 + it) - centre }
+            // The surfel's two tangents, as its first three corners give them.
+            val tangent = (corners[1] - corners[0]) * 0.5f
+            val bitangent = (corners[3] - corners[0]) * 0.5f
+            // Tolerances: a float holds a position 5 m out to half a micrometre.
+            assertEquals("surfel $i tangent", half, tangent.length(), 1e-5f)
+            assertEquals("surfel $i bitangent", half, bitangent.length(), 1e-5f)
+            assertEquals("surfel $i is a square", 0f, tangent.dot(bitangent), half * half * 1e-2f)
+            assertEquals("surfel $i lies in its normal's plane", 0f, tangent.dot(normal), 1e-5f)
+            assertEquals("surfel $i lies in its normal's plane", 0f, bitangent.dot(normal), 1e-5f)
+            for (k in 0 until 4) {
+                // The vertex stage of rerun_surfel.mat, to the letter.
+                val x = if (k == 1 || k == 2) 1f else -1f
+                val y = if (k >= 2) 1f else -1f
+                val expected = tangent * x + bitangent * y
+                assertEquals("surfel $i corner $k", 0f, (corners[k] - expected).length(), 1e-5f)
+            }
+            val indices = (i * 6 until i * 6 + 6).map { mesh.indices[it] - i * 4 }
+            assertEquals("surfel $i triangles", listOf(0, 1, 2, 0, 2, 3), indices)
+        }
+    }
+
+    @Test
+    fun `a surfel is wound counter-clockwise seen from the side its normal points to`() {
+        val cloud = surfelCloud()
+        val mesh = DenseSurfels.mesh(cloud, VOXEL)
+        val side = 2 * VOXEL * DenseSurfels.HALF_SIDE_VOXELS
+        for (i in 0 until cloud.count) {
+            val normal = Vec3(cloud.normals!![i * 3], cloud.normals!![i * 3 + 1], cloud.normals!![i * 3 + 2])
+            val a = mesh.position(i * 4)
+            val b = mesh.position(i * 4 + 1)
+            val d = mesh.position(i * 4 + 3)
+            // Not only on the right side of zero: the quad's own normal is the surfel's.
+            val facing = (b - a).cross(d - a).dot(normal)
+            assertEquals("surfel $i, normal $normal", side * side, facing, side * side * 1e-2f)
+            // And so is each of the two triangles the rasteriser gets.
+            for (t in 0 until 2) {
+                val p = List(3) { mesh.position(mesh.indices[i * 6 + t * 3 + it]) }
+                assertTrue("surfel $i triangle $t", (p[1] - p[0]).cross(p[2] - p[0]).dot(normal) > 0f)
+            }
+        }
+        // A cloud without normals lies flat, facing up.
+        val flat = DenseSurfels.mesh(DenseCloud(floatArrayOf(1f, 2f, 3f), intArrayOf(COLOR)), VOXEL)
+        val up = (flat.position(1) - flat.position(0)).cross(flat.position(3) - flat.position(0))
+        assertEquals(side * side, up.y, side * side * 1e-2f)
+    }
+
+    @Test
+    fun `the light turns with the room's walls, whichever way the scan was started`() {
+        val rest = SurfelShading.LIGHT_DIRECTION
+        val offset = Math.toRadians(SurfelShading.WALL_OFFSET_DEGREES.toDouble())
+        for (yawDegrees in listOf(0, 10, 33, 45, 60, 89, 135, 200, 300)) {
+            val yaw = Math.toRadians(yawDegrees.toDouble())
+            val light = SurfelShading.lightFor(room(yaw, Random(yawDegrees)))
+            assertEquals("yaw $yawDegrees", 1f, light.length(), 1e-4f)
+            assertEquals("yaw $yawDegrees keeps the height", rest.y, light.y, 1e-6f)
+            // Against each of the four walls, the light sits the offset off one of them…
+            val shades = List(4) { wall ->
+                val heading = yaw + wall * Math.PI / 2
+                Vec3(cos(heading).toFloat(), 0f, sin(heading).toFloat()).dot(light) * 0.5f + 0.5f
+            }
+            val turn = Math.IEEEremainder(atan2(light.z.toDouble(), light.x.toDouble()) - yaw - offset, Math.PI / 2)
+            assertEquals("yaw $yawDegrees, off the walls", 0.0, turn, Math.toRadians(2.0))
+            // …so the two walls of every corner differ, and so do the four walls.
+            for (wall in 0 until 4) {
+                val gap = abs(shades[wall] - shades[(wall + 1) % 4])
+                assertTrue("yaw $yawDegrees corner $wall: $gap", gap > 0.15f)
+            }
+            assertTrue("yaw $yawDegrees, four shades", shades.sorted().zipWithNext { a, b -> b - a }.all { it > 0.05f })
+            // Of the four turns that fit, the nearest to the light at rest.
+            assertTrue("yaw $yawDegrees, nearest", light.x * rest.x + light.z * rest.z > 0f)
+        }
+    }
+
+    @Test
+    fun `a cloud that shows no wall keeps the light at rest`() {
+        val rest = SurfelShading.LIGHT_DIRECTION
+        assertEquals(rest, SurfelShading.lightFor(null))
+        assertEquals(rest, SurfelShading.lightFor(DenseCloud(floatArrayOf(1f, 2f, 3f), intArrayOf(COLOR))))
+        // A floor only.
+        val floor = FloatArray(3 * 1_000) { if (it % 3 == 1) 1f else 0f }
+        assertEquals(rest, SurfelShading.lightFor(DenseCloud(FloatArray(floor.size), IntArray(1_000) { COLOR }, floor)))
+        // A handful of wall surfels.
+        assertEquals(rest, SurfelShading.lightFor(room(0.3, Random(1), perWall = 10)))
+        // Horizontal normals in every direction: furniture, a round room.
+        val random = Random(7)
+        val round = FloatArray(3 * 4_000)
+        for (i in 0 until 4_000) {
+            val heading = random.nextDouble() * 2 * Math.PI
+            round[i * 3] = cos(heading).toFloat()
+            round[i * 3 + 2] = sin(heading).toFloat()
+        }
+        assertEquals(rest, SurfelShading.lightFor(DenseCloud(FloatArray(round.size), IntArray(4_000) { COLOR }, round)))
+    }
+
+    /** A room turned [yaw] about the vertical: a floor, and four noisy walls of unequal size. */
+    private fun room(yaw: Double, random: Random, perWall: Int = 500): DenseCloud {
+        val normals = ArrayList<Float>()
+        repeat(perWall * 6) { normals += listOf(0f, 1f, 0f) }
+        for (wall in 0 until 4) {
+            repeat(perWall * (wall + 1)) {
+                val heading = yaw + wall * Math.PI / 2 + (random.nextDouble() - 0.5) * Math.toRadians(16.0)
+                val tilt = (random.nextFloat() - 0.5f) * 0.3f
+                val n = Vec3(cos(heading).toFloat(), tilt, sin(heading).toFloat()).normalized()
+                normals += listOf(n.x, n.y, n.z)
+            }
+        }
+        val count = normals.size / 3
+        return DenseCloud(FloatArray(count * 3), IntArray(count) { COLOR }, normals.toFloatArray())
+    }
+
+    @Test
+    fun `the surfels' light is a unit direction from above and the side, its shading within range`() {
+        val light = SurfelShading.LIGHT_DIRECTION
+        assertEquals(1f, light.length(), 1e-6f)
+        assertTrue("from above", light.y > 0.5f)
+        // Off both horizontal axes, and clearly nearer one: in a room on the world's axes two
+        // walls at a right angle get two shades a tenth of the range apart, whichever corner.
+        assertTrue("from the side", abs(light.x) > 0.1f && abs(light.z) > 0.1f)
+        assertTrue("nearer one axis", abs(abs(light.x) - abs(light.z)) > 0.2f)
+        val shares = listOf(
+            SurfelShading.AMBIENT,
+            SurfelShading.HEADLIGHT,
+            SurfelShading.RELIEF,
+            SurfelShading.ROUNDNESS,
+        )
+        for (share in shares) assertTrue("$share in 0..1", share in 0f..1f)
+        // Half-rounded corners still cover the voxel grid: along the diagonal the patch reaches
+        // past the voxel's own corner (√2 / 2 voxels from its centre).
+        val inner = DenseSurfels.HALF_SIDE_VOXELS * (1f - SurfelShading.ROUNDNESS)
+        val reach = inner * sqrt(2f) + DenseSurfels.HALF_SIDE_VOXELS * SurfelShading.ROUNDNESS
+        assertTrue("reach $reach", reach > sqrt(2f) / 2f)
+    }
+
+    private fun DebugMesh.position(vertex: Int) =
+        Vec3(positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2])
+
+    /**
+     * Surfels facing the six axes — ±Y is where [DenseSurfels.mesh] switches its helper axis —
+     * either side of that switch, obliquely, and two hundred random ways.
+     */
+    private fun surfelCloud(): DenseCloud {
+        val fixed = listOf(
+            Vec3(0f, 1f, 0f), Vec3(0f, -1f, 0f),
+            Vec3(1f, 0f, 0f), Vec3(-1f, 0f, 0f),
+            Vec3(0f, 0f, 1f), Vec3(0f, 0f, -1f),
+            // |y| 0.890 and 0.910 once normalised: the two sides of the 0.9 switch.
+            Vec3(0.45f, 0.89f, 0.07f).normalized(), Vec3(0.41f, 0.91f, -0.06f).normalized(),
+            Vec3(-0.2f, -0.95f, 0.1f).normalized(),
+            Vec3(1f, 2f, 3f).normalized(), Vec3(-3f, 1f, -2f).normalized(),
+        )
+        val random = randomCloud(200)
+        val normals = fixed.flatMap { listOf(it.x, it.y, it.z) }.toFloatArray() + random.normals!!
+        val positions = FloatArray(fixed.size * 3) { (it % 7) * 0.25f - 0.5f } + random.positions
+        return DenseCloud(positions, IntArray(positions.size / 3) { COLOR }, normals)
+    }
+
     private companion object {
+        const val VOXEL = 0.02f
         const val W = 8
         const val H = 6
         const val CX = 4f

@@ -93,6 +93,8 @@ internal class DollhouseBuild(val media: RerunReplayMedia, val room: DollhouseRo
                     voxelM = source.voxelM,
                     mesh = DenseSurfels.mesh(cut, source.voxelM),
                     atlas = DenseSurfels.atlas(cut, fallback = ReplayDenseLayer.DENSE_FALLBACK_COLOR),
+                    // The same room, cut open: lit as in the replay a tap away.
+                    light = source.light,
                 )
             }
             return DollhouseBuild(media, room, dense)
@@ -113,10 +115,12 @@ internal class DollhouseLayers(
     dense: ReplayDenseLayer?,
     palette: DebugPalette,
     base: Color,
+    /** Shades the dense cloud ([createSurfelMaterial]); `null` draws it flat. Not owned here. */
+    surfelMaterial: Material? = null,
 ) {
     /** The scan's dense cloud, cut open, is the room itself, in the colours the camera saw. */
     private val hasDense = dense != null
-    private val replay = ReplayLayers(engine, materialLoader, media, dense = dense)
+    private val replay = ReplayLayers(engine, materialLoader, media, dense = dense, surfelMaterial = surfelMaterial)
     private val materials = ArrayList<MaterialInstance>()
 
     private fun node(color: Color, priority: Int, twoSided: Boolean = color.alpha >= 1f): DebugLayerNode {
@@ -289,10 +293,11 @@ internal fun SceneScope.DollhouseModel(
     pickable: Boolean,
     showPath: Boolean,
     plinth: Boolean = true,
+    surfelMaterial: Material? = null,
 ) {
     // Remembered before the node, so Compose releases it after the node destroyed the layers.
-    val layers = remember(engine, materialLoader, build, room, palette, base) {
-        DollhouseLayers(engine, materialLoader, build.media, room, build.dense, palette, base)
+    val layers = remember(engine, materialLoader, build, room, palette, base, surfelMaterial) {
+        DollhouseLayers(engine, materialLoader, build.media, room, build.dense, palette, base, surfelMaterial)
     }
     DisposableEffect(layers) { onDispose { layers.destroy() } }
     SideEffect { layers.sync(styleScale, showPath, plinth) }
@@ -339,6 +344,7 @@ internal fun DollhousePreview(
     modelLoader: ModelLoader,
     materialLoader: MaterialLoader,
     modifier: Modifier = Modifier,
+    surfelMaterial: Material? = null,
     onShown: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -448,6 +454,7 @@ internal fun DollhousePreview(
                 styleScale = fit.scale,
                 pickable = false,
                 showPath = showPath,
+                surfelMaterial = surfelMaterial,
             )
         }
     }

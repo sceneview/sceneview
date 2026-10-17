@@ -175,6 +175,7 @@ MATS=(
     "android-demo:cosmos_ring:samples/android-demo/src/main/materials/cosmos_ring.mat:samples/android-demo/src/main/assets/materials/cosmos_ring.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_spacetime:samples/android-demo/src/main/materials/cosmos_spacetime.mat:samples/android-demo/src/main/assets/materials/cosmos_spacetime.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:tray_wood:samples/android-demo/src/main/materials/tray_wood.mat:samples/android-demo/src/main/assets/materials/tray_wood.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:rerun_surfel:samples/android-demo/src/main/materials/rerun_surfel.mat:samples/android-demo/src/main/assets/materials/rerun_surfel.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_depth:arsceneview/src/main/materials/camera_stream_depth.mat:arsceneview/src/main/assets/materials/camera_stream_depth.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_person_occlusion:arsceneview/src/main/materials/camera_stream_person_occlusion.mat:arsceneview/src/main/assets/materials/camera_stream_person_occlusion.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_flat:arsceneview/src/main/materials/camera_stream_flat.mat:arsceneview/src/main/assets/materials/camera_stream_flat.filamat:--optimize-size -p mobile -a opengl -a vulkan"

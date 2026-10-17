@@ -1,0 +1,96 @@
+// rerun_surfel.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The Room Scan replay's dense cloud with relief: each surfel a rounded patch lying
+//             in the plane its normal gives, its photo colour shaded by which way it faces. A
+//             white wall and a white ceiling are the same colour in the photos; shaded, the
+//             corner between them shows.
+// Used by:    samples/android-demo ReplayLayers (Room Scan replay and dollhouse) — nothing in
+//             the SDK. Without this blob the layer falls back to the unlit image material.
+// Vertex layout (two buffers, built by DenseSurfels.mesh through DebugLayerNode):
+//   position — float3, one corner of the surfel's quad in world space.
+//   uv0      — float2, the surfel's texel in the colour atlas (the same on its four corners).
+//   Surfel i owns vertices 4i..4i+3, wound counter-clockwise seen from the side its normal
+//   points to. The shader reads both facts: the corner from the vertex index, the normal from
+//   the quad's own plane. No normal attribute, so half a million surfels cost no more memory
+//   than in the unlit fallback.
+// Parameters:
+//   atlas          — sampler2d, one texel per surfel (sRGB), sampled nearest.
+//   lightDirection — float3, the cloud's own space (the scan's), unit length, pointing towards
+//                    the light. The vertex stage turns it with the node, so a dollhouse the
+//                    user twists keeps its light on the same walls.
+//   ambient        — float [0,1], the shade of a surfel that faces away from everything.
+//   headlight      — float [0,1], share of the shade that follows the viewer, not the light:
+//                    it keeps a wall readable when the fixed light grazes it.
+//   relief         — float [0,1], 0 draws the photo colour flat (the fallback's look), 1 the
+//                    full shading.
+//   roundness      — float [0,1], 0 keeps the quad square, 1 cuts a disc. Discs of this size
+//                    leave gaps on a regular grid; the default (0.5) still covers it.
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why unlit with its own shading: the replay stage has no light of its own and must look the
+// same in the light and the dark theme, on Android and — with the same four lines — on iOS.
+material {
+    "name" : "Rerun Surfel",
+    "parameters" : [
+        { "type" : "sampler2d", "name" : "atlas" },
+        { "type" : "float3", "name" : "lightDirection" },
+        { "type" : "float", "name" : "ambient" },
+        { "type" : "float", "name" : "headlight" },
+        { "type" : "float", "name" : "relief" },
+        { "type" : "float", "name" : "roundness" }
+    ],
+    "requires" : [ "position", "uv0" ],
+    "variables" : [ "corner", "light" ],
+    "shadingModel" : "unlit",
+    "blending" : "masked",
+    "maskThreshold" : 0.5,
+    "depthWrite" : true,
+    "depthCulling" : true,
+    "doubleSided" : true,
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        // DenseSurfels.mesh lays the corners (-,-) (+,-) (+,+) (-,+).
+        int index = getVertexIndex() & 3;
+        float x = (index == 1 || index == 2) ? 1.0 : -1.0;
+        float y = (index >= 2) ? 1.0 : -1.0;
+        material.corner = float4(x, y, 0.0, 0.0);
+        // The same on a surfel's four corners, so the interpolation leaves it unit length.
+        highp mat4 worldFromModel = getWorldFromModelMatrix();
+        material.light = float4(normalize(mat3(worldFromModel) * materialParams.lightDirection), 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        // A square with its corners rounded off: inside when within `roundness` of the inner
+        // square the rounding leaves.
+        float round = clamp(materialParams.roundness, 0.0, 1.0);
+        float2 outside = max(abs(variable_corner.xy) - (1.0 - round), 0.0);
+        float cover = dot(outside, outside) <= round * round ? 1.0 : 0.0;
+
+        // The quad is flat, so the screen-space derivatives of its position span its plane.
+        // Their cross product has a sign that depends on the backend; the view vector settles
+        // it, and the face we are looking at says which side the surfel's own normal is on.
+        highp float3 position = getWorldPosition();
+        highp float3 facing = normalize(cross(dFdx(position), dFdy(position)));
+        float3 view = getWorldViewVector();
+        float towardsViewer = dot(facing, view);
+        if (towardsViewer < 0.0) {
+            facing = -facing;
+            towardsViewer = -towardsViewer;
+        }
+        float3 normal = gl_FrontFacing ? facing : -facing;
+
+        // Half-Lambert: soft, and never black — the colours are photos, already lit once.
+        float lit = dot(normal, variable_light.xyz) * 0.5 + 0.5;
+        float shade = mix(lit, towardsViewer, clamp(materialParams.headlight, 0.0, 1.0));
+        shade = mix(clamp(materialParams.ambient, 0.0, 1.0), 1.0, shade);
+        shade = mix(1.0, shade, clamp(materialParams.relief, 0.0, 1.0));
+
+        float4 color = texture(materialParams_atlas, getUV0());
+        material.baseColor = float4(color.rgb * shade, cover);
+    }
+}
