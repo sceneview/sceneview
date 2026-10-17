@@ -561,7 +561,7 @@ fun ARRerunDemo(onBack: () -> Unit, startInDollhouse: Boolean = false) {
 private enum class RerunScreen { Landing, Live, Replay, Dollhouse }
 
 /** The replay's views; Plan — the room's survey and floor plan (#4540) — is a scan's only. */
-private enum class RerunMode { Scene, Map, Plan, Camera }
+internal enum class RerunMode { Scene, Map, Plan, Camera }
 
 /**
  * The landing, laid out as the iOS demo's: "Scan a room in 3D", "Record your room", the sample
@@ -618,7 +618,10 @@ private fun RerunReplayScreen(
     val title = if (isScan) scanTitle else ScanCopy.SAMPLE_TITLE
     // The surface's build outlives the 3D view (Camera mode takes the view away); the view loads
     // the built model itself each time it comes back.
-    var surfaceWanted by remember(surfaceSource) { mutableStateOf(startOnSurface) }
+    // It opens on the surface whenever the scan can be meshed (#4597).
+    var surfaceWanted by remember(surfaceSource) {
+        mutableStateOf(startOnSurface || RerunReplayControls.surfaceByDefault(canMesh = surfaceSource != null))
+    }
     val surface = rememberRerunSurface(surfaceSource, surfaceWanted, modelLoader)
     // The stage the chrome really leaves, measured on screen: the room is fitted between the
     // header above and the timeline bar below, whatever the phone or the font scale. A phone on
@@ -680,6 +683,13 @@ private fun RerunReplayScreen(
         onClick = onExport,
         enabled = media != null,
     )
+    // Points | Surface, on the view itself (#4597), heading the timeline's card.
+    val reading: (@Composable () -> Unit)? =
+        if (RerunReplayControls.showsReadingControl(surfaceSource != null, mode)) {
+            { RerunReadingControl(surface, onWanted = { surfaceWanted = it }) }
+        } else {
+            null
+        }
     DemoScaffold(
         title = stringResource(R.string.demo_ar_rerun_title),
         onBack = onBack,
@@ -728,6 +738,7 @@ private fun RerunReplayScreen(
                         media = media,
                         thumbnails = thumbnails,
                         session = session,
+                        header = reading,
                         modifier = Modifier
                             .padding(end = Space.md)
                             .width(SceneViewTokens.DebugView.compactCardWidth)
@@ -754,6 +765,7 @@ private fun RerunReplayScreen(
                     media = media,
                     thumbnails = thumbnails,
                     session = session,
+                    header = reading,
                     modifier = Modifier
                         // The bar goes with the dock: one small gutter above it, not a card
                         // stacked over it.

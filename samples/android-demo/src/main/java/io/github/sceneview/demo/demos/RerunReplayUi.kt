@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -51,6 +52,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.PointMode
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,6 +69,7 @@ import androidx.compose.ui.unit.Dp
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
+import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.filmstripFrames
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -82,27 +86,32 @@ import io.github.sceneview.demo.ui.overMediaEdge
  */
 
 /**
- * The replay's layers and what each one holds, as rows of the settings sheet: the path walked,
- * the planes, the points and the anchors, each with its figure and a switch that shows or hides
- * it in the 3D view, then the room's measured floor plan.
+ * The replay's layers and what each one holds, as rows of the settings sheet: the camera's path,
+ * its photos, the planes and the points ([RerunReplayControls.layers]), each with a swatch of
+ * what it draws, a line that says it, its figure and a switch, then the room's measured floor
+ * plan. The swatches and their lines are the 3D view's legend (#4597).
  *
  * These were a card over the stage, on screen all the time, for figures that are read once.
  */
 @Composable
 internal fun RerunLayersSection(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
-    val debug = LocalStageChrome.current.debug
-    Column(modifier = modifier.fillMaxWidth().testTag(RERUN_LAYERS_TAG)) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = Space.md).testTag(RERUN_LAYERS_TAG)) {
         Text(
             text = LAYERS_TITLE,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(bottom = Space.xs).semantics { heading() },
         )
-        LayerRow("Path", ArDebugFormat.distance(stats.pathMetres), debug.trailNew, session, DebugGroup.Trail)
-        LayerRow("Planes", ArDebugFormat.count(stats.planes), debug.floorOutline, session, DebugGroup.Planes)
-        LayerRow("Points", ArDebugFormat.compactCount(stats.mapPoints), debug.mapPoint, session, DebugGroup.Points)
-        LayerRow("Anchors", ArDebugFormat.count(stats.anchors), debug.anchor, session, DebugGroup.Anchors)
+        RerunReplayControls.layers.forEach { layer ->
+            val value = when (layer.group) {
+                DebugGroup.Trail -> ArDebugFormat.distance(stats.pathMetres)
+                DebugGroup.Planes -> ArDebugFormat.count(stats.planes)
+                DebugGroup.Points -> ArDebugFormat.compactCount(stats.mapPoints)
+                else -> null
+            }
+            LayerRow(layer, value, session)
+        }
         // The room the planes outline, measured as a floor plan.
         stats.room?.let { room -> SheetFigureRow("Room", room) }
     }
@@ -133,40 +142,112 @@ internal fun SheetFigureRow(label: String, value: String, modifier: Modifier = M
     }
 }
 
-/** One layer: its colour in the 3D view, its name, its figure, and the switch — the whole row toggles. */
+/**
+ * One layer: a swatch of what it draws in the 3D view, its name over a line that says it, its
+ * figure, and the switch — the whole row toggles.
+ */
 @Composable
-private fun LayerRow(label: String, value: String, dot: Color, session: ArDebugSession, group: DebugGroup) {
-    val on = session.isVisible(group)
+private fun LayerRow(layer: RerunLayer, value: String?, session: ArDebugSession) {
+    val on = session.isVisible(layer.group)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(value = on, role = Role.Switch) { session.toggle(group) }
+            .toggleable(value = on, role = Role.Switch) { session.toggle(layer.group) }
             .heightIn(min = SceneViewTokens.Layout.touchTarget)
-            .semantics { contentDescription = "$label $value" },
+            .padding(vertical = Space.xs)
+            .semantics { contentDescription = listOfNotNull(layer.label, value, layer.hint).joinToString(", ") }
+            .testTag(RERUN_LAYER_ROW_TAG + layer.group.name),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+        horizontalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Box(
-            Modifier
-                .size(Space.sm + Space.xs / 2)
-                .background(if (on) dot else MaterialTheme.colorScheme.outlineVariant, CircleShape),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
+        LayerSwatch(layer.group, on)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = layer.label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = layer.hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        value?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
         // Decorative: the row is the toggle, so the switch takes no second focus stop.
         Switch(checked = on, onCheckedChange = null)
     }
 }
+
+/**
+ * What a layer looks like in the 3D view, drawn small: the path as its own faint-to-strong
+ * stroke, the photos as a frustum's outline, the planes as a floor and a wall chip, the points as
+ * a few dots. Greyed out while the layer is hidden.
+ */
+@Composable
+private fun LayerSwatch(group: DebugGroup, on: Boolean) {
+    val debug = LocalStageChrome.current.debug
+    val off = MaterialTheme.colorScheme.outlineVariant
+    val ground = MaterialTheme.colorScheme.surfaceContainerHighest
+    Canvas(
+        Modifier
+            .size(SceneViewTokens.Layout.touchTarget - Space.md)
+            .clip(RoundedCornerShape(SceneViewTokens.Radius.xs))
+            .background(ground),
+    ) {
+        val w = size.width
+        val h = size.height
+        val stroke = Space.xs.toPx() * SWATCH_STROKE
+        when (group) {
+            DebugGroup.Trail -> {
+                val steps = SWATCH_STEPS
+                for (i in 0 until steps) {
+                    val from = Offset(w * (0.15f + 0.7f * i / steps), h * (0.75f - 0.5f * i / steps))
+                    val to = Offset(w * (0.15f + 0.7f * (i + 1) / steps), h * (0.75f - 0.5f * (i + 1) / steps))
+                    val color = if (on) trailColorAt(debug, (i + 0.5f) / steps) else off
+                    drawLine(color, from, to, strokeWidth = stroke, cap = StrokeCap.Round)
+                }
+            }
+            DebugGroup.Cameras -> {
+                val color = if (on) debug.frustum else off
+                val apex = Offset(w * 0.2f, h * 0.5f)
+                val top = Offset(w * 0.8f, h * 0.25f)
+                val bottom = Offset(w * 0.8f, h * 0.75f)
+                drawLine(color, apex, top, strokeWidth = stroke / 2f)
+                drawLine(color, apex, bottom, strokeWidth = stroke / 2f)
+                drawLine(color, top, bottom, strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+            DebugGroup.Planes -> {
+                val floor = if (on) debug.floorOutline else off
+                val wall = if (on) debug.wallOutline else off
+                drawRect(floor, Offset(w * 0.15f, h * 0.55f), Size(w * 0.7f, h * 0.2f))
+                drawRect(wall, Offset(w * 0.15f, h * 0.2f), Size(w * 0.2f, h * 0.3f))
+            }
+            else -> {
+                val color = if (on) debug.mapPoint else off
+                listOf(0.3f to 0.35f, 0.55f to 0.3f, 0.7f to 0.55f, 0.4f to 0.65f, 0.6f to 0.75f).forEach { (x, y) ->
+                    drawCircle(color, radius = stroke, center = Offset(w * x, h * y))
+                }
+            }
+        }
+    }
+}
+
+/** The path swatch is drawn in this many pieces, so its ramp reads. */
+private const val SWATCH_STEPS = 6
+
+/** The swatch's stroke, as a share of `space-xs`. */
+private const val SWATCH_STROKE = 0.75f
+
+/** The camera overlay's points let the photo show through them. */
+private const val OVERLAY_POINT_ALPHA = 0.7f
 
 /**
  * The camera view: the recorded frame at the replay's instant, full size, over a blurred copy of
@@ -205,6 +286,78 @@ internal fun RerunCameraView(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
+            CameraFrameOverlay(media, index, it.width.toFloat() / it.height, session, Modifier.fillMaxSize())
+        }
+    }
+}
+
+/**
+ * The reconstruction over the recorded frame (#4597): the room's points and planes, seen from
+ * the pose the frame was taken from, through the recording's lens — so the frame shows what the
+ * scan made of it, the way Rerun draws its 3D over a camera's image. It follows the sheet's
+ * Points and Planes switches.
+ */
+@Composable
+private fun CameraFrameOverlay(
+    media: RerunReplayMedia,
+    index: Int,
+    aspect: Float,
+    session: ArDebugSession,
+    modifier: Modifier = Modifier,
+) {
+    if (index < 0) return
+    val trace = media.trace
+    // The whole reconstruction, seen from the camera the frame was taken with.
+    val whole = remember(media, trace.version) { trace.frameAt(trace.duration) }
+    val pose = remember(media, index) { trace.frameAt(trace.imageTime(index)).camera } ?: return
+    val lens = media.manifest.lens
+    val points = remember(whole, pose) {
+        val xyz = whole.mapPoints
+        val out = ArrayList<Pair<Float, Float>>(xyz.size / 3)
+        for (i in 0 until xyz.size / 3) {
+            RerunReplayControls.project(pose, lens, xyz[i * 3], xyz[i * 3 + 1], xyz[i * 3 + 2])
+                ?.let { out += it[0] to it[1] }
+        }
+        out
+    }
+    val outlines = remember(whole, pose) {
+        whole.planes.map { plane ->
+            plane.kind to (0 until plane.vertexCount).map { v ->
+                val p = plane.polygon
+                RerunReplayControls.project(pose, lens, p[v * 3], p[v * 3 + 1], p[v * 3 + 2])
+            }
+        }
+    }
+    val debug = LocalStageChrome.current.debug
+    val showPoints = session.isVisible(DebugGroup.Points)
+    val showPlanes = session.isVisible(DebugGroup.Planes)
+    Canvas(modifier.testTag(RERUN_CAMERA_OVERLAY_TAG)) {
+        // Where ContentScale.Fit put the frame.
+        val frameWidth = minOf(size.width, size.height * aspect)
+        val frameHeight = frameWidth / aspect
+        val left = (size.width - frameWidth) / 2f
+        val top = (size.height - frameHeight) / 2f
+        fun at(u: Float, v: Float) = Offset(left + u * frameWidth, top + v * frameHeight)
+        val stroke = Space.xs.toPx() * SWATCH_STROKE
+        if (showPlanes) {
+            outlines.forEach { (kind, corners) ->
+                val color = if (kind == DebugPlaneKind.Wall) debug.wallOutline else debug.floorOutline
+                corners.indices.forEach { i ->
+                    val a = corners[i]
+                    val b = corners[(i + 1) % corners.size]
+                    if (a != null && b != null) drawLine(color, at(a[0], a[1]), at(b[0], b[1]), strokeWidth = stroke)
+                }
+            }
+        }
+        if (showPoints) {
+            drawPoints(
+                points.map { (u, v) -> at(u, v) },
+                PointMode.Points,
+                // Fine and a little see-through: the photo stays the subject, the points mark it.
+                debug.frustum.copy(alpha = OVERLAY_POINT_ALPHA),
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
@@ -223,6 +376,7 @@ internal fun RerunTimelineBar(
     thumbnails: Map<String, ImageBitmap>,
     session: ArDebugSession,
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
 ) {
     val duration = media.trace.duration
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
@@ -231,9 +385,8 @@ internal fun RerunTimelineBar(
     val clock by remember(session, duration) {
         derivedStateOf { "${ArDebugFormat.clock(session.time)} / ${ArDebugFormat.clock(duration)}" }
     }
-    Row(
+    Column(
         modifier = modifier
-            .height(SceneViewTokens.Layout.touchTarget)
             // No drop shadow: the bar is translucent, and on the light stage a shadow shows
             // through as a grey frame (#4306). The edge ring separates it.
             .clip(shape)
@@ -241,24 +394,32 @@ internal fun RerunTimelineBar(
             .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             // The bar is chrome: a tap on its glass is not a tap on the stage, which hides it.
             .pointerInput(Unit) {}
-            .padding(end = Space.md)
             .testTag(RERUN_FILMSTRIP_TAG),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        val playing = session.playing && !session.live
-        IconButton(
-            onClick = session::togglePlay,
-            modifier = Modifier.size(SceneViewTokens.Layout.touchTarget),
-        ) {
-            Icon(
-                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (playing) "Pause" else "Play",
-                tint = chrome.onCard,
-            )
+        // The view's own controls head the card (#4597): what the view draws and when, in one
+        // place, as Rerun groups a view's settings with its time panel.
+        header?.let {
+            Box(Modifier.padding(start = Space.sm, end = Space.sm, top = Space.sm)) { it() }
         }
-        Filmstrip(media, thumbnails, session, duration, FilmstripHeight, Modifier.weight(1f))
-        Spacer(Modifier.width(Space.sm))
-        Text(clock, style = HudCaption, maxLines = 1)
+        Row(
+            modifier = Modifier.height(SceneViewTokens.Layout.touchTarget).padding(end = Space.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val playing = session.playing && !session.live
+            IconButton(
+                onClick = session::togglePlay,
+                modifier = Modifier.size(SceneViewTokens.Layout.touchTarget),
+            ) {
+                Icon(
+                    if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (playing) "Pause" else "Play",
+                    tint = chrome.onCard,
+                )
+            }
+            Filmstrip(media, thumbnails, session, duration, FilmstripHeight, Modifier.weight(1f))
+            Spacer(Modifier.width(Space.sm))
+            Text(clock, style = HudCaption, maxLines = 1)
+        }
     }
 }
 
@@ -384,6 +545,8 @@ private const val LAYERS_TITLE = "Layers"
 
 /** The layers section of the replay's settings sheet. */
 internal const val RERUN_LAYERS_TAG = "rerun_replay_layers"
+internal const val RERUN_LAYER_ROW_TAG = "rerun_replay_layer_"
+internal const val RERUN_CAMERA_OVERLAY_TAG = "rerun_replay_camera_overlay"
 internal const val RERUN_CAMERA_VIEW_TAG = "rerun_camera_view"
 internal const val RERUN_FILMSTRIP_TAG = "rerun_filmstrip"
 internal const val RERUN_FILMSTRIP_STRIP_TAG = "rerun_filmstrip_strip"

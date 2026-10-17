@@ -414,7 +414,7 @@ internal class ReplayLayers(
         val denseDrawn = denseNode != null && (media.liveDense == null || liveDenseShown != null)
         syncPoints(frame, pointStyle, show.points && !denseDrawn)
         syncShadows(frame, show.anchors)
-        syncPhotos(frame, show.trail)
+        syncPhotos(frame, show.cameras)
     }
 
     /**
@@ -734,6 +734,8 @@ internal data class ReplayVisibility(
     val points: Boolean,
     val anchors: Boolean,
     val trail: Boolean,
+    /** The photos in the frusta the phone looked from ([DebugGroup.Cameras]). */
+    val cameras: Boolean = trail,
     /** The room's floor-plan dimensions ([RoomMeasure]), drawn with the planes. */
     val measure: Boolean = false,
     /** The dimensions over everything else: the map, where the room is read as a plan. */

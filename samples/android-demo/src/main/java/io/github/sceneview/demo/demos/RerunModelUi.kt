@@ -402,6 +402,45 @@ internal fun RerunSurfaceSwitch(
     }
 }
 
+/**
+ * Points | Surface on the 3D view itself (#4597), heading the timeline's card: a compact
+ * connected pair, sized to its labels. The settings sheet keeps the full switch, with the
+ * surface's caption and its share button.
+ */
+@Composable
+internal fun RerunReadingControl(
+    state: RerunSurfaceState,
+    onWanted: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+    ) {
+        ConnectedChoiceRow(
+            options = listOf(false, true),
+            selected = state.wanted,
+            onSelect = onWanted,
+            label = { if (it) ModelCopy.SURFACE else ModelCopy.POINTS },
+            fillWidth = false,
+            modifier = Modifier.testTag(RERUN_READING_CONTROL_TAG),
+            optionTestTag = { if (it) RERUN_READING_SURFACE_TAG else RERUN_READING_POINTS_TAG },
+        )
+        if (state.building) {
+            LinearProgressIndicator(
+                progress = { state.progress },
+                modifier = Modifier.weight(1f),
+                drawStopIndicator = {},
+            )
+        }
+    }
+}
+
+internal const val RERUN_READING_CONTROL_TAG = "rerun_reading_control"
+internal const val RERUN_READING_POINTS_TAG = "rerun_reading_points"
+internal const val RERUN_READING_SURFACE_TAG = "rerun_reading_surface"
+
 /** [glb] as `<title> model.glb` in a fresh cache directory, handed to the share sheet. */
 private suspend fun shareModelFile(context: Context, title: String, glb: ByteArray) {
     val file = withContext(Dispatchers.IO) {

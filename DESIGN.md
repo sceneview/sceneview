@@ -1049,12 +1049,12 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container-highest` in light, the `surface-dim` grounding plane in dark. Use it
   instead of a Compose gradient behind a transparent scene whenever the camera can tilt.
 - **Colour carries meaning, and only existing palette values carry it**
-  (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the trail runs the brand
-  ramp from `accent-deep` (oldest) to `tint-light` (now); the live frustum is `tint-light`;
+  (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the camera path runs one
+  blue, faint to strong (#4597): `#0D419D` (oldest) → `#3D7FD9` → `tint-light` (now); the live frustum is `tint-light`;
   what the camera sees *this second* is `warning`; everything seen so far is dim white;
   anchors are `success`; planes are a translucent fill with a solid outline, blue on floors
   and tables, lilac on walls; the origin gizmo follows X red / Y green / Z blue. *Light*: the
-  same meanings in the light scheme's values — the trail runs `tint-soft` → `tertiary` →
+  same meanings in the light scheme's values — the path runs `#BDD3FF` → `#3D7FD9` →
   `primary`, the frustum and floors take `primary`, walls `tertiary`, history points are
   `on-surface` at 55 %, the grid `on-surface` at 8 % / 16 %.
 - **Only the present glows.** On the dark ground the trail head, the live frustum, the live

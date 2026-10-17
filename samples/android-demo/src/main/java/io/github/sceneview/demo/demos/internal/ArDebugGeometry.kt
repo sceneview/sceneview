@@ -122,9 +122,9 @@ enum class DebugLayer(val group: DebugGroup) {
     Trail6(DebugGroup.Trail),
     Trail7(DebugGroup.Trail),
     TrailHead(DebugGroup.Trail),
-    Keyframes(DebugGroup.Trail),
-    Frustum(DebugGroup.Trail),
-    FrustumFace(DebugGroup.Trail),
+    Keyframes(DebugGroup.Cameras),
+    Frustum(DebugGroup.Cameras),
+    FrustumFace(DebugGroup.Cameras),
     Anchors(DebugGroup.Anchors);
 
     companion object {
@@ -133,8 +133,12 @@ enum class DebugLayer(val group: DebugGroup) {
     }
 }
 
-/** What the legend toggles. [Stage] (grid, axes) is always on. */
-enum class DebugGroup { Stage, Trail, Points, Planes, Anchors }
+/**
+ * What the legend toggles. [Stage] (grid, axes) is always on. [Cameras] — the frusta the phone
+ * looked from, with their photos — is its own toggle, apart from the [Trail] line: a long
+ * recording stacks dozens of them over the room.
+ */
+enum class DebugGroup { Stage, Trail, Cameras, Points, Planes, Anchors }
 
 /**
  * Sizes, in screen pixels, turned into metres through [metresPerPixel] — the world size of one

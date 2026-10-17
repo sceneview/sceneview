@@ -653,7 +653,7 @@ object SceneViewTokens {
      * Two palettes, one per ground (#4080). [Dark] is drawn on [Stage.background] — the live
      * camera's picture-in-picture, and the replay in dark theme. [Light] is drawn on the light
      * stage the replay takes in light theme (`surface-dim`, see [StageChrome.Light]). Every
-     * colour is an existing palette value — the brand ramp for the trail, `warning` for what the
+     * colour is an existing palette value — one blue, faint to strong, for the trail, `warning` for what the
      * camera sees right now, `success` for anchors, the axis convention X red / Y green / Z blue.
      * The `glow` factors multiply a colour past 1.0 in linear light so bloom picks it up: only the
      * few "live" elements glow, so the eye lands on the present. On the light ground nothing
@@ -663,9 +663,10 @@ object SceneViewTokens {
     object DebugView {
         /** On the dark stage. */
         val Dark = DebugPalette(
-            // Trail, oldest → newest: `accent-deep` → `tint-soft` → `tint-light`.
-            trailOld = Color(0xFF5A32A3),
-            trailMid = Color(0xFFD2A8FF),
+            // Trail, oldest → newest, one blue faint to strong (#4597): `gradient-hero-alt`'s
+            // `#0D419D` → `mark-color` body `#3D7FD9` → `primary` (dark) `#A4C1FF`.
+            trailOld = Color(0xFF0D419D),
+            trailMid = Color(0xFF3D7FD9),
             trailNew = Color(0xFFA4C1FF),
             // Glows are held low (#4306): the room is the result, the tracking aids stand behind it.
             trailHeadGlow = 2.0f,
@@ -700,14 +701,15 @@ object SceneViewTokens {
 
         /**
          * On the light stage: the same meanings in the light scheme's values. The trail runs
-         * `tint-soft` → `tertiary` → `primary` (the oldest is now the palest, as it is the
+         * one blue, `#BDD3FF` → `#3D7FD9` → `primary` (the oldest is the palest, as it is the
          * dimmest on the dark stage); the frustum and the floor planes take `primary`, the walls
          * `tertiary`; history points are `on-surface` at 55 %; the grid is `on-surface` at
          * 8 % / 16 %.
          */
         val Light = DebugPalette(
-            trailOld = Color(0xFFD2A8FF),
-            trailMid = Color(0xFF6446CD),
+            // One blue, faint to strong (#4597): `mark-color` lid → body → `primary`.
+            trailOld = Color(0xFFBDD3FF),
+            trailMid = Color(0xFF3D7FD9),
             trailNew = Color(0xFF005BC1),
             trailHeadGlow = 1f,
             frustum = Color(0xFF005BC1),
