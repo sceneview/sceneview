@@ -117,12 +117,17 @@ fun createView(engine: Engine): View = engine.createView().apply {
         enabled = true
         strength = 0.1f
     }
-    // Keep Filmic tone mapper as default. ACES was tested on 2026-05-11 and shifts PBR
-    // hero shots (DamagedHelmet) toward a cooler/desaturated film grade — fine for cinema
-    // but not the SDK's job to impose. Users can opt into ACES via `view.colorGrading`.
-    // The demo's ViewerBackdrop inverts this exact curve: change the tone mapper, update it too.
+    // Khronos PBR Neutral tone mapper. It is the identity up to 0.76 and only
+    // compresses what is brighter, so a base colour displays as authored: measured on the
+    // demo's brand ramp, Filmic kept 40–57 % of the light blue's chroma and 45–65 % of the
+    // lilac's (its shoulder bleaches pastels, its toe crushes darks), PBR Neutral 90–99 %.
+    // ACES (tested 2026-05-11) grades toward a cooler, desaturated film look. Opt back into
+    // the old look with `view.colorGrading = ColorGrading.Builder()
+    // .toneMapper(ToneMapper.Filmic()).build(engine)`. AR keeps Filmic — see [createARView].
+    // SplatNode and the demo's ViewerBackdrop invert this exact curve: change the tone mapper,
+    // update them too.
     colorGrading = ColorGrading.Builder()
-        .toneMapper(ToneMapper.Filmic())
+        .toneMapper(ToneMapper.PBRNeutralToneMapper())
         .build(engine)
     // Shadows on by default — matches RealityKit on iOS and produces a more grounded look
     // out of the box. Disable via `View.setShadowingEnabled(false)` when not needed.
@@ -195,9 +200,18 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
+    filmicViews += this
     // Shadows on by default for AR: models casting shadows onto detected planes.
     setShadowingEnabled(true)
 }
+
+/**
+ * Views created by [createARView], whose tone mapper is Filmic rather than [createView]'s PBR
+ * Neutral. A material that pre-distorts its colour by the inverse of the view's tone mapper
+ * (`splat.mat`) reads it to pick the matching inverse. Weak: a destroyed view drops out.
+ */
+internal val filmicViews: MutableSet<View> =
+    java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(java.util.WeakHashMap()))
 
 fun createRenderer(engine: Engine): Renderer = engine.createRenderer()
 

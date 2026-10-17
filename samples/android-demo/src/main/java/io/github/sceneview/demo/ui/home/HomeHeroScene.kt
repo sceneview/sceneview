@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.ui.home
 
+import io.github.sceneview.demo.common.rememberFilmicView
 import android.app.ActivityManager
 import android.content.Context
 import android.hardware.Sensor
@@ -65,7 +66,6 @@ import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberRenderInvalidator
-import io.github.sceneview.rememberView
 import io.github.sceneview.utils.OpenGL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -322,7 +322,7 @@ private fun HomeHeroStage(
     val stageLifecycle = rememberHeroLifecycle(active, clock, scrollFollow)
 
     val engine = rememberEngine()
-    val view = rememberView(engine)
+    val view = rememberFilmicView(engine)
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)

@@ -13,14 +13,15 @@ import kotlin.math.sqrt
  *
  * A SceneView surface is opaque, so the renderer's clear — black — covers the stage colour the
  * layout paints behind it; the backdrop has to be drawn by Filament. And everything Filament draws
- * goes through the view's tone mapper, [com.google.android.filament.ToneMapper.Filmic] by default,
- * whose toe crushes a colour this dark to about a third of its value: the stage token drawn as is
- * came out near-black. So the backdrop is painted in the colour the tone mapper maps *onto* the
- * token — the same exact inverse the AR camera materials use (`Inverse_Tonemap_Filmic`, see
- * `createARView`).
+ * goes through the view's tone mapper, [com.google.android.filament.ToneMapper.PBRNeutralToneMapper]
+ * by default, whose toe pulls the darkest channel of a colour this dark close to black, and whose
+ * shoulder compresses the light theme's near-white. So the backdrop is painted in the colour the
+ * tone mapper maps *onto* the token — its exact inverse, the same idea as the AR camera materials'
+ * `Inverse_Tonemap_Filmic` (see `createARView`).
  *
- * The Model Viewer's showroom renders under [pbrNeutral] instead and inverts that curve with
- * [linearBeforeNeutral] — see [ShowroomStage].
+ * The Model Viewer's showroom renders under [pbrNeutral] too and inverts that curve with
+ * [linearBeforeNeutral] — see [ShowroomStage]. [filmic] stays for the views that opt back into
+ * Filmic (`FilmicView`).
  *
  * The Lighting demos keep `StageFade.stageBackdrop`: their floor fades into that same uncompensated
  * tone, and the two must stay one colour.
@@ -86,9 +87,12 @@ object ViewerBackdrop {
     fun linearBeforeNeutral(color: Color): FloatArray =
         inversePbrNeutral(color.convert(ColorSpaces.LinearSrgb).let { floatArrayOf(it.red, it.green, it.blue) })
 
+    /** The linear colour to draw so that [color] is what the SDK's default tone mapper outputs. */
+    fun linearBeforeToneMap(color: Color): FloatArray = linearBeforeNeutral(color)
+
     /** Creates the backdrop skybox; the caller owns it and frees it with `engine.destroySkybox`. */
     fun create(engine: Engine, color: Color = SceneViewTokens.Stage.background): Skybox =
-        linearBeforeFilmic(color).let { (r, g, b) -> Skybox.Builder().color(r, g, b, 1f).build(engine) }
+        linearBeforeToneMap(color).let { (r, g, b) -> Skybox.Builder().color(r, g, b, 1f).build(engine) }
 
     private const val NEUTRAL_START_COMPRESSION = 0.76f
     private const val NEUTRAL_SHOULDER = 1f - NEUTRAL_START_COMPRESSION

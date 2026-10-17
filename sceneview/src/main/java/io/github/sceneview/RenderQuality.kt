@@ -15,7 +15,7 @@ import com.google.android.filament.View.QualityLevel
  * - [Cinematic] for hero shots, product showcases, single-model viewers where the GPU budget
  *   can afford the full bells and whistles.
  * - [Default] for general use — matches the out-of-the-box `SceneView` defaults shipped in
- *   v4.0.12+ (shadows on, SSAO on, subtle bloom, Filmic tone mapping, 1× resolution).
+ *   (shadows on, SSAO on, subtle bloom, PBR Neutral tone mapping, 1× resolution).
  * - [Performance] for low-end Android devices, AR camera-feed backgrounds, or anywhere the GPU
  *   is constrained — disables shadows, AO and bloom, enables dynamic resolution.
  *
@@ -35,7 +35,8 @@ enum class RenderQuality {
      * - Anti-aliasing: MSAA 4× + FXAA
      * - HDR color buffer: HIGH
      * - Dynamic resolution: off
-     * - Tone mapping: Filmic (unchanged — users can opt into ACES via [View.colorGrading])
+     * - Tone mapping: unchanged — PBR Neutral from [createView], Filmic from `createARView`
+     *   (any other tone mapper via [View.colorGrading])
      */
     Cinematic,
 
@@ -48,7 +49,7 @@ enum class RenderQuality {
      * - Anti-aliasing: FXAA
      * - HDR color buffer: MEDIUM
      * - Dynamic resolution: off
-     * - Tone mapping: Filmic
+     * - Tone mapping: PBR Neutral (Filmic in AR)
      *
      * Matches the settings applied by [createView] when no preset is specified.
      */
@@ -64,7 +65,7 @@ enum class RenderQuality {
      * - Anti-aliasing: FXAA (cheaper than MSAA)
      * - HDR color buffer: LOW
      * - Dynamic resolution: on (auto-scales rendering resolution to keep frame rate)
-     * - Tone mapping: Filmic (unchanged)
+     * - Tone mapping: unchanged
      */
     Performance,
 }

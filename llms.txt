@@ -8296,8 +8296,11 @@ optional (default `1`); `a < 1` makes the canvas see-through so the page behind 
 covers the background.
 
 Tone mapping: the Kotlin/JS bundle (`sceneview-web.js`) and the hand-written website viewer
-(`website-static/js/sceneview.js`) grade with Filmic, the Android default
-(`SceneFactories.createView`), so a model is graded the same way on Android and on the web.
+(`website-static/js/sceneview.js`) grade with Filmic. Android's `SceneFactories.createView`
+grades with PBR Neutral, which keeps base colours as authored; Filament's JavaScript bindings
+expose no PBR Neutral tone mapper, so the web keeps Filmic and shows light, pastel base colours
+a little paler than Android does. Web primitives take linear colours (`createBox` etc. write
+`baseColorFactor` as given): convert an sRGB hex first, or it renders pastel.
 Neither grades the background: both show the colour they are given (hand-written viewer:
 sRGB 0-1, default `#333C57`), and a transparent canvas leaves the page behind it untouched.
 

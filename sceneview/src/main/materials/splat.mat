@@ -23,6 +23,9 @@
 //                         Splat counts above the 65535 instances/draw cap are drawn as
 //                         multiple renderables sharing the textures; each batch offsets
 //                         getInstanceIndex() by its base so the slot indexing stays global.
+//   inverseFilmic       — bool: the View tone-maps with ToneMapper.Filmic (createARView)
+//                         rather than PBR Neutral (createView, the default). Picks which exact
+//                         inverse pre-distorts the colour. Set by SplatNode from its view.
 // matc profile: B (lean Android — "-a opengl -p mobile", see tools/GenerateFilamat.sh).
 //
 // Rendering notes (Filament 1.72.1 — Android Java API still exposes no compute/SSBO →
@@ -44,10 +47,11 @@
 //     beyond that radius its contribution is under 1/255), and splats under 1/255 opacity or
 //     behind the camera collapse to a zero-area quad.
 //   * Colour: splat colours are display-referred (the trainer fitted them to sRGB photos). The
-//     View applies ToneMapper.Filmic then the exact sRGB OETF, so the colour is pre-distorted by
-//     the exact inverse (exact sRGB EOTF, then Inverse_Tonemap_Filmic) — the same round trip as
-//     camera_stream_flat.mat (#3338). Without it a 0.5 grey displays at ~0.81: the over-bright,
-//     washed-out look of the P1 billboard.
+//     View applies its tone mapper (PBR Neutral by default, Filmic in AR) then the exact sRGB
+//     OETF, so the colour is pre-distorted by the exact inverse (exact sRGB EOTF, then the
+//     inverse of that tone mapper) — the same round trip as camera_stream_flat.mat (#3338).
+//     Without it a 0.5 grey displays at ~0.81 under Filmic: the over-bright, washed-out look of
+//     the P1 billboard.
 //   * blending:transparent composites ONE*src + (1-a)*dst and does NOT premultiply unlit
 //     baseColor for us, so the fragment premultiplies `baseColor.rgb *= a` — the #2224 /
 //     #2325 wash-out lesson applies verbatim.
@@ -88,6 +92,10 @@ material {
         {
             "type" : "int",
             "name" : "instanceOffset"
+        },
+        {
+            "type" : "bool",
+            "name" : "inverseFilmic"
         }
     ],
     "requires" : [
@@ -117,6 +125,23 @@ vertex {
     // so it is available in the vertex stage — the colour is per splat, not per fragment).
     float3 splatInverseFilmic(float3 x) {
         return (0.03 - 0.59 * x - sqrt(0.0009 + 1.3702 * x - 1.0127 * x * x)) / (-5.02 + 4.86 * x);
+    }
+
+    // Exact analytic inverse of ToneMapper.PBRNeutralToneMapper (Khronos PBR Neutral:
+    // startCompression 0.76, desaturation 0.15). Undo the highlight compression, then the toe
+    // offset the forward curve subtracted from every channel (x - 6.25x^2 below 0.08, else 0.04).
+    float3 splatInversePbrNeutral(float3 o) {
+        float3 c = o;
+        float peak = max(o.r, max(o.g, o.b));
+        if (peak >= 0.76) {
+            float np = min(peak, 0.9999);
+            float p = 0.0576 / (1.0 - np) + 0.52;
+            float g = 1.0 - 1.0 / (0.15 * (p - np) + 1.0);
+            c = (o - np * g) / (1.0 - g) * (p / np);
+        }
+        float m = min(c.r, min(c.g, c.b));
+        float offset = m < 0.04 ? sqrt(max(m, 0.0) / 6.25) - m : 0.04;
+        return c + offset;
     }
 
     void materialVertex(inout MaterialVertexInputs material) {
@@ -203,7 +228,11 @@ vertex {
 
         // Custom material `variables` are float4 interpolants: the corner in σ units.
         material.quadUv = float4(corner * sigmaUv, 0.0, 0.0);
-        material.splatColor = float4(splatInverseFilmic(splatSrgbToLinear(col.rgb)), alpha);
+        float3 displayLinear = splatSrgbToLinear(col.rgb);
+        float3 sceneLinear = materialParams.inverseFilmic
+                ? splatInverseFilmic(displayLinear)
+                : splatInversePbrNeutral(displayLinear);
+        material.splatColor = float4(sceneLinear, alpha);
     }
 }
 fragment {

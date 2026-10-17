@@ -178,7 +178,7 @@ internal object ShowroomMath {
 
     /** The linear colour to draw so that [color] reaches the screen through the tone mapper. */
     fun linearBefore(color: Color, neutral: Boolean): FloatArray =
-        if (neutral) ViewerBackdrop.linearBeforeNeutral(color) else ViewerBackdrop.linearBeforeFilmic(color)
+        if (neutral) ViewerBackdrop.linearBeforeNeutral(color) else ViewerBackdrop.linearBeforeToneMap(color)
 
     /**
      * The floor's diffuse albedo for [token] to reach the screen as itself: the colour before the

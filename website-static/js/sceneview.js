@@ -5209,7 +5209,7 @@
      *
      * @param {number[]} center - [x, y, z] position
      * @param {number[]} size - [w, h, d] dimensions
-     * @param {number[]} color - [r, g, b, a] color (0-1)
+     * @param {number[]} color - [r, g, b, a] linear color (0-1) — glTF baseColorFactor; convert an sRGB hex first or it renders pastel
      * @returns {Object|null} The glTF asset, or null on failure
      */
     createBox(center, size, color) {
@@ -5253,7 +5253,7 @@
      *
      * @param {number[]} center - [x, y, z] position
      * @param {number} radius - sphere radius
-     * @param {number[]} color - [r, g, b, a] color (0-1)
+     * @param {number[]} color - [r, g, b, a] linear color (0-1) — glTF baseColorFactor; convert an sRGB hex first or it renders pastel
      * @returns {Object|null} The glTF asset, or null on failure
      */
     createSphere(center, radius, color) {
@@ -5291,7 +5291,7 @@
      * @param {number[]} center - [x, y, z] position
      * @param {number} radius - cylinder radius
      * @param {number} height - cylinder height
-     * @param {number[]} color - [r, g, b, a] color (0-1)
+     * @param {number[]} color - [r, g, b, a] linear color (0-1) — glTF baseColorFactor; convert an sRGB hex first or it renders pastel
      * @returns {Object|null} The glTF asset, or null on failure
      */
     createCylinder(center, radius, height, color) {

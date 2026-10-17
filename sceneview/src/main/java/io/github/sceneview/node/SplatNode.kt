@@ -56,8 +56,9 @@ import kotlin.math.max
  * - **Oriented ellipses** — each splat covers exactly its projected gaussian (out to 3σ, less
  *   for faint splats), so thin and flat gaussians stay thin and flat instead of rendering as
  *   the round disc of their largest axis. Colours are pre-distorted by the exact inverse of
- *   the View's Filmic tone mapper and sRGB output, so a capture displays with the colours it
- *   was trained on.
+ *   the View's default tone mapper (PBR Neutral, or Filmic in an AR view) and sRGB output, so
+ *   a capture displays with the colours it was trained on. A custom `view.colorGrading` is not
+ *   compensated.
  * - **View-dependent sort** — the node re-sorts back-to-front on a background thread whenever
  *   the camera has moved beyond a small threshold (relative to the cloud radius), then
  *   re-uploads the draw-order texture (4 bytes per splat — the attribute textures never
@@ -324,7 +325,28 @@ open class SplatNode(
         super.onFrame(frameTimeNanos)
     }
 
-    override fun onOwnFrame(frameTimeNanos: Long) = maybeResort()
+    override fun onOwnFrame(frameTimeNanos: Long) {
+        syncToneMapInverse()
+        maybeResort()
+    }
+
+    /** Whether the materials currently invert Filmic (an AR view) rather than PBR Neutral. */
+    private var invertsFilmic = false
+
+    /**
+     * Points the materials at the inverse of the tone mapper of the view this node is drawn in:
+     * Filmic for a [io.github.sceneview.createARView] view, PBR Neutral for every other one (the
+     * [io.github.sceneview.createView] default). One set lookup per frame; a parameter write only
+     * when the node moves between an AR and a non-AR view.
+     */
+    private fun syncToneMapInverse() {
+        if (isSplatDestroyed) return
+        val view = collisionSystem?.view ?: return
+        val filmic = view in io.github.sceneview.filmicViews
+        if (filmic == invertsFilmic) return
+        invertsFilmic = filmic
+        materialInstances.forEach { it.setParameter("inverseFilmic", filmic) }
+    }
 
     /**
      * Kicks a background re-sort when the camera has moved more than ~1% of the cloud radius

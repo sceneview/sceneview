@@ -1,11 +1,9 @@
 package io.github.sceneview.demo.demos.internal
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import io.github.sceneview.demo.demos.internal.CosmosSpacetime.BODY_COUNT
 import io.github.sceneview.demo.demos.internal.CosmosSpacetime.RADIUS
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -411,10 +409,15 @@ class CosmosSpacetimeTest {
             val y = i / 100f
             assertEquals(y, CosmosSpacetime.filmic(CosmosSpacetime.inverseFilmic(y)), 1e-3f)
         }
-        // The base grey before the tone mapper: the curve the viewer's backdrop already uses.
+        // The base grey before the tone mapper. Cosmos keeps the Filmic view (`rememberFilmicView`)
+        // its sheet was tuned on, so its base is the token's linear value under Filmic's inverse.
         val base = CosmosSpacetime.sheetBaseLinear().map(CosmosSpacetime::inverseFilmic)
-        val backdrop = ViewerBackdrop.linearBeforeFilmic(Color(CosmosSpacetime.SHEET_BASE_SRGB))
-        for (c in 0..2) assertEquals(backdrop[c], base[c], 1e-4f)
+        for (c in 0..2) {
+            val byte = CosmosSpacetime.SHEET_BASE_SRGB shr (16 - 8 * c) and 0xFF
+            val srgb = byte / 255.0
+            val linear = if (srgb <= 0.04045) srgb / 12.92 else Math.pow((srgb + 0.055) / 1.055, 2.4)
+            assertEquals(linear.toFloat(), CosmosSpacetime.filmic(base[c]), 1e-3f)
+        }
     }
 
     @Test
