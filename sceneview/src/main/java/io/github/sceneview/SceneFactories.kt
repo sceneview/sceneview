@@ -91,7 +91,26 @@ fun createEglContext(): EGLContext {
     return OpenGL.createEglContext()
 }
 
-fun createEngine(eglContext: EGLContext): Engine = Engine.create(eglContext)
+/**
+ * The Filament feature flag that stops each frame from parking a job thread in an unbounded GPU
+ * fence wait just to timestamp the frame's completion on the GPU.
+ *
+ * `Engine.destroyRenderer` joins that thread (`FrameInfoManager::terminate`, Filament v1.72.1), so
+ * a driver slow to signal the fence — `eglClientWaitSyncKHR` on PowerVR GE8320, in field ANR
+ * reports — blocks the main thread inside the destroy. SceneView never reads that timestamp;
+ * dynamic resolution uses the GPU timer queries, which the flag leaves alone.
+ */
+internal const val DISABLE_GPU_COMPLETE_METRIC = "engine.frame_info.disable_gpu_complete_metric"
+
+/**
+ * Creates the Filament [Engine] SceneView renders with, sharing [eglContext].
+ *
+ * Built with [DISABLE_GPU_COMPLETE_METRIC]: a constant flag, only settable at creation.
+ */
+fun createEngine(eglContext: EGLContext): Engine = Engine.Builder()
+    .sharedContext(eglContext)
+    .feature(DISABLE_GPU_COMPLETE_METRIC, true)
+    .build()
 
 fun createScene(engine: Engine): com.google.android.filament.Scene = engine.createScene()
 

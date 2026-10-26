@@ -120,11 +120,15 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
  * v1.72.1 `Renderer.cpp`). A scene disposed while its shader programs are still being linked — an
  * activity destroyed right after a demo opened — parks the main thread on that whole backlog, an
- * ANR on an emulator (#3799). Deferred until the backend has executed everything queued before
- * this call, that inner wait still covers whatever was queued since (the next scene's shader links,
- * say): a wait bounded by that work, not the whole backlog. When the backend is already idle — the
- * usual case — the renderer is destroyed before this function returns, exactly as
- * [safeDestroyRenderer] would.
+ * ANR on an emulator (#3799). The inner wait covers what is queued when the destroy *runs*, not
+ * when it was deferred: on a shared engine, the next screen's shader compilations queued in
+ * between. So the destroy waits, through [whenBackendIdle]'s [FreshFenceProbe], until the backend
+ * has recently caught up with its queue, and that inner wait finds at most a frame or two left.
+ * When the backend is already idle — the usual case — the renderer is destroyed before this
+ * function returns, exactly as [safeDestroyRenderer] would.
+ *
+ * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
+ * the engine was built without the GPU frame-complete metric — see [createEngine].
  */
 internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
@@ -146,9 +150,11 @@ internal fun logDeferredTeardown(what: String, startedAt: Long) = Log.i(
 private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
 
 /**
- * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
- * queued, polling a fence from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead
- * of waiting on it (#3799). See [BackendIdleTeardowns] for the contract.
+ * Runs [onIdle] on the calling thread once this engine's backend has caught up with everything
+ * queued on it, polling fences from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]
+ * instead of waiting on them (#3799). "Caught up" means a fence was reached within a few polls of
+ * being created, so whatever [onIdle] waits for in turn is a frame or two at most, even when more
+ * work was queued after this call ([FreshFenceProbe]). See [BackendIdleTeardowns] for the contract.
  *
  * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
  * already idle, or — the old blocking behaviour — the thread has no [Looper] or the fence could not
@@ -167,20 +173,33 @@ internal fun Engine.whenBackendIdle(
         onEngineGone()
         return
     }
-    val fence = if (Looper.myLooper() != null) runCatching { createFence() }.getOrNull() else null
-    if (fence == null) {
+    if (Looper.myLooper() == null) {
         onIdle(false)
         return
     }
+    // A fence created now only covers what is queued now; [onIdle]'s own wait covers what is
+    // queued when it runs. The probe waits until the backend has recently caught up instead.
+    val probe = freshFenceProbe()
     whenIdle(
-        isBusy = { isFenceBusy(fence) },
+        isBusy = probe::isBusy,
         onEngineGone = onEngineGone,
         runsLast = runsLast,
     ) { deferred ->
-        runCatching { destroyFence(fence) }
+        probe.release()
         onIdle(deferred)
     }
 }
+
+/**
+ * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
+ * queued on it within a few frames. Never waits. Not busy when no fence can be created.
+ */
+internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
+    createFence = { runCatching { createFence() }.getOrNull() },
+    isReached = { !isFenceBusy(it) },
+    destroyFence = { destroyFence(it) },
+    now = SystemClock::uptimeMillis,
+)
 
 /** Whether [fence] has not been reached by the backend yet — a zero-timeout wait, never blocks. */
 internal fun isFenceBusy(fence: Fence): Boolean =

@@ -7,7 +7,6 @@ import androidx.annotation.MainThread
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
-import com.google.android.filament.Fence
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
@@ -18,8 +17,8 @@ import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
-import io.github.sceneview.isFenceBusy
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.safeDestroyModel
@@ -1054,17 +1053,19 @@ private class SettlingDestroys(private val engine: Engine) {
     private var pending = 0
 
     fun defer(isInFlight: () -> Boolean, pumpedProgress: () -> Float, destroy: () -> Unit) {
-        var fence: Fence? = null
+        // A fresh fence, not one created at the first poll: asyncCancelLoad's flushAndWait covers
+        // what is queued when it runs, the next screen's shader compilations included.
+        val probe = engine.freshFenceProbe()
         val gate = AsyncLoadSettleGate(
             isInFlight = isInFlight,
             pumpedProgress = pumpedProgress,
-            isBackendBusy = { isFenceBusy(fence ?: engine.createFence().also { fence = it }) },
+            isBackendBusy = probe::isBusy,
             now = SystemClock::uptimeMillis,
         )
         pending++
         engine.whenIdle(isBusy = gate::isBusy, onEngineGone = { pending-- }) {
             pending--
-            fence?.let { runCatching { engine.destroyFence(it) } }
+            probe.release()
             destroy()
         }
     }
