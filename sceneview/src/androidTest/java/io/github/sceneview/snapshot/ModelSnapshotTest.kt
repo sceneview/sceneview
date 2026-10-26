@@ -78,7 +78,7 @@ class ModelSnapshotTest {
         harness.runOnMain { snapshot.destroy() }
         // Lets the deferred release run, then proves the engine still renders.
         Thread.sleep(200)
-        harness.renderFrames(2)
+        harness.runOnMain { harness.renderFrames(2) }
     }
 
     private fun request(): Deferred<Bitmap?> = scope.async { snapshot.snapshot(MODEL, SIZE) }
