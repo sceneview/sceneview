@@ -1,5 +1,6 @@
 package io.github.sceneview.loaders
 
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.filament.Engine
@@ -9,6 +10,7 @@ import com.google.android.filament.gltfio.isReleased
 import com.google.android.filament.utils.Utils
 import io.github.sceneview.createEglContext
 import io.github.sceneview.createEngine
+import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.model
 import io.github.sceneview.node.ModelNode
@@ -53,10 +55,24 @@ class ModelReleasedHandleTest {
 
     @Test
     fun destroyModel_resets_the_asset_handle_the_guards_read() {
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val loader = ModelLoader(engine, InstrumentationRegistry.getInstrumentation().context)
-                .also { modelLoader = it }
-            val instance = loader.createModelInstance("khronos_fox.glb")
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        lateinit var loader: ModelLoader
+        lateinit var instance: ModelInstance
+        instrumentation.runOnMainSync {
+            loader = ModelLoader(engine, instrumentation.context).also { modelLoader = it }
+            instance = loader.createModelInstance("khronos_fox.glb")
+        }
+        // A model whose textures are still decoding is only destroyed once its load settles
+        // (`destroyModel` defers it): let the load finish so the destroy runs right away.
+        val deadline = SystemClock.uptimeMillis() + 30_000
+        var loading = true
+        while (loading && SystemClock.uptimeMillis() < deadline) {
+            instrumentation.runOnMainSync { loader.updateLoad(); loading = loader.isLoading }
+            if (loading) SystemClock.sleep(16)
+        }
+        assertFalse("the fox's textures must finish loading", loading)
+
+        instrumentation.runOnMainSync {
             val node = ModelNode(modelInstance = instance, autoAnimate = false)
             assertFalse("a live model must not read as released", instance.model.isReleased)
             assertFalse(node.isModelDestroyed)
