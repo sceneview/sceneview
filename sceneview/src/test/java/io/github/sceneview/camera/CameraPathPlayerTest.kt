@@ -202,6 +202,59 @@ class CameraPathPlayerTest {
     }
 
     @Test
+    fun aTourOfOneAndAHalfTurnsDoesNotJumpAtTheSeam() {
+        // Each lap of this tour starts half a turn on from the last. Sampled at the wrapped
+        // playhead, the camera jumped 180° (5.88 units) back at every seam.
+        val tour = CameraPath.tour(CameraShot(Position(0f, 0.5f, 0f), 0f, 20f, 3f), durationSeconds = 6f, turns = 1.5f)
+        val player = playing(tour)
+        assertTrue(player.loop)
+        val step = 1f / 60f
+        var previous = player.pose.position
+        val steps = ArrayList<Float>()
+        repeat((4 * 6f / step).toInt()) {
+            val position = player.advance(step).position
+            steps += length(position - previous)
+            previous = position
+            assertTrue(player.seconds in 0f..player.durationSeconds)
+        }
+        val mean = steps.average().toFloat()
+        val largest = steps.max()
+        assertTrue("largest step $largest against a mean of $mean", largest < 2f * mean)
+    }
+
+    @Test
+    fun aRebuiltTourKeepsItsLap() {
+        fun tour() = CameraPath.tour(CameraShot(Position(0f, 0.5f, 0f), 0f, 20f, 3f), durationSeconds = 6f, turns = 1.5f)
+        val player = playing(tour())
+        player.advance(7f) // one second into the second lap, half a turn on
+        val before = player.pose.position
+        player.timeline = tour()
+        assertEquals(1f, player.seconds, 1e-4f)
+        assertTrue(length(player.pose.position - before) < 1e-3f)
+    }
+
+    @Test
+    fun aZeroLengthTimelineStopsPlaybackUntilPlayIsCalled() {
+        val player = playing()
+        player.advance(1f)
+        player.timeline = CameraPosePath(listOf(CameraPoseKeyframe(CameraPose(Position(0f, 1f, 4f)), 0f)))
+        assertEquals(0f, player.durationSeconds, 0f)
+        assertEquals(0f, player.seconds, 0f)
+        assertEquals(0f, player.progress, 0f)
+        assertTrue(player.isPlaying)
+        val pose = player.advance(0.1f)
+        assertFalse(player.isPlaying)
+        assertEquals(Position(0f, 1f, 4f), pose.position)
+
+        player.timeline = path
+        assertFalse(player.isPlaying)
+        assertEquals(0f, player.seconds, 0f)
+        player.play()
+        player.advance(0.5f)
+        assertEquals(0.5f, player.seconds, 1e-5f)
+    }
+
+    @Test
     fun anEquivalentNewTimelineInvalidatesNothing() {
         fun build() = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0)
         val player = CameraPathPlayer(build())

@@ -4678,21 +4678,24 @@ Slider(value = player.progress, onValueChange = { player.seekTo(it * player.dura
   pathEasing = null, lookAt = null, loop = false)`: positions are `Linear` or `CatmullRom`
   (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
   an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
-  not overshot; a turn of 90° or more, a there-and-back included, stops on its key, a gentler
-  turn flows through it; two keys at one time are a cut); rotations slerp the short way, per segment, so
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
   angular speed can jump at a key. A keyframe's `easing` shapes the segment that
   leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
   `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
   flips the roll. Times count from the first key.
 - Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
-  startAzimuthDegrees, padding)` (radius from `fitDistanceForBounds`, loops seamlessly on whole
-  turns), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, loops seamlessly on whole turns, at least 6 keys per turn), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
   held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
 - `CameraPathPlayer` owns only the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
   Compose state); `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
   120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
   clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
-  from the old one's. For a fixed-rate render, call
+  from the old one's. A looping player samples a looping timeline before wrapping, so a
+  `CameraPath.tour(turns = 1.5f)` carries on lap after lap with no jump at the seam, while
+  `seconds` and `progress` stay within the lap. For a fixed-rate render, call
   `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
   `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
   target)` and `CameraShot.toPose()` build one.

@@ -45,10 +45,10 @@ enum class CameraPathInterpolation {
      *
      * Tangents are capped so the camera does not overshoot a pause or a turn back: next to a
      * keyframe that repeats its neighbour's position, and at a keyframe where the direction turns
-     * by 90° or more (a there-and-back on a line, a hairpin, a right-angle corner), the camera
-     * comes to rest on the keyframe instead of running past it and coming back. A turn of less
-     * than 90° keeps its speed and rounds off slightly past the keyframe, as with any Catmull-Rom
-     * spline; use [Linear] for exact corners without stopping. Two keyframes at the same time are a
+     * back by more than 120° (a there-and-back on a line, a hairpin), the camera comes to rest on
+     * the keyframe instead of running past it and coming back. A turn of 120° or less, a
+     * right-angle corner included, keeps its speed and rounds off slightly past the keyframe, as
+     * with any Catmull-Rom spline; use [Linear] for exact corners. Two keyframes at the same time are a
      * cut: the spline restarts on the far side.
      */
     CatmullRom,
@@ -100,7 +100,8 @@ enum class CameraPathInterpolation {
  * @property lookAt When set, the camera faces this point at every instant and keyframe rotations
  * are ignored.
  * @property up World up used with [lookAt]. Defaults to `+Y`.
- * @throws IllegalArgumentException when a keyframe position is not finite.
+ * @throws IllegalArgumentException when a kept keyframe (one with a finite time) has a
+ * non-finite position.
  */
 @ExperimentalSceneViewApi
 class CameraPosePath(
@@ -113,13 +114,14 @@ class CameraPosePath(
     override val loop: Boolean = false,
 ) : CameraTimeline {
 
-    init {
-        require(keyframes.all { isFinite(it.pose.position) }) { "keyframe positions must be finite" }
-    }
-
     /** The keyframes in time order. */
     val keyframes: List<CameraPoseKeyframe> =
         keyframes.filter { it.seconds.isFinite() }.sortedBy { it.seconds }
+
+    init {
+        // After the time filter: a keyframe dropped for its time is not checked for its position.
+        require(this.keyframes.all { isFinite(it.pose.position) }) { "keyframe positions must be finite" }
+    }
 
     /** From the first keyframe's time to the last one's; `0` with fewer than two keyframes. */
     override val durationSeconds: Float =
@@ -238,9 +240,11 @@ class CameraPosePath(
      * line the camera never leaves the segment between two keyframes. Evenly spaced keyframes on a
      * smooth curve, such as an [orbit], are below the cap and keep plain Catmull-Rom tangents.
      *
-     * Where the direction turns by 90° or more (`dot(in, out) ≤ 0`, a there-and-back included),
-     * the tangent is zero: no length cap keeps a reversal from running past its keyframe, a zero
-     * tangent does, and the camera comes to rest there.
+     * Where the direction truly turns back, by more than 120° between the two chords
+     * (`dot(in, out) < -0.5 · |in| · |out|`, a there-and-back included), the tangent is zero: no
+     * length cap keeps a reversal from running past its keyframe, a zero tangent does, and the
+     * camera comes to rest there. A turn of 120° or less, a right-angle corner or the chords of a
+     * coarse orbit included, keeps its Catmull-Rom tangent and its speed.
      *
      * A cut (two keyframes at the same time) splits the spline: each side takes the one-sided
      * tangent of its own segment, as at the end of a path.
@@ -267,7 +271,9 @@ class CameraPosePath(
         val outSpan = spanOf(next.first, next.second)
         val inVelocity = velocityOf(previous)
         val outVelocity = velocityOf(next)
-        if (dot(inVelocity, outVelocity) <= 0f) return Float3()
+        if (dot(inVelocity, outVelocity) < REVERSAL_COSINE * length(inVelocity) * length(outVelocity)) {
+            return Float3()
+        }
         val central = (inVelocity * inSpan + outVelocity * outSpan) / (inSpan + outSpan)
         val limit = MAX_TANGENT_RATIO * minOf(length(inVelocity), length(outVelocity))
         val size = length(central)
@@ -302,6 +308,9 @@ class CameraPosePath(
         /** Fritsch-Carlson bound: a tangent at most 3× a neighbour's speed keeps a segment monotone. */
         private const val MAX_TANGENT_RATIO = 3f
 
+        /** Cosine of the angle between two chords beyond which a keyframe is a turn back: 120°. */
+        private const val REVERSAL_COSINE = -0.5f
+
         /**
          * A turn around [bounds] that keeps the whole box in frame and the box's centre at the
          * centre of the frame.
@@ -326,7 +335,8 @@ class CameraPosePath(
          * @param startAzimuthDegrees Azimuth of the first keyframe.
          * @param padding Extra framing margin, as a fraction of the fitted distance.
          * @param loop Whether the path repeats.
-         * @param keyframesPerTurn Keyframes per full turn. At least 4.
+         * @param keyframesPerTurn Keyframes per full turn. At least 6, so consecutive chords stay
+         * 60° or less apart and the camera never stops on a keyframe.
          * @throws IllegalArgumentException when [durationSeconds] is not positive, [turns] is
          * zero, [verticalFovDegrees] or [aspect] is not positive, or any input (including the
          * bounds) is not finite.
@@ -455,7 +465,7 @@ class CameraPosePath(
         }
 
         private const val FULL_TURN_DEGREES = 360f
-        private const val MIN_KEYFRAMES_PER_TURN = 4
+        private const val MIN_KEYFRAMES_PER_TURN = 6
 
         private fun isFinite(p: Float3): Boolean = p.x.isFinite() && p.y.isFinite() && p.z.isFinite()
 

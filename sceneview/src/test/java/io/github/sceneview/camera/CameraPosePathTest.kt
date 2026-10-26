@@ -209,6 +209,69 @@ class CameraPosePathTest {
     }
 
     @Test
+    fun aRightAngleCornerKeepsItsSpeed() {
+        // A square, one side per second: every corner is exactly 90°, and the camera flows
+        // round each one instead of stopping (or not) depending on rounding.
+        val path = CameraPosePath(
+            listOf(
+                Position(0f, 0f, 0f), Position(10f, 0f, 0f), Position(10f, 0f, 10f),
+                Position(0f, 0f, 10f), Position(0f, 0f, 0f),
+            ).mapIndexed { i, p -> CameraPoseKeyframe(CameraPose(p), i.toFloat()) },
+        )
+        for (corner in 1..3) {
+            val speed = speedAt(path, corner.toFloat())
+            assertTrue("speed at corner $corner was $speed", speed > 5f)
+        }
+    }
+
+    @Test
+    fun aTurnBackStopsBeyond120DegreesOnly() {
+        fun turn(degrees: Float): CameraPosePath {
+            val radians = Math.toRadians(degrees.toDouble())
+            val out = Position(10f + 10f * cos(radians).toFloat(), 0f, 10f * sin(radians).toFloat())
+            return CameraPosePath(
+                listOf(Position(0f, 0f, 0f) to 0f, Position(10f, 0f, 0f) to 1f, out to 2f)
+                    .map { (p, t) -> CameraPoseKeyframe(CameraPose(p), t) },
+            )
+        }
+        val below = speedAt(turn(119f), 1f)
+        val beyond = speedAt(turn(121f), 1f)
+        assertTrue("119° turn slowed to $below", below > 2f)
+        assertTrue("121° turn kept $beyond", beyond < 0.1f)
+    }
+
+    @Test
+    fun aMinimumOrbitDoesNotSlowDownOnItsKeyframes() {
+        // Asking for 1 or 4 keys per turn gets the minimum, 6: before, 4 keys made 90° chords and
+        // the camera nearly stopped on each key (0.001 u/s against 1.69 between keys).
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        for (keys in intArrayOf(1, 4)) {
+            val orbit = CameraPosePath.orbit(box, 45.0, 1.0, keyframesPerTurn = keys)
+            assertEquals(7, orbit.keyframes.size)
+            assertKeepsItsSpeedOnEveryKeyframe(orbit, includingTheSeam = true)
+        }
+    }
+
+    @Test
+    fun aThreeQuarterOrbitDoesNotStopOnItsKeyframes() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        val orbit = CameraPosePath.orbit(box, 45.0, 1.0, turns = 0.75f, loop = false, keyframesPerTurn = 4)
+        assertKeepsItsSpeedOnEveryKeyframe(orbit, includingTheSeam = false)
+    }
+
+    @Test
+    fun aKeyframeDroppedForItsTimeIsNotCheckedForItsPosition() {
+        val path = CameraPosePath(
+            listOf(
+                CameraPoseKeyframe(CameraPose(Position()), 0f),
+                CameraPoseKeyframe(CameraPose(Position(Float.NaN, 0f, 0f)), Float.NaN),
+                CameraPoseKeyframe(CameraPose(Position(10f, 0f, 0f)), 1f),
+            ),
+        )
+        assertEquals(2, path.keyframes.size)
+    }
+
+    @Test
     fun aNonFiniteKeyframePositionIsRejected() {
         for (bad in floatArrayOf(Float.NaN, Float.POSITIVE_INFINITY)) {
             assertThrows(IllegalArgumentException::class.java) {
@@ -378,6 +441,26 @@ class CameraPosePathTest {
             val pose = path.poseAt(t)
             assertEquals(shot.eye, pose.position)
             assertEquals(1f, dot(pose.forward, normalize(shot.target - shot.eye)), 1e-5f)
+        }
+    }
+
+    /** Speed of the camera at [t], by central difference. */
+    private fun speedAt(path: CameraPosePath, t: Float, h: Float = 1e-3f): Float =
+        length(path.poseAt(t + h).position - path.poseAt(t - h).position) / (2 * h)
+
+    /**
+     * On every keyframe the camera keeps at least 70 % of the speed it has midway along a
+     * segment. With 60° chords, Catmull-Rom itself dips to 77 % on a key (0.866 against 1.125
+     * chords per second); a stopped key reads 0.
+     */
+    private fun assertKeepsItsSpeedOnEveryKeyframe(path: CameraPosePath, includingTheSeam: Boolean) {
+        val frames = path.keyframes
+        val origin = frames.first().seconds
+        val cruise = speedAt(path, (frames[1].seconds - origin) / 2f)
+        val keys = if (includingTheSeam) frames.indices else 1 until frames.size - 1
+        for (i in keys) {
+            val speed = speedAt(path, frames[i].seconds - origin)
+            assertTrue("keyframe $i of ${frames.size}: $speed against $cruise", speed > 0.7f * cruise)
         }
     }
 
