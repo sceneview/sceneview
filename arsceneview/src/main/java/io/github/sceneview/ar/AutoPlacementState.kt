@@ -95,6 +95,15 @@ class AutoPlacementState {
     var showsSelectionRing: Boolean by mutableStateOf(true)
 
     /**
+     * Draw a soft contact shadow under the placed [AutoPlacementModel] when it stands on a floor
+     * or a table, so it reads as resting on the surface rather than hovering above it — whatever
+     * the estimated light, which may put the real shadow off to one side or nowhere. On by
+     * default; set `false` to keep only the real shadow (`groundShadows`) or draw your own.
+     * Never drawn for a wall placement.
+     */
+    var showsContactShadow: Boolean by mutableStateOf(true)
+
+    /**
      * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
      *
      * Set `false` for anything that must stay at real size (furniture, a pool, a shed): the

@@ -123,7 +123,8 @@ import java.io.File
  *                              finding a surface. Default `false` — opt in for a guided first run.
  * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
  *                              to every detected plane so placed models cast a **contact shadow**
- *                              on the real floor instead of floating. Default `false`. Needs a
+ *                              on the real floor instead of floating. Default `true`, as in
+ *                              `AutoPlacementScene`; pass `false` to opt out. Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
  *                              estimation provides one. The catchers attach **only while the
  *                              plane grid is not rendered** — the plane renderer carries its
@@ -171,7 +172,7 @@ fun PlacementScene(
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
     fadePlaneOnFirstPlacement: Boolean = true,
     coaching: Boolean = false,
-    groundShadows: Boolean = false,
+    groundShadows: Boolean = true,
     playbackDataset: File? = null,
     sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
     // Appended at the end of the optional block rather than next to `coaching`, where it
@@ -308,7 +309,7 @@ fun PlacementScene(
 
             // Contact shadows — an invisible shadow-catcher per detected plane so placed models
             // read as grounded on the real floor (ARCore Depth Lab `ShadowReceiverMeshShader`
-            // pattern). Off by default; needs a shadow-casting light (ARSceneView's default HDR
+            // pattern). On by default; needs a shadow-casting light (ARSceneView's default HDR
             // light estimation provides one). Never spawned while the plane grid renders: the
             // grid's own receiver already catches contact shadows, and a second coplanar
             // receiver would z-fight and double-darken them (#2657).

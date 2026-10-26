@@ -749,6 +749,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getScaleRange ()Lkotlin/ranges/ClosedFloatingPointRange;
 	public final fun getSelectionGeneration ()I
 	public final fun getSessionGeneration ()I
+	public final fun getShowsContactShadow ()Z
 	public final fun getShowsSelectionRing ()Z
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun getWantsSurface ()Z
@@ -767,6 +768,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun selectPlacement ()V
 	public final fun setAllowsScaling (Z)V
 	public final fun setScaleRange (Lkotlin/ranges/ClosedFloatingPointRange;)V
+	public final fun setShowsContactShadow (Z)V
 	public final fun setShowsSelectionRing (Z)V
 	public final fun toggleBaseScale ()V
 	public final fun withdrawRequest ()V
