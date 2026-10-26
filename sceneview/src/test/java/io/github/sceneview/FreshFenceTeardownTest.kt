@@ -17,8 +17,15 @@ import java.util.PriorityQueue
  * This replays that sequence on a simulated backend: one FIFO command queue, a virtual clock, the
  * real [BackendIdleTeardowns] polling every [BACKEND_IDLE_POLL_MS]. "Blocked" is how long the
  * release's own wait-for-everything-queued would keep the main thread once it runs.
+ *
+ * A fence is a command like any other: even on an idle backend it is reached one round trip after
+ * it was created ([FENCE_ROUND_TRIP_MS]), not by the zero-timeout check made right after.
  */
 class FreshFenceTeardownTest {
+
+    private companion object {
+        const val FENCE_ROUND_TRIP_MS = 1L
+    }
 
     /** A single-threaded backend executing queued commands in order, against a virtual clock. */
     private class SimBackend {
@@ -37,7 +44,7 @@ class FreshFenceTeardownTest {
             return doneAt.lastIndex
         }
 
-        fun createFence(): Int = enqueue(0)
+        fun createFence(): Int = enqueue(FENCE_ROUND_TRIP_MS)
         fun isReached(fence: Int) = doneAt[fence] <= now
 
         /** How long a wait for everything queued so far would block the caller now. */
@@ -56,7 +63,13 @@ class FreshFenceTeardownTest {
             now = endMs
         }
 
-        val schedule: (Long, () -> Unit) -> Unit = { delay, block -> at(now + delay, block) }
+        /** While the main thread is busy, nothing it posts runs: polls wait, frames are dropped. */
+        var mainThreadBusy: LongRange = LongRange.EMPTY
+
+        val schedule: (Long, () -> Unit) -> Unit = { delay, block ->
+            val due = now + delay
+            at(if (due in mainThreadBusy) mainThreadBusy.last else due, block)
+        }
     }
 
     private class Result(val ranAtMs: Long, val blockedMs: Long, val deferred: Boolean)
@@ -71,9 +84,11 @@ class FreshFenceTeardownTest {
         nextScreenAtMs: Long = 20,
         nextScreenWorkMs: Long = 3_000,
         frameWorkMs: Long = 4,
+        mainThreadBusy: LongRange = LongRange.EMPTY,
         busy: (SimBackend) -> () -> Boolean,
     ): Result {
         val backend = SimBackend()
+        backend.mainThreadBusy = mainThreadBusy
         var result: Result? = null
         if (backlogMs > 0) backend.enqueue(backlogMs)
         BackendIdleTeardowns().defer(
@@ -86,7 +101,7 @@ class FreshFenceTeardownTest {
         // Frames land between polls (polls are on multiples of 16 ms from t = 0).
         var frame = 8L
         while (frame < 20_000) {
-            backend.at(frame) { backend.enqueue(frameWorkMs) }
+            if (frame !in mainThreadBusy) backend.at(frame) { backend.enqueue(frameWorkMs) }
             frame += 16
         }
         backend.runUntil(20_000)
@@ -98,6 +113,8 @@ class FreshFenceTeardownTest {
         val fence = backend.createFence()
         ({ !backend.isReached(fence) })
     }
+
+    private val framesWithinFreshAge = FRESH_FENCE_MAX_AGE_MS / BACKEND_IDLE_POLL_MS
 
     private val freshFence: (SimBackend) -> () -> Boolean = { backend ->
         FreshFenceProbe(
@@ -127,17 +144,39 @@ class FreshFenceTeardownTest {
         assertTrue("deferred", after.deferred)
         // Released once the backend caught up with the next screen's compilation...
         assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs >= 3_200)
-        // ...so the release's own wait only covers what was queued within the freshness window:
-        // one frame of work per poll, at most FRESH_FENCE_POLLS of them.
-        assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= FRESH_FENCE_POLLS * 4L)
+        // ...so the release's own wait only covers what was queued within the freshness window.
+        assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
+    }
+
+    /**
+     * The poll after the fence was armed comes 3 s late: the main thread spent them composing the
+     * next screen, which queued 1 s of shaders near the end of that pass. The fence, queued before
+     * them, is reached by then, at the very next poll — one poll after it was armed, but 3 s old.
+     */
+    @Test
+    fun `a fence found reached seconds after it was armed is not fresh`() {
+        val stalled = 8L..3_008L
+        val before = replay(
+            nextScreenAtMs = 2_900, nextScreenWorkMs = 1_000, mainThreadBusy = stalled, busy = disposeTimeFence,
+        )
+        val after = replay(
+            nextScreenAtMs = 2_900, nextScreenWorkMs = 1_000, mainThreadBusy = stalled, busy = freshFence,
+        )
+        println("busy main thread, dispose-time fence: ${before.ranAtMs} ms, blocked ${before.blockedMs} ms")
+        println("busy main thread, fresh fence: ${after.ranAtMs} ms, blocked ${after.blockedMs} ms")
+
+        assertTrue("blocked ${before.blockedMs} ms", before.blockedMs >= 800)
+        // Released once the backend caught up with the next screen's 1 s of shaders.
+        assertTrue("released after ${after.ranAtMs} ms", after.ranAtMs >= 3_900)
+        assertTrue("blocked ${after.blockedMs} ms", after.blockedMs <= framesWithinFreshAge * 4L)
     }
 
     @Test
-    fun `an idle backend still tears down before defer returns`() {
+    fun `an idle backend tears down at the next poll without blocking`() {
         val after = replay(backlogMs = 0, nextScreenWorkMs = 0, busy = freshFence)
 
-        assertEquals(false, after.deferred)
-        assertEquals(0L, after.ranAtMs)
+        // The fence's round trip outlasts the zero-timeout check made when it is armed.
+        assertEquals(BACKEND_IDLE_POLL_MS, after.ranAtMs)
         assertEquals(0L, after.blockedMs)
     }
 
@@ -160,6 +199,27 @@ class FreshFenceTeardownTest {
             now = { 0L },
         )
 
+        assertEquals(false, probe.isBusy())
+    }
+
+    @Test
+    fun `a fence found reached long after it was armed is replaced, even at the first poll`() {
+        // A caller may skip polls while something else holds its teardown (a model load still
+        // advancing): the count of polls says nothing about how much the backend took on since.
+        var clock = 0L
+        var next = 0
+        val armed = mutableListOf<Int>()
+        val probe = FreshFenceProbe(
+            createFence = { next++.also { armed += it } },
+            isReached = { clock >= 1 },
+            destroyFence = {},
+            now = { clock },
+        )
+        assertTrue(probe.isBusy())
+        clock = 3_000
+        assertTrue("stale fence must not count", probe.isBusy())
+        assertEquals(listOf(0, 1), armed)
+        clock += BACKEND_IDLE_POLL_MS
         assertEquals(false, probe.isBusy())
     }
 

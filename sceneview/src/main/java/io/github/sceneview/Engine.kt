@@ -95,7 +95,8 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * shader compilation, and the join blocks the main thread for as long as that takes — an ANR on
  * an emulator (#3799). Instead the engine is destroyed through [whenBackendIdle], on the calling
  * thread (Filament requires it). When the backend is already idle — the usual case — the destroy
- * happens before this function returns, exactly as [safeDestroy] would.
+ * happens one poll later, once a fence has made the round trip to the backend, exactly as
+ * [safeDestroy] would.
  *
  * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
  * it (its shared EGL context, say) here.
@@ -124,8 +125,8 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * when it was deferred: on a shared engine, the next screen's shader compilations queued in
  * between. So the destroy waits, through [whenBackendIdle]'s [FreshFenceProbe], until the backend
  * has recently caught up with its queue, and that inner wait finds at most a frame or two left.
- * When the backend is already idle — the usual case — the renderer is destroyed before this
- * function returns, exactly as [safeDestroyRenderer] would.
+ * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
+ * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].

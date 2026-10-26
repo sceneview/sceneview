@@ -44,7 +44,7 @@ internal class BackendIdleTeardowns {
     val size: Int get() = pending.size
 
     /**
-     * Runs [teardown] now when the backend is already idle (`deferred = false`, the usual case).
+     * Runs [teardown] now when [isBackendBusy] is already `false` (`deferred = false`).
      * Otherwise registers it and re-checks every [intervalMs] through [schedule]; it runs with
      * `deferred = true` once [isBackendBusy] turns `false` or [runPending] claims it. Never waits.
      *

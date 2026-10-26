@@ -1532,7 +1532,11 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
  * if you want to share Filament resources across multiple `SceneView` composables.
  *
  * @param eglContextCreator Factory for the EGL context. Override for custom EGL configurations.
- * @param engineCreator     Factory for the [Engine]. Override to customise engine flags.
+ * @param engineCreator     Factory for the [Engine]. Override to customise engine flags. A custom
+ * creator should keep the `engine.frame_info.disable_gpu_complete_metric` feature flag set
+ * (`Engine.Builder().feature("engine.frame_info.disable_gpu_complete_metric", true)`), as the
+ * default does: without it, destroying a renderer joins a thread parked in a GPU fence wait, which
+ * can block the main thread on disposal.
  * @return A [Engine] that is destroyed with its EGL context on disposal.
  */
 @Composable
