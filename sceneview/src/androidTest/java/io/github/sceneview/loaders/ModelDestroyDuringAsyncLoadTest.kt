@@ -123,8 +123,11 @@ class ModelDestroyDuringAsyncLoadTest {
     }
 }
 
-/** A GLB: one quad per texture, each with its own material sampling a distinct noise JPEG. */
-private fun texturedGlb(textures: Int, size: Int): ByteArray {
+/**
+ * A GLB: one quad per texture, each with its own material sampling a distinct noise JPEG, listing
+ * [extensionsRequired] (none by default).
+ */
+internal fun texturedGlb(textures: Int, size: Int, extensionsRequired: List<String> = emptyList()): ByteArray {
     val bin = ByteArrayOutputStream()
     val bufferViews = JSONArray()
     fun view(bytes: ByteArray, target: Int?): Int {
@@ -193,6 +196,10 @@ private fun texturedGlb(textures: Int, size: Int): ByteArray {
         })
         put("bufferViews", bufferViews)
         put("buffers", JSONArray().put(JSONObject().put("byteLength", bin.size())))
+        if (extensionsRequired.isNotEmpty()) {
+            put("extensionsUsed", JSONArray(extensionsRequired))
+            put("extensionsRequired", JSONArray(extensionsRequired))
+        }
     }
     val jsonBytes = json.toString().toByteArray(Charsets.UTF_8).let { raw ->
         raw + ByteArray((4 - raw.size % 4) % 4) { ' '.code.toByte() }

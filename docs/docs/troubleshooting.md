@@ -91,6 +91,21 @@ textures round-trip exactly.
 `npx @gltf-transform/cli optimize model.glb out.glb --texture-compress png`, or re-export from
 Blender with PNG/JPEG textures. PNG, JPEG, and KTX2 decode natively everywhere.
 
+### `UnsupportedGltfExtensionException` (AVIF textures, KHR meshopt)
+
+A glTF file can list extensions in `extensionsRequired`: a viewer that does not implement one of
+them must refuse the file. Filament's `gltfio` does not check that list itself, so such a model
+used to load **untextured or broken with no error**. `ModelLoader` now checks it before any
+Filament call and fails with `UnsupportedGltfExtensionException`, whose `extensions` names what is
+missing: `rememberModelInstance` and the `load*Async` calls give `null` (logged),
+`rememberModelLoadState` gives `Failed`, the `suspend` and `createModel` calls throw it.
+
+The usual culprits are `EXT_texture_avif` and `KHR_meshopt_compression` in exports from
+generation or optimisation pipelines. `ModelLoader.SUPPORTED_GLTF_EXTENSIONS` lists what works.
+**Fix:** re-export with PNG, JPEG or KTX2 textures and `EXT_meshopt_compression`, e.g.
+`npx @gltf-transform/cli optimize model.glb out.glb --texture-compress webp` (SceneView converts
+WebP for you) or `--texture-compress ktx2`.
+
 ### Black screen / no rendering
 
 A completely black or empty viewport usually means the scene is set up but nothing is visible to

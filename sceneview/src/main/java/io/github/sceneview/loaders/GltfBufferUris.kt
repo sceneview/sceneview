@@ -46,18 +46,28 @@ internal object GltfBufferUris {
             .toSet()
     }
 
-    private fun jsonText(source: ByteBuffer): String? {
+    /**
+     * Where the glTF JSON of [source] (little-endian, from its position) lies, as a start and a
+     * length: a GLB's JSON chunk, or the whole buffer for a text glTF. `null` for a GLB whose JSON
+     * chunk is missing or truncated.
+     */
+    internal fun jsonRange(source: ByteBuffer): Pair<Int, Int>? {
         val start = source.position()
         val isGlb = source.remaining() >= GLB_HEADER_SIZE + CHUNK_HEADER_SIZE &&
             source.getInt(start) == GLB_MAGIC
-        if (!isGlb) {
-            return ByteArray(source.remaining()).also { source.get(it) }
-                .toString(Charsets.UTF_8).removePrefix("\uFEFF")
-        }
+        if (!isGlb) return start to source.remaining()
         val length = source.getInt(start + GLB_HEADER_SIZE)
         val type = source.getInt(start + GLB_HEADER_SIZE + 4)
         val from = start + GLB_HEADER_SIZE + CHUNK_HEADER_SIZE
         if (type != CHUNK_JSON || length < 0 || from.toLong() + length > source.limit()) return null
-        return ByteArray(length).also { source.position(from); source.get(it) }.toString(Charsets.UTF_8)
+        return from to length
+    }
+
+    /** The glTF JSON of [source] (little-endian), see [jsonRange]. Leaves its position alone. */
+    internal fun jsonText(source: ByteBuffer): String? {
+        val (from, length) = jsonRange(source) ?: return null
+        val bytes = ByteArray(length)
+        source.duplicate().apply { position(from) }.get(bytes)
+        return bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
     }
 }

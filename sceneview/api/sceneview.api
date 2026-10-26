@@ -321,6 +321,49 @@ public final class io/github/sceneview/MediaPlayerStateKt {
 	public static final fun rememberMediaPlayer (Ljava/lang/String;ZZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/MediaPlayerState;
 }
 
+public abstract interface class io/github/sceneview/ModelLoadState {
+}
+
+public final class io/github/sceneview/ModelLoadState$Failed : io/github/sceneview/ModelLoadState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/Throwable;)V
+	public final fun component1 ()Ljava/lang/Throwable;
+	public final fun copy (Ljava/lang/Throwable;)Lio/github/sceneview/ModelLoadState$Failed;
+	public static synthetic fun copy$default (Lio/github/sceneview/ModelLoadState$Failed;Ljava/lang/Throwable;ILjava/lang/Object;)Lio/github/sceneview/ModelLoadState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ljava/lang/Throwable;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ModelLoadState$Loading : io/github/sceneview/ModelLoadState {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/loaders/ModelLoadProgress;)V
+	public final fun component1 ()Lio/github/sceneview/loaders/ModelLoadProgress;
+	public final fun copy (Lio/github/sceneview/loaders/ModelLoadProgress;)Lio/github/sceneview/ModelLoadState$Loading;
+	public static synthetic fun copy$default (Lio/github/sceneview/ModelLoadState$Loading;Lio/github/sceneview/loaders/ModelLoadProgress;ILjava/lang/Object;)Lio/github/sceneview/ModelLoadState$Loading;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getProgress ()Lio/github/sceneview/loaders/ModelLoadProgress;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ModelLoadState$Ready : io/github/sceneview/ModelLoadState {
+	public static final field $stable I
+	public fun <init> (Lcom/google/android/filament/gltfio/FilamentInstance;)V
+	public final fun component1 ()Lcom/google/android/filament/gltfio/FilamentInstance;
+	public final fun copy (Lcom/google/android/filament/gltfio/FilamentInstance;)Lio/github/sceneview/ModelLoadState$Ready;
+	public static synthetic fun copy$default (Lio/github/sceneview/ModelLoadState$Ready;Lcom/google/android/filament/gltfio/FilamentInstance;ILjava/lang/Object;)Lio/github/sceneview/ModelLoadState$Ready;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInstance ()Lcom/google/android/filament/gltfio/FilamentInstance;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ModelLoadStateKt {
+	public static final fun rememberModelLoadState (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/ModelLoadState;
+}
+
 public final class io/github/sceneview/NodeScope : io/github/sceneview/SceneScope {
 	public static final field $stable I
 	public final fun getParentNode ()Lio/github/sceneview/node/Node;
@@ -2467,11 +2510,36 @@ public final class io/github/sceneview/loaders/MaterialLoader$UvCoordinate {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/loaders/ModelLoadProgress {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/loaders/ModelLoadProgress$Stage;F)V
+	public final fun component1 ()Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public final fun component2 ()F
+	public final fun copy (Lio/github/sceneview/loaders/ModelLoadProgress$Stage;F)Lio/github/sceneview/loaders/ModelLoadProgress;
+	public static synthetic fun copy$default (Lio/github/sceneview/loaders/ModelLoadProgress;Lio/github/sceneview/loaders/ModelLoadProgress$Stage;FILjava/lang/Object;)Lio/github/sceneview/loaders/ModelLoadProgress;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFraction ()F
+	public final fun getStage ()Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/loaders/ModelLoadProgress$Stage : java/lang/Enum {
+	public static final field Creating Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public static final field Reading Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public static final field Textures Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+	public static fun values ()[Lio/github/sceneview/loaders/ModelLoadProgress$Stage;
+}
+
 public final class io/github/sceneview/loaders/ModelLoader {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/loaders/ModelLoader$Companion;
 	public fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlinx/coroutines/CoroutineScope;)V
 	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;Lkotlinx/coroutines/CoroutineScope;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun awaitModelInstance (Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun awaitModelInstance$default (Lio/github/sceneview/loaders/ModelLoader;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun clear ()V
 	public final fun createInstance (Lcom/google/android/filament/gltfio/FilamentAsset;)Lcom/google/android/filament/gltfio/FilamentInstance;
 	public final fun createInstancedModel (IILkotlin/jvm/functions/Function1;)Ljava/util/List;
@@ -2524,6 +2592,13 @@ public final class io/github/sceneview/loaders/ModelLoader {
 
 public final class io/github/sceneview/loaders/ModelLoader$Companion {
 	public final fun getFolderPath (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun getSUPPORTED_GLTF_EXTENSIONS ()Ljava/util/Set;
+}
+
+public final class io/github/sceneview/loaders/UnsupportedGltfExtensionException : java/lang/IllegalArgumentException {
+	public static final field $stable I
+	public fun <init> (Ljava/util/List;)V
+	public final fun getExtensions ()Ljava/util/List;
 }
 
 public final class io/github/sceneview/managers/LightManagerKt {

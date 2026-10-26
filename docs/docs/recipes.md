@@ -111,6 +111,41 @@ fun ModelWithLoadingIndicator() {
 }
 ```
 
+### Show load progress and errors for large models
+
+Generated or scanned models are often 5–60 MB with 4K textures. `rememberModelLoadState` reports
+how far the load is (`Reading` the file, `Creating` the asset, decoding `Textures`) and why it
+failed, instead of a bare `null`. `Ready` arrives once every texture is final, so the model never
+pops in untextured.
+
+```kotlin
+@Composable
+fun GeneratedModel(url: String) {
+    val engine = rememberEngine()
+    val modelLoader = rememberModelLoader(engine)
+
+    when (val state = rememberModelLoadState(modelLoader, url)) {
+        is ModelLoadState.Loading -> LinearProgressIndicator(
+            progress = { state.progress.fraction }
+        )
+        is ModelLoadState.Ready -> SceneView(
+            modifier = Modifier.fillMaxSize(),
+            engine = engine,
+            modelLoader = modelLoader
+        ) {
+            ModelNode(modelInstance = state.instance, scaleToUnits = 1.0f)
+        }
+        is ModelLoadState.Failed -> Text(
+            if (state.error is UnsupportedGltfExtensionException) "This model format is not supported"
+            else "Could not load the model"
+        )
+    }
+}
+```
+
+Outside Compose, `modelLoader.awaitModelInstance(location) { progress -> }` does the same: it
+returns with the textures final and throws on failure.
+
 ### Switch between models dynamically
 
 Change the asset path via Compose state. `rememberModelInstance` automatically

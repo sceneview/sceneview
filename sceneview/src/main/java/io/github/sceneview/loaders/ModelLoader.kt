@@ -22,7 +22,10 @@ import io.github.sceneview.isAsyncLoadPending
 import io.github.sceneview.isFenceBusy
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.model
+import io.github.sceneview.loaders.ModelLoadProgress.Stage
 import io.github.sceneview.safeDestroyModel
+import io.github.sceneview.utils.FileLoader
 import io.github.sceneview.utils.loadFileBuffer
 import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.whenIdle
@@ -34,7 +37,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -201,6 +209,8 @@ class ModelLoader(
      * @throws IllegalArgumentException if the buffer cannot be parsed, or if one of its external
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
      * resolver cannot read is logged and skipped.
+     * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
+     * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
      *
      * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
      * because Filament's Android build registers no `image/webp` decoder and would otherwise render
@@ -216,7 +226,7 @@ class ModelLoader(
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
-        val source = buffer.toFilamentModelSource()
+        val source = buffer.toFilamentModelSource().also(GltfRequiredExtensions::check)
         val model = assetLoader.createAsset(source)
             ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
@@ -275,6 +285,9 @@ class ModelLoader(
      * - An android resource from the res folder *context.getResourceUri(R.raw.mymodel)*
      * - A File path *Uri.fromFile(myModelFile).path*
      * - An http or https url *https://mydomain.com/mymodel.glb*
+     * @return the model, or `null` when the file cannot be read or parsed (logged).
+     * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
+     * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
      *
      * @see createModel
      */
@@ -295,19 +308,35 @@ class ModelLoader(
      * crash (#3868). The result is `null` when the file, the parse or the model itself is gone,
      * and when one of the model's external buffers cannot be read: that model is destroyed rather
      * than handed out with no geometry (see [GltfBufferUris]). Each of these is logged.
+     *
+     * A model that requires an extension gltfio cannot load throws
+     * [UnsupportedGltfExtensionException] instead, before any Filament call.
+     *
+     * [onProgress] gets the [Stage.Reading] and [Stage.Creating] steps, from whichever thread
+     * reached them (see [awaitModelInstance], which hands them to the main thread).
      */
     private suspend fun <R : Any> loadModelThen(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String,
         create: (Buffer) -> Model?,
+        onProgress: ((ModelLoadProgress) -> Unit)? = null,
         onLoadBegun: (Model) -> R,
     ): R? {
-        val buffer = context.loadFileBuffer(fileLocation) ?: run {
+        onProgress?.invoke(ModelLoadProgress(Stage.Reading, 0f))
+        val buffer = FileLoader.loadFileBuffer(
+            context,
+            fileLocation,
+            onProgress?.let { report -> { read: Float -> report(ModelLoadProgress(Stage.Reading, READING_END * read)) } },
+        ) ?: run {
             Log.w(TAG, "Could not read $fileLocation")
             return null
         }
-        // Transcoding decodes and re-encodes images: keep it off the main thread.
-        val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource() }
+        onProgress?.invoke(ModelLoadProgress(Stage.Creating, READING_END))
+        // Transcoding decodes and re-encodes images, and the extension check parses the JSON of
+        // what can be a 60 MB generated model: keep both off the main thread.
+        val source = withContext(Dispatchers.Default) {
+            buffer.toFilamentModelSource().also(GltfRequiredExtensions::check)
+        }
         // Registering into `models` happens *inside* the create block, in the same
         // uninterrupted hop onto `dispatcher` as the asset creation itself (#3523): that is
         // what guarantees a cancellation landing right after creation still finds the model
@@ -478,17 +507,95 @@ class ModelLoader(
      *
      * Source data is released immediately since the model will not be re-instantiated.
      *
+     * Returns as soon as the asset exists: its textures are still decoding, and are finalised by
+     * the frame loop. To wait for them and follow the load, see [awaitModelInstance].
+     *
+     * @return the instance, or `null` when the file cannot be read or parsed (logged).
+     * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
+     * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
+     *
      * @see loadModel
      */
     suspend fun loadModelInstance(
         fileLocation: String,
         resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) }
-    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset) { model ->
+    ): ModelInstance? = loadModelInstanceThen(fileLocation, resourceResolver, onProgress = null)
+
+    private suspend fun loadModelInstanceThen(
+        fileLocation: String,
+        resourceResolver: (resourceFileName: String) -> String,
+        onProgress: ((ModelLoadProgress) -> Unit)?,
+    ): ModelInstance? = loadModelThen(fileLocation, resourceResolver, assetLoader::createAsset, onProgress) { model ->
         // On the main thread, before anything else can destroy the model: releasing it after the
         // caller resumed (on the caller's thread) raced `clear()` into a JNI call on a freed
         // asset (#3868).
         model.releaseSourceData()
         model.instance
+    }
+
+    /**
+     * Loads a single [ModelInstance] and returns once its textures are final, reporting progress
+     * along the way — for the large, texture-heavy models generation services produce (tens of
+     * MB, 4K textures), where a load takes long enough to show a progress bar.
+     *
+     * The file is read and converted off the main thread, and the textures decode on Filament's
+     * job system; only Filament's own calls (creating the asset, beginning the load, finalising
+     * each texture) run on the main thread. While it waits it finalises textures itself, so it
+     * also completes in a scene that renders no frame meanwhile.
+     *
+     * @param onProgress called **on the main thread**, with a [ModelLoadProgress] whose `fraction`
+     * never goes back, ending with `Textures` at `1`.
+     * @return the instance, its textures finalised.
+     * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
+     * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
+     * @throws IllegalArgumentException when the file cannot be read or parsed (the reason is
+     * logged), or one of its external buffers is missing.
+     * @throws IllegalStateException if the model was destroyed meanwhile ([clear], [destroy]).
+     *
+     * Cancelling the call destroys the model, unless it had already returned.
+     *
+     * @see loadModelInstance
+     * @see io.github.sceneview.rememberModelLoadState
+     */
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (resourceFileName: String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {},
+    ): ModelInstance = coroutineScope {
+        // Reading and creating report from the IO and Default threads: hand the latest step to
+        // the main thread, where `onProgress` runs. Conflated, so a fast read cannot flood it.
+        var last = ModelLoadProgress(Stage.Reading, 0f)
+        fun report(next: ModelLoadProgress) {
+            if (next.fraction < last.fraction || next.stage < last.stage) return
+            last = next
+            onProgress(next)
+        }
+        val steps = MutableStateFlow<ModelLoadProgress?>(null)
+        val reporter = launch(Dispatchers.Main) { steps.filterNotNull().collect(::report) }
+        val instance = try {
+            loadModelInstanceThen(fileLocation, resourceResolver) { steps.value = it }
+        } finally {
+            reporter.cancelAndJoin()
+        } ?: throw IllegalArgumentException("Could not load $fileLocation (the reason is logged)")
+        destroyOnFailure(instance.model, ::destroyModel) {
+            withContext(Dispatchers.Main) {
+                while (true) {
+                    check(instance.model in models) { "$fileLocation was destroyed while its textures loaded" }
+                    updateLoad()
+                    val done = !isLoading
+                    // gltfio reports progress for the load it began last only.
+                    val textures = when {
+                        done -> 1f
+                        asyncLoad.inFlight === instance.model -> resourceLoader.asyncGetLoadProgress()
+                        else -> 0f
+                    }
+                    report(ModelLoadProgress(Stage.Textures, TEXTURES_START + (1 - TEXTURES_START) * textures))
+                    if (done) break
+                    delay(TEXTURE_POLL_MS)
+                }
+            }
+        }
+        instance
     }
 
     /**
@@ -538,7 +645,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
-            val source = buffer.toFilamentModelSource()
+            val source = buffer.toFilamentModelSource().also(GltfRequiredExtensions::check)
             (assetLoader.createInstancedAsset(source, this)
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
@@ -900,7 +1007,20 @@ class ModelLoader(
     }
 
     companion object {
+        // Shares of the whole load in `ModelLoadProgress.fraction` (see its KDoc).
+        private const val READING_END = 0.4f
+        private const val TEXTURES_START = 0.5f
+        private const val TEXTURE_POLL_MS = 16L
+
         private const val TAG = "ModelLoader"
+
+        /**
+         * The glTF extensions the bundled Filament gltfio can load. A model whose
+         * `extensionsRequired` names any other fails with [UnsupportedGltfExtensionException]
+         * before any Filament call; extensions that are only *used* (`extensionsUsed`) are left to
+         * gltfio, which ignores what it does not know.
+         */
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String> get() = GltfRequiredExtensions.SUPPORTED
 
         /**
          * The location of [resourceFileName], a resource a glTF names relative to itself, next to

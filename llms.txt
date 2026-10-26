@@ -3994,6 +3994,33 @@ val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
 A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
+### rememberModelLoadState (composable, progress + error)
+```kotlin
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+sealed interface ModelLoadState {
+    data class Loading(val progress: ModelLoadProgress) : ModelLoadState
+    data class Ready(val instance: ModelInstance) : ModelLoadState   // textures already final
+    data class Failed(val error: Throwable) : ModelLoadState
+}
+```
+For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+```kotlin
+when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
+    is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })
+    is ModelLoadState.Ready -> SceneView(modelLoader = modelLoader) { ModelNode(modelInstance = state.instance) }
+    is ModelLoadState.Failed -> Text(
+        if (state.error is UnsupportedGltfExtensionException) "Unsupported model format" else "Could not load"
+    )
+}
+```
+Same ownership as `rememberModelInstance`: the composable destroys the `Model` when the location changes or on leave-composition. Unlike it, a location change goes back to `Loading`.
+
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
@@ -4015,8 +4042,29 @@ class ModelLoader(engine: Engine, context: Context) {
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
+
+    // Returns once every texture is final; throws on failure (never null)
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {}   // called on the main thread
+    ): ModelInstance
+
+    companion object {
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String>   // what gltfio can honour in extensionsRequired
+        fun getFolderPath(baseFileName: String, resourceFileName: String): String
+    }
 }
+
+data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fraction 0..1, monotonic
+    enum class Stage { Reading, Creating, Textures }
+}
+class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
+
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** file reading, WebP/3MF conversion and the `extensionsRequired` check run off the main thread; only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. The file is read into one array of its size (Java heap peak ≈ file size, not twice). `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
+
+**Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) fails with `UnsupportedGltfExtensionException` before any Filament call, instead of loading silently untextured: `loadModel` / `loadModelInstance` / `awaitModelInstance` / `createModel(buffer)` throw it, `load*Async` and `rememberModelInstance` give `null` (logged), `rememberModelLoadState` gives `Failed`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
 
 **Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture is logged and the model loads without it. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it.
 
