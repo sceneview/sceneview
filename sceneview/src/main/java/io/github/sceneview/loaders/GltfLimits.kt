@@ -62,7 +62,7 @@ internal object GltfLimits {
         }
         val json = runCatching {
             val text = ByteArray(jsonLength).also { bytes.duplicate().apply { position(jsonFrom) }.get(it) }
-            JSONObject(text.toString(Charsets.UTF_8).removePrefix("﻿"))
+            JSONObject(text.toString(Charsets.UTF_8).removePrefix("\uFEFF"))
         }.getOrNull() ?: return emptyList()
 
         val violations = mutableListOf<String>()
