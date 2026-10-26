@@ -30,6 +30,7 @@ import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -608,6 +609,9 @@ fun ARSceneScope.AutoPlacementModel(
     val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = entrance.value > 0f) {
+        // A model destroyed under the composition has nothing left to show, and building a node
+        // over it (a re-key below) would throw: the pivot stays, the object leaves.
+        if (modelInstance.isDestroyed) return@AutomaticPlacementPivot
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
                 quaternion = if (placement.isWall) {

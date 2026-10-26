@@ -12,6 +12,7 @@ import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import com.google.android.filament.gltfio.releaseSourceDataIfAlive
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
@@ -222,7 +223,7 @@ class ModelLoader(
         models += model
         loadResources(model, source, resourceResolver)
         if (releaseSourceData) {
-            model.releaseSourceData()
+            model.releaseSourceDataIfAlive()
         }
         return model
     }
@@ -487,7 +488,7 @@ class ModelLoader(
         // On the main thread, before anything else can destroy the model: releasing it after the
         // caller resumed (on the caller's thread) raced `clear()` into a JNI call on a freed
         // asset (#3868).
-        model.releaseSourceData()
+        model.releaseSourceDataIfAlive()
         model.instance
     }
 
@@ -543,7 +544,7 @@ class ModelLoader(
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, source, resourceResolver)
-                model.releaseSourceData()
+                model.releaseSourceDataIfAlive()
             }
         }.filterNotNull()
 

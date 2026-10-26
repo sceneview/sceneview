@@ -15,3 +15,12 @@ package com.google.android.filament.gltfio
  */
 internal val FilamentAsset.isReleased: Boolean
     get() = nativeObject == 0L
+
+/**
+ * [FilamentAsset.releaseSourceData], skipped once the asset is destroyed: gltfio would hand the
+ * zeroed handle to native code. A resource resolver can destroy the model in the middle of its own
+ * synchronous load (`ModelLoader.clear` from the callback), and the release comes right after.
+ */
+internal fun FilamentAsset.releaseSourceDataIfAlive() {
+    if (!isReleased) releaseSourceData()
+}

@@ -692,6 +692,18 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** the node's frame, `stopAnimation`, the `ModelNode` composable
+(the node leaves the scene), `rememberModelAnimationState` (reads idle), the scene inspector and the
+editing overlay do nothing. Direct calls fail with `IllegalStateException` instead of a native crash:
+`boundingBox` and what derives from it (`center`, `halfExtent`, `extents`, `size`), `animationCount`,
+`playAnimation`, `setAnimationSpeed`, the `ModelNode` constructor, and the
+`ModelInstance.materialInstances` extension. Check `isModelDestroyed` first when the model's
+lifetime is not yours. `node.animator`, `node.model` and gltfio's own members
+(`FilamentInstance.getMaterialInstances()`) are not guarded: never call them after the destroy.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**

@@ -5,13 +5,18 @@ import com.google.android.filament.Engine
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
+import com.google.android.filament.gltfio.releaseSourceDataIfAlive
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneFrameDispatch
+import io.github.sceneview.animation.ModelAnimationState
 import io.github.sceneview.components.RenderableComponent
 import io.github.sceneview.model.Model
+import io.github.sceneview.model.isDestroyed
+import io.github.sceneview.model.materialInstances as sceneViewMaterialInstances
 import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.snapshotNode
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -186,6 +191,62 @@ class ModelNodeAfterDestroyTest {
             gone.getMaterialInstanceAt(0)
         }
         assertTrue(error.message.orEmpty(), "renderable" in error.message.orEmpty())
+    }
+
+    @Test
+    fun `a model reports its destroy, and so do its instance and node`() {
+        val node = modelNode()
+        assertFalse(node.model.isDestroyed)
+        assertFalse(node.modelInstance.isDestroyed)
+        assertFalse(node.isModelDestroyed)
+
+        destroy(node.model)
+
+        assertTrue(node.model.isDestroyed)
+        assertTrue(node.modelInstance.isDestroyed)
+        assertTrue(node.isModelDestroyed)
+    }
+
+    @Test
+    fun `the animation state of a destroyed model reads idle, without touching the animator`() {
+        // `rememberModelAnimationState` polls the animator every frame; a `runCatching` around the
+        // read does not catch a native crash.
+        val node = modelNode()
+        node.playingAnimations[0] = ModelNode.PlayingAnimation(loop = true)
+        val state = ModelAnimationState(node)
+        state.update(frameTimeNanos)
+        assertTrue(state.isPlaying)
+
+        destroy(node.model)
+        nativeCalls.clear()
+        state.update(frameTimeNanos + 16_000_000L)
+
+        assertEquals(emptyList<String>(), nativeCalls)
+        assertFalse(state.isPlaying)
+        assertEquals(-1, state.currentAnimationIndex)
+    }
+
+    @Test
+    fun `the source data of a destroyed model is not released again`() {
+        // A resource resolver can destroy the model during its own synchronous load, right before
+        // `ModelLoader.createModel` releases the source data.
+        val node = modelNode()
+        destroy(node.model)
+        nativeCalls.clear()
+
+        node.model.releaseSourceDataIfAlive()
+
+        assertEquals(emptyList<String>(), nativeCalls)
+    }
+
+    @Test
+    fun `the materials of a destroyed instance are a clear error`() {
+        val instance = FilamentWithoutJni.modelInstance(engine)
+        destroy(instance.asset)
+
+        // Aliased: gltfio's own `FilamentInstance.getMaterialInstances()` member wins over the
+        // extension under its own name.
+        assertDestroyedModelError { instance.sceneViewMaterialInstances }
     }
 
     /** An [AssetLoader] that never reached gltfio: only its Java methods are called here. */

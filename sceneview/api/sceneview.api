@@ -2682,6 +2682,7 @@ public final class io/github/sceneview/model/ModelInstanceKt {
 	public static final fun getRenderableInstances (Lcom/google/android/filament/gltfio/FilamentInstance;)Ljava/util/List;
 	public static final fun getRenderableManager (Lcom/google/android/filament/gltfio/FilamentInstance;)Lcom/google/android/filament/RenderableManager;
 	public static final fun getRenderablesPrimitiveCounts (Lcom/google/android/filament/gltfio/FilamentInstance;)Ljava/util/Map;
+	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun isShadowCaster (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun isShadowReceiver (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun setBlendOrder (Lcom/google/android/filament/gltfio/FilamentInstance;I)V
@@ -2702,6 +2703,7 @@ public final class io/github/sceneview/model/ModelKt {
 	public static final fun getCollisionShape (Lcom/google/android/filament/gltfio/FilamentAsset;)Lio/github/sceneview/collision/Box;
 	public static final fun getRenderableByName (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;)Ljava/lang/Integer;
 	public static final fun getRenderableNames (Lcom/google/android/filament/gltfio/FilamentAsset;)Ljava/util/List;
+	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentAsset;)Z
 }
 
 public class io/github/sceneview/node/BillboardNode : io/github/sceneview/node/ImageNode {
@@ -3015,6 +3017,7 @@ public class io/github/sceneview/node/ModelNode : io/github/sceneview/node/Node 
 	public final fun getSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getSkinCount ()I
 	public final fun getSkinNames ()Ljava/util/List;
+	public final fun isModelDestroyed ()Z
 	public final fun isShadowCaster ()Z
 	public final fun isShadowReceiver ()Z
 	public fun onFrame (J)V

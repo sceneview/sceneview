@@ -7,7 +7,6 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.VertexBuffer
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.FilamentAsset
-import com.google.android.filament.gltfio.isReleased
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.max
 import com.google.android.filament.Box
@@ -25,6 +24,7 @@ import io.github.sceneview.model.collisionShape
 import io.github.sceneview.model.emptyNodeEntities
 import io.github.sceneview.model.engine
 import io.github.sceneview.model.getAnimationIndex
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.lightEntities
 import io.github.sceneview.model.model
 import io.github.sceneview.model.renderableEntities
@@ -206,8 +206,10 @@ open class ModelNode(
      * or `destroy`. `rememberModelInstance` destroys it when it leaves the composition, possibly
      * before the node detaches. From then on the node makes no Filament call on the model: its
      * frame and `stopAnimation` do nothing, and what reads the model throws [IllegalStateException].
+     * Check it before reading the bounds or starting an animation of a node that may outlive its
+     * model.
      */
-    internal val isModelDestroyed: Boolean get() = model.isReleased
+    val isModelDestroyed: Boolean get() = model.isDestroyed
 
     private fun checkModelAlive(what: String) = check(!isModelDestroyed) {
         "ModelNode.$what: the model of this node was destroyed (ModelLoader.destroyModel, clear " +
@@ -491,7 +493,13 @@ open class ModelNode(
     fun stopAnimation(animationName: String) {
         // Nothing plays on a destroyed model, and the `ModelNode` composable stops its named
         // animation on dispose, which can come after `rememberModelInstance` destroyed the model.
-        if (isModelDestroyed) return
+        if (isModelDestroyed) {
+            android.util.Log.d(
+                "SceneView",
+                "ModelNode.stopAnimation(\"$animationName\"): its model was destroyed, nothing to stop"
+            )
+            return
+        }
         animator.getAnimationIndex(animationName)?.let { stopAnimation(it) }
     }
 
@@ -825,7 +833,7 @@ open class ModelNode(
  * `ModelLoader.destroyModel`, the instance's handle points at freed memory.
  */
 private fun ModelInstance.liveRoot(): Entity {
-    check(!asset.isReleased) {
+    check(!isDestroyed) {
         "Cannot create a ModelNode: its model was destroyed (ModelLoader.destroyModel, clear or " +
             "destroy). Create the node from a model that is still loaded."
     }

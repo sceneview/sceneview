@@ -2,6 +2,7 @@ package io.github.sceneview.model
 
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.FilamentAsset
+import com.google.android.filament.gltfio.isReleased
 import io.github.sceneview.Entity
 import io.github.sceneview.math.toVector3Box
 
@@ -12,6 +13,16 @@ import io.github.sceneview.math.toVector3Box
  * animations, lights, and cameras.
  */
 typealias Model = FilamentAsset
+
+/**
+ * `true` once this model was destroyed — by `ModelLoader.destroyModel`, `clear` or `destroy`, or
+ * by `rememberModelInstance` leaving the composition.
+ *
+ * gltfio frees a destroyed model's instances and animator without clearing their handles, so any
+ * Filament call on them afterwards reads freed memory: a native crash no `try` catches. Check this
+ * before using a model, or a [ModelInstance] of it, that something else may have destroyed.
+ */
+val Model.isDestroyed: Boolean get() = isReleased
 
 /**
  * Returns the debug names of all renderable entities in this model.
