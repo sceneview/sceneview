@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import io.github.sceneview.ExperimentalSceneViewApi
 import kotlin.math.floor
 
 /**
@@ -38,27 +39,63 @@ import kotlin.math.floor
  * should be. [CameraAnimator] caps its step instead, because it simulates a spring; a timeline
  * has no state to destabilize.
  *
+ * **Remember the timeline.** Build it inside `remember(...)` keyed on its inputs, not in the
+ * composable body: a timeline built on every composition is a new object every time, which
+ * rebuilds the spline on every recomposition. The player does not recompose because of it (only
+ * a changed [durationSeconds] or [loop] is observable), but the work is wasted.
+ *
+ * **Offline rendering.** The player follows the wall clock. To render a video at a fixed rate,
+ * sample the timeline directly, `timeline.poseAt(frameIndex / fps)`, rather than stepping a
+ * player.
+ *
  * @param timeline The move to play.
  * @param loop Whether the playhead wraps at the end. Defaults to the timeline's own
  * [CameraTimeline.loop].
  */
+@ExperimentalSceneViewApi
 @Stable
 class CameraPathPlayer(
     timeline: CameraTimeline,
     loop: Boolean = timeline.loop,
 ) {
 
+    /** Duration of [timeline], read when the timeline is set; observable by composition. */
+    private var durationState by mutableFloatStateOf(timeline.durationSeconds)
+
     /**
      * The move being played. Replacing it keeps the playhead; [pose] clamps it to the new
-     * duration, and the next [advance] or [seekTo] brings it back within range.
+     * duration, and the next [advance] or [seekTo] brings it back within range. [loop] follows
+     * the new timeline's [CameraTimeline.loop].
+     *
+     * Not snapshot state itself: assigning an equivalent timeline (a new object with the same
+     * duration and loop) invalidates nothing, so a composition that rebuilds its timeline cannot
+     * recompose itself through the player. [durationSeconds] and [loop] are observable.
      */
-    var timeline: CameraTimeline by mutableStateOf(timeline)
+    var timeline: CameraTimeline = timeline
+        set(value) {
+            if (value === field) return
+            field = value
+            durationState = value.durationSeconds
+            loop = value.loop
+        }
 
     /** Whether the playhead wraps to the start at the end, instead of stopping there. */
     var loop: Boolean by mutableStateOf(loop)
 
-    /** Playback rate: `1` is real time, `2` twice as fast, negative plays backward. */
-    var speed: Float by mutableFloatStateOf(1f)
+    private var speedState by mutableFloatStateOf(1f)
+
+    /**
+     * Playback rate: `1` is real time, `2` twice as fast, negative plays backward, `0` holds the
+     * playhead while playing.
+     *
+     * @throws IllegalArgumentException when set to a non-finite value.
+     */
+    var speed: Float
+        get() = speedState
+        set(value) {
+            require(value.isFinite()) { "speed must be finite, was $value" }
+            speedState = value
+        }
 
     /** Kept in double precision so a long run of small frame steps does not drift. */
     private var elapsed: Double = 0.0
@@ -71,8 +108,8 @@ class CameraPathPlayer(
     var isPlaying: Boolean by mutableStateOf(false)
         private set
 
-    /** Length of [timeline], in seconds. */
-    val durationSeconds: Float get() = timeline.durationSeconds
+    /** Length of [timeline], in seconds, as read when the timeline was set. */
+    val durationSeconds: Float get() = durationState
 
     /** The playhead as a fraction of [durationSeconds], in `[0, 1]`; `0` for an empty timeline. */
     val progress: Float
@@ -116,7 +153,9 @@ class CameraPathPlayer(
 
     /**
      * Moves the playhead by [deltaSeconds] of wall-clock time times [speed] while playing, and
-     * returns the pose at the new playhead. A non-looping player stops at the end.
+     * returns the pose at the new playhead. A non-looping player stops when the playhead reaches
+     * the end it is heading for: the end playing forward, the start playing backward. At speed
+     * `0` it keeps playing in place.
      *
      * A zero, negative or non-finite [deltaSeconds] leaves the playhead where it is.
      */
@@ -130,15 +169,15 @@ class CameraPathPlayer(
                     if (!loop) isPlaying = false
                 }
                 loop -> setPlayhead(normalized(next))
-                next >= duration -> {
+                speed > 0f && next >= duration -> {
                     setPlayhead(duration)
                     isPlaying = false
                 }
-                next <= 0.0 -> {
+                speed < 0f && next <= 0.0 -> {
                     setPlayhead(0.0)
                     isPlaying = false
                 }
-                else -> setPlayhead(next)
+                else -> setPlayhead(next.coerceIn(0.0, duration))
             }
         }
         return pose
@@ -181,15 +220,19 @@ class CameraPathPlayer(
 /**
  * Remembers a [CameraPathPlayer] for [timeline].
  *
- * The player survives recomposition; a new [timeline] replaces the one it plays and keeps the
- * playhead. [autoPlay] starts playback when the player is first created.
+ * The player survives recomposition; a different [timeline] object replaces the one it plays and
+ * keeps the playhead. [autoPlay] starts playback when the player is first created.
+ *
+ * Pass a remembered timeline, `remember(bounds, aspect) { CameraPosePath.orbit(...) }`: one built
+ * in the composable body is a new object on every composition (see [CameraPathPlayer]).
  */
+@ExperimentalSceneViewApi
 @Composable
 fun rememberCameraPathPlayer(
     timeline: CameraTimeline,
     autoPlay: Boolean = true,
 ): CameraPathPlayer {
     val player = remember { CameraPathPlayer(timeline).also { if (autoPlay) it.play() } }
-    SideEffect { player.timeline = timeline }
+    SideEffect { if (player.timeline !== timeline) player.timeline = timeline }
     return player
 }

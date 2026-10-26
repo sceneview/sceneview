@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.Arrangement
@@ -21,13 +23,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.Aabb
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.camera.CameraPathPlayer
@@ -77,7 +81,8 @@ import java.util.Locale
  * The camera manipulator is off (`cameraManipulator = null`): the path owns the camera, and a
  * manipulator would overwrite the scripted pose on the next frame.
  *
- * In QA mode the move starts paused at its first keyframe, so a capture is deterministic.
+ * In QA mode the move starts paused at its first keyframe and the fox holds its rest pose (no
+ * clip plays), so a capture is deterministic.
  */
 @Composable
 fun CameraPathDemo(onBack: () -> Unit) {
@@ -127,12 +132,17 @@ fun CameraPathDemo(onBack: () -> Unit) {
         }
         Aabb(center = Position(0f, size.y / 2f, 0f), halfExtent = size / 2f)
     }
-    val configuration = LocalConfiguration.current
-    val aspect = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
-        val w = configuration.screenWidthDp.toDouble()
-        val h = configuration.screenHeightDp.toDouble()
-        if (w > 0.0 && h > 0.0) w / h else FALLBACK_ASPECT
+    // The 3D view's own aspect, not the screen's: the orbit is framed for the viewport the camera
+    // renders into. Until the view is laid out, a phone-portrait guess.
+    var viewSize by remember { mutableStateOf(IntSize.Zero) }
+    val aspect = remember(viewSize) {
+        if (viewSize.width > 0 && viewSize.height > 0) {
+            viewSize.width.toDouble() / viewSize.height
+        } else {
+            FALLBACK_ASPECT
+        }
     }
+    // Remembered on its inputs: a timeline rebuilt on every composition would redo the spline.
     val path = remember(bounds, aspect) {
         CameraPosePath.orbit(
             bounds = bounds,
@@ -166,14 +176,16 @@ fun CameraPathDemo(onBack: () -> Unit) {
                     // The timeline goes with the dock: one small gutter above it.
                     .offset(y = (dockGap - SceneViewTokens.Space.sm).coerceAtLeast(0.dp))
                     .padding(horizontal = SceneViewTokens.Space.md)
-                    .widthIn(max = TIMELINE_MAX_WIDTH)
+                    .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
                     .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
             )
         },
     ) {
         SceneView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .onSizeChanged { viewSize = it },
             engine = engine,
             view = view,
             modelLoader = modelLoader,
@@ -204,7 +216,8 @@ fun CameraPathDemo(onBack: () -> Unit) {
                     scaleToUnits = SUBJECT_UNITS,
                     centerOrigin = Position(y = -1f),
                     autoAnimate = false,
-                    animationName = SUBJECT_CLIP,
+                    // QA mode: no clip, the rest pose, so every capture shows the same fox.
+                    animationName = SUBJECT_CLIP.takeUnless { DemoSettings.qaMode },
                 )
             }
         }
@@ -289,4 +302,3 @@ private const val FLOOR_SIZE = 40f
 private const val FLOOR_ROUGHNESS = 0.62f
 private const val SECONDS_PER_MINUTE = 60
 private const val TABULAR_FIGURES = "tnum"
-private val TIMELINE_MAX_WIDTH = 480.dp

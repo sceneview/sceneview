@@ -1,5 +1,6 @@
 package io.github.sceneview.camera
 
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.math.Position
 
 /** A [shot] the camera is on at [seconds] into a [CameraPath]. */
@@ -84,6 +85,7 @@ class CameraPath(
      * The camera pose [seconds] into the path: [shotAt] as a [CameraPose], so a shot path plays
      * in [CameraPathPlayer] like a [CameraPosePath].
      */
+    @ExperimentalSceneViewApi
     override fun poseAt(seconds: Float): CameraPose = shotAt(seconds).toPose()
 
     /** `true` once [seconds] is past the end of a path that does not loop. */

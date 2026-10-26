@@ -4651,15 +4651,18 @@ parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quate
 move can be a straight line through space — a travelling, a dolly — not only an arc round a
 subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
 pure function of time: the same time always gives the same pose, which is what a scrubber and
-a fixed-step offline render rely on.
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraTimeline` and `CameraPath` stay stable.
 
 ```kotlin
-val path = CameraPosePath.orbit(                       // one turn, framed from the subject's box and the FOV
-    bounds = model.boundingBox.toAabb(),
-    verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
-    aspect = width / height.toDouble(),
-    durationSeconds = 12f,
-)
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
 val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), seekTo(s), speed, loop
 SceneView(
     cameraNode = cameraNode,
@@ -4673,17 +4676,21 @@ Slider(value = player.progress, onValueChange = { player.seekTo(it * player.dura
 - `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
   pathEasing = null, lookAt = null, loop = false)`: positions are `Linear` or `CatmullRom`
   (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
-  an un-eased key); rotations slerp the short way. A keyframe's `easing` shapes the segment that
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; two keys at one time are a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
   leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
-  `lookAt` keeps the camera aimed at a point instead of slerping. Times count from the first key.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
 - Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
   startAzimuthDegrees, padding)` (radius from `fitDistanceForBounds`, loops seamlessly on whole
   turns), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
   held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
 - `CameraPathPlayer` owns only the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
   Compose state); `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
-  120 fps reach the same pose at the same time. `CameraNode.applyPose(pose)` and
-  `CameraNode.applyCameraPath(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  120 fps reach the same pose at the same time. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
   target)` and `CameraShot.toPose()` build one.
 
 `CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,

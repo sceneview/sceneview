@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.camera
 
 import dev.romainguy.kotlin.math.Float3
@@ -7,9 +9,11 @@ import dev.romainguy.kotlin.math.dot
 import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.Aabb
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -145,6 +149,72 @@ class CameraPosePathTest {
     }
 
     @Test
+    fun aPauseInTheMiddleIsNotOvershot() {
+        // 0 -> 10 in one second, then held for a second. Plain Catmull-Rom ran to x = 10.74 and
+        // came back during the hold.
+        val path = straightPath(0f to 0f, 10f to 1f, 10f to 2f)
+        assertStaysWithinNeighbouringKeyframes(path)
+        for (step in 0..100) assertEquals(10f, path.poseAt(1f + step * 0.01f).position.x, 1e-5f)
+    }
+
+    @Test
+    fun aPauseAtTheStartDoesNotBackUp() {
+        // Held for a second, then 0 -> 10. Plain Catmull-Rom backed up to x < 0 during the hold.
+        val path = straightPath(0f to 0f, 0f to 1f, 10f to 2f)
+        assertStaysWithinNeighbouringKeyframes(path)
+        for (step in 0..100) assertEquals(0f, path.poseAt(step * 0.01f).position.x, 0f)
+    }
+
+    @Test
+    fun aNearPauseStaysOnItsSegment() {
+        // 10 units in the first second, 0.1 in the next: the capped tangent keeps the camera
+        // between 10 and 10.1 instead of running past 10.1 and coming back.
+        assertStaysWithinNeighbouringKeyframes(straightPath(0f to 0f, 10f to 1f, 10.1f to 2f))
+    }
+
+    @Test
+    fun aPauseIn3dIsNotOvershotOnAnyAxis() {
+        val a = Position(0f, 0f, 0f)
+        val b = Position(4f, 2f, -3f)
+        val c = Position(-2f, 5f, 1f)
+        val path = CameraPosePath(
+            listOf(a to 0f, b to 1f, b to 1.5f, c to 3f, c to 4f).map { (p, t) -> CameraPoseKeyframe(CameraPose(p), t) },
+        )
+        assertStaysWithinNeighbouringKeyframes(path)
+    }
+
+    @Test
+    fun aCutSplitsTheSpline() {
+        // Two keyframes at t = 1: the camera jumps from x = 10 to x = 100. Each side moves on its
+        // own; before the fix the tangent across the cut (90 units in 0 s, read over 2 s) threw the
+        // first segment far past x = 10.
+        val path = straightPath(0f to 0f, 10f to 1f, 100f to 1f, 110f to 2f)
+        assertStaysWithinNeighbouringKeyframes(path)
+        assertEquals(100f, path.poseAt(1f).position.x, 1e-4f)
+        assertTrue(path.poseAt(0.999f).position.x <= 10f)
+        for (step in 0..99) assertEquals(step * 0.1f, path.poseAt(step * 0.01f).position.x, 1e-3f)
+    }
+
+    @Test
+    fun presetsRejectNonFiniteInputs() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        assertThrows(IllegalArgumentException::class.java) {
+            CameraPosePath.orbit(Aabb(Position(Float.NaN, 0f, 0f), box.halfExtent), 45.0, 1.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) { CameraPosePath.orbit(box, Double.NaN, 1.0) }
+        assertThrows(IllegalArgumentException::class.java) { CameraPosePath.orbit(box, 45.0, Double.POSITIVE_INFINITY) }
+        assertThrows(IllegalArgumentException::class.java) {
+            CameraPosePath.travelling(CameraPose(Position(0f, 1f, 4f)), Float.NaN, 2f)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CameraPosePath.dolly(Position(), Position(0f, 1f, 4f), Float.NaN, 2f)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CameraPosePath.dolly(Position(), Position(Float.NaN, 1f, 4f), 1f, 2f)
+        }
+    }
+
+    @Test
     fun anEasedSegmentStopsAtBothOfItsKeyframes() {
         val path = fourKnots(CameraPathInterpolation.Linear)
         val h = 1e-3f
@@ -272,6 +342,35 @@ class CameraPosePathTest {
         }
     }
 
+    /** A Catmull-Rom path along x, from `x to seconds` pairs. */
+    private fun straightPath(vararg keys: Pair<Float, Float>) = CameraPosePath(
+        keys.map { (x, t) -> CameraPoseKeyframe(CameraPose(Position(x, 1f, 0f)), t) },
+    )
+
+    /** Every sample of every segment lies, axis by axis, between the segment's two keyframes. */
+    private fun assertStaysWithinNeighbouringKeyframes(path: CameraPosePath, steps: Int = 400) {
+        val frames = path.keyframes
+        val origin = frames.first().seconds
+        for (i in 0 until frames.size - 1) {
+            val a = frames[i]
+            val b = frames[i + 1]
+            if (b.seconds - a.seconds <= 0f) continue
+            for (step in 0..steps) {
+                // Stay off the far keyframe: at its exact time the next segment (or a cut) applies.
+                val t = a.seconds + (b.seconds - a.seconds) * step / (steps + 1)
+                val p = path.poseAt(t - origin).position
+                for (axis in 0..2) {
+                    val low = minOf(a.pose.position[axis], b.pose.position[axis]) - ENVELOPE_TOLERANCE
+                    val high = maxOf(a.pose.position[axis], b.pose.position[axis]) + ENVELOPE_TOLERANCE
+                    assertTrue(
+                        "segment $i at t=$t: axis $axis = ${p[axis]} outside [$low, $high]",
+                        p[axis] in low..high,
+                    )
+                }
+            }
+        }
+    }
+
     private fun corners(box: Aabb): List<Position> = buildList {
         for (sx in floatArrayOf(-1f, 1f)) for (sy in floatArrayOf(-1f, 1f)) for (sz in floatArrayOf(-1f, 1f)) {
             add(box.center + Position(sx * box.halfExtent.x, sy * box.halfExtent.y, sz * box.halfExtent.z))
@@ -286,6 +385,10 @@ class CameraPosePathTest {
     private fun assertSameRotation(expected: Quaternion, actual: Quaternion, tolerance: Float) {
         val d = abs(dot(normalize(expected), actual))
         assertEquals("rotation $actual vs $expected", 1f, d, tolerance)
+    }
+
+    private companion object {
+        const val ENVELOPE_TOLERANCE = 1e-4f
     }
 
     private fun assertPoseClose(expected: CameraPose, actual: CameraPose, tolerance: Float) {

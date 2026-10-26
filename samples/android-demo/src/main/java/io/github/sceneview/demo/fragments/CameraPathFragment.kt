@@ -18,7 +18,7 @@ object CameraPathFragment : DemoFragment {
         category = DemoCategory.VIEW_3D,
         icon = Icons.Filled.Videocam,
         order = 31,
-        addedIn = "4.62.0",
+        addedIn = "4.63.0",
         tags = setOf("camera", "keyframes", "path", "orbit", "cinematic", "timeline", "no-camera"),
         status = DemoStatus.InReview,
     )

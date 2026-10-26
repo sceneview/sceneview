@@ -64,7 +64,9 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-18, after AR catalogue clean-up wave 1, `finger-drawing` and `ar-pool`): 41 rows, 28 working / 0 stub / 13 android-only.
+# Current ledger (2026-10-26, after `camera-path`): 42 rows, 28 working / 0 stub / 14 android-only.
+# (2026-10-26, +1 android-only: `camera-path`, a keyframed camera orbit with a timeline — no iOS screen yet.)
+# (2026-10-18, after AR catalogue clean-up wave 1, `finger-drawing` and `ar-pool`: 41 rows, 28 working / 0 stub / 13 android-only.)
 # (2026-10-14, +1 android-only: `ar-pool`, Pool in the garden — no iOS screen yet.)
 # (Wave 1, 44 -> 41 rows: three AR cards retired and DROPPED per the ledger rule.
 #  `ar-depth-collider` is the On your table mode of `rolling-balls`, `ar-scene-mesh`
@@ -996,7 +998,7 @@ demos:
   # must be *accepted* without having a screen has somewhere to go. (The
   # value is legal, not enforced — see the header: no script checks this file.)
 
-  # ─── android-only (13) — iOS has no screen, and no catalogue entry ───────
+  # ─── android-only (14) — iOS has no screen, and no catalogue entry ───────
   # Not a 404: `SceneViewDemoApp.onOpenURL` forwards an unregistered id to
   # `DemoDeepLinkRegistry.destination(for:)`, which answers with the honest
   # `DeepLinkPlaceholder`. The cross-platform QR-code contract holds; what
@@ -1277,6 +1279,26 @@ demos:
       No iOS scene; FingerDrawingDemo.kt, FingerDrawingArDemo.kt,
       internal/FingerDrawing.kt. MeshResource from a MeshDescriptor and an
       AnchorEntity cover it (#3907)
+
+  - id: camera-path
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      No iOS screen yet. Added to Android first; the keyframed camera path API
+      (CameraPosePath, CameraPathPlayer) has no iOS counterpart yet.
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraPathDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      The fox plays its Survey clip on a floor while the camera turns once
+      around it on a 16 s keyframed orbit framed from its bounds; a glass
+      timeline bar plays, pauses and scrubs the move with an m:ss clock. No
+      camera gestures: the path owns the camera.
+    parity: missing
+    evidence: >-
+      No iOS scene; CameraPathDemo.kt, sceneview camera/CameraPosePath.kt and
+      camera/CameraPathPlayer.kt.
 
 # ─── iOS-only scenes, no Android row: 0 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as

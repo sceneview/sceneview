@@ -8,6 +8,7 @@ import dev.romainguy.kotlin.math.mix
 import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.Aabb
 import io.github.sceneview.DEFAULT_FRAMING_PADDING
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.animation.slerp
 import io.github.sceneview.fitDistanceForBounds
 import io.github.sceneview.math.Direction
@@ -25,6 +26,7 @@ import kotlin.math.floor
  * @property easing Easing of the segment that **leaves** this keyframe, from `[0, 1]` to `[0, 1]`.
  * `null` uses the path's [CameraPosePath.easing]. Ignored on the last keyframe.
  */
+@ExperimentalSceneViewApi
 data class CameraPoseKeyframe(
     val pose: CameraPose,
     val seconds: Float,
@@ -32,6 +34,7 @@ data class CameraPoseKeyframe(
 )
 
 /** How a [CameraPosePath] moves the camera position between two keyframes. */
+@ExperimentalSceneViewApi
 enum class CameraPathInterpolation {
     /** Straight lines between keyframes; the speed jumps at each keyframe. */
     Linear,
@@ -39,6 +42,12 @@ enum class CameraPathInterpolation {
     /**
      * A Catmull-Rom spline through the keyframes, with tangents scaled by the keyframe times: the
      * position and its velocity are continuous across every keyframe when segments are not eased.
+     *
+     * Tangents are capped so the camera does not overshoot a pause: next to a keyframe that repeats
+     * its neighbour's position the camera comes to rest instead of running past and coming back.
+     * A sharp turn at a keyframe still rounds off slightly past it, as with any Catmull-Rom spline;
+     * use [Linear] for exact corners. Two keyframes at the same time are a cut: the spline restarts
+     * on the far side.
      */
     CatmullRom,
 }
@@ -67,9 +76,20 @@ enum class CameraPathInterpolation {
  * move can ease in at the start and out at the end as one gesture. With [pathEasing] the
  * keyframes are reached at the times the easing maps their own to.
  *
+ * **Limits.**
+ * - Rotation is slerped segment by segment (no `squad`): its direction of turn is continuous but
+ *   its angular speed can jump at a keyframe. Closer keyframes make the jump smaller.
+ * - With [lookAt], the rotation is rebuilt from [up] at every instant. A camera that passes
+ *   straight over or under [lookAt] (looking along [up]) flips its roll by 180° at that point;
+ *   keep the path away from the pole, as [orbit] does by clamping its elevation.
+ *
+ * **Experimental.** The keyframe types may change with offline rendering; [CameraTimeline] and
+ * [CameraPath] are not affected.
+ *
  * Ready-made paths: [orbit] frames a bounding box while turning around it, [travelling] slides
  * the camera sideways, and [dolly] moves it toward or away from a target. Play any of them with
- * [CameraPathPlayer], or place a camera with [io.github.sceneview.node.CameraNode.applyCameraPath].
+ * [CameraPathPlayer], or place a camera with
+ * [io.github.sceneview.node.CameraNode.applyCameraTimeline].
  *
  * @param keyframes The stops. Sorted by time here; keyframes with a non-finite time are dropped.
  * @property interpolation How positions move between keyframes.
@@ -79,6 +99,7 @@ enum class CameraPathInterpolation {
  * are ignored.
  * @property up World up used with [lookAt]. Defaults to `+Y`.
  */
+@ExperimentalSceneViewApi
 class CameraPosePath(
     keyframes: List<CameraPoseKeyframe>,
     val interpolation: CameraPathInterpolation = CameraPathInterpolation.CatmullRom,
@@ -199,25 +220,54 @@ class CameraPosePath(
         }
     }
 
-    /** Finite-difference tangent at keyframe [index], in world units per second. */
+    /**
+     * Spline tangent at keyframe [index], in world units per second.
+     *
+     * Catmull-Rom's time-weighted central difference of the two neighbouring segments, then
+     * capped in length at [MAX_TANGENT_RATIO] times the slower neighbour's speed. The cap is
+     * Fritsch-Carlson's monotonicity bound (α, β ≤ 3) taken on the vector's length, so it does not
+     * depend on the axes: a keyframe next to a pause (a neighbour at the same position) gets a zero
+     * tangent and the camera neither overshoots nor backs up around the pause, and along a straight
+     * line the camera never leaves the segment between two keyframes. Evenly spaced keyframes on a
+     * smooth curve, such as an [orbit], are below the cap and keep plain Catmull-Rom tangents.
+     *
+     * A cut (two keyframes at the same time) splits the spline: each side takes the one-sided
+     * tangent of its own segment, as at the end of a path.
+     */
     private fun tangentAt(index: Int): Float3 {
         val frames = keyframes
         val last = frames.size - 1
         if (last < 1) return Float3()
-        fun slope(from: Int, to: Int, span: Float): Float3 =
-            if (span > MIN_SPAN) (frames[to].pose.position - frames[from].pose.position) / span else Float3()
-        return when {
-            // Across the seam of a closed loop: from the keyframe before the end to the one after
-            // the start, so both ends share one tangent.
-            closed && (index == 0 || index == last) -> slope(
-                last - 1,
-                1,
-                (frames[1].seconds - frames[0].seconds) + (frames[last].seconds - frames[last - 1].seconds),
-            )
-            index == 0 -> slope(0, 1, frames[1].seconds - frames[0].seconds)
-            index == last -> slope(last - 1, last, frames[last].seconds - frames[last - 1].seconds)
-            else -> slope(index - 1, index + 1, frames[index + 1].seconds - frames[index - 1].seconds)
-        }
+        // Segments are (from, to) keyframe pairs; across the seam of a closed loop the keyframe
+        // before the end leads into the start and the one after the start follows the end.
+        val previous: Pair<Int, Int>? = when {
+            index > 0 -> index - 1 to index
+            closed -> last - 1 to last
+            else -> null
+        }?.takeIf { (from, to) -> spanOf(from, to) > MIN_SPAN }
+        val next: Pair<Int, Int>? = when {
+            index < last -> index to index + 1
+            closed -> 0 to 1
+            else -> null
+        }?.takeIf { (from, to) -> spanOf(from, to) > MIN_SPAN }
+        if (previous == null && next == null) return Float3()
+        if (previous == null || next == null) return velocityOf(previous ?: next!!)
+        val inSpan = spanOf(previous.first, previous.second)
+        val outSpan = spanOf(next.first, next.second)
+        val inVelocity = velocityOf(previous)
+        val outVelocity = velocityOf(next)
+        val central = (inVelocity * inSpan + outVelocity * outSpan) / (inSpan + outSpan)
+        val limit = MAX_TANGENT_RATIO * minOf(length(inVelocity), length(outVelocity))
+        val size = length(central)
+        return if (size > limit) central * (limit / size) else central
+    }
+
+    private fun spanOf(from: Int, to: Int): Float = keyframes[to].seconds - keyframes[from].seconds
+
+    /** Average velocity over the segment, in world units per second. */
+    private fun velocityOf(segment: Pair<Int, Int>): Float3 {
+        val (from, to) = segment
+        return (keyframes[to].pose.position - keyframes[from].pose.position) / spanOf(from, to)
     }
 
     companion object {
@@ -237,6 +287,9 @@ class CameraPosePath(
         /** Keyframes closer in time than this are a cut, not a segment. */
         private const val MIN_SPAN = 1e-6f
 
+        /** Fritsch-Carlson bound: a tangent at most 3× a neighbour's speed keeps a segment monotone. */
+        private const val MAX_TANGENT_RATIO = 3f
+
         /**
          * A turn around [bounds] that keeps the whole box in frame and the box's centre at the
          * centre of the frame.
@@ -250,7 +303,8 @@ class CameraPosePath(
          * Positions are a Catmull-Rom spline through [keyframesPerTurn] keyframes per turn.
          *
          * @param bounds The box to frame, in world space. An empty box is framed at
-         * [CameraPath.MIN_DISTANCE].
+         * [CameraPath.MIN_DISTANCE] around its centre, which must be finite: the empty box Filament
+         * reports, with infinite corners, has none, so check [Aabb.isEmpty] first.
          * @param verticalFovDegrees Vertical field of view of the camera that will play the path.
          * @param aspect Viewport width divided by height.
          * @param durationSeconds Length of the whole path. Must be positive.
@@ -261,8 +315,9 @@ class CameraPosePath(
          * @param padding Extra framing margin, as a fraction of the fitted distance.
          * @param loop Whether the path repeats.
          * @param keyframesPerTurn Keyframes per full turn. At least 4.
-         * @throws IllegalArgumentException when [durationSeconds] is not positive or [turns] is
-         * zero or not finite.
+         * @throws IllegalArgumentException when [durationSeconds] is not positive, [turns] is
+         * zero, [verticalFovDegrees] or [aspect] is not positive, or any input (including the
+         * bounds) is not finite.
          */
         @Suppress("LongParameterList")
         fun orbit(
@@ -279,6 +334,17 @@ class CameraPosePath(
         ): CameraPosePath {
             require(durationSeconds.isFinite() && durationSeconds > 0f) { "durationSeconds must be > 0" }
             require(turns.isFinite() && turns != 0f) { "turns must be finite and non-zero" }
+            require(verticalFovDegrees.isFinite() && verticalFovDegrees > 0.0) {
+                "verticalFovDegrees must be finite and > 0"
+            }
+            require(aspect.isFinite() && aspect > 0.0) { "aspect must be finite and > 0" }
+            require(elevationDegrees.isFinite()) { "elevationDegrees must be finite" }
+            require(startAzimuthDegrees.isFinite()) { "startAzimuthDegrees must be finite" }
+            require(padding.isFinite()) { "padding must be finite" }
+            val center = bounds.center
+            require(center.x.isFinite() && center.y.isFinite() && center.z.isFinite()) {
+                "bounds must be finite"
+            }
             val elevation = elevationDegrees.coerceIn(-CameraShot.MAX_ELEVATION, CameraShot.MAX_ELEVATION)
             val radius = fitDistanceForBounds(
                 bounds = bounds,
@@ -287,7 +353,6 @@ class CameraPosePath(
                 padding = padding,
                 elevationDegrees = elevation.toDouble(),
             ).takeIf { it.isFinite() && it > CameraPath.MIN_DISTANCE } ?: CameraPath.MIN_DISTANCE
-            val center = bounds.center
             val segments = maxOf(2, ceil(abs(turns) * keyframesPerTurn.coerceAtLeast(MIN_KEYFRAMES_PER_TURN)).toInt())
             val wholeTurns = turns == floor(turns)
             val keyframes = ArrayList<CameraPoseKeyframe>(segments + 1)
@@ -318,7 +383,8 @@ class CameraPosePath(
          * @param distance How far to slide, in world units; negative slides left.
          * @param durationSeconds Length of the move. Must be positive.
          * @param easing Easing of the move. Defaults to [CameraEasing.InOut]: starts and ends at rest.
-         * @throws IllegalArgumentException when [durationSeconds] is not positive.
+         * @throws IllegalArgumentException when [durationSeconds] is not positive, or [distance]
+         * or [from]'s position is not finite.
          */
         fun travelling(
             from: CameraPose,
@@ -327,6 +393,8 @@ class CameraPosePath(
             easing: (Float) -> Float = CameraEasing.InOut,
         ): CameraPosePath {
             require(durationSeconds.isFinite() && durationSeconds > 0f) { "durationSeconds must be > 0" }
+            require(distance.isFinite()) { "distance must be finite" }
+            require(isFinite(from.position)) { "from must be finite" }
             val start = from.copy(quaternion = normalizeOrIdentity(from.quaternion))
             val end = start.copy(position = start.position + start.right * distance)
             return CameraPosePath(
@@ -346,8 +414,8 @@ class CameraPosePath(
          * [CameraPath.MIN_DISTANCE]. Smaller than the start distance moves in, larger moves out.
          * @param durationSeconds Length of the move. Must be positive.
          * @param easing Easing of the move. Defaults to [CameraEasing.InOut].
-         * @throws IllegalArgumentException when [durationSeconds] is not positive or [from]
-         * equals [target].
+         * @throws IllegalArgumentException when [durationSeconds] is not positive, [from]
+         * equals [target], or [toDistance], [target] or [from] is not finite.
          */
         fun dolly(
             target: Position,
@@ -357,6 +425,8 @@ class CameraPosePath(
             easing: (Float) -> Float = CameraEasing.InOut,
         ): CameraPosePath {
             require(durationSeconds.isFinite() && durationSeconds > 0f) { "durationSeconds must be > 0" }
+            require(toDistance.isFinite()) { "toDistance must be finite" }
+            require(isFinite(target) && isFinite(from)) { "target and from must be finite" }
             val offset = from - target
             val startDistance = length(offset)
             require(startDistance > 0f) { "from must differ from target" }
@@ -374,6 +444,8 @@ class CameraPosePath(
 
         private const val FULL_TURN_DEGREES = 360f
         private const val MIN_KEYFRAMES_PER_TURN = 4
+
+        private fun isFinite(p: Float3): Boolean = p.x.isFinite() && p.y.isFinite() && p.z.isFinite()
 
         private fun normalizeOrIdentity(q: Quaternion): Quaternion {
             val norm = length(q)

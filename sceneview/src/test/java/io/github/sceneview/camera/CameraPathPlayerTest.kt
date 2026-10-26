@@ -1,9 +1,16 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.camera
 
+import androidx.compose.runtime.snapshots.Snapshot
 import dev.romainguy.kotlin.math.length
+import io.github.sceneview.Aabb
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.math.Position
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -112,6 +119,77 @@ class CameraPathPlayerTest {
         player.advance(5f)
         assertEquals(0f, player.seconds, 0f)
         assertFalse(player.isPlaying)
+    }
+
+    @Test
+    fun speedZeroHoldsThePlayheadWithoutFinishing() {
+        val player = playing().apply { speed = 0f }
+        player.advance(0.5f)
+        assertEquals(0f, player.seconds, 0f)
+        assertTrue("still playing at speed 0", player.isPlaying)
+        player.seekTo(1f)
+        player.advance(0.5f)
+        assertTrue(player.isPlaying)
+        player.speed = 1f
+        player.advance(0.5f)
+        assertEquals(1.5f, player.seconds, 1e-6f)
+    }
+
+    @Test
+    fun aNonFiniteSpeedIsRejected() {
+        val player = playing()
+        for (bad in floatArrayOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY)) {
+            assertThrows(IllegalArgumentException::class.java) { player.speed = bad }
+        }
+        assertEquals(1f, player.speed, 0f)
+    }
+
+    @Test
+    fun loopFollowsANewTimeline() {
+        val player = CameraPathPlayer(path)
+        assertFalse(player.loop)
+        val orbit = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0)
+        player.timeline = orbit
+        assertTrue(player.loop)
+        assertEquals(orbit.durationSeconds, player.durationSeconds, 0f)
+        player.timeline = path
+        assertFalse(player.loop)
+    }
+
+    @Test
+    fun anEquivalentNewTimelineInvalidatesNothing() {
+        fun build() = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0)
+        val player = CameraPathPlayer(build())
+        // What a timeline bar reads.
+        val reads = mutableSetOf<Any>()
+        Snapshot.observe(readObserver = { reads.add(it) }) {
+            player.durationSeconds
+            player.loop
+            player.progress
+            player.isPlaying
+        }
+        assertTrue(reads.isNotEmpty())
+        val changed = mutableSetOf<Any>()
+        val handle = Snapshot.registerApplyObserver { states, _ -> changed.addAll(states) }
+        try {
+            Snapshot.sendApplyNotifications()
+            changed.clear()
+            // A composition that builds its path in the body hands the player a new object
+            // every time. Nothing a reader observed may change, or it would recompose forever.
+            val rebuilt = build()
+            player.timeline = rebuilt
+            Snapshot.sendApplyNotifications()
+            assertSame(rebuilt, player.timeline)
+            assertTrue("reads invalidated: ${changed.intersect(reads)}", changed.intersect(reads).isEmpty())
+            // A real change still reaches the readers.
+            player.timeline = CameraPosePath.orbit(
+                Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0, durationSeconds = 20f,
+            )
+            Snapshot.sendApplyNotifications()
+            assertTrue(changed.intersect(reads).isNotEmpty())
+        } finally {
+            handle.dispose()
+        }
     }
 
     @Test

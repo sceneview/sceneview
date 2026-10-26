@@ -1030,7 +1030,7 @@ public final class io/github/sceneview/camera/CameraPoseKeyframe {
 }
 
 public final class io/github/sceneview/camera/CameraPoseKt {
-	public static final fun applyCameraPath (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/camera/CameraTimeline;F)Lio/github/sceneview/camera/CameraPose;
+	public static final fun applyCameraTimeline (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/camera/CameraTimeline;F)Lio/github/sceneview/camera/CameraPose;
 	public static final fun applyPose (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/camera/CameraPose;)V
 	public static final fun toPose (Lio/github/sceneview/camera/CameraShot;)Lio/github/sceneview/camera/CameraPose;
 }

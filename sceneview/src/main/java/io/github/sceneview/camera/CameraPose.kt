@@ -8,6 +8,7 @@ import dev.romainguy.kotlin.math.length
 import dev.romainguy.kotlin.math.lookAt
 import dev.romainguy.kotlin.math.normalize
 import dev.romainguy.kotlin.math.rotation
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
@@ -30,6 +31,7 @@ import io.github.sceneview.node.CameraNode
  * @property quaternion Camera orientation. Expected normalized; [CameraPosePath] normalizes every
  * keyframe rotation before it interpolates.
  */
+@ExperimentalSceneViewApi
 data class CameraPose(
     val position: Position = Position(),
     val quaternion: Quaternion = Quaternion(),
@@ -115,11 +117,15 @@ interface CameraTimeline {
      *
      * Times before `0` hold the first pose and times after [durationSeconds] hold the last one,
      * unless [loop] is set, in which case they wrap.
+     *
+     * Experimental, like [CameraPose]: the rest of the interface is stable.
      */
+    @ExperimentalSceneViewApi
     fun poseAt(seconds: Float): CameraPose
 }
 
 /** This shot as a [CameraPose]: its [CameraShot.eye], looking at its target with `+Y` up. */
+@ExperimentalSceneViewApi
 fun CameraShot.toPose(): CameraPose = CameraPose(eye, transform().quaternion)
 
 /**
@@ -131,6 +137,7 @@ fun CameraShot.toPose(): CameraPose = CameraPose(eye, transform().quaternion)
  *
  * The node's scale is kept.
  */
+@ExperimentalSceneViewApi
 fun CameraNode.applyPose(pose: CameraPose) {
     transform(position = pose.position, quaternion = pose.quaternion, smooth = false)
 }
@@ -140,5 +147,6 @@ fun CameraNode.applyPose(pose: CameraPose) {
  *
  * The same main-thread and manipulator rules as [applyPose] apply.
  */
-fun CameraNode.applyCameraPath(timeline: CameraTimeline, seconds: Float): CameraPose =
+@ExperimentalSceneViewApi
+fun CameraNode.applyCameraTimeline(timeline: CameraTimeline, seconds: Float): CameraPose =
     timeline.poseAt(seconds).also { applyPose(it) }
