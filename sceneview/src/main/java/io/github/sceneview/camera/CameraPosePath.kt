@@ -73,7 +73,10 @@ enum class CameraPathInterpolation {
  * it holds the first pose, after the end the last pose, unless [loop] wraps time around.
  *
  * **Easing.** Each segment is eased by its starting keyframe's [CameraPoseKeyframe.easing], or by
- * [easing] when that is `null`. An eased segment stops at both of its keyframes. [pathEasing],
+ * [easing] when that is `null`. A segment eased by [CameraEasing.InOut] or
+ * [CameraEasing.Expressive], whose slope is zero at both ends, stops at both of its keyframes; a
+ * custom easing stops only where its own slope is zero, and [CameraEasing.Linear] does not stop.
+ * [pathEasing],
  * when set, also remaps the whole path's time before the segment is found, so a multi-keyframe
  * move can ease in at the start and out at the end as one gesture. With [pathEasing] the
  * keyframes are reached at the times the easing maps their own to.
@@ -165,13 +168,41 @@ class CameraPosePath(
      * A non-finite [seconds] is treated as `0`.
      */
     override fun poseAt(seconds: Float): CameraPose {
+        val time = if (seconds.isFinite()) seconds else 0f
+        val laps = if (loop && durationSeconds > 0f && time !in 0f..durationSeconds) {
+            floor(time / durationSeconds).toLong()
+        } else {
+            0L
+        }
+        return poseAt(laps, localSeconds(time))
+    }
+
+    /**
+     * The pose [seconds] into lap [lap], [seconds] within the lap. A fractional [orbit] adds the
+     * turn of the laps already played, reduced to under one turn in double precision before it
+     * reaches a float, so it carries on across the seam and lap 100 000 is as exact as lap 1.
+     * [CameraPathPlayer] samples a looping path here, never at a large time.
+     */
+    internal fun poseAt(lap: Long, seconds: Float): CameraPose {
         val frames = keyframes
         if (frames.isEmpty()) return CameraPose()
         if (frames.size == 1 || durationSeconds <= 0f) return poseOf(frames.first().pose)
-        val local = localSeconds(if (seconds.isFinite()) seconds else 0f)
+        val local = seconds.coerceIn(0f, durationSeconds)
         val eased = pathEasing?.let { durationSeconds * applyEasing(it, local / durationSeconds) } ?: local
-        return sample(frames.first().seconds + eased)
+        val pose = sample(frames.first().seconds + eased)
+        val pivot = lookAt
+        if (!loop || lap == 0L || lapTurns == 0.0 || pivot == null) return pose
+        val degrees = (lap.toDouble() * lapTurns).mod(1.0) * FULL_TURN_DEGREES
+        if (degrees == 0.0) return pose
+        val turn = Quaternion.fromAxisAngle(up, degrees.toFloat())
+        return poseOf(CameraPose(pivot + CameraPose.rotate(turn, pose.position - pivot)))
     }
+
+    /**
+     * Turns per lap of an [orbit] whose turns are not whole, `0` otherwise: each lap then starts
+     * where the last one ended, that many turns round [lookAt] about [up].
+     */
+    private var lapTurns: Double = 0.0
 
     /** `true` once [seconds] is past the end of a path that does not loop. */
     fun isFinishedAt(seconds: Float): Boolean = !loop && seconds >= durationSeconds
@@ -329,8 +360,10 @@ class CameraPosePath(
          * @param verticalFovDegrees Vertical field of view of the camera that will play the path.
          * @param aspect Viewport width divided by height.
          * @param durationSeconds Length of the whole path. Must be positive.
-         * @param turns Number of turns; negative turns the other way. A whole number of turns
-         * ends where it starts, so a [loop] is seamless.
+         * @param turns Number of turns, at most 1000 either way; negative turns the other way. A
+         * [loop] is seamless whatever the number: a whole number of turns ends where it starts, and
+         * each lap of a fractional one starts where the last one ended (lap two of 1.5 turns starts
+         * half a turn on).
          * @param elevationDegrees Camera elevation above the box centre; positive looks down.
          * @param startAzimuthDegrees Azimuth of the first keyframe.
          * @param padding Extra framing margin, as a fraction of the fitted distance.
@@ -338,7 +371,7 @@ class CameraPosePath(
          * @param keyframesPerTurn Keyframes per full turn. At least 6, so consecutive chords stay
          * 60° or less apart and the camera never stops on a keyframe.
          * @throws IllegalArgumentException when [durationSeconds] is not positive, [turns] is
-         * zero, [verticalFovDegrees] or [aspect] is not positive, or any input (including the
+         * zero or beyond 1000 either way, [verticalFovDegrees] or [aspect] is not positive, or any input (including the
          * bounds) is not finite.
          */
         @Suppress("LongParameterList")
@@ -355,7 +388,9 @@ class CameraPosePath(
             keyframesPerTurn: Int = ORBIT_KEYFRAMES_PER_TURN,
         ): CameraPosePath {
             require(durationSeconds.isFinite() && durationSeconds > 0f) { "durationSeconds must be > 0" }
-            require(turns.isFinite() && turns != 0f) { "turns must be finite and non-zero" }
+            require(turns.isFinite() && turns != 0f && abs(turns) <= MAX_ORBIT_TURNS) {
+                "turns must be finite, non-zero and at most $MAX_ORBIT_TURNS either way, was $turns"
+            }
             require(verticalFovDegrees.isFinite() && verticalFovDegrees > 0.0) {
                 "verticalFovDegrees must be finite and > 0"
             }
@@ -394,7 +429,7 @@ class CameraPosePath(
                 easing = CameraEasing.Linear,
                 lookAt = center,
                 loop = loop,
-            )
+            ).also { if (!wholeTurns) it.lapTurns = turns.toDouble() }
         }
 
         /**
@@ -466,6 +501,9 @@ class CameraPosePath(
 
         private const val FULL_TURN_DEGREES = 360f
         private const val MIN_KEYFRAMES_PER_TURN = 6
+
+        /** Most turns an [orbit] takes: a bound on its keyframe count. */
+        private const val MAX_ORBIT_TURNS = 1000f
 
         private fun isFinite(p: Float3): Boolean = p.x.isFinite() && p.y.isFinite() && p.z.isFinite()
 

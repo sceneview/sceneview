@@ -201,6 +201,73 @@ class CameraPathPlayerTest {
         assertTrue(once.isFinished)
     }
 
+    /** Distance the camera moves on each of [frames] 60 fps frames. */
+    private fun steps(player: CameraPathPlayer, frames: Int): FloatArray {
+        var previous = player.pose.position
+        return FloatArray(frames) {
+            val position = player.advance(FRAME).position
+            length(position - previous).also { previous = position }
+        }
+    }
+
+    private fun assertNoJump(steps: FloatArray) {
+        val mean = steps.average().toFloat()
+        val largest = steps.max()
+        assertTrue("largest step $largest against a mean of $mean", largest < 2f * mean)
+    }
+
+    @Test
+    fun aWeekLongTourStepsAsOnItsFirstLap() {
+        // 1.05 turns a lap: the turn of the laps played never comes back to a whole number
+        // within a few laps. A float playhead froze and jumped after days (0 to 0.197 a frame).
+        fun tour() = CameraPath.tour(CameraShot(Position(0f, 0.5f, 0f), 0f, 20f, 3f), durationSeconds = 25f, turns = 1.05f)
+        val first = steps(playing(tour()), 3000)
+        val player = playing(tour())
+        repeat(7 * 24) { player.advance(3600f) } // a week, a whole number of 25 s laps
+        assertEquals(0f, player.seconds, 0f)
+        val week = steps(player, 3000) // two laps, a seam included
+        for (i in first.indices) {
+            assertEquals("frame $i", first[i], week[i], 0.05f * first[i])
+        }
+    }
+
+    @Test
+    fun aFractionalOrbitDoesNotJumpAtTheSeam() {
+        val orbit = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0, durationSeconds = 6f, turns = 1.5f)
+        val player = playing(orbit)
+        assertTrue(player.loop)
+        assertNoJump(steps(player, (4 * 6f / FRAME).toInt()))
+    }
+
+    @Test
+    fun seekingToTheEndShowsTheEndOnEveryLap() {
+        val player = playing(oneAndAHalfTurnTour())
+        for (lap in 0..2) {
+            player.seekTo(6f)
+            assertEquals("lap $lap", 6f, player.seconds, 0f)
+            assertEquals("lap $lap", 1f, player.progress, 0f)
+            val end = player.pose.position
+            player.advance(FRAME) // into the next lap, without a jump
+            assertTrue("lap $lap", length(player.pose.position - end) < 0.2f)
+        }
+    }
+
+    @Test
+    fun turningLoopOffKeepsTheLap() {
+        val player = playing(oneAndAHalfTurnTour())
+        player.advance(7f) // one second into the second lap, half a turn on
+        val before = player.pose.position
+        player.loop = false
+        assertEquals(1f, player.seconds, 1e-4f)
+        assertTrue(length(player.pose.position - before) < 1e-4f)
+        player.advance(10f)
+        assertTrue(player.isFinished)
+        assertTrue(length(player.pose.position - oneAndAHalfTurnTour().poseAt(12f).position) < 1e-3f)
+    }
+
+    private fun oneAndAHalfTurnTour() =
+        CameraPath.tour(CameraShot(Position(0f, 0.5f, 0f), 0f, 20f, 3f), durationSeconds = 6f, turns = 1.5f)
+
     @Test
     fun aTourOfOneAndAHalfTurnsDoesNotJumpAtTheSeam() {
         // Each lap of this tour starts half a turn on from the last. Sampled at the wrapped
@@ -298,3 +365,5 @@ class CameraPathPlayerTest {
         assertEquals(0.5f, player.seconds, 0f)
     }
 }
+
+private const val FRAME = 1f / 60f

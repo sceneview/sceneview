@@ -8,10 +8,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import dev.romainguy.kotlin.math.dot
-import dev.romainguy.kotlin.math.length
 import io.github.sceneview.ExperimentalSceneViewApi
-import kotlin.math.abs
 import kotlin.math.floor
 
 /**
@@ -69,8 +66,8 @@ class CameraPathPlayer(
      * The move being played. Replacing it keeps the playhead time and brings it into the new
      * duration at once, wrapped when [loop] is set and clamped otherwise: a looping player at
      * 15 s that switches from a 20 s to a 10 s timeline goes on from 5 s, and [seconds],
-     * [progress] and [pose] agree from the next read. A looping player also keeps its lap count,
-     * so a rebuilt [CameraPath.tour] of 1.5 turns does not jump back half a turn.
+     * [progress] and [pose] agree from the next read. The lap count is kept too, so a rebuilt
+     * [CameraPath.tour] of 1.5 turns does not jump back half a turn.
      *
      * [loop] changes only when the new timeline's [CameraTimeline.loop] differs from the old
      * one's, so a `loop` chosen on the player survives a rebuilt timeline of the same kind.
@@ -86,36 +83,25 @@ class CameraPathPlayer(
     var timeline: CameraTimeline = timeline
         set(value) {
             if (value === field) return
-            val oldDuration = durationSeconds.toDouble()
-            val wasLooping = loopState
-            val laps = if (wasLooping && oldDuration > 0.0) floor(elapsed / oldDuration) else 0.0
-            val local = elapsed - laps * oldDuration
             if (value.loop != field.loop) loopState = value.loop
             field = value
             durationState = value.durationSeconds
-            cycleSeconds = cycleOf(value)
-            setPlayhead(if (loopState) laps * value.durationSeconds + local else local)
+            setPlayhead(local)
         }
 
     private var loopState by mutableStateOf(loop)
 
     /**
      * Whether the playhead wraps to the start at the end, instead of stopping there. Turning it
-     * off keeps the playhead where [seconds] shows it, within the current lap.
+     * off keeps the playhead and the lap where they are, so the camera does not move: on lap two
+     * of a [CameraPath.tour] of 1.5 turns it finishes that lap, half a turn on.
      */
     var loop: Boolean
         get() = loopState
         set(value) {
             if (value == loopState) return
             loopState = value
-            if (!value) setPlayhead(seconds.toDouble())
         }
-
-    /**
-     * Length after which a looping [timeline] repeats exactly, a whole number of its laps; `0`
-     * when none was found. See [cycleOf].
-     */
-    private var cycleSeconds: Double = cycleOf(timeline)
 
     private var speedState by mutableFloatStateOf(1f)
 
@@ -133,12 +119,17 @@ class CameraPathPlayer(
         }
 
     /**
-     * The playhead before wrapping: [seconds] plus the laps already played when [loop] is set,
-     * reduced by whole [cycleSeconds]. A looping timeline is sampled here rather than at
-     * [seconds], so a path that moves on from lap to lap carries on across the seam. Kept in
-     * double precision so a long run of small frame steps does not drift.
+     * Whole laps played, counted when [loop] wraps the playhead: up at the end playing forward,
+     * down at the start playing backward. Kept apart from [local] so the timeline is never
+     * sampled at a large time, however long the player runs.
      */
-    private var elapsed: Double = 0.0
+    private var laps: Long = 0L
+
+    /**
+     * The playhead within the lap, in `[0, durationSeconds]`, in double precision so a long run of
+     * small frame steps does not drift. [seconds] is its float copy.
+     */
+    private var local: Double = 0.0
 
     /** The playhead, in seconds from the start of [timeline], within `[0, durationSeconds]`. */
     var seconds: Float by mutableFloatStateOf(0f)
@@ -160,14 +151,25 @@ class CameraPathPlayer(
         get() = !loop && if (speed < 0f) seconds <= 0f else seconds >= durationSeconds
 
     /**
-     * The pose at the playhead. Without [loop], or for a timeline that does not loop itself, it
-     * is `timeline.poseAt(seconds)`. When both loop, the timeline is sampled at the playhead
-     * before wrapping, so the laps it counts itself apply: a [CameraPath.tour] of 1.5 turns
-     * starts its second lap half a turn on, with no jump at the seam. [seconds] and [progress]
-     * stay within the current lap either way.
+     * The pose at the playhead: `timeline.poseAt(seconds)`, plus the turn of the laps played for
+     * a looping [CameraPath] or [CameraPosePath.orbit] whose turns are not whole. A
+     * [CameraPath.tour] of 1.5 turns starts its second lap half a turn on, with no jump at the
+     * seam, and stays exact after days of play: the player keeps a whole lap count and the time
+     * within the lap, and the path reduces the laps' turn to under one turn in double precision
+     * before it reaches a float. Another [CameraTimeline] is sampled within the lap, so it should
+     * end where it starts to loop seamlessly. [seconds] and [progress] stay within the lap.
      */
     val pose: CameraPose
-        get() = timeline.poseAt(if (loopState && timeline.loop) elapsed.toFloat() else seconds)
+        get() {
+            val current = timeline
+            val time = seconds
+            if (!current.loop || laps == 0L) return current.poseAt(time)
+            return when (current) {
+                is CameraPath -> current.poseAt(laps, time)
+                is CameraPosePath -> current.poseAt(laps, time)
+                else -> current.poseAt(time)
+            }
+        }
 
     private var lastFrameNanos: Long = NO_FRAME
 
@@ -190,14 +192,15 @@ class CameraPathPlayer(
     }
 
     /**
-     * Moves the playhead to [seconds], clamped to `[0, durationSeconds]` (wrapped when [loop] is
-     * set, within the current lap). Playback state is unchanged. A non-finite value is ignored.
+     * Moves the playhead to [seconds] within the current lap. `[0, durationSeconds]` is taken as
+     * is, both ends included, so seeking to [durationSeconds] shows the end of the lap
+     * ([progress] `1`) on every lap. Outside it, the time is wrapped when [loop] is set and
+     * clamped otherwise, still within the lap. Playback state is unchanged. A non-finite value is
+     * ignored.
      */
     fun seekTo(seconds: Float) {
         if (!seconds.isFinite()) return
-        val duration = durationSeconds.toDouble()
-        val lapStart = if (loopState && duration > 0.0) floor(elapsed / duration) * duration else 0.0
-        setPlayhead(lapStart + normalized(seconds.toDouble()))
+        setPlayhead(seconds.toDouble())
     }
 
     /**
@@ -211,13 +214,17 @@ class CameraPathPlayer(
     fun advance(deltaSeconds: Float): CameraPose {
         if (isPlaying && deltaSeconds.isFinite() && deltaSeconds > 0f) {
             val duration = durationSeconds.toDouble()
-            val next = elapsed + deltaSeconds.toDouble() * speed
+            val next = local + deltaSeconds.toDouble() * speed
             when {
                 duration <= 0.0 -> {
                     setPlayhead(0.0)
                     if (!loop) isPlaying = false
                 }
-                loop -> setPlayhead(next)
+                loop -> {
+                    val wrapped = floor(next / duration)
+                    laps += wrapped.toLong()
+                    setPlayhead(next - wrapped * duration)
+                }
                 speed > 0f && next >= duration -> {
                     setPlayhead(duration)
                     isPlaying = false
@@ -248,67 +255,26 @@ class CameraPathPlayer(
         return advance(delta)
     }
 
-    private fun normalized(value: Double): Double {
-        val duration = durationSeconds.toDouble()
-        if (duration <= 0.0) return 0.0
-        if (!loop || value in 0.0..duration) return value.coerceIn(0.0, duration)
-        return (value - floor(value / duration) * duration).coerceIn(0.0, duration)
-    }
-
     /**
-     * Sets the playhead from a time before wrapping: [seconds] gets it wrapped or clamped into
-     * the timeline, [elapsed] keeps the laps when looping, less whole cycles.
+     * Sets the playhead within the current lap: [value] is kept in `[0, durationSeconds]`,
+     * wrapped into it when [loop] is set and clamped otherwise. [laps] is left alone.
      */
     private fun setPlayhead(value: Double) {
-        val cycle = cycleSeconds
-        elapsed = when {
-            !loopState || durationSeconds <= 0f -> normalized(value)
-            cycle > 0.0 -> value - floor(value / cycle) * cycle
-            else -> value
+        val duration = durationSeconds.toDouble()
+        local = when {
+            duration <= 0.0 || !duration.isFinite() -> 0.0
+            value in 0.0..duration -> value
+            loop -> (value - floor(value / duration) * duration).coerceIn(0.0, duration)
+            else -> value.coerceIn(0.0, duration)
         }
-        seconds = normalized(value).toFloat()
+        seconds = local.toFloat()
     }
-
-    /**
-     * How long [timeline] takes to come back exactly to where it started, as a whole number of
-     * its laps: one lap for a timeline that wraps by itself (a [CameraPosePath] or a whole-turn
-     * [CameraPath.tour]), two for a tour of 1.5 turns, the duration itself for a timeline that
-     * does not loop. Probed by comparing poses a whole number of laps apart, up to
-     * [MAX_CYCLE_LAPS]; `0` when none matches, and the playhead then grows in double precision.
-     */
-    private fun cycleOf(timeline: CameraTimeline): Double {
-        val duration = timeline.durationSeconds
-        if (!duration.isFinite() || duration <= 0f) return 0.0
-        if (!timeline.loop) return duration.toDouble()
-        val probes = FloatArray(CYCLE_PROBES) { it * duration / CYCLE_PROBES }
-        val reference = probes.map { timeline.poseAt(it) }
-        for (laps in 1..MAX_CYCLE_LAPS) {
-            val matches = probes.indices.all { i ->
-                samePose(reference[i], timeline.poseAt(probes[i] + laps * duration))
-            }
-            if (matches) return laps * duration.toDouble()
-        }
-        return 0.0
-    }
-
-    private fun samePose(a: CameraPose, b: CameraPose): Boolean =
-        length(a.position - b.position) <= CYCLE_TOLERANCE * (1f + length(a.position)) &&
-            abs(dot(a.quaternion, b.quaternion)) >= 1f - CYCLE_TOLERANCE
 }
 
 /** [CameraPathPlayer]'s marker for "no frame timestamp recorded yet". */
 private const val NO_FRAME = Long.MIN_VALUE
 
 private const val NANOS_PER_SECOND = 1_000_000_000.0
-
-/** Most laps [CameraPathPlayer] tries when looking for the cycle of a looping timeline. */
-private const val MAX_CYCLE_LAPS = 12
-
-/** Times per lap compared when looking for that cycle. */
-private const val CYCLE_PROBES = 3
-
-/** Relative tolerance of that comparison, on positions and on rotations. */
-private const val CYCLE_TOLERANCE = 1e-4f
 
 /**
  * Remembers a [CameraPathPlayer] for [timeline].

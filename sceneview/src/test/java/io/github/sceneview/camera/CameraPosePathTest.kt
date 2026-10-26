@@ -260,6 +260,34 @@ class CameraPosePathTest {
     }
 
     @Test
+    fun aFractionalOrbitCarriesOnAcrossTheSeam() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        val orbit = CameraPosePath.orbit(box, 45.0, 1.0, durationSeconds = 6f, turns = 1.5f)
+        for (lap in 1..3) {
+            val seam = lap * 6f
+            val before = orbit.poseAt(seam - 1e-3f)
+            val after = orbit.poseAt(seam + 1e-3f)
+            assertTrue("lap $lap", length(after.position - before.position) < 0.01f)
+            assertTrue("lap $lap", abs(dot(after.quaternion, before.quaternion)) > 0.9999f)
+        }
+        // Lap two starts half a turn on, where lap one ended.
+        assertTrue(length(orbit.poseAt(6f).position - orbit.poseAt(6f + 1e-4f).position) < 1e-3f)
+        assertTrue(length(orbit.poseAt(12f).position - orbit.poseAt(0f).position) < 1e-3f)
+    }
+
+    @Test
+    fun anOrbitRefusesAbsurdTurns() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        for (turns in floatArrayOf(1e5f, -1e5f, 1e9f)) {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                CameraPosePath.orbit(box, 45.0, 1.0, turns = turns)
+            }
+            assertTrue(error.message.orEmpty().startsWith("turns must be"))
+        }
+        assertEquals(1000 * 32 + 1, CameraPosePath.orbit(box, 45.0, 1.0, turns = 1000f).keyframes.size)
+    }
+
+    @Test
     fun aKeyframeDroppedForItsTimeIsNotCheckedForItsPosition() {
         val path = CameraPosePath(
             listOf(
@@ -322,6 +350,8 @@ class CameraPosePathTest {
         val h = 1e-3f
         val leaving = length(path.poseAt(2f + h).position - path.poseAt(2f).position) / h
         assertTrue("leaves the eased keyframe at $leaving m/s", leaving < 0.01f)
+        val arriving = length(path.poseAt(4f).position - path.poseAt(4f - h).position) / h
+        assertTrue("arrives at the next keyframe at $arriving m/s", arriving < 0.01f)
     }
 
     @Test
