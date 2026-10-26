@@ -143,7 +143,7 @@ litert = "2.3.0"
 # ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
 # demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
 # scans. Not in any app: the Android artifact started a telemetry provider at every launch.
-onnxruntime = "1.30.0"
+onnxruntime = "1.31.0"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
