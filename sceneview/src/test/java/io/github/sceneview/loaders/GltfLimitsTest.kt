@@ -5,18 +5,21 @@ import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
  * The glTF files Filament's release build crashes on instead of refusing them, which [ModelLoader]
  * has to find in the file first: a skinned mesh of more than 256 joints, a decoded texture larger
- * than the GPU's largest, accessors and buffer views that reach past their data, primitives whose
- * attributes disagree on their vertex count, and morph weights animated past 256 targets.
+ * than the GPU's largest, accessors and buffer views that reach past their data, buffers cgltf
+ * cannot load, primitives whose attributes disagree on their vertex count, keyframe times in no
+ * buffer view, and morph weights animated past 256 targets — and the valid files that must pass.
  */
 @RunWith(RobolectricTestRunner::class) // org.json is an Android API
 class GltfLimitsTest {
@@ -193,13 +196,86 @@ class GltfLimitsTest {
 
     @Test
     fun `a data URI buffer shorter than it declares is refused`() {
-        fun gltf(base64: String) = text("""{"buffers":[{"uri":"data:application/octet-stream;base64,$base64","byteLength":4}]}""")
+        fun gltf(base64: String, length: Int = 4) =
+            text("""{"buffers":[{"uri":"data:application/octet-stream;base64,$base64","byteLength":$length}]}""")
 
         assertEquals(emptyList<String>(), GltfLimits.violations(gltf("AAAAAA=="), MAX))
         assertEquals(emptyList<String>(), GltfLimits.violations(gltf("AAAAAAAA"), MAX))
         assertEquals(
             listOf("buffer 0 (data: URI) is 3 bytes, shorter than the 4 it declares"),
             GltfLimits.violations(gltf("AAAA"), MAX),
+        )
+        // Unpadded, six characters are 36 bits: four bytes, not five.
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("AAAAAA"), MAX))
+        assertEquals(
+            listOf("buffer 0 (data: URI) is 4 bytes, shorter than the 5 it declares"),
+            GltfLimits.violations(gltf("AAAAAA", length = 5), MAX),
+        )
+    }
+
+    @Test
+    fun `a data URI buffer cgltf cannot decode is refused`() {
+        fun gltf(uri: String) = text("""{"buffers":[{"uri":"$uri","byteLength":4}]}""")
+        val notBase64 = listOf("buffer 0 is a data: URI that is not base64")
+
+        assertEquals(notBase64, GltfLimits.violations(gltf("data:application/octet-stream,AAAAAA=="), MAX))
+        assertEquals("no comma", notBase64, GltfLimits.violations(gltf("data:application/octet-stream;base64"), MAX))
+        assertEquals(
+            listOf("buffer 0 is a data: URI that is not valid base64 at character 2"),
+            GltfLimits.violations(gltf("data:application/octet-stream;base64,AA AAA=="), MAX),
+        )
+        assertEquals(
+            listOf("buffer 0 is a data: URI that is not valid base64 at character 0"),
+            GltfLimits.violations(gltf("data:application/octet-stream;base64,\\nAAAAAA="), MAX),
+        )
+        // cgltf decodes the declared bytes only: what comes after them is never read.
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("data:application/octet-stream;base64,AAAAAA!!"), MAX))
+        assertEquals(
+            "an escape that stands for a base64 character is one",
+            emptyList<String>(),
+            GltfLimits.violations(gltf("data:application\\/octet-stream;base64,\\u0041AAAAA\\/=="), MAX),
+        )
+    }
+
+    @Test
+    fun `a GLB whose BIN chunk is missing or shorter than buffer 0 is refused`() {
+        val json = """{"buffers":[{"byteLength":16}]}"""
+        val fallback = """{"buffers":[{"byteLength":16,"extensions":{"EXT_meshopt_compression":{"fallback":true}}}]}"""
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(json, ByteArray(16)), MAX))
+        assertEquals(
+            listOf("the BIN chunk of this GLB is 8 bytes, shorter than the 16 buffer 0 declares"),
+            GltfLimits.violations(glb(json, ByteArray(8)), MAX),
+        )
+        assertEquals(
+            listOf("this GLB has no BIN chunk for the 16 bytes of buffer 0"),
+            GltfLimits.violations(glb(json, null), MAX),
+        )
+        assertEquals("a meshopt fallback is never read", emptyList<String>(), GltfLimits.violations(glb(fallback, null), MAX))
+    }
+
+    @Test
+    fun `a negative offset is refused, never thrown`() {
+        val indices = """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"byteOffset":-4,"componentType":5123,"type":"SCALAR","count":3}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":8}],"buffers":[{"byteLength":8}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"""
+        val view = """{"bufferViews":[{"buffer":0,"byteOffset":-4,"byteLength":8}],"buffers":[{"byteLength":8}]}"""
+
+        assertEquals(listOf("accessor 1 has a negative byteOffset"), GltfLimits.violations(glb(indices, ByteArray(8)), MAX))
+        assertEquals(
+            listOf("buffer view 0 has a negative byteOffset or byteLength"),
+            GltfLimits.violations(glb(view, ByteArray(8)), MAX),
+        )
+    }
+
+    @Test
+    fun `a check that throws is reported as a malformed glTF, never thrown`() {
+        val gltf = text("""{"buffers":[{"uri":"scene.bin","byteLength":4}]}""")
+
+        assertEquals(
+            listOf("malformed glTF: unreadable"),
+            GltfLimits.violations(gltf, MAX) { throw IllegalStateException("unreadable") },
         )
     }
 
@@ -236,32 +312,44 @@ class GltfLimitsTest {
     }
 
     @Test
-    fun `an animation sampler whose output does not match its keyframes is refused`() {
-        fun gltf(path: String, interpolation: String, inputs: Int, outputs: Int, targets: Int = 2) = text(
+    fun `an animation sampler whose output does not match its keyframes is left to gltfio's Animator`() {
+        // The Animator checks it in release builds too and only leaves the animations off.
+        fun gltf(path: String, interpolation: String, inputs: Int, outputs: Int, targets: Int = 2) = glb(
             """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
-                """{"componentType":5126,"type":"SCALAR","count":$inputs},{"componentType":5126,"type":"SCALAR","count":$outputs}],""" +
+                """{"bufferView":0,"componentType":5126,"type":"SCALAR","count":$inputs},""" +
+                """{"componentType":5126,"type":"SCALAR","count":$outputs}],""" +
+                """"bufferViews":[{"buffer":0,"byteLength":${4 * inputs}}],"buffers":[{"byteLength":${4 * inputs}}],""" +
                 """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":""" +
                 List(targets) { """{"POSITION":0}""" }.joinToString(",", "[", "]") + "}]}]," +
                 """"nodes":[{"mesh":0}],"animations":[{"samplers":[{"input":1,"output":2,"interpolation":"$interpolation"}],""" +
                 """"channels":[{"sampler":0,"target":{"node":0,"path":"$path"}}]}]}""",
+            ByteArray(4 * inputs),
         )
 
-        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("translation", "LINEAR", 4, 4), MAX))
+        assertEquals("five outputs for four keyframes", emptyList<String>(), GltfLimits.violations(gltf("translation", "LINEAR", 4, 5), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("translation", "LINEAR", 4, 3), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("scale", "CUBICSPLINE", 4, 4), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("weights", "LINEAR", 4, 4), MAX))
         assertEquals(emptyList<String>(), GltfLimits.violations(gltf("rotation", "CUBICSPLINE", 4, 12), MAX))
-        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("weights", "STEP", 4, 8), MAX))
         assertEquals(emptyList<String>(), GltfLimits.violations(gltf("weights", "CUBICSPLINE", 4, 24), MAX))
-        assertEquals(
-            listOf("channel 0 of animation 0 has 3 output values for 4 keyframes, not 4"),
-            GltfLimits.violations(gltf("translation", "LINEAR", 4, 3), MAX),
+    }
+
+    @Test
+    fun `an animation sampler whose keyframe times are in no buffer view is refused`() {
+        fun gltf(input: Int, output: Int) = glb(
+            """{"accessors":[{"componentType":5126,"type":"SCALAR","count":2},""" +
+                """{"bufferView":0,"componentType":5126,"type":"SCALAR","count":2}],""" +
+                """"bufferViews":[{"buffer":0,"byteLength":8}],"buffers":[{"byteLength":8}],""" +
+                """"nodes":[{}],"animations":[{"samplers":[{"input":$input,"output":$output}],""" +
+                """"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]}]}""",
+            ByteArray(8),
         )
+
         assertEquals(
-            listOf("channel 0 of animation 0 has 4 output values for 4 keyframes, not 12"),
-            GltfLimits.violations(gltf("scale", "CUBICSPLINE", 4, 4), MAX),
+            listOf("the keyframe times of sampler 0 of animation 0 are in no buffer view"),
+            GltfLimits.violations(gltf(input = 0, output = 1), MAX),
         )
-        assertEquals(
-            listOf("channel 0 of animation 0 has 4 output values for 4 keyframes, not 8"),
-            GltfLimits.violations(gltf("weights", "LINEAR", 4, 4), MAX),
-        )
+        assertEquals("an output in no buffer view reads as zeros", emptyList<String>(), GltfLimits.violations(gltf(input = 1, output = 0), MAX))
     }
 
     @Test
@@ -450,6 +538,67 @@ class GltfLimitsTest {
     }
 
     @Test
+    fun `valid quantized, sparse and interleaved files pass`() {
+        val quantized = """{"extensionsUsed":["KHR_mesh_quantization"],"extensionsRequired":["KHR_mesh_quantization"],""" +
+            """"accessors":[{"bufferView":0,"componentType":5122,"normalized":true,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"byteOffset":6,"componentType":5120,"normalized":true,"type":"VEC3","count":3}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":36,"byteStride":12}],"buffers":[{"byteLength":36}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1}}]}],"nodes":[{"mesh":0}]}"""
+        val sparse = """{"accessors":[{"componentType":5126,"type":"VEC3","count":4,"sparse":{"count":2,""" +
+            """"indices":{"bufferView":0,"componentType":5121},"values":{"bufferView":1}}}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":2},{"buffer":0,"byteOffset":4,"byteLength":24}],""" +
+            """"buffers":[{"byteLength":28}],"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}],"nodes":[{"mesh":0}]}"""
+        val sparseBin = ByteArray(28).also {
+            it[0] = 1
+            it[1] = 3
+        }
+        fun interleaved(buffer: String) = """{"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"byteOffset":12,"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":1,"componentType":5123,"type":"SCALAR","count":3},""" +
+            """{"bufferView":2,"componentType":5126,"type":"SCALAR","count":2},{"componentType":5126,"type":"VEC3","count":2}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":72,"byteStride":24},{"buffer":0,"byteOffset":72,"byteLength":6},""" +
+            """{"buffer":0,"byteOffset":80,"byteLength":8}],"buffers":[{$buffer"byteLength":88}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1},"indices":2}]}],"nodes":[{"mesh":0}],""" +
+            """"animations":[{"samplers":[{"input":3,"output":4}],"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]}]}"""
+        val interleavedBin = ByteBuffer.allocate(88).order(ByteOrder.LITTLE_ENDIAN).apply {
+            position(72)
+            putShort(0).putShort(1).putShort(2)
+            position(80)
+            putFloat(0f).putFloat(1f)
+        }.array()
+        val embedded = "data:application/octet-stream;base64," + Base64.encodeToString(interleavedBin, Base64.NO_WRAP)
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(quantized, ByteArray(36)), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(sparse, sparseBin), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(interleaved(""), interleavedBin), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(text(interleaved(""""uri":"$embedded",""")), MAX))
+        assertEquals(
+            emptyList<String>(),
+            GltfLimits.violations(text(interleaved(""""uri":"scene.bin",""")), MAX) { ByteBuffer.wrap(interleavedBin) },
+        )
+    }
+
+    @Test
+    fun `every glTF model of the repository passes, but those Filament cannot load`() {
+        // The demo models tools/fetch-assets.sh brings are checked too when they are there.
+        val root = generateSequence(File("").absoluteFile) { it.parentFile }.firstOrNull { File(it, "settings.gradle").isFile }
+        val models = root?.walkTopDown()
+            ?.onEnter { it.name !in setOf("build", ".git", ".gradle", "node_modules") }
+            ?.filter { it.isFile && it.extension.lowercase() in setOf("glb", "gltf") }
+            ?.toList()
+            .orEmpty()
+        assumeTrue("no glTF model in this checkout", models.isNotEmpty())
+
+        val refused = models.associate { model ->
+            val resources = { uri: String -> File(model.parentFile, uri).takeIf { it.isFile }?.let { ByteBuffer.wrap(it.readBytes()) } }
+            // The structure only: the largest texture side a GPU may have, so none is too large.
+            model.relativeTo(root!!).invariantSeparatorsPath to
+                GltfLimits.violations(ByteBuffer.wrap(model.readBytes()), 16384, resources)
+        }.filterValues { it.isNotEmpty() }
+        assertEquals(KNOWN_REFUSED.filterKeys { it in refused }, refused)
+    }
+
+    @Test
     fun `a payload that is not glTF passes, for gltfio to report`() {
         assertEquals(emptyList<String>(), GltfLimits.violations(ByteBuffer.wrap(byteArrayOf(1, 2, 3)), MAX))
         assertEquals(emptyList<String>(), GltfLimits.violations(text("""{"skins": [ broken"""), MAX))
@@ -478,11 +627,11 @@ class GltfLimitsTest {
         val json = textured(
             images = """[{"bufferView":0}]""",
             textures = """[{"source":0}]""",
-            rest = """"bufferViews":[{"buffer":0,"byteOffset":100,"byteLength":1000}],"buffers":[{"byteLength":40}]""",
+            rest = """"bufferViews":[{"buffer":0,"byteOffset":100,"byteLength":1000}],"buffers":[{"byteLength":36}]""",
         )
 
         assertEquals(
-            listOf("buffer view 0 reaches byte 1100 of a 40-byte buffer"),
+            listOf("buffer view 0 reaches byte 1100 of a 36-byte buffer"),
             GltfLimits.violations(glb(json, png(8192, 8192)), MAX),
         )
     }
@@ -548,6 +697,14 @@ class GltfLimitsTest {
     private companion object {
         const val MAX = 4096
 
+        /**
+         * The repository models Filament cannot load, each for a reason Filament itself asserts:
+         * this website model skins more bones than `CONFIG_MAX_BONE_COUNT`.
+         */
+        val KNOWN_REFUSED = mapOf(
+            "website-static/models/platforms/KindredLol.glb" to listOf("skin 0 has 1523 joints, more than the 256 Filament can skin"),
+        )
+
         fun joints(count: Int) = (0 until count).joinToString(",", "[", "]")
 
         fun text(json: String): ByteBuffer = ByteBuffer.wrap(json.toByteArray())
@@ -590,10 +747,11 @@ class GltfLimitsTest {
             putInt(height)
         }.array()
 
-        fun glb(json: String, bin: ByteArray): ByteBuffer {
+        /** A GLB of [json] and [bin], with no BIN chunk at all when [bin] is `null`. */
+        fun glb(json: String, bin: ByteArray?): ByteBuffer {
             val jsonBytes = json.toByteArray().let { it + ByteArray((4 - it.size % 4) % 4) { ' '.code.toByte() } }
-            val binBytes = bin + ByteArray((4 - bin.size % 4) % 4)
-            val total = 12 + 8 + jsonBytes.size + 8 + binBytes.size
+            val binBytes = bin?.let { it + ByteArray((4 - it.size % 4) % 4) }
+            val total = 12 + 8 + jsonBytes.size + (binBytes?.let { 8 + it.size } ?: 0)
             return ByteBuffer.allocate(total).order(ByteOrder.LITTLE_ENDIAN).apply {
                 putInt(0x46546C67)
                 putInt(2)
@@ -601,9 +759,11 @@ class GltfLimitsTest {
                 putInt(jsonBytes.size)
                 putInt(0x4E4F534A)
                 put(jsonBytes)
-                putInt(binBytes.size)
-                putInt(0x004E4942)
-                put(binBytes)
+                if (binBytes != null) {
+                    putInt(binBytes.size)
+                    putInt(0x004E4942)
+                    put(binBytes)
+                }
                 flip()
             }
         }

@@ -348,6 +348,28 @@ class ModelLoaderResourceFailureTest {
     }
 
     @Test
+    fun `createModel refuses an accessor at a negative offset with an IllegalArgumentException`() {
+        val failure = runCatching { loader.createModel(File(java.net.URI(negativeOffsetGlbUri()))) }.exceptionOrNull()
+
+        assertTrue("Expected GltfLimitException, got $failure", failure is GltfLimitException)
+        assertTrue(failure!!.message!!.contains("accessor 1 has a negative byteOffset"))
+        assertEquals("gltfio never sees it", emptyList<Long>(), destroyedAssets.toList())
+    }
+
+    @Test
+    fun `loadModel answers null for an accessor at a negative offset, rather than throwing`() {
+        val result = await { loader.loadModelAsync(negativeOffsetGlbUri(), onResult = it) }
+
+        assertTrue(result.called)
+        assertNull(result.value)
+        assertEquals(emptyList<Long>(), begunAssets.toList())
+        assertTrue(
+            "the warning names the offset, not an IndexOutOfBoundsException: ${warnings().map { it.msg }}",
+            warnings().any { it.msg.contains("accessor 1 has a negative byteOffset") },
+        )
+    }
+
+    @Test
     fun `createInstance takes a live model of another loader, as it always did`() {
         resourceUris = emptyArray()
         val model = loader.createModel(File(java.net.URI(modelFileUri())), releaseSourceData = false)
@@ -595,6 +617,26 @@ class ModelLoaderResourceFailureTest {
             deleteOnExit()
         }
         if (withBuffer) File(folder, BUFFER).apply { writeBytes(ByteArray(bufferBytes)) }.deleteOnExit()
+        return "file://${file.absolutePath}"
+    }
+
+    /** A GLB whose index accessor starts 4 bytes before its buffer view. */
+    private fun negativeOffsetGlbUri(): String {
+        val json = """{"asset":{"version":"2.0"},"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"byteOffset":-4,"componentType":5123,"type":"SCALAR","count":3}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":8}],"buffers":[{"byteLength":8}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"""
+        val jsonBytes = json.toByteArray().let { it + ByteArray((4 - it.size % 4) % 4) { ' '.code.toByte() } }
+        val total = 12 + 8 + jsonBytes.size + 8 + 8
+        val glb = java.nio.ByteBuffer.allocate(total).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply {
+            putInt(0x46546C67).putInt(2).putInt(total)
+            putInt(jsonBytes.size).putInt(0x4E4F534A).put(jsonBytes)
+            putInt(8).putInt(0x004E4942).put(ByteArray(8))
+        }.array()
+        val file = File.createTempFile("negative-offset", ".glb").apply {
+            writeBytes(glb)
+            deleteOnExit()
+        }
         return "file://${file.absolutePath}"
     }
 

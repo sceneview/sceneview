@@ -38,13 +38,19 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   `KHR_texture_basisu`, then the plain `source`. A PNG fallback next to a KTX2 is never decoded.
  *   PNG, JPEG and KTX2 headers are read, from the first 64 KiB of a `data:` URI; WebP is not (Filament's Android build decodes none, so it
  *   builds no texture for it, and [ModelLoader] re-encodes WebP to PNG before this check anyway).
- * - **An accessor, sparse accessor or buffer view that reaches past its buffer view or buffer, and
- *   an external or `data:` buffer shorter than the `byteLength` it declares.** `cgltf_validate` checks these
- *   only in Filament's debug builds (`#ifndef NDEBUG`, gltfio `Utility.cpp`); the release build
+ * - **An accessor, sparse accessor or buffer view that reaches past its buffer view or buffer, or
+ *   starts at a negative offset, and an external or `data:` buffer shorter than the `byteLength` it
+ *   declares.** `cgltf_validate` checks these only in Filament's debug builds (`#ifndef NDEBUG`,
+ *   gltfio `Utility.cpp`); the release build
  *   reads `accessor.offset + bufferView.offset` and on, as far as the counts say, out of the
  *   buffer. Every accessor is checked, used or not, as `cgltf_validate` does: a file with one that
  *   reaches past its data is invalid glTF. Sparse indices are also checked against the accessor's
  *   count when their bytes are at hand, since cgltf writes each value at its index.
+ * - **A buffer `cgltf_load_buffers` cannot load**: a `.glb` whose BIN chunk is missing (a meshopt
+ *   fallback aside) or shorter than the `byteLength` of buffer 0, and a `data:` buffer that is not
+ *   base64 or holds a character base64 does not have within the bytes it declares. gltfio ignores
+ *   the error that returns (`ResourceLoader.cpp`): that buffer, and those after it, keep no data,
+ *   and the vertex upload reads from a null pointer.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -52,9 +58,10 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  * - **An index past the vertex count, when the index bytes are at hand** — the BIN chunk of a
  *   `.glb`, or an external buffer already read. gltfio's tangent computation reads, on the CPU, the
  *   vertex each index names; `cgltf_validate`, which checks them, runs in debug builds only.
- * - **An animation sampler whose output count does not match its keyframes**: one value per
- *   keyframe and component, three in `CUBICSPLINE`, and for `weights` one per morph target. gltfio
- *   reads the output as far as the keyframes say; `cgltf_validate` checks it in debug builds only.
+ * - **An animation sampler whose keyframe times are in no buffer view.** gltfio's `Animator` reads
+ *   them through `input->buffer_view` without checking it. A sampler whose output count does not
+ *   match its keyframes is not refused: the `Animator` checks that in every build and leaves the
+ *   model's animations off, without crashing.
  * - **An animation of the morph weights of a mesh with more than [MAX_MORPH_TARGETS] targets.**
  *   gltfio's `Animator` hands `RenderableManager::setMorphWeights` one weight per target, and that
  *   requires at most `CONFIG_MAX_MORPH_TARGET_COUNT` (256): the first frame of the animation aborts.
@@ -67,13 +74,15 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  * - indices and sparse indices stored in a `data:` buffer, and the images such a buffer holds;
  * - the bytes of a buffer view compressed with `EXT_meshopt_compression` or
  *   `KHR_meshopt_compression` (its range is a fallback, often empty);
+ * - a buffer with no `uri` other than buffer 0 of a `.glb`, which cgltf leaves without data too;
  * - iridescence and anisotropy textures: gltfio 1.72.1 binds neither, so it never decodes them;
  * - WebP image sizes, and anything that fails while a texture is decoded rather than built.
  *
  * Filament-free and JVM-testable (`org.json` is an Android API, so its test runs on Robolectric). A
  * payload that is not glTF, or whose JSON `org.json` cannot read, passes: gltfio reports it the way
  * it always has. One too large or too deeply nested to read at all — an `OutOfMemoryError` or a
- * `StackOverflowError` from the parse — is refused rather than handed to gltfio unchecked.
+ * `StackOverflowError` from the parse — is refused rather than handed to gltfio unchecked, and so is
+ * one a check throws on: it is reported as a malformed glTF, never thrown to the caller.
  */
 internal object GltfLimits {
 
@@ -131,18 +140,24 @@ internal object GltfLimits {
          * @param resource the external resource a relative URI names, when it was loaded already:
          * its length is checked against its buffer's, and its images are measured.
          */
+        @Suppress("TooGenericExceptionCaught")
         fun violations(maxTextureSize: Int, resource: (uri: String) -> Buffer? = { null }): List<String> {
             if (unreadable != null) return listOf(unreadable)
             val json = json ?: return emptyList()
-            val gltf = Gltf(json, glb, bin, resource)
-            val violations = mutableListOf<String>()
-            gltf.checkBuffers(violations)
-            gltf.checkAccessors(violations)
-            gltf.checkPrimitives(violations)
-            gltf.checkSkins(violations)
-            gltf.checkAnimations(violations)
-            if (maxTextureSize > 0) gltf.checkTextures(maxTextureSize, violations)
-            return violations
+            // A value no rule foresaw must not escape as an exception the caller does not expect.
+            return try {
+                val gltf = Gltf(json, glb, bin, resource)
+                val violations = mutableListOf<String>()
+                gltf.checkBuffers(violations)
+                gltf.checkAccessors(violations)
+                gltf.checkPrimitives(violations)
+                gltf.checkSkins(violations)
+                gltf.checkAnimations(violations)
+                if (maxTextureSize > 0) gltf.checkTextures(maxTextureSize, violations)
+                violations
+            } catch (e: RuntimeException) {
+                listOf("malformed glTF: ${e.message ?: e.javaClass.simpleName}")
+            }
         }
 
         /** Throws a [GltfLimitException] when there is any [violation][violations]. */
@@ -169,29 +184,79 @@ internal object GltfLimits {
         val nodes = json.optJSONArray("nodes")
         val meshes = json.optJSONArray("meshes")
 
-        /** Each buffer view against its buffer, and each loaded external buffer against its length. */
+        /**
+         * Each buffer `cgltf_load_buffers` would leave without data, each buffer shorter than it
+         * declares when its bytes are at hand, and each buffer view against its buffer.
+         */
         fun checkBuffers(violations: MutableList<String>) {
             buffers.forEachObject { index, buffer ->
-                val uri = buffer.optString("uri")
-                if (uri.isEmpty()) return@forEachObject
-                val (length, name) = if (uri.startsWith("data:")) {
-                    (dataUriLength(uri) ?: return@forEachObject) to "data: URI"
-                } else {
-                    (resource(uri)?.remaining()?.toLong() ?: return@forEachObject) to uri
-                }
                 val declared = buffer.optLong("byteLength", 0)
-                if (length < declared) {
-                    violations += "buffer $index ($name) is $length bytes, shorter than the $declared it declares"
+                val uri = buffer.optString("uri")
+                when {
+                    uri.isEmpty() -> checkUnnamedBuffer(index, buffer, declared, violations)
+                    uri.startsWith("data:") -> checkDataBuffer(index, uri, declared, violations)
+                    else -> {
+                        val length = resource(uri)?.remaining()?.toLong() ?: return@forEachObject
+                        if (length < declared) {
+                            violations += "buffer $index ($uri) is $length bytes, shorter than the $declared it declares"
+                        }
+                    }
                 }
             }
             bufferViews.forEachObject { index, view ->
                 val buffer = buffers?.optJSONObject(view.optInt("buffer", -1)) ?: return@forEachObject
+                if (view.optLong("byteOffset", 0) < 0 || view.optLong("byteLength", 0) < 0) {
+                    violations += "buffer view $index has a negative byteOffset or byteLength"
+                    return@forEachObject
+                }
                 val end = sum(view.optLong("byteOffset", 0), view.optLong("byteLength", 0))
                 val length = buffer.optLong("byteLength", 0)
                 if (end == null || end > length) {
                     violations += "buffer view $index reaches byte ${end ?: "∞"} of a $length-byte buffer"
                 }
             }
+        }
+
+        /**
+         * Buffer 0 of a `.glb` with no `uri`, its BIN chunk: cgltf requires the chunk to hold all of
+         * it — shorter, and it loads no buffer at all —, and without one leaves the buffer without
+         * data, which only a meshopt fallback, never read, may be.
+         */
+        private fun checkUnnamedBuffer(index: Int, buffer: JSONObject, declared: Long, violations: MutableList<String>) {
+            val isGlb = glb != null && glb.remaining() >= Int.SIZE_BYTES && glb.getInt(glb.position()) == GLB_MAGIC
+            if (index != 0 || !isGlb) return
+            val binLength = bin?.second?.toLong()
+            when {
+                binLength != null -> if (binLength < declared) {
+                    violations += "the BIN chunk of this GLB is $binLength bytes, shorter than the $declared " +
+                        "buffer 0 declares"
+                }
+                declared > 0 && !buffer.isMeshoptFallback() ->
+                    violations += "this GLB has no BIN chunk for the $declared bytes of buffer 0"
+            }
+        }
+
+        /**
+         * A `data:` buffer, which cgltf decodes only from base64, exactly the `byteLength` it
+         * declares, refusing any character base64 does not have — padding included — on the way.
+         */
+        private fun checkDataBuffer(index: Int, uri: String, declared: Long, violations: MutableList<String>) {
+            val length = dataUriLength(uri)
+            val invalidAt = dataUriInvalidAt(uri)
+            // cgltf reads six bits a character, as many characters as the declared bytes take.
+            val read = product(declared, 4)?.let { (it + 2) / 3 } ?: Long.MAX_VALUE
+            when {
+                length == null -> violations += "buffer $index is a data: URI that is not base64"
+                invalidAt != null && invalidAt < read ->
+                    violations += "buffer $index is a data: URI that is not valid base64 at character $invalidAt"
+                length < declared ->
+                    violations += "buffer $index (data: URI) is $length bytes, shorter than the $declared it declares"
+            }
+        }
+
+        private fun JSONObject.isMeshoptFallback(): Boolean {
+            val extensions = optJSONObject("extensions") ?: return false
+            return MESHOPT.any { extensions.optJSONObject(it)?.optBoolean("fallback") == true }
         }
 
         /** Each accessor, and its sparse part, against the buffer views it reads. */
@@ -207,6 +272,10 @@ internal object GltfLimits {
                 val count = accessor.optLong("count", 0)
                 if (count < 0 || count > Int.MAX_VALUE) {
                     violations += "accessor $index has a count of $count"
+                    return@forEachObject
+                }
+                if (accessor.optLong("byteOffset", 0) < 0) {
+                    violations += "accessor $index has a negative byteOffset"
                     return@forEachObject
                 }
                 bufferView(accessor.optInt("bufferView", -1))?.let { view ->
@@ -232,6 +301,10 @@ internal object GltfLimits {
             }
             if (sparseCount < 0 || sparseCount > Int.MAX_VALUE) {
                 violations += "the sparse part of accessor $index has a count of $sparseCount"
+                return
+            }
+            if (indices.optLong("byteOffset", 0) < 0 || values.optLong("byteOffset", 0) < 0) {
+                violations += "the sparse part of accessor $index has a negative byteOffset"
                 return
             }
             val indexEnd = sum(indices.optLong("byteOffset", 0), product(indexSize.toLong(), sparseCount))
@@ -299,14 +372,16 @@ internal object GltfLimits {
             val bytes = bufferViewBytes(bufferView(indices.optInt("bufferView", -1)) ?: return null) ?: return null
             val size = componentSize(indices.optInt("componentType"))
             val count = indices.optLong("count", 0)
-            val at = bytes.position().toLong() + indices.optLong("byteOffset", 0)
-            if (count <= 0 || at + count * size > bytes.limit()) return null
+            // A negative offset or an overflowing end is a violation of checkAccessors, not read here.
+            val end = sum(indices.optLong("byteOffset", 0), product(count, size.toLong())) ?: return null
+            if (count <= 0 || end > bytes.remaining()) return null
+            val at = bytes.position() + indices.optLong("byteOffset", 0).toInt()
             var bound = 0L
             for (i in 0 until count.toInt()) {
                 val value = when (size) {
-                    1 -> bytes.get(at.toInt() + i).toLong() and 0xFF
-                    2 -> bytes.getShort(at.toInt() + 2 * i).toLong() and 0xFFFF
-                    else -> bytes.getInt(at.toInt() + 4 * i).toLong() and 0xFFFFFFFFL
+                    1 -> bytes.get(at + i).toLong() and 0xFF
+                    2 -> bytes.getShort(at + 2 * i).toLong() and 0xFFFF
+                    else -> bytes.getInt(at + 4 * i).toLong() and 0xFFFFFFFFL
                 }
                 if (value > bound) bound = value
             }
@@ -329,37 +404,30 @@ internal object GltfLimits {
         }
 
         /**
-         * Each channel's sampler holds one output value per keyframe and animated component, as
-         * `cgltf_validate` requires; and an animated mesh hands one morph weight per target to
-         * Filament, which takes 256.
+         * Each sampler's keyframe times are in a buffer view, which gltfio's `Animator` reads
+         * without checking; and an animated mesh hands one morph weight per target to Filament,
+         * which takes 256.
+         *
+         * Not the output count of a sampler: the `Animator` checks it in release builds too, and
+         * only leaves the animations off when it is wrong.
          */
         fun checkAnimations(violations: MutableList<String>) {
             val animated = sortedSetOf<Int>()
             json.optJSONArray("animations").forEachObject { animationIndex, animation ->
-                animation.optJSONArray("channels").forEachObject { channelIndex, channel ->
+                // The Animator builds every sampler, used by a channel or not.
+                animation.optJSONArray("samplers").forEachObject { samplerIndex, sampler ->
+                    val input = accessors?.optJSONObject(sampler.optInt("input", -1)) ?: return@forEachObject
+                    if (!input.has("bufferView")) {
+                        violations += "the keyframe times of sampler $samplerIndex of animation $animationIndex " +
+                            "are in no buffer view"
+                    }
+                }
+                // An output with no buffer view is read as zeros (cgltf_accessor_unpack_floats): no crash.
+                animation.optJSONArray("channels").forEachObject { _, channel ->
                     val target = channel.optJSONObject("target") ?: return@forEachObject
-                    val node = nodes?.optJSONObject(target.optInt("node", -1)) ?: return@forEachObject
-                    var components = 1L
-                    if (target.optString("path") == "weights") {
-                        val mesh = node.optInt("mesh", -1)
-                        val primitive = meshes?.optJSONObject(mesh)?.optJSONArray("primitives")?.optJSONObject(0)
-                            ?: return@forEachObject
-                        animated += mesh
-                        components = primitive.optJSONArray("targets")?.length()?.toLong() ?: 0
-                    }
-                    val sampler = animation.optJSONArray("samplers")?.optJSONObject(channel.optInt("sampler", -1))
-                        ?: return@forEachObject
-                    val keyframes = accessors?.optJSONObject(sampler.optInt("input", -1))?.optLong("count", 0)
-                        ?: return@forEachObject
-                    val outputs = accessors?.optJSONObject(sampler.optInt("output", -1))?.optLong("count", 0)
-                        ?: return@forEachObject
-                    // A cubic spline keeps an in-tangent, a value and an out-tangent per keyframe.
-                    val values = if (sampler.optString("interpolation") == "CUBICSPLINE") 3L else 1L
-                    val expected = product(keyframes, product(components, values) ?: return@forEachObject)
-                    if (expected != outputs) {
-                        violations += "channel $channelIndex of animation $animationIndex has $outputs output values " +
-                            "for $keyframes keyframes, not ${expected ?: "∞"}"
-                    }
+                    if (target.optString("path") != "weights") return@forEachObject
+                    val mesh = nodes?.optJSONObject(target.optInt("node", -1))?.optInt("mesh", -1) ?: return@forEachObject
+                    if (meshes?.optJSONObject(mesh) != null) animated += mesh
                 }
             }
             for (index in animated) {
@@ -526,8 +594,8 @@ internal object GltfLimits {
     }
 
     /**
-     * The decoded length [reducedJson] wrote into a base64 `data:` URI's header, gltfio's own count
-     * (`parseDataUri`): four characters to three bytes, less the padding.
+     * The decoded length [reducedJson] wrote into a base64 `data:` URI's header: what cgltf can
+     * decode, six bits a character up to the padding, in whole bytes. `null` when not base64.
      */
     private fun dataUriLength(uri: String): Long? {
         val comma = uri.indexOf(',')
@@ -538,15 +606,30 @@ internal object GltfLimits {
     }
 
     /**
+     * Where [reducedJson] found the first character of a base64 `data:` URI's payload that base64
+     * does not have, `=` included; `null` when there is none, or when the URI is not base64.
+     */
+    private fun dataUriInvalidAt(uri: String): Long? {
+        val comma = uri.indexOf(',')
+        if (comma < 0 || !uri.regionMatches(comma - BASE64.length, BASE64, 0, BASE64.length)) return null
+        val lengthFrom = uri.lastIndexOf(DECODED_LENGTH, comma - BASE64.length)
+        if (lengthFrom < 0) return null
+        val from = uri.lastIndexOf(INVALID_AT, lengthFrom)
+        if (from < 0) return null
+        return uri.substring(from + INVALID_AT.length, lengthFrom).toLongOrNull()?.takeIf { it >= 0 }
+    }
+
+    /**
      * The glTF JSON in `length` bytes of [bytes] at `from`, each `"data:…"` string cut to its
      * header and the first [DATA_URI_HEAD_CHARS] characters of its payload, in one pass.
      *
      * A model that embeds its buffers and textures in base64 is mostly payload: read whole, a 50 MB
      * `.gltf` would be copied as bytes, as a `String` and again by `org.json`'s tokenizer, on the
      * Java heap, only for the checks to read a header out of it. The decoded length of each base64
-     * payload is kept in its header, as `;decoded-length=N;base64,`, for [dataUriLength]. A JSON
-     * escape in the payload counts as one character; `\/` is unescaped, other escapes are kept. A
-     * byte order mark before the JSON is dropped.
+     * payload is kept in its header, with where its first character outside the base64 alphabet is
+     * (`-1` for none), as `;invalid-at=I;decoded-length=N;base64,`, for [dataUriLength] and
+     * [dataUriInvalidAt]. A JSON escape in the payload counts as one character; `\/` is unescaped,
+     * other escapes are kept. A byte order mark before the JSON is dropped.
      */
     internal fun reducedJson(bytes: ByteBuffer, from: Int, length: Int): String {
         val end = from + length
@@ -575,6 +658,12 @@ internal object GltfLimits {
     /** Writes the `data:` string at [start], past its opening quote, cut to its head; returns where it ends. */
     private fun reduceDataUri(bytes: ByteBuffer, start: Int, end: Int, out: Bytes): Int {
         val header = Bytes(64)
+        // The last bytes of the whole header: `;base64` is read there even when the header is cut.
+        val tail = ByteArray(BASE64_BYTES.size)
+        fun pushTail(byte: Byte) {
+            System.arraycopy(tail, 1, tail, 0, tail.size - 1)
+            tail[tail.size - 1] = byte
+        }
         var i = start
         var closed = false
         while (i < end) {
@@ -589,7 +678,11 @@ internal object GltfLimits {
                 header.add(c)
                 escaped?.let(header::add)
             }
+            pushTail(c)
+            escaped?.let(::pushTail)
         }
+        val isBase64 = tail.contentEquals(BASE64_BYTES)
+        if (isBase64 && !header.endsWith(BASE64_BYTES)) header.addAll(BASE64_BYTES)
         out.addAll(header)
         if (closed || i >= end) {
             if (closed) out.add(QUOTE)
@@ -597,44 +690,55 @@ internal object GltfLimits {
         }
         val head = Bytes(minOf(DATA_URI_HEAD_CHARS, end - i) + 8)
         var chars = 0L
+        var invalidAt = -1L
         var last = 0.toByte()
         var beforeLast = 0.toByte()
+        fun count(c: Byte, valid: Boolean) {
+            if (!valid && invalidAt < 0) invalidAt = chars
+            chars++
+            beforeLast = last
+            last = c
+        }
         while (i < end) {
-            var c = bytes.get(i++)
+            val c = bytes.get(i++)
             if (c == QUOTE) {
                 closed = true
                 break
             }
             val keep = chars < DATA_URI_HEAD_CHARS
-            if (c == BACKSLASH && i < end) {
-                val escaped = bytes.get(i++)
-                if (escaped == SLASH) {
-                    c = SLASH
-                } else {
-                    if (keep) head.add(BACKSLASH)
-                    c = escaped
-                    val hex = if (escaped == LETTER_U) minOf(4, end - i) else 0
+            val escaped = if (c == BACKSLASH && i < end) bytes.get(i++) else null
+            when (escaped) {
+                null -> {
                     if (keep) head.add(c)
-                    repeat(hex) { bytes.get(i++).let { if (keep) head.add(it) } }
-                    chars++
-                    beforeLast = last
-                    last = c
-                    continue
+                    count(c, isBase64Char(c.toInt()))
+                }
+                SLASH -> {
+                    if (keep) head.add(SLASH)
+                    count(SLASH, true)
+                }
+                else -> {
+                    // Kept as is; `\uXXXX` is base64 when it stands for one of its characters.
+                    if (keep) {
+                        head.add(BACKSLASH)
+                        head.add(escaped)
+                    }
+                    var code = -1
+                    if (escaped == LETTER_U && end - i >= 4) {
+                        code = 0
+                        repeat(4) { code = hexDigit(bytes.get(i + it)).let { d -> if (code < 0 || d < 0) -1 else code * 16 + d } }
+                    }
+                    repeat(if (escaped == LETTER_U) minOf(4, end - i) else 0) { bytes.get(i++).let { if (keep) head.add(it) } }
+                    count(escaped, isBase64Char(code))
                 }
             }
-            if (keep) head.add(c)
-            chars++
-            beforeLast = last
-            last = c
         }
-        val isBase64 = header.endsWith(BASE64_BYTES)
         if (isBase64) {
             out.size -= BASE64_BYTES.size
-            var decoded = chars - chars / 4
-            if (chars >= 2) {
-                if (beforeLast == EQUALS) decoded--
-                if (last == EQUALS) decoded--
-            }
+            // Six bits a character up to the padding, in whole bytes: 6 characters are 4 bytes.
+            val padding = if (last != EQUALS) 0 else if (beforeLast == EQUALS) 2 else 1
+            val decoded = (chars - minOf(chars, padding.toLong())) * 3 / 4
+            out.addAll(INVALID_AT.toByteArray())
+            out.addAll(invalidAt.toString().toByteArray())
             out.addAll(DECODED_LENGTH.toByteArray())
             out.addAll(decoded.toString().toByteArray())
             out.addAll(BASE64_BYTES)
@@ -643,6 +747,18 @@ internal object GltfLimits {
         out.addAll(head)
         if (closed) out.add(QUOTE)
         return i
+    }
+
+    /** Whether [code] is a character of the base64 alphabet, padding excluded. */
+    private fun isBase64Char(code: Int) =
+        code in 'A'.code..'Z'.code || code in 'a'.code..'z'.code || code in '0'.code..'9'.code ||
+            code == '+'.code || code == '/'.code
+
+    private fun hexDigit(byte: Byte): Int = when (val c = byte.toInt()) {
+        in '0'.code..'9'.code -> c - '0'.code
+        in 'a'.code..'f'.code -> c - 'a'.code + 10
+        in 'A'.code..'F'.code -> c - 'A'.code + 10
+        else -> -1
     }
 
     /** A growable byte array: [reducedJson]'s output, without the copies of a stream. */
@@ -762,6 +878,7 @@ internal object GltfLimits {
     private const val BASE64 = ";base64"
     private val BASE64_BYTES = BASE64.toByteArray()
     private const val DECODED_LENGTH = ";decoded-length="
+    private const val INVALID_AT = ";invalid-at="
     private const val DATA_URI_HEAD_CHARS = 64 * 1024 // 48 KiB decoded, a multiple of 4 characters
     private const val DATA_URI_HEADER_MAX = 1024
     private val DATA = "data:".toByteArray()
