@@ -3,6 +3,7 @@ package io.github.sceneview.utils
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -90,5 +91,14 @@ class ReadFullyTest {
 
         assertArrayEquals(bytes, stream.toByteArray())
         assertTrue(closed)
+    }
+
+    @Test
+    fun `growing past 1 GB stops at the largest array instead of overflowing`() {
+        assertEquals(DEFAULT_BUFFER_SIZE, grownCapacity(0))
+        assertEquals(2 * 512 * 1024 * 1024, grownCapacity(512 * 1024 * 1024))
+        // Doubling 1.5 GB overflows Int: the old `size * 2` went negative.
+        assertEquals(Int.MAX_VALUE - 8, grownCapacity(1536 * 1024 * 1024))
+        assertThrows(OutOfMemoryError::class.java) { grownCapacity(Int.MAX_VALUE - 8) }
     }
 }

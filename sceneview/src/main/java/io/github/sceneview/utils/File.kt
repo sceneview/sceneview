@@ -172,7 +172,7 @@ internal fun InputStream.readFully(sizeHint: Int = available(), onProgress: ((Fl
             // Full: either the hint was exact (the next read says -1) or the stream is longer.
             val next = read()
             if (next < 0) break
-            buffer = buffer.copyOf(maxOf(buffer.size * 2, DEFAULT_BUFFER_SIZE))
+            buffer = buffer.copyOf(grownCapacity(buffer.size))
             buffer[size++] = next.toByte()
         }
         val n = read(buffer, size, minOf(buffer.size - size, READ_CHUNK))
@@ -182,6 +182,20 @@ internal fun InputStream.readFully(sizeHint: Int = available(), onProgress: ((Fl
     }
     return if (size == buffer.size) buffer else buffer.copyOf(size)
 }
+
+/**
+ * The next capacity of a [readFully] buffer that holds [size] bytes and is full: twice as much, but
+ * never past the largest array the VM allocates, where doubling would overflow `Int`.
+ *
+ * @throws OutOfMemoryError when [size] already is that largest array: the stream does not fit in one.
+ */
+internal fun grownCapacity(size: Int): Int {
+    if (size >= MAX_ARRAY_SIZE) throw OutOfMemoryError("A stream longer than $MAX_ARRAY_SIZE bytes does not fit in one array")
+    return if (size > MAX_ARRAY_SIZE / 2) MAX_ARRAY_SIZE else maxOf(size * 2, DEFAULT_BUFFER_SIZE)
+}
+
+// What `ArrayList` and `ByteArrayOutputStream` use: some VMs reserve header words in an array.
+private const val MAX_ARRAY_SIZE = Int.MAX_VALUE - 8
 
 fun ByteBuffer.clone() = ByteBuffer.allocate(this@clone.capacity()).apply {
     order(ByteOrder.nativeOrder())

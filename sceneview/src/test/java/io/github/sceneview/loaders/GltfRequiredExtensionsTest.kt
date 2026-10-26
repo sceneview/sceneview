@@ -76,6 +76,27 @@ class GltfRequiredExtensionsTest {
     }
 
     @Test
+    fun `only the required array is read, not the base64 a text glTF embeds`() {
+        // Broken JSON after the array: a whole-document parse failed and let such a file through.
+        val base64 = "A".repeat(1 shl 20)
+        val source = ByteBuffer.wrap(
+            ("{ \"extensionsRequired\" :\n [ \"EXT_texture_\\u0061vif\" , \"KHR_texture_transform\" ],\n" +
+                "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64,$base64\"}],,}").toByteArray(),
+        )
+
+        assertEquals(listOf("EXT_texture_avif"), GltfRequiredExtensions.unsupported(source))
+    }
+
+    @Test
+    fun `the key inside a string value, or a malformed array, is left to gltfio`() {
+        val quoted = glb("""{"asset":{"generator":"writes \"extensionsRequired\": [\"EXT_texture_avif\"]"}}""")
+        val malformed = glb("""{"extensionsRequired":["EXT_texture_avif" "KHR_texture_transform"]}""")
+
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(quoted))
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(malformed))
+    }
+
+    @Test
     fun `the supported set is what gltfio 1_72_1 parses, plus quantized attributes`() {
         val supported = ModelLoader.SUPPORTED_GLTF_EXTENSIONS
 

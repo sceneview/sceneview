@@ -2,13 +2,16 @@ package io.github.sceneview
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import io.github.sceneview.loaders.ModelLoadProgress
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.loaders.UnsupportedGltfExtensionException
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Where a model load started by [rememberModelLoadState] stands: what a progress bar, an error
@@ -25,7 +28,7 @@ sealed interface ModelLoadState {
     /**
      * The load failed: [error] is an [UnsupportedGltfExtensionException] for a model that requires
      * a glTF extension Filament cannot load, an `IllegalArgumentException` for a file that cannot
-     * be read or parsed.
+     * be read or parsed, an [OutOfMemoryError] for a model too large for the Java heap.
      */
     data class Failed(val error: Throwable) : ModelLoadState
 }
@@ -60,29 +63,36 @@ fun rememberModelLoadState(
         ModelLoader.getFolderPath(fileLocation, it)
     },
 ): ModelLoadState {
-    val state = produceState<ModelLoadState>(
-        initialValue = ModelLoadState.Loading(ModelLoadProgress(ModelLoadProgress.Stage.Reading, 0f)),
-        key1 = modelLoader,
-        key2 = fileLocation,
-    ) {
-        value = ModelLoadState.Loading(ModelLoadProgress(ModelLoadProgress.Stage.Reading, 0f))
-        value = try {
-            ModelLoadState.Ready(
-                modelLoader.awaitModelInstance(fileLocation, resourceResolver) {
-                    value = ModelLoadState.Loading(it)
-                },
-            )
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (error: Exception) {
-            ModelLoadState.Failed(error)
-        }
-    }.value
-    // As in `rememberModelInstance`: `produceState` never destroys what it produced, so the
-    // model is destroyed here, on a key change and on leaving the composition (main thread).
-    val instance = (state as? ModelLoadState.Ready)?.instance
-    DisposableEffect(instance) {
-        onDispose { instance?.let { modelLoader.destroyModel(it.model) } }
+    val state = remember(modelLoader, fileLocation) {
+        mutableStateOf<ModelLoadState>(ModelLoadState.Loading(ModelLoadProgress(ModelLoadProgress.Stage.Reading, 0f)))
     }
-    return state
+    val scope = rememberCoroutineScope()
+    // One effect both runs the load and owns its result. With `produceState` plus a
+    // `DisposableEffect` keyed on the produced instance (as in `rememberModelInstance`), a model that
+    // became ready just before this left the composition was never seen by the effect, and leaked.
+    // Everything here runs on the main thread, so the dispose below either finds the model ready
+    // and destroys it, or cancels a load that has not returned, which destroys what it created.
+    DisposableEffect(modelLoader, fileLocation) {
+        val load = scope.launch {
+            state.value = try {
+                ModelLoadState.Ready(
+                    modelLoader.awaitModelInstance(fileLocation, resourceResolver) {
+                        state.value = ModelLoadState.Loading(it)
+                    },
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                ModelLoadState.Failed(error)
+            } catch (error: OutOfMemoryError) {
+                // A generated model too large for the heap: a failed load, not a crashed app.
+                ModelLoadState.Failed(error)
+            }
+        }
+        onDispose {
+            load.cancel()
+            (state.value as? ModelLoadState.Ready)?.let { modelLoader.destroyModel(it.instance.model) }
+        }
+    }
+    return state.value
 }
