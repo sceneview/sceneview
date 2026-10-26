@@ -890,7 +890,9 @@ class ModelLoader(
 
         settlingDestroys.afterAll {
             // From here on, the render loop's next `updateLoad` and any `progress` read do nothing.
-            // An engine destroyed first took these objects with it: freeing them calls into it.
+            // An engine destroyed first freed the materials and textures it owned, but not these
+            // loaders: freeing the material provider's materials would call into the dead engine,
+            // so they are all left to leak (a few small objects) rather than freed.
             if (!lifecycle.release()) return@afterAll
             assetLoader.destroy()
             materialProvider.destroyMaterials()
@@ -915,8 +917,9 @@ class ModelLoader(
         resourceLoader.asyncUpdateLoad()
         // Drop the latch as soon as Filament says the outstanding set is finalised, so `isLoading`
         // stops holding the render loop awake. `asyncGetLoadProgress()` is global over the
-        // outstanding set, so one boolean is the right shape here, not a counter.
-        if (readProgress() >= 1f) {
+        // outstanding set, so one boolean is the right shape here, not a counter. Asked only while
+        // a load is pending: every frame of a loaded scene would otherwise cross the JNI for it.
+        if (asyncLoadStarted && readProgress() >= 1f) {
             asyncLoadStarted = false
         }
     }

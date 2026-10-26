@@ -33,12 +33,13 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   `Texture` at the image's size, and `Texture::Builder::build` requires both to fit
  *   `Texture.getMaxTextureSize`, inside `ResourceLoader.asyncBeginLoad`. Only the images gltfio
  *   decodes are measured: those of the textures a material of a mesh primitive binds (variants
- *   included), and of each such texture only the source gltfio picks — `EXT_texture_webp`, then
+ *   included), on every node — gltfio also instantiates the root nodes no scene lists — and of each
+ *   such texture only the source gltfio picks — `EXT_texture_webp`, then
  *   `KHR_texture_basisu`, then the plain `source`. A PNG fallback next to a KTX2 is never decoded.
- *   PNG, JPEG and KTX2 headers are read; WebP is not (Filament's Android build decodes none, so it
+ *   PNG, JPEG and KTX2 headers are read, from the first 64 KiB of a `data:` URI; WebP is not (Filament's Android build decodes none, so it
  *   builds no texture for it, and [ModelLoader] re-encodes WebP to PNG before this check anyway).
  * - **An accessor, sparse accessor or buffer view that reaches past its buffer view or buffer, and
- *   an external buffer shorter than the `byteLength` it declares.** `cgltf_validate` checks these
+ *   an external or `data:` buffer shorter than the `byteLength` it declares.** `cgltf_validate` checks these
  *   only in Filament's debug builds (`#ifndef NDEBUG`, gltfio `Utility.cpp`); the release build
  *   reads `accessor.offset + bufferView.offset` and on, as far as the counts say, out of the
  *   buffer. Every accessor is checked, used or not, as `cgltf_validate` does: a file with one that
@@ -48,12 +49,26 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
  *   own count; `cgltf_validate` rejects both, in debug builds only.
+ * - **An index past the vertex count, when the index bytes are at hand** — the BIN chunk of a
+ *   `.glb`, or an external buffer already read. gltfio's tangent computation reads, on the CPU, the
+ *   vertex each index names; `cgltf_validate`, which checks them, runs in debug builds only.
+ * - **An animation sampler whose output count does not match its keyframes**: one value per
+ *   keyframe and component, three in `CUBICSPLINE`, and for `weights` one per morph target. gltfio
+ *   reads the output as far as the keyframes say; `cgltf_validate` checks it in debug builds only.
  * - **An animation of the morph weights of a mesh with more than [MAX_MORPH_TARGETS] targets.**
  *   gltfio's `Animator` hands `RenderableManager::setMorphWeights` one weight per target, and that
  *   requires at most `CONFIG_MAX_MORPH_TARGET_COUNT` (256): the first frame of the animation aborts.
  *
- * Not checked: the values of an index buffer (a vertex index past the vertex count is read by the
- * GPU, not the CPU), and anything that fails while a texture is decoded rather than built.
+ * The JSON is never parsed whole: one pass over its bytes first cuts each `data:` URI to its
+ * header, its decoded length and its first 64 KiB, so a model with embedded textures costs a few
+ * hundred KiB of heap here, not its size again (see [reducedJson]). What that drops is not checked.
+ *
+ * Not checked:
+ * - indices and sparse indices stored in a `data:` buffer, and the images such a buffer holds;
+ * - the bytes of a buffer view compressed with `EXT_meshopt_compression` or
+ *   `KHR_meshopt_compression` (its range is a fallback, often empty);
+ * - iridescence and anisotropy textures: gltfio 1.72.1 binds neither, so it never decodes them;
+ * - WebP image sizes, and anything that fails while a texture is decoded rather than built.
  *
  * Filament-free and JVM-testable (`org.json` is an Android API, so its test runs on Robolectric). A
  * payload that is not glTF, or whose JSON `org.json` cannot read, passes: gltfio reports it the way
@@ -71,7 +86,8 @@ internal object GltfLimits {
     /**
      * Parses [source] once, for [Parsed.violations] to check as its external resources arrive.
      *
-     * Costs one JSON parse of the glTF: keep it off the main thread where the caller can.
+     * Costs one pass over the JSON's bytes and one JSON parse of what is left once each `data:` URI
+     * is cut to its head (see [reducedJson]): keep it off the main thread where the caller can.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     fun parse(source: Buffer): Parsed {
@@ -79,8 +95,7 @@ internal object GltfLimits {
         val chunks = glbChunks(bytes)
         val (jsonFrom, jsonLength) = chunks?.json ?: (bytes.position() to bytes.remaining())
         return try {
-            val text = ByteArray(jsonLength).also { bytes.duplicate().apply { position(jsonFrom) }.get(it) }
-            Parsed(JSONObject(text.toString(Charsets.UTF_8).removePrefix("\uFEFF")), bytes, chunks?.bin, null)
+            Parsed(JSONObject(reducedJson(bytes, jsonFrom, jsonLength)), bytes, chunks?.bin, null)
         } catch (_: JSONException) {
             Parsed.NOT_GLTF
         } catch (_: OutOfMemoryError) {
@@ -125,7 +140,7 @@ internal object GltfLimits {
             gltf.checkAccessors(violations)
             gltf.checkPrimitives(violations)
             gltf.checkSkins(violations)
-            gltf.checkMorphAnimations(violations)
+            gltf.checkAnimations(violations)
             if (maxTextureSize > 0) gltf.checkTextures(maxTextureSize, violations)
             return violations
         }
@@ -158,12 +173,15 @@ internal object GltfLimits {
         fun checkBuffers(violations: MutableList<String>) {
             buffers.forEachObject { index, buffer ->
                 val uri = buffer.optString("uri")
-                if (uri.isEmpty() || uri.startsWith("data:")) return@forEachObject
-                val data = resource(uri) ?: return@forEachObject
+                if (uri.isEmpty()) return@forEachObject
+                val (length, name) = if (uri.startsWith("data:")) {
+                    (dataUriLength(uri) ?: return@forEachObject) to "data: URI"
+                } else {
+                    (resource(uri)?.remaining()?.toLong() ?: return@forEachObject) to uri
+                }
                 val declared = buffer.optLong("byteLength", 0)
-                if (data.remaining() < declared) {
-                    violations += "buffer $index ($uri) is ${data.remaining()} bytes, " +
-                        "shorter than the $declared it declares"
+                if (length < declared) {
+                    violations += "buffer $index ($name) is $length bytes, shorter than the $declared it declares"
                 }
             }
             bufferViews.forEachObject { index, view ->
@@ -265,9 +283,34 @@ internal object GltfLimits {
                         (stride > 0 && stride != componentSize(componentType).toLong())
                     ) {
                         violations += "the indices of $name are not tightly packed unsigned integers"
+                    } else if (vertexCount != null && counts.all { it == vertexCount }) {
+                        val bound = indexBound(indices) ?: return@forEachObject
+                        if (bound >= vertexCount) violations += "$name indexes vertex $bound of its $vertexCount"
                     }
                 }
             }
+        }
+
+        /**
+         * The largest value of an index accessor, read as `cgltf_validate` does, or `null` when its
+         * bytes are not at hand: tangents are computed on the CPU from these, vertex by vertex.
+         */
+        private fun indexBound(indices: JSONObject): Long? {
+            val bytes = bufferViewBytes(bufferView(indices.optInt("bufferView", -1)) ?: return null) ?: return null
+            val size = componentSize(indices.optInt("componentType"))
+            val count = indices.optLong("count", 0)
+            val at = bytes.position().toLong() + indices.optLong("byteOffset", 0)
+            if (count <= 0 || at + count * size > bytes.limit()) return null
+            var bound = 0L
+            for (i in 0 until count.toInt()) {
+                val value = when (size) {
+                    1 -> bytes.get(at.toInt() + i).toLong() and 0xFF
+                    2 -> bytes.getShort(at.toInt() + 2 * i).toLong() and 0xFFFF
+                    else -> bytes.getInt(at.toInt() + 4 * i).toLong() and 0xFFFFFFFFL
+                }
+                if (value > bound) bound = value
+            }
+            return bound
         }
 
         /** The skins gltfio builds: those of a node that also has a mesh. */
@@ -285,14 +328,38 @@ internal object GltfLimits {
             }
         }
 
-        /** An animated mesh hands one morph weight per target to Filament, which takes 256. */
-        fun checkMorphAnimations(violations: MutableList<String>) {
+        /**
+         * Each channel's sampler holds one output value per keyframe and animated component, as
+         * `cgltf_validate` requires; and an animated mesh hands one morph weight per target to
+         * Filament, which takes 256.
+         */
+        fun checkAnimations(violations: MutableList<String>) {
             val animated = sortedSetOf<Int>()
-            json.optJSONArray("animations").forEachObject { _, animation ->
-                animation.optJSONArray("channels").forEachObject { _, channel ->
+            json.optJSONArray("animations").forEachObject { animationIndex, animation ->
+                animation.optJSONArray("channels").forEachObject { channelIndex, channel ->
                     val target = channel.optJSONObject("target") ?: return@forEachObject
-                    if (target.optString("path") != "weights") return@forEachObject
-                    nodes?.optJSONObject(target.optInt("node", -1))?.optInt("mesh", -1)?.let { animated += it }
+                    val node = nodes?.optJSONObject(target.optInt("node", -1)) ?: return@forEachObject
+                    var components = 1L
+                    if (target.optString("path") == "weights") {
+                        val mesh = node.optInt("mesh", -1)
+                        val primitive = meshes?.optJSONObject(mesh)?.optJSONArray("primitives")?.optJSONObject(0)
+                            ?: return@forEachObject
+                        animated += mesh
+                        components = primitive.optJSONArray("targets")?.length()?.toLong() ?: 0
+                    }
+                    val sampler = animation.optJSONArray("samplers")?.optJSONObject(channel.optInt("sampler", -1))
+                        ?: return@forEachObject
+                    val keyframes = accessors?.optJSONObject(sampler.optInt("input", -1))?.optLong("count", 0)
+                        ?: return@forEachObject
+                    val outputs = accessors?.optJSONObject(sampler.optInt("output", -1))?.optLong("count", 0)
+                        ?: return@forEachObject
+                    // A cubic spline keeps an in-tangent, a value and an out-tangent per keyframe.
+                    val values = if (sampler.optString("interpolation") == "CUBICSPLINE") 3L else 1L
+                    val expected = product(keyframes, product(components, values) ?: return@forEachObject)
+                    if (expected != outputs) {
+                        violations += "channel $channelIndex of animation $animationIndex has $outputs output values " +
+                            "for $keyframes keyframes, not ${expected ?: "∞"}"
+                    }
                 }
             }
             for (index in animated) {
@@ -362,8 +429,14 @@ internal object GltfLimits {
             return bufferViewBytes(bufferView(image.optInt("bufferView", -1)) ?: return null)
         }
 
-        /** The bytes of [view], when its buffer is at hand and it lies within it. */
+        /**
+         * The bytes of [view], when its buffer is at hand and it lies within it: never those of a
+         * `data:` buffer, which [reducedJson] cut to its head, nor a meshopt-compressed range.
+         */
         private fun bufferViewBytes(view: JSONObject): ByteBuffer? {
+            // A meshopt-compressed view's own range is a fallback, often left empty or zeroed.
+            val extensions = view.optJSONObject("extensions")
+            if (extensions != null && MESHOPT.any(extensions::has)) return null
             val bufferIndex = view.optInt("buffer", -1)
             val buffer = buffers?.optJSONObject(bufferIndex) ?: return null
             val bufferUri = buffer.optString("uri")
@@ -450,6 +523,146 @@ internal object GltfLimits {
         } catch (_: IllegalArgumentException) {
             null
         }
+    }
+
+    /**
+     * The decoded length [reducedJson] wrote into a base64 `data:` URI's header, gltfio's own count
+     * (`parseDataUri`): four characters to three bytes, less the padding.
+     */
+    private fun dataUriLength(uri: String): Long? {
+        val comma = uri.indexOf(',')
+        if (comma < 0 || !uri.regionMatches(comma - BASE64.length, BASE64, 0, BASE64.length)) return null
+        val from = uri.lastIndexOf(DECODED_LENGTH, comma - BASE64.length)
+        if (from < 0) return null
+        return uri.substring(from + DECODED_LENGTH.length, comma - BASE64.length).toLongOrNull()
+    }
+
+    /**
+     * The glTF JSON in `length` bytes of [bytes] at `from`, each `"data:…"` string cut to its
+     * header and the first [DATA_URI_HEAD_CHARS] characters of its payload, in one pass.
+     *
+     * A model that embeds its buffers and textures in base64 is mostly payload: read whole, a 50 MB
+     * `.gltf` would be copied as bytes, as a `String` and again by `org.json`'s tokenizer, on the
+     * Java heap, only for the checks to read a header out of it. The decoded length of each base64
+     * payload is kept in its header, as `;decoded-length=N;base64,`, for [dataUriLength]. A JSON
+     * escape in the payload counts as one character; `\/` is unescaped, other escapes are kept. A
+     * byte order mark before the JSON is dropped.
+     */
+    internal fun reducedJson(bytes: ByteBuffer, from: Int, length: Int): String {
+        val end = from + length
+        val out = Bytes(minOf(length, 1 shl 16))
+        var i = from
+        if (length >= 3 && bytes.get(i) == 0xEF.toByte() && bytes.get(i + 1) == 0xBB.toByte() && bytes.get(i + 2) == 0xBF.toByte()) i += 3
+        fun isDataUri(at: Int) = at + DATA.size <= end && DATA.indices.all { bytes.get(at + it) == DATA[it] }
+        while (i < end) {
+            val byte = bytes.get(i++)
+            out.add(byte)
+            if (byte != QUOTE) continue
+            if (isDataUri(i)) {
+                i = reduceDataUri(bytes, i, end, out)
+                continue
+            }
+            // Any other string, copied as is: only its end matters.
+            while (i < end) {
+                val c = bytes.get(i++)
+                out.add(c)
+                if (c == BACKSLASH && i < end) out.add(bytes.get(i++)) else if (c == QUOTE) break
+            }
+        }
+        return String(out.array, 0, out.size, Charsets.UTF_8)
+    }
+
+    /** Writes the `data:` string at [start], past its opening quote, cut to its head; returns where it ends. */
+    private fun reduceDataUri(bytes: ByteBuffer, start: Int, end: Int, out: Bytes): Int {
+        val header = Bytes(64)
+        var i = start
+        var closed = false
+        while (i < end) {
+            val c = bytes.get(i++)
+            if (c == QUOTE || c == COMMA) {
+                closed = c == QUOTE
+                break
+            }
+            // An escape is kept whole or dropped whole: half of one would escape the closing quote.
+            val escaped = if (c == BACKSLASH && i < end) bytes.get(i++) else null
+            if (header.size + (if (escaped == null) 1 else 2) <= DATA_URI_HEADER_MAX) {
+                header.add(c)
+                escaped?.let(header::add)
+            }
+        }
+        out.addAll(header)
+        if (closed || i >= end) {
+            if (closed) out.add(QUOTE)
+            return i
+        }
+        val head = Bytes(minOf(DATA_URI_HEAD_CHARS, end - i) + 8)
+        var chars = 0L
+        var last = 0.toByte()
+        var beforeLast = 0.toByte()
+        while (i < end) {
+            var c = bytes.get(i++)
+            if (c == QUOTE) {
+                closed = true
+                break
+            }
+            val keep = chars < DATA_URI_HEAD_CHARS
+            if (c == BACKSLASH && i < end) {
+                val escaped = bytes.get(i++)
+                if (escaped == SLASH) {
+                    c = SLASH
+                } else {
+                    if (keep) head.add(BACKSLASH)
+                    c = escaped
+                    val hex = if (escaped == LETTER_U) minOf(4, end - i) else 0
+                    if (keep) head.add(c)
+                    repeat(hex) { bytes.get(i++).let { if (keep) head.add(it) } }
+                    chars++
+                    beforeLast = last
+                    last = c
+                    continue
+                }
+            }
+            if (keep) head.add(c)
+            chars++
+            beforeLast = last
+            last = c
+        }
+        val isBase64 = header.endsWith(BASE64_BYTES)
+        if (isBase64) {
+            out.size -= BASE64_BYTES.size
+            var decoded = chars - chars / 4
+            if (chars >= 2) {
+                if (beforeLast == EQUALS) decoded--
+                if (last == EQUALS) decoded--
+            }
+            out.addAll(DECODED_LENGTH.toByteArray())
+            out.addAll(decoded.toString().toByteArray())
+            out.addAll(BASE64_BYTES)
+        }
+        out.add(COMMA)
+        out.addAll(head)
+        if (closed) out.add(QUOTE)
+        return i
+    }
+
+    /** A growable byte array: [reducedJson]'s output, without the copies of a stream. */
+    private class Bytes(capacity: Int) {
+        var array = ByteArray(maxOf(capacity, 16))
+        var size = 0
+
+        fun add(byte: Byte) {
+            if (size == array.size) array = array.copyOf(array.size * 2)
+            array[size++] = byte
+        }
+
+        fun addAll(bytes: ByteArray) = bytes.forEach(::add)
+
+        fun addAll(bytes: Bytes) {
+            for (i in 0 until bytes.size) add(bytes.array[i])
+        }
+
+        fun endsWith(suffix: ByteArray) =
+            size >= suffix.size && suffix.indices.all { array[size - suffix.size + it] == suffix[it] }
     }
 
     private class GlbChunks(val json: Pair<Int, Int>, val bin: Pair<Int, Int>?)
@@ -547,7 +760,18 @@ internal object GltfLimits {
         "KHR_materials_specular" to listOf("specularTexture", "specularColorTexture"),
     )
     private const val BASE64 = ";base64"
+    private val BASE64_BYTES = BASE64.toByteArray()
+    private const val DECODED_LENGTH = ";decoded-length="
     private const val DATA_URI_HEAD_CHARS = 64 * 1024 // 48 KiB decoded, a multiple of 4 characters
+    private const val DATA_URI_HEADER_MAX = 1024
+    private val DATA = "data:".toByteArray()
+    private const val QUOTE: Byte = 0x22
+    private const val BACKSLASH: Byte = 0x5C
+    private const val SLASH: Byte = 0x2F
+    private const val COMMA: Byte = 0x2C
+    private const val EQUALS: Byte = 0x3D
+    private const val LETTER_U: Byte = 0x75
+    private val MESHOPT = listOf("EXT_meshopt_compression", "KHR_meshopt_compression")
     private const val GLB_MAGIC = 0x46546C67 // "glTF", little-endian
     private const val CHUNK_JSON = 0x4E4F534A // "JSON"
     private const val CHUNK_BIN = 0x004E4942 // "BIN\0"

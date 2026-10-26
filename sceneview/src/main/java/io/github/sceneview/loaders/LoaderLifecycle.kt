@@ -41,8 +41,8 @@ internal class LoaderLifecycle(private val isEngineAlive: () -> Boolean) {
 
     /**
      * Marks the gltfio objects as freed. Returns whether the caller should free them: not when the
-     * engine is already gone, since destroying a loader calls into its engine, and the engine's own
-     * destroy took them with it.
+     * engine is already gone, since freeing the material provider's materials calls into it. The
+     * engine's own destroy freed what it owned; the loaders themselves are then left to leak.
      */
     fun release(): Boolean {
         val engineAlive = isEngineAlive()

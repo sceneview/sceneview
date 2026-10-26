@@ -140,6 +140,142 @@ class GltfLimitsTest {
         )
     }
 
+    // The collection before the parse makes the heap peak a measure of the parse alone.
+    @Suppress("ExplicitGarbageCollectionCall")
+    @Test
+    fun `a 50 MB embedded texture is checked without copying its payload`() {
+        // The head carries the PNG header; the rest is base64 zeros, as a 50 MB embedded texture.
+        val head = Base64.encodeToString(png(8192, 16), Base64.NO_WRAP)
+        val (before, after) = textured(
+            images = """[{"uri":"data:image/png;base64,$head@"}]""",
+            textures = """[{"source":0}]""",
+        ).split("@")
+        val payload = 50 * 1024 * 1024
+        val gltf = ByteBuffer.allocateDirect(before.length + payload + after.length).apply {
+            put(before.toByteArray())
+            repeat(payload) { put('A'.code.toByte()) }
+            put(after.toByteArray())
+            flip()
+        }
+        System.gc()
+        val heap = HeapPeak()
+        val allocatedBefore = allocatedBytes()
+        val started = System.nanoTime()
+
+        val parsed = GltfLimits.parse(gltf)
+
+        val millis = (System.nanoTime() - started) / 1_000_000
+        val allocated = allocatedBytes() - allocatedBefore
+        val peak = heap.stop()
+        println("parse of a ${gltf.limit() shr 20} MiB glTF: $millis ms, ${allocated shr 10} KiB allocated, heap peak +${peak shr 10} KiB")
+        assertEquals(
+            listOf("image 0 is 8192x16, larger than the 4096x4096 textures this GPU supports"),
+            parsed.violations(MAX),
+        )
+        assertTrue("the parse allocated ${allocated shr 20} MiB", allocated < 4L * 1024 * 1024)
+    }
+
+    @Test
+    fun `a data URI is read through escaped slashes, and quotes before it`() {
+        val head = Base64.encodeToString(png(8192, 16) + byteArrayOf(-1, -1, -1), Base64.NO_WRAP).replace("/", "\\/")
+        assertTrue(head.contains("\\/"))
+        val json = textured(
+            images = """[{"name":"a \"data:\" \\ name","uri":"data:image\/png;base64,$head"}]""",
+            textures = """[{"source":0}]""",
+        )
+        val gltf = text(json)
+
+        val refused = listOf("image 0 (a \"data:\" \\ name) is 8192x16, larger than the 4096x4096 textures this GPU supports")
+
+        assertEquals(refused, GltfLimits.violations(gltf, MAX))
+        assertEquals("the JSON chunk of a GLB too", refused, GltfLimits.violations(glb(json, ByteArray(0)), MAX))
+    }
+
+    @Test
+    fun `a data URI buffer shorter than it declares is refused`() {
+        fun gltf(base64: String) = text("""{"buffers":[{"uri":"data:application/octet-stream;base64,$base64","byteLength":4}]}""")
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("AAAAAA=="), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("AAAAAAAA"), MAX))
+        assertEquals(
+            listOf("buffer 0 (data: URI) is 3 bytes, shorter than the 4 it declares"),
+            GltfLimits.violations(gltf("AAAA"), MAX),
+        )
+    }
+
+    @Test
+    fun `index values past the vertex count are refused when their bytes are at hand`() {
+        fun json(uri: String) =
+            """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+                """{"bufferView":0,"byteOffset":2,"componentType":5123,"type":"SCALAR","count":3}],""" +
+                """"bufferViews":[{"buffer":0,"byteLength":8}],"buffers":[{$uri"byteLength":8}],""" +
+                """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"""
+        fun indices(vararg values: Int) = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).apply {
+            putShort(99) // before the accessor's byteOffset: not an index
+            values.forEach { putShort(it.toShort()) }
+        }.array()
+        val refused = listOf("primitive 0 of mesh 0 indexes vertex 3 of its 3")
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(json(""), indices(0, 1, 2)), MAX))
+        assertEquals(refused, GltfLimits.violations(glb(json(""), indices(0, 3, 2)), MAX))
+        val external = text(json(""""uri":"mesh.bin","""))
+        assertEquals(refused, GltfLimits.violations(external, MAX) { ByteBuffer.wrap(indices(2, 3, 1)) })
+        assertEquals("not loaded yet: nothing to read", emptyList<String>(), GltfLimits.violations(external, MAX))
+    }
+
+    @Test
+    fun `indices in a meshopt-compressed view are not read`() {
+        val json = """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"componentType":5123,"type":"SCALAR","count":3}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":6,"extensions":{"EXT_meshopt_compression":{"buffer":0,""" +
+            """"byteLength":6,"byteStride":2,"count":3,"mode":"TRIANGLES"}}}],"buffers":[{"byteLength":8}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"""
+        val compressed = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putShort(500).array()
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(glb(json, compressed), MAX))
+    }
+
+    @Test
+    fun `an animation sampler whose output does not match its keyframes is refused`() {
+        fun gltf(path: String, interpolation: String, inputs: Int, outputs: Int, targets: Int = 2) = text(
+            """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+                """{"componentType":5126,"type":"SCALAR","count":$inputs},{"componentType":5126,"type":"SCALAR","count":$outputs}],""" +
+                """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"targets":""" +
+                List(targets) { """{"POSITION":0}""" }.joinToString(",", "[", "]") + "}]}]," +
+                """"nodes":[{"mesh":0}],"animations":[{"samplers":[{"input":1,"output":2,"interpolation":"$interpolation"}],""" +
+                """"channels":[{"sampler":0,"target":{"node":0,"path":"$path"}}]}]}""",
+        )
+
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("translation", "LINEAR", 4, 4), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("rotation", "CUBICSPLINE", 4, 12), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("weights", "STEP", 4, 8), MAX))
+        assertEquals(emptyList<String>(), GltfLimits.violations(gltf("weights", "CUBICSPLINE", 4, 24), MAX))
+        assertEquals(
+            listOf("channel 0 of animation 0 has 3 output values for 4 keyframes, not 4"),
+            GltfLimits.violations(gltf("translation", "LINEAR", 4, 3), MAX),
+        )
+        assertEquals(
+            listOf("channel 0 of animation 0 has 4 output values for 4 keyframes, not 12"),
+            GltfLimits.violations(gltf("scale", "CUBICSPLINE", 4, 4), MAX),
+        )
+        assertEquals(
+            listOf("channel 0 of animation 0 has 4 output values for 4 keyframes, not 8"),
+            GltfLimits.violations(gltf("weights", "LINEAR", 4, 4), MAX),
+        )
+    }
+
+    @Test
+    fun `the textures of a node outside every scene are measured, as gltfio instantiates it`() {
+        val gltf = text(
+            textured(images = """[{"uri":"a.png"}]""", textures = """[{"source":0}]""").replace(
+                """"nodes":[{"mesh":0}]""",
+                """"scenes":[{"nodes":[0]}],"nodes":[{},{"mesh":0}]""",
+            ),
+        )
+
+        assertEquals(1, GltfLimits.violations(gltf, MAX) { ByteBuffer.wrap(png(8192, 8)) }.size)
+    }
+
     @Test
     fun `a texture in an external buffer is measured`() {
         val huge = ktx2(8192, 8192)
@@ -321,6 +457,13 @@ class GltfLimitsTest {
     }
 
     @Test
+    fun `a JSON after a byte order mark is checked`() {
+        val gltf = text("\uFEFF" + """{"meshes":[{"primitives":[]}],"nodes":[{"mesh":0,"skin":0}],"skins":[{"joints":${joints(257)}}]}""")
+
+        assertEquals(listOf("skin 0 has 257 joints, more than the 256 Filament can skin"), GltfLimits.violations(gltf, MAX))
+    }
+
+    @Test
     fun `a JSON nested too deeply to check is refused rather than passed unchecked`() {
         val deep = text("""{"extras":""" + "[".repeat(200_000) + "]".repeat(200_000) + "}")
 
@@ -371,6 +514,35 @@ class GltfLimitsTest {
         assertEquals(640 to 480, GltfLimits.imageSize(ByteBuffer.wrap(jpeg(640, 480))))
         assertEquals(640 to 480, GltfLimits.imageSize(ByteBuffer.wrap(ktx2(640, 480))))
         assertEquals(null, GltfLimits.imageSize(ByteBuffer.wrap("RIFF....WEBP".toByteArray())))
+    }
+
+    /** The bytes this thread allocated so far, by reflection: `java.lang.management` is not in android.jar. */
+    private fun allocatedBytes(): Long {
+        val threads = Class.forName("java.lang.management.ManagementFactory").getMethod("getThreadMXBean").invoke(null)
+        return Class.forName("com.sun.management.ThreadMXBean").getMethod("getCurrentThreadAllocatedBytes").invoke(threads) as Long
+    }
+
+    /** The most heap in use above its level at construction, sampled every millisecond until [stop]. */
+    private class HeapPeak {
+        private val runtime = Runtime.getRuntime()
+        private val base = used()
+        @Volatile private var peak = 0L
+        @Volatile private var running = true
+        private val sampler = Thread {
+            while (running) {
+                peak = maxOf(peak, used() - base)
+                Thread.sleep(1)
+            }
+        }.apply { isDaemon = true; start() }
+
+        fun stop(): Long {
+            peak = maxOf(peak, used() - base)
+            running = false
+            sampler.join()
+            return peak
+        }
+
+        private fun used() = runtime.totalMemory() - runtime.freeMemory()
     }
 
     private companion object {

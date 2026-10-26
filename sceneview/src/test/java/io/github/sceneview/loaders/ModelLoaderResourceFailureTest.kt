@@ -66,6 +66,7 @@ class ModelLoaderResourceFailureTest {
     @Before
     fun setUp() {
         destroyedAssets.clear()
+        instancedAssets.clear()
         resourceUris = arrayOf(TEXTURE)
         beginAccepted = true
         loadProgress = 0f
@@ -352,8 +353,9 @@ class ModelLoaderResourceFailureTest {
         val model = loader.createModel(File(java.net.URI(modelFileUri())), releaseSourceData = false)
         val other = ModelLoader(engine, RuntimeEnvironment.getApplication())
 
-        // gltfio answers null under Robolectric; what matters is that SceneView lets the call through.
-        other.createInstance(model)
+        // The shadow answers no instance; what matters is that SceneView lets the call through.
+        assertNull(other.createInstance(model))
+        assertEquals("gltfio was asked, for that model's asset", listOf(ASSET), instancedAssets)
     }
 
     @Test
@@ -427,6 +429,27 @@ class ModelLoaderResourceFailureTest {
         assertEquals("the main thread still asks gltfio", 0.9f, loader.progress)
     }
 
+    @Test
+    fun `updateLoad asks gltfio for its progress only while a load is pending`() {
+        progressCalls.set(0)
+        repeat(3) { loader.updateLoad() }
+        assertEquals("nothing loading: no progress read, frame after frame", 0, progressCalls.get())
+
+        resourceUris = emptyArray()
+        loadProgress = 0.5f
+        await { loader.loadModelAsync(modelFileUri(), onResult = it) }
+        progressCalls.set(0)
+        loader.updateLoad()
+        assertEquals("loading: read each frame", 1, progressCalls.get())
+
+        loadProgress = 1f
+        loader.updateLoad()
+        progressCalls.set(0)
+        repeat(3) { loader.updateLoad() }
+        assertEquals("loaded: no progress read any more", 0, progressCalls.get())
+        assertEquals(false, loader.isLoading)
+    }
+
     /** Every parse succeeds, with handle [ASSET]; destroys are recorded. */
     @Implements(AssetLoader::class)
     @Suppress("UnusedParameter", "FunctionOnlyReturningConstant") // Robolectric shadows mirror native signatures
@@ -449,6 +472,13 @@ class ModelLoaderResourceFailureTest {
             @Implementation
             fun nDestroyAsset(nativeLoader: Long, nativeAsset: Long) {
                 destroyedAssets += nativeAsset
+            }
+
+            @JvmStatic
+            @Implementation
+            fun nCreateInstance(nativeLoader: Long, nativeAsset: Long): Long {
+                instancedAssets += nativeAsset
+                return 0L
             }
         }
     }
@@ -594,5 +624,6 @@ class ModelLoaderResourceFailureTest {
         val evictCalls = AtomicInteger()
 
         val destroyedAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
+        val instancedAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
     }
 }
