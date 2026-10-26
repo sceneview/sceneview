@@ -10,6 +10,13 @@ import java.io.File
  * Source contract for the teardown paths field ANR reports caught blocking the main thread in
  * Filament fence waits. The waits themselves are native; what JVM tests can pin is that SceneView
  * no longer asks for them.
+ *
+ * What it protects: the engine built without the GPU frame-complete metric, both deferred
+ * teardowns (renderer and engine, cancelled async loads) polling a fresh fence, and
+ * `VideoNode.destroy` draining only on a thread without a looper. It matches source text
+ * (whitespace-collapsed), so it is deliberately brittle: renaming or reformatting one of the
+ * matched calls fails it, and the matched strings must then be updated along with the code — after
+ * checking the new code still does what the assertion message says.
  */
 class TeardownBlockingContractTest {
 

@@ -59,11 +59,15 @@ internal class BackendIdleTeardowns {
      * [isBackendBusy] is still polled meanwhile, every time: a probe that keeps time (its give-up
      * delay, its freshness) then counts from the deferral, not from the end of the others, and
      * the teardown runs in the same poll as the last of them when the backend is idle.
+     *
+     * [schedule] returns whether the re-check was queued. When it was not — a `Handler` whose
+     * looper is quitting — the teardown runs at once rather than never: a release that may block
+     * is better than a leaked one. It runs with `deferred = false` when that happens in this call.
      */
     fun defer(
         isEngineAlive: () -> Boolean,
         isBackendBusy: () -> Boolean,
-        schedule: (delayMs: Long, block: () -> Unit) -> Unit,
+        schedule: (delayMs: Long, block: () -> Unit) -> Boolean,
         teardown: (deferred: Boolean) -> Unit,
         onEngineGone: () -> Unit = {},
         intervalMs: Long = BACKEND_IDLE_POLL_MS,
@@ -89,11 +93,14 @@ internal class BackendIdleTeardowns {
                     entry.drop()
                     onEngineGone()
                 }
-                isBackendBusy() || othersPending() -> schedule(intervalMs, ::poll)
+                (isBackendBusy() || othersPending()) && schedule(intervalMs, ::poll) -> Unit
                 else -> entry.run()
             }
         }
-        schedule(intervalMs, ::poll)
+        if (!schedule(intervalMs, ::poll)) {
+            entry.drop()
+            teardown(false)
+        }
     }
 
     /**

@@ -124,10 +124,14 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * ANR on an emulator (#3799). The inner wait covers what is queued when the destroy *runs*, not
  * when it was deferred: on a shared engine, the next screen's shader compilations queued in
  * between. So the destroy waits, through [whenBackendIdle]'s [FreshFenceProbe], until the backend
- * has recently caught up with its queue, and that inner wait only finds what was queued within the
- * freshness window, 48 to 250 ms of work.
+ * has recently caught up with its queue. That inner wait then only finds what the main thread
+ * queued in the last 48 ms — main-thread time, not backend work: usually a frame or two, but a
+ * shader compilation queued in that window is still waited for. This narrows the blocking case
+ * without ruling it out.
  * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
  * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
+ * A main thread polling less often than every 48 ms never finds a fence fresh: the destroy then
+ * waits for the 5 s fallback ([FRESH_FENCE_GIVE_UP_MS]).
  *
  * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
  * the engine was built without the GPU frame-complete metric — see [createEngine].
@@ -154,10 +158,11 @@ private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
 /**
  * Runs [onIdle] on the calling thread once this engine's backend has caught up with everything
  * queued on it, polling fences from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]
- * instead of waiting on them (#3799). "Caught up" means a fence was found reached soon after it was
- * created — within three times the shorter of the last two gaps between polls, 48 to 250 ms — so
- * whatever [onIdle] waits for in turn is at most that window's worth of work, even when more work
- * was queued after this call ([FreshFenceProbe]). See [BackendIdleTeardowns] for the contract.
+ * instead of waiting on them (#3799). "Caught up" means a fence was found reached at most 48 ms
+ * after it was created ([FreshFenceProbe]), so whatever [onIdle] waits for in turn is what the main
+ * thread queued in those 48 ms, even when more work was queued after this call. That bounds
+ * main-thread queuing time, not backend work: a shader compilation queued in that window is still
+ * waited for. See [BackendIdleTeardowns] for the contract.
  *
  * [onIdle] receives `deferred = false` when it ran before this function returned, which is now the
  * exception — the old blocking behaviour, when the thread has no [Looper] or the fence could not be
@@ -197,8 +202,8 @@ internal fun Engine.whenBackendIdle(
 
 /**
  * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
- * queued on it within the freshness window measured between polls. Never waits. Not busy when no
- * fence can be created.
+ * queued on it: a fence reached within 48 ms of its creation. Never waits. Not busy when no fence
+ * can be created.
  */
 internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
@@ -207,7 +212,10 @@ internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     now = SystemClock::uptimeMillis,
 )
 
-/** Whether [fence] has not been reached by the backend yet — a zero-timeout wait, never blocks. */
+/**
+ * Whether [fence] has not been reached by the backend yet — a zero-timeout wait. Its `FLUSH` can
+ * still wait for room in a full command stream.
+ */
 internal fun isFenceBusy(fence: Fence): Boolean =
     runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
 
@@ -240,6 +248,7 @@ internal fun Engine.whenIdle(
     backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
         isEngineAlive = { isValid },
         isBackendBusy = isBusy,
+        // `false` once the looper is quitting: the teardown then runs at once instead of never.
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
         teardown = { deferred ->
             // Checked again here: whatever path runs a teardown, it never touches a dead engine.
