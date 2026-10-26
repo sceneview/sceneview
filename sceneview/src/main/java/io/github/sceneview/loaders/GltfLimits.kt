@@ -80,7 +80,7 @@ internal object GltfLimits {
         val (jsonFrom, jsonLength) = chunks?.json ?: (bytes.position() to bytes.remaining())
         return try {
             val text = ByteArray(jsonLength).also { bytes.duplicate().apply { position(jsonFrom) }.get(it) }
-            Parsed(JSONObject(text.toString(Charsets.UTF_8).removePrefix("﻿")), bytes, chunks?.bin, null)
+            Parsed(JSONObject(text.toString(Charsets.UTF_8).removePrefix("\uFEFF")), bytes, chunks?.bin, null)
         } catch (_: JSONException) {
             Parsed.NOT_GLTF
         } catch (_: OutOfMemoryError) {
