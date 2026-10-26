@@ -85,15 +85,26 @@ class AutoPlacementState {
 
     /**
      * The placed [AutoPlacementModel]'s dimensions at 100 %, in metres — width (X), height (Y)
-     * and depth (Z) after its `assetRotation`, as it stands on a floor. `null` while no model is
-     * composed. With [PlacementSize.RealWorld] these are the asset's authored dimensions; with
-     * [PlacementSize.FitInto] the longest of them is the requested size.
+     * and depth (Z) of its axis-aligned box after its `assetRotation`, as it stands on a floor.
+     *
+     * With [PlacementSize.RealWorld] the box is built from the asset's authored dimensions.
+     * [PlacementSize.FitInto] fits the longest authored axis *before* `assetRotation`, so the
+     * largest value here is the requested size only when the rotation is a multiple of 90°: a
+     * 1 m cube at `FitInto(1f)` turned 45° about Y reports about 1.41 × 1 × 1.41 m.
+     *
+     * `null` while no model is composed, for an asset with an empty bounding box, and during
+     * the model's first composition: it is published from an effect, so it arrives one frame
+     * after the model.
      *
      * To let the user pick a size — "make it 2 m tall" — scale relative to it:
      *
      * ```kotlin
      * state.baseSize?.let { state.scaleTo(2f / it.y) }
      * ```
+     *
+     * [scaleTo] clamps to [scaleRange] (25–400 % by default) and does nothing while
+     * [allowsScaling] is `false`: a 0.3 m preview asked to stand 2 m tall needs ×6.7 and stops
+     * at 1.2 m. Widen [scaleRange] first (`0.25f..16f`, say) when the target may lie outside it.
      */
     var baseSize: Size? by mutableStateOf(null)
         private set
@@ -116,7 +127,7 @@ class AutoPlacementState {
     private var baseSizeOwner: Any? = null
 
     /** Called by [AutoPlacementModel] once its model exists; [owner] identifies the writer. */
-    internal fun publishBaseSize(owner: Any, size: Size, realWorld: Boolean) {
+    internal fun publishBaseSize(owner: Any, size: Size?, realWorld: Boolean) {
         baseSizeOwner = owner
         baseIsRealWorld = realWorld
         baseSize = size
@@ -195,7 +206,8 @@ class AutoPlacementState {
 
     /**
      * Accessibility alternative: uniform base-size multiplier, clamped to [scaleRange]
-     * (25–400 % by default). Ignored while [allowsScaling] is `false`.
+     * (25–400 % by default) without notice — a factor outside it lands on the nearest bound.
+     * Ignored while [allowsScaling] is `false`.
      */
     fun scaleTo(factor: Float) {
         if (allowsScaling && canManipulate && factor.isFinite()) {

@@ -24,8 +24,10 @@ sealed interface PlacementSize {
 
     /**
      * Scale the model uniformly so its longest authored axis measures [meters] — a preview for
-     * assets whose units are unknown or not metres. [AutoPlacementState.baseSize] reports the
-     * resulting dimensions.
+     * assets whose units are unknown or not metres. The fit is on the asset's own axes, before
+     * `assetRotation`: [AutoPlacementState.baseSize] reports the axis-aligned box after it, so
+     * its largest side equals [meters] only when the rotation is a multiple of 90° (a 1 m cube
+     * turned 45° about Y measures about 1.41 × 1 × 1.41 m).
      */
     data class FitInto(val meters: Float) : PlacementSize {
         init {
@@ -43,10 +45,11 @@ internal val PlacementSize.scaleToUnits: Float?
 
 /**
  * Width, height and depth, in metres, of an authored box with [halfExtent] once uniformly
- * scaled by [scale] and turned by [assetRotation] — the model's 100 % size as the user sees it
- * standing on the floor, before any pinch.
+ * scaled by [scale] and turned by [assetRotation] — the axis-aligned box of the model's 100 %
+ * size as the user sees it standing on the floor, before any pinch. `null` for an asset with no
+ * extent at all (an empty box) or unusable bounds: there is no size to report.
  */
-internal fun placementBaseSize(halfExtent: Size, scale: Scale, assetRotation: Rotation): Size {
+internal fun placementBaseSize(halfExtent: Size, scale: Scale, assetRotation: Rotation): Size? {
     val q = assetRotation.toQuaternion()
     var lo = Position(Float.POSITIVE_INFINITY)
     var hi = Position(Float.NEGATIVE_INFINITY)
@@ -55,7 +58,10 @@ internal fun placementBaseSize(halfExtent: Size, scale: Scale, assetRotation: Ro
         lo = Position(min(lo.x, p.x), min(lo.y, p.y), min(lo.z, p.z))
         hi = Position(max(hi.x, p.x), max(hi.y, p.y), max(hi.z, p.z))
     }
-    return hi - lo
+    val size = hi - lo
+    val usable = size.x.isFinite() && size.y.isFinite() && size.z.isFinite() &&
+        (size.x > 0f || size.y > 0f || size.z > 0f)
+    return size.takeIf { usable }
 }
 
 private val SIGNS = floatArrayOf(-1f, 1f)

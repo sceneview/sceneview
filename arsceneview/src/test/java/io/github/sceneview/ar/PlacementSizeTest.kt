@@ -64,6 +64,26 @@ class PlacementSizeTest {
         assertSize(Size(1f, 2f, 0.5f), base, delta = 1e-4f)
     }
 
+    @Test fun `fit into is fitted before the asset rotation`() {
+        // FitInto(1f) on a 1 m cube, then turned 45 deg about Y: the axis-aligned box the
+        // state reports is the turned cube's, about 1.41 wide and deep, not 1.
+        val base = placementBaseSize(Size(0.5f, 0.5f, 0.5f), Scale(1f), Rotation(y = 45f))
+        val diagonal = kotlin.math.sqrt(2f)
+        assertSize(Size(diagonal, 1f, diagonal), base, delta = 1e-4f)
+    }
+
+    @Test fun `an empty asset has no base size`() {
+        assertNull(placementBaseSize(Size(0f, 0f, 0f), Scale(1f), Rotation(0f)))
+        assertNull(placementBaseSize(Size(Float.NaN, 1f, 1f), Scale(1f), Rotation(0f)))
+        // A flat card still has a size.
+        assertSize(Size(1f, 0f, 1f), placementBaseSize(Size(0.5f, 0f, 0.5f), Scale(1f), Rotation(0f)))
+        val state = AutoPlacementState()
+        state.publishBaseSize(owner = this, size = null, realWorld = true)
+        assertNull(state.baseSize)
+        assertNull(state.placedSize)
+        assertFalse(state.isAtRealWorldSize)
+    }
+
     @Test fun `placed size follows the user scale`() {
         val state = AutoPlacementState()
         assertNull(state.placedSize)

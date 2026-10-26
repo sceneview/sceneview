@@ -109,12 +109,18 @@ set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0
 tracked camera's world height in metres (`null` until it tracks).
 
 To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
-a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest axis fitted into that many
-metres) instead of `scaleToUnits`. Either way the bottom-centre rests on the contact point and
-the model's dimensions are published in metres: `AutoPlacementState.baseSize` (width, height,
-depth at 100 %, after `assetRotation`), `placedSize` (`baseSize * scaleFactor`, following the
-pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick a size with
-`state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall).
+a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest authored axis, before
+`assetRotation`, fitted into that many metres) instead of `scaleToUnits`. Either way the
+bottom-centre rests on the contact point and the model's dimensions are published in metres:
+`AutoPlacementState.baseSize` (width, height, depth at 100 % of the axis-aligned box after
+`assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
+a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
+frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
+following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
+`scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
+`false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`
+(e.g. `0.25f..16f`) first.
 
 For asynchronous selection, call `placement.selectModel()` before loading and attach
 only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model

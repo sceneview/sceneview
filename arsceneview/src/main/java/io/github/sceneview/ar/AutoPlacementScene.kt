@@ -614,7 +614,8 @@ fun ARSceneScope.AutoPlacementModel(
  *
  * - [PlacementSize.RealWorld] keeps the asset's authored metres — a 1 m cube is 1 m, nothing
  *   is rescaled;
- * - [PlacementSize.FitInto] scales it so its longest axis measures the given metres.
+ * - [PlacementSize.FitInto] scales it so its longest authored axis, before [assetRotation],
+ *   measures the given metres.
  *
  * Either way the model's bottom-centre rests on the surface (back and bottom against a wall),
  * 100 % is that size, and the pinch, [AutoPlacementState.scaleTo] and the double-tap resize it
@@ -625,6 +626,10 @@ fun ARSceneScope.AutoPlacementModel(
  * AutoPlacementModel(placement, state, sofa, size = PlacementSize.RealWorld)
  * Text(state.placedSize?.let { "%.2f m tall".format(it.y) } ?: "")
  * ```
+ *
+ * [AutoPlacementState.baseSize] is the axis-aligned box after [assetRotation], published one
+ * frame after the model appears. [AutoPlacementState.scaleTo] clamps to
+ * [AutoPlacementState.scaleRange] (25–400 % by default): widen it for a target outside that.
  *
  * Gestures, selection and [assetRotation] behave as in the `scaleToUnits` overload.
  */
