@@ -7,6 +7,7 @@ import com.google.android.filament.RenderableManager
 import com.google.android.filament.VertexBuffer
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.FilamentAsset
+import com.google.android.filament.gltfio.isReleased
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.max
 import com.google.android.filament.Box
@@ -63,7 +64,7 @@ open class ModelNode(
      * - ...
      */
     centerOrigin: Position? = null
-) : Node(engine = modelInstance.engine, entity = modelInstance.root) {
+) : Node(engine = modelInstance.engine, entity = modelInstance.liveRoot()) {
 
     interface ChildNode {
         val entity: Entity
@@ -201,12 +202,32 @@ open class ModelNode(
     var onFrameError: ((Exception) -> Unit)? = null
 
     /**
+     * `true` once the model was destroyed under this node, by `ModelLoader.destroyModel`, `clear`
+     * or `destroy`. `rememberModelInstance` destroys it when it leaves the composition, possibly
+     * before the node detaches. From then on the node makes no Filament call on the model: its
+     * frame and `stopAnimation` do nothing, and what reads the model throws [IllegalStateException].
+     */
+    internal val isModelDestroyed: Boolean get() = model.isReleased
+
+    private fun checkModelAlive(what: String) = check(!isModelDestroyed) {
+        "ModelNode.$what: the model of this node was destroyed (ModelLoader.destroyModel, clear " +
+            "or destroy). Stop using the node once its model is destroyed."
+    }
+
+    /**
      * Gets the bounding box computed from the supplied min / max values in glTF accessors.
      *
      * This does not return a bounding box over all FilamentInstance, it's just a straightforward
      * AAAB that can be determined at load time from the asset data.
+     *
+     * @throws IllegalStateException once the model was destroyed, as [halfExtent], [extents],
+     * [center] and [size] do.
      */
-    val boundingBox get() = model.boundingBox
+    val boundingBox: Box
+        get() {
+            checkModelAlive("boundingBox")
+            return model.boundingBox
+        }
     val halfExtent get() = boundingBox.halfExtent.let { v -> Float3(v[0], v[1], v[2]) }
     val extents get() = halfExtent * 2.0f
     val center get() = boundingBox.center.let { v -> Float3(v[0], v[1], v[2]) }
@@ -219,8 +240,15 @@ open class ModelNode(
 
     /**
      * The number of animation definitions in the glTF asset.
+     *
+     * @throws IllegalStateException once the model was destroyed, as [playAnimation] and
+     * [setAnimationSpeed] do.
      */
-    val animationCount get() = animator.animationCount
+    val animationCount: Int
+        get() {
+            checkModelAlive("animationCount")
+            return animator.animationCount
+        }
 
     /**
      * The animations in flight, by animation index. Filled by [playAnimation], emptied by
@@ -417,6 +445,7 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun playAnimation(animationName: String, speed: Float = 1f, loop: Boolean = true) {
+        checkModelAlive("playAnimation")
         animator.getAnimationIndex(animationName)?.let { playAnimation(it, speed, loop) }
     }
 
@@ -439,6 +468,7 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun setAnimationSpeed(animationName: String, speed: Float) {
+        checkModelAlive("setAnimationSpeed")
         animator.getAnimationIndex(animationName)?.let { setAnimationSpeed(it, speed) }
     }
 
@@ -459,6 +489,9 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun stopAnimation(animationName: String) {
+        // Nothing plays on a destroyed model, and the `ModelNode` composable stops its named
+        // animation on dispose, which can come after `rememberModelInstance` destroyed the model.
+        if (isModelDestroyed) return
         animator.getAnimationIndex(animationName)?.let { stopAnimation(it) }
     }
 
@@ -611,6 +644,14 @@ open class ModelNode(
      * `onFrame` override, and only while [needsFrame] says there is a reason to.
      */
     override fun onOwnFrame(frameTimeNanos: Long) {
+        if (isModelDestroyed) {
+            // `rememberModelInstance` destroys the model when it leaves the composition, and the
+            // node can detach from a child composition a frame later. The asset, its instance and
+            // its animator are freed: nothing left to pop, animate or skin, and no frame to ask for.
+            playingAnimations.clear()
+            hasOwnFrameWork = false
+            return
+        }
         try {
             // Capture BEFORE applyAnimations(): a non-looping animation removes itself
             // from `playingAnimations` on the same frame it writes its final pose, so a
@@ -777,6 +818,18 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
+
+/**
+ * The root entity of [this], checked before the [ModelNode] super constructor reads it: past
+ * `ModelLoader.destroyModel`, the instance's handle points at freed memory.
+ */
+private fun ModelInstance.liveRoot(): Entity {
+    check(!asset.isReleased) {
+        "Cannot create a ModelNode: its model was destroyed (ModelLoader.destroyModel, clear or " +
+            "destroy). Create the node from a model that is still loaded."
+    }
+    return root
 }
 
 /**

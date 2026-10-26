@@ -393,9 +393,10 @@ private class NodeScreenAnchors {
     private var viewportSize by mutableStateOf(Size.Zero)
 
     fun update(node: Node, view: View) {
-        if (node.isDestroyed) {
-            // The overlay can outlive the node by a frame (disposal ordering) — never
-            // touch released Filament components.
+        if (node.isDestroyed || (node is ModelNode && node.isModelDestroyed)) {
+            // The overlay can outlive the node by a frame (disposal ordering), and the node
+            // its model (`rememberModelInstance` destroys it first) — never touch released
+            // Filament components.
             base = null
             top = null
             return
