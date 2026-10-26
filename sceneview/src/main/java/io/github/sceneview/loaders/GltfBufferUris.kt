@@ -47,9 +47,25 @@ internal object GltfBufferUris {
      * itself: `cgltf_load_buffer_file` decodes each `%` followed by two hex digits
      * (`cgltf_decode_uri`) and leaves any other `%` as it is, so a `my%20model.bin` fed under its
      * own name is never found. `null` when decoding changes nothing, or yields bytes a JNI string
-     * cannot carry (not UTF-8, a NUL, or a character outside the BMP, which JNI encodes otherwise).
+     * cannot carry (see [isUnfeedable]).
      */
     fun cgltfKey(uri: String): String? {
+        val decoded = decodedBytes(uri) ?: return null
+        return feedable(decoded)
+    }
+
+    /**
+     * Whether cgltf looks [uri] up by a key no resource can be fed under: decoding it changes it,
+     * into bytes that are not UTF-8, hold a NUL (where cgltf's C string ends), or a character
+     * outside the BMP (which JNI encodes otherwise than UTF-8). Such a buffer is left without data.
+     */
+    fun isUnfeedable(uri: String): Boolean {
+        val decoded = decodedBytes(uri) ?: return false
+        return feedable(decoded) == null
+    }
+
+    /** The bytes `cgltf_decode_uri` turns [uri] into, `null` when they are those of [uri]. */
+    private fun decodedBytes(uri: String): ByteArray? {
         if ('%' !in uri) return null
         val bytes = uri.toByteArray(Charsets.UTF_8)
         val decoded = ByteArrayOutputStream(bytes.size)
@@ -64,19 +80,23 @@ internal object GltfBufferUris {
                 decoded.write(bytes[i++].toInt())
             }
         }
+        return decoded.toByteArray().takeUnless { it.contentEquals(bytes) }
+    }
+
+    private fun feedable(decoded: ByteArray): String? {
         val key = try {
             Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(decoded.toByteArray()))
+                .decode(ByteBuffer.wrap(decoded))
                 .toString()
         } catch (_: CharacterCodingException) {
             return null
         }
-        return key.takeIf { it != uri && key.none { c -> c == '\u0000' || c.isSurrogate() } }
+        return key.takeIf { it.none { c -> c == '\u0000' || c.isSurrogate() } }
     }
 
-    private fun hexValue(byte: Byte): Int = Character.digit(byte.toInt().toChar(), HEX_RADIX).takeIf { byte >= 0 } ?: -1
+    private fun hexValue(byte: Byte): Int = Character.digit(byte.toInt().toChar(), HEX_RADIX)
 
     private fun declaredBufferUris(source: ByteBuffer): Set<String>? {
         val json = jsonText(source.duplicate().order(ByteOrder.LITTLE_ENDIAN)) ?: return null

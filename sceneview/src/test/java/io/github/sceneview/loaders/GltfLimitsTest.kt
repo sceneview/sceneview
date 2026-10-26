@@ -353,6 +353,54 @@ class GltfLimitsTest {
     }
 
     @Test
+    fun `a KHR_meshopt_compression view's byte range is measured`() {
+        // Not parsed by cgltf, so its range is read as it is: unlike an EXT one (see below).
+        val json = """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
+            """{"bufferView":0,"componentType":5123,"type":"SCALAR","count":3}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":6,"extensions":{"KHR_meshopt_compression":{"buffer":0,""" +
+            """"byteLength":6,"byteStride":2,"count":3,"mode":"TRIANGLES"}}}],"buffers":[{"byteLength":8}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}"""
+        val indices = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putShort(500).array()
+
+        assertEquals(
+            listOf("primitive 0 of mesh 0 indexes vertex 500 of its 3"),
+            GltfLimits.violations(glb(json, indices), MAX),
+        )
+    }
+
+    @Test
+    fun `a uri that decodes to bytes that are not UTF-8 is refused`() = assertUnfeedable("a%FF.bin")
+
+    @Test
+    fun `a uri that decodes to a NUL is refused`() = assertUnfeedable("a%00.bin")
+
+    @Test
+    fun `a uri that decodes to a character outside the BMP is refused`() = assertUnfeedable("%F0%9F%98%80.bin")
+
+    @Test
+    fun `a uri that decodes to Latin-1 rather than UTF-8 is refused`() = assertUnfeedable("caf%E9.bin")
+
+    /**
+     * cgltf looks [uri] up decoded, by a key no resource can be fed under, so the buffer keeps no
+     * data even though its resource is at hand — unless no view reads it.
+     */
+    private fun assertUnfeedable(uri: String) {
+        fun json(buffer: Int) = """{"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":1}],""" +
+            """"bufferViews":[{"buffer":$buffer,"byteLength":12}],""" +
+            """"buffers":[{"uri":"scene.bin","byteLength":12},{"uri":"$uri","byteLength":12}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}"""
+        val resource = { _: String -> ByteBuffer.wrap(ByteArray(12)) }
+
+        assertEquals(
+            listOf("buffer 1 ($uri) decodes to a name no resource can be fed under: cgltf leaves it without data"),
+            GltfLimits.violations(text(json(buffer = 1)), MAX, resource),
+        )
+        assertEquals("no view reads it", emptyList<String>(), GltfLimits.violations(text(json(buffer = 0)), MAX, resource))
+        val fed = json(buffer = 1).replace(uri, "my%20model.bin")
+        assertEquals("a key that can be fed", emptyList<String>(), GltfLimits.violations(text(fed), MAX, resource))
+    }
+
+    @Test
     fun `a negative offset is refused, never thrown`() {
         val indices = """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},""" +
             """{"bufferView":0,"byteOffset":-4,"componentType":5123,"type":"SCALAR","count":3}],""" +

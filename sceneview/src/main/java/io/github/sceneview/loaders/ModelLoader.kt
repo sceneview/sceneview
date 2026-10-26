@@ -925,6 +925,16 @@ class ModelLoader(
     }
 
     /**
+     * Feeds [data] to gltfio under [uri], and also under the key cgltf looks a percent-encoded
+     * [uri] up by: without it, a `my%20model.bin` buffer is never found and keeps no data.
+     */
+    @MainThread
+    private fun addResource(uri: String, data: Buffer) {
+        resourceLoader.addResourceData(uri, data)
+        GltfBufferUris.cgltfKey(uri)?.let { resourceLoader.addResourceData(it, data) }
+    }
+
+    /**
      * The synchronous counterpart of [loadModelThen]'s resource step, same rule: a missing texture
      * is logged and skipped, a missing buffer (or a begin gltfio refuses) destroys [model] and
      * throws an `IllegalArgumentException`, rather than handing out a model with no geometry. Its
@@ -937,16 +947,6 @@ class ModelLoader(
      * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
      * The resolved resources are checked against [gltf], the parse `createModel` already made.
      */
-    /**
-     * Feeds [data] to gltfio under [uri], and also under the key cgltf looks a percent-encoded
-     * [uri] up by: without it, a `my%20model.bin` buffer is never found and keeps no data.
-     */
-    @MainThread
-    private fun addResource(uri: String, data: Buffer) {
-        resourceLoader.addResourceData(uri, data)
-        GltfBufferUris.cgltfKey(uri)?.let { resourceLoader.addResourceData(it, data) }
-    }
-
     @MainThread
     @Suppress("TooGenericExceptionCaught") // Destroy on any failure, then rethrow it unchanged.
     private fun loadResources(

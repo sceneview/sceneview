@@ -1,6 +1,8 @@
 package io.github.sceneview.loaders
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -46,6 +48,18 @@ class GltfBufferUrisTest {
         assertEquals("bytes that are not UTF-8", null, GltfBufferUris.cgltfKey("a%FF.bin"))
         assertEquals("a NUL ends a C string", null, GltfBufferUris.cgltfKey("a%00.bin"))
         assertEquals("JNI encodes a character outside the BMP otherwise", null, GltfBufferUris.cgltfKey("%F0%9F%98%80.bin"))
+        assertEquals("a % two bytes from the end is left as is", null, GltfBufferUris.cgltfKey("x%2"))
+        assertEquals("a % one byte from the end is left as is", null, GltfBufferUris.cgltfKey("%4"))
+    }
+
+    @Test
+    fun `a uri cgltf decodes to a key no resource can be fed under is unfeedable`() {
+        listOf("a%FF.bin", "a%00.bin", "%F0%9F%98%80.bin", "caf%E9.bin").forEach {
+            assertTrue(it, GltfBufferUris.isUnfeedable(it))
+        }
+        listOf("my%20model.bin", "100%.bin", "x%2", "scene.bin").forEach {
+            assertFalse(it, GltfBufferUris.isUnfeedable(it))
+        }
     }
 
     @Test

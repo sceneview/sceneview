@@ -55,8 +55,9 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   it, keep no data, and the vertex upload reads from a null pointer.
  * - **A buffer a buffer view reads that cgltf leaves without data**: one with no `uri`, other than
  *   buffer 0 of a `.glb` that has a BIN chunk (an `EXT_meshopt_compression` fallback, never read,
- *   aside), and one whose `uri` is empty. A percent-encoded `uri` is not one: [ModelLoader] feeds
- *   its resource under the decoded name cgltf looks up as well.
+ *   aside), one whose `uri` is empty, and one whose percent-encoded `uri` decodes to bytes a
+ *   resource cannot be fed under — not UTF-8, a NUL, or a character outside the BMP. Any other
+ *   percent-encoded `uri` is fed by [ModelLoader] under the decoded name cgltf looks up as well.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -212,6 +213,10 @@ internal object GltfLimits {
                     "://" in uri -> violations += "buffer $index has an absolute URI, which cgltf does not load"
                     uri.isEmpty() -> if (index in viewed && declared > 0) {
                         violations += "buffer $index has an empty uri, which names no resource"
+                    }
+                    GltfBufferUris.isUnfeedable(uri) -> if (index in viewed && declared > 0) {
+                        violations += "buffer $index ($uri) decodes to a name no resource can be fed under: " +
+                            "cgltf leaves it without data"
                     }
                     else -> {
                         val length = resource(uri)?.remaining()?.toLong() ?: return@forEachObject
