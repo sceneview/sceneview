@@ -600,6 +600,24 @@ class GltfLimitsTest {
     }
 
     @Test
+    fun `an external buffer is measured by the bytes cgltf looks its decoded uri up by`() {
+        val gltf = text("""{"buffers":[{"uri":"a b.bin","byteLength":12},{"uri":"a%20b.bin","byteLength":20}]}""")
+        val files = mapOf("a b.bin" to 12, "a%20b.bin" to 20)
+
+        assertEquals(
+            "cgltf gets the 12 bytes of a b.bin for a%20b.bin",
+            listOf("buffer 1 (a%20b.bin) is 12 bytes, shorter than the 20 it declares"),
+            GltfLimits.violations(gltf, MAX) { uri -> files[uri]?.let { ByteBuffer.wrap(ByteArray(it)) } },
+        )
+        val alone = text("""{"buffers":[{"uri":"a%20b.bin","byteLength":20}]}""")
+        assertEquals(
+            "with no a b.bin, its own bytes, fed under that name",
+            emptyList<String>(),
+            GltfLimits.violations(alone, MAX) { uri -> ByteBuffer.wrap(ByteArray(20)).takeIf { uri == "a%20b.bin" } },
+        )
+    }
+
+    @Test
     fun `a sparse accessor past its views or its own count is refused`() {
         fun gltf(indexView: Int, index: Int): Pair<ByteBuffer, ByteArray> {
             val bin = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putShort(index.toShort()).array()

@@ -387,6 +387,7 @@ class ModelLoader(
                 if (missing.isNotEmpty()) {
                     throw UnloadableModelException("Could not load $fileLocation without ${missing.joinToString()}")
                 }
+                val cgltfKeys = withContext(Dispatchers.Default) { cgltfKeys(source, uris) }
                 if (resources.isNotEmpty()) {
                     val loaded = resources.toMap()
                     // A buffer shorter than it says, or a texture too large: measured once read.
@@ -398,7 +399,7 @@ class ModelLoader(
                 withContext(Dispatchers.Main) {
                     // `destroy()` frees the resource loader once the models settle: none to feed.
                     if (model !in models || !lifecycle.canCreate) return@withContext null
-                    resources.forEach { (uri, data) -> addResource(uri, data) }
+                    resources.forEach { (uri, data) -> addResource(uri, data, cgltfKeys[uri]) }
                     if (!asyncLoad.begin(model)) {
                         // A fresh asset is refused only when its meshopt buffers fail to decode,
                         // before gltfio queues any texture. `asyncLoad.begin` already handed the
@@ -925,13 +926,29 @@ class ModelLoader(
     }
 
     /**
-     * Feeds [data] to gltfio under [uri], and also under the key cgltf looks a percent-encoded
-     * [uri] up by: without it, a `my%20model.bin` buffer is never found and keeps no data.
+     * Feeds [data] to gltfio under [uri], and also under [cgltfKey], the name cgltf looks a
+     * percent-encoded buffer up by: without it, a `my%20model.bin` buffer is never found and keeps
+     * no data.
      */
     @MainThread
-    private fun addResource(uri: String, data: Buffer) {
+    private fun addResource(uri: String, data: Buffer, cgltfKey: String?) {
         resourceLoader.addResourceData(uri, data)
-        GltfBufferUris.cgltfKey(uri)?.let { resourceLoader.addResourceData(it, data) }
+        cgltfKey?.let { resourceLoader.addResourceData(it, data) }
+    }
+
+    /**
+     * The name cgltf looks each percent-encoded buffer among [uris] up by, when it is not [uris]'s
+     * own. Buffers only: gltfio looks images up by their `uri` as written. And never a name among
+     * [uris]: gltfio replaces a resource fed twice under one name, so feeding `a%20b.bin` under
+     * `a b.bin` would hand cgltf its bytes for a buffer that has a file of its own. The JSON is
+     * read only when some `uri` decodes.
+     */
+    private fun cgltfKeys(source: Buffer, uris: Collection<String>): Map<String, String> {
+        val names = uris.toSet()
+        val keys = uris.mapNotNull { uri -> GltfBufferUris.cgltfKey(uri)?.takeIf { it !in names }?.let { uri to it } }
+        if (keys.isEmpty()) return emptyMap()
+        val buffers = GltfBufferUris.of(source, keys.map { it.first })
+        return keys.filter { it.first in buffers }.toMap()
     }
 
     /**
@@ -943,8 +960,8 @@ class ModelLoader(
      * rethrown.
      *
      * This runs on the main thread, like the whole synchronous `createModel`, so the glTF JSON is
-     * parsed to tell buffers from textures only once a resource is missing: a model whose
-     * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
+     * parsed to tell buffers from textures only once a resource is missing, or a `uri` is
+     * percent-encoded: a model whose plain resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
      * The resolved resources are checked against [gltf], the parse `createModel` already made.
      */
     @MainThread
@@ -963,6 +980,7 @@ class ModelLoader(
         val resolved = HashMap<String, Buffer>()
         // The missing buffers, among them.
         val missing: Map<String, IOException?> = try {
+            val cgltfKeys = cgltfKeys(source, uris)
             for (uri in uris) {
                 val data = try {
                     resourceResolver(uri)
@@ -971,7 +989,7 @@ class ModelLoader(
                     continue
                 }
                 if (data != null) {
-                    addResource(uri, data)
+                    addResource(uri, data, cgltfKeys[uri])
                     resolved[uri] = data
                 } else {
                     unresolved[uri] = null

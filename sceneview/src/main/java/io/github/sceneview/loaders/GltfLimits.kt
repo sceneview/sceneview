@@ -57,7 +57,9 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   buffer 0 of a `.glb` that has a BIN chunk (an `EXT_meshopt_compression` fallback, never read,
  *   aside), one whose `uri` is empty, and one whose percent-encoded `uri` decodes to bytes a
  *   resource cannot be fed under — not UTF-8, a NUL, or a character outside the BMP. Any other
- *   percent-encoded `uri` is fed by [ModelLoader] under the decoded name cgltf looks up as well.
+ *   percent-encoded `uri` is fed by [ModelLoader] under the decoded name cgltf looks up as well,
+ *   unless a resource has that name already: cgltf then gets that one's bytes, and its length is
+ *   the one checked against the buffer.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -83,7 +85,12 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   fallback, often empty). The cgltf of Filament 1.72.1 parses no `KHR_meshopt_compression`, so
  *   a view compressed with it is measured like any other;
  * - a `data:` URI whose header escapes its comma (`\u002C`);
- * - the length of an external buffer whose `uri` holds a JSON escape: cgltf looks it up escaped;
+ * - a buffer `uri` that holds a JSON escape (`\uXXXX`, `\/`): it is checked unescaped, while
+ *   cgltf looks the raw string up;
+ * - an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed: no view
+ *   reads it as it is, so it is not refused;
+ * - a `uri` that holds a character outside the BMP as it is, not percent-encoded: JNI feeds it in
+ *   modified UTF-8, under a name cgltf does not look up;
  * - an external buffer whose resource is not at hand yet: [ModelLoader] resolves it before the load;
  * - iridescence and anisotropy textures: gltfio 1.72.1 binds neither, so it never decodes them;
  * - WebP image sizes, and anything that fails while a texture is decoded rather than built.
@@ -188,6 +195,13 @@ internal object GltfLimits {
         val bin: Pair<Int, Int>?,
         val resource: (String) -> Buffer?,
     ) {
+        /**
+         * The bytes cgltf gets for the buffer [uri]: those under the name it decodes [uri] to when
+         * there are any — a resource of that name, or [uri]'s own, which [ModelLoader] feeds under
+         * it too — else [uri]'s own.
+         */
+        fun bufferResource(uri: String): Buffer? = GltfBufferUris.cgltfKey(uri)?.let(resource) ?: resource(uri)
+
         val accessors = json.optJSONArray("accessors")
         val bufferViews = json.optJSONArray("bufferViews")
         val buffers = json.optJSONArray("buffers")
@@ -219,7 +233,7 @@ internal object GltfLimits {
                             "cgltf leaves it without data"
                     }
                     else -> {
-                        val length = resource(uri)?.remaining()?.toLong() ?: return@forEachObject
+                        val length = bufferResource(uri)?.remaining()?.toLong() ?: return@forEachObject
                         if (length < declared) {
                             violations += "buffer $index ($uri) is $length bytes, shorter than the $declared it declares"
                         }
@@ -542,7 +556,7 @@ internal object GltfLimits {
                 bufferUri.isEmpty() && bufferIndex == 0 && glb != null && bin != null ->
                     Triple(glb, bin.first, bin.first + bin.second)
                 bufferUri.isNotEmpty() && !bufferUri.startsWith("data:") -> {
-                    val external = resource(bufferUri).asLittleEndian() ?: return null
+                    val external = bufferResource(bufferUri).asLittleEndian() ?: return null
                     Triple(external, external.position(), external.limit())
                 }
                 else -> return null

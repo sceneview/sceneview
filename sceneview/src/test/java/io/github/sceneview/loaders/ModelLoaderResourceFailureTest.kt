@@ -153,6 +153,35 @@ class ModelLoaderResourceFailureTest {
     }
 
     @Test
+    fun `a decoded name that is another resource's is not fed over it`() {
+        // gltfio replaces a resource fed twice under one name: `a b.bin` would get the 4 bytes of `a%20b.bin`.
+        listOf(listOf("a b.bin", "a%20b.bin"), listOf("a%20b.bin", "a b.bin")).forEach { order ->
+            fedResources.clear()
+            resourceUris = order.toTypedArray()
+            val buffers = order.joinToString(",") { """{"uri":"$it","byteLength":${if (it == "a b.bin") 12 else 4}}""" }
+            val model = gltfIn("""{"asset":{"version":"2.0"},"buffers":[$buffers]}""", mapOf("a b.bin" to 12, "a%20b.bin" to 4))
+
+            loader.createModel(model)
+
+            assertEquals("each fed once, under its own name", order, fedResources.toList())
+        }
+    }
+
+    @Test
+    fun `an image is fed under its own uri only, as gltfio looks it up`() {
+        resourceUris = arrayOf("my%20model.bin", "my%20albedo.png")
+        val model = gltfIn(
+            """{"asset":{"version":"2.0"},"buffers":[{"uri":"my%20model.bin","byteLength":4}],""" +
+                """"images":[{"uri":"my%20albedo.png"}]}""",
+            mapOf("my%20model.bin" to 4, "my%20albedo.png" to 4),
+        )
+
+        loader.createModel(model)
+
+        assertEquals(listOf("my%20model.bin", "my model.bin", "my%20albedo.png"), fedResources.toList())
+    }
+
+    @Test
     fun `a begin gltfio refuses fails the load and destroys the model`() {
         resourceUris = emptyArray()
         refuseBeginBeforeQueuingTextures()
@@ -653,6 +682,20 @@ class ModelLoaderResourceFailureTest {
         }
         if (withBuffer) File(folder, bufferFile).apply { writeBytes(ByteArray(bufferBytes)) }.deleteOnExit()
         return "file://${file.absolutePath}"
+    }
+
+    /** A `model.gltf` of [json], alone in its folder with [files] of the given sizes. */
+    private fun gltfIn(json: String, files: Map<String, Int>): File {
+        val folder = File.createTempFile("model", "").apply {
+            delete()
+            mkdirs()
+            deleteOnExit()
+        }
+        files.forEach { (name, size) -> File(folder, name).apply { writeBytes(ByteArray(size)) }.deleteOnExit() }
+        return File(folder, "model.gltf").apply {
+            writeText(json)
+            deleteOnExit()
+        }
     }
 
     /** A GLB whose index accessor starts 4 bytes before its buffer view. */
