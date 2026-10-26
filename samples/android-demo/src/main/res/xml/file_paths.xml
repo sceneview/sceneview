@@ -21,6 +21,12 @@
     <external-files-path name="video-recordings" path="recordings/" />
 
     <!--
+        Photos and videos of the scene (DemoScaffold's Take photo / Record video), written by
+        the SDK's SceneRecorder to getExternalFilesDir()/captures/.
+    -->
+    <external-files-path name="captures" path="captures/" />
+
+    <!--
         The Rerun demo's Share: the `.svscan` copy, the model and the exports, each written
         to its own directory of cacheDir/rerun-share/ for the share sheet. Scoped to that
         subdirectory only.

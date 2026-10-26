@@ -67,6 +67,9 @@ import io.github.sceneview.destroyRendererWhenBackendIdle
  * rule). Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
  * one is a no-op.
  *
+ * For photos and videos with sizing, microphone, duration and watermark handled, use
+ * [io.github.sceneview.capture.SceneRecorder], which drives a mirrorer for you.
+ *
  * @see io.github.sceneview.rememberSurfaceMirrorer
  * @see io.github.sceneview.SceneRenderer.surfaceMirrorer
  */
@@ -80,6 +83,22 @@ class SurfaceMirrorer {
     )
 
     private val surfaceMirrors = mutableListOf<SurfaceMirror>()
+
+    /**
+     * What the scene that renders through this mirrorer tells it about itself — bound by
+     * [io.github.sceneview.SceneRenderer] while a `SceneView` / `ARSceneView` uses this mirrorer.
+     */
+    internal interface Host {
+        /** The `SurfaceView` / `TextureView` the scene renders into, once attached. */
+        val renderView: android.view.View?
+
+        /** Wakes a scene whose render loop is parked, so the next frame reaches the mirrors. */
+        fun requestRender()
+    }
+
+    /** The scene currently rendering through this mirrorer, or `null`. */
+    @Volatile
+    internal var host: Host? = null
 
     /** Engine the swap chains were created on — bound at the first mirrored frame. */
     private var engine: Engine? = null
@@ -152,6 +171,10 @@ class SurfaceMirrorer {
                 )
             )
         }
+        // A parked scene reads `isMirroring` only from inside a frame: wake it, or a recording
+        // started on a still scene never receives one. Outside the lock — the wake may run a
+        // frame on this thread.
+        host?.requestRender()
     }
 
     /**

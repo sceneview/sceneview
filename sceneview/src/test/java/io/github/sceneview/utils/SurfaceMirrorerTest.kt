@@ -123,4 +123,24 @@ class SurfaceMirrorerTest {
         mirrorer.startMirroring(surface1)
         assertTrue(mirrorer.isMirroring(surface1))
     }
+
+    @Test
+    fun `a new mirror wakes the scene that feeds it, once`() {
+        val mirrorer = SurfaceMirrorer()
+        var wakes = 0
+        mirrorer.host = object : SurfaceMirrorer.Host {
+            override val renderView: android.view.View? = null
+            override fun requestRender() {
+                wakes++
+            }
+        }
+        val surface = newSurface()
+
+        mirrorer.startMirroring(surface)
+        mirrorer.startMirroring(surface)
+
+        // A parked scene only reads `isMirroring` from inside a frame: without this wake a
+        // recording started on a still scene would never receive one.
+        assertEquals(1, wakes)
+    }
 }
