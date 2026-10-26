@@ -33,10 +33,13 @@ import org.junit.runner.RunWith
  * [ModelSnapshot]'s queue and lifetime on a real engine: destroy while a model loads, queued
  * requests after destroy, a caller that gives up mid-render, and the cache.
  *
- * Every test renders through an `ImageReader` swap chain, which crashes the test process on CI's
- * x86_64 SwiftShader emulator (API 30) — a native crash no test can catch, which then fails every
- * remaining test. Like the other render classes, the whole class runs only on a runner declaring
- * GPU readback (see [RenderTestCapabilities]) and skips elsewhere.
+ * Every test renders through an `ImageReader` swap chain. Ungated on CI's x86_64 SwiftShader
+ * emulator (API 30), the instrumentation process died within a second of the class's first test,
+ * with no Java stack trace and no logcat in the run's output; the same six tests pass on an arm64
+ * API 36 emulator with `-gpu swiftshader_indirect`. The cause is not diagnosed, so like the other
+ * render classes the whole class runs only on a runner declaring GPU readback (see
+ * [RenderTestCapabilities]) and skips elsewhere. The queue and lifetime rules themselves are
+ * covered on the JVM by `SnapshotQueueTest`.
  */
 @OptIn(ExperimentalSceneViewApi::class)
 @RunWith(AndroidJUnit4::class)

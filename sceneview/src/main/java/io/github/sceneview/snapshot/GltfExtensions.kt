@@ -54,14 +54,16 @@ internal fun readGltfJson(stream: InputStream): String? {
 
 /**
  * The `extensionsUsed` of the model at [fileLocation], read as
- * [io.github.sceneview.loaders.ModelLoader.loadModel] finds it: an asset path, a `file://` or `content://` URI, an `android.resource://` URI, or an
- * `http(s)` URL already in the [FileCache]. Empty when the file cannot be read this way. Blocking:
- * call it off the main thread.
+ * [io.github.sceneview.loaders.ModelLoader.loadModel] finds it: an asset path, a `file://` or
+ * `content://` URI, an `android.resource://` URI by resource id, or an `http(s)` URL already in the
+ * [FileCache]. `null` when it could not be checked: the file cannot be read this way (an `http(s)`
+ * URL missing from the [FileCache], an `android.resource://` URI by name, a read error), or it is
+ * not glTF or GLB, or its JSON is larger than 16 MB. Blocking: call it off the main thread.
  */
-internal fun readGltfExtensionsUsed(context: Context, fileLocation: String): List<String> =
+internal fun readGltfExtensionsUsed(context: Context, fileLocation: String): List<String>? =
     runCatching {
         openModelStream(context, fileLocation)?.use { readGltfJson(it) }?.let(::gltfExtensionsUsed)
-    }.getOrNull() ?: emptyList()
+    }.getOrNull()
 
 private fun openModelStream(context: Context, fileLocation: String): InputStream? {
     val uri = Uri.parse(fileLocation)

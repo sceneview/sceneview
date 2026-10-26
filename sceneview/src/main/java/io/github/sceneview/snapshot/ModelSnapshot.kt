@@ -51,22 +51,11 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.whenBackendIdle
 import io.github.sceneview.whenIdle
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.sqrt
 
 /**
@@ -177,11 +166,17 @@ internal data class SnapshotKey(
  *
  * ### Cache
  *
- * Finished images are kept in a memory cache of [maxCacheBytes] (keyed by file, size and options),
- * so a cell scrolled back into view gets its image at once. Pass `0` to disable it. An image
- * captured while the model's textures were still decoding (after a 10 s timeout) is handed out but
- * never cached. Bitmaps handed out are immutable and may be shared with the cache: do not
- * [Bitmap.recycle] them.
+ * Finished images are kept in a memory cache of [maxCacheBytes], so a cell scrolled back into view
+ * gets its image at once. Pass `0` to disable it. An image is handed out but never cached when it
+ * was captured while the model's textures were still decoding (after a 10 s timeout), or when the
+ * model's glTF could not be read to check for quantized positions (an `http(s)` URL that is not in
+ * the file cache, an `android.resource://` URI by name: a warning is logged). Bitmaps handed out are
+ * immutable and may be shared with the cache: do not [Bitmap.recycle] them.
+ *
+ * The cache is keyed by the `fileLocation` string, the size and the options — not by the file's
+ * contents. A model replaced at the same location (a file rewritten in place, an URL serving a new
+ * version) keeps getting the old thumbnail until it leaves the cache: call [clearCache] after
+ * replacing a model, or give the new version a new location.
  *
  * Create it on the main thread, and call [destroy] (or use [rememberModelSnapshot], which does)
  * before the engine is destroyed.
@@ -260,17 +255,21 @@ class ModelSnapshot @MainThread constructor(
             .build(engine, it)
         scene.addEntity(it)
     }
-    private val ibl = KTX1Loader.createIndirectLight(
-        engine,
-        appContext.assets.readBuffer(NEUTRAL_IBL),
-    ).also { bundle ->
-        scene.indirectLight = bundle.indirectLight?.apply { intensity = DEFAULT_IBL_INTENSITY }
+    private val ibl = run {
+        var built = false
+        try {
+            KTX1Loader.createIndirectLight(
+                engine,
+                appContext.assets.readBuffer(NEUTRAL_IBL),
+            ).also { bundle ->
+                scene.indirectLight = bundle.indirectLight?.apply { intensity = DEFAULT_IBL_INTENSITY }
+                built = true
+            }
+        } finally {
+            // The constructor throws: nothing will ever call destroy() on what it already built.
+            if (!built) destroyPartlyBuilt()
+        }
     }
-
-    private val queue = Mutex()
-
-    /** Runs the renders, so [destroy] can stop one mid-load. Main thread. */
-    private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val cache: LruCache<SnapshotKey, Bitmap>? = if (maxCacheBytes > 0) {
         object : LruCache<SnapshotKey, Bitmap>(maxCacheBytes) {
@@ -280,14 +279,22 @@ class ModelSnapshot @MainThread constructor(
 
     private var imageThread: HandlerThread? = null
     private var target: CaptureTarget? = null
-    private var isDestroyed = false
-    private var isReleased = false
+
+    private val lifetime = SnapshotLifetime(engineValid = { engine.isValid })
 
     /**
      * Whether Filament may still be called: checked after every suspension of a render, since
      * [destroy] — or the engine's own destruction — can land during any of them.
      */
-    private val isAlive: Boolean get() = !isDestroyed && !isReleased && engine.isValid
+    private val isAlive: Boolean get() = lifetime.isAlive
+
+    /** One render at a time, on the main thread; [destroy] stops the one in progress. */
+    private val queue = SnapshotQueue(
+        cache = cache,
+        isAlive = { isAlive },
+        dispatcher = Dispatchers.Main.immediate,
+        render = ::render,
+    )
 
     /**
      * The cached thumbnail of [fileLocation] at this size and with these [options], or `null` when
@@ -331,36 +338,7 @@ class ModelSnapshot @MainThread constructor(
      * One request: from the cache, or queued and rendered. Logs a failure, and caches only a
      * complete image of a snapshotter still alive.
      */
-    internal suspend fun request(key: SnapshotKey): SnapshotResult {
-        cache?.get(key)?.let { return SnapshotResult.Rendered(it, complete = true) }
-        return withContext(Dispatchers.Main.immediate) {
-            queue.withLock {
-                // A request for the same image may have filled the cache while this one waited.
-                cache?.get(key)?.let { return@withLock SnapshotResult.Rendered(it, complete = true) }
-                if (!isAlive) return@withLock SnapshotResult.Failed(DESTROYED)
-                val render = renderScope.async { render(key) }
-                val result = try {
-                    render.await()
-                } catch (_: CancellationException) {
-                    // The caller gave up: rethrown. Otherwise destroy() stopped the render.
-                    currentCoroutineContext().ensureActive()
-                    SnapshotResult.Failed(DESTROYED)
-                } catch (e: Exception) {
-                    SnapshotResult.Failed("render failed: $e")
-                } finally {
-                    // The next request starts once this model is released, never alongside it.
-                    withContext(NonCancellable) { render.cancelAndJoin() }
-                }
-                when (result) {
-                    is SnapshotResult.Rendered ->
-                        if (result.complete && isAlive) cache?.put(key, result.bitmap)
-                    is SnapshotResult.Failed ->
-                        Log.w(TAG, "No thumbnail for ${key.fileLocation}: ${result.reason}")
-                }
-                result
-            }
-        }
-    }
+    internal suspend fun request(key: SnapshotKey): SnapshotResult = queue.request(key)
 
     /** Empties the thumbnail cache. Any thread. */
     fun clearCache() {
@@ -380,11 +358,10 @@ class ModelSnapshot @MainThread constructor(
      */
     @MainThread
     fun destroy() {
-        if (isDestroyed) return
-        isDestroyed = true
+        if (!lifetime.destroy()) return
         cache?.evictAll()
-        renderScope.cancel()
-        engine.whenIdle(isBusy = { queue.isLocked }, onEngineGone = ::releaseWithoutEngine) {
+        queue.cancel()
+        engine.whenIdle(isBusy = { queue.isBusy }, onEngineGone = ::releaseWithoutEngine) {
             release()
         }
     }
@@ -398,7 +375,12 @@ class ModelSnapshot @MainThread constructor(
             val extensions = withContext(Dispatchers.IO) {
                 readGltfExtensionsUsed(appContext, key.fileLocation)
             }
-            if (KHR_MESH_QUANTIZATION in extensions) {
+            // Not checked (an http URL out of the file cache, a resource by name): rendered, as
+            // most models are not quantized, but not cached, so a wrongly framed image is not kept.
+            if (extensions == null) {
+                Log.w(TAG, "${key.fileLocation}: could not read its glTF to check for $KHR_MESH_QUANTIZATION")
+            }
+            if (extensions != null && KHR_MESH_QUANTIZATION in extensions) {
                 return SnapshotResult.Failed(
                     "its positions are quantized ($KHR_MESH_QUANTIZATION), whose bounding box " +
                         "gltfio reports un-dequantized: re-export it with float positions"
@@ -431,14 +413,17 @@ class ModelSnapshot @MainThread constructor(
                     captured.bitmap == null -> SnapshotResult.Failed(
                         captured.failure ?: "it drew nothing: the image is fully transparent"
                     )
-                    else -> SnapshotResult.Rendered(captured.bitmap, complete = texturesReady)
+                    else -> SnapshotResult.Rendered(
+                        captured.bitmap,
+                        complete = texturesReady && extensions != null,
+                    )
                 }
             } finally {
-                if (!isReleased && engine.isValid) scene.removeEntities(model.entities)
+                if (!lifetime.isReleased && engine.isValid) scene.removeEntities(model.entities)
             }
         } finally {
             // Once released, the engine or the loader's own destroy() took the model with it.
-            if (!isReleased && engine.isValid) modelLoader.destroyModel(model)
+            if (!lifetime.isReleased && engine.isValid) modelLoader.destroyModel(model)
         }
     }
 
@@ -573,10 +558,9 @@ class ModelSnapshot @MainThread constructor(
 
     @MainThread
     private fun release() {
-        if (isReleased) return
-        isReleased = true
+        if (!lifetime.release()) return
         cache?.evictAll()
-        renderScope.cancel()
+        queue.cancel()
         releaseTarget()
         if (ownsModelLoader) modelLoader.destroy()
         scene.indirectLight = null
@@ -602,13 +586,33 @@ class ModelSnapshot @MainThread constructor(
         }
     }
 
+    /**
+     * Undoes the constructor when it fails after the light rig (decoding the image-based light):
+     * everything built so far, in the reverse order. Nothing has rendered yet.
+     */
+    @MainThread
+    private fun destroyPartlyBuilt() {
+        for (light in intArrayOf(fillLight, keyLight)) {
+            scene.removeEntity(light)
+            engine.safeDestroyLight(light)
+            EntityManager.get().destroy(light)
+        }
+        val colorGrading = view.colorGrading
+        engine.safeDestroyView(view)
+        colorGrading?.let { runCatching { engine.destroyColorGrading(it) } }
+        engine.safeDestroyCamera(camera)
+        EntityManager.get().destroy(cameraEntity)
+        engine.safeDestroyScene(scene)
+        engine.destroyRendererWhenBackendIdle(renderer)
+        if (ownsModelLoader) modelLoader.destroy()
+    }
+
     /** The engine went first, taking every Filament object with it: only Android's are left. */
     @MainThread
     private fun releaseWithoutEngine() {
-        if (isReleased) return
-        isReleased = true
+        if (!lifetime.release()) return
         cache?.evictAll()
-        renderScope.cancel()
+        queue.cancel()
         target?.let { old ->
             target = null
             old.pending?.complete(null)
@@ -686,8 +690,8 @@ class ModelSnapshot @MainThread constructor(
 
         private const val NEUTRAL_IBL = "environments/neutral/neutral_ibl.ktx"
         private const val WARMUP_FRAMES = 1
-        private const val TAG = "ModelSnapshot"
-        private const val DESTROYED = "the snapshot was destroyed"
+        private const val TAG = SNAPSHOT_TAG
+        private const val DESTROYED = SNAPSHOT_DESTROYED
 
         /**
          * How long the renderer may keep refusing frames. It skips while the GPU is behind, which

@@ -16,6 +16,8 @@ import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.After
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -989,5 +991,24 @@ class DemoInteractionTest {
 
         tap("Reset Colors")
         screenshot("87_collision_after_reset")
+    }
+
+    // ── 24. Model Thumbnails — the grid fills ─────────────────────────────────
+
+    @Test
+    fun modelThumbnails_gridFills() {
+        // Off-screen thumbnails (#4822): the status line reads "Rendering n of m…" until
+        // every thumbnail asked for is done, then turns into a summary.
+        openDemo("model-thumbnails")
+        val rendering = context.getString(R.string.demo_model_thumbnails_progress, 0, 0)
+            .substringBefore(" 0")
+        assertTrue(
+            "the thumbnails never finished rendering",
+            device.wait(Until.gone(By.textStartsWith(rendering)), 120_000L),
+        )
+        screenshot("94_modelThumbnails_grid")
+        // A cell whose thumbnail failed is read "No thumbnail for <model>": none on screen.
+        val noThumbnail = context.getString(R.string.demo_model_thumbnails_cell_failed, "").trim()
+        assertNull(device.findObject(By.descStartsWith(noThumbnail)))
     }
 }

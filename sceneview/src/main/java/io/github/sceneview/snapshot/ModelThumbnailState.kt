@@ -39,7 +39,8 @@ internal sealed interface SnapshotResult {
 
     /**
      * A drawn image. [complete] is `false` when the model's textures were still decoding after the
-     * texture timeout: the image is handed out, never cached, so a later request renders it again.
+     * texture timeout, or when its glTF could not be read to check for quantized positions: the
+     * image is handed out, never cached, so a later request renders it again.
      */
     class Rendered(val bitmap: Bitmap, val complete: Boolean) : SnapshotResult
 
