@@ -618,6 +618,29 @@ class GltfLimitsTest {
     }
 
     @Test
+    fun `a buffer whose uri decodes to the name of another buffer uri is refused when read`() {
+        val sizes = mapOf("a%20b.bin" to 100, "a%20%62.bin" to 4, "a b.bin" to 100)
+        val resource = { uri: String -> sizes[uri]?.let { ByteBuffer.wrap(ByteArray(it)) } }
+        listOf(listOf("a%20b.bin", "a%20%62.bin"), listOf("a%20%62.bin", "a%20b.bin")).forEach { order ->
+            val read = order.indexOf("a%20b.bin")
+            fun json(uris: List<String>) = text(
+                """{"bufferViews":[{"buffer":$read,"byteLength":100}],"buffers":[""" +
+                    uris.joinToString(",") { """{"uri":"$it","byteLength":${sizes.getValue(it)}}""" } + "]}",
+            )
+
+            assertEquals(
+                listOf("buffer $read (a%20b.bin) decodes to a b.bin, as another buffer uri does: cgltf leaves it without data"),
+                GltfLimits.violations(json(order), MAX, resource),
+            )
+            assertEquals(
+                "with an a b.bin of its own, cgltf reads that one",
+                emptyList<String>(),
+                GltfLimits.violations(json(order + "a b.bin"), MAX, resource),
+            )
+        }
+    }
+
+    @Test
     fun `a sparse accessor past its views or its own count is refused`() {
         fun gltf(indexView: Int, index: Int): Pair<ByteBuffer, ByteArray> {
             val bin = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putShort(index.toShort()).array()

@@ -940,15 +940,19 @@ class ModelLoader(
      * The name cgltf looks each percent-encoded buffer among [uris] up by, when it is not [uris]'s
      * own. Buffers only: gltfio looks images up by their `uri` as written. And never a name among
      * [uris]: gltfio replaces a resource fed twice under one name, so feeding `a%20b.bin` under
-     * `a b.bin` would hand cgltf its bytes for a buffer that has a file of its own. The JSON is
-     * read only when some `uri` decodes.
+     * `a b.bin` would hand cgltf its bytes for a buffer that has a file of its own. Nor a name two
+     * buffers decode to (`a%20b.bin` and `a%20%62.bin`): cgltf would get the last one fed for
+     * both, and [GltfLimits] refuses such a buffer. The JSON is read only when some `uri` decodes.
      */
     private fun cgltfKeys(source: Buffer, uris: Collection<String>): Map<String, String> {
         val names = uris.toSet()
-        val keys = uris.mapNotNull { uri -> GltfBufferUris.cgltfKey(uri)?.takeIf { it !in names }?.let { uri to it } }
+        val keys = names.mapNotNull { uri -> GltfBufferUris.cgltfKey(uri)?.takeIf { it !in names }?.let { uri to it } }
         if (keys.isEmpty()) return emptyMap()
         val buffers = GltfBufferUris.of(source, keys.map { it.first })
-        return keys.filter { it.first in buffers }.toMap()
+        return keys.filter { it.first in buffers }
+            .groupBy { it.second }
+            .values.mapNotNull { it.singleOrNull() }
+            .toMap()
     }
 
     /**

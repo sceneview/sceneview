@@ -168,6 +168,44 @@ class ModelLoaderResourceFailureTest {
     }
 
     @Test
+    fun `loadModel does not feed a decoded name that is another resource's over it`() {
+        // A `file://` location is a URL: its resolver reads the file `a b.bin` for both.
+        listOf(listOf("a b.bin", "a%20b.bin"), listOf("a%20b.bin", "a b.bin")).forEach { order ->
+            fedResources.clear()
+            resourceUris = order.toTypedArray()
+            val buffers = order.joinToString(",") { """{"uri":"$it","byteLength":${if (it == "a b.bin") 12 else 4}}""" }
+            val model = gltfIn("""{"asset":{"version":"2.0"},"buffers":[$buffers]}""", mapOf("a b.bin" to 12))
+
+            val result = await { loader.loadModelAsync("file://${model.absolutePath}", onResult = it) }
+
+            assertNotNull(result.value)
+            assertEquals("each fed once, under its own name", order, fedResources.toList())
+        }
+    }
+
+    @Test
+    fun `a name two buffer uris decode to is fed for neither, and refused when read`() {
+        // gltfio keeps the last resource fed under one name: `a%20b.bin` would get the 4 bytes of `a%20%62.bin`.
+        listOf(listOf("a%20b.bin", "a%20%62.bin"), listOf("a%20%62.bin", "a%20b.bin")).forEach { order ->
+            resourceUris = order.toTypedArray()
+            val buffers = order.joinToString(",") { """{"uri":"$it","byteLength":${if (it == "a%20b.bin") 100 else 4}}""" }
+            val files = mapOf("a%20b.bin" to 100, "a%20%62.bin" to 4)
+
+            fedResources.clear()
+            loader.createModel(gltfIn("""{"asset":{"version":"2.0"},"buffers":[$buffers]}""", files))
+            assertEquals("unread: each fed under its own name only", order, fedResources.toList())
+
+            fedResources.clear()
+            val read = """{"asset":{"version":"2.0"},"bufferViews":[{"buffer":${order.indexOf("a%20b.bin")},""" +
+                """"byteLength":100}],"buffers":[$buffers]}"""
+            val failure = runCatching { loader.createModel(gltfIn(read, files)) }.exceptionOrNull()
+            assertTrue("Expected IllegalArgumentException, got $failure", failure is IllegalArgumentException)
+            assertTrue(failure!!.message, "decodes to a b.bin, as another buffer uri does" in failure.message.orEmpty())
+            assertTrue("a b.bin" !in fedResources)
+        }
+    }
+
+    @Test
     fun `an image is fed under its own uri only, as gltfio looks it up`() {
         resourceUris = arrayOf("my%20model.bin", "my%20albedo.png")
         val model = gltfIn(

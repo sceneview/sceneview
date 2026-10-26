@@ -59,7 +59,9 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   resource cannot be fed under — not UTF-8, a NUL, or a character outside the BMP. Any other
  *   percent-encoded `uri` is fed by [ModelLoader] under the decoded name cgltf looks up as well,
  *   unless a resource has that name already: cgltf then gets that one's bytes, and its length is
- *   the one checked against the buffer.
+ *   the one checked against the buffer. Nor is it when another buffer `uri` decodes to the same
+ *   name (`a%20b.bin` and `a%20%62.bin`): gltfio would keep the last one fed for both, so neither
+ *   is, and such a buffer is refused too.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -198,7 +200,7 @@ internal object GltfLimits {
         /**
          * The bytes cgltf gets for the buffer [uri]: those under the name it decodes [uri] to when
          * there are any — a resource of that name, or [uri]'s own, which [ModelLoader] feeds under
-         * it too — else [uri]'s own.
+         * it too unless [uri] is [ambiguouslyDecoded] — else [uri]'s own.
          */
         fun bufferResource(uri: String): Buffer? = GltfBufferUris.cgltfKey(uri)?.let(resource) ?: resource(uri)
 
@@ -207,6 +209,22 @@ internal object GltfLimits {
         val buffers = json.optJSONArray("buffers")
         val nodes = json.optJSONArray("nodes")
         val meshes = json.optJSONArray("meshes")
+
+        /**
+         * The buffer `uri`s whose decoded name another buffer `uri` decodes to as well, and that no
+         * resource has as its own `uri`: [ModelLoader] feeds none of them under it, since gltfio
+         * keeps only the last resource fed under one name, so cgltf finds no data for them.
+         */
+        val ambiguouslyDecoded: Set<String> by lazy {
+            fun JSONArray?.uris() = buildList { forEachObject { _, item -> (item.opt("uri") as? String)?.let(::add) } }
+            val bufferUris = buffers.uris().filterNot { it.startsWith("data:") }.toSet()
+            val names = bufferUris + json.optJSONArray("images").uris()
+            bufferUris
+                .mapNotNull { uri -> GltfBufferUris.cgltfKey(uri)?.takeIf { it !in names }?.let { it to uri } }
+                .groupBy({ it.first }, { it.second })
+                .values.filter { it.size > 1 }
+                .flatten().toSet()
+        }
 
         /**
          * Each buffer `cgltf_load_buffers` would leave without data, each buffer shorter than it
@@ -231,6 +249,10 @@ internal object GltfLimits {
                     GltfBufferUris.isUnfeedable(uri) -> if (index in viewed && declared > 0) {
                         violations += "buffer $index ($uri) decodes to a name no resource can be fed under: " +
                             "cgltf leaves it without data"
+                    }
+                    uri in ambiguouslyDecoded -> if (index in viewed && declared > 0) {
+                        violations += "buffer $index ($uri) decodes to ${GltfBufferUris.cgltfKey(uri)}, as another " +
+                            "buffer uri does: cgltf leaves it without data"
                     }
                     else -> {
                         val length = bufferResource(uri)?.remaining()?.toLong() ?: return@forEachObject
