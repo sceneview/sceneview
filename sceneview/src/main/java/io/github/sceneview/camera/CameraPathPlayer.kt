@@ -14,9 +14,13 @@ import kotlin.math.floor
 /**
  * Plays a [CameraTimeline]: a playhead with play, pause, seek and loop.
  *
- * The player owns only the playhead, [seconds]. The pose always comes from
- * [CameraTimeline.poseAt] at that time, so playback, scrubbing and an offline render at a fixed
- * step agree on the pose for a given time. [advance] moves the playhead by the frame's time, not
+ * The player owns the playhead, [seconds], and the number of whole laps a looping player has
+ * played. The pose comes from the timeline at that time: on the first lap it is
+ * [CameraTimeline.poseAt] at [seconds], so playback, scrubbing and an offline render at a fixed
+ * step agree on the pose for a given time. On a later lap of a path whose turns are not whole (a
+ * [CameraPath.tour] or [CameraPosePath.orbit] of 1.5 turns), [pose] adds the turn of the laps
+ * played, so it no longer equals `timeline.poseAt(seconds)`: lap two of 1.5 turns is half a turn
+ * on. [restart] goes back to the first lap. [advance] moves the playhead by the frame's time, not
  * by a fixed step per frame: a dropped frame does not slow the move down, and a 30 fps and a
  * 120 fps device reach the same pose at the same time.
  *
@@ -67,7 +71,10 @@ class CameraPathPlayer(
      * duration at once, wrapped when [loop] is set and clamped otherwise: a looping player at
      * 15 s that switches from a 20 s to a 10 s timeline goes on from 5 s, and [seconds],
      * [progress] and [pose] agree from the next read. The lap count is kept too, so a rebuilt
-     * [CameraPath.tour] of 1.5 turns does not jump back half a turn.
+     * [CameraPath.tour] of 1.5 turns does not jump back half a turn. A new timeline with a
+     * different turn per lap applies its own turn to the laps already played, so the camera can
+     * jump when the turn count changes mid-run; call [restart] to start the new move from its
+     * first lap.
      *
      * [loop] changes only when the new timeline's [CameraTimeline.loop] differs from the old
      * one's, so a `loop` chosen on the player survives a rebuilt timeline of the same kind.
@@ -173,9 +180,29 @@ class CameraPathPlayer(
 
     private var lastFrameNanos: Long = NO_FRAME
 
-    /** Starts or resumes playback. A finished, non-looping player restarts from the beginning. */
+    /**
+     * Starts or resumes playback. A finished, non-looping player restarts from the beginning (the
+     * end, playing backward) of the first lap: the lap count goes back to `0`, so the pose is
+     * `timeline.poseAt` at the playhead again.
+     */
     fun play() {
-        if (isFinished) setPlayhead(if (speed < 0f) durationSeconds.toDouble() else 0.0)
+        if (isFinished) {
+            laps = 0L
+            setPlayhead(if (speed < 0f) durationSeconds.toDouble() else 0.0)
+        }
+        isPlaying = true
+        lastFrameNanos = NO_FRAME
+    }
+
+    /**
+     * Plays from the start of the first lap: the lap count goes back to `0`, the playhead to `0`,
+     * and playback starts. The pose is then `timeline.poseAt(0)`, the timeline's own start, even
+     * after laps of a [CameraPath.tour] of 1.5 turns. Use it for a "replay" button; [seekTo]
+     * stays within the current lap.
+     */
+    fun restart() {
+        laps = 0L
+        setPlayhead(0.0)
         isPlaying = true
         lastFrameNanos = NO_FRAME
     }
@@ -195,8 +222,10 @@ class CameraPathPlayer(
      * Moves the playhead to [seconds] within the current lap. `[0, durationSeconds]` is taken as
      * is, both ends included, so seeking to [durationSeconds] shows the end of the lap
      * ([progress] `1`) on every lap. Outside it, the time is wrapped when [loop] is set and
-     * clamped otherwise, still within the lap. Playback state is unchanged. A non-finite value is
-     * ignored.
+     * clamped otherwise, still within the lap. The lap count is kept, so on lap two of a
+     * [CameraPath.tour] of 1.5 turns `seekTo(0f)` shows the start of lap two, half a turn on from
+     * the timeline's start; [restart] goes back to the first lap. Playback state is unchanged. A
+     * non-finite value is ignored.
      */
     fun seekTo(seconds: Float) {
         if (!seconds.isFinite()) return

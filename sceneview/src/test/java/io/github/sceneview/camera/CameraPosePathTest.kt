@@ -276,6 +276,48 @@ class CameraPosePathTest {
     }
 
     @Test
+    fun aFractionalOrbitKeepsItsVelocityAndItsCircleAcrossTheSeam() {
+        // The last keyframe of a lap takes its tangent from the first segment of the next lap,
+        // turned by the lap's turn, as a tour does: the same < 5 % criterion as a whole-turn loop.
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        for (keysPerTurn in intArrayOf(6, 32)) {
+            val orbit = CameraPosePath.orbit(box, 45.0, 1.0, durationSeconds = 6f, turns = 1.5f, keyframesPerTurn = keysPerTurn)
+            val h = 1e-3f
+            val midway = (orbit.poseAt(3f + h).position - orbit.poseAt(3f).position) / h
+            for (seam in floatArrayOf(6f, 12f)) {
+                val before = (orbit.poseAt(seam).position - orbit.poseAt(seam - h).position) / h
+                val after = (orbit.poseAt(seam + h).position - orbit.poseAt(seam).position) / h
+                assertTrue("$keysPerTurn keys a turn, seam $seam", length(after - before) < 0.05f * length(midway))
+            }
+            // The last segment strays from the circle no more than the first one does.
+            val radius = length(orbit.poseAt(0f).position - box.center)
+            fun strayOver(from: Float, to: Float) = (0..200).maxOf { i ->
+                abs(length(orbit.poseAt(from + (to - from) * i / 200f).position - box.center) - radius) / radius
+            }
+            val segment = 6f / orbit.keyframes.lastIndex
+            val first = strayOver(0f, segment)
+            val last = strayOver(6f - segment, 6f)
+            val whole = strayOver(0f, 6f)
+            assertEquals("$keysPerTurn keys a turn", first, last, 0.1f * first + 1e-6f)
+        }
+    }
+
+    @Test
+    fun aFractionalOrbitStaysExactAfterManyLaps() {
+        // Past 2^24 laps a float lap count skips laps; the lap's turn is reduced in double
+        // precision, so lap after lap still starts where the last one ended.
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        val orbit = CameraPosePath.orbit(box, 45.0, 1.0, durationSeconds = 25f, turns = 1.05f)
+        val step = length(orbit.poseAt(0L, 1f / 60f).position - orbit.poseAt(0L, 0f).position)
+        for (lap in (1L shl 24) - 2..(1L shl 24) + 3) {
+            val seam = length(orbit.poseAt(lap + 1, 0f).position - orbit.poseAt(lap, 25f).position)
+            assertTrue("lap $lap: $seam", seam < 0.01f * step)
+            val frame = length(orbit.poseAt(lap, 1f / 60f).position - orbit.poseAt(lap, 0f).position)
+            assertEquals("lap $lap", step, frame, 0.01f * step)
+        }
+    }
+
+    @Test
     fun anOrbitRefusesAbsurdTurns() {
         val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
         for (turns in floatArrayOf(1e5f, -1e5f, 1e9f)) {

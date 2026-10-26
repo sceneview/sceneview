@@ -974,6 +974,7 @@ public final class io/github/sceneview/camera/CameraPathPlayer {
 	public final fun isPlaying ()Z
 	public final fun pause ()V
 	public final fun play ()V
+	public final fun restart ()V
 	public final fun seekTo (F)V
 	public final fun setLoop (Z)V
 	public final fun setSpeed (F)V

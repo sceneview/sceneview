@@ -265,6 +265,81 @@ class CameraPathPlayerTest {
         assertTrue(length(player.pose.position - oneAndAHalfTurnTour().poseAt(12f).position) < 1e-3f)
     }
 
+    @Test
+    fun aWeekLongOrbitStepsAsOnItsFirstLap() {
+        fun orbit() = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0, durationSeconds = 25f, turns = 1.05f)
+        val first = steps(playing(orbit()), 3000)
+        val player = playing(orbit())
+        repeat(7 * 24) { player.advance(3600f) } // a week, a whole number of 25 s laps
+        assertEquals(0f, player.seconds, 0f)
+        val week = steps(player, 3000) // two laps, a seam included
+        for (i in first.indices) {
+            assertEquals("frame $i", first[i], week[i], 0.05f * first[i])
+        }
+    }
+
+    @Test
+    fun playingAFinishedPlayerStartsFromTheFirstLap() {
+        for (timeline in listOf<CameraTimeline>(oneAndAHalfTurnTour(), oneAndAHalfTurnOrbit())) {
+            val player = playing(timeline)
+            player.advance(7f) // one second into the second lap, half a turn on
+            player.loop = false
+            player.advance(10f)
+            assertTrue(player.isFinished)
+            player.play()
+            assertTrue(player.isPlaying)
+            assertEquals(0f, player.seconds, 0f)
+            assertTrue(length(player.pose.position - timeline.poseAt(0f).position) < 1e-4f)
+            player.advance(1f)
+            assertTrue(length(player.pose.position - timeline.poseAt(1f).position) < 1e-4f)
+        }
+    }
+
+    @Test
+    fun restartGoesBackToTheFirstLapWhileSeekingKeepsTheLap() {
+        for (timeline in listOf<CameraTimeline>(oneAndAHalfTurnTour(), oneAndAHalfTurnOrbit())) {
+            val player = playing(timeline)
+            player.advance(7f) // lap two, half a turn on
+            player.pause()
+            player.seekTo(0f)
+            // seekTo stays within the lap: the start of lap two, half a turn on from the start.
+            val halfATurnOn = length(player.pose.position - timeline.poseAt(0f).position)
+            assertTrue(halfATurnOn > 1f)
+            player.restart()
+            assertTrue(player.isPlaying)
+            assertEquals(0f, player.seconds, 0f)
+            assertTrue(length(player.pose.position - timeline.poseAt(0f).position) < 1e-4f)
+            player.advance(1f)
+            assertTrue(length(player.pose.position - timeline.poseAt(1f).position) < 1e-4f)
+        }
+    }
+
+    @Test
+    fun aHandMadeLoopShowsItsEndAtTheEndOfEveryLap() {
+        // Ends farther than it starts: not its start turned by the lap, so it jumps at the seam,
+        // after the end. Seeking to the end shows the last keyframe, turned by the laps played.
+        val target = Position(0f, 0.5f, 0f)
+        val handMade = CameraPath(
+            keyframes = listOf(
+                CameraKeyframe(CameraShot(target, 0f, 20f, 3f), 0f),
+                CameraKeyframe(CameraShot(target, 90f, 20f, 4f), 2f),
+                CameraKeyframe(CameraShot(target, 180f, 20f, 5f), 4f),
+            ),
+            loop = true,
+        )
+        assertTrue(length(handMade.poseAt(4f).position - CameraShot(target, 180f, 20f, 5f).toPose().position) < 1e-4f)
+        val player = playing(handMade)
+        for (lap in 0..2) {
+            player.seekTo(4f)
+            val end = CameraShot(target, 180f + lap * 180f, 20f, 5f).toPose().position
+            assertTrue("lap $lap", length(player.pose.position - end) < 1e-4f)
+            player.advance(1f) // into the next lap
+        }
+    }
+
+    private fun oneAndAHalfTurnOrbit() =
+        CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0, durationSeconds = 6f, turns = 1.5f)
+
     private fun oneAndAHalfTurnTour() =
         CameraPath.tour(CameraShot(Position(0f, 0.5f, 0f), 0f, 20f, 3f), durationSeconds = 6f, turns = 1.5f)
 

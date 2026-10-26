@@ -164,10 +164,7 @@ fun CameraPathDemo(onBack: () -> Unit) {
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
         contentIssue = firstFrame.contentIssue,
-        onReset = {
-            player.seekTo(0f)
-            player.play()
-        },
+        onReset = { player.restart() },
         themedStage = true,
         bottomOverlay = {
             CameraPathTimeline(

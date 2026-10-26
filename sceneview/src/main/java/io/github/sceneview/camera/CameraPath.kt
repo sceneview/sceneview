@@ -61,6 +61,9 @@ class CameraPath(
      * [isFinishedAt] and [CameraAnimator]. Past the end a path holds its last shot; a [loop] wraps,
      * and its azimuth keeps counting (lap two of a tour reads `home + 720°`), so the camera's
      * velocity is the same across the seam as anywhere else — nothing for a touch to catch.
+     * `[0, durationSeconds]` is the first lap, both ends included: [durationSeconds] gives the last
+     * keyframe, as on a path that does not loop, and only a later time wraps. A loop whose end is
+     * not its start turned by the lap (a hand-made path) jumps there, after the end, not at it.
      */
     fun shotAt(seconds: Float): CameraShot {
         val frames = keyframes
@@ -69,7 +72,7 @@ class CameraPath(
         val startSeconds = frames.first().seconds
         var local = seconds
         var laps = 0f
-        if (loop) {
+        if (loop && local !in 0f..durationSeconds) {
             laps = kotlin.math.floor(local / durationSeconds)
             local -= laps * durationSeconds
             if (local < 0f) local += durationSeconds

@@ -158,8 +158,11 @@ class CameraPosePath(
             length(frames.last().pose.position - frames.first().pose.position) <= CLOSE_TOLERANCE
     }
 
-    /** Spline tangents (world units per second), one per keyframe. */
-    private val tangents: List<Float3> = List(this.keyframes.size) { tangentAt(it) }
+    /**
+     * Spline tangents (world units per second), one per keyframe. Computed on first use, after
+     * [orbit] has set [lapTurns], which the tangents at both ends depend on.
+     */
+    private val tangents: List<Float3> by lazy { List(this.keyframes.size) { tangentAt(it) } }
 
     /**
      * The camera pose [seconds] after the path's start. A pure function of [seconds].
@@ -200,7 +203,8 @@ class CameraPosePath(
 
     /**
      * Turns per lap of an [orbit] whose turns are not whole, `0` otherwise: each lap then starts
-     * where the last one ended, that many turns round [lookAt] about [up].
+     * where the last one ended, that many turns round [lookAt] about [up]. Set once, before the
+     * first sample, so [tangents] see it.
      */
     private var lapTurns: Double = 0.0
 
@@ -279,29 +283,39 @@ class CameraPosePath(
      *
      * A cut (two keyframes at the same time) splits the spline: each side takes the one-sided
      * tangent of its own segment, as at the end of a path.
+     *
+     * Across the seam of a loop, the end keyframes take their neighbours from the lap before and
+     * the lap after: on a closed loop those are the keyframes before the end and after the start;
+     * on a fractional [orbit] they are the same keyframes turned by the lap's turn, as
+     * [CameraPath] does for a tour, so the last segment of a lap is shaped like every other one
+     * and the next lap goes on at the same speed and heading.
      */
     private fun tangentAt(index: Int): Float3 {
         val frames = keyframes
         val last = frames.size - 1
         if (last < 1) return Float3()
-        // Segments are (from, to) keyframe pairs; across the seam of a closed loop the keyframe
-        // before the end leads into the start and the one after the start follows the end.
+        // Segments are (from, to) keyframe pairs; across the seam of a loop the keyframe before
+        // the end leads into the start and the one after the start follows the end, turned by the
+        // lap's turn on a fractional orbit (that segment then belongs to the lap before or after).
+        val acrossSeam = closed || seamTurn != null
         val previous: Pair<Int, Int>? = when {
             index > 0 -> index - 1 to index
-            closed -> last - 1 to last
+            acrossSeam -> last - 1 to last
             else -> null
         }?.takeIf { (from, to) -> spanOf(from, to) > MIN_SPAN }
         val next: Pair<Int, Int>? = when {
             index < last -> index to index + 1
-            closed -> 0 to 1
+            acrossSeam -> 0 to 1
             else -> null
         }?.takeIf { (from, to) -> spanOf(from, to) > MIN_SPAN }
-        if (previous == null && next == null) return Float3()
-        if (previous == null || next == null) return velocityOf(previous ?: next!!)
+        fun velocityIn(segment: Pair<Int, Int>) = velocityOf(segment).let { if (index == 0) turnedBack(it) else it }
+        fun velocityOut(segment: Pair<Int, Int>) = velocityOf(segment).let { if (index == last) turnedOn(it) else it }
+        if (previous == null) return next?.let(::velocityOut) ?: Float3()
+        if (next == null) return velocityIn(previous)
         val inSpan = spanOf(previous.first, previous.second)
         val outSpan = spanOf(next.first, next.second)
-        val inVelocity = velocityOf(previous)
-        val outVelocity = velocityOf(next)
+        val inVelocity = velocityIn(previous)
+        val outVelocity = velocityOut(next)
         if (dot(inVelocity, outVelocity) < REVERSAL_COSINE * length(inVelocity) * length(outVelocity)) {
             return Float3()
         }
@@ -310,6 +324,22 @@ class CameraPosePath(
         val size = length(central)
         return if (size > limit) central * (limit / size) else central
     }
+
+    /** One lap's turn of a fractional [orbit] about [up], in degrees; `null` on any other path. */
+    private val seamTurn: Float? get() =
+        if (!loop || lapTurns == 0.0 || lookAt == null || keyframes.size < 3) {
+            null
+        } else {
+            (lapTurns.mod(1.0) * FULL_TURN_DEGREES).toFloat()
+        }
+
+    /** [velocity] of the lap after, seen from this lap: turned on by one lap's turn. */
+    private fun turnedOn(velocity: Float3): Float3 =
+        seamTurn?.let { CameraPose.rotate(Quaternion.fromAxisAngle(up, it), velocity) } ?: velocity
+
+    /** [velocity] of the lap before, seen from this lap: turned back by one lap's turn. */
+    private fun turnedBack(velocity: Float3): Float3 =
+        seamTurn?.let { CameraPose.rotate(Quaternion.fromAxisAngle(up, -it), velocity) } ?: velocity
 
     private fun spanOf(from: Int, to: Int): Float = keyframes[to].seconds - keyframes[from].seconds
 
@@ -321,7 +351,11 @@ class CameraPosePath(
 
     companion object {
 
-        /** Keyframes per full turn [orbit] places; the spline then stays within 0.01 % of the circle. */
+        /**
+         * Keyframes per full turn [orbit] places. The spline then stays within 0.01 % of the
+         * circle's radius (0.003 % measured), across the seam of a fractional orbit too; at the
+         * minimum of 6 it strays by up to 2.3 %.
+         */
         const val ORBIT_KEYFRAMES_PER_TURN: Int = 32
 
         /** Default [orbit] length, in seconds per turn. */
