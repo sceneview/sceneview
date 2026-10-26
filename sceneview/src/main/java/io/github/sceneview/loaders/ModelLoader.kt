@@ -398,7 +398,7 @@ class ModelLoader(
                 withContext(Dispatchers.Main) {
                     // `destroy()` frees the resource loader once the models settle: none to feed.
                     if (model !in models || !lifecycle.canCreate) return@withContext null
-                    resources.forEach { (uri, data) -> resourceLoader.addResourceData(uri, data) }
+                    resources.forEach { (uri, data) -> addResource(uri, data) }
                     if (!asyncLoad.begin(model)) {
                         // A fresh asset is refused only when its meshopt buffers fail to decode,
                         // before gltfio queues any texture. `asyncLoad.begin` already handed the
@@ -937,6 +937,16 @@ class ModelLoader(
      * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
      * The resolved resources are checked against [gltf], the parse `createModel` already made.
      */
+    /**
+     * Feeds [data] to gltfio under [uri], and also under the key cgltf looks a percent-encoded
+     * [uri] up by: without it, a `my%20model.bin` buffer is never found and keeps no data.
+     */
+    @MainThread
+    private fun addResource(uri: String, data: Buffer) {
+        resourceLoader.addResourceData(uri, data)
+        GltfBufferUris.cgltfKey(uri)?.let { resourceLoader.addResourceData(it, data) }
+    }
+
     @MainThread
     @Suppress("TooGenericExceptionCaught") // Destroy on any failure, then rethrow it unchanged.
     private fun loadResources(
@@ -961,7 +971,7 @@ class ModelLoader(
                     continue
                 }
                 if (data != null) {
-                    resourceLoader.addResourceData(uri, data)
+                    addResource(uri, data)
                     resolved[uri] = data
                 } else {
                     unresolved[uri] = null

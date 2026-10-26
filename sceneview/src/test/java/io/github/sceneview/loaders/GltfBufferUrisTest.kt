@@ -35,6 +35,20 @@ class GltfBufferUrisTest {
     }
 
     @Test
+    fun `a percent-encoded uri has the key cgltf decodes it to`() {
+        assertEquals("my model.bin", GltfBufferUris.cgltfKey("my%20model.bin"))
+        assertEquals("upper and lower hex digits", "a\u00E9/b.bin", GltfBufferUris.cgltfKey("a%C3%a9%2Fb.bin"))
+        assertEquals("a malformed sequence is left as is", "100% a%2 %zz b.bin", GltfBufferUris.cgltfKey("100% a%2 %zz%20b.bin"))
+        assertEquals("a trailing pair is decoded", "a.bin ", GltfBufferUris.cgltfKey("a.bin%20"))
+        assertEquals("no %: the uri itself", null, GltfBufferUris.cgltfKey("my model.bin"))
+        assertEquals("nothing decoded: the uri itself", null, GltfBufferUris.cgltfKey("100%.bin"))
+        assertEquals("%25 is decoded once", "a%20.bin", GltfBufferUris.cgltfKey("a%2520.bin"))
+        assertEquals("bytes that are not UTF-8", null, GltfBufferUris.cgltfKey("a%FF.bin"))
+        assertEquals("a NUL ends a C string", null, GltfBufferUris.cgltfKey("a%00.bin"))
+        assertEquals("JNI encodes a character outside the BMP otherwise", null, GltfBufferUris.cgltfKey("%F0%9F%98%80.bin"))
+    }
+
+    @Test
     fun `an unreadable payload falls back to the bin suffix`() {
         val garbage = ByteBuffer.wrap(byteArrayOf(1, 2, 3))
 

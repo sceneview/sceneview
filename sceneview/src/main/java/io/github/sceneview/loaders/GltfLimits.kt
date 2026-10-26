@@ -49,12 +49,14 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  * - **A buffer `cgltf_load_buffers` cannot load**: a `.glb` whose BIN chunk is shorter than the
  *   `byteLength` of buffer 0, a `data:` buffer that is not base64 or holds a character base64 does
  *   not have within the bytes it declares — a JSON escape included, since cgltf never unescapes a
- *   string —, and a buffer with an absolute (`://`) URI. gltfio ignores the error that returns
- *   (`ResourceLoader.cpp`): that buffer, and those after it, keep no data, and the vertex upload
- *   reads from a null pointer.
+ *   string —, and a buffer with an absolute (`://`) URI, read or not: cgltf stops at it, and
+ *   refusing it outright is simpler than tracking which buffers after it a view still reads.
+ *   gltfio ignores the error that returns (`ResourceLoader.cpp`): that buffer, and those after
+ *   it, keep no data, and the vertex upload reads from a null pointer.
  * - **A buffer a buffer view reads that cgltf leaves without data**: one with no `uri`, other than
- *   buffer 0 of a `.glb` that has a BIN chunk (a meshopt fallback, never read, aside), and one whose
- *   `uri` is empty.
+ *   buffer 0 of a `.glb` that has a BIN chunk (an `EXT_meshopt_compression` fallback, never read,
+ *   aside), and one whose `uri` is empty. A percent-encoded `uri` is not one: [ModelLoader] feeds
+ *   its resource under the decoded name cgltf looks up as well.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -76,8 +78,11 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *
  * Not checked:
  * - indices and sparse indices stored in a `data:` buffer, and the images such a buffer holds;
- * - the bytes of a buffer view compressed with `EXT_meshopt_compression` or
- *   `KHR_meshopt_compression` (its range is a fallback, often empty);
+ * - the bytes of a buffer view compressed with `EXT_meshopt_compression` (its range is a
+ *   fallback, often empty). The cgltf of Filament 1.72.1 parses no `KHR_meshopt_compression`, so
+ *   a view compressed with it is measured like any other;
+ * - a `data:` URI whose header escapes its comma (`\u002C`);
+ * - the length of an external buffer whose `uri` holds a JSON escape: cgltf looks it up escaped;
  * - an external buffer whose resource is not at hand yet: [ModelLoader] resolves it before the load;
  * - iridescence and anisotropy textures: gltfio 1.72.1 binds neither, so it never decodes them;
  * - WebP image sizes, and anything that fails while a texture is decoded rather than built.
@@ -276,7 +281,7 @@ internal object GltfLimits {
 
         private fun JSONObject.isMeshoptFallback(): Boolean {
             val extensions = optJSONObject("extensions") ?: return false
-            return MESHOPT.any { extensions.optJSONObject(it)?.optBoolean("fallback") == true }
+            return extensions.optJSONObject(MESHOPT)?.optBoolean("fallback") == true
         }
 
         /** Each accessor, and its sparse part, against the buffer views it reads. */
@@ -524,7 +529,7 @@ internal object GltfLimits {
         private fun bufferViewBytes(view: JSONObject): ByteBuffer? {
             // A meshopt-compressed view's own range is a fallback, often left empty or zeroed.
             val extensions = view.optJSONObject("extensions")
-            if (extensions != null && MESHOPT.any(extensions::has)) return null
+            if (extensions != null && extensions.has(MESHOPT)) return null
             val bufferIndex = view.optInt("buffer", -1)
             val buffer = buffers?.optJSONObject(bufferIndex) ?: return null
             val bufferUri = buffer.optString("uri")
@@ -898,7 +903,9 @@ internal object GltfLimits {
     private const val COMMA: Byte = 0x2C
     private const val EQUALS: Byte = 0x3D
     private const val LETTER_U: Byte = 0x75
-    private val MESHOPT = listOf("EXT_meshopt_compression", "KHR_meshopt_compression")
+    // The only meshopt extension the cgltf of Filament 1.72.1 parses: a `KHR_meshopt_compression`
+    // view reads its fallback buffer as it is, and one with no `uri` holds no data.
+    private const val MESHOPT = "EXT_meshopt_compression"
     private const val GLB_MAGIC = 0x46546C67 // "glTF", little-endian
     private const val CHUNK_JSON = 0x4E4F534A // "JSON"
     private const val CHUNK_BIN = 0x004E4942 // "BIN\0"

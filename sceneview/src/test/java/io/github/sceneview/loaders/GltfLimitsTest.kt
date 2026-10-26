@@ -180,15 +180,16 @@ class GltfLimitsTest {
 
     @Test
     fun `a data URI is read through escaped slashes, and quotes before it`() {
-        val head = Base64.encodeToString(png(8192, 16) + byteArrayOf(-1, -1, -1), Base64.NO_WRAP).replace("/", "\\/")
-        assertTrue(head.contains("\\/"))
+        // 5104 wide puts a `/` among the base64 characters of the PNG header itself.
+        val head = Base64.encodeToString(png(5104, 16) + byteArrayOf(-1, -1, -1), Base64.NO_WRAP).replace("/", "\\/")
+        assertTrue(head.indexOf("\\/") in 0 until 32)
         val json = textured(
             images = """[{"name":"a \"data:\" \\ name","uri":"data:image\/png;base64,$head"}]""",
             textures = """[{"source":0}]""",
         )
         val gltf = text(json)
 
-        val refused = listOf("image 0 (a \"data:\" \\ name) is 8192x16, larger than the 4096x4096 textures this GPU supports")
+        val refused = listOf("image 0 (a \"data:\" \\ name) is 5104x16, larger than the 4096x4096 textures this GPU supports")
 
         assertEquals(refused, GltfLimits.violations(gltf, MAX))
         assertEquals("the JSON chunk of a GLB too", refused, GltfLimits.violations(glb(json, ByteArray(0)), MAX))
@@ -317,6 +318,37 @@ class GltfLimitsTest {
             "a uri that is not a string fails cgltf's parse, which gltfio reports",
             emptyList<String>(),
             GltfLimits.violations(text("""{"bufferViews":[{"buffer":0,"byteLength":12}],"buffers":[{"uri":null,"byteLength":12}]}"""), MAX),
+        )
+        assertEquals(
+            "nothing to read: an empty uri no view reads, an empty buffer, one with no uri",
+            emptyList<String>(),
+            GltfLimits.violations(
+                text(
+                    """{"bufferViews":[{"buffer":1,"byteLength":0},{"buffer":2,"byteLength":0}],""" +
+                        """"buffers":[{"uri":"","byteLength":12},{"uri":"","byteLength":0},{"byteLength":0}]}""",
+                ),
+                MAX,
+            ),
+        )
+        assertEquals(
+            "an empty uri no view reads",
+            emptyList<String>(),
+            GltfLimits.violations(text("""{"buffers":[{"uri":"","byteLength":12}]}"""), MAX),
+        )
+    }
+
+    @Test
+    fun `a KHR_meshopt_compression view reads its fallback buffer, which cgltf does not decode`() {
+        // The cgltf of Filament 1.72.1 parses EXT_meshopt_compression only: it reads this view as it is.
+        val json = """{"extensionsUsed":["KHR_meshopt_compression"],"extensionsRequired":["KHR_meshopt_compression"],""" +
+            """"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":1}],""" +
+            """"bufferViews":[{"buffer":1,"byteLength":12,"extensions":{"KHR_meshopt_compression":""" +
+            """{"buffer":0,"byteLength":12,"byteStride":12,"count":1,"mode":"ATTRIBUTES"}}}],""" +
+            """"buffers":[{"byteLength":12},{"byteLength":12,"extensions":{"KHR_meshopt_compression":{"fallback":true}}}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}"""
+        assertEquals(
+            listOf("buffer 1 has no uri and is not the BIN chunk of a GLB: cgltf leaves it without data"),
+            GltfLimits.violations(glb(json, ByteArray(12)), MAX),
         )
     }
 

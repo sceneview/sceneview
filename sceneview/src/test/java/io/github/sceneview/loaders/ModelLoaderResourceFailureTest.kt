@@ -74,6 +74,7 @@ class ModelLoaderResourceFailureTest {
         begunAssets.clear()
         cancelLoadCalls.set(0)
         evictCalls.set(0)
+        fedResources.clear()
         ShadowLog.clear()
         engine = FilamentWithoutJni.engine()
         loader = ModelLoader(engine, RuntimeEnvironment.getApplication())
@@ -126,6 +127,29 @@ class ModelLoaderResourceFailureTest {
         assertTrue("onResult must be called", result.called)
         assertNotNull(result.value)
         assertEquals(emptyList<Long>(), destroyedAssets.toList())
+    }
+
+    @Test
+    fun `a percent-encoded buffer is also fed under the name cgltf decodes it to`() {
+        // cgltf decodes a buffer uri before it looks it up among the resources fed to gltfio.
+        val encoded = "my%20model.bin"
+        resourceUris = arrayOf(encoded)
+
+        // A `file://` location is a URL: its resolver reads `my model.bin`, a `File` resolver the name as it is.
+        val fileUrl = modelFileUri(withBuffer = true, buffer = encoded, bufferFile = "my model.bin")
+        val result = await { loader.loadModelAsync(fileUrl, onResult = it) }
+
+        assertNotNull(result.value)
+        assertEquals(listOf(encoded, "my model.bin"), fedResources.toList())
+
+        fedResources.clear()
+        loader.createModel(File(java.net.URI(modelFileUri(withBuffer = true, buffer = encoded))))
+        assertEquals("the synchronous load too", listOf(encoded, "my model.bin"), fedResources.toList())
+
+        fedResources.clear()
+        resourceUris = arrayOf(BUFFER)
+        loader.createModel(File(java.net.URI(modelFileUri(withBuffer = true))))
+        assertEquals("a plain name is fed once", listOf(BUFFER), fedResources.toList())
     }
 
     @Test
@@ -552,6 +576,12 @@ class ModelLoaderResourceFailureTest {
             fun nEvictResourceData(nativeLoader: Long) {
                 evictCalls.incrementAndGet()
             }
+
+            @JvmStatic
+            @Implementation
+            fun nAddResourceData(nativeLoader: Long, uri: String, buffer: Buffer, remaining: Int) {
+                fedResources += uri
+            }
         }
     }
 
@@ -603,7 +633,12 @@ class ModelLoaderResourceFailureTest {
      * folder, so neither resource exists next to it — except [BUFFER] when [withBuffer], of
      * [bufferBytes] bytes against the 4 it declares.
      */
-    private fun modelFileUri(withBuffer: Boolean = false, bufferBytes: Int = 4): String {
+    private fun modelFileUri(
+        withBuffer: Boolean = false,
+        bufferBytes: Int = 4,
+        buffer: String = BUFFER,
+        bufferFile: String = buffer,
+    ): String {
         val folder = File.createTempFile("model", "").apply {
             delete()
             mkdirs()
@@ -611,12 +646,12 @@ class ModelLoaderResourceFailureTest {
         }
         val file = File(folder, "model.gltf").apply {
             writeText(
-                """{"asset":{"version":"2.0"},"buffers":[{"uri":"$BUFFER","byteLength":4}],""" +
+                """{"asset":{"version":"2.0"},"buffers":[{"uri":"$buffer","byteLength":4}],""" +
                     """"images":[{"uri":"$TEXTURE"}]}""",
             )
             deleteOnExit()
         }
-        if (withBuffer) File(folder, BUFFER).apply { writeBytes(ByteArray(bufferBytes)) }.deleteOnExit()
+        if (withBuffer) File(folder, bufferFile).apply { writeBytes(ByteArray(bufferBytes)) }.deleteOnExit()
         return "file://${file.absolutePath}"
     }
 
@@ -664,6 +699,7 @@ class ModelLoaderResourceFailureTest {
         val cancelLoadCalls = AtomicInteger()
         val progressCalls = AtomicInteger()
         val evictCalls = AtomicInteger()
+        val fedResources: MutableList<String> = Collections.synchronizedList(mutableListOf<String>())
 
         val destroyedAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
         val instancedAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
