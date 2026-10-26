@@ -2,6 +2,7 @@ package io.github.sceneview.loaders
 
 import android.os.Looper
 import android.util.Log
+import com.google.android.filament.Engine
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
@@ -20,6 +21,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,6 +61,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class ModelLoaderResourceFailureTest {
 
     private lateinit var loader: ModelLoader
+    private lateinit var engine: Engine
 
     @Before
     fun setUp() {
@@ -71,7 +74,8 @@ class ModelLoaderResourceFailureTest {
         cancelLoadCalls.set(0)
         evictCalls.set(0)
         ShadowLog.clear()
-        loader = ModelLoader(FilamentWithoutJni.engine(), RuntimeEnvironment.getApplication())
+        engine = FilamentWithoutJni.engine()
+        loader = ModelLoader(engine, RuntimeEnvironment.getApplication())
     }
 
     @After
@@ -316,6 +320,113 @@ class ModelLoaderResourceFailureTest {
         }
     }
 
+    @Test
+    fun `createModel refuses an external buffer shorter than it declares, and destroys the model`() {
+        resourceUris = arrayOf(BUFFER)
+
+        val failure = runCatching {
+            loader.createModel(File(java.net.URI(modelFileUri(withBuffer = true, bufferBytes = 2))))
+        }.exceptionOrNull()
+
+        assertTrue("Expected GltfLimitException, got $failure", failure is GltfLimitException)
+        assertTrue(failure!!.message!!.contains("shorter than the 4 it declares"))
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("gltfio must never begin reading past the buffer", emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
+    fun `loadModel refuses an external buffer shorter than it declares, and destroys the model`() {
+        resourceUris = arrayOf(BUFFER)
+
+        val result = await { loader.loadModelAsync(modelFileUri(withBuffer = true, bufferBytes = 2), onResult = it) }
+
+        assertTrue(result.called)
+        assertNull(result.value)
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals(emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
+    fun `createInstance takes a live model of another loader, as it always did`() {
+        resourceUris = emptyArray()
+        val model = loader.createModel(File(java.net.URI(modelFileUri())), releaseSourceData = false)
+        val other = ModelLoader(engine, RuntimeEnvironment.getApplication())
+
+        // gltfio answers null under Robolectric; what matters is that SceneView lets the call through.
+        other.createInstance(model)
+    }
+
+    @Test
+    fun `createInstance refuses a destroyed model rather than reading its freed handle`() {
+        resourceUris = emptyArray()
+        loadProgress = 1f
+        val model = loader.createModel(File(java.net.URI(modelFileUri())), releaseSourceData = false)
+        loader.destroyModel(model)
+
+        try {
+            ModelLoader(engine, RuntimeEnvironment.getApplication()).createInstance(model)
+            fail("expected an IllegalStateException")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("destroyed model"))
+        }
+    }
+
+    @Test
+    fun `createInstance refuses a model whose destroy waits for its textures`() {
+        resourceUris = emptyArray()
+        loadProgress = 0.5f
+        val model = await { loader.loadModelAsync(modelFileUri(), onResult = it) }.value!!
+        loader.destroyModel(model)
+        assertTrue("still decoding: the destroy is deferred", ASSET !in destroyedAssets)
+
+        try {
+            loader.createInstance(model)
+            fail("expected an IllegalStateException")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("destroyed model"))
+        }
+    }
+
+    @Test
+    fun `destroyModel after the engine is gone calls into no native`() {
+        resourceUris = emptyArray()
+        loadProgress = 0.5f
+        val model = await { loader.loadModelAsync(modelFileUri(), onResult = it) }.value!!
+        // Its textures are done: an engine still alive would see the model detached and freed at once.
+        loadProgress = 1f
+        Engine::class.java.getDeclaredField("mNativeObject").apply { isAccessible = true }.setLong(engine, 0L)
+        cancelLoadCalls.set(0)
+        progressCalls.set(0)
+
+        loader.destroyModel(model)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("destroyAsset reaches into the freed engine", emptyList<Long>(), destroyedAssets.toList())
+        assertEquals("asyncCancelLoad flushes the freed engine", 0, cancelLoadCalls.get())
+        assertEquals("no progress is asked of gltfio either", 0, progressCalls.get())
+        assertEquals("the model is forgotten all the same", false, loader.isLoading)
+    }
+
+    @Test
+    fun `progress read off the main thread is the main thread's last read, not a native call`() {
+        resourceUris = emptyArray()
+        loadProgress = 0.5f
+        await { loader.loadModelAsync(modelFileUri(), onResult = it) }
+        loader.updateLoad()
+        loadProgress = 0.9f
+
+        var offMain = -1f
+        var loadingOffMain = false
+        Thread {
+            offMain = loader.progress
+            loadingOffMain = loader.isLoading
+        }.apply { start(); join() }
+
+        assertEquals(0.5f, offMain)
+        assertTrue(loadingOffMain)
+        assertEquals("the main thread still asks gltfio", 0.9f, loader.progress)
+    }
+
     /** Every parse succeeds, with handle [ASSET]; destroys are recorded. */
     @Implements(AssetLoader::class)
     @Suppress("UnusedParameter", "FunctionOnlyReturningConstant") // Robolectric shadows mirror native signatures
@@ -373,7 +484,10 @@ class ModelLoaderResourceFailureTest {
 
             @JvmStatic
             @Implementation
-            fun nAsyncGetLoadProgress(nativeLoader: Long): Float = loadProgress
+            fun nAsyncGetLoadProgress(nativeLoader: Long): Float {
+                progressCalls.incrementAndGet()
+                return loadProgress
+            }
 
             @JvmStatic
             @Implementation
@@ -434,9 +548,10 @@ class ModelLoaderResourceFailureTest {
 
     /**
      * A `model.gltf` that declares [BUFFER] as its buffer and [TEXTURE] as its image. Alone in its
-     * folder, so neither resource exists next to it — except [BUFFER] when [withBuffer].
+     * folder, so neither resource exists next to it — except [BUFFER] when [withBuffer], of
+     * [bufferBytes] bytes against the 4 it declares.
      */
-    private fun modelFileUri(withBuffer: Boolean = false): String {
+    private fun modelFileUri(withBuffer: Boolean = false, bufferBytes: Int = 4): String {
         val folder = File.createTempFile("model", "").apply {
             delete()
             mkdirs()
@@ -449,7 +564,7 @@ class ModelLoaderResourceFailureTest {
             )
             deleteOnExit()
         }
-        if (withBuffer) File(folder, BUFFER).apply { writeBytes(ByteArray(4)) }.deleteOnExit()
+        if (withBuffer) File(folder, BUFFER).apply { writeBytes(ByteArray(bufferBytes)) }.deleteOnExit()
         return "file://${file.absolutePath}"
     }
 
@@ -475,6 +590,7 @@ class ModelLoaderResourceFailureTest {
         val begunAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
 
         val cancelLoadCalls = AtomicInteger()
+        val progressCalls = AtomicInteger()
         val evictCalls = AtomicInteger()
 
         val destroyedAssets: MutableList<Long> = Collections.synchronizedList(mutableListOf<Long>())
