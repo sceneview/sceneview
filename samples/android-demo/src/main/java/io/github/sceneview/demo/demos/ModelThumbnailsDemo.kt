@@ -65,7 +65,10 @@ import java.util.Locale
 
 private const val TAG = "ModelThumbnailsDemo"
 
-/** The models the demo ships, as a library would list them: one thumbnail each, per angle. */
+/**
+ * The models the demo ships, as a library would list them: one thumbnail each, per angle. The
+ * night circuit is left out: it is a whole set, with quantized positions (see [ModelSnapshot]).
+ */
 private val THUMBNAIL_MODELS = listOf(
     "models/khronos_damaged_helmet.glb" to "Damaged Helmet",
     "models/khronos_glam_velvet_sofa.glb" to "Velvet Sofa",
@@ -76,7 +79,6 @@ private val THUMBNAIL_MODELS = listOf(
     "models/quaternius_ranger.glb" to "Ranger",
     "models/khronos_fox.glb" to "Fox",
     "models/shiba.glb" to "Shiba",
-    "models/night_circuit.glb" to "Night Circuit",
 )
 
 /** The two angles of the grid: the default three-quarter view, and the same turned around. */
@@ -89,7 +91,7 @@ private val THUMBNAIL_SIZE = 160.dp
  * Model thumbnails: a library grid whose pictures come from [ModelSnapshot], rendered off screen
  * one after the other on the screen's engine — no `SceneView` on this screen at all.
  *
- * All twenty cells ask at once; the snapshot queues them and renders one per turn of the main
+ * All eighteen cells ask at once; the snapshot queues them and renders one per turn of the main
  * thread's frames, so the grid keeps scrolling while they arrive. The status line reports the
  * total, the time per thumbnail and the longest UI frame seen meanwhile.
  */
@@ -131,6 +133,7 @@ private fun ThumbnailLibrary(snapshot: ModelSnapshot) {
 
     val onResult: (ok: Boolean) -> Unit = { ok ->
         if (ok) done++ else failed++
+        Log.d(TAG, "${done + failed}/$total ${if (ok) "ready" else "failed"} at ${SystemClock.elapsedRealtime() - start} ms")
         if (done + failed == total) {
             elapsedMs = SystemClock.elapsedRealtime() - start
             finished = true

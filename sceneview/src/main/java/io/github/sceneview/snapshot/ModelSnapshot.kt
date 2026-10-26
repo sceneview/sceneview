@@ -6,6 +6,8 @@ import android.graphics.PixelFormat
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
+import android.util.Log
 import android.util.LruCache
 import androidx.annotation.MainThread
 import androidx.compose.runtime.Composable
@@ -120,6 +122,12 @@ internal data class SnapshotKey(
  * Each image frames the whole model automatically (see [ModelSnapshotOptions]), from a three-quarter
  * angle by default, lit by a neutral studio rig (image-based light plus a key and a fill light),
  * **on a transparent background**: draw it over any card colour, in light and dark themes alike.
+ *
+ * The framing trusts the bounding box the glTF loader reports. Two kinds of file defeat it: a
+ * whole set (ground, sky dome) is framed whole, so its subject comes out tiny; and positions
+ * quantized as normalized integers (`KHR_mesh_quantization`, `gltfpack -cc`) get a box about
+ * 32767 times too large, which leaves the image empty. Thumbnail single objects with float
+ * positions.
  *
  * ```kotlin
  * val engine = rememberEngine()
@@ -311,7 +319,10 @@ class ModelSnapshot @MainThread constructor(
         height: Int,
         options: ModelSnapshotOptions,
     ): Bitmap? {
-        val model = modelLoader.loadModel(fileLocation) ?: return null
+        val model = modelLoader.loadModel(fileLocation) ?: run {
+            Log.w(TAG, "Could not load $fileLocation")
+            return null
+        }
         try {
             // Textures are decoded in the background and uploaded as they come: wait for all of
             // them, so the thumbnail is never captured half-textured.
@@ -327,7 +338,9 @@ class ModelSnapshot @MainThread constructor(
             frame(model, width, height, options)
             scene.addEntities(model.entities)
             try {
-                return capture(width, height)
+                // The very first capture of a cold engine can outlast its timeout while the backend
+                // compiles: the target is rebuilt after a miss, and a second try finds it warm.
+                return capture(width, height) ?: if (isDestroyed) null else capture(width, height)
             } finally {
                 if (!isReleased) scene.removeEntities(model.entities)
             }
@@ -390,12 +403,13 @@ class ModelSnapshot @MainThread constructor(
             while (target.received.get() < target.submitted) delay(FRAME_MS)
         }
         if (drained == null || isDestroyed) {
+            if (drained == null) Log.w(TAG, "Earlier frames never arrived; starting a new target")
             releaseTarget()
             return null
         }
         val result = CompletableDeferred<Bitmap?>()
         var rendered = 0
-        var skipped = 0
+        val deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
         while (rendered <= WARMUP_FRAMES) {
             val isLast = rendered == WARMUP_FRAMES
             if (isLast) {
@@ -407,7 +421,8 @@ class ModelSnapshot @MainThread constructor(
                 renderer.endFrame()
                 target.submitted++
                 rendered++
-            } else if (++skipped > MAX_SKIPPED_FRAMES) {
+            } else if (SystemClock.uptimeMillis() > deadline) {
+                Log.w(TAG, "The renderer kept skipping frames for $FRAME_BUDGET_MS ms")
                 break
             }
             if (rendered <= WARMUP_FRAMES) delay(FRAME_MS)
@@ -421,7 +436,10 @@ class ModelSnapshot @MainThread constructor(
         val bitmap = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { result.await() }
         target.pending = null
         // A frame that never arrived would shift every later count: start the next one afresh.
-        if (bitmap == null) releaseTarget()
+        if (bitmap == null) {
+            Log.w(TAG, "The captured frame never arrived")
+            releaseTarget()
+        }
         return bitmap
     }
 
@@ -536,11 +554,18 @@ class ModelSnapshot @MainThread constructor(
 
         private const val NEUTRAL_IBL = "environments/neutral/neutral_ibl.ktx"
         private const val WARMUP_FRAMES = 1
-        private const val MAX_SKIPPED_FRAMES = 30
+        private const val TAG = "ModelSnapshot"
+
+        /**
+         * How long the renderer may keep refusing frames. It skips while the GPU is behind, which
+         * on a first use of a model's materials lasts as long as their shaders take to compile —
+         * seconds on an emulator.
+         */
+        private const val FRAME_BUDGET_MS = 10_000L
         private const val MAX_IMAGES = 3
         private const val FRAME_MS = 16L
         private const val TEXTURE_TIMEOUT_MS = 10_000L
-        private const val CAPTURE_TIMEOUT_MS = 3_000L
+        private const val CAPTURE_TIMEOUT_MS = 5_000L
     }
 }
 
