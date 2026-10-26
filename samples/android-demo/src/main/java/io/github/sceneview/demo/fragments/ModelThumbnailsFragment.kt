@@ -17,9 +17,9 @@ object ModelThumbnailsFragment : DemoFragment {
         id = "model-thumbnails",
         titleRes = R.string.demo_model_thumbnails_title,
         subtitleRes = R.string.demo_model_thumbnails_subtitle,
-        category = DemoCategory.VIEW_3D,
+        category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Collections,
-        order = 31,
+        order = 13,
         addedIn = "4.63.0",
         tags = setOf("thumbnail", "snapshot", "offscreen", "bitmap", "library", "grid", "preview"),
     )

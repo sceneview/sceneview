@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import android.content.Context
@@ -23,7 +25,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,9 +58,11 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Radius
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.snapshot.ModelSnapshot
 import io.github.sceneview.snapshot.ModelSnapshotOptions
+import io.github.sceneview.snapshot.ModelThumbnailState
 import io.github.sceneview.snapshot.rememberModelSnapshot
 import io.github.sceneview.snapshot.rememberModelThumbnail
 import kotlinx.coroutines.Dispatchers
@@ -91,9 +98,10 @@ private val THUMBNAIL_SIZE = 160.dp
  * Model thumbnails: a library grid whose pictures come from [ModelSnapshot], rendered off screen
  * one after the other on the screen's engine — no `SceneView` on this screen at all.
  *
- * All eighteen cells ask at once; the snapshot queues them and renders one per turn of the main
- * thread's frames, so the grid keeps scrolling while they arrive. The status line reports the
- * total, the time per thumbnail and the longest UI frame seen meanwhile.
+ * All eighteen cells ask at once; the snapshot queues them and renders one model at a time. Each
+ * costs the main thread what loading that model into a scene costs, so the grid drops frames while
+ * it fills: the status line reports the total, the time per thumbnail and the longest UI frame
+ * seen meanwhile. A cell whose model cannot be thumbnailed shows a broken-image icon.
  */
 @Composable
 fun ModelThumbnailsDemo(onBack: () -> Unit) {
@@ -241,20 +249,15 @@ private fun ThumbnailCard(
 ) {
     val context = LocalContext.current
     val thumbnail = rememberModelThumbnail(snapshot, path, size = THUMBNAIL_SIZE, options = options)
-    var reported by remember { mutableStateOf(false) }
+    // Loading, then Ready or Failed for good: each card reports its one result.
     LaunchedEffect(thumbnail) {
-        if (thumbnail != null && !reported) {
-            reported = true
-            onResult(true)
-            if (BuildConfig.DEBUG) saveForInspection(context, thumbnail, name, variant)
-        }
-    }
-    // A render that failed leaves the cell empty for good: count it once, after the queue had time.
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(60_000)
-        if (!reported) {
-            reported = true
-            onResult(false)
+        when (thumbnail) {
+            is ModelThumbnailState.Ready -> {
+                onResult(true)
+                if (BuildConfig.DEBUG) saveForInspection(context, thumbnail.bitmap, name, variant)
+            }
+            is ModelThumbnailState.Failed -> onResult(false)
+            ModelThumbnailState.Loading -> Unit
         }
     }
     Surface(
@@ -271,15 +274,20 @@ private fun ThumbnailCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (thumbnail != null) {
-                    Image(
-                        bitmap = thumbnail,
+                when (thumbnail) {
+                    is ModelThumbnailState.Ready -> Image(
+                        bitmap = thumbnail.bitmap,
                         contentDescription = name,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
                     )
-                } else {
-                    CircularProgressIndicator(modifier = Modifier.size(Space.lg), strokeWidth = 2.dp)
+                    is ModelThumbnailState.Failed -> Icon(
+                        imageVector = Icons.Filled.BrokenImage,
+                        contentDescription = stringResource(R.string.demo_model_thumbnails_cell_failed, name),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ModelThumbnailState.Loading ->
+                        CircularProgressIndicator(modifier = Modifier.size(Space.lg), strokeWidth = 2.dp)
                 }
             }
             Text(

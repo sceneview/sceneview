@@ -4253,8 +4253,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
-| `rememberModelSnapshot(engine, maxCacheBytes?)` | `ModelSnapshot` | Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen (see "Render a model thumbnail to a Bitmap") |
-| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ImageBitmap?` | A GLB's thumbnail on a transparent background — `null` while it queues and renders |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -6146,7 +6146,9 @@ fun MultiModelScene() {
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import io.github.sceneview.snapshot.ModelSnapshot
 import io.github.sceneview.snapshot.ModelSnapshotOptions
+import io.github.sceneview.snapshot.ModelThumbnailState
 import io.github.sceneview.snapshot.rememberModelSnapshot
 import io.github.sceneview.snapshot.rememberModelThumbnail
 
@@ -6156,27 +6158,31 @@ val engine = rememberEngine()
 val snapshot = rememberModelSnapshot(engine)          // one per screen: one queue, one cache
 LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
     items(paths) { path ->
-        val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)
-        if (thumbnail != null) Image(thumbnail, contentDescription = null)
-        else CircularProgressIndicator()
+        when (val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)) {
+            is ModelThumbnailState.Ready -> Image(thumbnail.bitmap, contentDescription = null)
+            is ModelThumbnailState.Failed -> Text("No preview")   // reason: thumbnail.reason
+            ModelThumbnailState.Loading -> CircularProgressIndicator()
+        }
     }
 }
 
-// Outside Compose: suspend, from any coroutine.
-LaunchedEffect(snapshot) {
-    val bitmap: Bitmap? = snapshot.snapshot("models/helmet.glb", width = 512)
-    val behind: Bitmap? = snapshot.snapshot(
+// Without Compose: a suspend call, from any coroutine (a ViewModel's, a worker's).
+suspend fun shareImages(snapshot: ModelSnapshot): List<Bitmap?> = listOf(
+    snapshot.snapshot("models/helmet.glb", width = 512),   // null when it failed: the reason is logged
+    snapshot.snapshot(
         "models/helmet.glb", width = 512,
         options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
-    )
-}
+    ),
+)
 ```
 
+- **Experimental**: the whole API is `@ExperimentalSceneViewApi` — add `@OptIn(ExperimentalSceneViewApi::class)` where you call it.
 - **Framing is automatic**: the model's bounding box is fitted whole into the picture, `padding` (default 8 %) of the frame on each side, seen from `yawDegrees`/`pitchDegrees` (default 30°/20°: three-quarter, slightly from above) through a `focalLength` lens (default 40 mm). Nothing to measure.
-- **Transparent background**: an `ARGB_8888` bitmap, premultiplied alpha — composite it on any card.
-- **One at a time, never blocking a frame**: the snapshot is a queue on the main thread (Filament's JNI calls stay there) that suspends between frames, so twenty requests render in turn while the UI keeps drawing. The model is loaded, rendered and destroyed per call; the renderer, view, lights and environment are made once and reused.
-- **Cache**: results are kept in an LRU of `maxCacheBytes` (default 32 MB, `0` disables it); `cached(...)` reads it without rendering, `clearCache()` empties it. A cache hit costs nothing.
-- **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes; a render in flight finishes first.
+- **Transparent background**: an immutable `ARGB_8888` bitmap, premultiplied alpha — composite it on any card.
+- **Explicit failures**: a model that cannot be loaded, an empty or non-finite bounding box, positions quantized with `KHR_mesh_quantization` (gltfio reports their box un-dequantized, ~32767× too large), a fully transparent image or a timeout give `Failed(reason)` in Compose and `null` from `snapshot()`, logged under the `ModelSnapshot` tag and never cached. A failed cell is not retried until its file, size or options change.
+- **One at a time, at a model load's cost**: requests queue on the main thread (Filament's JNI calls stay there) and render one model at a time, so twenty requests never load together. Each still costs the main thread what loading that model into a scene costs — creating the asset (~130–150 ms) and finalising its textures (up to ~0.5 s in one frame, measured on an arm64 emulator with 2–5 MB GLBs): a grid of textured models drops frames while it fills. Pass the scene's `modelLoader` to `rememberModelSnapshot` to skip building a second loader (~0.6 s the first time). The renderer, view, lights and environment are made once and reused.
+- **Cache**: results are kept in an LRU of `maxCacheBytes` (default 32 MB, `0` disables it); `cached(...)` reads it without rendering, `clearCache()` empties it. A cache hit costs nothing. An image captured while its textures were still decoding (after a 10 s timeout) is returned but not cached.
+- **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes: a render in flight stops at its next step (its model load is cancelled) and it, like every queued request, gets `null` / `Failed`; Filament objects are freed once that render has let go and the GPU is done with them.
 - Lighting is the SDK's default key + fill and a neutral IBL, so thumbnails match a default `SceneView`. Skinned models are drawn in their bind pose; the first animation frame is not applied.
 
 ### Interactive model with tap and gesture

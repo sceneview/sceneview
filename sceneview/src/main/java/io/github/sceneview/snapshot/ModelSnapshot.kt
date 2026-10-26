@@ -12,10 +12,7 @@ import android.util.LruCache
 import androidx.annotation.MainThread
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -36,6 +33,7 @@ import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.DEFAULT_MAIN_LIGHT_COLOR
 import io.github.sceneview.DEFAULT_MAIN_LIGHT_COLOR_INTENSITY
 import io.github.sceneview.DefaultCameraNode
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.createView
 import io.github.sceneview.destroyRendererWhenBackendIdle
 import io.github.sceneview.loaders.ModelLoader
@@ -53,13 +51,22 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.whenBackendIdle
 import io.github.sceneview.whenIdle
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.sqrt
 
 /**
@@ -78,6 +85,7 @@ import kotlin.math.sqrt
  * default 40 mm is the demo showroom's lens: a natural perspective, without a wide-angle bulge.
  * @param padding fraction of the image's width and height left empty on each side, in `[0, 0.5)`.
  */
+@ExperimentalSceneViewApi
 data class ModelSnapshotOptions(
     val yawDegrees: Float = DEFAULT_YAW_DEGREES,
     val pitchDegrees: Float = DEFAULT_PITCH_DEGREES,
@@ -108,6 +116,7 @@ data class ModelSnapshotOptions(
 }
 
 /** What a cached thumbnail is looked up by: the same model at another size or angle is another image. */
+@OptIn(ExperimentalSceneViewApi::class)
 internal data class SnapshotKey(
     val fileLocation: String,
     val width: Int,
@@ -123,17 +132,11 @@ internal data class SnapshotKey(
  * angle by default, lit by a neutral studio rig (image-based light plus a key and a fill light),
  * **on a transparent background**: draw it over any card colour, in light and dark themes alike.
  *
- * The framing trusts the bounding box the glTF loader reports. Two kinds of file defeat it: a
- * whole set (ground, sky dome) is framed whole, so its subject comes out tiny; and positions
- * quantized as normalized integers (`KHR_mesh_quantization`, `gltfpack -cc`) get a box about
- * 32767 times too large, which leaves the image empty. Thumbnail single objects with float
- * positions.
- *
  * ```kotlin
  * val engine = rememberEngine()
  * val snapshot = rememberModelSnapshot(engine)
  * val thumbnail = rememberModelThumbnail(snapshot, "models/chair.glb", size = 96.dp)
- * thumbnail?.let { Image(it, contentDescription = "Chair") }
+ * thumbnail.bitmapOrNull()?.let { Image(it, contentDescription = "Chair") }
  * ```
  *
  * Outside Compose, call [snapshot] from any coroutine:
@@ -142,26 +145,43 @@ internal data class SnapshotKey(
  * val bitmap: Bitmap? = snapshot.snapshot("models/chair.glb", width = 256, height = 256)
  * ```
  *
+ * ### What fails
+ *
+ * The framing trusts the bounding box the glTF loader reports. A request fails — `null` from
+ * [snapshot], [ModelThumbnailState.Failed] in Compose, a warning under the `ModelSnapshot` tag, and
+ * nothing cached — when the model cannot be loaded, when its box is empty or not finite, when its
+ * positions are quantized as normalized integers (`KHR_mesh_quantization`, `gltfpack -cc`: gltfio
+ * reports their box about 32767 times too large), when the image comes out fully transparent, or
+ * when the render times out. A whole set (ground, sky dome) is framed whole, so its subject comes
+ * out tiny: thumbnail single objects.
+ *
  * ### One at a time, on the scene's engine
  *
  * A snapshotter lives on an existing [Engine] (the one your `SceneView` uses, typically) and reuses
  * one renderer, view, scene, camera and light rig for every image. Requests queue: **one model is
  * rendered at a time**, in the order asked, so a grid asking for twenty thumbnails at once never
- * stacks twenty renders into one frame of the main thread. A request whose coroutine is cancelled
- * (its grid cell scrolled away) leaves the queue without being rendered.
+ * stacks twenty model loads into the same frames. A request whose coroutine is cancelled (its grid
+ * cell scrolled away) leaves the queue; if it was rendering, the render stops and its model is
+ * released before the next request starts.
  *
- * ### Threads
+ * ### What it costs the main thread
  *
  * The file is read and parsed off the main thread, and the image is copied out on a background
- * thread. Only the Filament calls — creating the model, rendering two small frames, releasing the
- * model — run on the main thread, as Filament requires, between the frames of your scene. Nothing
- * blocks a thread while the GPU works: the image arrives through an [ImageReader].
+ * thread. The rest runs on the main thread, as Filament requires, between the frames of your
+ * scene — and costs what loading the same model into a scene costs. Measured on an arm64 emulator
+ * with 2–5 MB textured GLBs: creating the model ≈ 130–150 ms, finalising its textures up to
+ * ≈ 0.5 s in a single frame (gltfio uploads a decoded texture in one call), two small renders
+ * 5–16 ms. A grid of textured models therefore drops frames while it fills, one model at a time.
+ * Creating a snapshotter decodes its image-based light (≈ 70 ms) and, unless you pass the scene's
+ * [ModelLoader], builds a loader of its own (≈ 0.6 s the first time, for its material provider).
  *
  * ### Cache
  *
  * Finished images are kept in a memory cache of [maxCacheBytes] (keyed by file, size and options),
- * so a cell scrolled back into view gets its image at once. Pass `0` to disable it. Bitmaps handed
- * out may be shared with the cache: do not [Bitmap.recycle] them.
+ * so a cell scrolled back into view gets its image at once. Pass `0` to disable it. An image
+ * captured while the model's textures were still decoding (after a 10 s timeout) is handed out but
+ * never cached. Bitmaps handed out are immutable and may be shared with the cache: do not
+ * [Bitmap.recycle] them.
  *
  * Create it on the main thread, and call [destroy] (or use [rememberModelSnapshot], which does)
  * before the engine is destroyed.
@@ -169,17 +189,27 @@ internal data class SnapshotKey(
  * @param engine the engine to render with. It must outlive this snapshotter.
  * @param context any context; only its application context is kept.
  * @param maxCacheBytes size of the in-memory thumbnail cache, in bytes. `0` disables it.
+ * @param modelLoader the loader to load models with, on [engine] — typically your scene's
+ * `rememberModelLoader`, which saves building a second material provider. Its texture loading is
+ * then shared with your scene's models: a thumbnail asked while the scene loads waits for those
+ * textures too (or is not cached, past the timeout). [destroy] does not destroy it. `null` (the
+ * default) builds a loader of the snapshotter's own, destroyed with it.
  */
+@ExperimentalSceneViewApi
 class ModelSnapshot @MainThread constructor(
     val engine: Engine,
     context: Context,
     val maxCacheBytes: Int = DEFAULT_MAX_CACHE_BYTES,
+    modelLoader: ModelLoader? = null,
 ) {
     private val appContext = context.applicationContext
 
-    // Its own loader: gltfio finalises the textures of one model at a time per loader, so sharing
-    // the scene's would make a thumbnail wait behind (or delay) the model the scene is loading.
-    private val modelLoader = ModelLoader(engine, appContext)
+    private val ownsModelLoader = modelLoader == null
+    private val modelLoader = modelLoader ?: ModelLoader(engine, appContext)
+
+    init {
+        require(this.modelLoader.engine === engine) { "modelLoader must load on this engine" }
+    }
 
     private val renderer: Renderer = engine.createRenderer().apply {
         clearOptions = clearOptions.apply {
@@ -238,6 +268,10 @@ class ModelSnapshot @MainThread constructor(
     }
 
     private val queue = Mutex()
+
+    /** Runs the renders, so [destroy] can stop one mid-load. Main thread. */
+    private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val cache: LruCache<SnapshotKey, Bitmap>? = if (maxCacheBytes > 0) {
         object : LruCache<SnapshotKey, Bitmap>(maxCacheBytes) {
             override fun sizeOf(key: SnapshotKey, value: Bitmap) = value.byteCount
@@ -250,6 +284,12 @@ class ModelSnapshot @MainThread constructor(
     private var isReleased = false
 
     /**
+     * Whether Filament may still be called: checked after every suspension of a render, since
+     * [destroy] — or the engine's own destruction — can land during any of them.
+     */
+    private val isAlive: Boolean get() = !isDestroyed && !isReleased && engine.isValid
+
+    /**
      * The cached thumbnail of [fileLocation] at this size and with these [options], or `null` when
      * it has not been rendered yet (or the cache is disabled). Never renders. Any thread.
      */
@@ -258,7 +298,9 @@ class ModelSnapshot @MainThread constructor(
         width: Int,
         height: Int = width,
         options: ModelSnapshotOptions = ModelSnapshotOptions(),
-    ): Bitmap? = cache?.get(SnapshotKey(fileLocation, width, height, options))
+    ): Bitmap? = cached(SnapshotKey(fileLocation, width, height, options))
+
+    internal fun cached(key: SnapshotKey): Bitmap? = cache?.get(key)
 
     /**
      * Renders the model at [fileLocation] into a [width] × [height] bitmap with a transparent
@@ -269,8 +311,8 @@ class ModelSnapshot @MainThread constructor(
      *
      * @param fileLocation the model, as [ModelLoader.loadModel] reads it: an asset path
      * (`models/chair.glb`), a file path or an `http(s)` URL.
-     * @return the image, from the cache when it holds one, or `null` when the model could not be
-     * loaded, the render timed out, or this snapshotter was destroyed.
+     * @return the image, from the cache when it holds one, or `null` when the request failed (see
+     * "What fails" on [ModelSnapshot]; the reason is logged) or this snapshotter was destroyed.
      */
     suspend fun snapshot(
         fileLocation: String,
@@ -279,14 +321,43 @@ class ModelSnapshot @MainThread constructor(
         options: ModelSnapshotOptions = ModelSnapshotOptions(),
     ): Bitmap? {
         require(width > 0 && height > 0) { "Thumbnail size must be positive, was $width × $height" }
-        val key = SnapshotKey(fileLocation, width, height, options)
-        cache?.get(key)?.let { return it }
+        return when (val result = request(SnapshotKey(fileLocation, width, height, options))) {
+            is SnapshotResult.Rendered -> result.bitmap
+            is SnapshotResult.Failed -> null
+        }
+    }
+
+    /**
+     * One request: from the cache, or queued and rendered. Logs a failure, and caches only a
+     * complete image of a snapshotter still alive.
+     */
+    internal suspend fun request(key: SnapshotKey): SnapshotResult {
+        cache?.get(key)?.let { return SnapshotResult.Rendered(it, complete = true) }
         return withContext(Dispatchers.Main.immediate) {
             queue.withLock {
                 // A request for the same image may have filled the cache while this one waited.
-                cache?.get(key)?.let { return@withLock it }
-                if (isDestroyed) return@withLock null
-                render(fileLocation, width, height, options)?.also { cache?.put(key, it) }
+                cache?.get(key)?.let { return@withLock SnapshotResult.Rendered(it, complete = true) }
+                if (!isAlive) return@withLock SnapshotResult.Failed(DESTROYED)
+                val render = renderScope.async { render(key) }
+                val result = try {
+                    render.await()
+                } catch (e: CancellationException) {
+                    // The caller gave up: rethrown. Otherwise destroy() stopped the render.
+                    currentCoroutineContext().ensureActive()
+                    SnapshotResult.Failed(DESTROYED)
+                } catch (e: Exception) {
+                    SnapshotResult.Failed("render failed: $e")
+                } finally {
+                    // The next request starts once this model is released, never alongside it.
+                    withContext(NonCancellable) { render.cancelAndJoin() }
+                }
+                when (result) {
+                    is SnapshotResult.Rendered ->
+                        if (result.complete && isAlive) cache?.put(key, result.bitmap)
+                    is SnapshotResult.Failed ->
+                        Log.w(TAG, "No thumbnail for ${key.fileLocation}: ${result.reason}")
+                }
+                result
             }
         }
     }
@@ -297,62 +368,87 @@ class ModelSnapshot @MainThread constructor(
     }
 
     /**
-     * Releases the renderer, the light rig and every model still loading. A render in progress is
-     * abandoned and its request returns `null`; queued requests return `null` too.
+     * Releases the renderer, the light rig, its own [ModelLoader] (not one passed in) and the
+     * image thread, and empties the cache.
      *
-     * Never blocks: whatever the GPU may still be using is released once it is done with it.
-     * Call it before the [engine] is destroyed. Main thread.
+     * A render in progress is stopped at its next step — its model load is cancelled — and its
+     * request gets `null` ([ModelThumbnailState.Failed] in Compose); queued requests get the same,
+     * without rendering. Filament objects are released once that render has let go of them and the
+     * GPU is done with them, never blocking. Call it before the [engine] is destroyed; if the
+     * engine is already gone, only the image thread and its reader are released (the engine took
+     * the rest with it). Main thread.
      */
     @MainThread
     fun destroy() {
         if (isDestroyed) return
         isDestroyed = true
         cache?.evictAll()
-        // A render still in progress owns the renderer: release once it has returned.
-        engine.whenIdle(isBusy = { queue.isLocked }) { release() }
+        renderScope.cancel()
+        engine.whenIdle(isBusy = { queue.isLocked }, onEngineGone = ::releaseWithoutEngine) {
+            release()
+        }
     }
 
     @MainThread
-    private suspend fun render(
-        fileLocation: String,
-        width: Int,
-        height: Int,
-        options: ModelSnapshotOptions,
-    ): Bitmap? {
-        val model = modelLoader.loadModel(fileLocation) ?: run {
-            Log.w(TAG, "Could not load $fileLocation")
-            return null
-        }
+    private suspend fun render(key: SnapshotKey): SnapshotResult {
+        val model = modelLoader.loadModel(key.fileLocation)
+            ?: return SnapshotResult.Failed("could not load the model")
         try {
+            if (!isAlive) return SnapshotResult.Failed(DESTROYED)
+            val extensions = withContext(Dispatchers.IO) {
+                readGltfExtensionsUsed(appContext, key.fileLocation)
+            }
+            if (KHR_MESH_QUANTIZATION in extensions) {
+                return SnapshotResult.Failed(
+                    "its positions are quantized ($KHR_MESH_QUANTIZATION), whose bounding box " +
+                        "gltfio reports un-dequantized: re-export it with float positions"
+                )
+            }
             // Textures are decoded in the background and uploaded as they come: wait for all of
             // them, so the thumbnail is never captured half-textured.
-            withTimeoutOrNull(TEXTURE_TIMEOUT_MS) {
-                while (modelLoader.isLoading && !isDestroyed) {
+            val texturesReady = withTimeoutOrNull(TEXTURE_TIMEOUT_MS) {
+                while (isAlive && modelLoader.isLoading) {
                     modelLoader.updateLoad()
                     delay(FRAME_MS)
                 }
-            }
-            if (isDestroyed) return null
+            } != null
+            if (!isAlive) return SnapshotResult.Failed(DESTROYED)
+            if (!texturesReady) Log.w(TAG, "${key.fileLocation}: textures still loading after $TEXTURE_TIMEOUT_MS ms")
             // Skinned models: pose the skin once, at rest.
             runCatching { model.instance?.animator?.updateBoneMatrices() }
-            frame(model, width, height, options)
+            if (!frame(model, key)) {
+                return SnapshotResult.Failed("its bounding box is empty or not finite")
+            }
             scene.addEntities(model.entities)
             try {
                 // The very first capture of a cold engine can outlast its timeout while the backend
                 // compiles: the target is rebuilt after a miss, and a second try finds it warm.
-                return capture(width, height) ?: if (isDestroyed) null else capture(width, height)
+                val captured = capture(key.width, key.height)
+                    ?: if (isAlive) capture(key.width, key.height) else null
+                return when {
+                    !isAlive -> SnapshotResult.Failed(DESTROYED)
+                    captured == null -> SnapshotResult.Failed("the render timed out")
+                    captured.bitmap == null -> SnapshotResult.Failed(
+                        captured.failure ?: "it drew nothing: the image is fully transparent"
+                    )
+                    else -> SnapshotResult.Rendered(captured.bitmap, complete = texturesReady)
+                }
             } finally {
-                if (!isReleased) scene.removeEntities(model.entities)
+                if (!isReleased && engine.isValid) scene.removeEntities(model.entities)
             }
         } finally {
-            modelLoader.destroyModel(model)
+            // Once released, the engine or the loader's own destroy() took the model with it.
+            if (!isReleased && engine.isValid) modelLoader.destroyModel(model)
         }
     }
 
+    /** Aims the camera and the light rig at [model]; `false` when its box cannot be framed. */
     @MainThread
-    private fun frame(model: Model, width: Int, height: Int, options: ModelSnapshotOptions) {
+    private fun frame(model: Model, key: SnapshotKey): Boolean {
         val box = model.boundingBox
-        val aspect = width.toFloat() / height
+        if (!isFramable(box.center, box.halfExtent)) return false
+        val options = key.options
+        val aspect = key.width.toFloat() / key.height
         val focalLength = options.focalLength.toDouble()
         val framing = frameSnapshot(
             center = Position(box.center[0], box.center[1], box.center[2]),
@@ -379,7 +475,8 @@ class ModelSnapshot @MainThread constructor(
         )
         setDirection(keyLight, back * 0.6f + framing.up * 1.0f - right * 0.6f)
         setDirection(fillLight, back * 0.8f + framing.up * 0.2f + right * 0.9f)
-        view.viewport = Viewport(0, 0, width, height)
+        view.viewport = Viewport(0, 0, key.width, key.height)
+        return true
     }
 
     /** Points [light] so it shines from [toLight] (a direction toward the light) onto the model. */
@@ -392,55 +489,59 @@ class ModelSnapshot @MainThread constructor(
 
     /**
      * Renders [WARMUP_FRAMES] + 1 frames into the [ImageReader] of this size and returns the last
-     * one. The warm-up frame lets the backend link the model's shaders; frames are counted on both
-     * sides, so the image returned is always this request's last frame.
+     * one, or `null` when it never arrived or this snapshotter went away meanwhile. The warm-up
+     * frame lets the backend link the model's shaders; frames are counted on both sides, so the
+     * image returned is always this request's last frame.
      */
     @MainThread
-    private suspend fun capture(width: Int, height: Int): Bitmap? {
+    private suspend fun capture(width: Int, height: Int): CapturedFrame? {
         val target = captureTarget(width, height)
         // Frames of an abandoned request may still be on their way: let them land first.
         val drained = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) {
             while (target.received.get() < target.submitted) delay(FRAME_MS)
         }
-        if (drained == null || isDestroyed) {
-            if (drained == null) Log.w(TAG, "Earlier frames never arrived; starting a new target")
+        if (!isAlive) return null
+        if (drained == null) {
+            Log.w(TAG, "Earlier frames never arrived; starting a new target")
             releaseTarget()
             return null
         }
-        val result = CompletableDeferred<Bitmap?>()
-        var rendered = 0
-        val deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
-        while (rendered <= WARMUP_FRAMES) {
-            val isLast = rendered == WARMUP_FRAMES
-            if (isLast) {
-                target.captureFrame = target.submitted + 1
-                target.pending = result
+        val result = CompletableDeferred<CapturedFrame?>()
+        try {
+            var rendered = 0
+            val deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
+            while (rendered <= WARMUP_FRAMES) {
+                if (rendered == WARMUP_FRAMES) {
+                    target.captureFrame = target.submitted + 1
+                    target.pending = result
+                }
+                if (renderer.beginFrame(target.swapChain, System.nanoTime())) {
+                    renderer.render(view)
+                    renderer.endFrame()
+                    target.submitted++
+                    rendered++
+                } else if (SystemClock.uptimeMillis() > deadline) {
+                    Log.w(TAG, "The renderer kept skipping frames for $FRAME_BUDGET_MS ms")
+                    return null
+                }
+                if (rendered <= WARMUP_FRAMES) {
+                    delay(FRAME_MS)
+                    if (!isAlive) return null
+                }
             }
-            if (renderer.beginFrame(target.swapChain, System.nanoTime())) {
-                renderer.render(view)
-                renderer.endFrame()
-                target.submitted++
-                rendered++
-            } else if (SystemClock.uptimeMillis() > deadline) {
-                Log.w(TAG, "The renderer kept skipping frames for $FRAME_BUDGET_MS ms")
-                break
+            engine.flush()
+            val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { result.await() }
+            if (!isAlive) return null
+            // A frame that never arrived would shift every later count: start the next one afresh.
+            if (frame == null) {
+                Log.w(TAG, "The captured frame never arrived")
+                releaseTarget()
             }
-            if (rendered <= WARMUP_FRAMES) delay(FRAME_MS)
-            if (isDestroyed) break
+            return frame
+        } finally {
+            // Never left behind for a later frame to complete.
+            if (target.pending === result) target.pending = null
         }
-        if (rendered <= WARMUP_FRAMES || isDestroyed) {
-            target.pending = null
-            return null
-        }
-        engine.flush()
-        val bitmap = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { result.await() }
-        target.pending = null
-        // A frame that never arrived would shift every later count: start the next one afresh.
-        if (bitmap == null) {
-            Log.w(TAG, "The captured frame never arrived")
-            releaseTarget()
-        }
-        return bitmap
     }
 
     @MainThread
@@ -451,10 +552,11 @@ class ModelSnapshot @MainThread constructor(
             it.start()
             imageThread = it
         }
+        val handler = Handler(thread.looper)
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, MAX_IMAGES)
         val swapChain = engine.createSwapChain(reader.surface, SwapChainFlags.CONFIG_TRANSPARENT)
-        return CaptureTarget(width, height, reader, swapChain).also { capture ->
-            reader.setOnImageAvailableListener({ capture.onImagesAvailable() }, Handler(thread.looper))
+        return CaptureTarget(width, height, reader, swapChain, handler).also { capture ->
+            reader.setOnImageAvailableListener({ capture.onImagesAvailable() }, handler)
             target = capture
         }
     }
@@ -466,7 +568,7 @@ class ModelSnapshot @MainThread constructor(
         old.pending?.complete(null)
         runCatching { engine.destroySwapChain(old.swapChain) }
         // The backend may still be presenting into the reader's surface: close it once it is done.
-        engine.whenBackendIdle(onEngineGone = { old.reader.close() }) { old.reader.close() }
+        engine.whenBackendIdle(onEngineGone = { old.close() }) { old.close() }
     }
 
     @MainThread
@@ -474,8 +576,9 @@ class ModelSnapshot @MainThread constructor(
         if (isReleased) return
         isReleased = true
         cache?.evictAll()
+        renderScope.cancel()
         releaseTarget()
-        modelLoader.destroy()
+        if (ownsModelLoader) modelLoader.destroy()
         scene.indirectLight = null
         ibl.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
         ibl.cubemap?.let { engine.safeDestroyTexture(it) }
@@ -499,12 +602,33 @@ class ModelSnapshot @MainThread constructor(
         }
     }
 
+    /** The engine went first, taking every Filament object with it: only Android's are left. */
+    @MainThread
+    private fun releaseWithoutEngine() {
+        if (isReleased) return
+        isReleased = true
+        cache?.evictAll()
+        renderScope.cancel()
+        target?.let { old ->
+            target = null
+            old.pending?.complete(null)
+            old.close()
+        }
+        imageThread?.quitSafely()
+        imageThread = null
+    }
+
+    /** An image read back: [bitmap] is `null` when it was fully transparent or could not be copied. */
+    private class CapturedFrame(val bitmap: Bitmap?, val failure: String? = null)
+
     /** One output size: an [ImageReader], the swap chain that draws into it, and the frame count. */
     private class CaptureTarget(
         val width: Int,
         val height: Int,
         val reader: ImageReader,
         val swapChain: SwapChain,
+        /** The image thread's: [reader] is only ever read and closed there. */
+        val handler: Handler,
     ) {
         /** Frames rendered into [swapChain]. Main thread. */
         var submitted = 0L
@@ -517,7 +641,12 @@ class ModelSnapshot @MainThread constructor(
         var captureFrame = -1L
 
         @Volatile
-        var pending: CompletableDeferred<Bitmap?>? = null
+        var pending: CompletableDeferred<CapturedFrame?>? = null
+
+        /** Closes [reader] on the image thread, after any image it is reading; directly once it quit. */
+        fun close() {
+            if (!handler.post { reader.close() }) reader.close()
+        }
 
         /** Image thread: drains every image, keeps the one awaited, closes the rest. */
         fun onImagesAvailable() {
@@ -534,11 +663,14 @@ class ModelSnapshot @MainThread constructor(
                                     plane.buffer, image.width, image.height,
                                     plane.rowStride, plane.pixelStride,
                                 )
+                                if (!hasVisiblePixel(pixels)) return@runCatching CapturedFrame(null)
                                 // Filament writes premultiplied RGBA: the byte layout of an
                                 // ARGB_8888 bitmap.
-                                Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
-                                    .apply { copyPixelsFromBuffer(pixels) }
-                            }.getOrNull()
+                                val drawn = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
+                                drawn.copyPixelsFromBuffer(pixels)
+                                // Immutable: it is shared with the cache and every caller.
+                                CapturedFrame(drawn.copy(Bitmap.Config.ARGB_8888, false).also { drawn.recycle() })
+                            }.getOrElse { CapturedFrame(null, "the image could not be copied: $it") }
                         )
                     }
                 } finally {
@@ -555,6 +687,7 @@ class ModelSnapshot @MainThread constructor(
         private const val NEUTRAL_IBL = "environments/neutral/neutral_ibl.ktx"
         private const val WARMUP_FRAMES = 1
         private const val TAG = "ModelSnapshot"
+        private const val DESTROYED = "the snapshot was destroyed"
 
         /**
          * How long the renderer may keep refusing frames. It skips while the GPU is behind, which
@@ -581,14 +714,20 @@ private fun Position.normalized(): Position {
  *
  * @param engine the engine to render with, typically the screen's [rememberEngine].
  * @param maxCacheBytes size of the thumbnail cache, in bytes. `0` disables it.
+ * @param modelLoader the scene's loader to share, if the screen has one (see [ModelSnapshot]);
+ * `null` builds one for the snapshot.
  */
+@ExperimentalSceneViewApi
 @Composable
 fun rememberModelSnapshot(
     engine: Engine,
     maxCacheBytes: Int = ModelSnapshot.DEFAULT_MAX_CACHE_BYTES,
+    modelLoader: ModelLoader? = null,
 ): ModelSnapshot {
     val context = LocalContext.current
-    val snapshot = remember(engine, maxCacheBytes) { ModelSnapshot(engine, context, maxCacheBytes) }
+    val snapshot = remember(engine, maxCacheBytes, modelLoader) {
+        ModelSnapshot(engine, context, maxCacheBytes, modelLoader)
+    }
     DisposableEffect(snapshot) {
         onDispose { snapshot.destroy() }
     }
@@ -598,35 +737,41 @@ fun rememberModelSnapshot(
 /**
  * The thumbnail of the model at [fileLocation], [size] wide and high, rendered by [snapshot].
  *
- * `null` until it is ready (draw a placeholder meanwhile), then the image on a transparent
- * background. Rendered once per file, size and [options] while the snapshot's cache holds it; a
- * cell that leaves the composition before its turn is never rendered.
+ * [ModelThumbnailState.Loading] until its turn has come and gone (draw a placeholder meanwhile),
+ * then [ModelThumbnailState.Ready] with the image on a transparent background, or
+ * [ModelThumbnailState.Failed] with the reason (see "What fails" on [ModelSnapshot]). A change of
+ * [fileLocation], [size] or [options] starts again from `Loading` — or from the cached image —
+ * never from the previous model's image. Rendered once per file, size and options while the
+ * snapshot's cache holds it; a cell that leaves the composition before its turn is never rendered.
  *
  * ```kotlin
  * val engine = rememberEngine()
  * val snapshot = rememberModelSnapshot(engine)
  * LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
  *     items(models) { path ->
- *         val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)
- *         if (thumbnail != null) Image(thumbnail, contentDescription = path)
- *         else CircularProgressIndicator()
+ *         when (val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)) {
+ *             is ModelThumbnailState.Ready -> Image(thumbnail.bitmap, contentDescription = path)
+ *             is ModelThumbnailState.Failed -> Icon(Icons.Default.BrokenImage, contentDescription = null)
+ *             ModelThumbnailState.Loading -> CircularProgressIndicator()
+ *         }
  *     }
  * }
  * ```
  */
+@ExperimentalSceneViewApi
 @Composable
 fun rememberModelThumbnail(
     snapshot: ModelSnapshot,
     fileLocation: String,
     size: Dp,
     options: ModelSnapshotOptions = ModelSnapshotOptions(),
-): ImageBitmap? {
+): ModelThumbnailState {
     val pixels = with(LocalDensity.current) { size.roundToPx() }.coerceAtLeast(1)
-    val thumbnail by produceState(
-        initialValue = snapshot.cached(fileLocation, pixels, pixels, options)?.asImageBitmap(),
-        snapshot, fileLocation, pixels, options,
-    ) {
-        value = snapshot.snapshot(fileLocation, pixels, pixels, options)?.asImageBitmap()
-    }
-    return thumbnail
+    val key = SnapshotKey(fileLocation, pixels, pixels, options)
+    return rememberThumbnailState(
+        owner = snapshot,
+        key = key,
+        cached = { snapshot.cached(key)?.let { ModelThumbnailState.Ready(it.asImageBitmap()) } },
+        load = { snapshot.request(key).toThumbnailState() },
+    )
 }

@@ -12,4 +12,6 @@
     <string name="demo_model_thumbnails_done">%1$d thumbnails in %2$s · %3$d ms each · longest frame %4$d ms</string>
     <!-- %1$d = thumbnails that failed, %2$d = thumbnails asked for. -->
     <string name="demo_model_thumbnails_failed">%1$d of %2$d thumbnails could not be rendered</string>
+    <!-- %1$s = model name. Read for a cell whose thumbnail could not be rendered. -->
+    <string name="demo_model_thumbnails_cell_failed">No thumbnail for %1$s</string>
 </resources>

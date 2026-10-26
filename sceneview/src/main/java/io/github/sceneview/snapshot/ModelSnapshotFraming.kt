@@ -170,3 +170,24 @@ internal fun packRgbaRows(
     packed.rewind()
     return packed
 }
+
+/**
+ * Whether a packed RGBA image (as [packRgbaRows] returns it) has at least one pixel that is not
+ * fully transparent. A render that left every pixel at alpha 0 drew nothing. [pixels] is read from
+ * its position 0 and left untouched.
+ */
+internal fun hasVisiblePixel(pixels: ByteBuffer): Boolean {
+    for (alpha in 3 until pixels.limit() step 4) {
+        if (pixels.get(alpha) != 0.toByte()) return true
+    }
+    return false
+}
+
+/**
+ * Whether a bounding box can be framed: every coordinate finite and the box more than a point. An
+ * empty model reports a zero box, a broken one NaN or infinite values.
+ */
+internal fun isFramable(center: FloatArray, halfExtent: FloatArray): Boolean =
+    center.all { it.isFinite() } &&
+        halfExtent.all { it.isFinite() && it >= 0f } &&
+        halfExtent.any { it > 0f }
