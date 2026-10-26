@@ -54,6 +54,30 @@ class GltfBufferUrisTest {
         assertEquals(emptySet<String>(), garbage.images)
     }
 
+    /**
+     * cgltf does not unescape a `uri`'s JSON string, so gltfio reports `textures\/a.png` raw while
+     * org.json reads `textures/a.png`: the two must still be matched, and the raw one returned.
+     */
+    @Test
+    fun `an escaped uri as gltfio reports it is matched to its declaration`() {
+        val escaped = """{"buffers":[{"uri":"geo\/scene.bin"}],"images":[{"uri":"textures\/a.png"}]}"""
+        val raw = listOf("geo\\/scene.bin", "textures\\/a.png")
+
+        val kinds = GltfBufferUris.kinds(ByteBuffer.wrap(escaped.toByteArray()), raw)
+
+        assertEquals(setOf("geo\\/scene.bin"), kinds.buffers)
+        assertEquals(setOf("textures\\/a.png"), kinds.images)
+    }
+
+    @Test
+    fun `decodedUri decodes JSON escapes and leaves anything else alone`() {
+        assertEquals("textures/a.png", GltfBufferUris.decodedUri("textures\\/a.png"))
+        assertEquals("caf\u00e9.png", GltfBufferUris.decodedUri("caf\\u00e9.png"))
+        assertEquals("plain/a.png", GltfBufferUris.decodedUri("plain/a.png"))
+        // Not a valid JSON string body (a dangling escape): kept as it is.
+        assertEquals("dangling\\", GltfBufferUris.decodedUri("dangling\\"))
+    }
+
     private fun glb(json: String): ByteBuffer {
         val padded = json.toByteArray().let { it + ByteArray((4 - it.size % 4) % 4) { ' '.code.toByte() } }
         return ByteBuffer.allocate(GLB_HEADER + CHUNK_HEADER + padded.size).order(ByteOrder.LITTLE_ENDIAN).apply {

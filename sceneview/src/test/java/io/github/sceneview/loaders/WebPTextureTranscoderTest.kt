@@ -427,6 +427,73 @@ class WebPTextureTranscoderTest {
         assertSame(truncated, transcode(truncated))
     }
 
+    @Test
+    fun `only the external webp images are listed for conversion, never a buffer`() {
+        val json = """
+            {
+              "buffers": [{"uri": "geo.bin", "byteLength": 16}],
+              "images": [
+                {"mimeType": "image/webp", "uri": "tex\/albedo.webp"},
+                {"uri": "normal.png"},
+                {"mimeType": "image/webp", "uri": "data:image/webp;base64,UklGRg=="}
+              ],
+              "textures": [{"source": 0}, {"source": 1}, {"source": 2}]
+            }
+        """.trimIndent()
+
+        val result = WebPTextureTranscoder.transcodeModel(ByteBuffer.wrap(json.toByteArray()), fakeTranscoder) {}
+
+        // JSON-decoded, as GltfBufferUris.decodedUri gives gltfio's raw `tex\/albedo.webp`.
+        assertEquals(setOf("tex/albedo.webp"), result.externalWebP)
+        // Only the embedded one was decoded here; the external one waits for its bytes.
+        assertEquals(1, decodeCount)
+    }
+
+    @Test
+    fun `a payload passed through lists nothing to convert`() {
+        val json = """{"buffers": [{"uri": "geo.bin"}], "images": [{"uri": "a.png"}]}"""
+        val source = ByteBuffer.wrap(json.toByteArray())
+
+        val result = WebPTextureTranscoder.transcodeModel(source, fakeTranscoder) {}
+
+        assertSame(source, result.buffer)
+        assertEquals(emptySet<String>(), result.externalWebP)
+    }
+
+    /**
+     * External images draw on the same 256-image budget as embedded ones: one past it keeps its WebP
+     * declaration and is left out of `externalWebP`, so no load ever decodes it, and the overflow
+     * is reported once, embedded and external together.
+     */
+    @Test
+    fun `external webp images share the decode budget with embedded ones`() {
+        val budget = 256
+        val embedded = (0 until budget - 1).joinToString(",") {
+            """{"mimeType": "image/webp", "bufferView": 0}"""
+        }
+        val external = (0 until 3).joinToString(",") { """{"mimeType": "image/webp", "uri": "ext$it.webp"}""" }
+        val json = JSONObject(
+            """
+            {
+              "buffers": [{"byteLength": 4}],
+              "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+              "images": [$embedded, $external]
+            }
+            """.trimIndent()
+        )
+        val reports = mutableListOf<Int>()
+
+        val result = WebPTextureTranscoder.transcodeModel(glb(json, webPBytes), fakeTranscoder) { reports += it }
+
+        assertEquals(budget - 1, decodeCount)
+        assertEquals(setOf("ext0.webp"), result.externalWebP)
+        assertEquals(listOf(2), reports)
+        val images = parseGlb(result.buffer).first.getJSONArray("images")
+        assertEquals("image/png", images.getJSONObject(budget - 1).getString("mimeType"))
+        assertEquals("image/webp", images.getJSONObject(budget).getString("mimeType"))
+        assertEquals("image/webp", images.getJSONObject(budget + 1).getString("mimeType"))
+    }
+
     private fun transcode(buffer: ByteBuffer) =
         WebPTextureTranscoder.transcode(buffer, fakeTranscoder) {}
 

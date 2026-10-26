@@ -29,10 +29,14 @@ import java.nio.ByteOrder
  * - **Embedded** images — those stored in a GLB `bufferView` or in a `data:` URI — are transcoded
  *   by [transcode], on the model payload itself.
  * - Images referenced by an **external** URI (a `.gltf` next to its `.webp` files) have no bytes
- *   yet when the payload is rewritten: [transcode] declares them `image/png` so gltfio picks a
- *   provider for them, and the load converts their bytes with [transcodeResource] once its
- *   resolver has read them, before handing them to Filament. One that fails to convert is logged
- *   by name, never left silently untextured.
+ *   yet when the payload is rewritten: [transcodeModel] declares them `image/png` so gltfio picks a
+ *   provider for them and lists their URIs in [Transcoded.externalWebP], and the load converts
+ *   their bytes with [transcodeResource] once its resolver has read them, before handing them to
+ *   Filament. Only those URIs are converted, never a buffer, whatever its bytes look like. One
+ *   that fails to convert is logged by name, never left silently untextured.
+ * - Embedded and external images share one [MAX_TRANSCODED_IMAGES] budget. An external image past
+ *   it keeps its WebP declaration, is never decoded, and is counted in the one `onUnsupported`
+ *   report.
  * - A payload that contains no `image/webp` at all is returned **as-is** after a substring scan,
  *   with no JSON parsing and no copy of the binary payload. For a GLB the scan reads the JSON chunk
  *   alone, so a non-WebP model costs nothing beyond it; a plain `.gltf` is all JSON, so the scan
@@ -109,6 +113,28 @@ internal object WebPTextureTranscoder {
         }.getOrNull()
     }
 
+    private val logUntranscodable: (Int) -> Unit = { untranscodableCount ->
+        Log.e(
+            TAG,
+            "$untranscodableCount WebP texture(s) of this glTF could not be decoded, so they " +
+                    "will render untextured: Filament's Android build ships no image/webp " +
+                    "decoder, and these could not be converted at load time. Re-encode the " +
+                    "textures to PNG " +
+                    "or JPEG, e.g. `npx @gltf-transform/cli optimize model.glb out.glb " +
+                    "--texture-compress png`. " +
+                    "See https://sceneview.github.io/docs/troubleshooting/"
+        )
+    }
+
+    /**
+     * A payload ready for gltfio, and the external images a load must convert as it feeds them.
+     *
+     * @property externalWebP the `uri` of every external WebP image the payload now declares
+     * `image/png` (JSON-decoded, as [GltfBufferUris.decodedUri] gives it): the only resources
+     * [transcodeResource] may be applied to. Empty when the payload was passed through.
+     */
+    class Transcoded(val buffer: ByteBuffer, val externalWebP: Set<String>)
+
     /**
      * Returns [buffer] with every embedded WebP texture re-encoded to PNG, or [buffer] itself when
      * the payload uses no WebP texture (the overwhelmingly common case) or cannot be rewritten.
@@ -122,19 +148,15 @@ internal object WebPTextureTranscoder {
     fun transcode(
         buffer: ByteBuffer,
         transcoder: ImageTranscoder = platformTranscoder,
-        onUnsupported: (count: Int) -> Unit = { untranscodableCount ->
-            Log.e(
-                TAG,
-                "$untranscodableCount WebP texture(s) of this glTF could not be decoded, so they " +
-                        "will render untextured: Filament's Android build ships no image/webp " +
-                        "decoder, and these could not be converted at load time. Re-encode the " +
-                        "textures to PNG " +
-                        "or JPEG, e.g. `npx @gltf-transform/cli optimize model.glb out.glb " +
-                        "--texture-compress png`. " +
-                        "See https://sceneview.github.io/docs/troubleshooting/"
-            )
-        }
-    ): ByteBuffer = runCatching {
+        onUnsupported: (count: Int) -> Unit = logUntranscodable
+    ): ByteBuffer = transcodeModel(buffer, transcoder, onUnsupported).buffer
+
+    /** [transcode], plus the external images still to convert: see [Transcoded]. */
+    fun transcodeModel(
+        buffer: ByteBuffer,
+        transcoder: ImageTranscoder = platformTranscoder,
+        onUnsupported: (count: Int) -> Unit = logUntranscodable
+    ): Transcoded = runCatching {
         val source = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
         if (source.remaining() >= GLB_HEADER_SIZE &&
             source.getInt(source.position()) == GLB_MAGIC
@@ -146,14 +168,14 @@ internal object WebPTextureTranscoder {
     }.getOrElse { throwable ->
         Log.w(TAG, "WebP texture transcoding skipped: ${throwable.message}")
         null
-    } ?: buffer
+    } ?: Transcoded(buffer, emptySet())
 
     /** GLB container: rewrite the JSON chunk and append the PNG bytes to the BIN chunk. */
     private fun transcodeGlb(
         source: ByteBuffer,
         transcoder: ImageTranscoder,
         onUnsupported: (Int) -> Unit
-    ): ByteBuffer? {
+    ): Transcoded? {
         val chunks = readGlbChunks(source) ?: return null
         // Gate BEFORE touching the BIN chunk: a non-WebP model must not pay a full-model-size copy,
         // least of all on the main thread through the @MainThread createModel entry points.
@@ -183,7 +205,7 @@ internal object WebPTextureTranscoder {
 
         val newBin = appended.toByteArray()
         if (binBacked) gltf.optJSONArray("buffers")?.optJSONObject(0)?.put("byteLength", newBin.size)
-        return buildGlb(gltf.toGltfJson().toByteArray(Charsets.UTF_8), newBin)
+        return Transcoded(buildGlb(gltf.toGltfJson().toByteArray(Charsets.UTF_8), newBin), rewritten.externalWebP)
     }
 
     /** The JSON chunk of a GLB, plus **where** its BIN chunk is — deliberately not its bytes. */
@@ -267,7 +289,8 @@ internal object WebPTextureTranscoder {
     /**
      * [data] converted to PNG when it holds a WebP image (sniffed from its `RIFF....WEBP` header),
      * otherwise [data] itself: the second half of the external-image path described on this
-     * object, called on every resource a load feeds to Filament.
+     * object. A load calls it only on a URI of [Transcoded.externalWebP]: never on a buffer, whose
+     * bytes may well start with a WebP header of their own (a `bufferView` holding one).
      *
      * A WebP that cannot be converted is reported through [onFailure] and returned as-is: gltfio
      * then fails to decode it, logs it and leaves the material without that texture.
@@ -314,7 +337,7 @@ internal object WebPTextureTranscoder {
         source: ByteBuffer,
         transcoder: ImageTranscoder,
         onUnsupported: (Int) -> Unit
-    ): ByteBuffer? {
+    ): Transcoded? {
         val bytes = ByteArray(source.remaining()).also { source.duplicate().get(it) }
         val text = String(bytes, Charsets.UTF_8)
             .takeIf { it.contains(WEBP_MARKER, ignoreCase = true) }
@@ -325,10 +348,14 @@ internal object WebPTextureTranscoder {
         }, storePng = ::storeAsDataUri)
         onUnsupportedIfAny(rewritten, onUnsupported)
         if (rewritten.transcodedCount == 0) return null
-        return ByteBuffer.wrap(gltf.toGltfJson().toByteArray(Charsets.UTF_8))
+        return Transcoded(ByteBuffer.wrap(gltf.toGltfJson().toByteArray(Charsets.UTF_8)), rewritten.externalWebP)
     }
 
-    private class Rewritten(val transcodedCount: Int, val untranscodableCount: Int)
+    private class Rewritten(
+        val transcodedCount: Int,
+        val untranscodableCount: Int,
+        val externalWebP: Set<String> = emptySet(),
+    )
 
     private fun onUnsupportedIfAny(rewritten: Rewritten, onUnsupported: (Int) -> Unit) {
         if (rewritten.untranscodableCount > 0) onUnsupported(rewritten.untranscodableCount)
@@ -349,12 +376,14 @@ internal object WebPTextureTranscoder {
 
         var untranscodable = 0
         val converted = mutableSetOf<Int>()
+        val externalWebP = mutableSetOf<String>()
         val webPImages = collectWebPImages(images, textures)
         // Everything past the budget is reported, not decoded. Per-image cost is already bounded
         // by MAX_TEXTURE_EDGE, but the image COUNT comes from the file: a few KB of crafted JSON
         // can declare thousands of images all pointing at one tiny WebP that inflates to 8192²,
         // and the decodes run sequentially on the calling thread. Same contract as an oversized
-        // image — untranscoded, and named in the logcat error rather than silent.
+        // image — untranscoded, and named in the logcat error rather than silent. External images
+        // draw on the same budget: one past it is not in `externalWebP`, so a load never decodes it.
         val budgeted = webPImages.take(MAX_TRANSCODED_IMAGES)
         untranscodable += webPImages.size - budgeted.size
         budgeted.forEach { index ->
@@ -366,6 +395,7 @@ internal object WebPTextureTranscoder {
                 // provider for it, converted by transcodeResource before Filament reads them.
                 image.put("mimeType", PNG_MIME)
                 converted += index
+                externalWebP += image.optString("uri")
             } else if (png == null) {
                 untranscodable++
             } else {
@@ -381,7 +411,7 @@ internal object WebPTextureTranscoder {
             removeExtensionDeclaration(gltf, "extensionsUsed")
             removeExtensionDeclaration(gltf, "extensionsRequired")
         }
-        return Rewritten(converted.size, untranscodable)
+        return Rewritten(converted.size, untranscodable, externalWebP)
     }
 
     /** Indices of the images that hold WebP bytes, whether declared by `mimeType` or by extension. */
@@ -446,6 +476,8 @@ internal object WebPTextureTranscoder {
      * provider for it and leave the texture out, which is the very failure this object exists to
      * prevent. Escape sequences are read two characters at a time, so an escaped backslash
      * followed by a slash (`\\/`) stays as it is.
+     *
+     * A second full copy of the JSON: the transient peak is about twice the JSON size.
      */
     private fun JSONObject.toGltfJson(): String {
         val escaped = toString()

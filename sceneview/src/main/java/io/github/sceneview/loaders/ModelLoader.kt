@@ -228,7 +228,7 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
         val source = buffer.toFilamentModelSource()
-        val model = assetLoader.createAsset(source)
+        val model = assetLoader.createAsset(source.buffer)
             ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
         loadResources(model, source, resourceResolver)
@@ -348,7 +348,7 @@ class ModelLoader(
         // through the same claim-then-destroy path as every other destroyModel() caller
         // instead of racing it.
         val model = createOrDestroyOnCancel(::destroyModel) {
-            create(source)?.also { models += it }
+            create(source.buffer)?.also { models += it }
         } ?: run {
             Log.w(TAG, "Could not parse $fileLocation")
             return null
@@ -364,13 +364,18 @@ class ModelLoader(
                     onDestroyedMeanwhile()
                     return@destroyOnFailure null
                 }
-                val kinds = withContext(Dispatchers.Default) { GltfBufferUris.kinds(source, uris) }
+                val kinds = withContext(Dispatchers.Default) { GltfBufferUris.kinds(source.buffer, uris) }
                 val bufferUris = kinds.buffers
                 val resources = uris.mapNotNull { uri ->
                     loadResourceOrNull(fileLocation, resourceResolver(uri), isBuffer = uri in bufferUris)
-                        // An external WebP image is converted here, off the main thread.
                         ?.let { data ->
-                            uri to withContext(Dispatchers.Default) { WebPTextureTranscoder.transcodeResource(uri, data) }
+                            // Only an external WebP image is converted, off the main thread; never
+                            // a buffer, even one whose bytes start with a WebP of their own.
+                            if (source.isExternalWebP(uri) && uri !in bufferUris) {
+                                uri to withContext(Dispatchers.Default) { WebPTextureTranscoder.transcodeResource(uri, data) }
+                            } else {
+                                uri to data
+                            }
                         }
                 }
                 val supplied = resources.mapTo(HashSet()) { it.first }
@@ -725,7 +730,7 @@ class ModelLoader(
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
             val source = buffer.toFilamentModelSource()
-            (assetLoader.createInstancedAsset(source, this)
+            (assetLoader.createInstancedAsset(source.buffer, this)
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, source, resourceResolver)
@@ -1025,14 +1030,21 @@ class ModelLoader(
      * rethrown.
      *
      * This runs on the main thread, like the whole synchronous `createModel`, so the glTF JSON is
-     * parsed (to tell buffers from textures) only once a resource is missing: a model whose
-     * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
+     * parsed (to tell buffers from textures) only once a resource is missing, or for a model with
+     * an external WebP image: any other model whose resources all resolve never pays for it.
+     * [loadModelThen] does that parse off the main thread.
      */
     @MainThread
     @Suppress("TooGenericExceptionCaught") // Destroy on any failure, then rethrow it unchanged.
-    private fun loadResources(model: Model, source: Buffer, resourceResolver: (String) -> Buffer?) {
+    private fun loadResources(
+        model: Model,
+        source: FilamentModelSource,
+        resourceResolver: (String) -> Buffer?,
+    ) {
         // `data:` URIs are decoded by gltfio itself; only the others are resolved here.
         val uris = model.resourceUris.filterNot { it.startsWith("data:") }
+        // Parsed only for a model with an external WebP image, to keep its buffers unconverted.
+        val buffers by lazy { GltfBufferUris.of(source.buffer, uris) }
         // Each resource the resolver could not supply, with the IOException it threw if it did.
         val unresolved = LinkedHashMap<String, IOException?>()
         // The missing buffers, among them.
@@ -1045,12 +1057,17 @@ class ModelLoader(
                     continue
                 }
                 if (data != null) {
-                    resourceLoader.addResourceData(uri, WebPTextureTranscoder.transcodeResource(uri, data))
+                    val fed = if (source.isExternalWebP(uri) && uri !in buffers) {
+                        WebPTextureTranscoder.transcodeResource(uri, data)
+                    } else {
+                        data
+                    }
+                    resourceLoader.addResourceData(uri, fed)
                 } else {
                     unresolved[uri] = null
                 }
             }
-            val kinds = GltfBufferUris.kinds(source, unresolved.keys)
+            val kinds = GltfBufferUris.kinds(source.buffer, unresolved.keys)
             val bufferUris = kinds.buffers
             // Logged once each: a missing texture here, a missing buffer with the failure below.
             unresolved.forEach { (uri, error) ->
@@ -1419,20 +1436,37 @@ internal suspend fun <T : Any, R> destroyOnFailure(
 private fun unreadableTexture(): ByteBuffer = ByteBuffer.allocateDirect(1)
 
 /**
+ * What gltfio is handed: the model [buffer], and the URIs of its external WebP images, declared
+ * `image/png` by [WebPTextureTranscoder.transcodeModel] and converted as they are fed.
+ */
+private class FilamentModelSource(val buffer: Buffer, private val externalWebP: Set<String>) {
+    /**
+     * Whether [uri] (raw, as gltfio reports it) is one of those images. The caller still rules out
+     * a URI the same JSON also declares as a buffer.
+     */
+    fun isExternalWebP(uri: String): Boolean =
+        externalWebP.isNotEmpty() && GltfBufferUris.decodedUri(uri) in externalWebP
+}
+
+/**
  * Normalises whatever the caller handed us into something Filament's glTF loader accepts: 3MF,
- * STL, OBJ and PLY are converted to GLB, then WebP textures are transcoded.
+ * STL, OBJ and PLY are converted to GLB, then WebP textures are transcoded (#2305): Filament's
+ * Android build registers no `image/webp` texture provider and would otherwise render the model
+ * untextured. A payload without WebP textures, the common case, is returned untouched.
  */
 private fun Buffer.toFilamentModelSource(
     onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
-): Buffer =
-    convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().convertPlyToGlb()
-        // Before the transcode: a model refused here is not worth decoding its images.
-        .also { converted ->
-            GltfRequiredExtensions.unsupported(converted)
-                .takeIf { it.isNotEmpty() }
-                ?.let { onUnsupported(UnsupportedGltfExtensionException(it)) }
-        }
-        .transcodeWebPTextures()
+): FilamentModelSource {
+    val converted = convertThreeMfToGlb().convertStlToGlb().convertObjToGlb().convertPlyToGlb()
+    // Before the transcode: a model refused here is not worth decoding its images.
+    GltfRequiredExtensions.unsupported(converted)
+        .takeIf { it.isNotEmpty() }
+        ?.let { onUnsupported(UnsupportedGltfExtensionException(it)) }
+    return (converted as? ByteBuffer)
+        ?.let { WebPTextureTranscoder.transcodeModel(it) }
+        ?.let { FilamentModelSource(it.buffer, it.externalWebP) }
+        ?: FilamentModelSource(converted, emptySet())
+}
 
 /**
  * What every load but [ModelLoader.awaitModelInstance] does with a model that requires an extension
@@ -1518,12 +1552,3 @@ private fun ByteBuffer.startsWithZipMagic(): Boolean {
         get(at + 2) == 0x03.toByte() &&
         get(at + 3) == 0x04.toByte()
 }
-
-/**
- * Re-encodes WebP glTF textures to PNG, because Filament's Android build registers no
- * `image/webp` texture provider and would otherwise render the model untextured (#2305).
- *
- * A payload without WebP textures — the common case — is returned untouched.
- */
-private fun Buffer.transcodeWebPTextures(): Buffer =
-    (this as? ByteBuffer)?.let { WebPTextureTranscoder.transcode(it) } ?: this

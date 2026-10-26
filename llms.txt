@@ -4062,7 +4062,7 @@ data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fract
 class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
 
-**Large / AI-generated GLBs (5–60 MB, 4K textures):** file reading, WebP/3MF conversion and the `extensionsRequired` check run off the main thread; only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** in the `suspend`/`Async` loaders, file reading, WebP/3MF conversion and the `extensionsRequired` scan run off the main thread; the synchronous `createModel*` methods run that conversion and scan on the calling thread (the main one), so prefer the async loaders for such files. Either way, only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
 
 **Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
 
@@ -4071,7 +4071,9 @@ class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalA
 **WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
 before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
 embedded ones in the model itself, separate `.webp` files beside a `.gltf` once the resolver has read
-them (one that cannot be decoded is logged by name and left untextured).
+them (one that cannot be decoded is logged by name and left untextured). Only the URIs the glTF
+declares as WebP images are converted, never a buffer, and at most 256 images per model, embedded
+and external together: the rest keep WebP, are not decoded, and are reported in one log line.
 The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.

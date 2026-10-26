@@ -1,6 +1,7 @@
 package io.github.sceneview.loaders
 
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -34,6 +35,11 @@ internal object GltfBufferUris {
      * Which of [resourceUris] (external ones only) [source] declares as buffers, and which as
      * images. A payload whose JSON cannot be read has its buffers guessed from the `.bin` suffix
      * and **no** image: a load then feeds nothing in place of a missing resource it cannot place.
+     *
+     * [resourceUris] are gltfio's, which are **raw**: cgltf does not unescape the JSON string of a
+     * `uri`, so `"textures\/a.png"` comes back as `textures\/a.png`, while the declarations read
+     * here are JSON-decoded. Each is compared through [decodedUri]; the sets returned hold the raw
+     * URIs, the ones gltfio feeds by.
      */
     fun kinds(source: Buffer, resourceUris: Collection<String>): Kinds {
         val external = resourceUris.filterNot { it.startsWith("data:") }
@@ -42,10 +48,21 @@ internal object GltfBufferUris {
             ?.let { runCatching { declaredUris(it) }.getOrNull() }
             ?: return Kinds(external.filter { it.endsWith(".bin", ignoreCase = true) }.toSet(), emptySet())
         return Kinds(
-            buffers = external.filter { it in declared.buffers }.toSet(),
-            images = external.filter { it in declared.images && it !in declared.buffers }.toSet(),
+            buffers = external.filter { decodedUri(it) in declared.buffers }.toSet(),
+            images = external.filter { uri ->
+                decodedUri(uri).let { it in declared.images && it !in declared.buffers }
+            }.toSet(),
         )
     }
+
+    /**
+     * [raw] (a URI as gltfio reports it, straight from the JSON text) with its JSON escapes
+     * decoded, as `org.json` reads it. [raw] itself when it has no escape or is not a valid JSON
+     * string body.
+     */
+    fun decodedUri(raw: String): String =
+        if ('\\' !in raw) raw
+        else runCatching { JSONTokener("\"$raw\"").nextValue() as? String }.getOrNull() ?: raw
 
     /** External resource URIs by kind; see [kinds]. */
     class Kinds(val buffers: Set<String>, val images: Set<String>)

@@ -28,7 +28,10 @@ import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
 import org.junit.runner.RunWith
+import com.google.android.filament.Engine
+import com.google.android.filament.gltfio.ResourceLoader
 import java.io.File
+import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
@@ -317,13 +320,7 @@ class LargeModelLoadTest {
 
     @Test
     fun an_external_webp_image_of_a_gltf_is_converted_and_a_corrupt_one_is_logged_by_name() {
-        val webP = java.io.ByteArrayOutputStream().also { out ->
-            @Suppress("DEPRECATION") // WEBP_LOSSLESS needs API 30; this is lossless at 100 too.
-            android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
-                .apply { eraseColor(android.graphics.Color.RED) }
-                .compress(android.graphics.Bitmap.CompressFormat.WEBP, 100, out)
-        }.toByteArray()
-        File(context.cacheDir, "albedo.webp").writeBytes(webP)
+        File(context.cacheDir, "albedo.webp").writeBytes(redWebP())
         // A RIFF/WEBP header with nothing decodable behind it.
         File(context.cacheDir, "corrupt.webp").writeBytes("RIFF\u0000\u0000\u0000\u0000WEBPVP8 ".toByteArray(Charsets.ISO_8859_1))
         val good = Uri.fromFile(File(context.cacheDir, "webp.gltf").apply { writeText(gltfWithMissingImage("albedo.webp")) })
@@ -333,27 +330,129 @@ class LargeModelLoadTest {
         val modelLoader = ModelLoader(harness.engine, context)
         val noProvider = "Missing texture provider"
         val namedFailure = "The WebP texture corrupt.webp could not be decoded"
+        // gltfio's own line when its PNG decoder cannot read what it was fed.
+        val goodRejected = "Unable to create texture albedo.webp"
+        val corruptRejected = "Unable to create texture corrupt.webp"
         try {
             val missingBefore = logcatCount(noProvider)
+            val rejectedBefore = logcatCount(goodRejected)
+            val recorder = recordFeeds(modelLoader)
             val reports = CopyOnWriteArrayList<ModelLoadProgress>()
             val instance = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(good) { reports += it } } }
             assertEquals(ModelLoadProgress(Stage.Textures, 1f), reports.last())
             harness.runOnMain { modelLoader.destroyModel(instance.model) }
-            // Before the conversion, gltfio skipped this texture with that line and nothing else.
+            // gltfio was handed a PNG, and its PNG decoder accepted it.
+            assertTrue("not converted to PNG", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
             SystemClock.sleep(500)
+            assertEquals("gltfio could not decode the converted texture", rejectedBefore, logcatCount(goodRejected))
+            // Before the conversion, gltfio skipped this texture with that line and nothing else.
             assertEquals("gltfio found no provider for the WebP", missingBefore, logcatCount(noProvider))
 
-            // One that cannot be converted is named in logcat, and the load still completes.
+            // One that cannot be converted is named in logcat, gltfio is handed it as it was (and
+            // rejects it), and the load still completes.
             val failedBefore = logcatCount(namedFailure)
+            val corruptRejectedBefore = logcatCount(corruptRejected)
             val degraded = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(corrupt) } }
             harness.runOnMain { modelLoader.destroyModel(degraded.model) }
             awaitLogcat(namedFailure, failedBefore + 1)
+            awaitLogcat(corruptRejected, corruptRejectedBefore + 1)
         } finally {
             harness.runOnMain { modelLoader.destroy() }
         }
     }
 
-    /** Writes [glb] as `[name].gltf` plus `[name].bin`, its buffer moved to that external file. */
+    @Test
+    fun an_external_webp_image_is_converted_by_the_synchronous_createModel_too() {
+        val gltf = gltfWithMissingImage("albedo.webp").toByteArray()
+        val webP = redWebP()
+        val modelLoader = ModelLoader(harness.engine, context)
+        val rejected = "Unable to create texture albedo.webp"
+        try {
+            val rejectedBefore = logcatCount(rejected)
+            val recorder = recordFeeds(modelLoader)
+            lateinit var model: io.github.sceneview.model.Model
+            harness.runOnMain {
+                model = modelLoader.createModel(gltf.direct()) { uri -> webP.takeIf { uri == "albedo.webp" }?.direct() }
+            }
+            assertTrue("isLoading never dropped", settles(modelLoader))
+            harness.runOnMain { modelLoader.destroyModel(model) }
+            assertTrue("not converted to PNG", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
+            SystemClock.sleep(500)
+            assertEquals("gltfio could not decode the converted texture", rejectedBefore, logcatCount(rejected))
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
+    /**
+     * Only declared images are converted: an external `.bin` whose first bytes happen to be a WebP
+     * (a `bufferView` holding one) must reach gltfio byte for byte, or its geometry is replaced by
+     * a PNG. The model also has an external WebP image, so the conversion is active.
+     */
+    @Test
+    fun an_external_buffer_starting_with_a_webp_reaches_gltfio_unchanged() {
+        val webP = redWebP()
+        val (json, bin) = gltfWithExternalBuffer(binUri = "webp_prefixed.bin", prefix = webP, imageUri = "albedo.webp")
+        File(context.cacheDir, "albedo.webp").writeBytes(webP)
+        File(context.cacheDir, "webp_prefixed.bin").writeBytes(bin)
+        val location = Uri.fromFile(File(context.cacheDir, "webp_prefixed.gltf").apply { writeText(json) }).toString()
+        val modelLoader = ModelLoader(harness.engine, context)
+        try {
+            // The suspend loads…
+            var recorder = recordFeeds(modelLoader)
+            val instance = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(location) } }
+            harness.runOnMain { modelLoader.destroyModel(instance.model) }
+            assertTrue("the buffer was altered", recorder.fed.getValue("webp_prefixed.bin").contentEquals(bin))
+            assertTrue("the image was not converted", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
+
+            // …and the synchronous one.
+            recorder = recordFeeds(modelLoader)
+            lateinit var model: io.github.sceneview.model.Model
+            harness.runOnMain {
+                model = modelLoader.createModel(json.toByteArray().direct()) { uri ->
+                    when (uri) {
+                        "webp_prefixed.bin" -> bin.direct()
+                        "albedo.webp" -> webP.direct()
+                        else -> null
+                    }
+                }
+            }
+            assertTrue("isLoading never dropped", settles(modelLoader))
+            harness.runOnMain { modelLoader.destroyModel(model) }
+            assertTrue("the buffer was altered", recorder.fed.getValue("webp_prefixed.bin").contentEquals(bin))
+            assertTrue("the image was not converted", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
+    /**
+     * cgltf does not unescape a `uri`'s JSON string, so gltfio asks for `textures\/a.png` while
+     * the JSON declares `textures/a.png`: the missing image must still be recognised as one, fed
+     * its stand-in and skipped, rather than leaving the load unfinished.
+     */
+    @Test
+    fun a_missing_image_with_an_escaped_uri_still_completes() {
+        val raw = "textures\\/a.png"
+        val location = Uri.fromFile(File(context.cacheDir, "escaped_uri.gltf").apply { writeText(gltfWithMissingImage(raw)) })
+            .toString()
+        val modelLoader = ModelLoader(harness.engine, context)
+        val reports = CopyOnWriteArrayList<ModelLoadProgress>()
+        try {
+            val recorder = recordFeeds(modelLoader)
+            val instance = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(location) { reports += it } } }
+            // `Textures 1`, not the stall guard's degraded result.
+            assertEquals(ModelLoadProgress(Stage.Textures, 1f), reports.last())
+            assertEquals("no stand-in was fed", 1, recorder.fed[raw]?.size)
+            harness.runOnMain {
+                assertFalse("textures still loading", modelLoader.isLoading)
+                modelLoader.destroyModel(instance.model)
+            }
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
     @Test
     fun awaitModelInstance_returns_for_a_model_with_no_texture() {
         val location = file("untextured.glb", untexturedGlb())
@@ -426,7 +525,45 @@ class LargeModelLoadTest {
 
     private fun ModelLoader.registeredModels(): Int =
         (ModelLoader::class.java.getDeclaredField("models").apply { isAccessible = true }.get(this) as List<*>).size
+
+    /**
+     * Swaps [modelLoader]'s idle gltfio loader for one that records every resource it is fed, as
+     * gltfio receives it. Good for one load: the loader moves on to a fresh one once it ends.
+     */
+    private fun recordFeeds(modelLoader: ModelLoader): RecordingResourceLoader {
+        lateinit var recorder: RecordingResourceLoader
+        harness.runOnMain {
+            recorder = RecordingResourceLoader(harness.engine)
+            modelLoader.resourceLoader.destroy()
+            modelLoader.resourceLoader = recorder
+        }
+        return recorder
+    }
 }
+
+/** A [ResourceLoader] that keeps a copy of the bytes of every resource fed to it. */
+private class RecordingResourceLoader(engine: Engine) : ResourceLoader(engine, true) {
+    val fed = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+    override fun addResourceData(uri: String, buffer: Buffer): ResourceLoader {
+        (buffer as? ByteBuffer)?.duplicate()?.let { bytes -> fed[uri] = ByteArray(bytes.remaining()).also { bytes.get(it) } }
+        return super.addResourceData(uri, buffer)
+    }
+}
+
+private val PNG_SIGNATURE = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+
+private fun ByteArray.startsWith(prefix: ByteArray) = size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
+
+private fun ByteArray.direct(): ByteBuffer = ByteBuffer.allocateDirect(size).put(this).apply { rewind() }
+
+/** A real 4×4 red WebP, as Android encodes it. */
+private fun redWebP(): ByteArray = java.io.ByteArrayOutputStream().also { out ->
+    @Suppress("DEPRECATION") // WEBP_LOSSLESS needs API 30; this is lossless at 100 too.
+    android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+        .apply { eraseColor(android.graphics.Color.RED) }
+        .compress(android.graphics.Bitmap.CompressFormat.WEBP, 100, out)
+}.toByteArray()
 
 /** A GLB holding one triangle and no material, so no texture at all. */
 private fun untexturedGlb(): ByteArray {
@@ -450,13 +587,35 @@ private fun untexturedGlb(): ByteArray {
  * the external [imageUri], with no `mimeType` (by default a `missing.png` that does not exist).
  */
 private fun gltfWithMissingImage(imageUri: String = "missing.png"): String {
-    val bin = ByteBuffer.allocate(12 * 4 + 8 * 4 + 6 * 2).order(ByteOrder.LITTLE_ENDIAN).apply {
-        floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f).forEach { putFloat(it) }
-        floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f).forEach { putFloat(it) }
-        shortArrayOf(0, 1, 2, 0, 2, 3).forEach { putShort(it) }
-    }.array()
+    val bin = quadGeometry()
     val data = "data:application/octet-stream;base64," + Base64.encodeToString(bin, Base64.NO_WRAP)
-    return """{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],""" +
+    return quadGltf(imageUri, bufferUri = data, byteLength = bin.size)
+}
+
+/**
+ * The same quad, its geometry in the external [binUri] after [prefix] (padded to 4 bytes, and
+ * described by a `bufferView` of its own no image uses): the glTF JSON and the `.bin` bytes.
+ */
+private fun gltfWithExternalBuffer(binUri: String, prefix: ByteArray, imageUri: String): Pair<String, ByteArray> {
+    val offset = prefix.size + (4 - prefix.size % 4) % 4
+    val geometry = quadGeometry()
+    val bin = ByteArray(offset + geometry.size).also {
+        prefix.copyInto(it)
+        geometry.copyInto(it, offset)
+    }
+    val prefixView = """{"buffer":0,"byteOffset":0,"byteLength":${prefix.size}}"""
+    return quadGltf(imageUri, bufferUri = binUri, byteLength = bin.size, offset = offset, extraView = prefixView) to bin
+}
+
+/** Positions, UVs and indices of a unit quad, 92 bytes. */
+private fun quadGeometry(): ByteArray = ByteBuffer.allocate(12 * 4 + 8 * 4 + 6 * 2).order(ByteOrder.LITTLE_ENDIAN).apply {
+    floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f).forEach { putFloat(it) }
+    floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f).forEach { putFloat(it) }
+    shortArrayOf(0, 1, 2, 0, 2, 3).forEach { putShort(it) }
+}.array()
+
+private fun quadGltf(imageUri: String, bufferUri: String, byteLength: Int, offset: Int = 0, extraView: String? = null): String =
+    """{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],""" +
         """"meshes":[{"primitives":[{"attributes":{"POSITION":0,"TEXCOORD_0":1},"indices":2,"material":0}]}],""" +
         """"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],""" +
         """"textures":[{"source":0}],"images":[{"uri":"$imageUri"}],""" +
@@ -464,8 +623,8 @@ private fun gltfWithMissingImage(imageUri: String = "missing.png"): String {
         """{"bufferView":0,"componentType":5126,"count":4,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},""" +
         """{"bufferView":1,"componentType":5126,"count":4,"type":"VEC2"},""" +
         """{"bufferView":2,"componentType":5123,"count":6,"type":"SCALAR"}],""" +
-        """"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":48,"target":34962},""" +
-        """{"buffer":0,"byteOffset":48,"byteLength":32,"target":34962},""" +
-        """{"buffer":0,"byteOffset":80,"byteLength":12,"target":34963}],""" +
-        """"buffers":[{"byteLength":${bin.size},"uri":"$data"}]}"""
-}
+        """"bufferViews":[{"buffer":0,"byteOffset":$offset,"byteLength":48,"target":34962},""" +
+        """{"buffer":0,"byteOffset":${offset + 48},"byteLength":32,"target":34962},""" +
+        """{"buffer":0,"byteOffset":${offset + 80},"byteLength":12,"target":34963}""" +
+        (extraView?.let { ",$it" } ?: "") + "]," +
+        """"buffers":[{"byteLength":$byteLength,"uri":"$bufferUri"}]}"""
