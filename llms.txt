@@ -678,6 +678,10 @@ ModelNode class properties (available via `apply` block):
 - `lightNodes: List<LightNode>` — embedded lights
 - `cameraNodes: List<CameraNode>` — embedded cameras
 - `boundingBox: Box` — glTF AABB
+- `worldSize: Size` — width, height, depth in world metres: authored bounds × `worldScale`
+  (parents included, rotation ignored); a 1 m glTF loaded without `scaleToUnits` reports 1 m
+- `worldBoundingBox: Box` — world-space AABB of the authored bounds after `worldTransform`;
+  its lowest Y is the floor contact, its X/Z extent the footprint
 - `animationCount: Int`
 - `isShadowCaster: Boolean`
 - `isShadowReceiver: Boolean`
@@ -1529,6 +1533,14 @@ trustworthy authored units (**Actual size**). Scale limits are 25–400% of that
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
+
+To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
+a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest axis fitted into that many
+metres) instead of `scaleToUnits`. Either way the bottom-centre rests on the contact point and
+the model's dimensions are published in metres: `AutoPlacementState.baseSize` (width, height,
+depth at 100 %, after `assetRotation`), `placedSize` (`baseSize * scaleFactor`, following the
+pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick a size with
+`state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall).
 For content that must stay at real size (furniture, a pool, a shed), set
 `placement.allowsScaling = false` — `remember { AutoPlacementState().apply { allowsScaling = false } }`:
 the pinch, the double-tap and `scaleTo` stop resizing it, drag and twist still move and turn

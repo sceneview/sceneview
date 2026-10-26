@@ -108,6 +108,14 @@ set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
 
+To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
+a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest axis fitted into that many
+metres) instead of `scaleToUnits`. Either way the bottom-centre rests on the contact point and
+the model's dimensions are published in metres: `AutoPlacementState.baseSize` (width, height,
+depth at 100 %, after `assetRotation`), `placedSize` (`baseSize * scaleFactor`, following the
+pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick a size with
+`state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall).
+
 For asynchronous selection, call `placement.selectModel()` before loading and attach
 only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
 until its replacement succeeds. Observe `placement.phase`; use `requestPlacement()`,

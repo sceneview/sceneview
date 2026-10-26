@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sceneview.math.Size
 
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -81,6 +82,53 @@ class AutoPlacementState {
     /** Current multiplier of the selected preview/authored base size. */
     var scaleFactor: Float by mutableStateOf(1f)
         internal set
+
+    /**
+     * The placed [AutoPlacementModel]'s dimensions at 100 %, in metres — width (X), height (Y)
+     * and depth (Z) after its `assetRotation`, as it stands on a floor. `null` while no model is
+     * composed. With [PlacementSize.RealWorld] these are the asset's authored dimensions; with
+     * [PlacementSize.FitInto] the longest of them is the requested size.
+     *
+     * To let the user pick a size — "make it 2 m tall" — scale relative to it:
+     *
+     * ```kotlin
+     * state.baseSize?.let { state.scaleTo(2f / it.y) }
+     * ```
+     */
+    var baseSize: Size? by mutableStateOf(null)
+        private set
+
+    /**
+     * The placed model's current dimensions in metres: [baseSize] times [scaleFactor], so it
+     * follows the pinch, [scaleTo] and the double-tap. `null` while no model is composed.
+     */
+    val placedSize: Size?
+        get() = baseSize?.let { it * scaleFactor }
+
+    /**
+     * The model was placed with [PlacementSize.RealWorld] and is shown at exactly 100 % — what
+     * the user sees is the object's true size.
+     */
+    val isAtRealWorldSize: Boolean
+        get() = baseSize != null && baseIsRealWorld && scaleFactor == 1f
+
+    private var baseIsRealWorld: Boolean by mutableStateOf(false)
+    private var baseSizeOwner: Any? = null
+
+    /** Called by [AutoPlacementModel] once its model exists; [owner] identifies the writer. */
+    internal fun publishBaseSize(owner: Any, size: Size, realWorld: Boolean) {
+        baseSizeOwner = owner
+        baseIsRealWorld = realWorld
+        baseSize = size
+    }
+
+    /** Clears [baseSize] unless another model has published since [owner] did. */
+    internal fun clearBaseSize(owner: Any) {
+        if (baseSizeOwner !== owner) return
+        baseSizeOwner = null
+        baseIsRealWorld = false
+        baseSize = null
+    }
 
     internal var moveAction: ((Float, Float) -> Boolean)? = null
     internal var rotateAction: ((Float) -> Unit)? = null
