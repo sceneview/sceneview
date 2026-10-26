@@ -78,10 +78,12 @@ re-encodes WebP textures to PNG with Android's own decoder before handing the as
 `createAsset`. Either way a WebP-textured glTF loads with its textures. This costs one decode +
 PNG encode per texture at load time; a model without WebP textures is passed through untouched.
 
-One case is still **not** covered, and it logs an actionable `SceneView` error rather than failing
-silently: textures stored as **separate `.webp` files** next to a `.gltf`. Only images embedded in
-a GLB buffer view or in a `data:` URI are converted — an external URI is resolved later, by name,
-inside Filament.
+On Android this includes textures stored as **separate `.webp` files** next to a `.gltf`: the
+model declares them PNG, and `ModelLoader` converts each file's bytes once its resolver has read
+them. One that cannot be decoded is named in an actionable `SceneView` error and renders
+untextured; the rest of the model loads. On the web, separate `.webp` files are still **not**
+converted (logged too): only images embedded in a GLB buffer view or in a `data:` URI are. A
+resource you feed yourself later with `resourceLoader.addResourceData` is not converted either.
 
 On the web there is one more caveat: a canvas 2D context stores premultiplied colour, so a texture
 with *partial* transparency comes back with rounding error in its low-alpha texels. Fully opaque
@@ -95,14 +97,16 @@ Blender with PNG/JPEG textures. PNG, JPEG, and KTX2 decode natively everywhere.
 
 A glTF file can list extensions in `extensionsRequired`: a viewer that does not implement one of
 them must refuse the file. Filament's `gltfio` does not check that list itself, so such a model
-used to load **untextured or broken with no error**. `ModelLoader` now checks it before any
-Filament call and refuses it with `UnsupportedGltfExtensionException`, whose `extensions` names what is
-missing: `awaitModelInstance` throws it, `rememberModelLoadState` gives `Failed`, the synchronous
-`createModel*` calls throw it as their `IllegalArgumentException`, and `loadModel`,
-`loadModelInstance`, `rememberModelInstance` and the `load*Async` calls give `null` (logged).
+loads **untextured or broken**. `ModelLoader` now checks it before any Filament call.
+`awaitModelInstance` refuses such a model with `UnsupportedGltfExtensionException`, whose
+`extensions` names what is missing, and `rememberModelLoadState` gives `Failed`. Every other load
+(`createModel*`, `loadModel*`, the `load*Async` calls, `rememberModelInstance`) logs the
+unsupported extensions under the `ModelLoader` tag and loads the model as before.
 
 The usual culprits are `EXT_texture_avif` and `KHR_meshopt_compression` in exports from
 generation or optimisation pipelines. `ModelLoader.SUPPORTED_GLTF_EXTENSIONS` lists what works.
+gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read:
+`awaitModelInstance` and `rememberModelLoadState` refuse it, so re-export without `-mi`.
 **Fix:** re-export with PNG, JPEG or KTX2 textures and `EXT_meshopt_compression`, e.g.
 `npx @gltf-transform/cli optimize model.glb out.glb --texture-compress webp` (SceneView converts
 WebP for you) or `--texture-compress ktx2`.

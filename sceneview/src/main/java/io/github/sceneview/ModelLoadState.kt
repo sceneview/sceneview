@@ -22,12 +22,16 @@ sealed interface ModelLoadState {
     /** Reading, creating or texturing the model: [progress] says which, and how far. */
     data class Loading(val progress: ModelLoadProgress) : ModelLoadState
 
-    /** Loaded, every texture final. The model is owned by [rememberModelLoadState]. */
+    /**
+     * Loaded, its textures final — except after a stall: if no texture made progress for 10 s,
+     * the model is ready with a texture possibly still decoding (logged, see
+     * [ModelLoader.awaitModelInstance]). The model is owned by [rememberModelLoadState].
+     */
     data class Ready(val instance: ModelInstance) : ModelLoadState
 
     /**
      * The load failed: [error] is an [UnsupportedGltfExtensionException] for a model that requires
-     * a glTF extension Filament cannot load, an `IllegalArgumentException` for a file that cannot
+     * a glTF extension Filament cannot load (the other loads log it and load the model anyway), an `IllegalArgumentException` for a file that cannot
      * be read or parsed, an [OutOfMemoryError] for a model too large for the Java heap.
      */
     data class Failed(val error: Throwable) : ModelLoadState
@@ -46,8 +50,10 @@ sealed interface ModelLoadState {
  * }
  * ```
  *
- * The state is [ModelLoadState.Ready] once every texture is final, so the model never shows
- * untextured. It goes back to [ModelLoadState.Loading] when [fileLocation] or [modelLoader]
+ * The state is [ModelLoadState.Ready] once every texture is final, so the model normally does not
+ * show untextured first. The exception is a stall: if no texture made progress for 10 s, the state
+ * is [ModelLoadState.Ready] with a texture possibly still decoding, and the stall is logged. A
+ * texture that cannot be read at all is skipped (logged). It goes back to [ModelLoadState.Loading] when [fileLocation] or [modelLoader]
  * changes. The model is owned here, as with [rememberModelInstance]: it is destroyed when
  * [fileLocation] changes and when this leaves the composition, and a load cancelled before it is
  * ready destroys what it created.

@@ -28,22 +28,38 @@ internal object GltfBufferUris {
     private const val CHUNK_JSON = 0x4E4F534A // "JSON", little-endian
 
     /** The external buffer URIs of [source], among its [resourceUris]. */
-    fun of(source: Buffer, resourceUris: Collection<String>): Set<String> {
+    fun of(source: Buffer, resourceUris: Collection<String>): Set<String> = kinds(source, resourceUris).buffers
+
+    /**
+     * Which of [resourceUris] (external ones only) [source] declares as buffers, and which as
+     * images. A payload whose JSON cannot be read has its buffers guessed from the `.bin` suffix
+     * and **no** image: a load then feeds nothing in place of a missing resource it cannot place.
+     */
+    fun kinds(source: Buffer, resourceUris: Collection<String>): Kinds {
         val external = resourceUris.filterNot { it.startsWith("data:") }
-        if (external.isEmpty()) return emptySet()
+        if (external.isEmpty()) return Kinds(emptySet(), emptySet())
         val declared = (source as? ByteBuffer)
-            ?.let { runCatching { declaredBufferUris(it) }.getOrNull() }
-            ?: return external.filter { it.endsWith(".bin", ignoreCase = true) }.toSet()
-        return external.filter { it in declared }.toSet()
+            ?.let { runCatching { declaredUris(it) }.getOrNull() }
+            ?: return Kinds(external.filter { it.endsWith(".bin", ignoreCase = true) }.toSet(), emptySet())
+        return Kinds(
+            buffers = external.filter { it in declared.buffers }.toSet(),
+            images = external.filter { it in declared.images && it !in declared.buffers }.toSet(),
+        )
     }
 
-    private fun declaredBufferUris(source: ByteBuffer): Set<String>? {
+    /** External resource URIs by kind; see [kinds]. */
+    class Kinds(val buffers: Set<String>, val images: Set<String>)
+
+    private fun declaredUris(source: ByteBuffer): Kinds? {
         val json = jsonText(source.duplicate().order(ByteOrder.LITTLE_ENDIAN)) ?: return null
-        val buffers = JSONObject(json).optJSONArray("buffers") ?: return emptySet()
-        return (0 until buffers.length())
-            .mapNotNull { buffers.optJSONObject(it)?.optString("uri", "") }
-            .filter { it.isNotEmpty() }
-            .toSet()
+        val gltf = JSONObject(json)
+        fun uris(key: String) = gltf.optJSONArray(key)?.let { array ->
+            (0 until array.length())
+                .mapNotNull { array.optJSONObject(it)?.optString("uri", "") }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        } ?: emptySet()
+        return Kinds(buffers = uris("buffers"), images = uris("images"))
     }
 
     /**

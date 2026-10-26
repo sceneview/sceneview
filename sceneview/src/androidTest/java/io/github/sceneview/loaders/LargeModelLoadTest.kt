@@ -24,8 +24,6 @@ import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Test
@@ -34,8 +32,6 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Loading the large, texture-heavy GLBs generation services hand back: a required extension gltfio
@@ -67,46 +63,41 @@ class LargeModelLoadTest {
         Uri.fromFile(File(context.cacheDir, name).apply { writeBytes(glb) }).toString()
 
     @Test
-    fun a_required_extension_gltfio_lacks_is_refused_on_every_load_path_without_a_new_exception() {
+    fun a_required_extension_gltfio_lacks_is_logged_by_the_existing_loads_and_refused_by_awaitModelInstance() {
         val glb = texturedGlb(textures = 1, size = 64, extensionsRequired = listOf("EXT_texture_avif"))
         val location = file("requires_avif.glb", glb)
         val modelLoader = ModelLoader(harness.engine, context)
+        val logged = "requires EXT_texture_avif"
         try {
-            // The new API throws the typed error…
+            // awaitModelInstance throws the typed error, before any Filament call…
             val awaitError = runCatching { runBlocking { modelLoader.awaitModelInstance(location) } }.exceptionOrNull()
             assertTrue("awaitModelInstance threw $awaitError", awaitError is UnsupportedGltfExtensionException)
             assertEquals(listOf("EXT_texture_avif"), (awaitError as UnsupportedGltfExtensionException).extensions)
-
-            // …the existing suspend loads keep their null-and-log contract…
-            runBlocking {
-                assertNull(modelLoader.loadModel(location))
-                assertNull(modelLoader.loadModelInstance(location))
-                assertEquals(emptyList<ModelInstance>(), modelLoader.loadInstancedModel(location, count = 2))
-            }
-
-            // …and the synchronous ones reject it with the IllegalArgumentException they declare.
-            harness.runOnMain {
-                fun buffer() = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb)
-                    .apply { rewind() }
-                val errors = listOf(
-                    runCatching { modelLoader.createModel(buffer()) },
-                    runCatching { modelLoader.createModelInstance(buffer()) },
-                    runCatching { modelLoader.createInstancedModel(buffer(), count = 2) },
-                ).map { it.exceptionOrNull() }
-                errors.forEach { assertTrue("threw $it", it is UnsupportedGltfExtensionException && it is IllegalArgumentException) }
-            }
-
-            val done = CountDownLatch(1)
-            var asyncResult: ModelInstance? = null
-            modelLoader.loadModelInstanceAsync(location) {
-                asyncResult = it
-                done.countDown()
-            }
-            assertTrue(done.await(30, TimeUnit.SECONDS))
-            assertNull(asyncResult)
-
-            // Refused before any Filament call: nothing began loading, nothing was created.
             harness.runOnMain { assertFalse(modelLoader.isLoading) }
+            assertEquals(0, modelLoader.registeredModels())
+
+            // …while the existing loads log it and return the model, as they always did.
+            var before = logcatCount(logged)
+            harness.runOnMain {
+                val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb).apply { rewind() }
+                val instance = modelLoader.createModelInstance(buffer)
+                assertEquals(1, modelLoader.registeredModels())
+                modelLoader.destroyModel(instance.model)
+            }
+            awaitLogcat(logged, before + 1)
+
+            before = logcatCount(logged)
+            runBlocking {
+                listOf(
+                    modelLoader.loadModel(location),
+                    modelLoader.loadModelInstance(location)?.model,
+                    modelLoader.loadInstancedModel(location, count = 2).firstOrNull()?.model,
+                ).forEach { model ->
+                    assertNotNull(model)
+                    harness.runOnMain { modelLoader.destroyModel(model!!) }
+                }
+            }
+            awaitLogcat(logged, before + 3)
             assertEquals(0, modelLoader.registeredModels())
         } finally {
             harness.runOnMain { modelLoader.destroy() }
@@ -175,10 +166,9 @@ class LargeModelLoadTest {
 
     /**
      * Two calls on one loader both return their own model with its textures final, and leave the
-     * loader idle. Whether the second begins while the first still decodes is not forced: on the
-     * emulator gltfio has every texture final at the first poll, so no texture step below 1 exists
-     * to begin the second load from (see the PR notes). The per-model rule this relies on is
-     * gltfio's: `asyncBeginLoad` drains the previous load's decoders.
+     * loader idle, the second one started while the first is still decoding. The per-model rule
+     * this relies on is gltfio's: `asyncBeginLoad` drains the previous load's decoders (on the main
+     * thread, until they are done).
      */
     @Test
     fun concurrent_awaitModelInstance_calls_both_return_with_their_own_textures_final() {
@@ -187,15 +177,33 @@ class LargeModelLoadTest {
         val modelLoader = ModelLoader(harness.engine, context)
         val firstReports = CopyOnWriteArrayList<ModelLoadProgress>()
         val secondReports = CopyOnWriteArrayList<ModelLoadProgress>()
+        val firstDecoding = CompletableDeferred<Unit>()
+        var firstWhenSecondCreated: ModelLoadProgress? = null
         try {
             val (a, b) = runBlocking(Dispatchers.Default) {
                 withTimeout(60_000) {
-                    val a = async { modelLoader.awaitModelInstance(first) { firstReports += it } }
-                    val b = async { modelLoader.awaitModelInstance(second) { secondReports += it } }
+                    val a = async {
+                        modelLoader.awaitModelInstance(first) {
+                            firstReports += it
+                            if (it.stage == Stage.Textures && it.fraction < 1f) firstDecoding.complete(Unit)
+                        }
+                    }
+                    val b = async {
+                        firstDecoding.await()
+                        modelLoader.awaitModelInstance(second) {
+                            if (it.stage == Stage.Creating) firstWhenSecondCreated = firstReports.last()
+                            secondReports += it
+                        }
+                    }
                     a.await() to b.await()
                 }
             }
             Log.i("LargeModelLoadTest", "first: $firstReports\nsecond: $secondReports")
+            val overlap = firstWhenSecondCreated
+            assertTrue(
+                "the second load did not begin while the first decoded: $overlap",
+                overlap != null && overlap.stage == Stage.Textures && overlap.fraction < 1f,
+            )
             assertEquals(ModelLoadProgress(Stage.Textures, 1f), firstReports.last())
             assertEquals(ModelLoadProgress(Stage.Textures, 1f), secondReports.last())
             assertTrue("one model for both calls", a.model !== b.model)
@@ -218,13 +226,15 @@ class LargeModelLoadTest {
             val steps = CopyOnWriteArrayList<ModelLoadProgress>()
             val first = runBlocking { modelLoader.awaitModelInstance(location) { steps += it } }
             harness.runOnMain { modelLoader.destroyModel(first.model) }
-            // Every Textures step, the last one (`Textures 1`, which ends the wait) included: on the
-            // emulator it is often the only one, the textures being final at the first poll.
+            // Textures steps spread over the decode, the first and the last one (`Textures 1`,
+            // which ends the wait) included.
             val textureSteps = steps.indices.filter { steps[it].stage == Stage.Textures }
             assertTrue("no texture step to clear at: $steps", textureSteps.isNotEmpty())
             assertEquals(ModelLoadProgress(Stage.Textures, 1f), steps.last())
+            val sampled = (0..4).map { it * (textureSteps.size - 1) / 4 }.distinct()
 
-            textureSteps.forEachIndexed { k, step ->
+            sampled.forEach { k ->
+                val step = textureSteps[k]
                 var seen = 0
                 var cleared = false
                 // `clear()` from the progress callback, on the main thread, at the k-th texture
@@ -244,12 +254,14 @@ class LargeModelLoadTest {
                 if (!cleared) {
                     assertTrue("never cleared, even at the first texture step: $outcome", k > 0)
                     harness.runOnMain { modelLoader.destroyModel(outcome.getOrThrow().model) }
-                    return@forEachIndexed
+                    return@forEach
                 }
                 val error = outcome.exceptionOrNull()
                 assertTrue("cleared at step $step of $steps: $outcome", error is IllegalStateException)
                 assertEquals("cleared at step $step: the model leaked", 0, modelLoader.registeredModels())
-                harness.runOnMain { assertFalse("cleared at step $step: still loading", modelLoader.isLoading) }
+                // Mid-decode, the model is destroyed once its decoders are done (destroyModel never
+                // blocks), pumped from the main looper: the loader goes idle then, not at once.
+                assertTrue("cleared at step $step: still loading after 5 s", settles(modelLoader))
             }
 
             // The loader stays usable after a clear.
@@ -279,17 +291,63 @@ class LargeModelLoadTest {
             // The loads that return before the textures are final settle too.
             val loaded = runBlocking { modelLoader.loadModelInstance(location) }
             assertNotNull(loaded)
-            val deadline = SystemClock.uptimeMillis() + 5_000
-            var loading = true
-            while (loading && SystemClock.uptimeMillis() < deadline) {
-                harness.runOnMain {
-                    modelLoader.updateLoad()
-                    loading = modelLoader.isLoading
-                }
-                SystemClock.sleep(16)
-            }
-            assertFalse("isLoading never dropped", loading)
+            assertTrue("isLoading never dropped", settles(modelLoader))
             harness.runOnMain { modelLoader.destroyModel(loaded!!.model) }
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
+    @Test
+    fun the_synchronous_createModel_with_a_resolver_settles_without_a_missing_image() {
+        val gltf = gltfWithMissingImage().toByteArray()
+        val modelLoader = ModelLoader(harness.engine, context)
+        try {
+            lateinit var model: io.github.sceneview.model.Model
+            harness.runOnMain {
+                val buffer = ByteBuffer.allocateDirect(gltf.size).put(gltf).apply { rewind() }
+                model = modelLoader.createModel(buffer) { null }
+            }
+            assertTrue("isLoading never dropped", settles(modelLoader))
+            harness.runOnMain { modelLoader.destroyModel(model) }
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
+    @Test
+    fun an_external_webp_image_of_a_gltf_is_converted_and_a_corrupt_one_is_logged_by_name() {
+        val webP = java.io.ByteArrayOutputStream().also { out ->
+            @Suppress("DEPRECATION") // WEBP_LOSSLESS needs API 30; this is lossless at 100 too.
+            android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+                .apply { eraseColor(android.graphics.Color.RED) }
+                .compress(android.graphics.Bitmap.CompressFormat.WEBP, 100, out)
+        }.toByteArray()
+        File(context.cacheDir, "albedo.webp").writeBytes(webP)
+        // A RIFF/WEBP header with nothing decodable behind it.
+        File(context.cacheDir, "corrupt.webp").writeBytes("RIFF\u0000\u0000\u0000\u0000WEBPVP8 ".toByteArray(Charsets.ISO_8859_1))
+        val good = Uri.fromFile(File(context.cacheDir, "webp.gltf").apply { writeText(gltfWithMissingImage("albedo.webp")) })
+            .toString()
+        val corrupt = Uri.fromFile(File(context.cacheDir, "corrupt_webp.gltf").apply { writeText(gltfWithMissingImage("corrupt.webp")) })
+            .toString()
+        val modelLoader = ModelLoader(harness.engine, context)
+        val noProvider = "Missing texture provider"
+        val namedFailure = "The WebP texture corrupt.webp could not be decoded"
+        try {
+            val missingBefore = logcatCount(noProvider)
+            val reports = CopyOnWriteArrayList<ModelLoadProgress>()
+            val instance = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(good) { reports += it } } }
+            assertEquals(ModelLoadProgress(Stage.Textures, 1f), reports.last())
+            harness.runOnMain { modelLoader.destroyModel(instance.model) }
+            // Before the conversion, gltfio skipped this texture with that line and nothing else.
+            SystemClock.sleep(500)
+            assertEquals("gltfio found no provider for the WebP", missingBefore, logcatCount(noProvider))
+
+            // One that cannot be converted is named in logcat, and the load still completes.
+            val failedBefore = logcatCount(namedFailure)
+            val degraded = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(corrupt) } }
+            harness.runOnMain { modelLoader.destroyModel(degraded.model) }
+            awaitLogcat(namedFailure, failedBefore + 1)
         } finally {
             harness.runOnMain { modelLoader.destroy() }
         }
@@ -340,6 +398,32 @@ class LargeModelLoadTest {
         }
     }
 
+    /** Pumps [ModelLoader.updateLoad] like a frame loop would; `true` once nothing is loading. */
+    private fun settles(modelLoader: ModelLoader): Boolean {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        var loading = true
+        while (loading && SystemClock.uptimeMillis() < deadline) {
+            harness.runOnMain {
+                modelLoader.updateLoad()
+                loading = modelLoader.isLoading
+            }
+            SystemClock.sleep(16)
+        }
+        return !loading
+    }
+
+    /** Lines of this process's logcat containing [marker]. */
+    private fun logcatCount(marker: String): Int =
+        ProcessBuilder("logcat", "-d", "--pid=${android.os.Process.myPid()}").redirectErrorStream(true).start()
+            .inputStream.bufferedReader().useLines { lines -> lines.count { marker in it } }
+
+    /** Waits for logcat, which lags the `Log` call, to hold [count] lines containing [marker]. */
+    private fun awaitLogcat(marker: String, count: Int) {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (logcatCount(marker) < count && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
+        assertTrue("logcat never showed \"$marker\" $count times", logcatCount(marker) >= count)
+    }
+
     private fun ModelLoader.registeredModels(): Int =
         (ModelLoader::class.java.getDeclaredField("models").apply { isAccessible = true }.get(this) as List<*>).size
 }
@@ -363,9 +447,9 @@ private fun untexturedGlb(): ByteArray {
 
 /**
  * A text glTF: one textured quad whose buffer is an embedded `data:` URI and whose only image is
- * an external `missing.png` that does not exist.
+ * the external [imageUri], with no `mimeType` (by default a `missing.png` that does not exist).
  */
-private fun gltfWithMissingImage(): String {
+private fun gltfWithMissingImage(imageUri: String = "missing.png"): String {
     val bin = ByteBuffer.allocate(12 * 4 + 8 * 4 + 6 * 2).order(ByteOrder.LITTLE_ENDIAN).apply {
         floatArrayOf(0f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 0f).forEach { putFloat(it) }
         floatArrayOf(0f, 1f, 1f, 1f, 1f, 0f, 0f, 0f).forEach { putFloat(it) }
@@ -375,7 +459,7 @@ private fun gltfWithMissingImage(): String {
     return """{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],""" +
         """"meshes":[{"primitives":[{"attributes":{"POSITION":0,"TEXCOORD_0":1},"indices":2,"material":0}]}],""" +
         """"materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],""" +
-        """"textures":[{"source":0}],"images":[{"uri":"missing.png"}],""" +
+        """"textures":[{"source":0}],"images":[{"uri":"$imageUri"}],""" +
         """"accessors":[""" +
         """{"bufferView":0,"componentType":5126,"count":4,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},""" +
         """{"bufferView":1,"componentType":5126,"count":4,"type":"VEC2"},""" +

@@ -115,8 +115,9 @@ fun ModelWithLoadingIndicator() {
 
 Generated or scanned models are often 5–60 MB with 4K textures. `rememberModelLoadState` reports
 how far the load is (`Reading` the file, `Creating` the asset, decoding `Textures`) and why it
-failed, instead of a bare `null`. `Ready` arrives once every texture is final, so the model never
-pops in untextured.
+failed, instead of a bare `null`. `Ready` normally arrives once every texture is final, so the
+model does not pop in untextured. The exception is a stall: if no texture makes progress for 10 s,
+`Ready` arrives with a texture possibly still decoding, and the stall is logged.
 
 ```kotlin
 @Composable
@@ -144,7 +145,7 @@ fun GeneratedModel(url: String) {
 ```
 
 Outside Compose, `modelLoader.awaitModelInstance(location) { progress -> }` does the same: it
-returns with the textures final and throws on failure.
+returns with the textures final (or after such a stall) and throws on failure.
 
 ### Switch between models dynamically
 

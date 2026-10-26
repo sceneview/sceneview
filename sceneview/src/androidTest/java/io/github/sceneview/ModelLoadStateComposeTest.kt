@@ -73,15 +73,53 @@ class ModelLoadStateComposeTest {
             assertTrue("first state ${states.first()}", states.first() is ModelLoadState.Loading)
             val loading = states.filterIsInstance<ModelLoadState.Loading>().map { it.progress.fraction }
             assertEquals("progress went back: $states", loading.sorted(), loading)
-            // No assertion on a `Textures` step: a composition only sees the state of each frame, and
-            // on the emulator the textures are final at the first poll, so that step and `Ready`
-            // land in the same frame. `LargeModelLoadTest` checks the steps themselves.
+            // Four 1024 px textures take several frames to decode: the composition sees them going.
+            assertTrue(
+                "no texture step seen: $states",
+                states.any { it is ModelLoadState.Loading && it.progress.stage == ModelLoadProgress.Stage.Textures },
+            )
             assertEquals(1, modelLoader.registeredModels())
             harness.runOnMain { assertTrue("textures still loading when Ready", !modelLoader.isLoading) }
 
             compose.runOnIdle { shown = false }
             compose.waitForIdle()
             assertEquals("the model outlived the composition", 0, modelLoader.registeredModels())
+        } finally {
+            harness.runOnMain { modelLoader.destroy() }
+        }
+    }
+
+    @Test
+    fun a_new_fileLocation_loads_again_and_destroys_the_previous_model() {
+        val first = file("compose_first.glb", texturedGlb(textures = 1, size = 64))
+        val second = file("compose_second.glb", texturedGlb(textures = 2, size = 64))
+        val modelLoader = ModelLoader(harness.engine, context)
+        val states = CopyOnWriteArrayList<ModelLoadState>()
+        var location by mutableStateOf(first)
+        var shown by mutableStateOf(true)
+        try {
+            compose.setContent {
+                if (shown) {
+                    val state = rememberModelLoadState(modelLoader, location)
+                    SideEffect { states += state }
+                }
+            }
+            compose.waitUntil(30_000) { states.lastOrNull() is ModelLoadState.Ready }
+            val firstInstance = (states.last() as ModelLoadState.Ready).instance
+            val switchedAt = states.size
+
+            compose.runOnIdle { location = second }
+            compose.waitUntil(30_000) {
+                (states.lastOrNull() as? ModelLoadState.Ready)?.instance?.let { it !== firstInstance } == true
+            }
+
+            val afterSwitch = states.drop(switchedAt)
+            assertTrue("no Loading after the switch: $afterSwitch", afterSwitch.first() is ModelLoadState.Loading)
+            assertEquals("the first model outlived its fileLocation", 1, modelLoader.registeredModels())
+
+            compose.runOnIdle { shown = false }
+            compose.waitForIdle()
+            assertEquals("the second model outlived the composition", 0, modelLoader.registeredModels())
         } finally {
             harness.runOnMain { modelLoader.destroy() }
         }

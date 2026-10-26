@@ -8,17 +8,14 @@ import java.nio.ByteOrder
 /**
  * A glTF or GLB model lists, in `extensionsRequired`, an extension the bundled Filament gltfio
  * cannot load ([extensions], in file order). The glTF specification says a loader must refuse such
- * a file; gltfio does not check the list and would load it anyway, without what the extension
- * carries (an `EXT_texture_avif` model renders untextured).
+ * a file; gltfio does not check the list and loads it anyway, without what the extension carries
+ * (an `EXT_texture_avif` model renders untextured).
  *
  * Detected **before any Filament call**, so nothing was created and nothing needs destroying.
- * [ModelLoader.awaitModelInstance] throws it and [io.github.sceneview.rememberModelLoadState]
- * hands it over as [io.github.sceneview.ModelLoadState.Failed]. The synchronous
- * [ModelLoader.createModel], [ModelLoader.createModelInstance] and
- * [ModelLoader.createInstancedModel] throw it as the `IllegalArgumentException` they already
- * declare for a buffer they cannot load. The other suspend loads ([ModelLoader.loadModel],
- * [ModelLoader.loadModelInstance], [ModelLoader.loadInstancedModel]), the `load*Async` calls and
- * `rememberModelInstance` report it as any failed load: `null` (or an empty list), logged.
+ * Only [ModelLoader.awaitModelInstance] refuses such a model, by throwing this, and
+ * [io.github.sceneview.rememberModelLoadState] hands it over as
+ * [io.github.sceneview.ModelLoadState.Failed]. Every other load (`create*`, `load*`, `load*Async`,
+ * `rememberModelInstance`) logs the unsupported extensions and loads the model as it always did.
  *
  * What gltfio supports: [ModelLoader.SUPPORTED_GLTF_EXTENSIONS]. A generation or optimisation
  * pipeline can usually export without the offending extension (PNG/JPEG or KTX2 textures instead
@@ -52,8 +49,10 @@ internal object GltfRequiredExtensions {
      * Not listed although cgltf parses them, because gltfio's `AssetLoader` never reads what they
      * carry: `KHR_materials_anisotropy`, `KHR_materials_iridescence`,
      * `KHR_materials_diffuse_transmission` (the material renders without them) and
-     * `EXT_mesh_gpu_instancing` (every instance collapses onto the node). A model that only *uses*
-     * them still loads; one that *requires* them is refused, as the glTF specification asks.
+     * `EXT_mesh_gpu_instancing` (every instance collapses onto the node; gltfpack `-mi` output
+     * requires it). A model that only *uses* them loads everywhere; one that *requires* them is
+     * refused by [ModelLoader.awaitModelInstance], as the glTF specification asks, and logged then
+     * loaded by every other load.
      */
     val SUPPORTED: Set<String> = setOf(
         "EXT_meshopt_compression",

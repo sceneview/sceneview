@@ -156,11 +156,14 @@ class WebPTextureTranscoderTest {
               "extensionsUsed": ["EXT_texture_webp"],
               "extensionsRequired": ["EXT_texture_webp"],
               "images": [
-                {"mimeType": "image/webp", "uri": "external.webp"},
+                {"mimeType": "image/webp", "bufferView": 1},
                 {"mimeType": "image/webp", "bufferView": 0}
               ],
               "buffers": [{"byteLength": 4}],
-              "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+              "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 4},
+                {"buffer": 0, "byteOffset": 0, "byteLength": 64}
+              ],
               "textures": [{"extensions": {"EXT_texture_webp": {"source": 0}}}]
             }
             """.trimIndent()
@@ -171,7 +174,7 @@ class WebPTextureTranscoderTest {
             fakeTranscoder
         ) { reported = it }
 
-        // The external-URI image cannot be read here, the embedded one can.
+        // The first image's view runs past the BIN chunk, so it cannot be read; the second can.
         assertEquals(1, reported)
         val (rewritten, _) = parseGlb(result)
         // The extension declaration must survive while an image still needs it.
@@ -182,10 +185,11 @@ class WebPTextureTranscoderTest {
 
     @Test
     fun `nothing decodable means the payload is passed through, but still reported`() {
+        val webPDataUri = "data:image/webp;base64," + Base64.encodeToString(webPBytes, Base64.NO_WRAP)
         val json = JSONObject(
             """
             {
-              "images": [{"mimeType": "image/webp", "uri": "external.webp"}],
+              "images": [{"mimeType": "image/webp", "uri": "$webPDataUri"}],
               "textures": [{"source": 0}]
             }
             """.trimIndent()
@@ -196,6 +200,102 @@ class WebPTextureTranscoderTest {
 
         assertSame(source, result)
         assertEquals(1, reported)
+    }
+
+    @Test
+    fun `an external webp image is declared png, its bytes converted when the resolver reads them`() {
+        val json = """
+            {
+              "extensionsUsed": ["EXT_texture_webp"],
+              "extensionsRequired": ["EXT_texture_webp"],
+              "images": [{"mimeType": "image/webp", "uri": "albedo.webp"}],
+              "textures": [{"extensions": {"EXT_texture_webp": {"source": 0}}}]
+            }
+        """.trimIndent()
+        var reported = -1
+
+        val result = WebPTextureTranscoder.transcode(ByteBuffer.wrap(json.toByteArray()), fakeTranscoder) {
+            reported = it
+        }
+
+        val rewritten = JSONObject(String(ByteArray(result.remaining()).also { result.get(it) }))
+        assertEquals(0, decodeCount)
+        assertEquals(-1, reported)
+        val image = rewritten.getJSONArray("images").getJSONObject(0)
+        // Same URI, so the resolver still finds the file; gltfio now has a provider for it.
+        assertEquals("albedo.webp", image.getString("uri"))
+        assertEquals("image/png", image.getString("mimeType"))
+        assertEquals(0, rewritten.getJSONArray("textures").getJSONObject(0).getInt("source"))
+        assertNull(rewritten.optJSONArray("extensionsRequired"))
+        assertNull(rewritten.optJSONArray("extensionsUsed"))
+    }
+
+    @Test
+    fun `the rewritten JSON writes slashes unescaped, since gltfio reads mimeType verbatim`() {
+        val json = """
+            {
+              "extensionsUsed": ["EXT_texture_webp"],
+              "images": [{"mimeType": "image/webp", "uri": "tex/albedo.webp", "name": "a\\/b"}],
+              "textures": [{"extensions": {"EXT_texture_webp": {"source": 0}}}]
+            }
+        """.trimIndent()
+
+        val result = transcode(ByteBuffer.wrap(json.toByteArray()))
+        val text = String(ByteArray(result.remaining()).also { result.get(it) })
+
+        // `image\/png` is a provider gltfio does not have: the texture would be left out.
+        assertTrue(text, text.contains("\"image/png\""))
+        assertTrue(text, text.contains("\"tex/albedo.webp\""))
+        assertFalse(text, text.contains("\\/png"))
+        // An escaped backslash before a slash keeps its meaning.
+        assertEquals("a\\/b", JSONObject(text).getJSONArray("images").getJSONObject(0).getString("name"))
+    }
+
+    @Test
+    fun `an external image with no mimeType is recognised as webp by its extension`() {
+        // gltfio derives `image/webp` from the URI when no mimeType is declared.
+        val json = JSONObject(
+            """
+            {
+              "images": [{"uri": "albedo.WEBP"}, {"uri": "normal.png"}],
+              "textures": [{"source": 0}, {"source": 1}]
+            }
+            """.trimIndent()
+        )
+
+        val (rewritten, _) = parseGlb(transcode(glb(json, ByteArray(0))))
+
+        val images = rewritten.getJSONArray("images")
+        assertEquals("image/png", images.getJSONObject(0).getString("mimeType"))
+        assertFalse(images.getJSONObject(1).has("mimeType"))
+    }
+
+    @Test
+    fun `a resource holding a webp is converted to png, anything else is returned as-is`() {
+        val webP = ByteBuffer.wrap("RIFF\u0000\u0000\u0000\u0000WEBPVP8 ".toByteArray(Charsets.ISO_8859_1))
+        val png = ByteBuffer.wrap(pngBytes + ByteArray(8))
+        val short = ByteBuffer.wrap(webPBytes)
+
+        val converted = WebPTextureTranscoder.transcodeResource("a.webp", webP, fakeTranscoder) {}
+
+        assertTrue((converted as ByteBuffer).isDirect)
+        assertArrayEquals(pngBytes, ByteArray(converted.remaining()).also { converted.get(it) })
+        assertSame(png, WebPTextureTranscoder.transcodeResource("b.png", png, fakeTranscoder) {})
+        assertSame(short, WebPTextureTranscoder.transcodeResource("c.webp", short, fakeTranscoder) {})
+        assertEquals(1, decodeCount)
+    }
+
+    @Test
+    fun `a webp resource that cannot be converted is reported by name and passed through`() {
+        val webP = ByteBuffer.wrap("RIFF\u0000\u0000\u0000\u0000WEBPVP8 ".toByteArray(Charsets.ISO_8859_1))
+        var reported: String? = null
+
+        val result = WebPTextureTranscoder.transcodeResource("albedo.webp", webP, failingTranscoder) {
+            reported = it
+        }
+
+        assertSame(webP, result)
+        assertEquals("albedo.webp", reported)
     }
 
     /**

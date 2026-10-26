@@ -24,13 +24,18 @@ class GltfRequiredExtensionsTest {
     }
 
     @Test
-    fun `what gltfpack and Draco exports require is supported`() {
+    fun `meshopt, quantization, Draco and basisu compression are supported, gltfpack -mi instancing is not`() {
         val source = glb(
             """{"extensionsRequired":["EXT_meshopt_compression","KHR_mesh_quantization",""" +
                 """"KHR_draco_mesh_compression","KHR_texture_basisu"]}""",
         )
+        // gltfpack `-mi` output: gltfio never reads the instances.
+        val instanced = glb(
+            """{"extensionsRequired":["EXT_meshopt_compression","KHR_mesh_quantization","EXT_mesh_gpu_instancing"]}""",
+        )
 
         assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(source))
+        assertEquals(listOf("EXT_mesh_gpu_instancing"), GltfRequiredExtensions.unsupported(instanced))
     }
 
     @Test
@@ -123,13 +128,13 @@ class GltfRequiredExtensionsTest {
     }
 
     @Test
-    fun `the supported set is what gltfio 1_72_1 parses, plus quantized attributes`() {
+    fun `the supported set is what gltfio 1_72_1 reads, plus quantized attributes`() {
         val supported = ModelLoader.SUPPORTED_GLTF_EXTENSIONS
 
         assertTrue("KHR_mesh_quantization" in supported)
         assertTrue("EXT_meshopt_compression" in supported)
         assertTrue("EXT_texture_avif" !in supported)
-        // Parsed by cgltf, never read by gltfio's AssetLoader: requiring them is refused.
+        // Parsed by cgltf, never read by gltfio's AssetLoader.
         for (ignored in listOf(
             "KHR_materials_anisotropy", "KHR_materials_iridescence",
             "KHR_materials_diffuse_transmission", "EXT_mesh_gpu_instancing",

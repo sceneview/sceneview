@@ -201,7 +201,9 @@ internal fun texturedGlb(textures: Int, size: Int, extensionsRequired: List<Stri
             put("extensionsRequired", JSONArray(extensionsRequired))
         }
     }
-    val jsonBytes = json.toString().toByteArray(Charsets.UTF_8).let { raw ->
+    // Android's org.json writes `image\/jpeg`, which cgltf keeps verbatim: gltfio would find no
+    // provider for it and skip every texture, so nothing would decode.
+    val jsonBytes = json.toString().replace("\\/", "/").toByteArray(Charsets.UTF_8).let { raw ->
         raw + ByteArray((4 - raw.size % 4) % 4) { ' '.code.toByte() }
     }
     val binBytes = bin.toByteArray()

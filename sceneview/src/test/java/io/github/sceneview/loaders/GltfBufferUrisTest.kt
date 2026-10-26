@@ -41,6 +41,19 @@ class GltfBufferUrisTest {
         assertEquals(setOf("a.BIN"), GltfBufferUris.of(garbage, listOf("a.BIN", "b.png")))
     }
 
+    @Test
+    fun `images are the declared image uris, and none when the JSON cannot be read`() {
+        val uris = listOf("scene.bin", "albedo.png", "normal.bin.png", "unknown.png")
+        val kinds = GltfBufferUris.kinds(ByteBuffer.wrap(json.toByteArray()), uris)
+
+        assertEquals(setOf("scene.bin"), kinds.buffers)
+        assertEquals(setOf("albedo.png", "normal.bin.png"), kinds.images)
+        // No JSON: a `.png` is not assumed to be an image, nor a `.bin.png` to be a buffer image.
+        val garbage = GltfBufferUris.kinds(ByteBuffer.wrap(byteArrayOf(1, 2, 3)), uris)
+        assertEquals(setOf("scene.bin"), garbage.buffers)
+        assertEquals(emptySet<String>(), garbage.images)
+    }
+
     private fun glb(json: String): ByteBuffer {
         val padded = json.toByteArray().let { it + ByteArray((4 - it.size % 4) % 4) { ' '.code.toByte() } }
         return ByteBuffer.allocate(GLB_HEADER + CHUNK_HEADER + padded.size).order(ByteOrder.LITTLE_ENDIAN).apply {
