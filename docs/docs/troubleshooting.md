@@ -96,9 +96,10 @@ Blender with PNG/JPEG textures. PNG, JPEG, and KTX2 decode natively everywhere.
 A glTF file can list extensions in `extensionsRequired`: a viewer that does not implement one of
 them must refuse the file. Filament's `gltfio` does not check that list itself, so such a model
 used to load **untextured or broken with no error**. `ModelLoader` now checks it before any
-Filament call and fails with `UnsupportedGltfExtensionException`, whose `extensions` names what is
-missing: `rememberModelInstance` and the `load*Async` calls give `null` (logged),
-`rememberModelLoadState` gives `Failed`, the `suspend` and `createModel` calls throw it.
+Filament call and refuses it with `UnsupportedGltfExtensionException`, whose `extensions` names what is
+missing: `awaitModelInstance` throws it, `rememberModelLoadState` gives `Failed`, the synchronous
+`createModel*` calls throw it as their `IllegalArgumentException`, and `loadModel`,
+`loadModelInstance`, `rememberModelInstance` and the `load*Async` calls give `null` (logged).
 
 The usual culprits are `EXT_texture_avif` and `KHR_meshopt_compression` in exports from
 generation or optimisation pipelines. `ModelLoader.SUPPORTED_GLTF_EXTENSIONS` lists what works.

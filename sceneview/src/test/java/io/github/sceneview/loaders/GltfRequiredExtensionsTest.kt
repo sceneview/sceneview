@@ -97,12 +97,43 @@ class GltfRequiredExtensionsTest {
     }
 
     @Test
+    fun `only the root object's own key counts, not one under extras or a nested object`() {
+        val underExtras = glb("""{"asset":{"version":"2.0"},"extras":{"extensionsRequired":["EXT_texture_avif"]}}""")
+        val nested = glb("""{"materials":[{"extensions":{"extensionsRequired":["EXT_texture_avif"]}}]}""")
+
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(underExtras))
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(nested))
+    }
+
+    @Test
+    fun `the root key is found after nested objects, strings, numbers and literals`() {
+        val source = glb(
+            """{"asset":{"generator":"a } ] \" {","version":"2.0"},"scene":0,"ok":true,"none":null,""" +
+                """"extras":{"extensionsRequired":["KHR_texture_basisu"]},"nodes":[[1,{"a":[2]}],-1.5e3],""" +
+                """"extensionsRequired":["KHR_meshopt_compression"]}""",
+        )
+
+        assertEquals(listOf("KHR_meshopt_compression"), GltfRequiredExtensions.unsupported(source))
+    }
+
+    @Test
+    fun `a root key whose value is not an array of strings is left to gltfio`() {
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(glb("""{"extensionsRequired":"EXT_texture_avif"}""")))
+        assertEquals(emptyList<String>(), GltfRequiredExtensions.unsupported(glb("""[{"extensionsRequired":["EXT_texture_avif"]}]""")))
+    }
+
+    @Test
     fun `the supported set is what gltfio 1_72_1 parses, plus quantized attributes`() {
         val supported = ModelLoader.SUPPORTED_GLTF_EXTENSIONS
 
         assertTrue("KHR_mesh_quantization" in supported)
         assertTrue("EXT_meshopt_compression" in supported)
         assertTrue("EXT_texture_avif" !in supported)
+        // Parsed by cgltf, never read by gltfio's AssetLoader: requiring them is refused.
+        for (ignored in listOf(
+            "KHR_materials_anisotropy", "KHR_materials_iridescence",
+            "KHR_materials_diffuse_transmission", "EXT_mesh_gpu_instancing",
+        )) assertTrue(ignored, ignored !in supported)
     }
 
     private fun glb(json: String): ByteBuffer {
