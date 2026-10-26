@@ -153,13 +153,15 @@ private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
 /**
  * Runs [onIdle] on the calling thread once this engine's backend has caught up with everything
  * queued on it, polling fences from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]
- * instead of waiting on them (#3799). "Caught up" means a fence was reached within a few polls of
- * being created, so whatever [onIdle] waits for in turn is a frame or two at most, even when more
- * work was queued after this call ([FreshFenceProbe]). See [BackendIdleTeardowns] for the contract.
+ * instead of waiting on them (#3799). "Caught up" means a fence was found reached soon after it was
+ * created — within three gaps between polls, 48 to 250 ms — so whatever [onIdle] waits for in turn
+ * is a few frames at most, even when more work was queued after this call ([FreshFenceProbe]). See
+ * [BackendIdleTeardowns] for the contract.
  *
- * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
- * already idle, or — the old blocking behaviour — the thread has no [Looper] or the fence could not
- * be created. A deferred [onIdle] is run by [safeDestroy] at the latest, so the engine always
+ * [onIdle] receives `deferred = false` when it ran before this function returned, which is now the
+ * exception — the old blocking behaviour, when the thread has no [Looper] or the fence could not be
+ * created. Even an idle backend defers it by one poll: a fence just created is not reached yet by
+ * the zero-timeout check made right after. A deferred [onIdle] is run by [safeDestroy] at the latest, so the engine always
  * outlives it. [onEngineGone] runs instead of [onIdle] only when the engine is already destroyed,
  * or is destroyed without [safeDestroy] while the fence is pending; the fence is not touched then.
  * With `runsLast`, [onIdle] also waits for every other pending teardown of this engine to have run
@@ -193,7 +195,7 @@ internal fun Engine.whenBackendIdle(
 
 /**
  * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
- * queued on it within a few frames. Never waits. Not busy when no fence can be created.
+ * queued on it within a few frames, as measured between polls. Never waits. Not busy when no fence can be created.
  */
 internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
     createFence = { runCatching { createFence() }.getOrNull() },
