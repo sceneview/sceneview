@@ -202,6 +202,8 @@ class ModelLoader(
      * @throws IllegalArgumentException if the buffer cannot be parsed, or if one of its external
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
      * resolver cannot read is logged and skipped.
+     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
+     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
      * because Filament's Android build registers no `image/webp` decoder and would otherwise render
@@ -529,6 +531,8 @@ class ModelLoader(
      * @throws IllegalArgumentException if the buffer cannot be parsed, or if one of its external
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
      * resolver cannot read is logged and skipped.
+     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
+     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * @see AssetLoader.createInstancedAsset
      */
@@ -836,6 +840,10 @@ class ModelLoader(
      * throws anything other than an `IOException` also destroys [model], then the error is
      * rethrown.
      *
+     * A resolver that destroys [model] itself (`clear()`, `destroy()`, `destroyModel`) ends the
+     * loop at once, with no further gltfio call on the model or the loader, in an
+     * [IllegalStateException].
+     *
      * This runs on the main thread, like the whole synchronous `createModel`, so the glTF JSON is
      * parsed (to tell buffers from textures) only once a resource is missing: a model whose
      * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
@@ -847,29 +855,49 @@ class ModelLoader(
         val uris = model.resourceUris.filterNot { it.startsWith("data:") }
         // Each resource the resolver could not supply, with the IOException it threw if it did.
         val unresolved = LinkedHashMap<String, IOException?>()
+        // The resolver is the caller's code, run on the main thread: a `clear()`, `destroy()` or
+        // `destroyModel` in it frees this model (and, for `destroy()`, the loader's gltfio
+        // objects), and every later gltfio call on them would read freed memory.
+        var destroyedByResolver = false
         // The missing buffers, among them.
         val missing: Map<String, IOException?> = try {
             for (uri in uris) {
+                var error: IOException? = null
                 val data = try {
                     resourceResolver(uri)
-                } catch (error: IOException) {
-                    unresolved[uri] = error
-                    continue
+                } catch (failure: IOException) {
+                    error = failure
+                    null
                 }
-                if (data != null) resourceLoader.addResourceData(uri, data) else unresolved[uri] = null
+                if (model !in models) {
+                    destroyedByResolver = true
+                    break
+                }
+                if (data != null) resourceLoader.addResourceData(uri, data) else unresolved[uri] = error
             }
-            val bufferUris = if (unresolved.isEmpty()) emptySet() else GltfBufferUris.of(source, unresolved.keys)
-            // Logged once each: a missing texture here, a missing buffer with the failure below.
-            unresolved.forEach { (uri, error) ->
-                if (uri !in bufferUris) Log.w(TAG, "Could not read $uri; loading the model without it", error)
+            if (destroyedByResolver) {
+                emptyMap()
+            } else {
+                val bufferUris = if (unresolved.isEmpty()) emptySet() else GltfBufferUris.of(source, unresolved.keys)
+                // Logged once each: a missing texture here, a missing buffer with the failure below.
+                unresolved.forEach { (uri, error) ->
+                    if (uri !in bufferUris) Log.w(TAG, "Could not read $uri; loading the model without it", error)
+                }
+                unresolved.filterKeys { it in bufferUris }
             }
-            unresolved.filterKeys { it in bufferUris }
         } catch (failure: Throwable) {
-            // Not begun yet, so nothing is decoding: the destroy is immediate.
-            resourceLoader.evictResourceData()
-            destroyModel(model)
+            // Not begun yet, so nothing is decoding: the destroy is immediate. A resolver that
+            // destroyed the model itself before throwing already took it, and maybe the loader.
+            if (model in models) {
+                resourceLoader.evictResourceData()
+                destroyModel(model)
+            }
             Log.w(TAG, "Could not resolve the resources of a glTF model; the model was destroyed", failure)
             throw failure
+        }
+        check(!destroyedByResolver) {
+            "The resource resolver destroyed the glTF model it was resolving (clear(), destroy() or " +
+                "destroyModel on its ModelLoader): resolve the resources without destroying the model"
         }
         val failure = when {
             missing.isNotEmpty() -> {

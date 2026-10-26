@@ -1,15 +1,21 @@
 package io.github.sceneview.node
 
+import androidx.compose.ui.geometry.Size
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
+import com.google.android.filament.MaterialInstance
+import com.google.android.filament.RenderableManager
+import com.google.android.filament.View
 import com.google.android.filament.gltfio.Animator
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
+import com.google.android.filament.gltfio.FilamentInstance
 import com.google.android.filament.gltfio.releaseSourceDataIfAlive
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.SceneFrameDispatch
 import io.github.sceneview.animation.ModelAnimationState
 import io.github.sceneview.components.RenderableComponent
+import io.github.sceneview.gesture.NodeScreenAnchors
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.materialInstances as sceneViewMaterialInstances
@@ -17,6 +23,7 @@ import io.github.sceneview.safeDestroyModel
 import io.github.sceneview.utils.snapshotNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -50,6 +57,8 @@ import org.robolectric.annotation.Implements
         ModelNodeAfterDestroyTest.RecordingAsset::class,
         ModelNodeAfterDestroyTest.RecordingAnimator::class,
         ModelNodeAfterDestroyTest.RecordingAssetLoader::class,
+        ModelNodeAfterDestroyTest.RecordingInstance::class,
+        ModelNodeAfterDestroyTest.RecycledRenderableManager::class,
     ]
 )
 class ModelNodeAfterDestroyTest {
@@ -249,6 +258,84 @@ class ModelNodeAfterDestroyTest {
         assertDestroyedModelError { instance.sceneViewMaterialInstances }
     }
 
+    @Test
+    fun `the skins and variants of a destroyed model are a clear error, not a native read`() {
+        val node = modelNode()
+        val target = modelNode()
+        // They do reach the instance while the model lives.
+        nativeCalls.clear()
+        node.skinCount
+        node.getJointCount()
+        assertEquals(listOf("FilamentInstance.getSkinCount", "FilamentInstance.getJointCountAt"), nativeCalls)
+
+        destroy(node.model)
+        nativeCalls.clear()
+
+        assertDestroyedModelError { node.skinCount }
+        assertDestroyedModelError { node.skinNames }
+        assertDestroyedModelError { node.materialVariantNames }
+        assertDestroyedModelError { node.getJointCount() }
+        assertDestroyedModelError { node.attachSkin(target) }
+        assertDestroyedModelError { node.detachSkin(target) }
+        assertEquals(emptyList<String>(), nativeCalls)
+    }
+
+    @Test
+    fun `the glTF node data of a destroyed model is a clear error, not a native read`() {
+        val instance = FilamentWithoutJni.modelInstance(engine)
+        val child = object : ModelNode.ChildNode {
+            override val entity = 1
+            override val modelInstance = instance
+        }
+        nativeCalls.clear()
+        child.extras
+        assertEquals(listOf("FilamentAsset.getExtras"), nativeCalls)
+
+        destroy(instance.asset)
+        nativeCalls.clear()
+
+        assertDestroyedModelError { child.name }
+        assertDestroyedModelError { child.extras }
+        assertDestroyedModelError { child.morphTargetNames }
+        assertEquals(emptyList<String>(), nativeCalls)
+    }
+
+    @Test
+    fun `the material of a sub-node of a destroyed model is a clear error`() {
+        // gltfio destroyed the entity with the model, and the engine gave its id to another
+        // renderable ([RecycledRenderableManager]): the sub-node must not read that one's material.
+        val node = modelNode()
+        val renderable = node.RenderableNode(node.modelInstance, RECYCLED_ENTITY)
+        nativeCalls.clear()
+        renderable.getMaterialInstanceAt(0)
+        assertEquals(listOf("RenderableManager.getMaterialInstanceAt"), nativeCalls)
+
+        destroy(node.model)
+        nativeCalls.clear()
+
+        val error = assertThrows(IllegalStateException::class.java) {
+            renderable.getMaterialInstanceAt(0)
+        }
+        assertTrue(error.message.orEmpty(), "model of this node was destroyed" in error.message.orEmpty())
+        assertDestroyedModelError { renderable.materialInstances }
+        assertEquals(emptyList<String>(), nativeCalls)
+    }
+
+    @Test
+    fun `the editing overlay draws nothing for a destroyed model and reads none of it`() {
+        // The overlay can outlive the model by a frame: `rememberModelInstance` destroys it first.
+        val node = modelNode()
+        destroy(node.model)
+        nativeCalls.clear()
+        val anchors = NodeScreenAnchors()
+
+        anchors.update(node, allocateWithoutJni(View::class.java))
+
+        assertNull(anchors.baseInCanvas(Size(100f, 100f)))
+        assertNull(anchors.topInCanvas(Size(100f, 100f)))
+        assertEquals(emptyList<String>(), nativeCalls)
+    }
+
     /** An [AssetLoader] that never reached gltfio: only its Java methods are called here. */
     private fun assetLoaderWithoutJni(): AssetLoader {
         val unsafeClass = Class.forName("sun.misc.Unsafe")
@@ -269,6 +356,45 @@ class ModelNodeAfterDestroyTest {
         @Implementation
         fun releaseSourceData() {
             nativeCalls += "FilamentAsset.releaseSourceData"
+        }
+
+        @Implementation
+        fun getName(entity: Int): String? = null.also { nativeCalls += "FilamentAsset.getName" }
+
+        @Implementation
+        fun getExtras(entity: Int): String? = null.also { nativeCalls += "FilamentAsset.getExtras" }
+
+        @Implementation
+        fun getMorphTargetNames(entity: Int): Array<String> =
+            emptyArray<String>().also { nativeCalls += "FilamentAsset.getMorphTargetNames" }
+    }
+
+    @Suppress("UnusedParameter") // Robolectric matches the shadowed signature.
+    @Implements(FilamentInstance::class)
+    class RecordingInstance {
+        @Implementation
+        fun getSkinCount(): Int = 0.also { nativeCalls += "FilamentInstance.getSkinCount" }
+
+        @Implementation
+        fun getSkinNames(): Array<String> =
+            emptyArray<String>().also { nativeCalls += "FilamentInstance.getSkinNames" }
+
+        @Implementation
+        fun getMaterialVariantNames(): Array<String> =
+            emptyArray<String>().also { nativeCalls += "FilamentInstance.getMaterialVariantNames" }
+
+        @Implementation
+        fun getJointCountAt(skinIndex: Int): Int =
+            0.also { nativeCalls += "FilamentInstance.getJointCountAt" }
+
+        @Implementation
+        fun attachSkin(skinIndex: Int, target: Int) {
+            nativeCalls += "FilamentInstance.attachSkin"
+        }
+
+        @Implementation
+        fun detachSkin(skinIndex: Int, target: Int) {
+            nativeCalls += "FilamentInstance.detachSkin"
         }
     }
 
@@ -306,7 +432,32 @@ class ModelNodeAfterDestroyTest {
         }
     }
 
+    /** A renderable manager in which [RECYCLED_ENTITY] names a live renderable of one primitive. */
+    @Suppress("UnusedParameter") // Robolectric matches the shadowed signature.
+    @Implements(RenderableManager::class)
+    class RecycledRenderableManager {
+        @Implementation
+        fun getInstance(entity: Int): Int = if (entity == RECYCLED_ENTITY) 1 else 0
+
+        @Implementation
+        fun getPrimitiveCount(instance: Int): Int = if (instance == 1) 1 else 0
+
+        @Implementation
+        fun getMaterialInstanceAt(instance: Int, primitiveIndex: Int): MaterialInstance {
+            nativeCalls += "RenderableManager.getMaterialInstanceAt"
+            return allocateWithoutJni(MaterialInstance::class.java)
+        }
+    }
+
     companion object {
+        /** An instance of [type] whose constructor, and so its native side, never ran. */
+        fun <T> allocateWithoutJni(type: Class<T>): T {
+            val unsafeClass = Class.forName("sun.misc.Unsafe")
+            val unsafe = unsafeClass.getDeclaredField("theUnsafe").apply { isAccessible = true }.get(null)
+            return type.cast(unsafeClass.getMethod("allocateInstance", Class::class.java).invoke(unsafe, type))
+        }
+
+        const val RECYCLED_ENTITY = 7_001
         val nativeCalls = mutableListOf<String>()
     }
 }

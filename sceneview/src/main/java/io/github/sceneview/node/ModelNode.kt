@@ -73,18 +73,32 @@ open class ModelNode(
 
         /**
          * Gets the `NameComponentManager` label for the given node, if it exists.
+         *
+         * The sub-nodes of a [ModelNode] read it once, when they are built, and keep it.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val name: String? get() = model.getName(entity)
+        val name: String? get() = model.also { checkModelAlive("name") }.getName(entity)
 
         /**
          * Gets the glTF extras string for the asset or a specific node.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val extras: String? get() = model.getExtras(entity)
+        val extras: String? get() = model.also { checkModelAlive("extras") }.getExtras(entity)
 
         /**
          * Gets the names of all morph targets in the given entity.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val morphTargetNames: List<String> get() = model.getMorphTargetNames(entity).toList()
+        val morphTargetNames: List<String>
+            get() = model.also { checkModelAlive("morphTargetNames") }.getMorphTargetNames(entity).toList()
+
+        private fun checkModelAlive(what: String) = check(!model.isDestroyed) {
+            "ModelNode.ChildNode.$what: the model of this node was destroyed (ModelLoader.destroyModel, " +
+                "clear or destroy). Stop using the node once its model is destroyed."
+        }
     }
 
     inner class RenderableNode internal constructor(
@@ -92,6 +106,15 @@ open class ModelNode(
     ) : io.github.sceneview.node.RenderableNode(engine = modelInstance.engine, entity = entity),
         ChildNode {
         override var name = super<ChildNode>.name
+
+        /**
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]): gltfio
+         * destroyed this entity with it, and its id can already name another renderable.
+         */
+        override fun getMaterialInstanceAt(@IntRange(from = 0) primitiveIndex: Int): MaterialInstance {
+            checkModelAlive("RenderableNode.getMaterialInstanceAt")
+            return super.getMaterialInstanceAt(primitiveIndex)
+        }
 
         // The sanitize-once latch ([permanentlyValidEntities]) assumes a static renderable's AABB
         // can never go back to empty once observed valid. Explicitly mutating the geometry or the
@@ -204,10 +227,30 @@ open class ModelNode(
     /**
      * `true` once the model was destroyed under this node, by `ModelLoader.destroyModel`, `clear`
      * or `destroy`. `rememberModelInstance` destroys it when it leaves the composition, possibly
-     * before the node detaches. From then on the node makes no Filament call on the model: its
-     * frame and `stopAnimation` do nothing, and what reads the model throws [IllegalStateException].
-     * Check it before reading the bounds or starting an animation of a node that may outlive its
-     * model.
+     * before the node detaches. Check it before using a node that may outlive its model.
+     *
+     * gltfio frees the asset, its instance and its animator without clearing the instance's and
+     * the animator's handles, so the node guards each of its members that reaches them:
+     * - **do nothing:** the node's frame, [stopAnimation];
+     * - **throw [IllegalStateException]:** [boundingBox], [halfExtent], [extents], [center],
+     *   [size], [scaleToUnitCube], [centerOrigin], [animationCount], [playAnimation],
+     *   [setAnimationSpeed], [skinCount], [skinNames], [materialVariantNames], [attachSkin],
+     *   [detachSkin], [getJointCount]; on the sub-nodes, [ChildNode.name] (read once, when the
+     *   sub-node is built), [ChildNode.extras], [ChildNode.morphTargetNames] and
+     *   `RenderableNode.getMaterialInstanceAt`.
+     *
+     * Not guarded:
+     * - [model] and [animator] are gltfio's own objects, handed out as they are: a call on them
+     *   after the destroy is a native crash;
+     * - the renderable state — [materialInstances], [setMaterialInstance], [isShadowCaster],
+     *   [isShadowReceiver], [setMorphWeights], [setLayerVisible], [setLayerMask], [setPriority],
+     *   [setCulling], [setScreenSpaceContactShadows], [setBlendOrder],
+     *   [setGlobalBlendOrderEnabled] and the same members on the sub-nodes — goes through the
+     *   engine's managers by entity, not through the asset. gltfio destroyed those entities with
+     *   it: Filament ignores a write to an entity without a component and answers a read with its
+     *   default. An entity id the engine has since given to another object is not detected,
+     *   except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the getter of
+     *   [materialInstances]), which throw.
      */
     val isModelDestroyed: Boolean get() = model.isDestroyed
 
@@ -335,19 +378,36 @@ open class ModelNode(
 
     /**
      * Gets the skin count of this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    val skinCount: Int get() = modelInstance.skinCount
+    val skinCount: Int
+        get() {
+            checkModelAlive("skinCount")
+            return modelInstance.skinCount
+        }
 
     /**
      * Returns the names of all material variants.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
     val materialVariantNames: List<String>
-        get() = modelInstance.materialVariantNames.toList()
+        get() {
+            checkModelAlive("materialVariantNames")
+            return modelInstance.materialVariantNames.toList()
+        }
 
     /**
      * Gets the skin name at skin index in this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    val skinNames: List<String> get() = modelInstance.skinNames.toList()
+    val skinNames: List<String>
+        get() {
+            checkModelAlive("skinNames")
+            return modelInstance.skinNames.toList()
+        }
 
     /**
      * Changes whether or not the renderable casts shadows.
@@ -508,24 +568,36 @@ open class ModelNode(
      * BONE_INDICES and BONE_WEIGHTS attributes.
      *
      * This is a no-op if the given skin index or target is invalid.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    fun attachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) =
+    fun attachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) {
+        checkModelAlive("attachSkin")
         modelInstance.attachSkin(skinIndex, target.entity)
+    }
 
     /**
      * Attaches the given skin to the given node, which must have an associated mesh with
      * BONE_INDICES and BONE_WEIGHTS attributes.
      *
      * This is a no-op if the given skin index or target is invalid.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    fun detachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) =
+    fun detachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) {
+        checkModelAlive("detachSkin")
         modelInstance.detachSkin(skinIndex, target.entity)
+    }
 
     /**
      * Gets the joint count at skin index in this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    open fun getJointCount(@IntRange(from = 0) skinIndex: Int = 0): Int =
-        modelInstance.getJointCountAt(skinIndex)
+    open fun getJointCount(@IntRange(from = 0) skinIndex: Int = 0): Int {
+        checkModelAlive("getJointCount")
+        return modelInstance.getJointCountAt(skinIndex)
+    }
 
     /**
      * Changes the material instances binding for the given primitives.

@@ -696,14 +696,27 @@ ModelNode class properties (available via `apply` block):
   `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
   instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
 
-**After the model is destroyed:** the node's frame, `stopAnimation`, the `ModelNode` composable
-(the node leaves the scene), `rememberModelAnimationState` (reads idle), the scene inspector and the
-editing overlay do nothing. Direct calls fail with `IllegalStateException` instead of a native crash:
-`boundingBox` and what derives from it (`center`, `halfExtent`, `extents`, `size`), `animationCount`,
-`playAnimation`, `setAnimationSpeed`, the `ModelNode` constructor, and the
-`ModelInstance.materialInstances` extension. Check `isModelDestroyed` first when the model's
-lifetime is not yours. `node.animator`, `node.model` and gltfio's own members
-(`FilamentInstance.getMaterialInstances()`) are not guarded: never call them after the destroy.
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**

@@ -3115,6 +3115,7 @@ public final class io/github/sceneview/node/ModelNode$PlayingAnimation {
 public final class io/github/sceneview/node/ModelNode$RenderableNode : io/github/sceneview/node/RenderableNode, io/github/sceneview/node/ModelNode$ChildNode {
 	public fun getAxisAlignedBoundingBox ()Lcom/google/android/filament/Box;
 	public fun getExtras ()Ljava/lang/String;
+	public fun getMaterialInstanceAt (I)Lcom/google/android/filament/MaterialInstance;
 	public fun getModel ()Lcom/google/android/filament/gltfio/FilamentAsset;
 	public fun getModelInstance ()Lcom/google/android/filament/gltfio/FilamentInstance;
 	public fun getMorphTargetNames ()Ljava/util/List;
