@@ -12,23 +12,29 @@ package io.github.sceneview
 internal const val FRESH_FENCE_MAX_AGE_MS = 3 * BACKEND_IDLE_POLL_MS
 
 /**
- * The freshness window follows the polls actually observed: [FRESH_FENCE_POLL_GAPS] times the gap
- * since the previous poll, never under [FRESH_FENCE_MAX_AGE_MS]. A main thread janking at 15 fps
- * polls every 66 ms; a fixed 48 ms window would find every fence stale there, even on an idle
- * backend, and hold each teardown until [FRESH_FENCE_GIVE_UP_MS].
+ * The freshness window follows the polls actually observed: [FRESH_FENCE_POLL_GAPS] times the
+ * shorter of the last two gaps between polls, never under [FRESH_FENCE_MAX_AGE_MS]. A main thread
+ * janking at 15 fps polls every 66 ms; a fixed 48 ms window would find every fence stale there,
+ * even on an idle backend, and hold each teardown until [FRESH_FENCE_GIVE_UP_MS].
+ *
+ * The shorter of two gaps, not the latest one: a fence armed at one poll and found reached at the
+ * next is exactly one gap old, so a window scaled on that same gap would always take it — even when
+ * the gap was a long main-thread pass that queued the next screen's shaders behind the fence. A
+ * single long pass is set against the gap before it and rejected, and the fence is re-armed; only
+ * a steady slow cadence widens the window, from the second poll on.
  *
  * Three gaps, like the three nominal polls of [FRESH_FENCE_MAX_AGE_MS]: a fence armed at one poll
  * is usually found reached at the next (one gap old), sometimes one poll later when the backend was
- * finishing a frame (two gaps), plus one gap of slack because consecutive gaps are uneven when
- * the main thread janks. Two gaps would reject that second case whenever the latest gap is the
- * shorter one, and the probe would re-arm for nothing.
+ * finishing a frame (two gaps), plus one gap of slack because consecutive gaps are uneven when the
+ * main thread janks.
  */
 internal const val FRESH_FENCE_POLL_GAPS = 3
 
 /**
  * Upper bound of the freshness window, however far apart the polls are: what the backend may have
- * queued behind a fence that old is what the release's own wait still covers, so the window stays
- * a few frames. A poll held back by a seconds-long main-thread pass is still rejected.
+ * queued behind a fence that old is what the release's own wait still covers — up to 250 ms of
+ * work, about 15 frames at 60 fps. When the main thread polls less often than this, no fence is
+ * ever fresh and every teardown waits for [FRESH_FENCE_GIVE_UP_MS].
  */
 internal const val FRESH_FENCE_MAX_AGE_CAP_MS = 250L
 
@@ -38,9 +44,18 @@ internal const val FRESH_FENCE_MAX_AGE_CAP_MS = 250L
  */
 internal const val FRESH_FENCE_GIVE_UP_MS = 5_000L
 
-/** The freshness window for a poll [gapMs] after the previous one; see [FRESH_FENCE_POLL_GAPS]. */
-internal fun freshFenceMaxAgeMs(gapMs: Long): Long =
-    (FRESH_FENCE_POLL_GAPS * gapMs).coerceIn(FRESH_FENCE_MAX_AGE_MS, FRESH_FENCE_MAX_AGE_CAP_MS)
+/**
+ * The freshness window for a poll [gapMs] after the previous one, itself [previousGapMs] after the
+ * one before; see [FRESH_FENCE_POLL_GAPS]. A negative gap means there was no such poll: the window
+ * is then the nominal [FRESH_FENCE_MAX_AGE_MS].
+ */
+internal fun freshFenceMaxAgeMs(previousGapMs: Long, gapMs: Long): Long =
+    if (previousGapMs < 0 || gapMs < 0) {
+        FRESH_FENCE_MAX_AGE_MS
+    } else {
+        (FRESH_FENCE_POLL_GAPS * minOf(previousGapMs, gapMs))
+            .coerceIn(FRESH_FENCE_MAX_AGE_MS, FRESH_FENCE_MAX_AGE_CAP_MS)
+    }
 
 /**
  * Answers, poll after poll, "would a release that waits for everything queued on the backend
@@ -53,11 +68,12 @@ internal fun freshFenceMaxAgeMs(gapMs: Long): Long =
  * release still blocked the main thread, now from a `Handler` callback.
  *
  * So a reached fence only counts when it is found reached soon after it was created, on [now]'s
- * monotonic clock: within [maxFreshAgeMs] of the gap since the previous poll (three gaps, between
- * 48 and 250 ms — [freshFenceMaxAgeMs]). The backend then has at most a few frames of work queued
- * behind it. An older one is replaced by a new one, and the probe keeps polling — however far
- * apart the polls are, which the probe does not control (a janking main thread, a slow
- * main-thread pass, or a caller that skips polls while something else holds the teardown).
+ * monotonic clock: within [maxFreshAgeMs] of the last two gaps between polls (three times the
+ * shorter one, between 48 and 250 ms — [freshFenceMaxAgeMs]). The backend then has at most that
+ * window's worth of work queued behind it. An older one is replaced by a new one and the probe
+ * keeps polling; how far apart the polls are is not up to the probe (a janking main thread, a
+ * slow main-thread pass, or a caller that skips polls while something else holds the teardown).
+ * Polls steadily more than 250 ms apart never find a fresh fence, and only [giveUpMs] ends them.
  *
  * [giveUpMs] runs from the probe's creation, not from its first poll: a caller that polls it only
  * once other teardowns are done still gets its fallback on time. After it any reached fence counts,
@@ -71,13 +87,14 @@ internal class FreshFenceProbe<F : Any>(
     private val isReached: (F) -> Boolean,
     private val destroyFence: (F) -> Unit,
     private val now: () -> Long,
-    private val maxFreshAgeMs: (gapMs: Long) -> Long = ::freshFenceMaxAgeMs,
+    private val maxFreshAgeMs: (previousGapMs: Long, gapMs: Long) -> Long = ::freshFenceMaxAgeMs,
     private val giveUpMs: Long = FRESH_FENCE_GIVE_UP_MS,
 ) {
     private var fence: F? = null
     private var armedAt = 0L
     private val startedAt = now()
-    private var lastPollAt = startedAt
+    private var lastPollAt = NO_POLL
+    private var previousGap = NO_POLL
 
     /**
      * `true` while the backend has not recently caught up with what is queued on it. Never waits.
@@ -85,11 +102,13 @@ internal class FreshFenceProbe<F : Any>(
      */
     fun isBusy(): Boolean {
         val at = now()
-        val gap = at - lastPollAt
+        val gap = if (lastPollAt == NO_POLL) NO_POLL else at - lastPollAt
+        val maxAge = maxFreshAgeMs(previousGap, gap)
+        previousGap = gap
         lastPollAt = at
         val current = fence ?: arm(at) ?: return false
         if (!isReached(current)) return true
-        if (at - armedAt <= maxFreshAgeMs(gap) || at - startedAt >= giveUpMs) return false
+        if (at - armedAt <= maxAge || at - startedAt >= giveUpMs) return false
         // Reached, but found so long after it was queued that the backend may have taken on
         // more since: that is still ahead of the release. Measure again from here.
         release()
@@ -105,5 +124,9 @@ internal class FreshFenceProbe<F : Any>(
     private fun arm(at: Long): F? = createFence()?.also {
         fence = it
         armedAt = at
+    }
+
+    private companion object {
+        const val NO_POLL = -1L
     }
 }
