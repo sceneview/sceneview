@@ -230,17 +230,31 @@ class GltfLimitsTest {
         )
         // cgltf decodes the declared bytes only: what comes after them is never read.
         assertEquals(emptyList<String>(), GltfLimits.violations(gltf("data:application/octet-stream;base64,AAAAAA!!"), MAX))
+        // cgltf never unescapes a JSON string: a backslash it reads is not base64, whatever it escapes.
         assertEquals(
-            "an escape that stands for a base64 character is one",
-            emptyList<String>(),
+            listOf("buffer 0 is a data: URI that is not valid base64 at character 0"),
             GltfLimits.violations(gltf("data:application\\/octet-stream;base64,\\u0041AAAAA\\/=="), MAX),
+        )
+        val accessor = text(
+            """{"accessors":[{"bufferView":0,"componentType":5121,"type":"SCALAR","count":4}],""" +
+                """"bufferViews":[{"buffer":0,"byteLength":4}],"buffers":[{"uri":"data:application/octet-stream;base64,AA\\/AAA==","byteLength":4}]}""",
+        )
+        assertEquals(
+            listOf("buffer 0 is a data: URI that is not valid base64 at character 2"),
+            GltfLimits.violations(accessor, MAX),
+        )
+        assertEquals(
+            "an escape past the declared bytes is never read",
+            emptyList<String>(),
+            GltfLimits.violations(gltf("data:application\\/octet-stream;base64,AAAAAA\\/="), MAX),
         )
     }
 
     @Test
     fun `a GLB whose BIN chunk is missing or shorter than buffer 0 is refused`() {
-        val json = """{"buffers":[{"byteLength":16}]}"""
-        val fallback = """{"buffers":[{"byteLength":16,"extensions":{"EXT_meshopt_compression":{"fallback":true}}}]}"""
+        val json = """{"bufferViews":[{"buffer":0,"byteLength":16}],"buffers":[{"byteLength":16}]}"""
+        val fallback = """{"bufferViews":[{"buffer":0,"byteLength":16}],""" +
+            """"buffers":[{"byteLength":16,"extensions":{"EXT_meshopt_compression":{"fallback":true}}}]}"""
 
         assertEquals(emptyList<String>(), GltfLimits.violations(glb(json, ByteArray(16)), MAX))
         assertEquals(
@@ -252,6 +266,58 @@ class GltfLimitsTest {
             GltfLimits.violations(glb(json, null), MAX),
         )
         assertEquals("a meshopt fallback is never read", emptyList<String>(), GltfLimits.violations(glb(fallback, null), MAX))
+        assertEquals(
+            "a buffer no view reads",
+            emptyList<String>(),
+            GltfLimits.violations(glb("""{"buffers":[{"byteLength":16}]}""", null), MAX),
+        )
+    }
+
+    @Test
+    fun `a buffer a view reads that cgltf leaves without data is refused`() {
+        val position = """{"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":1}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":12}],"buffers":[{"byteLength":12}],""" +
+            """"meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}]}"""
+        assertEquals(
+            "a .gltf has no BIN chunk",
+            listOf("buffer 0 has no uri and is not the BIN chunk of a GLB: cgltf leaves it without data"),
+            GltfLimits.violations(text(position), MAX),
+        )
+
+        val second = """{"accessors":[{"bufferView":1,"componentType":5126,"type":"VEC3","count":1}],""" +
+            """"bufferViews":[{"buffer":0,"byteLength":12},{"buffer":1,"byteLength":12}],""" +
+            """"buffers":[{"byteLength":12},{"byteLength":12}]}"""
+        assertEquals(
+            "only buffer 0 of a GLB is its BIN chunk",
+            listOf("buffer 1 has no uri and is not the BIN chunk of a GLB: cgltf leaves it without data"),
+            GltfLimits.violations(glb(second, ByteArray(12)), MAX),
+        )
+
+        val empty = """{"bufferViews":[{"buffer":0,"byteLength":12}],"buffers":[{"uri":"","byteLength":12}]}"""
+        assertEquals(
+            "an empty uri is a file name to cgltf, not the BIN chunk",
+            listOf("buffer 0 has an empty uri, which names no resource"),
+            GltfLimits.violations(glb(empty, ByteArray(12)), MAX),
+        )
+        assertEquals(
+            listOf("buffer 0 has an absolute URI, which cgltf does not load"),
+            GltfLimits.violations(text("""{"buffers":[{"uri":"https://example.com/scene.bin","byteLength":12}]}"""), MAX),
+        )
+
+        val meshopt = """{"bufferViews":[{"buffer":1,"byteLength":12,"extensions":{"EXT_meshopt_compression":""" +
+            """{"buffer":0,"byteLength":12,"byteStride":12,"count":1,"mode":"ATTRIBUTES"}}}],""" +
+            """"buffers":[{"uri":"scene.bin","byteLength":12},{"byteLength":12,"extensions":{"EXT_meshopt_compression":{"fallback":true}}}]}"""
+        assertEquals("a meshopt fallback is never read", emptyList<String>(), GltfLimits.violations(text(meshopt), MAX))
+        assertEquals(
+            "a buffer no view reads",
+            emptyList<String>(),
+            GltfLimits.violations(text("""{"buffers":[{"byteLength":12}]}"""), MAX),
+        )
+        assertEquals(
+            "a uri that is not a string fails cgltf's parse, which gltfio reports",
+            emptyList<String>(),
+            GltfLimits.violations(text("""{"bufferViews":[{"buffer":0,"byteLength":12}],"buffers":[{"uri":null,"byteLength":12}]}"""), MAX),
+        )
     }
 
     @Test
@@ -404,7 +470,7 @@ class GltfLimitsTest {
         val gltf = text(
             """{"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":4},""" +
                 """{"bufferView":0,"byteOffset":12,"componentType":5126,"type":"VEC3","count":2}],""" +
-                """"bufferViews":[{"buffer":0,"byteLength":36}],"buffers":[{"byteLength":36}]}""",
+                """"bufferViews":[{"buffer":0,"byteLength":36}],"buffers":[{"uri":"scene.bin","byteLength":36}]}""",
         )
 
         assertEquals(listOf("accessor 0 reaches byte 48 of a 36-byte buffer view"), GltfLimits.violations(gltf, MAX))
@@ -412,7 +478,7 @@ class GltfLimitsTest {
 
     @Test
     fun `a strided accessor is measured with its stride`() {
-        val interleaved = """"bufferViews":[{"buffer":0,"byteLength":%d,"byteStride":24}],"buffers":[{"byteLength":100}]"""
+        val interleaved = """"bufferViews":[{"buffer":0,"byteLength":%d,"byteStride":24}],"buffers":[{"uri":"scene.bin","byteLength":100}]"""
         fun gltf(viewLength: Int) = text(
             """{"accessors":[{"bufferView":0,"byteOffset":12,"componentType":5126,"type":"VEC3","count":3}],""" +
                 interleaved.format(viewLength) + "}",
@@ -426,7 +492,7 @@ class GltfLimitsTest {
     fun `a count that overflows is refused rather than wrapped`() {
         val gltf = text(
             """{"accessors":[{"bufferView":0,"componentType":5126,"type":"MAT4","count":2147483647,""" +
-                """"byteOffset":9223372036854775807}],"bufferViews":[{"buffer":0,"byteLength":64}],"buffers":[{"byteLength":64}]}""",
+                """"byteOffset":9223372036854775807}],"bufferViews":[{"buffer":0,"byteLength":64}],"buffers":[{"uri":"scene.bin","byteLength":64}]}""",
         )
 
         assertEquals(listOf("accessor 0 reaches byte ∞ of a 64-byte buffer view"), GltfLimits.violations(gltf, MAX))
@@ -500,7 +566,7 @@ class GltfLimitsTest {
         fun gltf(indices: String, stride: Int = 0) = text(
             """{"accessors":[{"componentType":5126,"type":"VEC3","count":3},$indices],""" +
                 """"bufferViews":[{"buffer":0,"byteLength":12${if (stride > 0) ""","byteStride":$stride""" else ""}}],""" +
-                """"buffers":[{"byteLength":12}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}""",
+                """"buffers":[{"uri":"scene.bin","byteLength":12}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]}""",
         )
         val refused = listOf("the indices of primitive 0 of mesh 0 are not tightly packed unsigned integers")
 

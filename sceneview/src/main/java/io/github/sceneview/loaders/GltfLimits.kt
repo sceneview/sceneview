@@ -46,11 +46,15 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  *   buffer. Every accessor is checked, used or not, as `cgltf_validate` does: a file with one that
  *   reaches past its data is invalid glTF. Sparse indices are also checked against the accessor's
  *   count when their bytes are at hand, since cgltf writes each value at its index.
- * - **A buffer `cgltf_load_buffers` cannot load**: a `.glb` whose BIN chunk is missing (a meshopt
- *   fallback aside) or shorter than the `byteLength` of buffer 0, and a `data:` buffer that is not
- *   base64 or holds a character base64 does not have within the bytes it declares. gltfio ignores
- *   the error that returns (`ResourceLoader.cpp`): that buffer, and those after it, keep no data,
- *   and the vertex upload reads from a null pointer.
+ * - **A buffer `cgltf_load_buffers` cannot load**: a `.glb` whose BIN chunk is shorter than the
+ *   `byteLength` of buffer 0, a `data:` buffer that is not base64 or holds a character base64 does
+ *   not have within the bytes it declares — a JSON escape included, since cgltf never unescapes a
+ *   string —, and a buffer with an absolute (`://`) URI. gltfio ignores the error that returns
+ *   (`ResourceLoader.cpp`): that buffer, and those after it, keep no data, and the vertex upload
+ *   reads from a null pointer.
+ * - **A buffer a buffer view reads that cgltf leaves without data**: one with no `uri`, other than
+ *   buffer 0 of a `.glb` that has a BIN chunk (a meshopt fallback, never read, aside), and one whose
+ *   `uri` is empty.
  * - **A primitive whose attributes or morph targets disagree on their vertex count, and an index
  *   accessor that is not a scalar of unsigned bytes, shorts or ints, tightly packed.** gltfio sizes
  *   the vertex and morph target buffers from the first attribute and uploads every other one at its
@@ -74,7 +78,7 @@ internal class GltfLimitException(val violations: List<String>) : IllegalArgumen
  * - indices and sparse indices stored in a `data:` buffer, and the images such a buffer holds;
  * - the bytes of a buffer view compressed with `EXT_meshopt_compression` or
  *   `KHR_meshopt_compression` (its range is a fallback, often empty);
- * - a buffer with no `uri` other than buffer 0 of a `.glb`, which cgltf leaves without data too;
+ * - an external buffer whose resource is not at hand yet: [ModelLoader] resolves it before the load;
  * - iridescence and anisotropy textures: gltfio 1.72.1 binds neither, so it never decodes them;
  * - WebP image sizes, and anything that fails while a texture is decoded rather than built.
  *
@@ -189,12 +193,21 @@ internal object GltfLimits {
          * declares when its bytes are at hand, and each buffer view against its buffer.
          */
         fun checkBuffers(violations: MutableList<String>) {
+            val viewed = mutableSetOf<Int>()
+            bufferViews.forEachObject { _, view -> viewed += view.optInt("buffer", -1) }
             buffers.forEachObject { index, buffer ->
                 val declared = buffer.optLong("byteLength", 0)
-                val uri = buffer.optString("uri")
+                // As cgltf reads it: no `uri` is NULL, `""` is a file name; a `uri` that is not a
+                // string fails cgltf's parse, which gltfio reports.
+                val uri = if (buffer.has("uri")) buffer.opt("uri") as? String ?: return@forEachObject else null
                 when {
-                    uri.isEmpty() -> checkUnnamedBuffer(index, buffer, declared, violations)
+                    uri == null -> checkUnnamedBuffer(index, buffer, declared, index in viewed, violations)
                     uri.startsWith("data:") -> checkDataBuffer(index, uri, declared, violations)
+                    // cgltf loads no buffer at all past one it refuses, and it refuses these.
+                    "://" in uri -> violations += "buffer $index has an absolute URI, which cgltf does not load"
+                    uri.isEmpty() -> if (index in viewed && declared > 0) {
+                        violations += "buffer $index has an empty uri, which names no resource"
+                    }
                     else -> {
                         val length = resource(uri)?.remaining()?.toLong() ?: return@forEachObject
                         if (length < declared) {
@@ -218,21 +231,28 @@ internal object GltfLimits {
         }
 
         /**
-         * Buffer 0 of a `.glb` with no `uri`, its BIN chunk: cgltf requires the chunk to hold all of
-         * it — shorter, and it loads no buffer at all —, and without one leaves the buffer without
-         * data, which only a meshopt fallback, never read, may be.
+         * A buffer with no `uri`. Only buffer 0 of a `.glb` with a BIN chunk has data: cgltf requires
+         * the chunk to hold all of it — shorter, and it loads no buffer at all. Any other is left
+         * without data, which a buffer view must not read; only a meshopt fallback, never read, may.
          */
-        private fun checkUnnamedBuffer(index: Int, buffer: JSONObject, declared: Long, violations: MutableList<String>) {
+        private fun checkUnnamedBuffer(
+            index: Int,
+            buffer: JSONObject,
+            declared: Long,
+            viewed: Boolean,
+            violations: MutableList<String>,
+        ) {
             val isGlb = glb != null && glb.remaining() >= Int.SIZE_BYTES && glb.getInt(glb.position()) == GLB_MAGIC
-            if (index != 0 || !isGlb) return
             val binLength = bin?.second?.toLong()
             when {
-                binLength != null -> if (binLength < declared) {
+                index == 0 && isGlb && binLength != null -> if (binLength < declared) {
                     violations += "the BIN chunk of this GLB is $binLength bytes, shorter than the $declared " +
                         "buffer 0 declares"
                 }
-                declared > 0 && !buffer.isMeshoptFallback() ->
-                    violations += "this GLB has no BIN chunk for the $declared bytes of buffer 0"
+                !viewed || declared <= 0 || buffer.isMeshoptFallback() -> Unit
+                index == 0 && isGlb -> violations += "this GLB has no BIN chunk for the $declared bytes of buffer 0"
+                else -> violations += "buffer $index has no uri and is not the BIN chunk of a GLB: cgltf leaves it " +
+                    "without data"
             }
         }
 
@@ -628,8 +648,10 @@ internal object GltfLimits {
      * Java heap, only for the checks to read a header out of it. The decoded length of each base64
      * payload is kept in its header, with where its first character outside the base64 alphabet is
      * (`-1` for none), as `;invalid-at=I;decoded-length=N;base64,`, for [dataUriLength] and
-     * [dataUriInvalidAt]. A JSON escape in the payload counts as one character; `\/` is unescaped,
-     * other escapes are kept. A byte order mark before the JSON is dropped.
+     * [dataUriInvalidAt]. The payload is counted as cgltf reads it, raw: cgltf never unescapes a
+     * JSON string, so a backslash is a character its base64 decoder refuses. In the kept head, `\/`
+     * is unescaped, for the image headers read from it, and other escapes are kept whole. A byte
+     * order mark before the JSON is dropped.
      */
     internal fun reducedJson(bytes: ByteBuffer, from: Int, length: Int): String {
         val end = from + length
@@ -707,28 +729,23 @@ internal object GltfLimits {
             }
             val keep = chars < DATA_URI_HEAD_CHARS
             val escaped = if (c == BACKSLASH && i < end) bytes.get(i++) else null
-            when (escaped) {
-                null -> {
-                    if (keep) head.add(c)
-                    count(c, isBase64Char(c.toInt()))
-                }
-                SLASH -> {
-                    if (keep) head.add(SLASH)
-                    count(SLASH, true)
-                }
-                else -> {
-                    // Kept as is; `\uXXXX` is base64 when it stands for one of its characters.
-                    if (keep) {
-                        head.add(BACKSLASH)
-                        head.add(escaped)
-                    }
-                    var code = -1
-                    if (escaped == LETTER_U && end - i >= 4) {
-                        code = 0
-                        repeat(4) { code = hexDigit(bytes.get(i + it)).let { d -> if (code < 0 || d < 0) -1 else code * 16 + d } }
-                    }
-                    repeat(if (escaped == LETTER_U) minOf(4, end - i) else 0) { bytes.get(i++).let { if (keep) head.add(it) } }
-                    count(escaped, isBase64Char(code))
+            if (escaped == null) {
+                if (keep) head.add(c)
+                count(c, isBase64Char(c.toInt()))
+                continue
+            }
+            // cgltf never unescapes a JSON string: it decodes the backslash itself, which base64
+            // does not have. The head keeps `\/` unescaped for the image headers read from it.
+            if (keep) {
+                if (escaped != SLASH) head.add(BACKSLASH)
+                head.add(escaped)
+            }
+            count(BACKSLASH, false)
+            count(escaped, isBase64Char(escaped.toInt()))
+            repeat(if (escaped == LETTER_U) minOf(4, end - i) else 0) {
+                bytes.get(i++).let {
+                    if (keep) head.add(it)
+                    count(it, isBase64Char(it.toInt()))
                 }
             }
         }
@@ -753,13 +770,6 @@ internal object GltfLimits {
     private fun isBase64Char(code: Int) =
         code in 'A'.code..'Z'.code || code in 'a'.code..'z'.code || code in '0'.code..'9'.code ||
             code == '+'.code || code == '/'.code
-
-    private fun hexDigit(byte: Byte): Int = when (val c = byte.toInt()) {
-        in '0'.code..'9'.code -> c - '0'.code
-        in 'a'.code..'f'.code -> c - 'a'.code + 10
-        in 'A'.code..'F'.code -> c - 'A'.code + 10
-        else -> -1
-    }
 
     /** A growable byte array: [reducedJson]'s output, without the copies of a stream. */
     private class Bytes(capacity: Int) {
