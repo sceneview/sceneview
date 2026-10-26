@@ -6143,7 +6143,15 @@ fun MultiModelScene() {
 ### Render a model thumbnail to a Bitmap (no visible view)
 
 ```kotlin
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import io.github.sceneview.snapshot.ModelSnapshotOptions
+import io.github.sceneview.snapshot.rememberModelSnapshot
+import io.github.sceneview.snapshot.rememberModelThumbnail
+
 // A library grid: every cell asks at once, the snapshot renders them one after the other.
+val paths = listOf("models/helmet.glb", "models/chair.glb", "models/lamp.glb")
 val engine = rememberEngine()
 val snapshot = rememberModelSnapshot(engine)          // one per screen: one queue, one cache
 LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
@@ -6155,11 +6163,13 @@ LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
 }
 
 // Outside Compose: suspend, from any coroutine.
-val bitmap: Bitmap? = snapshot.snapshot("models/helmet.glb", width = 512)
-val behind = snapshot.snapshot(
-    "models/helmet.glb", width = 512,
-    options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
-)
+LaunchedEffect(snapshot) {
+    val bitmap: Bitmap? = snapshot.snapshot("models/helmet.glb", width = 512)
+    val behind: Bitmap? = snapshot.snapshot(
+        "models/helmet.glb", width = 512,
+        options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
+    )
+}
 ```
 
 - **Framing is automatic**: the model's bounding box is fitted whole into the picture, `padding` (default 8 %) of the frame on each side, seen from `yawDegrees`/`pitchDegrees` (default 30°/20°: three-quarter, slightly from above) through a `focalLength` lens (default 40 mm). Nothing to measure.
