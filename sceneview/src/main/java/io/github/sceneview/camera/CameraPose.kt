@@ -103,7 +103,12 @@ data class CameraPose(
  * [poseAt] must be a pure function of its argument: the same time always gives the same pose,
  * whatever was asked before. That is what lets a player scrub, a renderer step frame by frame at
  * a fixed rate, and two runs produce the same images.
+ *
+ * Using a timeline is stable; implementing one is experimental and requires opting in to
+ * [ExperimentalSceneViewApi], because [poseAt] returns the experimental [CameraPose] and its
+ * shape may still change.
  */
+@SubclassOptInRequired(ExperimentalSceneViewApi::class)
 interface CameraTimeline {
 
     /** Length of the timeline, in seconds. `0` for an empty or single-pose timeline. */
@@ -118,7 +123,7 @@ interface CameraTimeline {
      * Times before `0` hold the first pose and times after [durationSeconds] hold the last one,
      * unless [loop] is set, in which case they wrap.
      *
-     * Experimental, like [CameraPose]: the rest of the interface is stable.
+     * Experimental, like [CameraPose]: [durationSeconds] and [loop] are stable.
      */
     @ExperimentalSceneViewApi
     fun poseAt(seconds: Float): CameraPose

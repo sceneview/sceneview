@@ -63,9 +63,13 @@ class CameraPathPlayer(
     private var durationState by mutableFloatStateOf(timeline.durationSeconds)
 
     /**
-     * The move being played. Replacing it keeps the playhead; [pose] clamps it to the new
-     * duration, and the next [advance] or [seekTo] brings it back within range. [loop] follows
-     * the new timeline's [CameraTimeline.loop].
+     * The move being played. Replacing it keeps the playhead time and brings it into the new
+     * duration at once, wrapped when [loop] is set and clamped otherwise: a looping player at
+     * 15 s that switches from a 20 s to a 10 s timeline goes on from 5 s, and [seconds],
+     * [progress] and [pose] agree from the next read.
+     *
+     * [loop] changes only when the new timeline's [CameraTimeline.loop] differs from the old
+     * one's, so a `loop` chosen on the player survives a rebuilt timeline of the same kind.
      *
      * Not snapshot state itself: assigning an equivalent timeline (a new object with the same
      * duration and loop) invalidates nothing, so a composition that rebuilds its timeline cannot
@@ -74,9 +78,11 @@ class CameraPathPlayer(
     var timeline: CameraTimeline = timeline
         set(value) {
             if (value === field) return
+            val loopChanged = value.loop != field.loop
             field = value
             durationState = value.durationSeconds
-            loop = value.loop
+            if (loopChanged) loop = value.loop
+            setPlayhead(normalized(elapsed))
         }
 
     /** Whether the playhead wraps to the start at the end, instead of stopping there. */
@@ -119,7 +125,10 @@ class CameraPathPlayer(
     val isFinished: Boolean
         get() = !loop && if (speed < 0f) seconds <= 0f else seconds >= durationSeconds
 
-    /** The pose at the playhead: `timeline.poseAt(seconds)`. */
+    /**
+     * The pose at the playhead: `timeline.poseAt(seconds)`. The playhead is always within
+     * `[0, durationSeconds]`, so the timeline's own clamping or wrapping never comes into play.
+     */
     val pose: CameraPose get() = timeline.poseAt(seconds)
 
     private var lastFrameNanos: Long = NO_FRAME
@@ -210,12 +219,12 @@ class CameraPathPlayer(
         elapsed = value
         seconds = value.toFloat()
     }
-
-    private companion object {
-        const val NO_FRAME = Long.MIN_VALUE
-        const val NANOS_PER_SECOND = 1_000_000_000.0
-    }
 }
+
+/** [CameraPathPlayer]'s marker for "no frame timestamp recorded yet". */
+private const val NO_FRAME = Long.MIN_VALUE
+
+private const val NANOS_PER_SECOND = 1_000_000_000.0
 
 /**
  * Remembers a [CameraPathPlayer] for [timeline].

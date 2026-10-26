@@ -959,8 +959,6 @@ public final class io/github/sceneview/camera/CameraPathInterpolation : java/lan
 
 public final class io/github/sceneview/camera/CameraPathPlayer {
 	public static final field $stable I
-	public static final field NANOS_PER_SECOND D
-	public static final field NO_FRAME J
 	public fun <init> (Lio/github/sceneview/camera/CameraTimeline;Z)V
 	public synthetic fun <init> (Lio/github/sceneview/camera/CameraTimeline;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun advance (F)Lio/github/sceneview/camera/CameraPose;

@@ -26,6 +26,7 @@ data class CameraKeyframe(val shot: CameraShot, val seconds: Float)
  * Ready-made paths: [reveal], the entrance shot of a scan or a model, and [tour], a slow lap for
  * a video or a share. Feed either to [CameraAnimator], or sample [shotAt] yourself.
  */
+@OptIn(ExperimentalSceneViewApi::class)
 class CameraPath(
     keyframes: List<CameraKeyframe>,
     val easing: (Float) -> Float = CameraEasing.Expressive,

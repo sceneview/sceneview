@@ -43,11 +43,13 @@ enum class CameraPathInterpolation {
      * A Catmull-Rom spline through the keyframes, with tangents scaled by the keyframe times: the
      * position and its velocity are continuous across every keyframe when segments are not eased.
      *
-     * Tangents are capped so the camera does not overshoot a pause: next to a keyframe that repeats
-     * its neighbour's position the camera comes to rest instead of running past and coming back.
-     * A sharp turn at a keyframe still rounds off slightly past it, as with any Catmull-Rom spline;
-     * use [Linear] for exact corners. Two keyframes at the same time are a cut: the spline restarts
-     * on the far side.
+     * Tangents are capped so the camera does not overshoot a pause or a turn back: next to a
+     * keyframe that repeats its neighbour's position, and at a keyframe where the direction turns
+     * by 90° or more (a there-and-back on a line, a hairpin, a right-angle corner), the camera
+     * comes to rest on the keyframe instead of running past it and coming back. A turn of less
+     * than 90° keeps its speed and rounds off slightly past the keyframe, as with any Catmull-Rom
+     * spline; use [Linear] for exact corners without stopping. Two keyframes at the same time are a
+     * cut: the spline restarts on the far side.
      */
     CatmullRom,
 }
@@ -98,6 +100,7 @@ enum class CameraPathInterpolation {
  * @property lookAt When set, the camera faces this point at every instant and keyframe rotations
  * are ignored.
  * @property up World up used with [lookAt]. Defaults to `+Y`.
+ * @throws IllegalArgumentException when a keyframe position is not finite.
  */
 @ExperimentalSceneViewApi
 class CameraPosePath(
@@ -109,6 +112,10 @@ class CameraPosePath(
     val up: Direction = CameraPose.WORLD_UP,
     override val loop: Boolean = false,
 ) : CameraTimeline {
+
+    init {
+        require(keyframes.all { isFinite(it.pose.position) }) { "keyframe positions must be finite" }
+    }
 
     /** The keyframes in time order. */
     val keyframes: List<CameraPoseKeyframe> =
@@ -231,6 +238,10 @@ class CameraPosePath(
      * line the camera never leaves the segment between two keyframes. Evenly spaced keyframes on a
      * smooth curve, such as an [orbit], are below the cap and keep plain Catmull-Rom tangents.
      *
+     * Where the direction turns by 90° or more (`dot(in, out) ≤ 0`, a there-and-back included),
+     * the tangent is zero: no length cap keeps a reversal from running past its keyframe, a zero
+     * tangent does, and the camera comes to rest there.
+     *
      * A cut (two keyframes at the same time) splits the spline: each side takes the one-sided
      * tangent of its own segment, as at the end of a path.
      */
@@ -256,6 +267,7 @@ class CameraPosePath(
         val outSpan = spanOf(next.first, next.second)
         val inVelocity = velocityOf(previous)
         val outVelocity = velocityOf(next)
+        if (dot(inVelocity, outVelocity) <= 0f) return Float3()
         val central = (inVelocity * inSpan + outVelocity * outSpan) / (inSpan + outSpan)
         val limit = MAX_TANGENT_RATIO * minOf(length(inVelocity), length(outVelocity))
         val size = length(central)

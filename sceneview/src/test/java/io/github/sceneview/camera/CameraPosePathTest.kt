@@ -184,6 +184,45 @@ class CameraPosePathTest {
     }
 
     @Test
+    fun aThereAndBackIsNotOvershot() {
+        // Out and partly back along one line. The length cap alone still ran past the turning
+        // keyframe (0 -> 10 -> 5 reached x = 10.11, 0 -> 10 -> 9 reached 10.32); a reversal now
+        // gets a zero tangent and the camera stops on x = 10.
+        for (back in floatArrayOf(5f, 9f, 0f)) {
+            val path = straightPath(0f to 0f, 10f to 1f, back to 2f)
+            assertStaysWithinNeighbouringKeyframes(path)
+            val peak = (0..2000).maxOf { path.poseAt(it * 0.001f).position.x }
+            assertEquals("0 -> 10 -> $back", 10f, peak, 1e-5f)
+        }
+    }
+
+    @Test
+    fun aTurnOfLessThanNinetyDegreesKeepsItsSpeed() {
+        // 26.6° turn at t = 1: the camera flows through the keyframe instead of stopping on it.
+        val path = CameraPosePath(
+            listOf(Position(0f, 0f, 0f) to 0f, Position(10f, 0f, 0f) to 1f, Position(20f, 5f, 0f) to 2f)
+                .map { (p, t) -> CameraPoseKeyframe(CameraPose(p), t) },
+        )
+        val h = 1e-3f
+        val speed = length(path.poseAt(1f + h).position - path.poseAt(1f - h).position) / (2 * h)
+        assertTrue("speed at the keyframe was $speed", speed > 5f)
+    }
+
+    @Test
+    fun aNonFiniteKeyframePositionIsRejected() {
+        for (bad in floatArrayOf(Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                CameraPosePath(
+                    listOf(
+                        CameraPoseKeyframe(CameraPose(Position()), 0f),
+                        CameraPoseKeyframe(CameraPose(Position(bad, 0f, 0f)), 1f),
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun aCutSplitsTheSpline() {
         // Two keyframes at t = 1: the camera jumps from x = 10 to x = 100. Each side moves on its
         // own; before the fix the tangent across the cut (90 units in 0 s, read over 2 s) threw the

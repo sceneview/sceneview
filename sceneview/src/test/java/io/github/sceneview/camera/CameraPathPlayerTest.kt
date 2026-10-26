@@ -157,6 +157,51 @@ class CameraPathPlayerTest {
     }
 
     @Test
+    fun aLoopChosenOnThePlayerSurvivesARebuiltTimeline() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        fun orbit() = CameraPosePath.orbit(box, 45.0, 1.0)
+
+        // Turned off in the constructor, then the demo rebuilds the same orbit (bounds or aspect
+        // changed): the player keeps its own choice.
+        val fromConstructor = CameraPathPlayer(orbit(), loop = false)
+        fromConstructor.timeline = orbit()
+        assertFalse(fromConstructor.loop)
+
+        // Turned off on the player afterwards: same.
+        val fromSetter = CameraPathPlayer(orbit())
+        fromSetter.loop = false
+        fromSetter.timeline = orbit()
+        assertFalse(fromSetter.loop)
+
+        // A timeline that really changes the loop mode still sets it.
+        fromSetter.timeline = path
+        assertFalse(fromSetter.loop)
+        fromSetter.timeline = orbit()
+        assertTrue(fromSetter.loop)
+    }
+
+    @Test
+    fun aShorterTimelineBringsThePlayheadIntoRangeAtOnce() {
+        val box = Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f))
+        val long = CameraPosePath.orbit(box, 45.0, 1.0, durationSeconds = 20f)
+        val short = CameraPosePath.orbit(box, 45.0, 1.0, durationSeconds = 10f)
+
+        // Looping: 15 s into a 20 s orbit, switched to a 10 s one, goes on from 5 s.
+        val looping = CameraPathPlayer(long).apply { seekTo(15f) }
+        looping.timeline = short
+        assertEquals(5f, looping.seconds, 1e-4f)
+        assertEquals(0.5f, looping.progress, 1e-4f)
+        assertTrue(length(short.poseAt(5f).position - looping.pose.position) < 1e-3f)
+
+        // Not looping: clamped to the new end, and finished there.
+        val once = CameraPathPlayer(long, loop = false).apply { seekTo(15f) }
+        once.timeline = short
+        assertFalse(once.loop)
+        assertEquals(10f, once.seconds, 0f)
+        assertTrue(once.isFinished)
+    }
+
+    @Test
     fun anEquivalentNewTimelineInvalidatesNothing() {
         fun build() = CameraPosePath.orbit(Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0)
         val player = CameraPathPlayer(build())
