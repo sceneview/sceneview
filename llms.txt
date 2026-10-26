@@ -4253,6 +4253,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?)` | `ModelSnapshot` | Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ImageBitmap?` | A GLB's thumbnail on a transparent background — `null` while it queues and renders |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -6138,6 +6140,35 @@ fun MultiModelScene() {
 }
 ```
 
+### Render a model thumbnail to a Bitmap (no visible view)
+
+```kotlin
+// A library grid: every cell asks at once, the snapshot renders them one after the other.
+val engine = rememberEngine()
+val snapshot = rememberModelSnapshot(engine)          // one per screen: one queue, one cache
+LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
+    items(paths) { path ->
+        val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)
+        if (thumbnail != null) Image(thumbnail, contentDescription = null)
+        else CircularProgressIndicator()
+    }
+}
+
+// Outside Compose: suspend, from any coroutine.
+val bitmap: Bitmap? = snapshot.snapshot("models/helmet.glb", width = 512)
+val behind = snapshot.snapshot(
+    "models/helmet.glb", width = 512,
+    options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
+)
+```
+
+- **Framing is automatic**: the model's bounding box is fitted whole into the picture, `padding` (default 8 %) of the frame on each side, seen from `yawDegrees`/`pitchDegrees` (default 30°/20°: three-quarter, slightly from above) through a `focalLength` lens (default 40 mm). Nothing to measure.
+- **Transparent background**: an `ARGB_8888` bitmap, premultiplied alpha — composite it on any card.
+- **One at a time, never blocking a frame**: the snapshot is a queue on the main thread (Filament's JNI calls stay there) that suspends between frames, so twenty requests render in turn while the UI keeps drawing. The model is loaded, rendered and destroyed per call; the renderer, view, lights and environment are made once and reused.
+- **Cache**: results are kept in an LRU of `maxCacheBytes` (default 32 MB, `0` disables it); `cached(...)` reads it without rendering, `clearCache()` empties it. A cache hit costs nothing.
+- **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes; a render in flight finishes first.
+- Lighting is the SDK's default key + fill and a neutral IBL, so thumbnails match a default `SceneView`. Skinned models are drawn in their bind pose; the first animation frame is not applied.
+
 ### Interactive model with tap and gesture
 
 ```kotlin
@@ -6606,6 +6637,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `animation-physics` — Animation. Play character animations under cinematic camera shots.
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 

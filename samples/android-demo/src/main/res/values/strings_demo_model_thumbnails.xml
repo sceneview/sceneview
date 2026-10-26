@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `model-thumbnails` demo (registered by `ModelThumbnailsFragment.kt`). -->
+<resources>
+    <string name="demo_model_thumbnails_title">Model Thumbnails</string>
+    <string name="demo_model_thumbnails_subtitle">A model library drawn off screen, with no 3D view</string>
+    <string name="demo_model_thumbnails_intro">Every image below is a GLB rendered into a bitmap, one at a time, by the engine of this screen. There is no 3D view here: each model is framed whole, lit and drawn on a transparent background.</string>
+    <string name="demo_model_thumbnails_front">Three-quarter view</string>
+    <string name="demo_model_thumbnails_back">From behind</string>
+    <!-- %1$d = thumbnails done, %2$d = thumbnails asked for. -->
+    <string name="demo_model_thumbnails_progress">Rendering %1$d of %2$d…</string>
+    <!-- %1$d = thumbnails, %2$s = total time, %3$d = average per thumbnail in ms, %4$d = longest frame in ms. -->
+    <string name="demo_model_thumbnails_done">%1$d thumbnails in %2$s · %3$d ms each · longest frame %4$d ms</string>
+    <!-- %1$d = thumbnails that failed, %2$d = thumbnails asked for. -->
+    <string name="demo_model_thumbnails_failed">%1$d of %2$d thumbnails could not be rendered</string>
+</resources>

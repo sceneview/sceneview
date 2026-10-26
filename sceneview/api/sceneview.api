@@ -3750,6 +3750,58 @@ public final class io/github/sceneview/node/ViewNode$WindowManager {
 	public final fun resume (Landroid/view/View;)V
 }
 
+public final class io/github/sceneview/snapshot/ModelSnapshot {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshot$Companion;
+	public static final field DEFAULT_MAX_CACHE_BYTES I
+	public fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;I)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cached (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;)Landroid/graphics/Bitmap;
+	public static synthetic fun cached$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;ILjava/lang/Object;)Landroid/graphics/Bitmap;
+	public final fun clearCache ()V
+	public final fun destroy ()V
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getMaxCacheBytes ()I
+	public final fun snapshot (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun snapshot$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshot$Companion {
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotKt {
+	public static final fun rememberModelSnapshot (Lcom/google/android/filament/Engine;ILandroidx/compose/runtime/Composer;II)Lio/github/sceneview/snapshot/ModelSnapshot;
+	public static final fun rememberModelThumbnail-942rkJo (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;FLio/github/sceneview/snapshot/ModelSnapshotOptions;Landroidx/compose/runtime/Composer;II)Landroidx/compose/ui/graphics/ImageBitmap;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshotOptions$Companion;
+	public static final field DEFAULT_FOCAL_LENGTH F
+	public static final field DEFAULT_PADDING F
+	public static final field DEFAULT_PITCH_DEGREES F
+	public static final field DEFAULT_YAW_DEGREES F
+	public fun <init> ()V
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelSnapshotOptions;FFFFILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocalLength ()F
+	public final fun getPadding ()F
+	public final fun getPitchDegrees ()F
+	public final fun getYawDegrees ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions$Companion {
+}
+
 public final class io/github/sceneview/splat/SplatBuffers {
 	public static final field $stable I
 	public static final field HALF_EXTENT_SIGMA F
