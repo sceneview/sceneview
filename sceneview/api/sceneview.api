@@ -1120,7 +1120,7 @@ public final class io/github/sceneview/capture/SceneRecorder {
 }
 
 public final class io/github/sceneview/capture/SceneRecorderKt {
-	public static final fun rememberSceneRecorder (Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/capture/SceneRecorder;
+	public static final fun rememberSceneRecorder (Landroidx/lifecycle/Lifecycle;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/capture/SceneRecorder;
 }
 
 public final class io/github/sceneview/capture/SceneRecording {

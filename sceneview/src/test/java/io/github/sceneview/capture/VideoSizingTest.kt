@@ -3,6 +3,7 @@ package io.github.sceneview.capture
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -56,6 +57,22 @@ class VideoSizingTest {
     fun `an encoder without 1080p steps down to 720p`() {
         val size = chooseVideoSize(1080, 1920, 1920, 1080) { w, h -> maxOf(w, h) <= 1280 }
         assertEquals(VideoSize(720, 1280), size)
+    }
+
+    @Test
+    fun `a refused 4K box steps down to 1080p before 720p`() {
+        val size = chooseVideoSize(2160, 3840, 3840, 2160) { w, h -> maxOf(w, h) <= 1920 }
+        assertEquals(VideoSize(1080, 1920), size)
+    }
+
+    @Test
+    fun `step-downs never exceed a smaller requested short edge`() {
+        val tried = mutableListOf<VideoSize>()
+        chooseVideoSize(1920, 1080, 1920, 480) { w, h -> tried += VideoSize(w, h); false }
+
+        assertEquals(VideoSize(852, 480), tried.first())
+        assertTrue(tried.toString(), tried.all { minOf(it.width, it.height) <= 480 })
+        assertTrue(tried.toString(), tried.all { maxOf(it.width, it.height) <= 1920 })
     }
 
     @Test

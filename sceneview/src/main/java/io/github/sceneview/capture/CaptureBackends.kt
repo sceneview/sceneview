@@ -245,6 +245,8 @@ internal object ViewPixelSource : PixelSource {
     private suspend fun copySurface(view: SurfaceView): Bitmap? {
         if (view.width <= 0 || view.height <= 0 || !view.holder.surface.isValid) return null
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        // Cancelled callers: the bitmap is not recycled on cancellation, PixelCopy may still be
+        // writing into it — it is recycled when the copy lands and nobody is waiting for it.
         return suspendCancellableCoroutine { continuation ->
             try {
                 PixelCopy.request(
@@ -252,7 +254,7 @@ internal object ViewPixelSource : PixelSource {
                     bitmap,
                     { result ->
                         if (result == PixelCopy.SUCCESS) {
-                            continuation.resume(bitmap)
+                            continuation.resume(bitmap) { _, copy, _ -> copy.recycle() }
                         } else {
                             Log.w(TAG, "PixelCopy failed with $result")
                             bitmap.recycle()

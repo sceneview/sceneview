@@ -18,13 +18,14 @@
         Scoped to the feedback/ subdirectory only, never the whole cache.
     -->
     <cache-path name="feedback" path="feedback/" />
-    <external-files-path name="video-recordings" path="recordings/" />
 
     <!--
         Photos and videos of the scene (DemoScaffold's Take photo / Record video), written by
-        the SDK's SceneRecorder to getExternalFilesDir()/captures/.
+        the SDK's SceneRecorder to getExternalFilesDir()/captures/, or filesDir/captures/ on a
+        device without external files storage.
     -->
     <external-files-path name="captures" path="captures/" />
+    <files-path name="captures-internal" path="captures/" />
 
     <!--
         The Rerun demo's Share: the `.svscan` copy, the model and the exports, each written

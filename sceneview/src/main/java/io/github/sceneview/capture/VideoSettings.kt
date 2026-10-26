@@ -12,7 +12,8 @@ import android.media.MediaFormat
  * portrait video, a landscape tablet a landscape one, with no black bars. Because the recording is
  * a second render of the scene (see [io.github.sceneview.utils.SurfaceMirrorer]), not a copy of the
  * screen, a view smaller than the box is still recorded at the full box size. When the device's
- * H.264 encoder refuses that size the recorder steps down to 720p, then 540p, then 360p.
+ * H.264 encoder refuses that size the recorder steps down through 1080p, 720p, 540p and 360p,
+ * each clamped to the requested box.
  *
  * ```kotlin
  * recorder.startRecording(
@@ -52,8 +53,11 @@ data class VideoSettings(
 /** A video frame size, in pixels. */
 internal data class VideoSize(val width: Int, val height: Int)
 
-/** Smaller boxes tried, in order, when the encoder refuses the requested one. */
-private val FALLBACK_BOXES = listOf(1280 to 720, 960 to 540, 640 to 360)
+/**
+ * Standard boxes tried, in order, when the encoder refuses the requested one — each clamped to
+ * the requested box, so a step-down never grows either edge.
+ */
+private val FALLBACK_BOXES = listOf(1920 to 1080, 1280 to 720, 960 to 540, 640 to 360)
 
 /** H.264 4:2:0 needs even edges; some encoders only take multiples of 16. */
 private val ALIGNMENTS = intArrayOf(2, 16)
@@ -61,7 +65,8 @@ private val ALIGNMENTS = intArrayOf(2, 16)
 /**
  * The size to encode a [sourceWidth] × [sourceHeight] scene view at: its aspect ratio fitted in a
  * [maxLongEdge] × [maxShortEdge] box oriented like the view, edges aligned down to 2 (then 16),
- * the first size [isSupported] accepts, stepping down through 720p, 540p and 360p.
+ * the first size [isSupported] accepts, stepping down through 1080p, 720p, 540p and 360p (each
+ * clamped to the requested box).
  *
  * Integer arithmetic throughout: `2400 * 0.8` in floating point is not always 1920.
  *
@@ -75,7 +80,10 @@ internal fun chooseVideoSize(
     isSupported: (width: Int, height: Int) -> Boolean = { _, _ -> true },
 ): VideoSize? {
     if (sourceWidth <= 0 || sourceHeight <= 0) return null
-    val boxes = listOf(maxLongEdge to maxShortEdge) + FALLBACK_BOXES.filter { it.first < maxLongEdge }
+    val fallbacks = FALLBACK_BOXES.map { (long, short) ->
+        minOf(long, maxLongEdge) to minOf(short, maxShortEdge)
+    }
+    val boxes = (listOf(maxLongEdge to maxShortEdge) + fallbacks).distinct()
     for ((longEdge, shortEdge) in boxes) {
         for (alignment in ALIGNMENTS) {
             val size = fit(sourceWidth, sourceHeight, longEdge, shortEdge, alignment) ?: continue

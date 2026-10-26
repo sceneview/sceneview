@@ -19,6 +19,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.sceneview.utils.SurfaceMirrorer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -56,14 +59,22 @@ import java.util.Locale
  * is no MediaProjection consent dialog, no foreground service, and no system UI or Compose
  * overlay in the file. The [overlay] is drawn on every frame on Android 10 and newer.
  *
+ * ### When a recording ends
+ * A recording ends — its file finalised and [onRecordingFinished] called — on [stopRecording], at
+ * [VideoSettings.maxDurationMillis], on [release], and as soon as the scene feeding it goes away:
+ * the `SceneView` / `ARSceneView` leaves composition or stops using [surfaceMirrorer]. A recorder
+ * from [rememberSceneRecorder] also stops its recording when the screen goes to the background
+ * (`Lifecycle.Event.ON_STOP`): the scene stops rendering there, and an encoder fed no frames for
+ * that long produces a frozen or unplayable video.
+ *
  * ### State
- * [isRecording], [elapsedMillis], [lastRecording] and [lastError] are Compose state: read them in
- * composition and the UI follows. [onRecordingFinished] reports a recording that ends by itself at
- * [VideoSettings.maxDurationMillis] as well as one ended by [stopRecording].
+ * [isRecording], [elapsedMillis], [lastRecording], [lastError], [overlay] and
+ * [onRecordingFinished] are Compose state: read them in composition and the UI follows.
  *
  * ### Threading
- * Call [startRecording], [stopRecording], [takePhoto], [savePhoto] and [release] from the main
- * thread — the mirror's Filament swap chain is destroyed there.
+ * Call [startRecording], [stopRecording] and [release] from the main thread — the mirror's
+ * Filament swap chain is destroyed there. [takePhoto] and [savePhoto] are main-safe: call them from
+ * any coroutine.
  *
  * ### Files
  * Without an explicit file, captures go to the app's external files folder
@@ -98,16 +109,18 @@ class SceneRecorder internal constructor(
 
     /**
      * Drawn over every captured photo and video frame — a watermark hook. `null` (the default)
-     * captures the scene alone. Read when a photo is taken or a recording starts.
+     * captures the scene alone. Read when a photo is taken or a recording starts. Compose state.
      */
-    var overlay: CaptureOverlay? = null
+    var overlay: CaptureOverlay? by mutableStateOf(null)
 
     /**
      * Called on the main thread when a recording ends — by [stopRecording], by
-     * [VideoSettings.maxDurationMillis] or by [release] — with the finished recording, or `null`
-     * when the encoder could not produce a file (then [lastError] says why).
+     * [VideoSettings.maxDurationMillis], by [release], when the scene feeding it goes away, or
+     * when [rememberSceneRecorder]'s screen goes to the background — with the finished recording,
+     * or `null` when the encoder could not produce a file (then [lastError] says why). Compose
+     * state.
      */
-    var onRecordingFinished: ((SceneRecording?) -> Unit)? = null
+    var onRecordingFinished: ((SceneRecording?) -> Unit)? by mutableStateOf(null)
 
     /** Whether a video is being recorded. Compose state. */
     var isRecording: Boolean by mutableStateOf(false)
@@ -151,6 +164,19 @@ class SceneRecorder internal constructor(
 
     private val maxDurationStop = Runnable { finish(reachedMaxDuration = true) }
 
+    init {
+        // Once the scene is gone no frame reaches the encoder again: end the recording there,
+        // with what it has, rather than leave it running on a dead mirror. `finish` is a no-op
+        // when nothing is recording.
+        surfaceMirrorer.onHostLost = {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                finish(reachedMaxDuration = false)
+            } else {
+                handler.post { finish(reachedMaxDuration = false) }
+            }
+        }
+    }
+
     // ── Video ───────────────────────────────────────────────────────────────────────────────────
 
     /**
@@ -158,7 +184,9 @@ class SceneRecorder internal constructor(
      *
      * Returns `false` — and sets [lastError] — when no scene is using [surfaceMirrorer] yet, when
      * the encoder cannot be set up, or when a recording is already running (that one keeps going,
-     * and [lastError] is left alone).
+     * and [lastError] is left alone). When the microphone was asked for but cannot be opened —
+     * another app holding it, say — the video is recorded silent instead, and
+     * [SceneRecording.hasAudio] is `false`.
      *
      * @param file     The MP4 to write. A new timestamped file under `captures/` by default.
      * @param settings Size, frame rate, bit rate, microphone and maximum duration.
@@ -191,28 +219,17 @@ class SceneRecorder internal constructor(
             )
             return false
         }
-        val hasAudio = settings.recordAudio && appContext.checkSelfPermission(
+        val wantsAudio = settings.recordAudio && appContext.checkSelfPermission(
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
-
-        var session: VideoSession? = null
-        var compositor: OverlayCompositor? = null
-        try {
-            file.parentFile?.mkdirs()
-            val request = VideoSessionRequest(file, size, settings.frameRate, settings.bitRate, hasAudio)
-            session = sessionFactory.create(request)
-            compositor = overlay?.let { compositorFactory?.create(size, session.inputSurface, it) }
-            val mirroredSurface = compositor?.inputSurface ?: session.inputSurface
-            session.start()
-            surfaceMirrorer.startMirroring(mirroredSurface, width = size.width, height = size.height)
-            active = ActiveRecording(
-                file, size, session, compositor, mirroredSurface, now(), hasAudio
-            )
-        } catch (e: Exception) {
-            compositor?.release()
-            session?.let { runCatching { it.release() } }
-            file.delete()
-            lastError = e
+        var failure = start(file, size, settings, hasAudio = wantsAudio)
+        if (failure != null && wantsAudio) {
+            // The microphone may be held by another app (a call, a voice assistant): a silent
+            // video beats no video.
+            failure = start(file, size, settings, hasAudio = false)
+        }
+        if (failure != null) {
+            lastError = failure
             return false
         }
         isRecording = true
@@ -223,6 +240,40 @@ class SceneRecorder internal constructor(
             handler.postDelayed(maxDurationStop, settings.maxDurationMillis)
         }
         return true
+    }
+
+    /** Sets up and starts the encoder and the mirror; on failure releases both and says why. */
+    private fun start(
+        file: File,
+        size: VideoSize,
+        settings: VideoSettings,
+        hasAudio: Boolean,
+    ): Exception? {
+        var session: VideoSession? = null
+        var compositor: OverlayCompositor? = null
+        return try {
+            file.parentFile?.mkdirs()
+            val request =
+                VideoSessionRequest(file, size, settings.frameRate, settings.bitRate, hasAudio)
+            session = sessionFactory.create(request)
+            compositor = overlay?.let { compositorFactory?.create(size, session.inputSurface, it) }
+            val mirroredSurface = compositor?.inputSurface ?: session.inputSurface
+            session.start()
+            surfaceMirrorer.startMirroring(
+                mirroredSurface,
+                width = size.width,
+                height = size.height,
+            )
+            active = ActiveRecording(
+                file, size, session, compositor, mirroredSurface, now(), hasAudio
+            )
+            null
+        } catch (e: Exception) {
+            compositor?.release()
+            session?.let { runCatching { it.release() } }
+            file.delete()
+            e
+        }
     }
 
     /**
@@ -276,25 +327,26 @@ class SceneRecorder internal constructor(
     /**
      * A full-resolution photo of the scene view, with the [overlay] drawn on it.
      *
+     * Main-safe: the copy runs on the main thread whatever the caller's dispatcher.
+     *
      * @return the photo — yours to recycle — or `null` when no scene is using [surfaceMirrorer]
      * or its surface has nothing to copy yet.
      */
-    @MainThread
-    suspend fun takePhoto(): Bitmap? {
-        val view = surfaceMirrorer.host?.renderView ?: return null
-        val copy = pixelSource.copy(view) ?: return null
-        val overlay = overlay ?: return copy
+    suspend fun takePhoto(): Bitmap? = withContext(Dispatchers.Main.immediate) {
+        val view = surfaceMirrorer.host?.renderView ?: return@withContext null
+        val copy = pixelSource.copy(view) ?: return@withContext null
+        val overlay = overlay ?: return@withContext copy
         val photo = if (copy.isMutable && copy.config == Bitmap.Config.ARGB_8888) {
             copy
         } else {
             copy.copy(Bitmap.Config.ARGB_8888, true).also { copy.recycle() }
         }
         overlay.draw(Canvas(photo), photo.width, photo.height)
-        return photo
+        photo
     }
 
     /**
-     * Takes a photo (see [takePhoto]) and writes it to [file].
+     * Takes a photo (see [takePhoto]) and writes it to [file], off the main thread. Main-safe.
      *
      * @param file    The file to write. A new timestamped file under `captures/` by default.
      * @param format  JPEG (the default) or PNG.
@@ -302,7 +354,6 @@ class SceneRecorder internal constructor(
      * @return [file], or `null` when there was nothing to capture or the write failed (then
      * [lastError] says why).
      */
-    @MainThread
     @JvmOverloads
     suspend fun savePhoto(
         file: File? = null,
@@ -364,15 +415,36 @@ private const val CAPTURE_FOLDER = "captures"
 /**
  * Creates and remembers a [SceneRecorder], released when it leaves composition.
  *
+ * A recording still running when [lifecycle] reaches `ON_STOP` — the app goes to the background,
+ * the screen turns off, another activity covers this one — is stopped there: its file is
+ * finalised and [SceneRecorder.onRecordingFinished] is called, as with
+ * [SceneRecorder.stopRecording]. The scene stops rendering at that point, so recording on would only freeze the video.
+ *
  * ```kotlin
  * val recorder = rememberSceneRecorder()
  * ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer, ...)
  * ```
+ *
+ * @param lifecycle The lifecycle whose `ON_STOP` ends a running recording. The composition's own
+ *                  by default.
  */
 @Composable
-fun rememberSceneRecorder(): SceneRecorder {
+fun rememberSceneRecorder(
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+): SceneRecorder {
     val context = LocalContext.current.applicationContext
     val recorder = remember(context) { SceneRecorder(context) }
+    DisposableEffect(recorder, lifecycle) {
+        val observer = recorder.stopRecordingOnStop()
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     DisposableEffect(recorder) { onDispose { recorder.release() } }
     return recorder
 }
+
+/** Stops [this] recorder's recording, finalising its file, when the observed lifecycle stops. */
+internal fun SceneRecorder.stopRecordingOnStop(): LifecycleEventObserver =
+    LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_STOP) stopRecording()
+    }

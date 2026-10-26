@@ -9,6 +9,9 @@ import android.graphics.SurfaceTexture
 import android.os.Looper
 import android.view.Surface
 import android.view.View
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import io.github.sceneview.utils.SurfaceMirrorer
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -26,6 +29,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
  * Lifecycle contract of [SceneRecorder]: what reaches the encoder, what is mirrored and when,
@@ -214,6 +218,120 @@ class SceneRecorderTest {
     }
 
     @Test
+    fun `a busy microphone records the video silent rather than not at all`() {
+        bindView()
+        sessions.microphoneBusy = true
+        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO)
+        val recorder = recorder()
+        val file = File(app.cacheDir, "a.mp4")
+
+        assertTrue(recorder.startRecording(file, VideoSettings(recordAudio = true)))
+
+        val (withAudio, silent) = sessions.created
+        assertTrue(withAudio.request.recordAudio)
+        assertTrue(withAudio.released)
+        assertFalse(silent.request.recordAudio)
+        assertEquals(listOf(silent.inputSurface), mirrorer.mirroredSurfaces)
+        assertNull(recorder.lastError)
+        val recording = recorder.stopRecording()
+        assertEquals(file, recording!!.file)
+        assertFalse(recording.hasAudio)
+    }
+
+    // ── End of the scene, end of the screen ─────────────────────────────────────────────────────
+
+    @Test
+    fun `the recording ends with a scene that stops feeding it`() {
+        bindView()
+        val recorder = recorder()
+        val file = File(app.cacheDir, "a.mp4")
+        var finished: SceneRecording? = null
+        recorder.onRecordingFinished = { finished = it }
+        recorder.startRecording(file)
+        idleFor(1_000)
+
+        mirrorer.host = null
+
+        val session = sessions.created.single()
+        assertFalse(recorder.isRecording)
+        assertTrue(session.stopped)
+        assertTrue(session.released)
+        assertTrue(mirrorer.mirroredSurfaces.isEmpty())
+        assertEquals(file, finished!!.file)
+        assertEquals(1_000L, finished!!.durationMillis)
+        assertSame(finished, recorder.lastRecording)
+    }
+
+    @Test
+    fun `the recording ends with a disposed scene, its file finalised`() {
+        bindView()
+        val recorder = recorder()
+        var finished: SceneRecording? = null
+        recorder.onRecordingFinished = { finished = it }
+        recorder.startRecording(File(app.cacheDir, "a.mp4"))
+
+        mirrorer.destroy()
+
+        assertFalse(recorder.isRecording)
+        assertTrue(sessions.created.single().stopped)
+        assertNotNull(finished)
+        assertTrue(finished!!.file.exists())
+    }
+
+    @Test
+    fun `a scene lost off the main thread ends the recording on the main thread`() {
+        bindView()
+        val recorder = recorder()
+        var finishedOn: Thread? = null
+        recorder.onRecordingFinished = { finishedOn = Thread.currentThread() }
+        recorder.startRecording(File(app.cacheDir, "a.mp4"))
+
+        thread { mirrorer.host = null }.join()
+        assertTrue(recorder.isRecording)
+        idleFor(0)
+
+        assertFalse(recorder.isRecording)
+        assertSame(Looper.getMainLooper().thread, finishedOn)
+    }
+
+    @Test
+    fun `losing a scene while idle reports nothing`() {
+        bindView()
+        val recorder = recorder()
+        var calls = 0
+        recorder.onRecordingFinished = { calls++ }
+
+        mirrorer.host = null
+        mirrorer.destroy()
+
+        assertEquals(0, calls)
+        assertNull(recorder.lastError)
+    }
+
+    @Test
+    fun `the screen going to the background stops the recording and finalises its file`() {
+        bindView()
+        val recorder = recorder()
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this)
+            override val lifecycle: Lifecycle get() = registry
+        }
+        owner.registry.currentState = Lifecycle.State.RESUMED
+        owner.registry.addObserver(recorder.stopRecordingOnStop())
+        var finished: SceneRecording? = null
+        recorder.onRecordingFinished = { finished = it }
+        recorder.startRecording(File(app.cacheDir, "a.mp4"))
+
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        assertTrue(recorder.isRecording) // a dialog or multi-window pause keeps recording
+
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        assertFalse(recorder.isRecording)
+        assertTrue(sessions.created.single().stopped)
+        assertTrue(finished!!.file.exists())
+    }
+
+    @Test
     fun `an overlay routes the mirror through the compositor`() {
         bindView()
         val compositors = FakeCompositors()
@@ -331,14 +449,19 @@ class SceneRecorderTest {
 
     // ── Fakes ───────────────────────────────────────────────────────────────────────────────────
 
-    private class FakeSession(val request: VideoSessionRequest, private val stopResult: Boolean) :
-        VideoSession {
+    private class FakeSession(
+        val request: VideoSessionRequest,
+        private val stopResult: Boolean,
+        private val microphoneBusy: Boolean,
+    ) : VideoSession {
         override val inputSurface = Surface(SurfaceTexture(0))
         var started = false
         var stopped = false
         var released = false
 
         override fun start() {
+            // MediaRecorder.start() throws when another app holds the microphone.
+            if (request.recordAudio && microphoneBusy) throw IllegalStateException("start failed")
             started = true
             request.file.writeText("mp4")
         }
@@ -357,10 +480,11 @@ class SceneRecorderTest {
         val created = mutableListOf<FakeSession>()
         var stopResult = true
         var failOnCreate = false
+        var microphoneBusy = false
 
         override fun create(request: VideoSessionRequest): VideoSession {
             if (failOnCreate) throw IllegalStateException("prepare failed")
-            return FakeSession(request, stopResult).also { created += it }
+            return FakeSession(request, stopResult, microphoneBusy).also { created += it }
         }
     }
 
