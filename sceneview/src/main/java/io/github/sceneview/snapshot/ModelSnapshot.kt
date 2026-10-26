@@ -341,7 +341,7 @@ class ModelSnapshot @MainThread constructor(
                 val render = renderScope.async { render(key) }
                 val result = try {
                     render.await()
-                } catch (e: CancellationException) {
+                } catch (_: CancellationException) {
                     // The caller gave up: rethrown. Otherwise destroy() stopped the render.
                     currentCoroutineContext().ensureActive()
                     SnapshotResult.Failed(DESTROYED)

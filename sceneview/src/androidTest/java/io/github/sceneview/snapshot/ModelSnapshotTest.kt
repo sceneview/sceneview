@@ -24,7 +24,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.BeforeClass
 import org.junit.Test
@@ -34,8 +33,10 @@ import org.junit.runner.RunWith
  * [ModelSnapshot]'s queue and lifetime on a real engine: destroy while a model loads, queued
  * requests after destroy, a caller that gives up mid-render, and the cache.
  *
- * The lifetime tests need no pixels and run everywhere. The cache test needs a captured image, so
- * it runs only on a runner declaring GPU readback (see [RenderTestCapabilities]).
+ * Every test renders through an `ImageReader` swap chain, which crashes the test process on CI's
+ * x86_64 SwiftShader emulator (API 30) — a native crash no test can catch, which then fails every
+ * remaining test. Like the other render classes, the whole class runs only on a runner declaring
+ * GPU readback (see [RenderTestCapabilities]) and skips elsewhere.
  */
 @OptIn(ExperimentalSceneViewApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -69,12 +70,14 @@ class ModelSnapshotTest {
     fun setUp() {
         // runBlocking below waits for work the main thread does: never run these tests on it.
         assertFalse(Looper.myLooper() == Looper.getMainLooper())
+        RenderTestCapabilities.assumeGpuReadbackAvailable()
         harness.runOnMain { snapshot = ModelSnapshot(harness.engine, context) }
     }
 
     @After
     fun tearDown() {
         scope.cancel()
+        if (!::snapshot.isInitialized) return
         harness.runOnMain { snapshot.destroy() }
         // Lets the deferred release run, then proves the engine still renders.
         Thread.sleep(200)
@@ -122,13 +125,11 @@ class ModelSnapshotTest {
         // Finishes rather than waiting behind the abandoned render forever.
         val bitmap = await(next)
         assertTrue(abandoned.isCancelled)
-        if (RenderTestCapabilities.isGpuReadbackAvailable) assertNotNull(bitmap)
+        assertNotNull(bitmap)
     }
 
     @Test
     fun a_rendered_thumbnail_is_cached_immutable_and_reused() {
-        assumeTrue(RenderTestCapabilities.isGpuReadbackAvailable)
-
         val first = await(request())
         assertNotNull(first)
         first!!
