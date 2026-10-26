@@ -29,8 +29,8 @@ class CameraPath(
     keyframes: List<CameraKeyframe>,
     val easing: (Float) -> Float = CameraEasing.Expressive,
     val shortestArc: Boolean = true,
-    val loop: Boolean = false,
-) {
+    override val loop: Boolean = false,
+) : CameraTimeline {
     /** The keyframes in time order, azimuths unwrapped when [shortestArc] is set. */
     val keyframes: List<CameraKeyframe> = keyframes.sortedBy { it.seconds }.let { sorted ->
         if (!shortestArc || sorted.size < 2) return@let sorted
@@ -45,7 +45,7 @@ class CameraPath(
     }
 
     /** From the first keyframe's time to the last one's; `0` with fewer than two. */
-    val durationSeconds: Float =
+    override val durationSeconds: Float =
         if (this.keyframes.size < 2) 0f else this.keyframes.last().seconds - this.keyframes.first().seconds
 
     /** The first shot, where the path starts; `null` for an empty path. */
@@ -79,6 +79,12 @@ class CameraPath(
         val turnPerLap = frames.last().shot.azimuthDegrees - frames.first().shot.azimuthDegrees
         return shot.copy(azimuthDegrees = shot.azimuthDegrees + laps * turnPerLap)
     }
+
+    /**
+     * The camera pose [seconds] into the path: [shotAt] as a [CameraPose], so a shot path plays
+     * in [CameraPathPlayer] like a [CameraPosePath].
+     */
+    override fun poseAt(seconds: Float): CameraPose = shotAt(seconds).toPose()
 
     /** `true` once [seconds] is past the end of a path that does not loop. */
     fun isFinishedAt(seconds: Float): Boolean = !loop && seconds >= durationSeconds
