@@ -1,5 +1,6 @@
 package io.github.sceneview
 
+import androidx.annotation.RestrictTo
 import com.google.android.filament.View
 import com.google.android.filament.View.AntiAliasing
 import com.google.android.filament.View.QualityLevel
@@ -21,9 +22,10 @@ import com.google.android.filament.View.ShadowType
  * - [Performance] for low-end Android devices, many-model scenes or battery-sensitive flows —
  *   disables shadows, AO and bloom, enables dynamic resolution.
  *
- * In AR (a view built by `createARView`), every preset keeps SSAO and bloom **off** so they
- * never darken or tint the live camera background (#657), and the Filmic tone mapper is never
- * touched (#1434). Everything else in the preset applies.
+ * In AR usage, every preset keeps SSAO and bloom **off** so they never darken or tint the live
+ * camera background (#657), and the Filmic tone mapper is never touched (#1434). Everything else
+ * in the preset applies. `ARSceneView` supplies the AR context explicitly,
+ * including when its [View] was created by the caller.
  *
  * The preset can be combined with finer-grained tweaks: explicit calls to
  * `view.colorGrading = ...` or `view.bloomOptions = bloomOptions.apply { strength = 0.2f }`
@@ -85,6 +87,10 @@ enum class RenderQuality {
  * Individual settings can still be overridden after the call (e.g. set a custom
  * [View.colorGrading] or tweak [View.bloomOptions.strength] to a non-preset value).
  *
+ * This one-argument API retains its creation-based AR inference for compatibility: a [View]
+ * created by `createARView` gets the AR-safe preset. `ARSceneView` passes
+ * its AR usage explicitly, so caller-managed views are AR-safe too.
+ *
  * **Important — re-application semantics**: [io.github.sceneview.SceneView] wires this
  * call into a `LaunchedEffect(view, renderQuality)` (#1078) so the preset is reapplied
  * ONLY when `renderQuality` changes. Tweaks made AFTER the preset are preserved across
@@ -94,7 +100,18 @@ enum class RenderQuality {
  * that runs after this one.
  */
 fun View.applyRenderQuality(quality: RenderQuality) {
-    applyRenderQualitySpec(quality.spec(isArView = this in filmicViews))
+    applyRenderQuality(quality, isArView = this in filmicViews)
+}
+
+/**
+ * Library-group bridge that applies [quality] with the rendering usage supplied explicitly.
+ *
+ * AR callers must pass `true` even for a caller-managed [View], because SSAO and bloom would
+ * otherwise darken or tint the live camera feed (#657).
+ */
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+fun View.applyRenderQuality(quality: RenderQuality, isArView: Boolean) {
+    applyRenderQualitySpec(quality.spec(isArView = isArView))
 }
 
 /**
@@ -115,9 +132,10 @@ internal data class RenderQualitySpec(
 )
 
 /**
- * The values [quality] writes. [isArView] is `true` for a view built by `createARView`: SSAO and
- * bloom then stay off whatever the preset, because both would darken and tint the live camera
- * background drawn under the virtual content (#657). Everything else is free in AR.
+ * The values [quality] writes. [isArView] is `true` when the view is used for AR, regardless of
+ * where it was created: SSAO and bloom then stay off whatever the preset, because both would
+ * darken and tint the live camera background drawn under the virtual content (#657). Everything
+ * else is free in AR.
  */
 internal fun RenderQuality.spec(isArView: Boolean = false): RenderQualitySpec {
     val base = when (this) {

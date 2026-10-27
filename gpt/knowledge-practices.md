@@ -17,11 +17,14 @@
 enum class RenderQuality { Cinematic, Default, Performance }
 ```
 
-| Preset | Shadows | SSAO | Bloom | MSAA | DoF | Use case |
+| Preset | Shadows | SSAO | Bloom | AA | HDR buffer | Use case |
 |---|---|---|---|---|---|---|
-| `Cinematic` | high-res VSM | ON | ON | 4x | ON | hero product viewer, marketing demos |
-| `Default` | medium PCF | ON | ON | 2x | OFF | most apps — shipped as the SceneView default |
-| `Performance` | low PCF | OFF | OFF | 1x | OFF | low-end devices, AR overlays, battery-sensitive flows |
+| `Cinematic` | soft, contact-hardening (PCSS) | HIGH, HIGH upsampling | 0.15 | MSAA 4x + FXAA | HIGH | hero shots on flagship GPUs |
+| `Default` | soft (DPCF), front key light | MEDIUM, bilateral upsampling | 0.10 | FXAA | MEDIUM | the SceneView default: a premium product shot at mid-range cost (Adreno 618 class, 60 fps) |
+| `Performance` | off | OFF | OFF | FXAA | LOW + dynamic resolution | low-end devices, many-model scenes, battery-sensitive flows |
+
+In AR (`createARView` / `rememberARView`), every preset keeps SSAO and bloom off over the camera
+feed (#657) and keeps the Filmic tone mapper (#1434); the rest of the preset applies.
 
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
@@ -40,7 +43,7 @@ ARSceneView(view = arView) { /* … */ }
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
-The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions`, `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
+The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
 
 ---
 
