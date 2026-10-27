@@ -410,6 +410,7 @@ public final class io/github/sceneview/SceneFactoriesKt {
 	public static final fun getDEFAULT_FILL_LIGHT_COLOR ()Ldev/romainguy/kotlin/math/Float4;
 	public static final fun getDEFAULT_FILL_LIGHT_INTENSITY ()F
 	public static final fun getDEFAULT_MAIN_LIGHT_COLOR ()Ldev/romainguy/kotlin/math/Float4;
+	public static final fun getDEFAULT_MAIN_LIGHT_DIRECTION ()Ldev/romainguy/kotlin/math/Float3;
 	public static final fun getDEFAULT_MAIN_LIGHT_INTENSITY ()F
 	public static final fun getDEFAULT_OBJECT_POSITION ()Ldev/romainguy/kotlin/math/Float3;
 }

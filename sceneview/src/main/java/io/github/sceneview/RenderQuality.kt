@@ -48,7 +48,7 @@ enum class RenderQuality {
     /**
      * The out-of-the-box `SceneView` look: a premium product shot at mid-range cost.
      *
-     * - Shadows: on, soft (`ShadowType.DPCF`) from a front key light
+     * - Shadows: on, soft (`ShadowType.DPCF`) from a high key light
      *   ([DEFAULT_MAIN_LIGHT_DIRECTION])
      * - SSAO: on, MEDIUM quality, MEDIUM (bilateral) upsampling
      * - Bloom: on, strength 0.10

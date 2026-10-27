@@ -70,14 +70,15 @@ val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY
 /**
  * Direction the default main light travels in (world space, not normalised; Filament normalises).
  *
- * A studio key: high above, a little to the right of a camera looking down `-Z`, and in front of
- * the subject, so the front of a product is lit, its form reads from a soft falloff towards the
- * left, and its own shadow falls behind it. It used to point straight down (`0, -1, 0`), which lit
- * only the top faces and left the front of every model in the fill light. The fill
- * ([DefaultFillLightNode]) comes from the opposite side, upper-left-back. In AR, ARCore's
- * environmental HDR estimate replaces this direction from the first frame.
+ * A studio key: high above the subject, a little to the right of and in front of a camera
+ * looking down `-Z`. Steep enough that the cast shadow pools under the model and grounds it (a
+ * key from lower in front throws the shadow behind the subject, where the camera cannot see it,
+ * and the model reads as floating), tilted enough that the front faces catch some key light and
+ * the shadow has a direction. It used to point straight down (`0, -1, 0`), which lit only the
+ * top faces. The fill ([DefaultFillLightNode]) comes from the opposite side, upper-left-back. In
+ * AR, ARCore's environmental HDR estimate replaces this direction from the first frame.
  */
-val DEFAULT_MAIN_LIGHT_DIRECTION = Direction(-0.35f, -1.0f, -0.6f)
+val DEFAULT_MAIN_LIGHT_DIRECTION = Direction(-0.25f, -1.0f, -0.25f)
 
 val DEFAULT_OBJECT_POSITION = Position(0.0f, 0.0f, -4.0f)
 
