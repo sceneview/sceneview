@@ -21,6 +21,11 @@
     <string name="ar_placement_cta_unsupported">This device does not support ARCore, so the camera half of this demo cannot run here.</string>
     <string name="ar_placement_cta_no_model">Pick a model first.</string>
 
+    <!-- Manual mode of `ar-placement`: `PlacementScene` and its reticle. -->
+    <string name="demo_manual_placement_title">Manual placement</string>
+    <string name="ar_manual_place_hint">Tap a surface to place the car.</string>
+    <string name="ar_manual_place_another">Place another</string>
+
     <!-- In-AR chrome. -->
     <string name="ar_placement_catalogue_note">Bundled models work offline. Online models download when selected and appear once the download completes.</string>
 

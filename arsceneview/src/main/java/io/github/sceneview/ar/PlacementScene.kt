@@ -1,11 +1,12 @@
 package io.github.sceneview.ar
 
 import android.view.MotionEvent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -73,6 +74,10 @@ import java.io.File
  *    plane — so the user gets an unambiguous "you can place now" signal without any text, and
  *    the cursor stays achromatic until it has a real surface ([ReticlePhase], #3570). Themed via
  *    [reticleColor], switch geometry with [reticleStyle], hide it with `showReticle = false`.
+ *    It is a *placing* cue, so by default ([ReticleVisibility.AUTO]) it fades out the moment a
+ *    model is placed — the model is then seen over the bare camera feed — and comes back when
+ *    the app asks for another placement with [PlacementController.requestPlacement]. Pass
+ *    `reticleVisibility = ReticleVisibility.ALWAYS` for the pre-4.63 always-on cursor.
  *  - Optional **onboarding coaching** ([coaching], off by default): the
  *    [ARCoachingOverlay] card — a phone sweeping over a surface with "Move your phone slowly",
  *    the reason and its fix when tracking struggles ("Too dark"), then a "Surface found" pill
@@ -87,7 +92,11 @@ import java.io.File
  *
  * The composable keeps the list of created anchors itself; everything the caller declares inside
  * [onPlaced] is composed once per anchor. Call [PlacementController.clear] (via the [controller]
- * the [content] receives) to detach every anchor and wipe the placed content.
+ * the [content] receives) to detach every anchor and wipe the placed content, or
+ * [PlacementController.requestPlacement] to bring the reticle and the plane grid back for one
+ * more model ("Place another"). [PlacementController.isPlacing] says which of the two the scene
+ * is in. Taps place whatever the reticle shows: a tap on a surface after placement still adds a
+ * model, only the visual cue is gone.
  *
  * **Threading:** like every SceneView composable, all Filament JNI work happens on the main
  * thread. [onPlaced] runs inside the Compose [ARSceneScope]; do not call it from a background
@@ -104,6 +113,7 @@ import java.io.File
  * @param instantPlacement      Enable the instant-placement fallback so taps land before a plane
  *                              has converged. Default `true` (Sceneform `ArFragment` parity).
  * @param showReticle           Show the built-in center-screen placement reticle. Default `true`.
+ *                              `false` is the same as `reticleVisibility = ReticleVisibility.HIDDEN`.
  * @param reticleStyle          Reticle geometry — a [PlacementReticleStyle.RING] (the modern
  *                              consumer-AR default) or the legacy [PlacementReticleStyle.DISC].
  * @param reticleColor          Reticle tint. Defaults to [RETICLE_TINT], the achromatic
@@ -113,7 +123,11 @@ import java.io.File
  *                              locked dot's.
  * @param fadePlaneOnFirstPlacement Hide the plane-detection grid once the first model is placed,
  *                              so the surface stops being highlighted after it has served its
- *                              discovery purpose. Default `true`. Set `false` to keep the grid
+ *                              discovery purpose. Default `true`. The grid follows
+ *                              [PlacementController.isPlacing]: it comes back with
+ *                              [PlacementController.requestPlacement] or
+ *                              [PlacementController.clear], and recedes on the next placement.
+ *                              Set `false` to keep the grid
  *                              visible for the whole session — with [groundShadows] on, contact
  *                              shadows are then served by the grid's own built-in receiver and
  *                              no [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane] is
@@ -147,6 +161,16 @@ import java.io.File
  *                              for a host with nothing down there, which is exactly what the
  *                              card already uses, so a caller that does not pass it sees no
  *                              change. Only read while [coaching] is `true`.
+ * @param reticleVisibility     When the reticle is drawn. Default [ReticleVisibility.AUTO]: while
+ *                              [PlacementController.isPlacing] only, fading out over
+ *                              [RETICLE_FADE_MS] once a model is placed and then leaving the
+ *                              scene, so the model is seen over the bare camera feed.
+ *                              [ReticleVisibility.ALWAYS] keeps the pre-4.63 always-on cursor;
+ *                              [ReticleVisibility.HIDDEN] never draws it. Taps place in all three.
+ * @param controller            The placement state — anchors and [PlacementController.isPlacing].
+ *                              Hoist it with [rememberPlacementController] to drive the scene from
+ *                              your own UI, e.g. a "Place another" button calling
+ *                              [PlacementController.requestPlacement]. Defaults to a fresh one.
  * @param onPlaced              Invoked inside the [ARSceneScope] once per created [Anchor]. Declare
  *                              the content (typically an `AnchorNode { ModelNode(...) }`) to ride
  *                              that anchor. Composed once per anchor; recomposes on placement.
@@ -178,10 +202,12 @@ fun PlacementScene(
     // reads better, so that every existing positional slot keeps its index: a caller that
     // passes `groundShadows` or `playbackDataset` positionally still compiles unchanged.
     coachingBottomClearance: Dp = GUIDE_BOTTOM_CLEARANCE,
+    // Appended after coachingBottomClearance for the same reason: no positional slot moves.
+    reticleVisibility: ReticleVisibility = ReticleVisibility.AUTO,
+    controller: PlacementController = rememberPlacementController(),
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
-    val controller = remember { PlacementController() }
     val haptic = LocalHapticFeedback.current
 
     // Latest ARCore frame, captured from onSessionUpdated so the tap gesture (which runs on the
@@ -216,11 +242,24 @@ fun PlacementScene(
     // grid also carries the plane renderer's own shadow receiver, so this predicate and the
     // ShadowReceiverPlane spawn below are mutually exclusive by construction — a plane is never
     // covered by two coplanar shadowMultiplier receivers at once (#2657).
-    val placedCount by remember { derivedStateOf { controller.count } }
+    // Placing, not "nothing placed yet": the grid also comes back on requestPlacement().
+    val isPlacing = controller.isPlacing
     val showPlaneRenderer =
-        shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+        shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, isPlacing)
     val spawnShadowCatchers =
-        shouldCatchGroundShadows(groundShadows, planeRenderer, fadePlaneOnFirstPlacement, placedCount)
+        shouldCatchGroundShadows(groundShadows, planeRenderer, fadePlaneOnFirstPlacement, isPlacing)
+
+    // The reticle is a placing cue: by default it fades out once a model is down, so nothing is
+    // left drawn over the camera feed but the model, and fades back on requestPlacement().
+    val reticleWanted = reticleVisibleFor(
+        visibility = if (showReticle) reticleVisibility else ReticleVisibility.HIDDEN,
+        isPlacing = isPlacing,
+    )
+    val reticleFade by animateFloatAsState(
+        targetValue = if (reticleWanted) 1f else 0f,
+        animationSpec = tween(durationMillis = RETICLE_FADE_MS),
+        label = "placementReticleFade",
+    )
 
     Box(modifier = modifier.fillMaxSize()) {
         ARSceneView(
@@ -275,8 +314,10 @@ fun PlacementScene(
             // signal.
             // Purely visual: the tap handler above runs its own hit-test at the tap coordinates,
             // so placement is not centre-only.
+            // Once fully faded out the whole reticle node leaves the scene: no hit test, no
+            // invisible geometry riding the screen centre.
             if (shouldShowReticle(
-                    showReticle = showReticle,
+                    showReticle = shouldComposeReticle(reticleWanted, reticleFade),
                     viewportMeasured = viewportSize != IntSize.Zero,
                     cameraTracking = isTracking,
                 )
@@ -302,6 +343,7 @@ fun PlacementScene(
                         phase = reticlePhase,
                         tint = reticleColor,
                         style = reticleStyle,
+                        alpha = reticleAlphaFor(reticlePhase) * reticleFade,
                     )
                 }
             }
@@ -375,7 +417,20 @@ internal fun shouldRenderPlaneGrid(
     planeRenderer: Boolean,
     fadePlaneOnFirstPlacement: Boolean,
     placedCount: Int,
-): Boolean = planeRenderer && !(fadePlaneOnFirstPlacement && placedCount > 0)
+): Boolean =
+    shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, isPlacing = placedCount == 0)
+
+/**
+ * [shouldRenderPlaneGrid] keyed on [PlacementController.isPlacing] rather than on the placement
+ * count — what [PlacementScene] uses, so the grid also returns on
+ * [PlacementController.requestPlacement]. Without that call the two agree: `isPlacing` is `true`
+ * exactly while nothing is placed.
+ */
+internal fun shouldRenderPlaneGrid(
+    planeRenderer: Boolean,
+    fadePlaneOnFirstPlacement: Boolean,
+    isPlacing: Boolean,
+): Boolean = planeRenderer && !(fadePlaneOnFirstPlacement && !isPlacing)
 
 /**
  * Whether [PlacementScene] attaches a contact-shadow catcher
@@ -403,15 +458,49 @@ internal fun shouldCatchGroundShadows(
 ): Boolean = groundShadows &&
     !shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, placedCount)
 
+/** [shouldCatchGroundShadows] keyed on [PlacementController.isPlacing] — see [shouldRenderPlaneGrid]. */
+internal fun shouldCatchGroundShadows(
+    groundShadows: Boolean,
+    planeRenderer: Boolean,
+    fadePlaneOnFirstPlacement: Boolean,
+    isPlacing: Boolean,
+): Boolean = groundShadows &&
+    !shouldRenderPlaneGrid(planeRenderer, fadePlaneOnFirstPlacement, isPlacing)
+
+/**
+ * A [PlacementController] that survives recomposition — hoist it to drive a [PlacementScene] from
+ * your own UI:
+ *
+ * ```kotlin
+ * val controller = rememberPlacementController()
+ * PlacementScene(controller = controller, onPlaced = { anchor -> AnchorNode(anchor) { ... } })
+ * if (!controller.isPlacing) Button(onClick = controller::requestPlacement) { Text("Place another") }
+ * ```
+ */
+@Composable
+fun rememberPlacementController(): PlacementController = remember { PlacementController() }
+
 /**
  * Holds the [Anchor]s created by tap-to-place inside a [PlacementScene].
  *
  * A fresh instance is `remember`ed per `PlacementScene`. The [content] block of `PlacementScene`
- * receives it so the caller can wipe every placement ([clear]) or inspect the live list
- * ([anchors]) — e.g. to drive a "3 models placed" counter.
+ * receives it so the caller can wipe every placement ([clear]), ask for one more
+ * ([requestPlacement]) or inspect the live list ([anchors]) — e.g. to drive a "3 models placed"
+ * counter or a "Place another" button.
  */
 class PlacementController internal constructor() {
     private val _anchors = mutableStateListOf<Anchor>()
+    private var _isPlacing by mutableStateOf(true)
+
+    /**
+     * Whether the scene is looking for where to put the next model. Compose-observable.
+     *
+     * `true` at start, `false` as soon as a model is placed, `true` again after
+     * [requestPlacement] or [clear]. With the default [ReticleVisibility.AUTO] the reticle — and,
+     * with `fadePlaneOnFirstPlacement`, the plane grid — is drawn exactly while this is `true`.
+     * Taps place whatever its value.
+     */
+    val isPlacing: Boolean get() = _isPlacing
 
     /** The anchors created so far, in placement order. Compose-observable. */
     val anchors: List<Anchor> get() = _anchors
@@ -421,16 +510,32 @@ class PlacementController internal constructor() {
 
     internal fun add(anchor: Anchor) {
         _anchors += anchor
+        markPlaced()
+    }
+
+    /** A model went down: the scene stops placing. Split from [add] so a JVM test needs no Anchor. */
+    internal fun markPlaced() {
+        _isPlacing = false
+    }
+
+    /**
+     * Asks for one more placement: the reticle (and the plane grid, with
+     * `fadePlaneOnFirstPlacement`) fades back in until the next model is placed. Keeps every
+     * model already placed — use [clear] to start over. Safe from a button `onClick`.
+     */
+    fun requestPlacement() {
+        _isPlacing = true
     }
 
     /**
      * Detaches every created [Anchor] so ARCore stops tracking them, then drops them from the
-     * list — recomposition removes the matching content from the scene. Safe to call from the
-     * main thread (e.g. a "Clear All" button `onClick`).
+     * list — recomposition removes the matching content from the scene, and the scene is placing
+     * again ([isPlacing]). Safe to call from the main thread (e.g. a "Clear All" button `onClick`).
      */
     fun clear() {
         _anchors.forEach { runCatching { it.detach() } }
         _anchors.clear()
+        _isPlacing = true
     }
 }
 

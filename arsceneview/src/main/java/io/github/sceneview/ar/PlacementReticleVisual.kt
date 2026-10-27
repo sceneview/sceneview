@@ -1,8 +1,12 @@
 package io.github.sceneview.ar
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import com.google.android.filament.MaterialInstance
@@ -255,6 +259,85 @@ fun reticleHaloAlphaFor(ringAlpha: Float): Float =
     (ringAlpha * RETICLE_HALO_ALPHA_RATIO).coerceIn(0f, 1f)
 
 /**
+ * When a placement reticle is drawn — the [PlacementScene] `reticleVisibility` parameter.
+ *
+ * A reticle is a *placing* cue: it answers "where will my tap land?". Once the model is down, the
+ * question is gone, and a cursor still sliding over the floor sits on top of the very thing the
+ * user wants to look at. So the default, [AUTO], draws it only while the scene is placing.
+ */
+enum class ReticleVisibility {
+    /**
+     * The default. Shown while [PlacementController.isPlacing] — before the first placement, and
+     * again after [PlacementController.requestPlacement] or [PlacementController.clear]. Fades
+     * out over [RETICLE_FADE_MS] the moment a model is placed, then leaves the scene entirely.
+     */
+    AUTO,
+
+    /** Always shown while the camera tracks, placed or not — the pre-4.63 behaviour. */
+    ALWAYS,
+
+    /** Never shown. Taps still place; only the cursor is gone. Same as `showReticle = false`. */
+    HIDDEN,
+}
+
+/**
+ * Length of the reticle fade-out after a placement (and its fade-in when placing resumes),
+ * milliseconds — DESIGN.md `motion-fade` family. Short on purpose: the reticle has done its job,
+ * it should get out of the way of the model, not linger as a ghost.
+ */
+const val RETICLE_FADE_MS = 200
+
+/**
+ * Whether a reticle with [visibility] is wanted right now, given whether the scene is
+ * [isPlacing] (see [PlacementController.isPlacing]). Pure, so the rule is pinned by a JVM test.
+ *
+ * Only says whether the cursor is *wanted*; [PlacementScene] still also requires a measured
+ * viewport and a tracking camera ([shouldShowReticle]).
+ */
+fun reticleVisibleFor(visibility: ReticleVisibility, isPlacing: Boolean): Boolean =
+    when (visibility) {
+        ReticleVisibility.AUTO -> isPlacing
+        ReticleVisibility.ALWAYS -> true
+        ReticleVisibility.HIDDEN -> false
+    }
+
+/**
+ * The opacity a reticle in [phase] should reach: [reticleAlphaFor] while [visible], `0` once it
+ * is hidden (after a placement, typically). Pure — the target that [animateReticleAlpha] eases to.
+ */
+fun reticleTargetAlpha(phase: ReticlePhase, visible: Boolean): Float =
+    if (visible) reticleAlphaFor(phase) else 0f
+
+/**
+ * Whether the reticle's geometry nodes are still composed: while it is wanted, and during its
+ * fade-out until the opacity reaches `0` — never an invisible ring left in the scene.
+ *
+ * @param visible     whether the reticle is currently wanted.
+ * @param currentFade the animated opacity (or opacity multiplier) right now.
+ */
+fun shouldComposeReticle(visible: Boolean, currentFade: Float): Boolean =
+    visible || currentFade > 0f
+
+/**
+ * The animated opacity of a reticle in [phase] — for apps that draw **their own** placement ring
+ * with [reticleAlphaFor] and want the same hide-after-placement behaviour as [PlacementScene].
+ *
+ * Eases to [reticleAlphaFor] while [visible], and to `0` over [RETICLE_FADE_MS] when it is not:
+ *
+ * ```kotlin
+ * val alpha by animateReticleAlpha(phase, visible = controller.isPlacing)
+ * if (alpha > 0f) MyRing(alpha = alpha)
+ * ```
+ */
+@Composable
+fun animateReticleAlpha(phase: ReticlePhase, visible: Boolean): State<Float> =
+    animateFloatAsState(
+        targetValue = reticleTargetAlpha(phase, visible),
+        animationSpec = tween(durationMillis = RETICLE_FADE_MS),
+        label = "reticleAlpha",
+    )
+
+/**
  * Renders the reticle geometry for [style], recolouring live as [phase] changes.
  *
  * Declared inside an AR content block on a node whose pose already orients +Y along the surface
@@ -281,6 +364,10 @@ fun reticleHaloAlphaFor(ringAlpha: Float): Float =
  *                       flicker, which is the opposite of the "you can place now" signal the
  *                       phase change is supposed to give (#3326). Additive — every existing
  *                       call site keeps the original stepped behaviour.
+ * @param visible        `false` fades the whole reticle to nothing over [RETICLE_FADE_MS], then
+ *                       stops composing its nodes, so no invisible geometry stays in the scene;
+ *                       `true` again fades it back. Pass `controller.isPlacing` to hide the
+ *                       cursor once a model is placed. Default `true`.
  */
 @Composable
 fun io.github.sceneview.NodeScope.PlacementReticleVisual(
@@ -289,19 +376,28 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     tint: Color = RETICLE_TINT,
     style: PlacementReticleStyle = PlacementReticleStyle.RING,
     alpha: Float = reticleAlphaFor(phase),
+    visible: Boolean = true,
 ) {
-    val haloAlpha = reticleHaloAlphaFor(alpha)
+    // A multiplier rather than a second alpha, so a reticle that stays visible keeps the exact
+    // stepped (or caller-animated) [alpha] it always had.
+    val fade by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = RETICLE_FADE_MS),
+        label = "reticleVisibility",
+    )
+    val shownAlpha = alpha * fade
+    val haloAlpha = reticleHaloAlphaFor(shownAlpha)
     val dotColor = reticleDotColorFor(phase, tint)
     val dotRadius = reticleDotRadiusFor(phase)
 
     // One material for the ring/disc body — recoloured in place per phase (no re-alloc).
     val bodyMaterial: MaterialInstance = remember(materialLoader, tint) {
-        materialLoader.createUnlitColorInstance(tint.copy(alpha = alpha))
+        materialLoader.createUnlitColorInstance(tint.copy(alpha = shownAlpha))
     }
     // The LOCKED centre dot is the only coloured mark on the cursor (#3570), so the dot needs its
     // own instance — the ring must stay achromatic whatever the phase does.
     val accentMaterial: MaterialInstance = remember(materialLoader) {
-        materialLoader.createUnlitColorInstance(dotColor.copy(alpha = alpha))
+        materialLoader.createUnlitColorInstance(dotColor.copy(alpha = shownAlpha))
     }
     // Contact halo — gives the white ring a ground to sit on when the real surface is light.
     val haloMaterial: MaterialInstance = remember(materialLoader) {
@@ -316,10 +412,13 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
     }
     // Mutate the live colours so the ring dims/brightens without churning the instances.
     SideEffect {
-        bodyMaterial.setColor(tint.copy(alpha = alpha))
-        accentMaterial.setColor(dotColor.copy(alpha = alpha))
+        bodyMaterial.setColor(tint.copy(alpha = shownAlpha))
+        accentMaterial.setColor(dotColor.copy(alpha = shownAlpha))
         haloMaterial.setColor(RETICLE_HALO.copy(alpha = haloAlpha))
     }
+
+    // Fully faded out: leave the scene, rather than keep drawing a ring nobody can see.
+    if (!shouldComposeReticle(visible, fade)) return
 
     when (style) {
         PlacementReticleStyle.DISC -> {

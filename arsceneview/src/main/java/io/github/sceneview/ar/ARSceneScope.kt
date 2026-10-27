@@ -5,10 +5,13 @@
 
 package io.github.sceneview.ar
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.google.android.filament.Engine
@@ -33,6 +36,7 @@ import io.github.sceneview.SceneScope
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.setColor
 import io.github.sceneview.node.Node as NodeImpl
 import io.github.sceneview.ar.node.AnchorNode as AnchorNodeImpl
 import io.github.sceneview.ar.node.AugmentedFaceNode as AugmentedFaceNodeImpl
@@ -545,6 +549,12 @@ class ARSceneScope internal constructor(
      *                               keeps damping every frame, so a throttled cursor still eases
      *                               rather than steps. Live-updatable on recomposition (#3391).
      * @param apply                  Additional imperative configuration on the node.
+     * @param visible                `false` hides the visual while the hit test keeps running
+     *                               (so [onHitResultChanged] still reports, e.g. for taps): the
+     *                               built-in disc fades out over [RETICLE_FADE_MS] and then leaves
+     *                               the scene; custom [content] leaves at once — fade your own
+     *                               visual with [animateReticleAlpha]. Pass `false` once a model
+     *                               is placed so the cursor stops covering it. Default `true`.
      * @param content                Custom visual; `null` = the built-in cyan disc.
      */
     @Composable
@@ -558,6 +568,8 @@ class ARSceneScope internal constructor(
         onHitResultChanged: ((HitResult?) -> Unit)? = null,
         refreshIntervalMs: Long = 0L,
         apply: PlacementReticleNodeImpl.() -> Unit = {},
+        // Before `content`, not after it, so the trailing-lambda form keeps compiling.
+        visible: Boolean = true,
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
         val node = remember(engine, xPx, yPx, snapToPlane, depthPoint) {
@@ -585,24 +597,40 @@ class ARSceneScope internal constructor(
         // `content != null` would destroy-and-reattach the remembered node when a host
         // flips between custom and default visuals across recompositions (the leaving
         // branch's dispose destroys the node the entering branch then attaches).
-        NodeLifecycle(node, content ?: {
+        NodeLifecycle(node) {
+            if (content != null) {
+                if (visible) content()
+                return@NodeLifecycle
+            }
             // Built-in visual — the same disc PlacementScene ships. The material is
             // created once per loader and destroyed with the composable (#2458 class).
+            val fade by animateFloatAsState(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec = tween(durationMillis = RETICLE_FADE_MS),
+                label = "placementReticleVisible",
+            )
             val reticleMaterial = remember(materialLoader) {
                 materialLoader.createUnlitColorInstance(DEFAULT_RETICLE_COLOR)
             }
             DisposableEffect(materialLoader, reticleMaterial) {
                 onDispose { materialLoader.destroyMaterialInstance(reticleMaterial) }
             }
+            SideEffect {
+                reticleMaterial.setColor(
+                    DEFAULT_RETICLE_COLOR.copy(alpha = DEFAULT_RETICLE_COLOR.alpha * fade)
+                )
+            }
             // Thin disc — sits flush on the surface; the smoothed pose orients +Y
-            // along the surface normal.
-            CylinderNode(
-                radius = RETICLE_RADIUS,
-                height = RETICLE_HEIGHT,
-                sideCount = RETICLE_SIDES,
-                materialInstance = reticleMaterial
-            )
-        })
+            // along the surface normal. Gone once faded out: no invisible geometry left.
+            if (shouldComposeReticle(visible, fade)) {
+                CylinderNode(
+                    radius = RETICLE_RADIUS,
+                    height = RETICLE_HEIGHT,
+                    sideCount = RETICLE_SIDES,
+                    materialInstance = reticleMaterial
+                )
+            }
+        }
     }
 
     // ── DepthHitResultNode ────────────────────────────────────────────────────────────────────────

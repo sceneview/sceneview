@@ -318,7 +318,9 @@ internal object DeepLinkRouter {
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
         // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
         // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
-        "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
+        "ar-placement" to mapOf(
+            "place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3, "manual" to 4,
+        ),
         "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
         "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1, "table" to 2),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),

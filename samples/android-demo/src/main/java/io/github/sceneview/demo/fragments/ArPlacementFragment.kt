@@ -13,6 +13,7 @@ import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.placement.PlaceModeMemory
 import io.github.sceneview.demo.demos.ARPlacementDemo
 import io.github.sceneview.demo.demos.ARPoseDemo
+import io.github.sceneview.demo.demos.ManualPlacementDemo
 import io.github.sceneview.demo.demos.PlacementSceneDemo
 
 /**
@@ -25,13 +26,15 @@ import io.github.sceneview.demo.demos.PlacementSceneDemo
  *
  * One call is not the Place mode twice: Place hand-writes the flow on `ARSceneView`
  * (`TapToPlaceArSession`), One call is the whole screen as one `AutoPlacementScene` call
- * ([PlacementSceneDemo]), the only floor demo of that API.
+ * ([PlacementSceneDemo]), the only floor demo of that API. Manual is the tap-to-place
+ * `PlacementScene` with its reticle ([ManualPlacementDemo]).
  */
 object ArPlacementFragment : DemoFragment {
     val modes = listOf(
         DemoMode("place", R.string.demo_mode_place),
         DemoMode("free-pose", R.string.demo_mode_free_pose),
         DemoMode("one-call", R.string.demo_mode_one_call),
+        DemoMode("manual", R.string.demo_mode_manual),
     )
 
     override val entry: DemoEntry = DemoEntry(
@@ -56,13 +59,14 @@ object ArPlacementFragment : DemoFragment {
         val placeMemory = rememberSaveable(saver = PlaceModeMemory.Saver) { PlaceModeMemory() }
         DemoModeHost(
             modes = modes,
-            tabToMode = mapOf(FREE_POSE_TAB to 1, ONE_CALL_TAB to 2),
+            tabToMode = mapOf(FREE_POSE_TAB to 1, ONE_CALL_TAB to 2, MANUAL_TAB to 3),
             defaultModeReadsTab = true,
         ) { mode ->
             SideEffect { if (mode != PLACE_MODE) placeMemory.visitedOtherMode = true }
             when (mode) {
                 1 -> ARPoseDemo(onBack)
                 2 -> PlacementSceneDemo(onBack)
+                3 -> ManualPlacementDemo(onBack)
                 else -> ARPlacementDemo(onBack, placeMemory)
             }
         }
@@ -77,3 +81,6 @@ private const val FREE_POSE_TAB = 2
 
 /** Launch tab of the One call mode (`placement-scene`, `?tab=one-call`). */
 private const val ONE_CALL_TAB = 3
+
+/** Launch tab of the Manual mode (`?tab=manual`): `PlacementScene` and its reticle. */
+private const val MANUAL_TAB = 4
