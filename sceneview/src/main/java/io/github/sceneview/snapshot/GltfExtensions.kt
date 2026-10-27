@@ -57,8 +57,9 @@ internal fun readGltfJson(stream: InputStream): String? {
  * [io.github.sceneview.loaders.ModelLoader.loadModel] finds it: an asset path, a `file://` or
  * `content://` URI, an `android.resource://` URI by resource id, or an `http(s)` URL already in the
  * [FileCache]. `null` when it could not be checked: the file cannot be read this way (an `http(s)`
- * URL missing from the [FileCache], an `android.resource://` URI by name, a read error), or it is
- * not glTF or GLB, or its JSON is larger than 16 MB. Blocking: call it off the main thread.
+ * URL missing from the [FileCache] — the cache is disabled or its write failed —, an
+ * `android.resource://` URI by name, which `loadModel` rejects before this is called, a read
+ * error), or it is not glTF or GLB, or its JSON is larger than 16 MB. Blocking: call it off the main thread.
  */
 internal fun readGltfExtensionsUsed(context: Context, fileLocation: String): List<String>? =
     runCatching {

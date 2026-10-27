@@ -144,6 +144,9 @@ internal data class SnapshotKey(
  * when the render times out. A whole set (ground, sky dome) is framed whole, so its subject comes
  * out tiny: thumbnail single objects.
  *
+ * Its rendering has run in tests on arm64 emulators only. On an x86_64 API 30 emulator with
+ * SwiftShader, the test process died once at the first render; the cause is undiagnosed.
+ *
  * ### One at a time, on the scene's engine
  *
  * A snapshotter lives on an existing [Engine] (the one your `SceneView` uses, typically) and reuses
@@ -169,9 +172,12 @@ internal data class SnapshotKey(
  * Finished images are kept in a memory cache of [maxCacheBytes], so a cell scrolled back into view
  * gets its image at once. Pass `0` to disable it. An image is handed out but never cached when it
  * was captured while the model's textures were still decoding (after a 10 s timeout), or when the
- * model's glTF could not be read to check for quantized positions (an `http(s)` URL that is not in
- * the file cache, an `android.resource://` URI by name: a warning is logged). Bitmaps handed out are
- * immutable and may be shared with the cache: do not [Bitmap.recycle] them.
+ * model's glTF could not be read a second time to check for quantized positions — a warning is
+ * logged. That second read goes to the same source the model was loaded from, so in practice it
+ * fails for `http(s)` URLs when the file cache is off (`FileCache.enabled = false`: then **no**
+ * remote model's thumbnail is ever cached) or could not write the download to disk, and for a file
+ * that changed or vanished in between. Bitmaps handed out are immutable and may be shared with the
+ * cache: do not [Bitmap.recycle] them.
  *
  * The cache is keyed by the `fileLocation` string, the size and the options — not by the file's
  * contents. A model replaced at the same location (a file rewritten in place, an URL serving a new
@@ -255,20 +261,28 @@ class ModelSnapshot @MainThread constructor(
             .build(engine, it)
         scene.addEntity(it)
     }
-    private val ibl = run {
-        var built = false
-        try {
-            KTX1Loader.createIndirectLight(
-                engine,
-                appContext.assets.readBuffer(NEUTRAL_IBL),
-            ).also { bundle ->
+    private val ibl = try {
+        KTX1Loader.createIndirectLight(
+            engine,
+            appContext.assets.readBuffer(NEUTRAL_IBL),
+        ).also { bundle ->
+            try {
                 scene.indirectLight = bundle.indirectLight?.apply { intensity = DEFAULT_IBL_INTENSITY }
-                built = true
+            } catch (e: Throwable) {
+                // Decoded but never handed to the scene: the light and its cubemap are freed here.
+                e.suppressing {
+                    scene.indirectLight = null
+                    bundle.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
+                    bundle.cubemap?.let { engine.safeDestroyTexture(it) }
+                }
+                throw e
             }
-        } finally {
-            // The constructor throws: nothing will ever call destroy() on what it already built.
-            if (!built) destroyPartlyBuilt()
         }
+    } catch (e: Throwable) {
+        // The constructor throws: nothing will ever call destroy() on what it already built. A
+        // failure while undoing it is attached to the original error, never in its place.
+        e.suppressing(::destroyPartlyBuilt)
+        throw e
     }
 
     private val cache: LruCache<SnapshotKey, Bitmap>? = if (maxCacheBytes > 0) {
@@ -360,9 +374,8 @@ class ModelSnapshot @MainThread constructor(
     fun destroy() {
         if (!lifetime.destroy()) return
         cache?.evictAll()
-        queue.cancel()
-        engine.whenIdle(isBusy = { queue.isBusy }, onEngineGone = ::releaseWithoutEngine) {
-            release()
+        queue.stop { isBusy ->
+            engine.whenIdle(isBusy = isBusy, onEngineGone = ::releaseWithoutEngine) { release() }
         }
     }
 
@@ -375,8 +388,9 @@ class ModelSnapshot @MainThread constructor(
             val extensions = withContext(Dispatchers.IO) {
                 readGltfExtensionsUsed(appContext, key.fileLocation)
             }
-            // Not checked (an http URL out of the file cache, a resource by name): rendered, as
-            // most models are not quantized, but not cached, so a wrongly framed image is not kept.
+            // Not checked (an http URL with the file cache off or unwritten, a file changed since
+            // the load): rendered, as most models are not quantized, but not cached, so a wrongly
+            // framed image is not kept.
             if (extensions == null) {
                 Log.w(TAG, "${key.fileLocation}: could not read its glTF to check for $KHR_MESH_QUANTIZATION")
             }
@@ -415,15 +429,15 @@ class ModelSnapshot @MainThread constructor(
                     )
                     else -> SnapshotResult.Rendered(
                         captured.bitmap,
-                        complete = texturesReady && extensions != null,
+                        complete = isComplete(texturesReady, extensions),
                     )
                 }
             } finally {
-                if (!lifetime.isReleased && engine.isValid) scene.removeEntities(model.entities)
+                if (lifetime.ownsFilamentObjects) scene.removeEntities(model.entities)
             }
         } finally {
             // Once released, the engine or the loader's own destroy() took the model with it.
-            if (!lifetime.isReleased && engine.isValid) modelLoader.destroyModel(model)
+            if (lifetime.ownsFilamentObjects) modelLoader.destroyModel(model)
         }
     }
 

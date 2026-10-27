@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -118,41 +119,54 @@ class SnapshotQueueTest {
     fun destroy_mid_render_fails_the_request_and_the_queued_ones_once_the_render_let_go() =
         runTest {
             val started = CompletableDeferred<Unit>()
-            var released = false
+            val events = mutableListOf<String>()
             val queue = queue {
                 started.complete(Unit)
                 try {
                     awaitCancellation()
                 } finally {
-                    released = true
+                    events += "render let go of its model"
                 }
             }
             val rendering = async { queue.request(fox) }
             val queued = async { queue.request(chair) }
             runCurrent()
             assertTrue(started.isCompleted)
-            assertTrue(queue.isBusy)
 
-            // What ModelSnapshot.destroy() does.
+            // What ModelSnapshot.destroy() does; the engine's whenIdle polls isBusy the same way.
             alive = false
-            queue.cancel()
+            var isBusy: () -> Boolean = { error("stop() never asked for a release") }
+            queue.stop { busy ->
+                isBusy = busy
+                launch {
+                    while (busy()) delay(1)
+                    events += "snapshotter released"
+                }
+            }
+            assertTrue("the release waits while the stopped render still holds its model", isBusy())
             advanceUntilIdle()
 
             assertEquals(SNAPSHOT_DESTROYED, (rendering.await() as SnapshotResult.Failed).reason)
             assertEquals(SNAPSHOT_DESTROYED, (queued.await() as SnapshotResult.Failed).reason)
-            assertTrue("the render's model is released before the requests return", released)
+            assertEquals(
+                "the snapshotter is released only after the render let go",
+                listOf("render let go of its model", "snapshotter released"),
+                events,
+            )
             assertEquals("the queued request never renders", listOf(fox), renders)
-            assertFalse(queue.isBusy)
+            assertFalse(isBusy())
         }
 
     @Test
     fun a_request_after_destroy_fails_without_rendering() = runTest {
         val queue = queue { SnapshotResult.Rendered(image, complete = true) }
         alive = false
-        queue.cancel()
+        var released = false
+        queue.stop { isBusy -> if (!isBusy()) released = true }
 
         val result = queue.request(fox)
 
+        assertTrue("an idle queue is released at once", released)
         assertEquals(SNAPSHOT_DESTROYED, (result as SnapshotResult.Failed).reason)
         assertTrue(renders.isEmpty())
     }
@@ -226,6 +240,48 @@ class SnapshotQueueTest {
         assertTrue(lifetime.release())
         assertFalse("a second release is a no-op", lifetime.release())
         assertTrue(lifetime.isReleased)
+    }
+
+    @Test
+    fun a_render_cleans_up_its_model_until_release_or_the_engine_goes_not_on_destroy() {
+        var engineValid = true
+        val lifetime = SnapshotLifetime { engineValid }
+        assertTrue(lifetime.ownsFilamentObjects)
+
+        // Destroyed, not released yet: the stopped render must still remove and destroy its model.
+        lifetime.destroy()
+        assertTrue(lifetime.ownsFilamentObjects)
+
+        // The engine went first: it took the model with it, touching it would be a native crash.
+        engineValid = false
+        assertFalse(lifetime.ownsFilamentObjects)
+        engineValid = true
+
+        // Released: the loader's destroy() or the engine took the model.
+        lifetime.release()
+        assertFalse(lifetime.ownsFilamentObjects)
+    }
+
+    @Test
+    fun an_image_is_complete_only_with_every_texture_and_its_gltf_checked() {
+        assertTrue(isComplete(texturesReady = true, extensionsUsed = emptyList()))
+        assertTrue(isComplete(texturesReady = true, extensionsUsed = listOf("KHR_materials_unlit")))
+        assertFalse("textures still decoding at the timeout", isComplete(false, emptyList()))
+        assertFalse("glTF not read: quantization not ruled out", isComplete(true, null))
+        assertFalse(isComplete(false, null))
+    }
+
+    @Test
+    fun a_cleanup_failure_is_attached_to_the_original_error_not_thrown_in_its_place() {
+        val original = IllegalStateException("the IBL could not be decoded")
+        var cleanedUp = false
+        original.suppressing { cleanedUp = true }
+        assertTrue(cleanedUp)
+        assertTrue(original.suppressed.isEmpty())
+
+        val cleanupFailure = IllegalStateException("could not destroy the view")
+        original.suppressing { throw cleanupFailure }
+        assertEquals(listOf(cleanupFailure), original.suppressed.toList())
     }
 
     @Test

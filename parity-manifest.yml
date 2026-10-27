@@ -1293,7 +1293,7 @@ demos:
       A model library whose cards show a thumbnail of each bundled GLB,
       rendered off screen on the scene's engine one at a time, framed whole
       on a transparent background; a model that cannot be rendered shows an
-      explicit failed cell, and a tapped card opens the model in a viewer.
+      explicit failed cell.
     parity: missing
     evidence: >-
       No iOS scene; ModelThumbnailsDemo.kt. RealityKit's offscreen

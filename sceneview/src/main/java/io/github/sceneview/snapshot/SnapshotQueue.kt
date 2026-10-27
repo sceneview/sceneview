@@ -37,8 +37,15 @@ internal class SnapshotLifetime(private val engineValid: () -> Boolean) {
     var isReleased = false
         private set
 
+    /**
+     * Whether the snapshotter's Filament objects — and a render's model — still exist to be
+     * touched: not released yet, and the engine not destroyed (it takes them all with it). A
+     * render's cleanup checks it before removing or destroying its model.
+     */
+    val ownsFilamentObjects: Boolean get() = !isReleased && engineValid()
+
     /** Checked after every suspension of a render: [destroy] or the engine's end can land there. */
-    val isAlive: Boolean get() = !isDestroyed && !isReleased && engineValid()
+    val isAlive: Boolean get() = !isDestroyed && ownsFilamentObjects
 
     /** Marks it destroyed; `false` when it already was. */
     fun destroy(): Boolean = !isDestroyed.also { isDestroyed = true }
@@ -46,6 +53,26 @@ internal class SnapshotLifetime(private val engineValid: () -> Boolean) {
     /** Marks it released; `false` when it already was. */
     fun release(): Boolean = !isReleased.also { isReleased = true }
 }
+
+/**
+ * Runs [cleanup] after this error was thrown, without letting a second failure replace it: whatever
+ * [cleanup] throws is added to this error's suppressed exceptions.
+ */
+internal inline fun Throwable.suppressing(cleanup: () -> Unit) {
+    try {
+        cleanup()
+    } catch (failure: Throwable) {
+        addSuppressed(failure)
+    }
+}
+
+/**
+ * Whether a render's image is complete, and so may be cached: every texture was decoded before the
+ * capture ([texturesReady]), and the model's glTF could be read to rule out quantized positions
+ * ([extensionsUsed] is not `null`).
+ */
+internal fun isComplete(texturesReady: Boolean, extensionsUsed: List<String>?): Boolean =
+    texturesReady && extensionsUsed != null
 
 /**
  * Whether [result] goes into the cache: only a complete image (textures all decoded, model fully
@@ -119,5 +146,16 @@ internal class SnapshotQueue(
     /** Stops the render in progress; it and every later request get [SNAPSHOT_DESTROYED]. */
     fun cancel() {
         renderScope.cancel()
+    }
+
+    /**
+     * [cancel]s, then hands [releaseWhenIdle] the condition its release waits on: the render in
+     * progress, stopped, may still hold its model until its cleanup has run on the next main-thread
+     * turn, and the requests queued behind it still have to be turned away. Releasing the Filament
+     * objects before then would destroy what that render is still removing.
+     */
+    fun stop(releaseWhenIdle: (isBusy: () -> Boolean) -> Unit) {
+        cancel()
+        releaseWhenIdle { isBusy }
     }
 }

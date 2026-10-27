@@ -38,8 +38,10 @@ import org.junit.runner.RunWith
  * with no Java stack trace and no logcat in the run's output; the same six tests pass on an arm64
  * API 36 emulator with `-gpu swiftshader_indirect`. The cause is not diagnosed, so like the other
  * render classes the whole class runs only on a runner declaring GPU readback (see
- * [RenderTestCapabilities]) and skips elsewhere. The queue and lifetime rules themselves are
- * covered on the JVM by `SnapshotQueueTest`.
+ * [RenderTestCapabilities]) and skips elsewhere. No CI job passes `gpuReadback=true` (see
+ * `render-tests.yml`), so **this class never runs in CI**: run it by hand on a device or emulator
+ * with `-Pandroid.testInstrumentationRunnerArguments.gpuReadback=true`. The queue and lifetime
+ * rules themselves are covered on the JVM by `SnapshotQueueTest`.
  */
 @OptIn(ExperimentalSceneViewApi::class)
 @RunWith(AndroidJUnit4::class)
