@@ -2,6 +2,10 @@ package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.ar.PlacementScene
@@ -31,12 +35,17 @@ fun ManualPlacementDemo(onBack: () -> Unit) {
     val modelLoader = rememberModelLoader(engine)
     val controller = rememberPlacementController()
     val playback = rememberArPlaybackDataset()
+    var surfaceFound by remember { mutableStateOf(false) }
     DemoScaffold(
         title = stringResource(R.string.demo_manual_placement_title),
         onBack = onBack,
         bottomOverlay = {
             DemoStatusBanner(
-                text = if (controller.isPlacing) stringResource(R.string.ar_manual_place_hint) else null,
+                text = if (controller.isPlacing && surfaceFound) {
+                    stringResource(R.string.ar_manual_place_hint)
+                } else {
+                    null
+                },
                 tone = DemoStatusTone.Guidance,
             )
             if (!controller.isPlacing) {
@@ -61,6 +70,7 @@ fun ManualPlacementDemo(onBack: () -> Unit) {
             coaching = true,
             coachingBottomClearance = LocalDemoChromeBottomInset.current,
             controller = controller,
+            onSurfaceFound = { surfaceFound = true },
             onPlaced = { anchor ->
                 // One instance per anchor: a Filament instance has a single parent.
                 rememberModelInstance(modelLoader, MANUAL_PLACEMENT_MODEL)?.let { instance ->

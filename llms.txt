@@ -1674,6 +1674,7 @@ Signature:
     reticleVisibility: ReticleVisibility = ReticleVisibility.AUTO,  // AUTO: only while placing,
                                              // fades out once a model is placed; ALWAYS; HIDDEN
     controller: PlacementController = rememberPlacementController(),  // hoist to drive it from your UI
+    onSurfaceFound: (() -> Unit)? = null,       // first tracked placement plane
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 )
@@ -1703,9 +1704,10 @@ placement, `true` again after `requestPlacement()` or `clear()`), `requestPlacem
 
 Drawing **your own** ring with `reticleAlphaFor(phase)`? Use
 `val alpha by animateReticleAlpha(phase, visible = controller.isPlacing)` and skip drawing it once
-`alpha == 0f`. `PlacementReticleVisual(..., visible = false)` and
-`ARSceneScope.PlacementReticle(..., visible = false)` fade and drop their geometry the same way
-(the standalone `PlacementReticle` keeps hit-testing, so `onHitResultChanged` still reports).
+`alpha == 0f`. `PlacementReticleVisual(..., visible = false)` fades and drops its geometry. For
+`ARSceneScope.PlacementReticle(..., visible = false)`, only the built-in visual fades; custom
+`content` disappears immediately (fade it with `animateReticleAlpha` if needed). The standalone
+`PlacementReticle` keeps hit-testing, so `onHitResultChanged` still reports.
 
 The optional `content` block receives the `PlacementController` — call `controller.clear()` to
 detach every placed anchor (e.g. a "Clear All" button), or read `controller.count` /

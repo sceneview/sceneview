@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -171,6 +172,7 @@ import java.io.File
  *                              Hoist it with [rememberPlacementController] to drive the scene from
  *                              your own UI, e.g. a "Place another" button calling
  *                              [PlacementController.requestPlacement]. Defaults to a fresh one.
+ * @param onSurfaceFound        Invoked once, when ARCore first tracks a placement plane.
  * @param onPlaced              Invoked inside the [ARSceneScope] once per created [Anchor]. Declare
  *                              the content (typically an `AnchorNode { ModelNode(...) }`) to ride
  *                              that anchor. Composed once per anchor; recomposes on placement.
@@ -205,6 +207,7 @@ fun PlacementScene(
     // Appended after coachingBottomClearance for the same reason: no positional slot moves.
     reticleVisibility: ReticleVisibility = ReticleVisibility.AUTO,
     controller: PlacementController = rememberPlacementController(),
+    onSurfaceFound: (() -> Unit)? = null,
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 ) {
@@ -255,6 +258,9 @@ fun PlacementScene(
         visibility = if (showReticle) reticleVisibility else ReticleVisibility.HIDDEN,
         isPlacing = isPlacing,
     )
+    LaunchedEffect(reticleWanted) {
+        reticlePhase = reticlePhaseForVisibility(reticlePhase, reticleWanted)
+    }
     val reticleFade by animateFloatAsState(
         targetValue = if (reticleWanted) 1f else 0f,
         animationSpec = tween(durationMillis = RETICLE_FADE_MS),
@@ -282,11 +288,13 @@ fun PlacementScene(
                 // Tracked unconditionally since #3569: the reticle is only composed while the
                 // camera is TRACKING, so this is no longer a coaching-only signal.
                 isTracking = frame.camera.trackingState == TrackingState.TRACKING
-                if (coaching) {
-                    cameraReady = true
-                    if (!anyPlaneTracked) {
-                        anyPlaneTracked = updatedSession.getAllTrackables(Plane::class.java)
-                            .any { it.trackingState == TrackingState.TRACKING }
+                if (coaching) cameraReady = true
+                if ((coaching || onSurfaceFound != null) && !anyPlaneTracked) {
+                    val surfaceFound = updatedSession.getAllTrackables(Plane::class.java)
+                        .any { it.trackingState == TrackingState.TRACKING }
+                    if (surfaceFound) {
+                        anyPlaneTracked = true
+                        onSurfaceFound?.invoke()
                     }
                 }
             },
@@ -400,6 +408,55 @@ fun PlacementScene(
     }
 }
 
+/** Binary-compatibility shim for the pre-reticle-visibility descriptor. */
+@Deprecated(
+    "Binary-compatibility overload. Use the PlacementScene overload that takes `reticleVisibility` and `controller`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun PlacementScene(
+    modifier: Modifier = Modifier,
+    engine: Engine = rememberEngine(),
+    modelLoader: ModelLoader = rememberModelLoader(engine),
+    materialLoader: MaterialLoader = rememberMaterialLoader(engine),
+    planeRenderer: Boolean = true,
+    planeFindingMode: Config.PlaneFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    instantPlacement: Boolean = true,
+    showReticle: Boolean = true,
+    reticleColor: Color = RETICLE_TINT,
+    reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
+    fadePlaneOnFirstPlacement: Boolean = true,
+    coaching: Boolean = false,
+    groundShadows: Boolean = false,
+    playbackDataset: File? = null,
+    sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
+    coachingBottomClearance: Dp = GUIDE_BOTTOM_CLEARANCE,
+    onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,
+    content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
+) = PlacementScene(
+    modifier = modifier,
+    engine = engine,
+    modelLoader = modelLoader,
+    materialLoader = materialLoader,
+    planeRenderer = planeRenderer,
+    planeFindingMode = planeFindingMode,
+    instantPlacement = instantPlacement,
+    showReticle = showReticle,
+    reticleColor = reticleColor,
+    reticleStyle = reticleStyle,
+    fadePlaneOnFirstPlacement = fadePlaneOnFirstPlacement,
+    coaching = coaching,
+    groundShadows = groundShadows,
+    playbackDataset = playbackDataset,
+    sessionConfiguration = sessionConfiguration,
+    coachingBottomClearance = coachingBottomClearance,
+    reticleVisibility = if (showReticle) ReticleVisibility.ALWAYS else ReticleVisibility.HIDDEN,
+    controller = rememberPlacementController(),
+    onSurfaceFound = null,
+    onPlaced = onPlaced,
+    content = content,
+)
+
 /**
  * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the plane
  * renderer's OWN shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a
@@ -483,10 +540,10 @@ fun rememberPlacementController(): PlacementController = remember { PlacementCon
 /**
  * Holds the [Anchor]s created by tap-to-place inside a [PlacementScene].
  *
- * A fresh instance is `remember`ed per `PlacementScene`. The [content] block of `PlacementScene`
- * receives it so the caller can wipe every placement ([clear]), ask for one more
- * ([requestPlacement]) or inspect the live list ([anchors]) — e.g. to drive a "3 models placed"
- * counter or a "Place another" button.
+ * Create and hoist one with [rememberPlacementController], or let [PlacementScene] remember its
+ * default instance. The [content] block receives it so the caller can wipe every placement
+ * ([clear]), ask for one more ([requestPlacement]) or inspect the live list ([anchors]) — e.g. to
+ * drive a "3 models placed" counter or a "Place another" button.
  */
 class PlacementController internal constructor() {
     private val _anchors = mutableStateListOf<Anchor>()

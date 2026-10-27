@@ -294,18 +294,22 @@ const val RETICLE_FADE_MS = 200
  * Only says whether the cursor is *wanted*; [PlacementScene] still also requires a measured
  * viewport and a tracking camera ([shouldShowReticle]).
  */
-fun reticleVisibleFor(visibility: ReticleVisibility, isPlacing: Boolean): Boolean =
+internal fun reticleVisibleFor(visibility: ReticleVisibility, isPlacing: Boolean): Boolean =
     when (visibility) {
         ReticleVisibility.AUTO -> isPlacing
         ReticleVisibility.ALWAYS -> true
         ReticleVisibility.HIDDEN -> false
     }
 
+/** Discards a stale hit phase while the reticle is hidden. */
+internal fun reticlePhaseForVisibility(phase: ReticlePhase, visible: Boolean): ReticlePhase =
+    if (visible) phase else ReticlePhase.SEARCHING
+
 /**
  * The opacity a reticle in [phase] should reach: [reticleAlphaFor] while [visible], `0` once it
  * is hidden (after a placement, typically). Pure — the target that [animateReticleAlpha] eases to.
  */
-fun reticleTargetAlpha(phase: ReticlePhase, visible: Boolean): Float =
+internal fun reticleTargetAlpha(phase: ReticlePhase, visible: Boolean): Float =
     if (visible) reticleAlphaFor(phase) else 0f
 
 /**
@@ -315,7 +319,7 @@ fun reticleTargetAlpha(phase: ReticlePhase, visible: Boolean): Float =
  * @param visible     whether the reticle is currently wanted.
  * @param currentFade the animated opacity (or opacity multiplier) right now.
  */
-fun shouldComposeReticle(visible: Boolean, currentFade: Float): Boolean =
+internal fun shouldComposeReticle(visible: Boolean, currentFade: Float): Boolean =
     visible || currentFade > 0f
 
 /**
@@ -465,3 +469,24 @@ fun io.github.sceneview.NodeScope.PlacementReticleVisual(
         }
     }
 }
+
+/** Binary-compatibility shim for the pre-`visible` descriptor. */
+@Deprecated(
+    "Binary-compatibility overload. Use the PlacementReticleVisual overload that takes `visible`.",
+    level = DeprecationLevel.HIDDEN,
+)
+@Composable
+fun io.github.sceneview.NodeScope.PlacementReticleVisual(
+    materialLoader: MaterialLoader,
+    phase: ReticlePhase,
+    tint: Color = RETICLE_TINT,
+    style: PlacementReticleStyle = PlacementReticleStyle.RING,
+    alpha: Float = reticleAlphaFor(phase),
+) = PlacementReticleVisual(
+    materialLoader = materialLoader,
+    phase = phase,
+    tint = tint,
+    style = style,
+    alpha = alpha,
+    visible = true,
+)

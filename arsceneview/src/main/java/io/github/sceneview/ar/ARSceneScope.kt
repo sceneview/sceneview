@@ -633,6 +633,37 @@ class ARSceneScope internal constructor(
         }
     }
 
+    /** Binary-compatibility shim for the pre-`visible` descriptor. */
+    @Deprecated(
+        "Binary-compatibility overload. Use the PlacementReticle overload that takes `visible`.",
+        level = DeprecationLevel.HIDDEN,
+    )
+    @Composable
+    fun PlacementReticle(
+        xPx: Float,
+        yPx: Float,
+        snapToPlane: Boolean = true,
+        depthPoint: Boolean = false,
+        orientationSmoothing: Float = PlacementReticleNodeImpl.DEFAULT_ORIENTATION_SMOOTHING,
+        predicate: ((HitResult) -> Boolean)? = null,
+        onHitResultChanged: ((HitResult?) -> Unit)? = null,
+        refreshIntervalMs: Long = 0L,
+        apply: PlacementReticleNodeImpl.() -> Unit = {},
+        content: (@Composable NodeScope.() -> Unit)? = null,
+    ) = PlacementReticle(
+        xPx = xPx,
+        yPx = yPx,
+        snapToPlane = snapToPlane,
+        depthPoint = depthPoint,
+        orientationSmoothing = orientationSmoothing,
+        predicate = predicate,
+        onHitResultChanged = onHitResultChanged,
+        refreshIntervalMs = refreshIntervalMs,
+        apply = apply,
+        visible = true,
+        content = content,
+    )
+
     // ── DepthHitResultNode ────────────────────────────────────────────────────────────────────────
 
     /**

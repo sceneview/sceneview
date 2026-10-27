@@ -52,6 +52,18 @@ class PlacementReticleVisibilityTest {
     }
 
     @Test
+    fun `hidden reticle drops its stale hit phase before returning`() {
+        assertEquals(
+            ReticlePhase.SEARCHING,
+            reticlePhaseForVisibility(ReticlePhase.LOCKED, visible = false),
+        )
+        assertEquals(
+            ReticlePhase.READY,
+            reticlePhaseForVisibility(ReticlePhase.READY, visible = true),
+        )
+    }
+
+    @Test
     fun `nodes stay through the fade then leave the scene`() {
         assertTrue("wanted, even before the fade-in starts", shouldComposeReticle(true, 0f))
         assertTrue("still fading out", shouldComposeReticle(false, 0.01f))
