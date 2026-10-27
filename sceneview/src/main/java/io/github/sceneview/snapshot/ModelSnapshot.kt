@@ -195,6 +195,12 @@ internal data class SnapshotKey(
  * then shared with your scene's models: a thumbnail asked while the scene loads waits for those
  * textures too (or is not cached, past the timeout). [destroy] does not destroy it. `null` (the
  * default) builds a loader of the snapshotter's own, destroyed with it.
+ * A loader passed in must outlive this snapshotter: [destroy] the snapshotter first. Its
+ * `clear()` (or a `destroy()`) while a thumbnail renders destroys that thumbnail's model too: the
+ * render notices before its next call on the model and the request fails (`null`,
+ * [ModelThumbnailState.Failed] in Compose) instead of crashing; later requests load again. A
+ * request made once the loader is destroyed fails the same way, but destroying it while a request
+ * is still reading its file is not covered: the load itself then calls into freed objects.
  */
 @ExperimentalSceneViewApi
 class ModelSnapshot @MainThread constructor(
@@ -381,13 +387,21 @@ class ModelSnapshot @MainThread constructor(
 
     @MainThread
     private suspend fun render(key: SnapshotKey): SnapshotResult {
+        // A shared loader destroyed before this request: loading on it calls into freed objects.
+        if (!modelLoader.isLoadable) return SnapshotResult.Failed(LOADER_DESTROYED)
         val model = modelLoader.loadModel(key.fileLocation)
             ?: return SnapshotResult.Failed("could not load the model")
+        // Asked after every suspension, before the next call on the model: meanwhile this
+        // snapshotter may have been destroyed, or a shared loader's clear() or destroy() may have
+        // destroyed the model, whose zeroed native handle would crash the process (gltfio checks
+        // nothing). Everything between two suspensions runs on the main thread, as those calls do.
+        fun interruption() = renderInterruption(isAlive, holdsModel = modelLoader.holds(model))
         try {
-            if (!isAlive) return SnapshotResult.Failed(DESTROYED)
+            interruption()?.let { return SnapshotResult.Failed(it) }
             val extensions = withContext(Dispatchers.IO) {
                 readGltfExtensionsUsed(appContext, key.fileLocation)
             }
+            interruption()?.let { return SnapshotResult.Failed(it) }
             // Not checked (an http URL with the file cache off or unwritten, a file changed since
             // the load): rendered, as most models are not quantized, but not cached, so a wrongly
             // framed image is not kept.
@@ -401,28 +415,32 @@ class ModelSnapshot @MainThread constructor(
                 )
             }
             // Textures are decoded in the background and uploaded as they come: wait for all of
-            // them, so the thumbnail is never captured half-textured.
+            // them, so the thumbnail is never captured half-textured. A cleared or destroyed
+            // loader stops the wait before its next updateLoad().
             val texturesReady = withTimeoutOrNull(TEXTURE_TIMEOUT_MS) {
-                while (isAlive && modelLoader.isLoading) {
+                while (interruption() == null && modelLoader.isLoading) {
                     modelLoader.updateLoad()
                     delay(FRAME_MS)
                 }
             } != null
-            if (!isAlive) return SnapshotResult.Failed(DESTROYED)
+            interruption()?.let { return SnapshotResult.Failed(it) }
             if (!texturesReady) Log.w(TAG, "${key.fileLocation}: textures still loading after $TEXTURE_TIMEOUT_MS ms")
             // Skinned models: pose the skin once, at rest.
             runCatching { model.instance?.animator?.updateBoneMatrices() }
             if (!frame(model, key)) {
                 return SnapshotResult.Failed("its bounding box is empty or not finite")
             }
-            scene.addEntities(model.entities)
+            // Read once, while the model is alive: the cleanup below must not ask a model the
+            // loader may have destroyed during the capture.
+            val entities = model.entities
+            scene.addEntities(entities)
             try {
                 // The very first capture of a cold engine can outlast its timeout while the backend
                 // compiles: the target is rebuilt after a miss, and a second try finds it warm.
                 val captured = capture(key.width, key.height)
-                    ?: if (isAlive) capture(key.width, key.height) else null
+                    ?: if (interruption() == null) capture(key.width, key.height) else null
+                interruption()?.let { return SnapshotResult.Failed(it) }
                 return when {
-                    !isAlive -> SnapshotResult.Failed(DESTROYED)
                     captured == null -> SnapshotResult.Failed("the render timed out")
                     captured.bitmap == null -> SnapshotResult.Failed(
                         captured.failure ?: "it drew nothing: the image is fully transparent"
@@ -433,10 +451,12 @@ class ModelSnapshot @MainThread constructor(
                     )
                 }
             } finally {
-                if (lifetime.ownsFilamentObjects) scene.removeEntities(model.entities)
+                // Entity ids, not the model: removing them is safe even once the model is gone.
+                if (lifetime.ownsFilamentObjects) scene.removeEntities(entities)
             }
         } finally {
-            // Once released, the engine or the loader's own destroy() took the model with it.
+            // Once released, the engine or the loader's own destroy() took the model with it. A
+            // model the shared loader already destroyed has left its registry: this is a no-op.
             if (lifetime.ownsFilamentObjects) modelLoader.destroyModel(model)
         }
     }
@@ -705,7 +725,7 @@ class ModelSnapshot @MainThread constructor(
         private const val NEUTRAL_IBL = "environments/neutral/neutral_ibl.ktx"
         private const val WARMUP_FRAMES = 1
         private const val TAG = SNAPSHOT_TAG
-        private const val DESTROYED = SNAPSHOT_DESTROYED
+        private const val LOADER_DESTROYED = SNAPSHOT_LOADER_DESTROYED
 
         /**
          * How long the renderer may keep refusing frames. It skips while the GPU is behind, which

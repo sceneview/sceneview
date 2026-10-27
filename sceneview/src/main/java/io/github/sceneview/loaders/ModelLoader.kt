@@ -35,6 +35,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -815,6 +816,16 @@ class ModelLoader(
             retiredResourceLoaders.clear()
         }
     }
+
+    /**
+     * Whether [model] is still this loader's: not destroyed since by [destroyModel], [clear] or
+     * [destroy]. A model that left the registry has a zeroed native handle: no call on it is safe.
+     * Main thread.
+     */
+    internal fun holds(model: Model): Boolean = model in models
+
+    /** `false` once [destroy] was called (it cancels the load scope): no load may start on it. */
+    internal val isLoadable: Boolean get() = loadScope.isActive
 
     fun updateLoad() {
         // Allow the resource loader to finalize textures that have become ready.

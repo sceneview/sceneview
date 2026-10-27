@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.LruCache
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
@@ -13,6 +14,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -125,6 +127,8 @@ class SnapshotQueueTest {
                 try {
                     awaitCancellation()
                 } finally {
+                    // A real render's cleanup hops to the main thread: the queue must wait for it.
+                    withContext(NonCancellable) { delay(5) }
                     events += "render let go of its model"
                 }
             }
@@ -182,6 +186,7 @@ class SnapshotQueueTest {
                     try {
                         awaitCancellation()
                     } finally {
+                        withContext(NonCancellable) { delay(5) }
                         events += "fox released"
                     }
                 }
@@ -292,5 +297,17 @@ class SnapshotQueueTest {
         assertFalse(shouldCache(complete, isAlive = false))
         assertFalse(shouldCache(partial, isAlive = true))
         assertFalse(shouldCache(partial, isAlive = false))
+    }
+
+    @Test
+    fun a_render_stops_once_destroyed_or_once_a_shared_loader_let_go_of_its_model() {
+        assertNull(renderInterruption(isAlive = true, holdsModel = true))
+        assertEquals(
+            "a shared loader's clear() or destroy() took the model: no call on it may follow",
+            SNAPSHOT_MODEL_GONE,
+            renderInterruption(isAlive = true, holdsModel = false),
+        )
+        assertEquals(SNAPSHOT_DESTROYED, renderInterruption(isAlive = false, holdsModel = true))
+        assertEquals(SNAPSHOT_DESTROYED, renderInterruption(isAlive = false, holdsModel = false))
     }
 }

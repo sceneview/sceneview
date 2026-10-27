@@ -1,10 +1,12 @@
 package io.github.sceneview.snapshot
 
 import android.graphics.Bitmap
+import android.os.Handler
 import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.sceneview.ExperimentalSceneViewApi
+import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.render.RenderTestCapabilities
 import io.github.sceneview.render.RenderTestHarness
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
 import org.junit.AfterClass
 import org.junit.Assert.assertEquals
@@ -31,11 +34,12 @@ import org.junit.runner.RunWith
 
 /**
  * [ModelSnapshot]'s queue and lifetime on a real engine: destroy while a model loads, queued
- * requests after destroy, a caller that gives up mid-render, and the cache.
+ * requests after destroy, a caller that gives up mid-render, the cache, and a shared [ModelLoader]
+ * cleared or destroyed under a render.
  *
  * Every test renders through an `ImageReader` swap chain. Ungated on CI's x86_64 SwiftShader
  * emulator (API 30), the instrumentation process died within a second of the class's first test,
- * with no Java stack trace and no logcat in the run's output; the same six tests pass on an arm64
+ * with no Java stack trace and no logcat in the run's output; the class passes on an arm64
  * API 36 emulator with `-gpu swiftshader_indirect`. The cause is not diagnosed, so like the other
  * render classes the whole class runs only on a runner declaring GPU readback (see
  * [RenderTestCapabilities]) and skips elsewhere. No CI job passes `gpuReadback=true` (see
@@ -158,5 +162,69 @@ class ModelSnapshotTest {
         // The queue is free again.
         runBlocking { delay(10) }
         await(request())
+    }
+
+    /**
+     * A shared loader's `clear()` destroys the model a render is waiting on (here, during the read
+     * of its glTF or the wait for its textures): the render must fail with [SNAPSHOT_MODEL_GONE]
+     * before its next call on the model, whose zeroed native handle would crash the process.
+     */
+    @Test
+    fun a_shared_loader_cleared_mid_render_fails_the_request_and_stays_usable() {
+        lateinit var loader: ModelLoader
+        lateinit var shared: ModelSnapshot
+        harness.runOnMain {
+            loader = ModelLoader(harness.engine, context)
+            shared = ModelSnapshot(harness.engine, context, maxCacheBytes = 0, modelLoader = loader)
+        }
+        try {
+            val key = SnapshotKey(MODEL, SIZE, SIZE, ModelSnapshotOptions())
+            val inFlight = scope.async { shared.request(key) }
+            // Polled on every main-thread turn: clears once the model is loaded and its textures
+            // began decoding — between two suspensions of the render, as an app would.
+            val cleared = AtomicBoolean(false)
+            val main = Handler(Looper.getMainLooper())
+            val clearer = object : Runnable {
+                override fun run() {
+                    if (inFlight.isCompleted) return
+                    if (loader.isLoading) {
+                        loader.clear()
+                        cleared.set(true)
+                    } else {
+                        main.post(this)
+                    }
+                }
+            }
+            main.post(clearer)
+
+            val result = await(inFlight)
+            assertTrue("the clear landed mid-render", cleared.get())
+            assertEquals(SNAPSHOT_MODEL_GONE, (result as SnapshotResult.Failed).reason)
+            // The loader stays usable: the next request loads the model again.
+            assertTrue(await(scope.async { shared.request(key) }) is SnapshotResult.Rendered)
+        } finally {
+            harness.runOnMain {
+                shared.destroy()
+                loader.destroy()
+            }
+        }
+    }
+
+    @Test
+    fun a_request_on_a_destroyed_shared_loader_fails_without_loading() {
+        lateinit var loader: ModelLoader
+        lateinit var shared: ModelSnapshot
+        harness.runOnMain {
+            loader = ModelLoader(harness.engine, context)
+            shared = ModelSnapshot(harness.engine, context, modelLoader = loader)
+            loader.destroy()
+        }
+        try {
+            val key = SnapshotKey(MODEL, SIZE, SIZE, ModelSnapshotOptions())
+            val result = await(scope.async { shared.request(key) })
+            assertEquals(SNAPSHOT_LOADER_DESTROYED, (result as SnapshotResult.Failed).reason)
+        } finally {
+            harness.runOnMain { shared.destroy() }
+        }
     }
 }

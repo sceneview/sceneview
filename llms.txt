@@ -6185,6 +6185,7 @@ suspend fun shareImages(snapshot: ModelSnapshot): List<Bitmap?> = listOf(
 - **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes: a render in flight stops at its next step (its model load is cancelled) and it, like every queued request, gets `null` / `Failed`; Filament objects are freed once that render has let go and the GPU is done with them.
 - Lighting is the SDK's default key + fill and a neutral IBL, so thumbnails match a default `SceneView`. Skinned models are drawn in their bind pose; the first animation frame is not applied.
 - **Tested on arm64 emulators only**: process death observed once on an x86_64 API 30 SwiftShader emulator, undiagnosed.
+- **A shared `modelLoader` must outlive the snapshot**: destroy the snapshot first (`rememberModelSnapshot` declared after `rememberModelLoader`). `modelLoader.clear()` (or `destroy()`) while a thumbnail renders destroys that thumbnail's model too: the render notices before its next call on the model and the request fails (`null`, `ModelThumbnailState.Failed`), no crash; later requests load again. A request made once the loader is destroyed fails the same way; destroying the loader while a request is still reading its file is not covered.
 
 ### Interactive model with tap and gesture
 

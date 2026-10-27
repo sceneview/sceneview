@@ -23,6 +23,13 @@ internal const val SNAPSHOT_TAG = "ModelSnapshot"
 /** The reason of a request that [ModelSnapshot.destroy] stopped or turned away. */
 internal const val SNAPSHOT_DESTROYED = "the snapshot was destroyed"
 
+/** The reason of a render whose model a shared ModelLoader destroyed ([ModelLoader.clear], say). */
+internal const val SNAPSHOT_MODEL_GONE =
+    "its model was destroyed meanwhile: the shared ModelLoader was cleared or destroyed"
+
+/** The reason of a request made after a shared ModelLoader was destroyed. */
+internal const val SNAPSHOT_LOADER_DESTROYED = "its ModelLoader was destroyed"
+
 /**
  * Whether a [ModelSnapshot] may still call Filament: not destroyed by its owner, not released,
  * and its engine still valid. Kept apart from Filament so the JVM tests can drive it.
@@ -73,6 +80,19 @@ internal inline fun Throwable.suppressing(cleanup: () -> Unit) {
  */
 internal fun isComplete(texturesReady: Boolean, extensionsUsed: List<String>?): Boolean =
     texturesReady && extensionsUsed != null
+
+/**
+ * Why a render must stop before its next call on its model, or `null` to go on. Asked after every
+ * suspension of a render, since either can happen while it waits: the snapshotter destroyed
+ * ([isAlive] `false`), or the model destroyed by a shared ModelLoader's `clear()` or `destroy()`
+ * ([holdsModel] `false`). gltfio zeroes a destroyed asset's handle without checking it on the
+ * next call: a bounding box read on it is a native crash, not an exception.
+ */
+internal fun renderInterruption(isAlive: Boolean, holdsModel: Boolean): String? = when {
+    !isAlive -> SNAPSHOT_DESTROYED
+    !holdsModel -> SNAPSHOT_MODEL_GONE
+    else -> null
+}
 
 /**
  * Whether [result] goes into the cache: only a complete image (textures all decoded, model fully
