@@ -14,8 +14,6 @@ import com.google.android.filament.Skybox
 import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.View.AntiAliasing
-import com.google.android.filament.View.QualityLevel
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
@@ -24,6 +22,7 @@ import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.managers.color
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
@@ -68,6 +67,18 @@ const val DEFAULT_FILL_LIGHT_COLOR_INTENSITY = 3_000.0f
 val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE).toColor()
 val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY
 
+/**
+ * Direction the default main light travels in (world space, not normalised; Filament normalises).
+ *
+ * A studio key: high above, a little to the right of a camera looking down `-Z`, and in front of
+ * the subject, so the front of a product is lit, its form reads from a soft falloff towards the
+ * left, and its own shadow falls behind it. It used to point straight down (`0, -1, 0`), which lit
+ * only the top faces and left the front of every model in the fill light. The fill
+ * ([DefaultFillLightNode]) comes from the opposite side, upper-left-back. In AR, ARCore's
+ * environmental HDR estimate replaces this direction from the first frame.
+ */
+val DEFAULT_MAIN_LIGHT_DIRECTION = Direction(-0.35f, -1.0f, -0.6f)
+
 val DEFAULT_OBJECT_POSITION = Position(0.0f, 0.0f, -4.0f)
 
 /**
@@ -96,30 +107,12 @@ fun createEngine(eglContext: EGLContext): Engine = Engine.create(eglContext)
 fun createScene(engine: Engine): com.google.android.filament.Scene = engine.createScene()
 
 fun createView(engine: Engine): View = engine.createView().apply {
-    renderQuality = renderQuality.apply {
-        hdrColorBuffer = QualityLevel.MEDIUM
-    }
-    dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
-        homogeneousScaling = true
-        quality = QualityLevel.MEDIUM
-    }
-    multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
-    }
-    antiAliasing = AntiAliasing.FXAA
-    // SSAO on by default — adds visible grounding under geometry crevices (toy_car, helmet)
-    // without artifacts on diffuse-only models. Validated 2026-05-11 on Pixel_7a GPU host.
-    ambientOcclusionOptions = ambientOcclusionOptions.apply {
-        enabled = true
-    }
-    // Subtle bloom on by default — strength 0.10 lifts metallic/emissive highlights
-    // (satin chrome, light filaments) but is invisible on diffuse-only assets, so it costs
-    // nothing on plain models. Push higher only for cinematic scenes.
-    bloomOptions = bloomOptions.apply {
-        enabled = true
-        strength = 0.1f
-    }
+    // The out-of-the-box look is [RenderQuality.Default]: FXAA, MEDIUM HDR buffer, SSAO at
+    // MEDIUM quality with bilateral upsampling, bloom 0.10, soft (DPCF) shadows. `SceneView`
+    // re-applies the same preset from its `renderQuality` parameter; writing it here too keeps a
+    // view used outside the composable (plain `SceneView` View, `rememberView` + custom host)
+    // identical to the composable's.
+    applyRenderQualitySpec(RenderQuality.Default.spec())
     // Khronos PBR Neutral tone mapper. It is the identity up to 0.76 and only
     // compresses what is brighter, so a base colour displays as authored: measured on the
     // demo's brand ramp, Filmic kept 40–57 % of the light blue's chroma and 45–65 % of the
@@ -132,9 +125,6 @@ fun createView(engine: Engine): View = engine.createView().apply {
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.PBRNeutralToneMapper())
         .build(engine)
-    // Shadows on by default — matches RealityKit on iOS and produces a more grounded look
-    // out of the box. Disable via `View.setShadowingEnabled(false)` when not needed.
-    setShadowingEnabled(true)
 }
 
 /**
@@ -175,25 +165,14 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * Unlike [createView], the AR view keeps bloom and ambient occlusion **off** so they cannot tint
  * the camera background — those were the real source of the oversaturation/vignetting in #657.
  *
- * Shadows are enabled by default because AR users commonly want 3D content to cast shadows on
- * detected planes. Disable via `View.setShadowingEnabled(false)` when not needed.
+ * Shadows are enabled by default, soft (`ShadowType.DPCF`), because AR users commonly want 3D
+ * content to cast shadows on detected planes. Disable via `View.setShadowingEnabled(false)` when
+ * not needed.
  */
 fun createARView(engine: Engine): View = engine.createView().apply {
-    renderQuality = renderQuality.apply {
-        hdrColorBuffer = QualityLevel.MEDIUM
-    }
-    dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
-        homogeneousScaling = true
-        quality = QualityLevel.MEDIUM
-    }
-    multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
-    }
-    antiAliasing = AntiAliasing.FXAA
-    ambientOcclusionOptions = ambientOcclusionOptions.apply {
-        enabled = false
-    }
+    // [RenderQuality.Default] minus SSAO and bloom (#657): FXAA, MEDIUM HDR buffer, soft (DPCF)
+    // shadows on detected planes.
+    applyRenderQualitySpec(RenderQuality.Default.spec(isArView = true))
     // Filmic tone mapper: the AR camera-stream shader pre-applies Inverse_Tonemap_Filmic, so the
     // Filmic post-process re-applies the matching forward curve and the camera background round-
     // trips back to the original pixels. Using ToneMapper.Linear here leaves the inverse curve
@@ -204,8 +183,6 @@ fun createARView(engine: Engine): View = engine.createView().apply {
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
     filmicViews += this
-    // Shadows on by default for AR: models casting shadows onto detected planes.
-    setShadowingEnabled(true)
 }
 
 /**
@@ -426,7 +403,11 @@ class DefaultLightNode(engine: Engine) : LightNode(
     apply = {
         color(DEFAULT_MAIN_LIGHT_COLOR)
         intensity(DEFAULT_MAIN_LIGHT_COLOR_INTENSITY)
-        direction(0.0f, -1.0f, 0.0f)
+        direction(
+            DEFAULT_MAIN_LIGHT_DIRECTION.x,
+            DEFAULT_MAIN_LIGHT_DIRECTION.y,
+            DEFAULT_MAIN_LIGHT_DIRECTION.z
+        )
         castShadows(true)
     }
 )

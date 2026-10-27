@@ -611,7 +611,8 @@ fun ARSceneView(
      * [RenderQuality.Performance] for battery-sensitive AR overlays, or [RenderQuality.Cinematic]
      * for a hero placement showcase. The Filmic tone mapper that round-trips the AR camera
      * background (#1434) is preserved across every preset — [applyRenderQuality] never writes
-     * `view.colorGrading`. Reapplied only when the value changes (keyed effect).
+     * `view.colorGrading` — and no preset turns SSAO or bloom on over the camera feed (#657).
+     * Reapplied only when the value changes (keyed effect).
      */
     renderQuality: RenderQuality? = null,
     /**
@@ -922,8 +923,8 @@ fun ARSceneView(
     // Apply the optional `renderQuality` preset to the AR `view`, mirroring the 3D
     // `SceneView` wiring but **only when the caller passes one**. `null` (default) leaves the
     // camera-feed-tuned defaults from `createARView` untouched, so existing AR consumers are
-    // unchanged (those defaults deliberately disable SSAO/bloom that `RenderQuality.Default`
-    // would re-enable). Keyed on (view, renderQuality) so the preset is reapplied only when it
+    // unchanged. A preset never re-enables SSAO/bloom on an AR view (#657): `applyRenderQuality`
+    // recognises a `createARView` view and keeps both off. Keyed on (view, renderQuality) so the preset is reapplied only when it
     // changes; the AR Filmic tone mapper (#1434) survives because `applyRenderQuality` never
     // writes `view.colorGrading`.
     LaunchedEffect(view, renderQuality) {
