@@ -138,7 +138,8 @@ import java.io.File
  *                              finding a surface. Default `false` — opt in for a guided first run.
  * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
  *                              to every detected plane so placed models cast a **contact shadow**
- *                              on the real floor instead of floating. Default `false`. Needs a
+ *                              on the real floor instead of floating. Default `true`, like
+ *                              [AutoPlacementScene] (it used to be `false`). Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
  *                              estimation provides one. The catchers attach **only while the
  *                              plane grid is not rendered** — the plane renderer carries its
@@ -197,7 +198,7 @@ fun PlacementScene(
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
     fadePlaneOnFirstPlacement: Boolean = true,
     coaching: Boolean = false,
-    groundShadows: Boolean = false,
+    groundShadows: Boolean = true,
     playbackDataset: File? = null,
     sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
     // Appended at the end of the optional block rather than next to `coaching`, where it
