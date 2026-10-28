@@ -100,6 +100,11 @@ import io.github.sceneview.demo.labs.Labs
 import io.github.sceneview.demo.labs.LabsAccess
 import io.github.sceneview.demo.labs.LabsHomeCard
 import io.github.sceneview.demo.labs.openLabsSupportLink
+import io.github.sceneview.demo.support.SUPPORT_OPEN_COLLECTIVE_URL
+import io.github.sceneview.demo.support.SupportPrompt
+import io.github.sceneview.demo.support.SupportSheet
+import io.github.sceneview.demo.support.SupportSheetMode
+import kotlinx.coroutines.delay
 import io.github.sceneview.demo.telemetry.SettingsSwitchRow
 import io.github.sceneview.demo.telemetry.AnalyticsEvent
 import io.github.sceneview.demo.telemetry.NotificationsSettingsRow
@@ -204,6 +209,24 @@ fun RootScreen(
     // survives a tab switch, so an unconditional handler let Back close the *hidden* gallery
     // from AR View or About — the visible screen's own back behaviour never ran.
     BackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { galleryOpen = false }
+
+    // Support SceneView, the moderated interstitial (support/SupportPrompt.kt): it may follow a
+    // moment of value once the user is back here — never on the AR View tab, never over a
+    // live AR session or another sheet. The short wait lets the screen settle first, so the
+    // sheet does not ride in on the back transition from the sample.
+    val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive && !whatsNewSinceSheet.isShown
+    LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
+        if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
+        delay(SUPPORT_PROMPT_SETTLE_MILLIS)
+        SupportPrompt.maybeShow(canShow = true)
+    }
+    if (SupportPrompt.isShown && canAskForSupport) {
+        SupportSheet(
+            mode = SupportSheetMode.Prompt,
+            onDismiss = SupportPrompt::dismiss,
+            onOptOut = SupportPrompt::optOut,
+        )
+    }
 
     // Fade-through specs, hoisted: `transitionSpec` is not a composable scope, so it
     // cannot ask `LocalMotionEnabled` itself.
@@ -465,6 +488,10 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
 @Composable
 private fun AboutTabContent() {
     val context = LocalContext.current
+    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
+    if (showSupportSheet) {
+        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
+    }
     val noBrowserMessage = stringResource(R.string.about_no_browser)
     val openLink: (String) -> Unit = { url ->
         logOutboundLink(url)
@@ -515,7 +542,7 @@ private fun AboutTabContent() {
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
     ) {
         AboutIdentity()
-        AboutSupportCard(openLink = openLink)
+        AboutSupportCard(openLink = openLink, onSupportInApp = { showSupportSheet = true })
         AboutGroup(title = stringResource(R.string.about_group_more_apps)) {
             MORE_APPS.forEachIndexed { index, app ->
                 if (index > 0) AboutRowDivider(startInset = SceneViewTokens.About.appDividerInset)
@@ -661,13 +688,14 @@ private fun AboutIdentity() {
 /**
  * The one emphasised surface on the screen (#3565).
  *
- * Open Collective takes the filled button because it is the channel that has
- * actually received contributions; GitHub Sponsors is the quiet second. No amount,
- * no tier, no urgency copy, and nothing about revenue — the card states what
+ * The filled button opens the Support sheet: three amounts, one tap each into Google
+ * Play, the fastest way to give from a phone. Open Collective is the quiet second, for
+ * whoever wants an invoice or a recurring gift — and the only external link, so the card
+ * never offers a third. No urgency copy and nothing about revenue: the card states what
  * funding buys and stops.
  */
 @Composable
-private fun AboutSupportCard(openLink: (String) -> Unit) {
+private fun AboutSupportCard(openLink: (String) -> Unit, onSupportInApp: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
@@ -708,7 +736,7 @@ private fun AboutSupportCard(openLink: (String) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Button(
-                    onClick = { openLink("https://opencollective.com/sceneview") },
+                    onClick = onSupportInApp,
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = SceneViewTokens.Layout.touchTarget),
@@ -716,14 +744,14 @@ private fun AboutSupportCard(openLink: (String) -> Unit) {
                     contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
                 ) {
                     Text(
-                        text = stringResource(R.string.about_support_open_collective),
+                        text = stringResource(R.string.about_support_in_app),
                         style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                         textAlign = TextAlign.Center,
                     )
                 }
                 TextButton(
-                    onClick = { openLink("https://github.com/sponsors/sceneview") },
+                    onClick = { openLink(SUPPORT_OPEN_COLLECTIVE_URL) },
                     modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
                     shape = RoundedCornerShape(SceneViewTokens.Radius.md),
                     contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
@@ -732,7 +760,7 @@ private fun AboutSupportCard(openLink: (String) -> Unit) {
                     ),
                 ) {
                     Text(
-                        text = stringResource(R.string.about_support_github_sponsors),
+                        text = stringResource(R.string.about_support_open_collective_short),
                         style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                     )
@@ -932,3 +960,6 @@ private fun AboutAppRow(app: MoreApp, onClick: () -> Unit) {
         )
     }
 }
+
+/** How long the tab host settles before the Support interstitial may rise. */
+private const val SUPPORT_PROMPT_SETTLE_MILLIS = 900L
