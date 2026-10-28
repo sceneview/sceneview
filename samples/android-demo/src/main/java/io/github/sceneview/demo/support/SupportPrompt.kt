@@ -2,6 +2,7 @@ package io.github.sceneview.demo.support
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -103,6 +104,15 @@ object SupportPrompt {
     /** Debug QA (`--es support_qa prompt`): show it now, whatever the rule says. */
     internal fun forceShow() {
         isShown = true
+    }
+
+    /** Tests: a fresh store and a fresh in-memory state, as on a first install. */
+    @VisibleForTesting
+    internal fun resetForTest(context: Context) {
+        prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .also { it.edit(commit = true) { clear() } }
+        isShown = false
+        valueMoment = false
     }
 
     internal fun shouldOffer(

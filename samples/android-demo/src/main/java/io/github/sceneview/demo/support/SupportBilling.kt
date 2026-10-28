@@ -3,6 +3,7 @@ package io.github.sceneview.demo.support
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,7 +19,18 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.android.billingclient.api.consumePurchase
+import com.android.billingclient.api.queryProductDetails
+import com.android.billingclient.api.queryPurchasesAsync
 import io.github.sceneview.demo.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /** One of the three contribution amounts, as a Play one-time product. */
 enum class SupportTier(val productId: String, val labelRes: Int) {
@@ -35,8 +47,10 @@ enum class SupportTier(val productId: String, val labelRes: Int) {
  * nothing in the app depends on it. A purchase left unconsumed (the app died mid-flow, a
  * pending payment confirmed later) is picked up and consumed on the next [connect].
  *
- * State is Compose state so the sheet redraws itself: [availability] gates the amount tiles,
- * [prices] carries Play's localized prices, [outcome] swaps the sheet for its thank-you.
+ * State is Compose state, written on the main thread only ([scope]), so the sheet redraws
+ * itself: [availability] gates the amount tiles, [prices] carries Play's localized prices,
+ * [outcome] swaps the sheet for its thank-you — only while the sheet is on screen; a result
+ * that lands with the sheet closed thanks with a toast instead.
  */
 object SupportBilling : PurchasesUpdatedListener {
 
@@ -58,62 +72,74 @@ object SupportBilling : PurchasesUpdatedListener {
     var outcome: Outcome? by mutableStateOf(null)
         private set
 
-    private var client: BillingClient? = null
+    /** Set by [SupportSheet] while it is composed: where a purchase result can be shown. */
+    internal var sheetVisible: Boolean = false
 
-    /** Idempotent: connects once per process, then refreshes prices and pending purchases. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var client: BillingClient? = null
+    private var appContext: Context? = null
+    private var connectJob: Job? = null
+
+    /**
+     * Called each time the sheet or the interstitial opens. A client that is not connected —
+     * the first attempt failed, Play was updating, the service dropped — is connected again,
+     * with a short bounded backoff; a connected one only refreshes prices and purchases.
+     */
     fun connect(context: Context) {
-        val existing = client
-        if (existing != null) {
-            if (existing.isReady) refresh(existing)
-            return
-        }
-        val billing = BillingClient.newBuilder(context.applicationContext)
+        appContext = context.applicationContext
+        val billing = client ?: BillingClient.newBuilder(context.applicationContext)
             .setListener(this)
             .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
             .enableAutoServiceReconnection()
             .build()
-        client = billing
-        availability = Availability.Connecting
-        billing.startConnection(object : BillingClientStateListener {
-            override fun onBillingSetupFinished(result: BillingResult) {
-                if (result.responseCode == BillingResponseCode.OK) {
-                    refresh(billing)
-                } else {
-                    Log.i(TAG, "Billing unavailable: ${result.responseCode} ${result.debugMessage}")
+            .also { client = it }
+        if (connectJob?.isActive == true) return
+        connectJob = scope.launch {
+            if (!billing.isReady) {
+                availability = Availability.Connecting
+                if (!connectWithBackoff(billing)) {
                     availability = Availability.Unavailable
+                    return@launch
                 }
             }
-
-            override fun onBillingServiceDisconnected() {
-                // enableAutoServiceReconnection() reconnects on the next call.
-            }
-        })
+            refresh(billing)
+        }
     }
 
-    private fun refresh(billing: BillingClient) {
+    private suspend fun connectWithBackoff(billing: BillingClient): Boolean {
+        var wait = FIRST_RETRY_MILLIS
+        repeat(CONNECT_ATTEMPTS) { attempt ->
+            val result = billing.awaitConnection()
+            if (result.responseCode == BillingResponseCode.OK) return true
+            Log.i(TAG, "Billing connection ${attempt + 1}/$CONNECT_ATTEMPTS: ${result.responseCode} ${result.debugMessage}")
+            if (attempt < CONNECT_ATTEMPTS - 1) {
+                delay(wait)
+                wait *= 2
+            }
+        }
+        return false
+    }
+
+    private suspend fun refresh(billing: BillingClient) {
         val products = SupportTier.entries.map {
             QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(it.productId)
                 .setProductType(BillingClient.ProductType.INAPP)
                 .build()
         }
-        billing.queryProductDetailsAsync(
-            QueryProductDetailsParams.newBuilder().setProductList(products).build(),
-        ) { result, details ->
-            val found = details.productDetailsList.associateBy { it.productId }
-            prices = found
-            availability = if (result.responseCode == BillingResponseCode.OK && found.isNotEmpty()) {
-                Availability.Ready
-            } else {
-                Log.i(TAG, "Support products unavailable: ${result.responseCode}, ${found.size} found")
-                Availability.Unavailable
-            }
+        val details = billing.queryProductDetails(QueryProductDetailsParams.newBuilder().setProductList(products).build())
+        val found = details.productDetailsList.orEmpty().associateBy { it.productId }
+        prices = found
+        availability = if (details.billingResult.responseCode == BillingResponseCode.OK && found.isNotEmpty()) {
+            Availability.Ready
+        } else {
+            Log.i(TAG, "Support products unavailable: ${details.billingResult.responseCode}, ${found.size} found")
+            Availability.Unavailable
         }
-        billing.queryPurchasesAsync(
+        val owned = billing.queryPurchasesAsync(
             QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(),
-        ) { result, purchases ->
-            if (result.responseCode == BillingResponseCode.OK) handle(purchases, silent = true)
-        }
+        )
+        if (owned.billingResult.responseCode == BillingResponseCode.OK) handle(owned.purchasesList, silent = true)
     }
 
     /** One tap on an amount: Google Play's own purchase sheet, nothing in between. */
@@ -131,43 +157,58 @@ object SupportBilling : PurchasesUpdatedListener {
         if (result.responseCode != BillingResponseCode.OK) {
             Log.w(TAG, "launchBillingFlow: ${result.responseCode} ${result.debugMessage}")
             inFlight = null
-            outcome = Outcome.Failed
+            report(Outcome.Failed)
         }
     }
 
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {
-        inFlight = null
-        when (result.responseCode) {
-            BillingResponseCode.OK -> handle(purchases.orEmpty(), silent = false)
-            BillingResponseCode.USER_CANCELED -> Unit
-            // Play still holds an unconsumed one: consume it, then the next tap works.
-            BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
-            else -> outcome = Outcome.Failed
+        val list = purchases.orEmpty().toList()
+        scope.launch {
+            inFlight = null
+            when (result.responseCode) {
+                BillingResponseCode.OK -> handle(list, silent = false)
+                BillingResponseCode.USER_CANCELED -> Unit
+                // Play still holds an unconsumed one: consume it, then the next tap works.
+                BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
+                else -> report(Outcome.Failed)
+            }
         }
     }
 
-    private fun handle(purchases: List<Purchase>, silent: Boolean) {
+    private suspend fun handle(purchases: List<Purchase>, silent: Boolean) {
         val ours = purchases.filter { p -> p.products.any { id -> SupportTier.entries.any { it.productId == id } } }
         for (purchase in ours) {
             when (purchase.purchaseState) {
                 Purchase.PurchaseState.PURCHASED -> consume(purchase, silent)
-                Purchase.PurchaseState.PENDING -> if (!silent) outcome = Outcome.Pending
+                Purchase.PurchaseState.PENDING -> if (!silent) report(Outcome.Pending)
                 else -> Unit
             }
         }
     }
 
-    private fun consume(purchase: Purchase, silent: Boolean) {
+    private suspend fun consume(purchase: Purchase, silent: Boolean) {
         val billing = client ?: return
-        billing.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()) { result, _ ->
-            if (result.responseCode == BillingResponseCode.OK) {
-                SupportPrompt.onSupported()
-                // A purchase found at start-up (a pending payment Play confirmed while the
-                // app was closed) is consumed quietly: no sheet pops up on its own to thank.
-                if (!silent) outcome = Outcome.Thanks
-            } else {
-                Log.w(TAG, "consume: ${result.responseCode} ${result.debugMessage}")
-            }
+        val result = billing.consumePurchase(ConsumeParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build())
+        if (result.billingResult.responseCode == BillingResponseCode.OK) {
+            SupportPrompt.onSupported()
+            // A purchase found at start-up (a pending payment Play confirmed while the
+            // app was closed) is consumed quietly: no sheet pops up on its own to thank.
+            if (!silent) report(Outcome.Thanks)
+        } else {
+            Log.w(TAG, "consume: ${result.billingResult.responseCode} ${result.billingResult.debugMessage}")
+        }
+    }
+
+    /**
+     * A result reaches the sheet only while it is on screen, so the next opening from About
+     * never starts on a stale thank-you; a confirmation that lands with the sheet closed (a
+     * pending payment going through) thanks with a toast.
+     */
+    private fun report(value: Outcome) {
+        if (sheetVisible) {
+            outcome = value
+        } else if (value == Outcome.Thanks) {
+            appContext?.let { Toast.makeText(it, R.string.support_thanks_toast, Toast.LENGTH_LONG).show() }
         }
     }
 
@@ -188,5 +229,23 @@ object SupportBilling : PurchasesUpdatedListener {
      */
     internal var qaPrices: Map<String, String>? = null
 
+    private const val CONNECT_ATTEMPTS = 3
+    private const val FIRST_RETRY_MILLIS = 1_000L
     private const val TAG = "SupportBilling"
+}
+
+/** [BillingClient.startConnection] as one suspend call: the setup result, or a disconnect. */
+private suspend fun BillingClient.awaitConnection(): BillingResult = suspendCancellableCoroutine { cont ->
+    startConnection(object : BillingClientStateListener {
+        override fun onBillingSetupFinished(result: BillingResult) {
+            // Auto-reconnection may call back again later; only the first answer resumes.
+            if (cont.isActive) cont.resume(result)
+        }
+
+        override fun onBillingServiceDisconnected() {
+            if (cont.isActive) {
+                cont.resume(BillingResult.newBuilder().setResponseCode(BillingResponseCode.SERVICE_DISCONNECTED).build())
+            }
+        }
+    })
 }

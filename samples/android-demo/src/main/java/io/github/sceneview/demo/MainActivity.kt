@@ -35,8 +35,9 @@ import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.labs.Labs
 import io.github.sceneview.demo.support.SupportBilling
 import io.github.sceneview.demo.support.SupportPrompt
+import io.github.sceneview.demo.support.SupportSheet
+import io.github.sceneview.demo.support.SupportSheetMode
 import io.github.sceneview.demo.labs.LabsGateBody
-import io.github.sceneview.demo.labs.openLabsSupportLink
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -65,6 +66,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
@@ -797,14 +799,17 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
 /** The Labs explainer standing in for a Labs demo: no scene, no dock, the page background. */
 @Composable
 private fun LabsGateScreen(title: String, onBack: () -> Unit) {
-    val context = LocalContext.current
+    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
+    if (showSupportSheet) {
+        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
+    }
     DemoScaffold(title = title, onBack = onBack, dockHidden = true, themedStage = true, hasScene = false) {
         LabsGateBody(
             access = Labs.access,
             labsDemos = rememberLabsDemos(),
             onJoinClick = { FeedbackOpenRequest.request() },
             onEnabledChange = Labs::setEnabled,
-            onOpenCollectiveClick = { openLabsSupportLink(context) },
+            onSupportClick = { showSupportSheet = true },
         )
     }
 }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.HourglassTop
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,7 +52,9 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
 import io.github.sceneview.demo.telemetry.logOutboundLink
@@ -77,6 +81,10 @@ fun SupportSheet(
 ) {
     val context = LocalContext.current
     LaunchedEffect(Unit) { SupportBilling.connect(context) }
+    DisposableEffect(Unit) {
+        SupportBilling.sheetVisible = true
+        onDispose { SupportBilling.sheetVisible = false }
+    }
     val dismiss = {
         SupportBilling.clearOutcome()
         onDismiss()
@@ -329,10 +337,17 @@ private fun SupportTierTile(
                         color = content,
                     )
                 } else {
+                    // A long local price ("1 099,00 ₹") or a large font scale shrinks to fit
+                    // the tile instead of wrapping or clipping.
                     Text(
                         text = price ?: "—",
                         style = SceneViewTokens.Type.card,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        autoSize = TextAutoSize.StepBased(
+                            minFontSize = TILE_MIN_FONT_SIZE,
+                            maxFontSize = SceneViewTokens.Type.card.fontSize,
+                        ),
                     )
                 }
             }
@@ -340,7 +355,12 @@ private fun SupportTierTile(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = TILE_MIN_FONT_SIZE,
+                    maxFontSize = MaterialTheme.typography.labelMedium.fontSize,
+                ),
             )
         }
     }
@@ -408,3 +428,6 @@ private fun SupportPromptPreview() {
 
 /** Material 3's disabled content emphasis. */
 private const val DISABLED_CONTENT_ALPHA = 0.38f
+
+/** Smallest size a tile's price or label shrinks to before it ellipsizes. */
+private val TILE_MIN_FONT_SIZE = 10.sp

@@ -76,6 +76,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterExitState
@@ -99,8 +100,6 @@ import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.labs.Labs
 import io.github.sceneview.demo.labs.LabsAccess
 import io.github.sceneview.demo.labs.LabsHomeCard
-import io.github.sceneview.demo.labs.openLabsSupportLink
-import io.github.sceneview.demo.support.SUPPORT_OPEN_COLLECTIVE_URL
 import io.github.sceneview.demo.support.SupportPrompt
 import io.github.sceneview.demo.support.SupportSheet
 import io.github.sceneview.demo.support.SupportSheetMode
@@ -214,6 +213,10 @@ fun RootScreen(
     // moment of value once the user is back here — never on the AR View tab, never over a
     // live AR session or another sheet. The short wait lets the screen settle first, so the
     // sheet does not ride in on the back transition from the sample.
+    var showLabsSupportSheet by rememberSaveable { mutableStateOf(false) }
+    if (showLabsSupportSheet) {
+        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showLabsSupportSheet = false })
+    }
     val canAskForSupport = selectedTab != RootTab.ArView && !arSessionActive && !whatsNewSinceSheet.isShown
     LaunchedEffect(canAskForSupport, SupportPrompt.valueMoment, SupportPrompt.isShown) {
         if (!canAskForSupport || SupportPrompt.isShown || !SupportPrompt.valueMoment) return@LaunchedEffect
@@ -389,7 +392,6 @@ fun RootScreen(
                         hasUnseenWhatsNew = whatsNewSince.hasUnseen,
                         onWhatsNewSinceClick = { whatsNewSinceSheet.open() },
                         labsCard = { cardModifier ->
-                            val labsContext = LocalContext.current
                             LabsHomeCard(
                                 access = Labs.access,
                                 labsDemos = rememberLabsDemos(),
@@ -399,7 +401,7 @@ fun RootScreen(
                                     Telemetry.nextOpenSource = OpenSource.Home
                                     onDemoClick(demo.id)
                                 },
-                                onOpenCollectiveClick = { openLabsSupportLink(labsContext) },
+                                onSupportClick = { showLabsSupportSheet = true },
                                 modifier = cardModifier,
                             )
                         },
@@ -542,7 +544,7 @@ private fun AboutTabContent() {
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xl),
     ) {
         AboutIdentity()
-        AboutSupportCard(openLink = openLink, onSupportInApp = { showSupportSheet = true })
+        AboutSupportCard(onSupportInApp = { showSupportSheet = true })
         AboutGroup(title = stringResource(R.string.about_group_more_apps)) {
             MORE_APPS.forEachIndexed { index, app ->
                 if (index > 0) AboutRowDivider(startInset = SceneViewTokens.About.appDividerInset)
@@ -688,14 +690,14 @@ private fun AboutIdentity() {
 /**
  * The one emphasised surface on the screen (#3565).
  *
- * The filled button opens the Support sheet: three amounts, one tap each into Google
- * Play, the fastest way to give from a phone. Open Collective is the quiet second, for
- * whoever wants an invoice or a recurring gift — and the only external link, so the card
- * never offers a third. No urgency copy and nothing about revenue: the card states what
+ * One button, into the Support sheet: three amounts, one tap each into Google Play, the
+ * fastest way to give from a phone. Google Play's policy keeps external donation links away
+ * from an in-app purchase, so Open Collective appears only inside the sheet, and only when
+ * Play can't take the gift. No urgency copy and nothing about revenue: the card states what
  * funding buys and stops.
  */
 @Composable
-private fun AboutSupportCard(openLink: (String) -> Unit, onSupportInApp: () -> Unit) {
+private fun AboutSupportCard(onSupportInApp: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(SceneViewTokens.Radius.lg),
@@ -730,41 +732,19 @@ private fun AboutSupportCard(openLink: (String) -> Unit, onSupportInApp: () -> U
                 text = stringResource(R.string.about_support_description),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
-                verticalAlignment = Alignment.CenterVertically,
+            Button(
+                onClick = onSupportInApp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SceneViewTokens.Layout.touchTarget),
+                shape = RoundedCornerShape(SceneViewTokens.Radius.md),
             ) {
-                Button(
-                    onClick = onSupportInApp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = SceneViewTokens.Layout.touchTarget),
-                    shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
-                ) {
-                    Text(
-                        text = stringResource(R.string.about_support_in_app),
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-                TextButton(
-                    onClick = { openLink(SUPPORT_OPEN_COLLECTIVE_URL) },
-                    modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
-                    shape = RoundedCornerShape(SceneViewTokens.Radius.md),
-                    contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.sm),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
-                ) {
-                    Text(
-                        text = stringResource(R.string.about_support_open_collective_short),
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.about_support_in_app),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
