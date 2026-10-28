@@ -303,6 +303,7 @@
     }
 
     .companies-content .companies-fund h2 { font-size: 1.5rem; line-height: 1.25; }
+    .companies-content .companies-fund h3 { margin: 24px 0 8px; font-size: 1.0625rem; font-weight: 700; color: var(--color-on-surface); }
 
     .companies-sponsor {
       display: flex;
@@ -451,17 +452,20 @@
            and the README's Sponsors section: edit the three together. -->
       <section id="sponsor" class="companies-fund" aria-labelledby="sponsor-title">
         <p class="companies-fund__eyebrow">For companies shipping SceneView</p>
-        <h2 id="sponsor-title">SceneView runs in commercial products. Sponsor it now.</h2>
-        <p>Companies sell apps and SDKs built on SceneView. Almost none of them give anything back, in code or in funding, while a few volunteers carry every fix and every release. If SceneView is part of your product, sponsor it now.</p>
-        <ul>
-          <li><strong>Invoice.</strong> Open Source Collective, SceneView&rsquo;s fiscal host, issues the invoice and the receipt. Write to <a href="mailto:hello@sceneview.dev">hello@sceneview.dev</a>.</li>
-          <li><strong>Your logo.</strong> Company sponsors get their logo in the README and on this website.</li>
-          <li><strong>License.</strong> A commercial license for future versions is under study. Every version already published stays under Apache&nbsp;2.0.</li>
-        </ul>
+        <h2 id="sponsor-title">SceneView runs in commercial products. Sponsor it or buy support.</h2>
+        <p>Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, sponsor it or buy support, now.</p>
+        <h3>Sponsor</h3>
+        <p>Your logo in the README and on this website. Open Source Collective issues the invoice and the receipt.</p>
         <div class="companies-sponsor">
           <a class="companies-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Sponsor on Open Collective</a>
           <a href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
         </div>
+        <h3 id="commercial-support">Commercial support</h3>
+        <ul>
+          <li><strong>Incident, $600.</strong> One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</li>
+          <li><strong>2.3 LTS, $1,800 for 90 days.</strong> One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</li>
+        </ul>
+        <p>Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0. Write to <a href="mailto:hello@sceneview.dev">hello@sceneview.dev</a>.</p>
       </section>
 
       <section id="license" aria-labelledby="license-title">
@@ -523,7 +527,7 @@
         <ul>
           <li><strong>Semantic versioning.</strong> A binary-compatibility check (<code>apiCheck</code>) runs in CI on pull requests that touch the Android libraries, so their public API cannot change by accident.</li>
           <li><strong>Deprecations before removals.</strong> Deprecated APIs carry a <code>ReplaceWith</code> hint your IDE can apply, and upgrades are documented in the <a href="https://github.com/sceneview/sceneview/blob/main/MIGRATION.md" target="_blank" rel="noopener">migration guide</a>.</li>
-          <li><strong>Fixes ship in the next 4.x release.</strong> There is no long-term-support branch and no service-level agreement: stay on a recent 4.x release to get fixes.</li>
+          <li><strong>Fixes ship in the next 4.x release.</strong> Stay on a recent 4.x release to get fixes for free. Guaranteed response times and the 2.3 line are covered only by the paid <a href="#commercial-support">commercial support</a>.</li>
         </ul>
         <p>Where to get help is listed in <a href="https://github.com/sceneview/sceneview/blob/main/.github/SUPPORT.md" target="_blank" rel="noopener">SUPPORT.md</a>, and how the project is run in <a href="https://github.com/sceneview/sceneview/blob/main/.github/GOVERNANCE.md" target="_blank" rel="noopener">GOVERNANCE.md</a>.</p>
       </section>

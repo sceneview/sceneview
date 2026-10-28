@@ -669,3 +669,13 @@ code, pre, kbd { font-family: var(--font-mono); font-size: .875em; }
   .fund { padding: var(--s-7) var(--s-8); }
   .fund__facts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-5); }
 }
+.fund__offers { display: grid; gap: var(--s-5); margin-top: var(--s-2); }
+.fund__offer { display: grid; gap: var(--s-3); align-content: start; padding-top: var(--s-4); border-top: 1px solid var(--hairline); }
+.fund__offer > p { margin: 0; color: var(--text-2); }
+.fund__offer .fund__facts li:first-child { border-top: 0; padding-top: 0; }
+.fund__note { font-size: var(--fs-small); }
+@media (min-width: 960px) {
+  .fund__offers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-7); }
+  .fund__offer .fund__facts { grid-template-columns: 1fr; gap: var(--s-3); }
+  .fund__offer .fund__facts li:first-child { border-top: 0; }
+}
