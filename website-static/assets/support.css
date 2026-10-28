@@ -1,7 +1,8 @@
 /* SceneView website — the support prompt (assets/support.js).
  *
- * Self-contained on purpose: it runs on the "Stage" home page (tokens.css) and on the
- * pages still on styles.css, so it carries the Stage token values itself, dark first.
+ * It runs on the "Stage" home page (tokens.css) and on the pages still on styles.css:
+ * each colour reads the Stage token and falls back to the same value where tokens.css
+ * is absent, dark first.
  * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1):
  *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, on-accent on fill 9.5,
  *           control edge (outline) 3.54
@@ -11,55 +12,56 @@
  * dark, or when the visitor picked light (both sites set data-theme on <html>). */
 
 .svs {
-  --svs-surface: #1C2230;
-  --svs-surface-2: #262E3D;
-  --svs-hairline: #3A4456;
-  --svs-outline: #6B7791;
-  --svs-text: #F3F5F9;
-  --svs-text-2: #B4BCCB;
-  --svs-text-3: #8D97A8;
-  --svs-accent: #8AB4FF;
-  --svs-fill: #8AB4FF;
-  --svs-on-fill: #06080C;
-  --svs-warm: #FFB86B;
+  --svs-surface: var(--surface-1, #1C2230);
+  --svs-surface-2: var(--surface-2, #262E3D);
+  --svs-hairline: var(--hairline, #3A4456);
+  --svs-outline: var(--outline, #6B7791);
+  --svs-text: var(--text, #F3F5F9);
+  --svs-text-2: var(--text-2, #B4BCCB);
+  --svs-text-3: var(--text-3, #8D97A8);
+  --svs-accent: var(--accent, #8AB4FF);
+  --svs-fill: var(--accent-fill, #8AB4FF);
+  --svs-on-fill: var(--on-accent, #06080C);
+  --svs-warm: var(--warm, #FFB86B);
   --svs-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 24px 64px -16px rgba(0,0,0,.75);
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .svs {
-    --svs-surface: #FFFFFF;
-    --svs-surface-2: #ECEFF3;
-    --svs-hairline: #C9D0DA;
-    --svs-outline: #737D8F;
-    --svs-text: #0A0D13;
-    --svs-text-2: #465061;
-    --svs-text-3: #586272;
-    --svs-accent: #0B5BD3;
-    --svs-fill: #0B5BD3;
-    --svs-on-fill: #FFFFFF;
-    --svs-warm: #A2560A;
+    --svs-surface: var(--surface-1, #FFFFFF);
+    --svs-surface-2: var(--surface-2, #ECEFF3);
+    --svs-hairline: var(--hairline, #C9D0DA);
+    --svs-outline: var(--outline, #737D8F);
+    --svs-text: var(--text, #0A0D13);
+    --svs-text-2: var(--text-2, #465061);
+    --svs-text-3: var(--text-3, #586272);
+    --svs-accent: var(--accent, #0B5BD3);
+    --svs-fill: var(--accent-fill, #0B5BD3);
+    --svs-on-fill: var(--on-accent, #FFFFFF);
+    --svs-warm: var(--warm, #A2560A);
     --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
     color-scheme: light;
   }
 }
 :root[data-theme="light"] .svs {
-  --svs-surface: #FFFFFF;
-  --svs-surface-2: #ECEFF3;
-  --svs-hairline: #C9D0DA;
-  --svs-outline: #737D8F;
-  --svs-text: #0A0D13;
-  --svs-text-2: #465061;
-  --svs-text-3: #586272;
-  --svs-accent: #0B5BD3;
-  --svs-fill: #0B5BD3;
-  --svs-on-fill: #FFFFFF;
-  --svs-warm: #A2560A;
+  --svs-surface: var(--surface-1, #FFFFFF);
+  --svs-surface-2: var(--surface-2, #ECEFF3);
+  --svs-hairline: var(--hairline, #C9D0DA);
+  --svs-outline: var(--outline, #737D8F);
+  --svs-text: var(--text, #0A0D13);
+  --svs-text-2: var(--text-2, #465061);
+  --svs-text-3: var(--text-3, #586272);
+  --svs-accent: var(--accent, #0B5BD3);
+  --svs-fill: var(--accent-fill, #0B5BD3);
+  --svs-on-fill: var(--on-accent, #FFFFFF);
+  --svs-warm: var(--warm, #A2560A);
   --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
   color-scheme: light;
 }
 
 .svs {
-  position: fixed; z-index: 70;
+  /* Under the mobile menu sheet (60), over the header (50). */
+  position: fixed; z-index: 55;
   right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box;
   padding: 20px 20px 16px;

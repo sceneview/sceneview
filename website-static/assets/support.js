@@ -9,9 +9,12 @@
  *
  * It must stay rare, or it turns into the nag people block:
  *   - never on the first screen of a first visit: it waits for a sign of interest, a
- *     second page view, or 40 s spent reading the current page with the tab visible;
+ *     second page view (a reload does not count), or 40 s spent reading the current
+ *     page with the tab visible;
  *   - at most once every 30 days per browser, never again after "Don't ask again", and
- *     not for a year after the visitor clicked through to donate;
+ *     not for a year after the visitor clicked through to donate (either link);
+ *   - several tabs share one memory: storage is re-read before showing and before
+ *     every write, so a "Don't ask again" from another tab is never overwritten;
  *   - when storage is unavailable (private mode, blocked site data) it never shows:
  *     without memory it could not keep the promises above;
  *   - never a modal: no scrim, no focus grab, no scroll lock. On phones it is a card in
@@ -32,7 +35,7 @@
   var KEY = 'sv-support-v1';
   var DAY = 864e5;
   var SNOOZE = 30 * DAY;      // between two showings
-  var AFTER_GIFT = 365 * DAY; // after a click through to Open Collective
+  var AFTER_GIFT = 365 * DAY; // after a click through to Open Collective or GitHub Sponsors
   var READ_MS = 40e3;         // visible reading time that counts as interest on a first page
   var SETTLE_MS = 8e3;        // on a second page, let the visitor land first
   var AMOUNTS = [5, 20, 50];
@@ -54,15 +57,38 @@
     try { if (typeof window.gtag === 'function') window.gtag('event', name, params || {}); } catch (e) { /* analytics never breaks the page */ }
   }
 
+  // Fold in what another tab wrote since this one last looked: a flag set there is
+  // never lost, and counters and dates keep the larger value.
+  function sync() {
+    var s = load();
+    if (s) {
+      if (s.off) state.off = 1;
+      ['pv', 'shown', 'gave'].forEach(function (k) {
+        var v = Math.max(+state[k] || 0, +s[k] || 0);
+        if (v) state[k] = v;
+      });
+    }
+  }
+  function persist() { if (preview) return true; sync(); return save(state); }
+  function blocked() {
+    var now = Date.now();
+    return !!(state.off ||
+      (state.gave && now - state.gave < AFTER_GIFT) ||
+      (state.shown && now - state.shown < SNOOZE));
+  }
+  function reloaded() {
+    try {
+      var nav = performance.getEntriesByType('navigation')[0];
+      return !!nav && nav.type === 'reload';
+    } catch (e) { return false; }
+  }
+
   var state = load();
   if (!preview) {
     if (!state) return;                          // no storage, no promises: stay silent
-    state.pv = (state.pv | 0) + 1;
+    if (!reloaded() || !state.pv) state.pv = (state.pv | 0) + 1;
     if (!save(state)) return;
-    var now = Date.now();
-    if (state.off) return;
-    if (state.gave && now - state.gave < AFTER_GIFT) return;
-    if (state.shown && now - state.shown < SNOOZE) return;
+    if (blocked()) return;
   }
 
   // Visible time on this page: counts only while the tab is in front.
@@ -134,7 +160,7 @@
         '</div>' +
         '<p class="svs__note">Via Open Collective: every expense is public.</p>' +
       '</div>' +
-      '<div class="svs__thanks" hidden><p class="svs__title">Thank you.</p><p class="svs__text">Open Collective opened in a new tab.</p></div>';
+      '<div class="svs__thanks" hidden><p class="svs__title">Thank you.</p><p class="svs__text" data-thanks></p></div>';
 
     refreshLinks();
 
@@ -157,37 +183,63 @@
           link_domain: t.hostname,
           transport_type: 'beacon'
         });
-        if (!preview && state) { state.gave = Date.now(); save(state); }
+        if (!preview) { state.gave = Date.now(); persist(); }
+        card.querySelector('[data-thanks]').textContent =
+          (isOc ? 'Open Collective' : 'GitHub Sponsors') + ' opened in a new tab.';
         card.querySelector('.svs__body').hidden = true;
         card.querySelector('.svs__thanks').hidden = false;
         setTimeout(function () { close(null); }, 4000);
       }
     });
-    card.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') close(false);
+    // Remember where focus came from, to hand it back when the card goes away.
+    card.addEventListener('focusin', function (e) {
+      if (e.relatedTarget && !card.contains(e.relatedTarget)) returnTo = e.relatedTarget;
     });
+  }
+
+  var returnTo = null;
+  // Escape closes the card wherever focus is. Capture phase, so it runs before the
+  // site's own Escape handler: with the mobile menu open, Escape is the menu's.
+  function onKey(e) {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (document.querySelector('.sheet.is-open')) return;
+    close(false);
   }
 
   function close(permanent) {
     if (!card || card.getAttribute('data-state') === 'leave') return;
+    document.removeEventListener('keydown', onKey, true);
     if (permanent !== null) track('support_prompt_dismiss', { permanent: !!permanent });
-    if (permanent && !preview && state) { state.off = 1; save(state); }
+    if (permanent && !preview) { state.off = 1; persist(); }
+    if (card.contains(document.activeElement)) {
+      var to = returnTo && document.contains(returnTo) ? returnTo : document.querySelector('main');
+      if (to) {
+        if (to.tagName === 'MAIN' && !to.hasAttribute('tabindex')) to.setAttribute('tabindex', '-1');
+        try { to.focus({ preventScroll: true }); } catch (e) { to.focus(); }
+      }
+    }
     card.setAttribute('data-state', 'leave');
     setTimeout(function () { if (card && card.parentNode) card.parentNode.removeChild(card); }, 400);
   }
 
+  var started = false;
   function show(trigger) {
-    if (card) return;
+    if (started) return;
+    if (!preview) { sync(); if (blocked()) return; }
+    started = true;
     // The stylesheet is fetched only for the visitors who will see the card.
     var css = el('link', { rel: 'stylesheet', href: '/assets/support.css' });
     css.onload = function () {
+      // Another tab may have shown the card, or been told "never", while this one waited.
+      if (!preview) { sync(); if (blocked()) return; }
       build();
       document.body.appendChild(card);
       // Commit the start style with a forced reflow, then transition. Not rAF: a
       // background tab that comes back to the front would show a half-faded card.
       void card.offsetWidth;
       card.setAttribute('data-state', 'in');
-      if (!preview) { state.shown = Date.now(); save(state); }
+      document.addEventListener('keydown', onKey, true);
+      if (!preview) { state.shown = Date.now(); persist(); }
       track('support_prompt_view', { trigger: trigger, page_views: preview ? 0 : state.pv });
     };
     document.head.appendChild(css);
