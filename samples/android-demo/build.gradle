@@ -416,6 +416,11 @@ dependencies {
     // (`api libs.play.app.update*`). Manager + banner live in
     // `io.github.sceneview.sample.common.update.*`.
 
+    // Google Play Billing — the "Support SceneView" contributions (support/). Three
+    // consumable one-time products, consumed as soon as Play confirms them: a gift,
+    // never an entitlement, so nothing in the app is gated on a purchase.
+    implementation libs.play.billing.ktx
+
     // Sketchfab API client — OkHttp for network, kotlinx-serialization for JSON.
     // Used by io.github.sceneview.demo.sketchfab.SketchfabService to stream
     // models from api.sketchfab.com instead of bundling GLBs in the APK.

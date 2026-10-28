@@ -105,6 +105,7 @@ tvMaterial = "1.1.0"
 
 # Play Services
 playAppUpdate = "2.1.0"
+playBilling = "8.3.0"
 playServicesLocation = "21.4.0"
 # Firebase — samples/android-demo ONLY (analytics, crash reports, push). The SDK modules
 # ship no telemetry (docs/docs/recipes/measure-ar-funnel.md); never add these to a library.
@@ -258,6 +259,7 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 # Play Services
 play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
+play-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "playBilling" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
