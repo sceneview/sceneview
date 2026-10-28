@@ -57,13 +57,18 @@ final class SupportStore: ObservableObject {
 
     init(policy: SupportPromptPolicy = SupportPromptPolicy(store: DefaultsSupportPromptStore())) {
         self.policy = policy
+        #if DEBUG
+        if Self.launchArgument == "thanks" { purchaseState = .thanked }
+        #endif
     }
 
     // MARK: Launch arguments
 
     /// `-support_prompt off` (UI tests, scripted captures): the prompt never shows.
     /// `-support_prompt show` (Debug only): the prompt comes up once Home is on screen,
-    /// whatever the policy says — for QA captures.
+    /// whatever the policy says — for QA captures. `-support_prompt thanks` (Debug only)
+    /// brings it up in its "Thank you!" state, which a simulator cannot reach without a
+    /// signed-in sandbox account.
     static let launchArgument: String? = {
         let args = CommandLine.arguments
         guard let index = args.firstIndex(of: "-support_prompt"), index + 1 < args.count else {
@@ -78,7 +83,7 @@ final class SupportStore: ObservableObject {
 
     static var promptForcedByLaunchArgument: Bool {
         #if DEBUG
-        return launchArgument == "show"
+        return launchArgument == "show" || launchArgument == "thanks"
         #else
         return false
         #endif
@@ -86,18 +91,23 @@ final class SupportStore: ObservableObject {
 
     // MARK: Lifecycle
 
-    /// From the app's first `.active`: listens for transactions finished elsewhere
+    /// From `SceneViewDemoApp.init()`: listens for transactions finished elsewhere
     /// (Ask to Buy approved later, a purchase interrupted by a crash) so every one is
-    /// finished, then counts the session.
-    func appBecameActive() {
-        if updatesTask == nil {
-            updatesTask = Task { [weak self] in
-                for await update in Transaction.updates {
-                    await self?.handle(update)
-                }
+    /// finished, and counts the launch as a session. Idempotent.
+    func start() {
+        guard updatesTask == nil else { return }
+        updatesTask = Task { [weak self] in
+            for await update in Transaction.updates {
+                await self?.handle(update)
             }
-            Task { await finishUnfinished() }
         }
+        Task { await finishUnfinished() }
+        policy.onLaunch()
+    }
+
+    /// Every `.active`: a return from the background may be a new session.
+    func appBecameActive() {
+        start()
         policy.onBecameActive()
     }
 
@@ -128,12 +138,15 @@ final class SupportStore: ObservableObject {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                guard case .verified(let transaction) = verification else {
+                switch verification {
+                case .verified(let transaction):
+                    await transaction.finish()
+                    tipped()
+                case .unverified(let transaction, _):
+                    // Finished so it is not delivered again, but never thanked.
+                    await transaction.finish()
                     purchaseState = .failed
-                    return
                 }
-                await transaction.finish()
-                tipped()
             case .pending:
                 purchaseState = .pending
             case .userCancelled:
@@ -157,8 +170,17 @@ final class SupportStore: ObservableObject {
     }
 
     private func handle(_ update: VerificationResult<Transaction>) async {
-        guard case .verified(let transaction) = update,
-              Self.productIds.contains(transaction.productID) else { return }
+        let transaction: Transaction
+        switch update {
+        case .verified(let verified):
+            transaction = verified
+        case .unverified(let unverified, _):
+            // Finished so StoreKit stops delivering it; it thanks nobody.
+            if Self.productIds.contains(unverified.productID) { await unverified.finish() }
+            if purchaseState == .pending { purchaseState = .failed }
+            return
+        }
+        guard Self.productIds.contains(transaction.productID) else { return }
         await transaction.finish()
         // An Ask to Buy approved while the sheet still waits on it.
         if purchaseState == .pending { tipped() } else { policy.onSupported() }

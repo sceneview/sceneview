@@ -62,6 +62,29 @@ final class SupportPromptPolicyTests: XCTestCase {
         XCTAssertTrue(policy.shouldShow)
     }
 
+    func testAnAlertAfterALongTripCountsNothingMore() {
+        let policy = launch()
+        policy.onEnteredBackground()
+        now += 31 * 60
+        policy.onBecameActive()
+        XCTAssertEqual(store.sessions, 2)
+        // A system alert or Cmd-Tab: inactive → active, no trip to the background.
+        now += 31 * 60
+        policy.onBecameActive()
+        XCTAssertEqual(store.sessions, 2)
+    }
+
+    func testABackgroundTimeFromAnEndedProcessIsDropped() {
+        let first = launch()
+        first.onEnteredBackground()
+        now += 31 * 60
+        // The process was killed in the background; the next one starts cold.
+        let next = launch()
+        XCTAssertEqual(store.sessions, 2)
+        next.onBecameActive()
+        XCTAssertEqual(store.sessions, 2)
+    }
+
     func testAtMostOnceEveryFourteenDays() {
         launch(); launch()
         let policy = launch()

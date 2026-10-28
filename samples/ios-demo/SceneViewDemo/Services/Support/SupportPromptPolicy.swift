@@ -67,13 +67,23 @@ final class SupportPromptPolicy {
         self.now = now
     }
 
-    /// The app became active: a cold launch, or a return after `sessionGap` in the
-    /// background, is one more session.
+    /// The process started: one more session. A background time left over from the
+    /// previous process is dropped — its return never happened.
+    func onLaunch() {
+        guard !countedLaunch else { return }
+        countedLaunch = true
+        store.sessions += 1
+        store.lastBackground = nil
+    }
+
+    /// The app became active. Only a return from the background counts, once, and only
+    /// after `sessionGap`: an inactive → active (a system alert, Control Center, a
+    /// Cmd-Tab) leaves no background time behind, so it never counts.
     func onBecameActive() {
-        if !countedLaunch {
-            countedLaunch = true
-            store.sessions += 1
-        } else if let left = store.lastBackground, now().timeIntervalSince(left) >= Self.sessionGap {
+        onLaunch()
+        guard let left = store.lastBackground else { return }
+        store.lastBackground = nil
+        if now().timeIntervalSince(left) >= Self.sessionGap {
             store.sessions += 1
         }
     }

@@ -112,6 +112,9 @@ struct SceneViewDemoApp: App {
     #endif
 
     init() {
+        // Transaction listener up before any scene: a purchase finished while the app
+        // was closed is delivered at launch, and the launch counts as a session.
+        SupportStore.shared.start()
         #if os(macOS)
         // iOS starts Firebase from `DemoAppDelegate`; macOS has no delegate here.
         // In the EEA, UK and Switzerland, not before the user's yes (`ConsentStore`).

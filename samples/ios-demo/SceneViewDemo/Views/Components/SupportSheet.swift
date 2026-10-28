@@ -13,30 +13,59 @@ struct SupportSheet: View {
 
     @ObservedObject private var store = SupportStore.shared
     @State private var contentHeight: CGFloat = 420
+    @AccessibilityFocusState private var focus: Focus?
+
+    private enum Focus: Hashable { case thanks, status }
 
     var body: some View {
-        Group {
-            if store.purchaseState == .thanked {
-                thanks
-            } else {
-                offer
+        // Scrolls only when it must: in landscape on a small iPhone the measured
+        // height is taller than the screen, and the amounts and the way out stay
+        // reachable.
+        ScrollView {
+            Group {
+                if store.purchaseState == .thanked {
+                    thanks
+                } else {
+                    offer
+                }
             }
+            .padding(.horizontal, SceneViewTokens.Space.lg)
+            .padding(.top, SceneViewTokens.Space.lg)
+            .padding(.bottom, SceneViewTokens.Space.sm)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         }
-        .padding(.horizontal, SceneViewTokens.Space.lg)
-        .padding(.top, SceneViewTokens.Space.lg)
-        .padding(.bottom, SceneViewTokens.Space.sm)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
-        .frame(maxHeight: .infinity, alignment: .top)
+        .scrollBounceBehavior(.basedOnSize)
         #if os(macOS)
-        .frame(width: 440)
+        .frame(width: SceneViewTokens.Layout.sheetWidthMac, height: contentHeight)
         #endif
         .presentationDetents([.height(contentHeight)])
         .presentationDragIndicator(.visible)
         .presentationBackground(SceneViewTokens.HomeColor.surfaceContainer)
         .sensoryFeedback(.success, trigger: store.purchaseState == .thanked)
+        .onChange(of: store.purchaseState) { _, state in announce(state) }
         .task { await store.loadProducts() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("support-sheet")
+    }
+
+    /// VoiceOver hears the outcome of the purchase and lands on it.
+    private func announce(_ state: SupportStore.PurchaseState) {
+        let target: Focus
+        let text: String
+        switch state {
+        case .thanked:
+            target = .thanks
+            text = "Thank you! " + Self.thanksBody
+        case .pending, .failed:
+            target = .status
+            text = statusText
+        case .idle, .purchasing:
+            return
+        }
+        var announcement = AttributedString(text)
+        announcement.accessibilitySpeechAnnouncementPriority = .high
+        AccessibilityNotification.Announcement(announcement).post()
+        focus = target
     }
 
     // MARK: Offer
@@ -103,30 +132,43 @@ struct SupportSheet: View {
             }
         case .loaded:
             HStack(spacing: SceneViewTokens.Space.sm) {
-                ForEach(Array(store.products.enumerated()), id: \.element.id) { index, product in
-                    amountButton(product, label: Self.tierLabels[min(index, 2)],
-                                 emphasised: index == 1)
+                ForEach(store.products, id: \.id) { product in
+                    amountButton(product)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private var status: some View {
+    private var statusText: String {
         switch store.purchaseState {
         case .pending:
-            note("Waiting for approval. Thank you for asking.")
+            "Waiting for approval. Thank you for asking."
         case .failed:
-            note("The purchase did not go through. You can try again.")
+            "The purchase did not go through. You can try again."
         default:
-            note("A one-time purchase. It unlocks nothing: every feature stays free.")
+            "A one-time purchase. It unlocks nothing: every feature stays free."
         }
     }
 
-    private static let tierLabels = ["Small", "Medium", "Large"]
-    private static let amountHeight: CGFloat = 64
+    private var status: some View {
+        note(statusText)
+            .accessibilityFocused($focus, equals: .status)
+    }
 
-    private func amountButton(_ product: Product, label: String, emphasised: Bool) -> some View {
+    private static let amountHeight = SceneViewTokens.Layout.supportAmountHeight
+    private static let thanksBody =
+        "Your support keeps SceneView open source and maintained, for everyone who builds with it."
+
+    /// The tier of a product, from the last part of its id (`….support.medium`): the
+    /// label and the emphasis never depend on how many products the store returned.
+    private static func tier(of product: Product) -> (key: String, label: String) {
+        let key = product.id.split(separator: ".").last.map(String.init) ?? product.id
+        return (key, key.prefix(1).uppercased() + key.dropFirst())
+    }
+
+    private func amountButton(_ product: Product) -> some View {
+        let (key, label) = Self.tier(of: product)
+        let emphasised = key == "medium"
         let busy = store.purchaseState == .purchasing(product.id)
         let fill = emphasised ? SceneViewTokens.HomeColor.primary : SceneViewTokens.HomeColor.secondaryContainer
         let ink = emphasised ? SceneViewTokens.HomeColor.onPrimary : SceneViewTokens.HomeColor.onSecondaryContainer
@@ -134,7 +176,7 @@ struct SupportSheet: View {
         return Button {
             Task { await store.purchase(product) }
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: SceneViewTokens.Space.xs) {
                 if busy {
                     ProgressView().tint(ink)
                 } else {
@@ -156,7 +198,7 @@ struct SupportSheet: View {
         .buttonStyle(.plain)
         .disabled(store.purchaseState.isPurchasing)
         .accessibilityLabel("Tip \(product.displayPrice)")
-        .accessibilityIdentifier("support-tier-\(label.lowercased())")
+        .accessibilityIdentifier("support-tier-\(key)")
     }
 
     // MARK: Thanks
@@ -170,7 +212,8 @@ struct SupportSheet: View {
                     .tracking(SceneViewTokens.TypeScale.titleTracking)
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                     .accessibilityAddTraits(.isHeader)
-                Text("Your support keeps SceneView open source and maintained, for everyone who builds with it.")
+                    .accessibilityFocused($focus, equals: .thanks)
+                Text(Self.thanksBody)
                     .font(SceneViewTokens.TypeScale.body)
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .multilineTextAlignment(.center)
@@ -180,7 +223,7 @@ struct SupportSheet: View {
                 Text("Done")
                     .font(SceneViewTokens.TypeScale.bodySemibold)
                     .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
-                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
                     .background(SceneViewTokens.HomeColor.primary, in: Capsule())
                     .contentShape(Capsule())
             }
