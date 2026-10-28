@@ -655,3 +655,17 @@ code, pre, kbd { font-family: var(--font-mono); font-size: .875em; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
 }
+
+/* ── For companies: the funding call (home #fund, mirrored on companies.html) ── */
+.fund { display: grid; gap: var(--s-4); padding: var(--s-6) var(--s-5); border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline)); background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, var(--surface-1)), var(--surface-1)); }
+.fund .eyebrow { margin: 0; color: var(--accent); }
+.fund .h2 { max-width: 22ch; }
+.fund .lead { max-width: 44rem; color: var(--text); }
+.fund__facts { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.fund__facts li { display: grid; gap: 2px; padding-top: var(--s-3); border-top: 1px solid var(--hairline); color: var(--text-2); }
+.fund__facts b { font-weight: 600; color: var(--text); }
+.fund__facts a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+@media (min-width: 960px) {
+  .fund { padding: var(--s-7) var(--s-8); }
+  .fund__facts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-5); }
+}

@@ -282,6 +282,28 @@
 
 
 
+    /* The funding call */
+    .companies-content section.companies-fund {
+      padding: 28px;
+      border-radius: 20px;
+      border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+      background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface-container-lowest));
+      box-shadow: var(--shadow-card);
+    }
+
+    .companies-content section.companies-fund + section { margin-top: 48px; }
+
+    .companies-fund__eyebrow {
+      margin: 0 0 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-primary);
+    }
+
+    .companies-content .companies-fund h2 { font-size: 1.5rem; line-height: 1.25; }
+
     .companies-sponsor {
       display: flex;
       flex-wrap: wrap;
@@ -325,6 +347,8 @@
       .companies-glance__item { padding: 16px; }
       .companies-content { padding: 32px var(--container-padding) 48px; }
       .companies-content h2 { font-size: 1.2rem; }
+      .companies-content section.companies-fund { padding: 20px; }
+      .companies-content .companies-fund h2 { font-size: 1.25rem; }
       .companies-table { font-size: 0.8125rem; }
       .companies-table th,
       .companies-table td { padding: 8px 10px; }
@@ -391,7 +415,7 @@
       <div class="companies-hero__container">
         <h1 class="companies-hero__title reveal">SceneView for companies</h1>
         <p class="companies-hero__lead reveal">The facts a team checks before it adopts an SDK: the license, what the code sends over the network, which platforms are production-grade, how often it ships and where to report a vulnerability.</p>
-        <p class="companies-hero__updated reveal">Last checked: September 26, 2026 &middot; SceneView 4.40.0</p>
+        <p class="companies-hero__updated reveal">Last checked: October 28, 2026 &middot; SceneView 4.62.0</p>
       </div>
     </section>
 
@@ -414,13 +438,31 @@
       </div>
       <div class="companies-glance__item" role="listitem">
         <span class="material-symbols-outlined companies-glance__icon" aria-hidden="true">update</span>
-        <span class="companies-glance__value">22 releases</span>
-        <span class="companies-glance__label">in the last 90 days, 75 since 4.0.0 in April 2026.</span>
+        <span class="companies-glance__value">Ships every week</span>
+        <span class="companies-glance__label">On Maven Central, npm, pub.dev and Swift Package Manager.</span>
       </div>
     </div>
 
     <!-- ===== CONTENT ===== -->
     <div class="companies-content">
+
+      <!-- The funding call. Generic on purpose: no company is named here. Open Collective
+           first, GitHub Sponsors second, nothing else. Same message as the home page (#fund)
+           and the README's Sponsors section: edit the three together. -->
+      <section id="sponsor" class="companies-fund" aria-labelledby="sponsor-title">
+        <p class="companies-fund__eyebrow">For companies shipping SceneView</p>
+        <h2 id="sponsor-title">SceneView runs in commercial products. Sponsor it now.</h2>
+        <p>Companies sell apps and SDKs built on SceneView. Almost none of them give anything back, in code or in funding, while a few volunteers carry every fix and every release. If SceneView is part of your product, sponsor it now.</p>
+        <ul>
+          <li><strong>Invoice.</strong> Open Source Collective, SceneView&rsquo;s fiscal host, issues the invoice and the receipt. Write to <a href="mailto:hello@sceneview.dev">hello@sceneview.dev</a>.</li>
+          <li><strong>Your logo.</strong> Company sponsors get their logo in the README and on this website.</li>
+          <li><strong>License.</strong> A commercial license for future versions is under study. Every version already published stays under Apache&nbsp;2.0.</li>
+        </ul>
+        <div class="companies-sponsor">
+          <a class="companies-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Sponsor on Open Collective</a>
+          <a href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
+        </div>
+      </section>
 
       <section id="license" aria-labelledby="license-title">
         <h2 id="license-title"><span class="material-symbols-outlined" aria-hidden="true">gavel</span>License in plain words</h2>
@@ -472,8 +514,8 @@
 
       <section id="releases" aria-labelledby="releases-title">
         <h2 id="releases-title"><span class="material-symbols-outlined" aria-hidden="true">update</span>Release cadence</h2>
-        <p><strong>75 releases</strong> from 4.0.0 (April 13, 2026) to 4.40.0 (September 26, 2026), <strong>22 of them in the last 90 days</strong>. Android artifacts are published on Maven Central, the web and React Native packages on npm, the Flutter plugin on pub.dev and the Apple package through Swift Package Manager.</p>
-        <p class="companies-source">Source: final <code>v4.*</code> tags, counted with <code>git tag</code> on September 26, 2026. Full history: <a href="https://github.com/sceneview/sceneview/releases" target="_blank" rel="noopener">GitHub releases</a> and the <a href="https://github.com/sceneview/sceneview/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</p>
+        <p><strong>SceneView ships every week.</strong> Android artifacts are published on Maven Central, the web and React Native packages on npm, the Flutter plugin on pub.dev and the Apple package through Swift Package Manager.</p>
+        <p class="companies-source">Full history: <a href="https://github.com/sceneview/sceneview/releases" target="_blank" rel="noopener">GitHub releases</a> and the <a href="https://github.com/sceneview/sceneview/blob/main/CHANGELOG.md" target="_blank" rel="noopener">changelog</a>.</p>
       </section>
 
       <section id="support" aria-labelledby="support-title">
@@ -503,13 +545,14 @@
 
       <section id="adoption" aria-labelledby="adoption-title">
         <h2 id="adoption-title"><span class="material-symbols-outlined" aria-hidden="true">apartment</span>Where it shows up</h2>
-        <p>More than 700 public repositories on GitHub declare SceneView or its Sceneform predecessor. Private apps are invisible from the outside, and a team that ships SceneView under its Apache 2.0 license has not endorsed it, so this page names no company.</p>
-        <p class="companies-source">Source: GitHub code search, owners sceneview and ThomasGorisse excluded, checked on September 26, 2026. Stars, contributors, releases and npm downloads, with their links, are on the <a href="/#metrics">home page</a>.</p>
+        <p>SceneView has more than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency.</p>
+        <p><strong>Used in production:</strong> SDKs published by commercial vendors on Maven Central and npm declare SceneView as a dependency, and crash reports from apps live on Google Play reach its <a href="https://github.com/sceneview/sceneview/issues" target="_blank" rel="noopener">issue tracker</a>. A company that ships SceneView under its Apache 2.0 license has not endorsed it, so this page names none.</p>
+        <p class="companies-source">Source: GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026.</p>
       </section>
 
       <section id="contact" aria-labelledby="contact-title">
         <h2 id="contact-title"><span class="material-symbols-outlined" aria-hidden="true">forum</span>Contact</h2>
-        <p>All contact happens in the open, on GitHub:</p>
+        <p>Technical questions happen in the open, on GitHub. For an invoice or a company sponsorship, write to <a href="mailto:hello@sceneview.dev">hello@sceneview.dev</a>.</p>
         <ul>
           <li><a href="https://github.com/sceneview/sceneview/discussions/categories/q-a" target="_blank" rel="noopener">GitHub Discussions</a> for questions, including an evaluation for your company.</li>
           <li><a href="https://github.com/sceneview/sceneview/issues" target="_blank" rel="noopener">GitHub Issues</a> for bugs and feature requests.</li>
@@ -517,14 +560,6 @@
         </ul>
       </section>
 
-      <section id="sponsor" aria-labelledby="sponsor-title">
-        <h2 id="sponsor-title"><span class="material-symbols-outlined" aria-hidden="true">volunteer_activism</span>Support the project</h2>
-        <p>If SceneView is part of your product, a sponsorship helps keep releases frequent. Contributions are public on Open Collective. <a href="/sponsors.html">How sponsorship works</a>: the tiers, what each one includes, and what a sponsorship does not buy.</p>
-        <div class="companies-sponsor">
-          <a class="companies-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Sponsor on Open Collective</a>
-          <a href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
-        </div>
-      </section>
 
     </div>
 

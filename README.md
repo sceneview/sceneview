@@ -597,7 +597,16 @@ sceneview-core (Kotlin Multiplatform)
 
 ## Sponsors
 
-SceneView is free and open source, funded by its users.
+<!-- Same message as the website home page (#fund) and companies.html#sponsor: edit the three together.
+     Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
+
+### SceneView runs in commercial products. Sponsor it now.
+
+Companies sell apps and SDKs built on SceneView. Almost none of them give anything back, in code or in funding, while a few volunteers carry every fix and every release. **If SceneView is part of your product, sponsor it now.**
+
+- **Invoice.** Open Source Collective, SceneView's fiscal host, issues the invoice and the receipt. Write to [hello@sceneview.dev](mailto:hello@sceneview.dev).
+- **Your logo.** Company sponsors get their logo in this README and on the [website](https://sceneview.github.io/sponsors.html).
+- **License.** A commercial license for future versions is under study. Every version already published stays under Apache 2.0.
 
 **[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
