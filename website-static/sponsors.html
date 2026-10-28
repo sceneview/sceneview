@@ -465,7 +465,7 @@
            opencollective.com/sceneview. Edit both together. -->
       <section id="tiers" aria-labelledby="tiers-title">
         <h2 id="tiers-title"><span class="material-symbols-outlined" aria-hidden="true">volunteer_activism</span>Tiers</h2>
-        <p>Amounts are in US dollars, per month. The company tiers can also be paid once a year, by invoice.</p>
+        <p>Amounts are in US dollars, per month. The company tier can also be paid once a year, by invoice.</p>
 
         <h3 class="sponsors-group-title" id="tiers-individuals">For individuals</h3>
         <div class="sponsors-tiers" role="list" aria-labelledby="tiers-individuals">
@@ -492,43 +492,23 @@
         </div>
 
         <h3 class="sponsors-group-title" id="tiers-companies">For companies</h3>
+        <!-- One company tier, and only what is delivered today: the logo walls of the
+             README and of this page are drawn by Open Collective from its ledger. -->
         <div class="sponsors-tiers" role="list" aria-labelledby="tiers-companies">
           <article class="sponsors-tier" role="listitem">
             <div>
-              <h4 class="sponsors-tier__name">Bronze sponsor</h4>
-              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$100</span> / month</p>
+              <h4 class="sponsors-tier__name">Company sponsor</h4>
+              <p class="sponsors-tier__price">from <span class="sponsors-tier__amount">$100</span> / month</p>
               <p class="sponsors-tier__yearly">or $1,000 / year by invoice</p>
             </div>
             <div>
-              <p class="sponsors-tier__includes">Your logo and link on the sponsors page and in the README.</p>
-              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/sponsor-100415" target="_blank" rel="noopener" aria-label="Choose this tier: Bronze sponsor, on Open Collective">Choose this tier</a></p>
-            </div>
-          </article>
-          <article class="sponsors-tier" role="listitem">
-            <div>
-              <h4 class="sponsors-tier__name">Silver sponsor</h4>
-              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$250</span> / month</p>
-              <p class="sponsors-tier__yearly">or $2,500 / year by invoice</p>
-            </div>
-            <div>
-              <p class="sponsors-tier__includes">Bronze, plus your logo on the website home page and on the Sponsors screen of the SceneView demo apps.</p>
-              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/silver-sponsor-106411" target="_blank" rel="noopener" aria-label="Choose this tier: Silver sponsor, on Open Collective">Choose this tier</a></p>
-            </div>
-          </article>
-          <article class="sponsors-tier" role="listitem">
-            <div>
-              <h4 class="sponsors-tier__name">Gold sponsor <span class="sponsors-tier__limit">3 places</span></h4>
-              <p class="sponsors-tier__price"><span class="sponsors-tier__amount">$500</span> / month</p>
-              <p class="sponsors-tier__yearly">or $5,000 / year by invoice</p>
-            </div>
-            <div>
-              <p class="sponsors-tier__includes">Silver, plus your logo in the documentation sidebar and at the top of the README, and a thank-you line in the notes of each major release.</p>
-              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/gold-sponsor-100430" target="_blank" rel="noopener" aria-label="Choose this tier: Gold sponsor, on Open Collective">Choose this tier</a></p>
+              <p class="sponsors-tier__includes">Your logo and link in the README and on this website. Give more if SceneView is central to your product: the logo stays the same, the project keeps moving.</p>
+              <p class="sponsors-tier__choose"><a href="https://opencollective.com/sceneview/contribute/sponsor-100415" target="_blank" rel="noopener" aria-label="Choose this tier: Company sponsor, on Open Collective">Choose this tier</a></p>
             </div>
           </article>
         </div>
 
-        <p class="sponsors-note" style="margin-top:var(--space-md)">Yearly invoices are issued by Open Source Collective, the fiscal host that holds SceneView&rsquo;s funds. Pick a tier, or ask for an invoice, on Open Collective.</p>
+        <p class="sponsors-note" style="margin-top:var(--space-md)">Invoices are issued by Open Source Collective, the fiscal host that holds SceneView&rsquo;s funds. To get one, write to <a href="mailto:hello@sceneview.dev">hello@sceneview.dev</a>.</p>
         <div class="sponsors-cta">
           <a class="sponsors-button" href="https://opencollective.com/sceneview" target="_blank" rel="noopener">Choose a tier on Open Collective</a>
           <a class="sponsors-link" href="https://github.com/sponsors/sceneview" target="_blank" rel="noopener">or through GitHub Sponsors</a>
@@ -627,7 +607,8 @@
   </footer>
 
   <script>
-    // Names and links of the Supporter, Bronze, Silver and Gold tiers.
+    // Names and links of the Supporter tier and of the company tiers (Bronze, plus the
+    // Silver and Gold tiers that still exist on Open Collective).
     //
     // Open Collective's images show an avatar or a logo, not a name, and an image
     // cannot carry one link per contributor. Those tiers include "your name and a
@@ -646,9 +627,9 @@
       // Tier slugs as they exist on the collective. The Bronze tier's slug is
       // "sponsor": it predates the Silver and Gold tiers.
       var LABELS = {
-        'gold-sponsor': 'Gold sponsor',
-        'silver-sponsor': 'Silver sponsor',
-        'sponsor': 'Bronze sponsor',
+        'gold-sponsor': 'Company sponsor',
+        'silver-sponsor': 'Company sponsor',
+        'sponsor': 'Company sponsor',
         'supporter': 'Supporter'
       };
 
