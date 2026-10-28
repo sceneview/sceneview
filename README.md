@@ -604,7 +604,7 @@ sceneview-core (Kotlin Multiplatform)
 
 Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it or buy support, now.**
 
-**Sponsor.** Your logo in this README and on the [website](https://sceneview.github.io/sponsors.html). Open Source Collective issues the invoice and the receipt.
+**Sponsor.** Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.
 
 **[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
 
