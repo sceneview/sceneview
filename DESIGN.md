@@ -288,14 +288,18 @@ so the eye lands on the one thing the screen is for.
 - **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
   theme-independent — it is the product's identity, the same picture in light and dark,
   and its contrast is self-contained (light cube on `#0D2137`).
-- **Support is stated once and never pushed.** One card, on the About tab, above the
-  fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+- **Support is asked, never pushed.** One card, on the About tab, above the fold, and
+  one occasional prompt: never in the first two sessions, only when Home comes back
+  after a sample, at most once every 14 days, never over a demo or an AR session, with
+  "Not now" and "Don't ask again". No launch prompt, no badge, no urgency copy. On iOS
+  and macOS both open the "Support SceneView" sheet: three one-time tips through In-App
+  Purchase (App Review refuses a donation link, guideline 3.1.1), one tap per amount,
+  a thank-you once it goes through, nothing unlocked.
 - **Other apps are listed, not advertised.** "More apps built with SceneView" is a plain
   group of rows directly under the support card: icon, name, one line on what the app
   does for the person holding the phone, open-in-new. No tinted surface, no price, no
   badge, no install button — the icons are the only colour, and a tap opens the Play
-  listing. On iOS the group sits under the identity block (there is no support card
-  there), drawn as the "Privacy & notifications" group is; it lists only apps that are
+  listing. On iOS the group sits under the support card too, drawn as the "Privacy & notifications" group is; it lists only apps that are
   live on the App Store, with their App Store icon and name, and a tap opens the App
   Store listing — never another store's.
 
