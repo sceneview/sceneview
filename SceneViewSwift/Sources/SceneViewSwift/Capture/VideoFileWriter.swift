@@ -305,7 +305,7 @@ protocol AudioSessionControlling: AnyObject {
     var category: AVAudioSession.Category { get }
     var mode: AVAudioSession.Mode { get }
     var categoryOptions: AVAudioSession.CategoryOptions { get }
-    var isOtherAudioPlaying: Bool { get }
+    var secondaryAudioShouldBeSilencedHint: Bool { get }
     func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode,
                      options: AVAudioSession.CategoryOptions) throws
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
@@ -324,7 +324,8 @@ extension AVAudioSession: AudioSessionControlling {}
 /// setup the recorder made: a category the app changed in the meantime (a voice chat, a
 /// switch to `.playback`) is the app's and is kept. The session is deactivated first (other
 /// apps' audio is told it may resume) only when it was inactive before the recording,
-/// which is the case when another app was playing over a category that does not mix:
+/// which is the case when another app plays audio that does not mix (its audio asks for
+/// secondary audio to be silenced) over a category that does not mix either:
 /// deactivating an active session would stop the app's own sound (RealityKit audio, an
 /// `AVPlayer`), with or without running I/O.
 ///
@@ -350,9 +351,10 @@ final class MicrophoneAudioSession {
     func begin() -> Bool {
         if session.category != .playAndRecord, session.category != .record {
             let previous = current
-            // Another app's audio playing over a category that interrupts it means this
-            // app's session is not active.
-            let wasInactive = session.isOtherAudioPlaying && !Self.mixes(previous)
+            // Another app's non-mixing audio playing over a category that interrupts it
+            // means this app's session is not active. Another app's mixing audio (a
+            // navigation prompt) says nothing: this app may be playing alongside it.
+            let wasInactive = session.secondaryAudioShouldBeSilencedHint && !Self.mixes(previous)
             do {
                 try session.setCategory(.playAndRecord, mode: .default, options: Self.recordingOptions)
             } catch {

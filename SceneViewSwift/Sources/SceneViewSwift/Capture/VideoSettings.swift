@@ -32,7 +32,8 @@ public struct VideoSettings: Sendable, Equatable {
     /// another app's audio resumes) only when it was inactive before: another app was playing
     /// over a category that does not mix. The app's own sound keeps playing. If the switch
     /// fails, the video is silent. The app has one audio session, so two recorders using the
-    /// microphone at the same time share it.
+    /// microphone at the same time share it: the first recording to end hands the session
+    /// back, so the other one loses its audio from then on.
     /// Default `false`.
     public var recordAudio: Bool
     /// Stops the recording by itself after this many seconds, with

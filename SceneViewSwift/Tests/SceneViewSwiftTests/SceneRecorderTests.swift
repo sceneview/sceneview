@@ -443,6 +443,55 @@ final class SceneRecorderTests: XCTestCase {
         XCTAssertTrue(uses(recorder, markerA), "A's next update takes it back once B let it go")
     }
 
+    func testAnARSceneViewBackInTheWindowLeavesTheRecorderToTheSceneThatTookIt() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        retained.append(window)
+        let containerA = UIView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        window.addSubview(containerA)
+        let arViewA = ARView(frame: containerA.bounds, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        containerA.addSubview(arViewA)
+        let arViewB = ARView(frame: CGRect(x: 100, y: 0, width: 100, height: 200),
+                             cameraMode: .nonAR, automaticallyConfigureSession: false)
+        window.addSubview(arViewB)
+        let recorder = SceneRecorder()
+        let sceneA = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        let sceneB = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        sceneA.syncRecorder(recorder, on: arViewA)
+        containerA.removeFromSuperview()
+        sceneB.syncRecorder(recorder, on: arViewB)
+        let sourceB = try XCTUnwrap(sceneB.captureSource)
+        XCTAssertTrue(recorder.startRecording(to: file("back.mp4")))
+
+        window.addSubview(containerA)
+        sceneA.syncRecorder(recorder, on: arViewA)
+        XCTAssertTrue(recorder.isUsing(sourceB), "A coming back leaves it with B")
+        XCTAssertTrue(recorder.isRecording, "B's recording keeps going")
+        XCTAssertNil(sceneA.captureSource)
+
+        sceneB.syncRecorder(nil, on: arViewB)
+        sceneA.syncRecorder(recorder, on: arViewA)
+        XCTAssertTrue(recorder.isUsing(try XCTUnwrap(sceneA.captureSource)), "taken once B let it go")
+    }
+
+    func testASceneViewBackInTheWindowLeavesTheRecorderToTheSceneThatTookIt() async throws {
+        let recorder = SceneRecorder()
+        let (windowA, markerA, containerA, _) = markedScene(recorder)
+        await waitUntil { uses(recorder, markerA) }
+        containerA.removeFromSuperview()
+        let (_, markerB, _, _) = markedScene(recorder)
+        await waitUntil { uses(recorder, markerB) }
+        XCTAssertTrue(uses(recorder, markerB), "B took it")
+
+        windowA.addSubview(containerA)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(uses(recorder, markerB), "A coming back leaves it with B")
+
+        markerB.recorder = nil
+        markerA.scheduleCheck()
+        await waitUntil { uses(recorder, markerA) }
+        XCTAssertTrue(uses(recorder, markerA), "taken once B let it go")
+    }
+
     func testASceneViewDetachesItsRecorderWhenItLeavesTheWindow() async throws {
         let recorder = SceneRecorder()
         let (window, marker, container, arView) = markedScene(recorder)

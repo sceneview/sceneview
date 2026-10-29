@@ -10,7 +10,7 @@ final class MicrophoneAudioSessionTests: XCTestCase {
     func testAnInactiveSessionUnderAnotherAppsMusicIsDeactivatedThenPutBack() {
         // Music from another app plays over .soloAmbient: this app's session is inactive.
         let fake = FakeAudioSession(category: .soloAmbient)
-        fake.isOtherAudioPlaying = true
+        fake.secondaryAudioShouldBeSilencedHint = true
         let audio = MicrophoneAudioSession(fake)
 
         XCTAssertTrue(audio.begin())
@@ -37,12 +37,28 @@ final class MicrophoneAudioSessionTests: XCTestCase {
         XCTAssertEqual(fake.calls, [.setCategory(.playAndRecord), .setActive(true, []), .setCategory(.soloAmbient)])
     }
 
+    func testTheAppsOwnSoundUnderAnotherAppsMixingAudioIsPutBackWithoutDeactivating() {
+        // The app plays over .soloAmbient while another app's navigation prompt mixes in:
+        // other audio is playing, but it does not ask for this app to be silenced, so this
+        // app's session may be active and deactivating it would stop its sound.
+        for category in [AVAudioSession.Category.soloAmbient, .playback] {
+            let fake = FakeAudioSession(category: category)
+            fake.secondaryAudioShouldBeSilencedHint = false
+            let audio = MicrophoneAudioSession(fake)
+
+            XCTAssertTrue(audio.begin())
+            audio.end()
+            XCTAssertEqual(fake.calls, [.setCategory(.playAndRecord), .setActive(true, []), .setCategory(category)],
+                           category.rawValue)
+        }
+    }
+
     func testAMixingCategoryIsPutBackWithoutDeactivatingEvenUnderOtherAudio() {
         // Other audio playing says nothing about a session that mixes with it.
         for (category, options) in [(AVAudioSession.Category.ambient, AVAudioSession.CategoryOptions()),
                                     (.playback, [.mixWithOthers]), (.playback, [.duckOthers])] {
             let fake = FakeAudioSession(category: category, options: options)
-            fake.isOtherAudioPlaying = true
+            fake.secondaryAudioShouldBeSilencedHint = true
             let audio = MicrophoneAudioSession(fake)
 
             XCTAssertTrue(audio.begin())
@@ -66,7 +82,7 @@ final class MicrophoneAudioSessionTests: XCTestCase {
 
     func testACategoryTheAppChangedDuringTheRecordingIsKept() {
         let fake = FakeAudioSession(category: .soloAmbient)
-        fake.isOtherAudioPlaying = true
+        fake.secondaryAudioShouldBeSilencedHint = true
         let audio = MicrophoneAudioSession(fake)
         XCTAssertTrue(audio.begin())
 
@@ -115,7 +131,7 @@ final class MicrophoneAudioSessionTests: XCTestCase {
 
     func testAFailedActivationIsNotUndone() {
         let fake = FakeAudioSession(category: .soloAmbient)
-        fake.isOtherAudioPlaying = true
+        fake.secondaryAudioShouldBeSilencedHint = true
         fake.failSetActive = true
         let audio = MicrophoneAudioSession(fake)
 
@@ -136,7 +152,7 @@ private final class FakeAudioSession: AudioSessionControlling {
     private(set) var category: AVAudioSession.Category
     private(set) var mode: AVAudioSession.Mode
     private(set) var categoryOptions: AVAudioSession.CategoryOptions
-    var isOtherAudioPlaying = false
+    var secondaryAudioShouldBeSilencedHint = false
     var calls: [Call] = []
     var failSetCategory = false
     var failSetActive = false

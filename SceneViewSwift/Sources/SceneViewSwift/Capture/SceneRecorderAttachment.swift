@@ -73,10 +73,14 @@ struct SceneRecorderAnchor: UIViewRepresentable {
                 guard oldValue !== recorder else { return }
                 if let oldValue, let source { oldValue.detach(source) }
                 source = nil
+                cameBack = false
                 scheduleCheck()
             }
         }
         private(set) var source: ARViewCaptureSource?
+        /// Left the window, detaching the recorder: on coming back, it is taken only once
+        /// no other scene holds it.
+        private var cameBack = false
         private var checkPending = false
         private var retriesLeft = 5
 
@@ -85,6 +89,7 @@ struct SceneRecorderAnchor: UIViewRepresentable {
             if window == nil, let recorder, let source {
                 recorder.detach(source)
                 self.source = nil
+                cameBack = true
             }
             retriesLeft = 5
             scheduleCheck()
@@ -122,9 +127,11 @@ struct SceneRecorderAnchor: UIViewRepresentable {
             // Kept while another scene that took the recorder since holds it (it may be
             // recording); taken back once that scene let it go.
             if let source, source.arView === arView, recorder.isUsing(source) || recorder.isAttached { return }
+            if source == nil, cameBack, recorder.isAttached { return }
             if let source { recorder.detach(source) }
             let newSource = ARViewCaptureSource(arView: arView)
             source = newSource
+            cameBack = false
             recorder.attach(newSource)
         }
     }
@@ -136,7 +143,8 @@ extension ARSceneView.Coordinator {
     /// and this runs on every render); it is taken back once that scene let it go.
     ///
     /// While attached, a hidden subview of `arView` watches its window: leaving the window
-    /// detaches the recorder (finishing a recording), coming back attaches it again.
+    /// detaches the recorder (finishing a recording), coming back attaches it again unless
+    /// another scene took it in the meantime.
     @MainActor
     func syncRecorder(_ recorder: SceneRecorder?, on arView: ARView) {
         if recorder === sceneRecorder {
@@ -145,6 +153,9 @@ extension ARSceneView.Coordinator {
                recorder.isUsing(captureSource) || recorder.isAttached {
                 return
             }
+            // Back in the window after a recording there was finished: another scene that
+            // took the recorder since keeps it until it lets it go.
+            if let recorder, captureSource == nil, recorder.isAttached { return }
         }
         if let sceneRecorder, let captureSource { sceneRecorder.detach(captureSource) }
         sceneRecorder = recorder
@@ -178,7 +189,7 @@ extension ARSceneView.Coordinator {
     private func recorderWindowChanged(inWindow: Bool, arView: ARView) {
         guard let sceneRecorder else { return }
         if inWindow {
-            if captureSource == nil { attachSource(to: sceneRecorder, on: arView) }
+            if captureSource == nil, !sceneRecorder.isAttached { attachSource(to: sceneRecorder, on: arView) }
         } else if let captureSource {
             sceneRecorder.detach(captureSource)
             self.captureSource = nil
