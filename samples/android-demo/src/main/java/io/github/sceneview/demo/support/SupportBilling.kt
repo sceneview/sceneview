@@ -23,6 +23,7 @@ import com.android.billingclient.api.consumePurchase
 import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.telemetry.SupportResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -79,6 +80,7 @@ object SupportBilling : PurchasesUpdatedListener {
     private var client: BillingClient? = null
     private var appContext: Context? = null
     private var connectJob: Job? = null
+    private val analyticsSessions = mutableMapOf<String, SupportPromptAnalyticsSession>()
 
     /**
      * Called each time the sheet or the interstitial opens. A client that is not connected —
@@ -143,11 +145,12 @@ object SupportBilling : PurchasesUpdatedListener {
     }
 
     /** One tap on an amount: Google Play's own purchase sheet, nothing in between. */
-    fun buy(activity: Activity, tier: SupportTier) {
+    internal fun buy(activity: Activity, tier: SupportTier, analytics: SupportPromptAnalyticsSession) {
         val billing = client ?: return
         val details = prices[tier.productId] ?: return
         outcome = null
         inFlight = tier.productId
+        analyticsSessions[tier.productId] = analytics
         val params = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(
                 listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).build()),
@@ -157,6 +160,9 @@ object SupportBilling : PurchasesUpdatedListener {
         if (result.responseCode != BillingResponseCode.OK) {
             Log.w(TAG, "launchBillingFlow: ${result.responseCode} ${result.debugMessage}")
             inFlight = null
+            analyticsSessions.remove(tier.productId)?.purchaseResult(
+                SupportResult.PurchaseFailed,
+            )
             report(Outcome.Failed)
         }
     }
@@ -164,13 +170,25 @@ object SupportBilling : PurchasesUpdatedListener {
     override fun onPurchasesUpdated(result: BillingResult, purchases: MutableList<Purchase>?) {
         val list = purchases.orEmpty().toList()
         scope.launch {
+            val attemptedProduct = inFlight
             inFlight = null
             when (result.responseCode) {
                 BillingResponseCode.OK -> handle(list, silent = false)
-                BillingResponseCode.USER_CANCELED -> Unit
+                BillingResponseCode.USER_CANCELED -> attemptedProduct?.let { productId ->
+                    analyticsSessions.remove(productId)?.purchaseResult(
+                        SupportResult.PurchaseCancelled,
+                    )
+                }
                 // Play still holds an unconsumed one: consume it, then the next tap works.
                 BillingResponseCode.ITEM_ALREADY_OWNED -> client?.let { refresh(it) }
-                else -> report(Outcome.Failed)
+                else -> {
+                    attemptedProduct?.let { productId ->
+                        analyticsSessions.remove(productId)?.purchaseResult(
+                            SupportResult.PurchaseFailed,
+                        )
+                    }
+                    report(Outcome.Failed)
+                }
             }
         }
     }
@@ -188,13 +206,26 @@ object SupportBilling : PurchasesUpdatedListener {
 
     private suspend fun consume(purchase: Purchase, silent: Boolean) {
         val billing = client ?: return
+        val tier = SupportTier.entries.firstOrNull { it.productId in purchase.products }
         val result = billing.consumePurchase(ConsumeParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build())
         if (result.billingResult.responseCode == BillingResponseCode.OK) {
             SupportPrompt.onSupported()
             // A purchase found at start-up (a pending payment Play confirmed while the
             // app was closed) is consumed quietly: no sheet pops up on its own to thank.
-            if (!silent) report(Outcome.Thanks)
+            if (!silent) {
+                tier?.let { completed ->
+                    analyticsSessions.remove(completed.productId)?.purchaseResult(completed.analyticsResult)
+                }
+                report(Outcome.Thanks)
+            }
         } else {
+            if (!silent) {
+                tier?.let { failed ->
+                    analyticsSessions.remove(failed.productId)?.purchaseResult(
+                        SupportResult.PurchaseFailed,
+                    )
+                }
+            }
             Log.w(TAG, "consume: ${result.billingResult.responseCode} ${result.billingResult.debugMessage}")
         }
     }
