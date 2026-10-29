@@ -15,7 +15,7 @@
     {
       "guid": "sceneview",
       "name": "SceneView",
-      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. 48 contributors since 2021; used in production apps and public samples by companies in payments hardware, security cameras, accessibility and spatial computing.",
+      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. SDKs published by commercial vendors on Maven Central and npm declare SceneView as a dependency.",
       "webpageUrl": {
         "url": "https://sceneview.github.io"
       },

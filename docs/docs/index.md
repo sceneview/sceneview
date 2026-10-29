@@ -31,7 +31,7 @@ description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences wit
 <div class="sv-stats" markdown>
 
 <div class="sv-stat">
-<span class="sv-stat-number">1.3K+</span>
+<span class="sv-stat-number">1,300+</span>
 <span class="sv-stat-label">GitHub Stars</span>
 </div>
 
