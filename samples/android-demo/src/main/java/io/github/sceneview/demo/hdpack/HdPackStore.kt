@@ -51,6 +51,12 @@ data class HdTransfer(
 class HdPackIntegrityException(message: String) : IOException(message)
 
 /**
+ * The server answered, but not with the file: [code] is a 404 when it is gone, a 5xx when it is
+ * down. The network itself works — a caller that tells the user why can say so.
+ */
+class HdPackHttpException(val code: Int, message: String) : IOException(message)
+
+/**
  * Permanent on-disk store of the HD pack: `filesDir/hd-pack/<sha256>.<ext>`.
  *
  * Same streaming discipline as `NetworkModelDownloader` — OkHttp `executeAsync` tied to the
@@ -65,12 +71,18 @@ class HdPackIntegrityException(message: String) : IOException(message)
  *
  * Nothing here is ever evicted for space. [prune] deletes only names the manifest no longer
  * lists; [removeAll] is the user's own "Remove".
+ *
+ * A file found on disk when the store is built counts as there when its size is right; with
+ * [hashOnScan], only when its SHA-256 is too — for a file a runtime maps and trusts as it is, such
+ * as the scene detector. A file that fails is fetched again over it. The HD pack's models, read by
+ * a loader that checks what it parses, keep the size check: hashing them would cost every launch.
  */
 class HdPackStore(
     val manifest: HdPackManifest,
     private val dir: File,
     private val client: OkHttpClient = defaultClient,
     private val baseUrl: String = HdPackManifest.BASE_URL,
+    private val hashOnScan: Boolean = false,
 ) {
     private val _readyIds = MutableStateFlow(scanReady())
     /** Ids of the assets whose verified file is on disk. */
@@ -156,12 +168,15 @@ class HdPackStore(
     }
 
     private fun scanReady(): Set<String> =
-        manifest.assets.filter { fileFor(it).let { f -> f.isFile && f.length() == it.bytes } }
-            .map { it.id }.toSet()
+        manifest.assets.filter { asset ->
+            val file = fileFor(asset)
+            file.isFile && file.length() == asset.bytes && (!hashOnScan || sha256(file) == asset.sha256)
+        }.map { it.id }.toSet()
 
     private fun partName(asset: HdAsset) = "${asset.file}.part"
 
-    private fun partFile(asset: HdAsset) = File(dir, partName(asset))
+    /** Where [asset] is written while it downloads, kept across a cut and resumed from. */
+    fun partFile(asset: HdAsset): File = File(dir, partName(asset))
 
     private suspend fun download(asset: HdAsset, onProgress: (Long) -> Unit) {
         dir.mkdirs()
@@ -197,7 +212,7 @@ class HdPackStore(
         executeCancellably(call) {
             call.executeAsync().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("HD asset ${asset.id}: HTTP ${response.code}")
+                    throw HdPackHttpException(response.code, "HD asset ${asset.id}: HTTP ${response.code}")
                 }
                 // 206 → the server honoured the range: append. 200 → it sent the whole file.
                 val append = resumeFrom > 0L && response.code == HTTP_PARTIAL

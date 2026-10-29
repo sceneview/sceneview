@@ -2,6 +2,7 @@ package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.demo.demos.internal.DepthFreshness.Verdict
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -64,8 +65,52 @@ class DepthFreshnessTest {
     }
 
     @Test
-    fun `depth stamped after its frame is rejected`() {
-        assertEquals(Verdict.AHEAD, DepthFreshness.judge(boot, boot + 1, null))
+    fun `depth stamped a hair after its frame is fused`() {
+        // The Pixel 4a (#4729): every raw depth stamped 0 to 2 ms after its frame, 0 points fused.
+        val ms = 1_000_000L
+        assertEquals(Verdict.FRESH, DepthFreshness.judge(boot, boot + 1, null))
+        assertEquals(Verdict.FRESH, DepthFreshness.judge(boot, boot + 2 * ms, null))
+        assertEquals(Verdict.FRESH, DepthFreshness.judge(boot, boot + DepthFreshness.MAX_LEAD_NANOS, null))
+    }
+
+    @Test
+    fun `depth stamped further ahead than the tolerance is rejected`() {
+        val verdict = DepthFreshness.judge(boot, boot + DepthFreshness.MAX_LEAD_NANOS + 1, null)
+        assertEquals(Verdict.AHEAD, verdict)
+        assertEquals(Verdict.AHEAD, DepthFreshness.judge(boot, boot + frame, null))
+    }
+
+    @Test
+    fun `a depth fused with a lead is not fused again from its frame or the next`() {
+        val depth = boot + 2_000_000L
+        // The same frame handing the same depth again: its clock sits 2 ms behind the last fused.
+        assertEquals(Verdict.ALREADY_FUSED, DepthFreshness.judge(boot, depth, lastFusedNanos = depth))
+        // The next frames reprojecting it.
+        assertEquals(Verdict.ALREADY_FUSED, DepthFreshness.judge(boot + frame, depth, lastFusedNanos = depth))
+        // The next estimate, also stamped with a lead, is fused.
+        val next = boot + 3 * frame
+        assertEquals(Verdict.FRESH, DepthFreshness.judge(next, next + 2_000_000L, lastFusedNanos = depth))
+    }
+
+    @Test
+    fun `the clock-reset boundary honours the lead`() {
+        val last = boot + 2_000_000L
+        val lead = DepthFreshness.MAX_LEAD_NANOS
+        // A frame further back than the lead: a restarted session, the last fused depth is forgotten.
+        assertEquals(Verdict.FRESH, DepthFreshness.judge(last - lead - 1, last - lead - 1, lastFusedNanos = last))
+        // A frame within the lead: the same capture handing the fused depth again.
+        assertEquals(Verdict.ALREADY_FUSED, DepthFreshness.judge(last - lead, last, lastFusedNanos = last))
+    }
+
+    @Test
+    fun `depth a whole 60 fps frame ahead is rejected`() {
+        assertEquals(Verdict.AHEAD, DepthFreshness.judge(boot, boot + 16_666_667L, null))
+    }
+
+    @Test
+    fun `the lead tolerance stays well under one camera frame`() {
+        assertEquals(5_000_000L, DepthFreshness.MAX_LEAD_NANOS)
+        assertTrue(DepthFreshness.MAX_LEAD_NANOS * 3 < frame / 2) // under a third of a 60 fps frame
     }
 
     @Test

@@ -29,6 +29,7 @@ samples/
 │
 ├── android-demo/                # Android showcase — Kotlin + Jetpack Compose (Filament)
 ├── android-tv-demo/             # Android TV — D-pad controls, Compose TV
+├── android-auto-demo/           # Android Auto parked app — "Night Garage" prototype
 ├── ios-demo/                    # iOS / macOS / visionOS — SwiftUI + RealityKit
 ├── web-demo/                    # Web — Kotlin/JS + Filament.js (WASM), WebXR
 ├── desktop-demo/                # Desktop — Compose Desktop `SceneViewer` (filament-kmp)
@@ -47,7 +48,7 @@ samples/
 |---|---|---|---|---|
 | Scene container | `SceneView { }` composable | `SceneView { }` SwiftUI | `SceneViewer(…)` Compose Desktop (`sceneview-compose`) | `<SceneView>` Kotlin/JS |
 | AR container | `ARSceneView { }` | `ARSceneView { }` | N/A | WebXR |
-| Renderer | Google Filament | RealityKit | Filament via filament-kmp (offscreen → Skia, JDK 22+) | Filament WASM |
+| Renderer | Google Filament | RealityKit | Filament via filament-kmp (offscreen → Skia, JDK 21+) | Filament WASM |
 | AR framework | ARCore | ARKit | N/A | WebXR |
 | Model format | glTF/GLB | USDZ + glTF (GLTFKit2) | glTF/GLB | glTF/GLB |
 | Camera | Filament Camera | RealityKit PerspectiveCamera | `rememberCameraState` orbit camera | Filament Camera |
@@ -83,7 +84,7 @@ SceneView { content in
 .cameraControls(.orbit)
 ```
 
-**Desktop (`sceneview-compose`, JDK 22+):**
+**Desktop (`sceneview-compose`, JDK 21+):**
 ```kotlin
 SceneViewer(
     model = ModelSource.Bytes(glb),
@@ -127,7 +128,7 @@ Android + iOS code):
 2. **iOS / macOS / visionOS** — SceneViewSwift, RealityKit backend (alpha)
 3. **Web** — sceneview-web on npm (Filament.js WASM), 3D + WebXR (AR + VR)
 4. **Flutter / React Native** — PlatformView / Fabric bridges to Android + iOS native renderers
-5. **Desktop** — `SceneViewer` via filament-kmp (JDK 22+)
+5. **Desktop** — `SceneViewer` via filament-kmp (JDK 21+)
 
 ## What makes this achievable
 

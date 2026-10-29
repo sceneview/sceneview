@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://cdn.jsdelivr.net https://api.sketchfab.com https://media.sketchfab.com; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' blob: https:; frame-src https://app.rerun.io; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
+  <!-- This page's address can hold a recording's link (`?url=`), possibly a signed one. A page
+       of this site opened from here would otherwise receive that address as its referrer, and
+       report it to the site's analytics. Other hosts already got the origin alone; with this,
+       every request and every link from this page does. -->
+  <meta name="referrer" content="strict-origin">
   <script>
     (function() {
       try {
@@ -190,7 +195,9 @@
       position: relative;
       width: 100vw;
       height: calc(100vh - var(--header-height));
-      background: #0f0f14;
+      /* Ground behind the canvas: the page's, so a viewer that restarts for the other theme
+         does not flash dark in light mode. */
+      background: var(--color-surface);
       overflow: hidden;
     }
     #viewer > canvas {
@@ -217,7 +224,7 @@
       animation: spin 800ms linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .splash-text { font-size: 14px; color: var(--color-on-surface-variant); }
+    .splash-text { font-size: 14px; color: var(--color-on-surface-variant); text-align: center; }
     .splash.error .spinner { display: none; }
     .error-icon {
       font-size: 48px;
@@ -506,7 +513,9 @@
     }
 
     /* ── Mobile ───────────────────────────────────────────────────── */
-    @media (max-width: 600px) {
+    /* Up to 720px, not 600: with their labels the five buttons squeezed the title out below
+       700px, and pushed the theme switch off the screen from 620px down to 601px. */
+    @media (max-width: 720px) {
       header { padding: 0 10px; gap: 10px; }
       .brand-text { display: none; }
       .toolbar .btn-label { display: none; }
@@ -559,7 +568,7 @@
         <span class="btn-label">Share</span>
       </button>
 
-      <a class="btn" id="btn-open-in-app" href="/open/?demo=ar-rerun" target="_blank" rel="noopener" title="Open the AR Rerun demo on your phone">
+      <a class="btn" id="btn-open-in-app" href="/open/?demo=ar-rerun" target="_blank" rel="noopener" title="Open the 3D Scan demo on your phone">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
           <line x1="12" y1="18" x2="12.01" y2="18"/>
@@ -586,11 +595,18 @@
 
   <script type="module">
     // ─── Config ────────────────────────────────────────────────────────────
-    const VIEWER_VERSION = '0.31.4';
+    // The Rerun release the demo apps write their `.rrd` files in: `VERSION_*` in
+    // `samples/android-demo/.../demos/internal/RerunRrdWriter.kt`, `rerunVersion` in
+    // `samples/ios-demo/.../Demos/Rerun/RerunRRDWriter.swift`. Move the three together — an
+    // older viewer warns about every export and is the first thing that stops opening them.
+    const VIEWER_VERSION = '0.38.1';
     const VIEWER_MODULE = `https://cdn.jsdelivr.net/npm/@rerun-io/web-viewer@${VIEWER_VERSION}/+esm`;
     // R2 bucket base URL — set once R2 is provisioned.
     // Until then `?r=<hash>` is unsupported; only `?url=` works.
     const R2_BASE = ''; // e.g. 'https://pub-XXXX.r2.dev'
+    // This page without a recording in its address — where the drop zone is. Named in the errors
+    // that send the visitor there.
+    const START_PAGE = `${location.host}${location.pathname}`;
 
     // ─── Helpers ───────────────────────────────────────────────────────────
     const $ = (id) => document.getElementById(id);
@@ -598,11 +614,19 @@
       const splash = $('splash');
       splash.classList.remove('hidden', 'error');
       if (isError) splash.classList.add('error');
+      // The empty state takes the splash over: put the spinner and the text slot back.
+      if (!$('splash-text')) {
+        splash.innerHTML = '<div class="spinner"></div><div class="splash-text" id="splash-text"></div>';
+      }
       $('splash-text').innerHTML = isError
         ? `<div class="error-icon">⚠️</div><div class="error-title">${escapeHtml(msg.title || 'Error')}</div><div class="error-detail">${escapeHtml(msg.detail || '')}</div>`
         : msg;
     };
     const hideSplash = () => $('splash').classList.add('hidden');
+    const showLoadError = (err) => {
+      console.error(err);
+      showSplash({ title: 'Failed to load session', detail: err.message || String(err) }, true);
+    };
     const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
@@ -615,10 +639,15 @@
     };
 
     // ─── Theme toggle ──────────────────────────────────────────────────────
+    const pageTheme = () =>
+      document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    // Set by `bootViewer` once a viewer runs: it has to follow the page.
+    let onPageThemeChange = null;
     $('btn-theme').addEventListener('click', () => {
-      const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      const next = pageTheme() === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       try { localStorage.setItem('sceneview-theme', next); } catch (e) { /* ignore */ }
+      if (onPageThemeChange) onPageThemeChange();
     });
 
     // ─── Resolve session URL ───────────────────────────────────────────────
@@ -626,28 +655,63 @@
     const directUrl = params.get('url');
     const sessionHash = params.get('r');
 
+    // What `?url=` may name: an https address on any host — this page's `connect-src` is open to
+    // `https:` for that, and to nothing else outside the site — or a path on this site, resolved
+    // against this page because the viewer reads a relative path as a host name. The value is
+    // fetched and becomes the Download link, so every other scheme (`javascript:`, `data:`,
+    // `blob:`, `file:`, plain `http:`) stops here, with the reason on screen.
+    const resolveRecordingUrl = (raw) => {
+      let url;
+      try {
+        url = new URL(raw, location.href);
+      } catch (e) {
+        return { refused: 'That is not a link this page can read. A link to a recording looks like https://example.com/session.rrd.' };
+      }
+      const onThisSite = url.protocol === 'http:' && url.origin === location.origin; // a local preview
+      if (url.protocol === 'https:' || onThisSite) {
+        // `https://name:password@host/…`: a browser refuses to fetch such an address, before any
+        // request leaves. The message does not repeat the link: a password stays off the screen.
+        if (url.username || url.password) {
+          return { refused: `This link carries a user name or a password (the part before the "@"), and a browser does not open such a link from a page. A link to share must not hold credentials: host the recording at a public https address, or download it and drop it on ${START_PAGE}.` };
+        }
+        return { href: url.href };
+      }
+      if (url.protocol === 'file:') {
+        // What the capture sidecar hands back for a file it saved on the computer: `?url=file://…`.
+        return { refused: `That is a file on a computer, and a web page cannot open it from a link. Drop the file on ${START_PAGE} instead.` };
+      }
+      if (url.protocol === 'http:') {
+        return { refused: `This page only loads recordings over https, and this link starts with http://. Host the file at an https address, or download it and drop it on ${START_PAGE}.` };
+      }
+      return { refused: `This page only opens https:// links to a recording, not "${url.protocol}" ones. For a file on this device, drop it on ${START_PAGE} instead.` };
+    };
+
     let rrdUrl = null;
     let metadataUrl = null;
+    let refusedLink = null;
 
     if (directUrl) {
-      rrdUrl = directUrl;
-      // Allow caller to pass metadata URL alongside via &m=
-      metadataUrl = params.get('m') || null;
+      const recording = resolveRecordingUrl(directUrl);
+      rrdUrl = recording.href || null;
+      refusedLink = recording.refused || null;
+      // Allow caller to pass metadata URL alongside via &m= — same rule, and optional: one that
+      // is refused is left out.
+      const metadataParam = params.get('m');
+      metadataUrl = (metadataParam && resolveRecordingUrl(metadataParam).href) || null;
     } else if (sessionHash && R2_BASE) {
       rrdUrl = `${R2_BASE}/sessions/${encodeURIComponent(sessionHash)}.rrd`;
       metadataUrl = `${R2_BASE}/sessions/${encodeURIComponent(sessionHash)}.json`;
     }
 
     // ─── Empty state ───────────────────────────────────────────────────────
-    if (!rrdUrl) {
+    if (refusedLink) {
+      showLoadError(new Error(refusedLink));
+    } else if (!rrdUrl) {
       renderEmptyState();
       // Wire share to copy current URL anyway
       $('btn-share').addEventListener('click', () => copyToClipboard(location.href, 'Page URL copied'));
     } else {
-      bootViewer(rrdUrl, metadataUrl).catch((err) => {
-        console.error(err);
-        showSplash({ title: 'Failed to load session', detail: err.message || String(err) }, true);
-      });
+      bootViewer(rrdUrl, metadataUrl).catch(showLoadError);
     }
 
     function renderEmptyState() {
@@ -671,7 +735,7 @@
             <div class="panel primary">
               <div class="panel-eyebrow">Try it live</div>
               <h2 class="panel-title">Capture a session on your phone</h2>
-              <p class="panel-body">Open the AR Rerun demo in the SceneView app, record an AR session, then save &amp; share it.</p>
+              <p class="panel-body">Open the 3D Scan demo in the SceneView app, record an AR session, then save &amp; share it.</p>
 
               <div class="qr-wrap" id="qr"><div class="qr-skeleton"></div></div>
               <p class="qr-caption">Scan with your phone camera</p>
@@ -681,7 +745,7 @@
                   <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
                   <line x1="12" y1="18" x2="12.01" y2="18"/>
                 </svg>
-                Open AR Rerun demo
+                Open 3D Scan demo
               </a>
 
               <div class="store-row">
@@ -705,7 +769,7 @@
             <div class="panel">
               <div class="panel-eyebrow">Already have a recording?</div>
               <h2 class="panel-title">Drop a <code>.rrd</code> file</h2>
-              <p class="panel-body">Or paste a hosted URL — anything reachable with CORS works.</p>
+              <p class="panel-body">Or paste an https link to one. Its host has to let other websites read the file (CORS).</p>
 
               <label class="dropzone" id="dropzone">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -726,6 +790,8 @@
           </div>
 
           <div class="empty-foot">
+            <a href="/use-cases.html">What a 3D scan is good for</a>
+            <span class="sep">·</span>
             <a href="https://www.npmjs.com/package/rerun-3d-mcp">rerun-3d-mcp</a>
             <span class="sep">·</span>
             <a href="https://github.com/sceneview/sceneview/tree/main/arsceneview/src/main/java/io/github/sceneview/ar/rerun">RerunBridge source</a>
@@ -768,10 +834,7 @@
             $('session-title').textContent = titleHint.replace(/\.rrd$/i, '');
             $('session-sub').textContent = 'Local file · powered by Rerun.io';
           }
-        }).catch((err) => {
-          console.error(err);
-          showSplash({ title: 'Failed to load session', detail: err.message || String(err) }, true);
-        });
+        }).catch(showLoadError);
       };
       const loadFile = (file) => { if (file) loadLocally(file); };
       fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
@@ -796,10 +859,11 @@
 
     // ─── Boot ──────────────────────────────────────────────────────────────
     async function bootViewer(rrdUrl, metadataUrl) {
-      // 1. Fetch metadata in parallel with viewer module load
+      // 1. Load the viewer module, the metadata and the recording's headers together
       const [{ WebViewer }, metadata] = await Promise.all([
         import(VIEWER_MODULE),
         metadataUrl ? fetchJson(metadataUrl).catch(() => null) : Promise.resolve(null),
+        checkReachable(rrdUrl),
       ]);
 
       // 2. Apply metadata to header
@@ -809,33 +873,39 @@
       wireToolbar(rrdUrl, metadata);
 
       // 4. Boot viewer
+      answerViewerUpdateCheck();
       const viewer = new WebViewer();
-      try {
-        await viewer.start(rrdUrl, $('viewer'), { hide_welcome_screen: true });
-      } catch (err) {
-        throw new Error(
-          `The Rerun viewer could not load the recording. ` +
-          `Check the URL is reachable and CORS-enabled. (${err.message || err})`
-        );
-      }
-      hideSplash();
-
-      // Rerun's WebViewer reads its initial canvas size from inline styles
-      // and only re-reads them on `window` resize events. We need to (a) push
-      // the canvas to fill its container by overriding the inline width/height,
-      // and (b) fire a synthetic resize so Rerun re-projects its WebGL viewport.
-      const fitCanvas = () => {
-        const container = $('viewer');
-        const canvas = container.querySelector('canvas');
-        if (!canvas) return;
-        canvas.style.width = container.clientWidth + 'px';
-        canvas.style.height = container.clientHeight + 'px';
-        window.dispatchEvent(new Event('resize'));
+      let viewerTheme = null;
+      const startViewer = async () => {
+        viewerTheme = pageTheme();
+        try {
+          await viewer.start(rrdUrl, $('viewer'), {
+            hide_welcome_screen: true,
+            // The canvas fills `#viewer`, and the viewer follows its size from there on.
+            width: '100%',
+            height: '100%',
+            // The page's theme, not the system's: the header toggle is the one switch.
+            theme: viewerTheme,
+          });
+        } catch (err) {
+          throw new Error(`The Rerun viewer could not start in this browser. (${err.message || err})`);
+        }
+        hideSplash();
       };
-      fitCanvas();
-      requestAnimationFrame(fitCanvas);
-      const ro = new ResizeObserver(fitCanvas);
-      ro.observe($('viewer'));
+      await startViewer();
+
+      // The viewer takes its theme when it starts and has no setter: on a theme switch it
+      // starts again on the same recording, one switch at a time.
+      let restart = Promise.resolve();
+      onPageThemeChange = () => {
+        restart = restart.then(async () => {
+          if (viewerTheme === pageTheme()) return;
+          showSplash('Loading session…');
+          viewer.stop();
+          await startViewer();
+        }).catch(showLoadError);
+      };
+      onPageThemeChange(); // a switch made while the viewer was starting
 
       // Track view in GA if present
       if (typeof gtag === 'function') {
@@ -849,6 +919,89 @@
       const r = await fetch(url, { mode: 'cors' });
       if (!r.ok) throw new Error(`metadata fetch ${r.status}`);
       return r.json();
+    }
+
+    // The viewer stays on an empty screen when it cannot read the recording, and tells the page
+    // nothing. Ask for the start of the file first, so a link that cannot open ends on the
+    // page's error, with the cause when the browser lets the page know it and the possible
+    // causes when it does not.
+    async function checkReachable(url) {
+      if (url.startsWith('blob:')) return; // a file picked on this device
+      const host = new URL(url).host;
+      let blockedByPolicy = false;
+      const onViolation = (e) => { if (e.effectiveDirective === 'connect-src') blockedByPolicy = true; };
+      document.addEventListener('securitypolicyviolation', onViolation);
+      const request = new AbortController();
+      try {
+        let response;
+        try {
+          response = await fetch(url, { signal: request.signal });
+        } catch (err) {
+          await new Promise((resolve) => setTimeout(resolve)); // the violation event comes as a task
+          if (blockedByPolicy) {
+            // Left to a link that redirects off https: `connect-src` holds on every hop.
+            throw new Error(`The link sends the browser to an address this page may not load: only https addresses are allowed. Download the file, then drop it on ${START_PAGE} instead.`);
+          }
+          // A browser reports an answer the page may not read and no answer at all with the same
+          // error. A request that asks to read nothing back tells those two apart — and no more:
+          // it hides the status, so a host that forbids the read and a host that answered 404 or
+          // 403 without a CORS header look the same from here. The message names both.
+          const hostAnswers = await fetch(url, { mode: 'no-cors', signal: request.signal }).then(() => true, () => false);
+          throw new Error(hostAnswers
+            ? `The browser could not read the answer from ${host}. Either ${host} does not let other websites read the file (it sends no cross-origin, or CORS, permission), or the link is wrong, private or expired. Check the link. If it is right, host the recording where cross-origin requests are allowed, or download it and drop it on ${START_PAGE}.`
+            : `The browser got no answer from ${host}. The address may be wrong, this device may be offline, a content blocker may have stopped the request, or the secure connection (TLS) to ${host} may have failed.`);
+        }
+        if (!response.ok) {
+          throw new Error(response.status === 404
+            ? `There is no file at this link: ${host} answered 404 (not found). Check the address.`
+            : `${host} answered ${response.status} instead of a recording. The file may be private or the link may have expired.`);
+        }
+        if (!(await startsWithRrdHeader(response))) {
+          throw new Error(`The file at this link is not a Rerun recording: a .rrd file starts with "RRF2", and this one does not. Check that the link goes to the file itself, not to a page about it.`);
+        }
+        // The viewer tells a recording by the end of the link's path — a query string after it
+        // is fine — and opens nothing otherwise.
+        if (!/\.rrd$/i.test(new URL(url).pathname)) {
+          throw new Error(`This is a Rerun recording, but its link does not end in .rrd, and the viewer only opens links that do. Host it under a name that ends in .rrd, or download it and drop it on ${START_PAGE}.`);
+        }
+      } finally {
+        document.removeEventListener('securitypolicyviolation', onViolation);
+        request.abort(); // the first bytes are enough: the viewer downloads the recording itself
+      }
+    }
+
+    // The four bytes every `.rrd` starts with — `RerunRrdWriter.kt`, `RerunRRDWriter.swift`.
+    async function startsWithRrdHeader(response) {
+      if (!response.body) return false;
+      const reader = response.body.getReader();
+      const head = [];
+      while (head.length < 4) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        head.push(...value.subarray(0, 4 - head.length));
+      }
+      return String.fromCharCode(...head) === 'RRF2';
+    }
+
+    // On startup the viewer asks GitHub for the latest Rerun release and tells the visitor to
+    // download it when it is newer than itself. This page pins the viewer on purpose, and the
+    // web viewer has no option to skip the check. Answer that one request here with the pinned
+    // version: nothing leaves the browser — `connect-src` is open to https hosts, so the call
+    // would go out otherwise — and the viewer has nothing to announce.
+    let updateCheckAnswered = false;
+    function answerViewerUpdateCheck() {
+      if (updateCheckAnswered) return;
+      updateCheckAnswered = true;
+      const RELEASE_CHECK_URL = 'https://api.github.com/repos/rerun-io/rerun/releases/latest';
+      const pageFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url !== RELEASE_CHECK_URL) return pageFetch(input, init);
+        return Promise.resolve(new Response(JSON.stringify({ tag_name: VIEWER_VERSION }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      };
     }
 
     // ─── Metadata → header ─────────────────────────────────────────────────
@@ -894,13 +1047,22 @@
         const a = document.createElement('a');
         a.href = rrdUrl;
         a.download = (metadata?.title || 'sceneview-session') + '.rrd';
-        document.body.appendChild(a);
+        // A browser ignores `download` for a file on another host and follows the link instead:
+        // in a new tab then, so the viewer stays open, and without handing that host this
+        // window or this page's address.
+        if (new URL(rrdUrl).origin !== location.origin) {
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        }
+        // The link is never added to the page: its click then reaches no listener of the
+        // document, and the site's analytics, which records clicks on links to other hosts
+        // with the link's address, does not see the recording's link.
         a.click();
-        a.remove();
       });
 
       const embed = $('btn-embed');
-      embed.hidden = false;
+      // A file opened from this device has no link an embed could point at.
+      embed.hidden = rrdUrl.startsWith('blob:');
       embed.addEventListener('click', () => {
         const snippet = `<iframe src="${location.href}" style="width:100%;height:480px;border:0;border-radius:8px" allow="fullscreen"></iframe>`;
         copyToClipboard(snippet, 'Embed snippet copied');

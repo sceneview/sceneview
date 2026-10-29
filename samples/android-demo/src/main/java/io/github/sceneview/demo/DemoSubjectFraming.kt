@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.theme.SceneViewTokens
 import kotlin.math.cos
 
 /**
@@ -105,6 +106,88 @@ internal fun demoContentPadding(
     val wanted = if (compactHeight) minOf(chromeTop, statusBar) else chromeTop
     val top = minOf(wanted, room.coerceAtLeast(0.dp))
     return PaddingValues.Absolute(left = left, top = top, right = right, bottom = bottom)
+}
+
+/**
+ * A scrim that runs along the top or the bottom edge of the screen: its [height], the fraction
+ * of it, from that edge, that is flat ([plateau]), and how the rest fades out — in a straight
+ * line, or [eased] at both ends so that neither end reads as an edge.
+ */
+internal data class DemoScrim(val height: Dp, val plateau: Float, val eased: Boolean = false) {
+
+    /**
+     * The gradient, from the screen edge inwards: where along the band, and how much of the
+     * scrim's own alpha is left there.
+     */
+    fun stops(): List<Pair<Float, Float>> {
+        if (!eased) return listOf(0f to 1f, plateau to 1f, 1f to 0f)
+        // Smoothstep, sampled: a straight ramp bends twice, once where it leaves the flat part
+        // and once where it lands, and the eye finds a line at each bend.
+        return listOf(0f to 1f) + (0..EASED_SCRIM_STEPS).map { step ->
+            val t = step.toFloat() / EASED_SCRIM_STEPS
+            (plateau + (1f - plateau) * t) to (1f - t * t * (3f - 2f * t))
+        }
+    }
+}
+
+private const val EASED_SCRIM_STEPS = 8
+
+/** How far past what it grounds an eased scrim takes to fade out on a phone held sideways. */
+private val COMPACT_SCRIM_FADE = SceneViewTokens.Space.x2l
+
+/**
+ * The top scrim is the ground of what stands on it, and is sized by that — the same rule
+ * [demoContentPadding] frames the subject by.
+ *
+ * - **Upright**, the identity row is a band nothing else occupies: the scrim is the token band,
+ *   flat under the row and the status bar.
+ * - **A phone held sideways** ([compactHeight]): the row is two chips in a corner and the subject
+ *   is framed right up to the status bar. The token band would be more than a third of the
+ *   picture, flat over the top of the subject. Only the [statusBarInset] needs a full-width
+ *   ground — the clock and the battery are drawn on the scene with nothing of their own. The
+ *   scrim is whole behind the upper half of the status bar, where those glyphs start, and from
+ *   there eases out well past the bar: a band that stopped at the bar drew a line across the
+ *   picture. The chips carry their own ground (`GlassSurface(ground = …)`). No status bar, no
+ *   scrim.
+ */
+internal fun demoTopScrim(compactHeight: Boolean, statusBarInset: Dp): DemoScrim = when {
+    !compactHeight -> DemoScrim(
+        height = SceneViewTokens.Glass.scrimTopHeight,
+        plateau = SceneViewTokens.Glass.scrimPlateau,
+    )
+    statusBarInset <= 0.dp -> DemoScrim(height = 0.dp, plateau = 0f)
+    else -> (statusBarInset + COMPACT_SCRIM_FADE).let { height ->
+        DemoScrim(height = height, plateau = statusBarInset / 2 / height, eased = true)
+    }
+}
+
+/**
+ * The bottom scrim, by the same rule as [demoTopScrim].
+ *
+ * - **Upright**, the dock and the overlays a demo stacks above it share one band: the scrim is
+ *   the token band, or the measured stack ([dockReserve] plus [overlayBand]) when that is taller.
+ * - **A phone held sideways** ([compactHeight]): that stack is more than half the picture, and a
+ *   scrim under all of it leaves a strip of scene at the top. The scrim keeps to the dock: whole
+ *   under the system bar and the lower half of the [dockBand], eased out a little above the
+ *   dock. What a demo stacks higher carries its own ground ([LocalGlassGround]).
+ *
+ * @param dockBand The dock and its gutter, without the [navigationBarInset] below them.
+ */
+internal fun demoBottomScrim(
+    compactHeight: Boolean,
+    dockReserve: Dp,
+    overlayBand: Dp,
+    dockBand: Dp,
+    navigationBarInset: Dp,
+): DemoScrim {
+    if (!compactHeight) {
+        return DemoScrim(
+            height = maxOf(SceneViewTokens.Glass.scrimBottomHeight, dockReserve + overlayBand),
+            plateau = SceneViewTokens.Glass.scrimPlateau,
+        )
+    }
+    val height = navigationBarInset + dockBand + COMPACT_SCRIM_FADE / 2
+    return DemoScrim(height = height, plateau = (navigationBarInset + dockBand / 2) / height, eased = true)
 }
 
 /**

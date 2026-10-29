@@ -136,4 +136,27 @@ class ScaleSnapTest {
         assertEquals(0.0018f, SelectionRing.tubeRadius(0.05f), 1e-7f)
         assertEquals(0.006f, SelectionRing.tubeRadius(3f), 1e-7f)
     }
+
+    @Test
+    fun aWiderRange_letsThePinchPastFourHundredPercent() {
+        val range = 0.25f..16f
+        val step = ScaleSnap.step(previousDisplayed = 3.5f, raw = 9f, range = range)
+        assertEquals(9f, step.displayed, 0f)
+        assertFalse("400 % is no limit in a wider range", step.enteredLimit)
+        val top = ScaleSnap.step(previousDisplayed = 9f, raw = 30f, range = range)
+        assertEquals(16f, top.displayed, 0f)
+        assertTrue(top.enteredLimit)
+        assertEquals(12f, ScaleSnap.doubleTapTarget(current = 1f, remembered = 12f, range = range))
+    }
+
+    @Test
+    fun aRangeWithoutOneHundredPercent_hasNoDetent() {
+        // A room at real size whose range stops at 100 %: still snaps there, it is the top.
+        val upTo = ScaleSnap.step(previousDisplayed = 0.9f, raw = 0.98f, range = 0.01f..1f)
+        assertTrue(upTo.snapped)
+        // A range that stops short of 100 % never jumps out of itself onto it.
+        val without = ScaleSnap.step(previousDisplayed = 0.9f, raw = 1f, range = 0.5f..0.98f)
+        assertFalse(without.snapped)
+        assertEquals(0.98f, without.displayed, 0f)
+    }
 }

@@ -56,8 +56,9 @@ import kotlin.math.max
  * - **Oriented ellipses** — each splat covers exactly its projected gaussian (out to 3σ, less
  *   for faint splats), so thin and flat gaussians stay thin and flat instead of rendering as
  *   the round disc of their largest axis. Colours are pre-distorted by the exact inverse of
- *   the View's Filmic tone mapper and sRGB output, so a capture displays with the colours it
- *   was trained on.
+ *   the View's default tone mapper (PBR Neutral, or Filmic in an AR view) and sRGB output, so
+ *   a capture displays with the colours it was trained on. A custom `view.colorGrading` is not
+ *   compensated.
  * - **View-dependent sort** — the node re-sorts back-to-front on a background thread whenever
  *   the camera has moved beyond a small threshold (relative to the cloud radius), then
  *   re-uploads the draw-order texture (4 bytes per splat — the attribute textures never
@@ -302,16 +303,49 @@ open class SplatNode(
             .build(engine, entity)
     }
 
-    /**
-     * A splat re-sort running in the background finishes by swapping the draw order, which is a
-     * change no transform setter reports. Stay active until it lands.
-     */
-    override val isFrameActive: Boolean
-        get() = sortJob?.isActive == true || super.isFrameActive
+    init {
+        // A splat re-sort running in the background finishes by swapping the draw order, which is
+        // a change no transform setter reports: stay active until it lands. The sort finishes on
+        // its own thread and reports to nobody, so the scene asks on every tick (#3724).
+        addFrameActivityProvider { sortJob?.isActive == true }
+        // Whether a re-sort is owed depends on where the camera is, and a camera reports its moves
+        // to nobody — the scene's own, and even less a caller's [cameraPositionProvider]. So the
+        // question is asked on every rendered frame for as long as the node lives: one camera read
+        // and one comparison, which is what a frame with an unmoved camera costs here.
+        hasOwnFrameWork = true
+    }
 
+    /**
+     * Kept for binary compatibility, and does nothing of its own: the re-sort moved to
+     * `onOwnFrame` (#4451), so the scene no longer has to call this on every frame to reach it.
+     * `SceneFrameDispatch` relies on this body being `super` alone, and
+     * `LibraryOnFrameOverridesContractTest` fails the build the day it is not.
+     */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
+    }
+
+    override fun onOwnFrame(frameTimeNanos: Long) {
+        syncToneMapInverse()
         maybeResort()
+    }
+
+    /** Whether the materials currently invert Filmic (an AR view) rather than PBR Neutral. */
+    private var invertsFilmic = false
+
+    /**
+     * Points the materials at the inverse of the tone mapper of the view this node is drawn in:
+     * Filmic for a [io.github.sceneview.createARView] view, PBR Neutral for every other one (the
+     * [io.github.sceneview.createView] default). One set lookup per frame; a parameter write only
+     * when the node moves between an AR and a non-AR view.
+     */
+    private fun syncToneMapInverse() {
+        if (isSplatDestroyed) return
+        val view = collisionSystem?.view ?: return
+        val filmic = view in io.github.sceneview.filmicViews
+        if (filmic == invertsFilmic) return
+        invertsFilmic = filmic
+        materialInstances.forEach { it.setParameter("inverseFilmic", filmic) }
     }
 
     /**
@@ -407,6 +441,7 @@ open class SplatNode(
         // on the EngineDestroyQueue (benign today, but future-proof it).
         if (isSplatDestroyed) return
         isSplatDestroyed = true
+        hasOwnFrameWork = false
         coroutineScope.cancel()
         // Renderable components first (while entity ids are still valid), then the entities.
         batchEntities.forEach { engine.safeDestroyRenderable(it) }

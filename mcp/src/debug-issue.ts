@@ -143,7 +143,8 @@ fun DebugModelViewer() {
    <uses-permission android:name="android.permission.CAMERA" />
    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
    <application>
-       <meta-data android:name="com.google.ar.core" android:value="required" />
+       <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
+       <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
    </application>
    \`\`\`
 
@@ -167,9 +168,9 @@ fun DebugModelViewer() {
    - Ensure good lighting — ARCore struggles in dim conditions.
 
 5. **Objects not appearing on tap?**
-   - Is \`onTouchEvent\` wired up?
-   - Is \`hitResult\` null? Log it: \`Log.d("AR", "hitResult: $hitResult")\`
-   - Are you creating an anchor? \`hitResult.createAnchor()\` must be called.
+   - Is the tap wired up? Use \`onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\` on \`ARSceneView\`, not a raw \`ACTION_UP\` in \`onTouchEvent\` (that also fires when a drag or a pinch ends, and returning \`true\` swallows the model's gestures).
+   - Is \`latestFrame\` set? Keep it from \`onSessionUpdated = { _, frame -> latestFrame = frame }\`.
+   - Are you creating an anchor? Hit-test that ARCore \`Frame\` (\`latestFrame?.hitTest(event)\`), keep the first in-polygon \`com.google.ar.core.Plane\` hit and call \`createAnchorOrNull()\` on it (\`import io.github.sceneview.ar.arcore.createAnchorOrNull\`). The scene-level \`hitResult\` of \`onTouchEvent\` is a scene-node hit with no \`createAnchor()\`.
    - Is the model loaded? Check \`rememberModelInstance\` is not null.
 
 6. **Anchor drift / objects moving?**
@@ -222,7 +223,7 @@ fun DebugModelViewer() {
 ### NullPointerException
 
 - \`rememberModelInstance\` returns null while loading — always null-check.
-- \`hitResult\` can be null in \`onTouchEvent\` if no surface is hit.
+- \`latestFrame?.hitTest(event)\` returns an empty list when no surface is hit — chain \`?.firstOrNull { … }?.createAnchorOrNull()\` instead of indexing \`[0]\`.
 
 ### Out of Memory
 
@@ -297,7 +298,7 @@ fun DebugModelViewer() {
 | Too many draw calls | Merge meshes in 3D editor (1 material = 1 draw call) |
 | Per-frame allocations | Reuse objects in \`onFrame\`, avoid creating Position/Rotation each frame |
 | Multiple engines | Use single \`rememberEngine()\`, never create multiple |
-| Post-processing enabled | Disable if not needed: \`SceneView(postProcessing = false)\` |
+| Post-processing enabled | Lighten or disable if not needed: \`SceneView(renderQuality = RenderQuality.Performance)\`, or \`view.isPostProcessingEnabled = false\` |
 | Shadow-casting lights | Each shadow light = extra depth pass. Limit to 1-2. |
 
 #### High Memory (>500MB)
@@ -433,7 +434,7 @@ SceneView(
     onFrame = { Log.d("SV", "Frame rendered") } // If not logged, SceneView isn't rendering
 ) {
     // Minimal visible content
-    CubeNode(engine = engine, size = 1.0f)
+    CubeNode(size = Size(1.0f))
     LightNode(type = LightManager.Type.DIRECTIONAL, apply = { intensity(100_000f) })
 }
 \`\`\``,
@@ -501,10 +502,11 @@ SceneView(
 
 ### Tap-to-Place Not Working in AR
 
-1. Check \`hitResult\` is not null — log it.
+1. Place from \`onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\`, never from a raw \`ACTION_UP\` in \`onTouchEvent\`: that also fires at the end of every drag and pinch, and returning \`true\` there blocks the gesture detector.
 2. Ensure plane detection is enabled: \`planeFindingMode = HORIZONTAL_AND_VERTICAL\`.
 3. Plane renderer helps user see where planes are: \`planeRenderer = true\`.
-4. Create anchor from hit: \`hitResult.createAnchor()\`.
+4. Create the anchor from an in-polygon ARCore plane hit: \`latestFrame?.hitTest(event)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()\` (\`latestFrame\` from \`onSessionUpdated\`; \`Plane\` is \`com.google.ar.core.Plane\`).
+5. A reticle or other decoration under the finger makes \`node\` non-null: set \`isTouchable = false\` on it.
 
 ### Camera Orbit Not Working
 
@@ -665,13 +667,20 @@ SceneView(
 
 For smooth node transforms (not skeletal animation):
 \`\`\`kotlin
-// Use SmoothTransform from sceneview-core
+// ModelNode has no smoothing parameter: keep a reference to the node and ask it to
+// interpolate. Don't also pass \`position\` — the composable assigns it directly.
+var shipNode by remember { mutableStateOf<io.github.sceneview.node.Node?>(null) }
+val createdShipNode = remember {
+    java.util.concurrent.atomic.AtomicReference<io.github.sceneview.node.Node?>(null)
+}
 ModelNode(
     modelInstance = instance,
-    // Position changes are smoothly interpolated
-    position = targetPosition,
-    smoothSpeed = 5.0f
+    apply = { createdShipNode.set(this) }
 )
+SideEffect { shipNode = createdShipNode.get() }
+LaunchedEffect(shipNode, targetPosition) {
+    shipNode?.transform(position = targetPosition, smooth = true, smoothSpeed = 5.0f)
+}
 \`\`\`
 
 ### Common Animation Issues

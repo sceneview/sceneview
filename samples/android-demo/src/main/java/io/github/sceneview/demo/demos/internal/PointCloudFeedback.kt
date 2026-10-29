@@ -32,9 +32,9 @@ internal object PointCloudFeedback {
      *
      * @param isTracking       Whether ARCore's camera is currently `TrackingState.TRACKING`.
      * @param pointCount       Points rendered on the most recent [io.github.sceneview.ar.node.PointCloudNode] update.
-     * @param zeroPointsSinceMs Wall-clock time the count first dropped to (or started at) zero;
+     * @param zeroPointsSinceMs Monotonic time the count first dropped to (or started at) zero;
      *                         `null` means it hasn't happened yet, or already recovered.
-     * @param nowMs            Current wall-clock time.
+     * @param nowMs            Current monotonic time.
      * @param stuckAfterMs     Threshold in ms. Defaults to [STUCK_AFTER_MS].
      */
     fun zeroPointsStuck(
@@ -47,4 +47,17 @@ internal object PointCloudFeedback {
         pointCount == 0 &&
         zeroPointsSinceMs != null &&
         (nowMs - zeroPointsSinceMs) > stuckAfterMs
+
+    /** Below this many accumulated points the cloud still reads as sparse (#4624). */
+    const val SPARSE_BELOW: Int = 150
+
+    /** What the status pill says about the accumulated cloud (#4624). */
+    enum class Status { Empty, Sparse, Built }
+
+    /** [Status] for [pointCount] points in the accumulated cloud. */
+    fun status(pointCount: Int, sparseBelow: Int = SPARSE_BELOW): Status = when {
+        pointCount <= 0 -> Status.Empty
+        pointCount < sparseBelow -> Status.Sparse
+        else -> Status.Built
+    }
 }

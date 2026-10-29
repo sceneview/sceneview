@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { MockInstance } from "vitest";
 import { app } from "../src/index.js";
 import { createMockD1 } from "./helpers/mock-d1.js";
 import { createMockKV } from "./helpers/mock-kv.js";
@@ -9,6 +10,15 @@ function makeEnv() {
     RL_KV: createMockKV() as unknown as KVNamespace,
     ENVIRONMENT: "test",
   };
+}
+
+// Read routes fail closed: they need STATS_TOKEN configured and a matching
+// bearer header. Tests that exercise read-route behaviour use these.
+const TEST_TOKEN = "test-stats-token";
+const AUTH = { Authorization: `Bearer ${TEST_TOKEN}` };
+
+function makeReadEnv() {
+  return { ...makeEnv(), STATS_TOKEN: TEST_TOKEN };
 }
 
 function validPayload(overrides: Record<string, unknown> = {}) {
@@ -251,12 +261,12 @@ describe("GET /health", () => {
 
 describe("GET /v1/stats", () => {
   it("returns stats structure", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     // Mock the expected row shapes
     db._rows = [{ total: 42, inits: 10, tools: 32, unique_clients: 3 }];
 
-    const res = await app.request("/v1/stats", { method: "GET" }, env);
+    const res = await app.request("/v1/stats", { method: "GET", headers: AUTH }, env);
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.period).toBe("24h");
@@ -265,10 +275,13 @@ describe("GET /v1/stats", () => {
 });
 
 describe("GET /v1/stats — auth", () => {
-  it("returns 200 when no STATS_TOKEN is configured (open access in dev)", async () => {
+  it("returns 401 when no STATS_TOKEN is configured (fail closed)", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const env = makeEnv(); // no STATS_TOKEN
     const res = await app.request("/v1/stats", { method: "GET" }, env);
-    expect(res.status).toBe(200);
+    consoleError.mockRestore();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
   });
 
   it("returns 200 with correct bearer token", async () => {
@@ -308,11 +321,11 @@ describe("GET /v1/stats — auth", () => {
 
 describe("GET /v1/funnel", () => {
   it("returns the usage funnel without a subscription stage", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [{ installed: 4, activated: 3, engaged: 2, power_users: 1 }];
 
-    const res = await app.request("/v1/funnel", { method: "GET" }, env);
+    const res = await app.request("/v1/funnel", { method: "GET", headers: AUTH }, env);
     expect(res.status).toBe(200);
 
     const json = await res.json() as { stages: Array<{ stage: string }> };
@@ -385,7 +398,7 @@ describe("GET /v1/timeseries", () => {
   function getTimeseries(
     params: Record<string, string>,
     env: ReturnType<typeof makeEnv> & { STATS_TOKEN?: string },
-    headers: Record<string, string> = {},
+    headers: Record<string, string> = AUTH,
   ) {
     const qs = new URLSearchParams(params).toString();
     const url = qs ? `/v1/timeseries?${qs}` : "/v1/timeseries";
@@ -393,7 +406,7 @@ describe("GET /v1/timeseries", () => {
   }
 
   it("returns 200 with default params (days=30, metric=events)", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [{ time: "2026-03-13", value: 5 }];
 
@@ -407,7 +420,7 @@ describe("GET /v1/timeseries", () => {
   });
 
   it("returns data for metric=tools", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [{ time: "2026-03-13", label: "get_node_info", value: 10 }];
 
@@ -421,7 +434,7 @@ describe("GET /v1/timeseries", () => {
   });
 
   it("returns data for metric=versions", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [{ time: "2026-03-13", label: "4.0.0-rc.1", value: 8 }];
 
@@ -434,7 +447,7 @@ describe("GET /v1/timeseries", () => {
   });
 
   it("returns data for metric=clients", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [{ time: "2026-03-13", label: "claude-desktop", value: 3 }];
 
@@ -447,7 +460,7 @@ describe("GET /v1/timeseries", () => {
   });
 
   it("rejects invalid metric value → 400", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const res = await getTimeseries({ metric: "invalid_metric" }, env);
     expect(res.status).toBe(400);
 
@@ -458,7 +471,7 @@ describe("GET /v1/timeseries", () => {
   });
 
   it("clamps days to max 90", async () => {
-    const env = makeEnv();
+    const env = makeReadEnv();
     const db = env.DB as unknown as ReturnType<typeof createMockD1>;
     db._rows = [];
 
@@ -503,7 +516,7 @@ describe("GET /v1/timeseries", () => {
 function getExport(
   params: Record<string, string>,
   env: ReturnType<typeof makeEnv>,
-  headers: Record<string, string> = {},
+  headers: Record<string, string> = AUTH,
 ) {
   const qs = new URLSearchParams(params).toString();
   const url = `/v1/export${qs ? `?${qs}` : ""}`;
@@ -514,7 +527,7 @@ describe("GET /v1/export", () => {
   let env: ReturnType<typeof makeEnv>;
 
   beforeEach(() => {
-    env = makeEnv();
+    env = makeReadEnv();
   });
 
   it("returns CSV with correct content-type", async () => {
@@ -533,7 +546,107 @@ describe("GET /v1/export", () => {
   it("returns CSV header row", async () => {
     const res = await getExport({}, env);
     const text = await res.text();
-    expect(text).toContain("timestamp,event,client,client_ver,mcp_ver,tier,tool");
+    expect(text.split("\n")[0]).toBe("timestamp,event,client,client_ver,mcp_ver,tier,tool,bot_likelihood");
+  });
+
+  describe("install_id (#4757)", () => {
+    const INSTALL_A = "3f2a9c1e-7b4d-4e8a-9f60-1c2d3e4f5a6b";
+    const INSTALL_B = "a1b2c3d4-e5f6-4789-8abc-def012345678";
+
+    function seed(db: ReturnType<typeof createMockD1>) {
+      // The mock returns these rows whatever the SELECT asks for, so this also
+      // checks that the CSV writer itself drops install_id.
+      db._rows = [
+        { timestamp: "2026-10-20T10:00:00.000Z", event: "init", client: "claude-desktop", client_ver: "1.2.3", mcp_ver: "4.0.0", tier: "free", tool: null, install_id: INSTALL_A, bot_likelihood: 0.1 },
+        { timestamp: "2026-10-20T10:00:01.000Z", event: "tool", client: "claude-desktop", client_ver: "1.2.3", mcp_ver: "4.0.0", tier: "free", tool: "get_node_info", install_id: INSTALL_A, bot_likelihood: null },
+        { timestamp: "2026-10-20T10:00:02.000Z", event: "tool", client: "cursor", client_ver: "0.9", mcp_ver: "4.0.0", tier: "pro", tool: "create_scene", install_id: INSTALL_B, bot_likelihood: 0.9 },
+        { timestamp: "2026-10-20T10:00:03.000Z", event: "tool", client: "cursor", client_ver: "0.9", mcp_ver: "4.0.0", tier: "pro", tool: "create_scene", install_id: null, bot_likelihood: null },
+      ];
+    }
+
+    it("does not select install_id from D1", async () => {
+      const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+      const queries: Record<string, string>[] = [{}, { event_type: "tool" }];
+      for (const params of queries) {
+        db._statements = [];
+        const res = await getExport(params, env);
+        expect(res.status).toBe(200);
+        expect(db._statements).toHaveLength(1);
+        expect(db._statements[0].sql).not.toContain("install_id");
+      }
+    });
+
+    it("writes no install_id column and no install ID value", async () => {
+      const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+      seed(db);
+      const res = await getExport({}, env);
+      const text = await res.text();
+      expect(text).not.toContain("install_id");
+      expect(text).not.toContain(INSTALL_A);
+      expect(text).not.toContain(INSTALL_B);
+    });
+
+    it("keeps one row per event with as many fields as the header", async () => {
+      const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+      seed(db);
+      const res = await getExport({}, env);
+      const [header, ...rows] = (await res.text()).split("\n");
+      const columns = header.split(",").length;
+      expect(rows).toHaveLength(4);
+      for (const row of rows) expect(row.split(",")).toHaveLength(columns);
+      expect(rows[0]).toBe("2026-10-20T10:00:00.000Z,init,claude-desktop,1.2.3,4.0.0,free,,0.1");
+      expect(rows[1]).toBe("2026-10-20T10:00:01.000Z,tool,claude-desktop,1.2.3,4.0.0,free,get_node_info,");
+    });
+  });
+
+  describe("spreadsheet formula injection", () => {
+    async function exportRow(fields: { client: string; tool: string; client_ver?: string; mcp_ver?: string }) {
+      const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+      db._rows = [{
+        timestamp: "2026-10-20T10:00:00.000Z",
+        event: "tool",
+        client_ver: "1.0",
+        mcp_ver: "4.0.0",
+        tier: "free",
+        bot_likelihood: null,
+        ...fields,
+      }];
+      const res = await getExport({}, env);
+      return (await res.text()).split("\n").slice(1).join("\n");
+    }
+
+    it.each([
+      ["=", "=1+1", "'=1+1"],
+      ["+", "+1+1", "'+1+1"],
+      ["-", "-1+1", "'-1+1"],
+      ["@", "@SUM(A1)", "'@SUM(A1)"],
+      ["a tab", "\t=1+1", "'\t=1+1"],
+    ])("prefixes a field that starts with %s with an apostrophe", async (_label, value, expected) => {
+      const row = await exportRow({ client: value, tool: value });
+      expect(row).toBe(`2026-10-20T10:00:00.000Z,tool,${expected},1.0,4.0.0,free,${expected},`);
+    });
+
+    it("prefixes a field that starts with a carriage return, then quotes it", async () => {
+      const row = await exportRow({ client: "\r=1+1", tool: "ok" });
+      expect(row).toBe(`2026-10-20T10:00:00.000Z,tool,"'\r=1+1",1.0,4.0.0,free,ok,`);
+    });
+
+    it("prefixes before the CSV escaping, so a quoted formula stays inert", async () => {
+      const row = await exportRow({ client: '=HYPERLINK("http://example.com","x")', tool: "ok" });
+      expect(row).toBe(
+        `2026-10-20T10:00:00.000Z,tool,"'=HYPERLINK(""http://example.com"",""x"")",1.0,4.0.0,free,ok,`,
+      );
+    });
+
+    it("prefixes the version strings too, since they also come from ingestion", async () => {
+      const row = await exportRow({ client: "c", tool: "t", client_ver: "=1", mcp_ver: "@2" });
+      expect(row).toBe("2026-10-20T10:00:00.000Z,tool,c,'=1,'@2,free,t,");
+    });
+
+    it("leaves a field alone when the character is not the first one", async () => {
+      const row = await exportRow({ client: "claude-desktop", tool: "a=b+c" });
+      expect(row).toBe("2026-10-20T10:00:00.000Z,tool,claude-desktop,1.0,4.0.0,free,a=b+c,");
+    });
   });
 
   it("rejects invalid event_type", async () => {
@@ -564,5 +677,260 @@ describe("GET /v1/export", () => {
     const authEnv = { ...makeEnv(), STATS_TOKEN: "secret" } as ReturnType<typeof makeEnv>;
     const res = await getExport({}, authEnv, { Authorization: "Bearer secret" });
     expect(res.status).toBe(200);
+  });
+});
+
+// ── Read routes — fail-closed auth and CORS scoping ──────────────────────────
+
+const READ_ROUTES = [
+  "/v1/stats",
+  "/v1/timeseries",
+  "/v1/top-clients",
+  "/v1/funnel",
+  "/v1/export",
+];
+
+// A fresh copy of the worker module, as a new isolate would load it, so its
+// once-per-isolate state (the missing-secret log) starts unset.
+async function freshApp(): Promise<typeof app> {
+  vi.resetModules();
+  return (await import("../src/index.js")).app;
+}
+
+// The response a caller gets for a refused read request, as status, body and
+// the headers that could tell two refusals apart.
+async function refusal(res: Response) {
+  return {
+    status: res.status,
+    body: await res.text(),
+    wwwAuthenticate: res.headers.get("www-authenticate"),
+    contentType: res.headers.get("content-type"),
+  };
+}
+
+describe.each(READ_ROUTES)("GET %s — auth (fail closed)", (route) => {
+  let consoleError: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  it("returns 401 when STATS_TOKEN is not configured, even with a bearer", async () => {
+    const env = makeEnv();
+    const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+    const res = await app.request(route, { method: "GET", headers: AUTH }, env);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toBe("Bearer");
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(db._statements).toHaveLength(0); // no query ran
+  });
+
+  it("returns 401 when STATS_TOKEN is configured as an empty string", async () => {
+    const env = { ...makeEnv(), STATS_TOKEN: "" };
+    const res = await app.request(route, { method: "GET", headers: { Authorization: "Bearer " } }, env);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it.each([
+    ["no Authorization header", {}],
+    ["a bearer", AUTH],
+    ["a lowercase bearer", { Authorization: `bearer ${TEST_TOKEN}` }],
+    ["another scheme", { Authorization: `Basic ${TEST_TOKEN}` }],
+  ])(
+    "does not reveal that STATS_TOKEN is missing (%s): same refusal as a wrong token",
+    async (_label, headers: Record<string, string>) => {
+      const unset = await app.request(route, { method: "GET", headers }, makeEnv());
+      const wrong = await app.request(
+        route,
+        { method: "GET", headers: { Authorization: "Bearer wrong-token" } },
+        makeReadEnv(),
+      );
+      expect(await refusal(unset)).toEqual(await refusal(wrong));
+      expect(unset.status).toBe(401);
+    },
+  );
+
+  it("logs the missing STATS_TOKEN once per isolate, never the request's credentials", async () => {
+    const isolate = await freshApp();
+    const attempts: Record<string, string>[] = [AUTH, {}, { Authorization: "Basic x" }, AUTH];
+    for (const headers of attempts) {
+      const res = await isolate.request(route, { method: "GET", headers }, makeEnv());
+      expect(res.status).toBe(401);
+    }
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const logged = consoleError.mock.calls[0].join(" ");
+    expect(logged).toContain("STATS_TOKEN is not configured");
+    expect(logged).not.toContain(TEST_TOKEN);
+  });
+
+  it("logs nothing when STATS_TOKEN is configured and the token is wrong", async () => {
+    const isolate = await freshApp();
+    const res = await isolate.request(
+      route,
+      { method: "GET", headers: { Authorization: "Bearer wrong-token" } },
+      makeReadEnv(),
+    );
+    expect(res.status).toBe(401);
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["lowercase", `bearer ${TEST_TOKEN}`],
+    ["uppercase", `BEARER ${TEST_TOKEN}`],
+    ["mixed case", `bEaReR ${TEST_TOKEN}`],
+    ["several spaces after", `Bearer   ${TEST_TOKEN}`],
+  ])("accepts the Bearer scheme in %s (RFC 7235 §2.1)", async (_label, header) => {
+    const env = makeReadEnv();
+    const res = await app.request(route, { method: "GET", headers: { Authorization: header } }, env);
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["a lowercase scheme with a wrong token", "bearer wrong-token"],
+    ["the scheme glued to the token", `Bearer${TEST_TOKEN}`],
+    ["the scheme alone", "Bearer"],
+    ["a scheme that only starts with bearer", `Bearerx ${TEST_TOKEN}`],
+  ])("returns 401 with %s", async (_label, header) => {
+    const env = makeReadEnv();
+    const res = await app.request(route, { method: "GET", headers: { Authorization: header } }, env);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("returns 401 without an Authorization header", async () => {
+    const env = makeReadEnv();
+    const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+    const res = await app.request(route, { method: "GET" }, env);
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toBe("Bearer");
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+    expect(db._statements).toHaveLength(0);
+  });
+
+  it.each([
+    ["a wrong token", "Bearer wrong-token"],
+    ["a prefix of the token", `Bearer ${TEST_TOKEN.slice(0, -1)}`],
+    ["the token plus a suffix", `Bearer ${TEST_TOKEN}x`],
+    ["the bare token without the scheme", TEST_TOKEN],
+    ["another scheme", `Basic ${TEST_TOKEN}`],
+  ])("returns 401 with %s", async (_label, header) => {
+    const env = makeReadEnv();
+    const res = await app.request(route, { method: "GET", headers: { Authorization: header } }, env);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("returns 200 with the correct bearer token", async () => {
+    const env = makeReadEnv();
+    const res = await app.request(route, { method: "GET", headers: AUTH }, env);
+    expect(res.status).toBe(200);
+  });
+
+  it("sends no CORS headers on a successful cross-origin GET", async () => {
+    const env = makeReadEnv();
+    const res = await app.request(
+      route,
+      { method: "GET", headers: { ...AUTH, Origin: "https://example.com" } },
+      env,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("sends no CORS headers on a rejected cross-origin GET", async () => {
+    const env = makeEnv();
+    const res = await app.request(
+      route,
+      { method: "GET", headers: { Origin: "https://example.com" } },
+      env,
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("does not answer a CORS preflight", async () => {
+    const env = makeReadEnv();
+    const res = await app.request(
+      route,
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization",
+        },
+      },
+      env,
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    expect(res.headers.get("access-control-allow-headers")).toBeNull();
+  });
+});
+
+describe.each(["/v1/events", "/v1/batch"])("POST %s — CORS kept for ingestion", (route) => {
+  it("answers the CORS preflight with Access-Control-Allow-Origin: *", async () => {
+    const env = makeEnv();
+    const res = await app.request(
+      route,
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "content-type",
+        },
+      },
+      env,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-max-age")).toBe("86400");
+  });
+
+  it("sends Access-Control-Allow-Origin: * on the POST response", async () => {
+    const env = makeEnv();
+    const body = route === "/v1/batch" ? [validPayload()] : validPayload();
+    const res = await post(route, body, env, { Origin: "https://example.com" });
+    expect(res.status).toBe(202);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("Ingestion is independent of STATS_TOKEN", () => {
+  it.each([
+    ["not configured", makeEnv],
+    ["configured", makeReadEnv],
+  ])("POST /v1/events stores the event without any bearer when STATS_TOKEN is %s", async (_label, mk) => {
+    const env = mk();
+    const res = await post("/v1/events", validPayload(), env);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true });
+    const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+    expect(db._statements).toHaveLength(1);
+    expect(db._statements[0].sql).toContain("INSERT INTO events");
+  });
+
+  it.each([
+    ["not configured", makeEnv],
+    ["configured", makeReadEnv],
+  ])("POST /v1/batch stores the events without any bearer when STATS_TOKEN is %s", async (_label, mk) => {
+    const env = mk();
+    const res = await post("/v1/batch", [validPayload(), validPayload({ event: "init", tool: undefined })], env);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ ok: true, accepted: 2 });
+    const db = env.DB as unknown as ReturnType<typeof createMockD1>;
+    expect(db._statements).toHaveLength(2);
+  });
+
+  it("GET /health stays public with Access-Control-Allow-Origin: *", async () => {
+    const res = await app.request("/health", { method: "GET" }, makeEnv());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
 });

@@ -90,5 +90,7 @@ open class SphereNode private constructor(
         center: Position = geometry.center,
         stacks: Int = geometry.stacks,
         slices: Int = geometry.slices
-    ) = setGeometry(geometry.update(engine, radius, center, stacks, slices))
+    ) {
+        geometry.update(engine, radius, center, stacks, slices)
+    }
 }

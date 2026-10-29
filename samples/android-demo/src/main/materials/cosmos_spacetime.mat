@@ -5,7 +5,9 @@
 //             light so the star's hollow falls into black shadow and its far wall catches the
 //             light. The worlds resting on it cast their shadows across it (a soft sphere test per
 //             world, a ray-plane test for the rings). The background is black: the sheet fades
-//             out in a spot centred on the star, so it has no visible edge.
+//             out in a spot centred on the star, so it has no visible edge. Over the dark lit
+//             surface a Cartesian grid glows: its lines run straight on the flat XZ plane, so
+//             the wells bend them, and that bend is what reads as curvature from the camera.
 // Used by:    samples/android-demo CosmosDemo — nothing in the SDK.
 // Geometry:   the polar grid of CosmosSpacetime.grid(), flat (y = 0) on its node's XZ plane, the
 //             node at the world origin with no transform. `position` is (x, 0, z), nothing else.
@@ -21,14 +23,16 @@
 //                over the star's well, baked once on the CPU over x, z in ±4 (HORIZON_MAP_EXTENT),
 //                sampled per fragment with bilinear filtering and clamp-to-edge (lit past it).
 //   lightDir   — float3, unit vector toward the key light.
-//   baseColor  — float3, the flat lit sheet's colour on screen, linear (#6E7680).
+//   baseColor  — float3, the flat lit sheet's colour on screen, linear (cosmos-sheet, #1C2638).
+//   gridColor  — float3, a grid line's colour on screen at full glow, linear
+//                (cosmos-sheet-grid, #A4C1FF).
 //   intensity  — float, master fade.
 // matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
 //
 // The profile, its gradient and the light are CosmosSpacetime.kt's, value for value (the sheet
 // radius 12, the window from 0.85 R, ambient 0.02, wrap 0.10, the 0.6 gain over S_flat 0.3246,
-// the 1.25 ceiling, the spot from 3 to R): CosmosSpacetimeTest holds them, and iOS shades the
-// same numbers. The colour written is the inverse of the Filmic tone mapper, so the
+// the 1.25 ceiling, the spot from 3 to R; the grid's 0.5 spacing, its squared fade from 2 to 11, its
+// core 0.8, halo 0.22 and the 1.6x gain at the well): CosmosSpacetimeTest holds them. The colour written is the inverse of the Filmic tone mapper, so the
 // screen shows the target value (ViewerBackdrop does the same for the viewer's backdrop).
 material {
     "name" : "Cosmos Spacetime",
@@ -42,6 +46,7 @@ material {
         { "type" : "sampler2d", "name" : "horizon" },
         { "type" : "float3", "name" : "lightDir" },
         { "type" : "float3", "name" : "baseColor" },
+        { "type" : "float3", "name" : "gridColor" },
         { "type" : "float",  "name" : "intensity" }
     ],
     "requires" : [ "position" ],
@@ -135,6 +140,23 @@ fragment {
         float S = (0.02 + 0.98 * lit * vis * shadow) * ao;
         float k = min(0.6 * S / 0.3246, 1.25) * (1.0 - smoothstep(3.0, 12.0, d)) * materialParams.intensity;
         float3 c = materialParams.baseColor * k;
+
+        // The grid: a line every 0.5 on the flat XZ plane, one pixel of core and a soft halo,
+        // antialiased by the screen-space width of a cell. Where a cell shrinks under about six
+        // pixels (far away, or edge-on on a well's wall) the lines fade instead of aliasing.
+        highp float2 cell = p.xz * 2.0;
+        highp float2 fw = max(fwidth(cell), float2(1e-4));
+        highp float2 gap = abs(fract(cell - 0.5) - 0.5);
+        float2 legible = 1.0 - smoothstep(float2(0.09), float2(0.18), fw);
+        float2 core = (1.0 - smoothstep(float2(0.0), fw * 1.3, gap)) * legible;
+        float2 halo = (1.0 - smoothstep(float2(0.0), fw * 5.0, gap)) * legible;
+        float line = 0.8 * max(core.x, core.y) + 0.22 * max(halo.x, halo.y);
+        // Brighter towards the star's well, fading out (squared) well before the rim, so the far
+        // edge and the foreground under the chrome stay quiet; a world's shadow dims a
+        // line without putting it out, so the shadows still read across the grid.
+        float fade = 1.0 - smoothstep(2.0, 11.0, d);
+        float glow = (1.0 + 0.6 * (1.0 - smoothstep(0.0, 3.0, d))) * fade * fade;
+        c += materialParams.gridColor * line * glow * mix(0.35, 1.0, shadow) * materialParams.intensity;
         material.baseColor = float4(inverseFilmic(c.r), inverseFilmic(c.g), inverseFilmic(c.b), 1.0);
     }
 }

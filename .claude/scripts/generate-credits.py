@@ -146,6 +146,37 @@ BUNDLED_SCOPES = [
         # the APK, but the app shows them, so their credits travel with it — read from the
         # same manifest the download reads, never copied by hand.
         "hd_manifest": "assets/hd-pack/android.json",
+        # Media the app plays from a URL and never stores (#4396). Not in the APK and in no
+        # manifest, so the credit is declared here, next to the scope that shows it.
+        "streamed": [
+            {
+                "file": "big_buck_bunny_excerpt_720p.mp4",
+                "title": "Big Buck Bunny (excerpt)",
+                "author": "Blender Foundation",
+                "copyright": "© 2008 Blender Foundation",
+                "source": "https://www.bigbuckbunny.org",
+                "license": "CC-BY-3.0",
+                "bytes": 3318043,
+                "note": "16 s cut from the film (1:48–2:04), resized to 1280×720, sound "
+                        "removed — played by `TwoDInThreeDDemo` (Media).",
+            },
+        ],
+        # Files the app downloads the first time a feature needs them, then keeps. Not in the
+        # APK and in no manifest: the URL, SHA-256 and size live in the code that fetches them.
+        "downloaded": [
+            {
+                "file": "yolox_tiny.tflite",
+                "title": "YOLOX-Tiny (COCO object detector, TFLite)",
+                "author": "Megvii Inc. (Megvii-BaseDetection/YOLOX)",
+                "copyright": "© 2021-2022 Megvii Inc.",
+                "source": "https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0",
+                "license": "Apache-2.0",
+                "bytes": 10178328,
+                "note": "Converted from the release's `yolox_tiny.onnx` to float16 TFLite with "
+                        "onnx2tf 1.29.24 — furniture detector of the 3D Scan replay, fetched on "
+                        "its first use (`internal/semantic/SceneModel.kt`).",
+            },
+        ],
     },
     # ── JSON scopes (#3214) ──────────────────────────────────────────────────
     # The iOS and web demos cannot show a Markdown file to a user, so their
@@ -310,13 +341,6 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/studio_pbr.mat`",
     },
-    "hero_terrain.filamat": {
-        "name": "hero_terrain.filamat",
-        "author": "SceneView project",
-        "license": "Apache-2.0",
-        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
-        "note": "Compiled from `samples/android-demo/src/main/materials/hero_terrain.mat` (#3948)",
-    },
     "cosmos_sprite.filamat": {
         "name": "cosmos_sprite.filamat",
         "author": "SceneView project",
@@ -366,12 +390,75 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/cosmos_spacetime.mat` (Cosmos Spacetime view)",
     },
+    "scan_surfel.filamat": {
+        "name": "scan_surfel.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/scan_surfel.mat` (3D Scan surfels, #4741)",
+    },
     "tray_wood.filamat": {
         "name": "tray_wood.filamat",
         "author": "SceneView project",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
         "note": "Compiled from `samples/android-demo/src/main/materials/tray_wood.mat` (Rolling Balls board)",
+    },
+    "pool_liner.filamat": {
+        "name": "pool_liner.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_liner.mat` (Pool in the garden)",
+    },
+    "pool_water.filamat": {
+        "name": "pool_water.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_water.mat` (Pool in the garden)",
+    },
+    "pool_coping.filamat": {
+        "name": "pool_coping.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_coping.mat` (Pool in the garden)",
+    },
+    "pool_night_veil.filamat": {
+        "name": "pool_night_veil.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/pool_night_veil.mat` (Pool in the garden)",
+    },
+    "showroom_floor.filamat": {
+        "name": "showroom_floor.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/showroom_floor.mat` (Model Viewer showroom floor)",
+    },
+    "replay_grid.filamat": {
+        "name": "replay_grid.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/replay_grid.mat` (3D Scan replay floor grid, #4040)",
+    },
+    "viewer_grid.filamat": {
+        "name": "viewer_grid.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/viewer_grid.mat` (3D viewers' ground grid, #4651)",
+    },
+    "ar_mesh_tint.filamat": {
+        "name": "ar_mesh_tint.filamat",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Compiled from `samples/android-demo/src/main/materials/ar_mesh_tint.mat` (AR overlays that tint the camera image, #4623)",
     },
     # Hand-authored 1 kB 3MF fixtures for the web /open page (#3512).
     "printed-icosahedron.3mf": {
@@ -411,12 +498,46 @@ NON_CATALOG_BUNDLED = {
         "sourceUrl": "https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker",
         "note": "On-device pose model bundle used by `ARBodyTrackerDemo`",
     },
+    "night_circuit.glb": {
+        "name": "Night circuit (Khronos Car Concept on a SceneView set)",
+        "author": "Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView",
+        "license": "CC-BY-4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+        "note": "The Car Concept on the night circuit built by `tools/scenes/circuit/build.sh`, "
+        "the android-demo home hero (#3948)",
+    },
+    "circuit_ibl.ktx": {
+        "name": "Night circuit environment",
+        "author": "SceneView project",
+        "license": "Apache-2.0",
+        "sourceUrl": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
+        "note": "Rendered from the night circuit's set description and prefiltered with cmgen",
+    },
     "neutral_ibl.ktx": {
         "name": "Neutral IBL (Filament default environment)",
         "author": "Google LLC — Filament",
         "license": "Apache-2.0",
         "sourceUrl": "https://github.com/google/filament/tree/main/third_party/environments",
         "note": "Prefiltered KTX environment shipped with Filament, used by the web demo as its default lighting",
+    },
+    "studio_showroom_dark_2k.hdr": {
+        "name": "Studio showroom, dark (synthetic photo studio)",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://github.com/sceneview/sceneview/tree/main/tools/scenes/studio",
+        "note": "Generated deterministically by `tools/scenes/studio/build-hdr.mjs` (variant `dark`): "
+        "a charcoal room with an overhead softbox and strip lights, no photographic source",
+    },
+    "studio_showroom_light_2k.hdr": {
+        "name": "Studio showroom, light (synthetic photo studio)",
+        "author": "SceneView project",
+        "license": "CC0-1.0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "sourceUrl": "https://github.com/sceneview/sceneview/tree/main/tools/scenes/studio",
+        "note": "Generated deterministically by `tools/scenes/studio/build-hdr.mjs` (variant `light`): "
+        "a white cyclorama with an overhead softbox and strip lights, no photographic source",
     },
 }
 
@@ -894,8 +1015,55 @@ def render_bundled_credits(scope: dict, index: dict[str, dict]) -> tuple[str, li
     hd = scope.get("hd_manifest")
     if hd:
         lines.extend(render_hd_pack_section(hd, to_root))
+    lines.extend(render_streamed_section(scope.get("streamed", [])))
+    lines.extend(render_downloaded_section(scope.get("downloaded", [])))
 
     return "\n".join(lines) + "\n", uncredited
+
+
+def render_streamed_section(streamed: list[dict]) -> list[str]:
+    """Credits of the media the app streams: never in the APK, declared on the scope."""
+    if not streamed:
+        return []
+    lines = ["## Streamed media (played from a URL, never stored)", ""]
+    lines.append(
+        "Not bundled: the app reads each file from the `assets-v1` GitHub Release while the "
+        "demo that plays it is open."
+    )
+    lines.append("")
+    for m in sorted(streamed, key=lambda m: m["file"]):
+        lines.append(f"- `{m['file']}` — {credit_line(m)}")
+        lines.append(f"  - {m['note']}")
+    lines.append("")
+    return lines
+
+
+def render_downloaded_section(downloaded: list[dict]) -> list[str]:
+    """Credits of the files the app downloads on first use: never in the APK, declared on the scope."""
+    if not downloaded:
+        return []
+    lines = ["## Downloaded on first use (kept on the device)", ""]
+    lines.append(
+        "Not bundled: the app downloads each file from the `assets-v1` GitHub Release the first "
+        "time a feature needs it, checks its SHA-256, and keeps it in its own storage."
+    )
+    lines.append("")
+    for m in sorted(downloaded, key=lambda m: m["file"]):
+        lines.append(f"- `{m['file']}` — {credit_line(m)}")
+        lines.append(f"  - {m['note']}")
+    lines.append("")
+    return lines
+
+
+def credit_line(m: dict) -> str:
+    """`**[title](source)** by author (copyright) — [licence](url) (size)`."""
+    lic = m["license"].strip()
+    lic_link = license_url(lic)
+    lic_md = f"[{lic}]({lic_link})" if lic_link else lic
+    return (
+        f"**[{m['title']}]({m['source']})** by {m['author']} "
+        f"({m['copyright']}) — {lic_md} ({human_size(int(m['bytes']))})"
+    )
 
 
 def render_hd_pack_section(manifest_rel: str, to_root: str) -> list[str]:

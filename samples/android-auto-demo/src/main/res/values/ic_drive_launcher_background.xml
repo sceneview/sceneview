@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- `stage-background` (DESIGN.md): the icon is the SceneView mark standing in the garage. -->
+    <color name="ic_drive_launcher_background">#0B0F16</color>
+</resources>

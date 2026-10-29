@@ -46,8 +46,11 @@ the current recording and print the path + viewer URL. The sidecar prints:
     [rerun-bridge] saved 1234 events -> /home/you/.sceneview/recordings/2026-05-06_23-30-12.rrd
     [rerun-bridge] open in browser -> https://sceneview.github.io/rerun/?url=file:///home/you/...
 
-Drop the .rrd onto a public host (R2, GitHub release, S3) and pass its URL
-to https://sceneview.github.io/rerun/?url=<encoded-url> to share.
+To share, host the .rrd at a public https address that ends in .rrd and pass
+it to https://sceneview.github.io/rerun/?url=<encoded-url>. The host has to
+allow cross-origin requests (CORS): a public GitHub repository's
+raw.githubusercontent.com link and GitHub Pages do, a GitHub release asset
+does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule.
 
 The rerun-3d-mcp package generates a similar sidecar
 (mcp/packages/rerun/src/python-sidecar.ts) for users who don't clone this

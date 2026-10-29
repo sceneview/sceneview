@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.52.0` and `io.github.sceneview:arsceneview:4.52.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.63.0` and `io.github.sceneview:arsceneview:4.63.0`.
 
 ---
 
@@ -31,7 +31,7 @@ Artifact versions: `io.github.sceneview:sceneview:4.52.0` and `io.github.scenevi
 
 - [ModelNode](#modelnode) — glTF/GLB models with animations
 - [LightNode](#lightnode) — directional, point, spot, sun
-- [CameraNode](#cameranode) — secondary cameras (PiP, CCTV, etc.)
+- [SecondaryCamera](#secondarycamera-formerly-cameranode) — secondary cameras (PiP, CCTV, etc.); formerly `CameraNode`
 - [ViewNode](#viewnode) — Compose UI on a 3D plane
 
 **Procedural geometry**
@@ -46,7 +46,7 @@ Artifact versions: `io.github.sceneview:sceneview:4.52.0` and `io.github.scenevi
 
 **Content nodes**
 
-- [TextNode](#textnode) — SDF text
+- [TextNode](#textnode) — camera-facing text label
 - [ImageNode](#imagenode) — textured quad
 - [VideoNode](#videonode) — video texture
 - [BillboardNode](#billboardnode) — always-face-camera
@@ -173,7 +173,7 @@ instance?.let { ModelNode(modelInstance = it, scaleToUnits = 1f) }
 - When the location changes, the *previous* instance is returned until the new one is ready (`produceState` retains its last value), so a `null`-based loading state does not fire during a switch. Wrap the call in `key(location) { rememberModelInstance(...) }` to observe `null` during the switch ([#3900](https://github.com/sceneview/sceneview/issues/3900)).
 - Automatically disposed when the composable leaves the tree.
 - File path is relative to `src/main/assets/`.
-- For remote URLs, use `rememberModelInstance(modelLoader, url = "https://…")`.
+- For remote URLs (or `file://` / `content://`), use `rememberModelInstance(modelLoader, fileLocation = "https://…")`. A positional location with a scheme is routed to the same overload.
 
 ---
 
@@ -381,16 +381,23 @@ LightNode(
 
 ---
 
-## CameraNode
+## SecondaryCamera (formerly CameraNode)
 
-Secondary cameras inside the scene (e.g. a picture-in-picture CCTV view, a mirror, a portal). The main camera is configured at `SceneView` level via `rememberCameraNode`.
+Secondary cameras inside the scene (e.g. a picture-in-picture CCTV view, a mirror, a portal). The main camera is configured at `SceneView` level via `rememberCameraNode`. The composable takes only `apply` and `content`: set the transform and the projection inside `apply`. `CameraNode(apply, content)` still compiles but is deprecated in favour of `SecondaryCamera` — it never becomes the active rendering camera.
 
 ```kotlin
-CameraNode(
-    position = Position(0f, 2f, 0f),
-    rotation = Rotation(x = -90f),
+SecondaryCamera(
     apply = {
-        projection = Projection.Perspective(fovDegrees = 60f)
+        position = Position(0f, 2f, 0f)
+        rotation = Rotation(x = -90f)
+        // Filament perspective projection: vertical FOV in degrees, aspect, near, far
+        setProjection(
+            fovInDegrees = 60.0,
+            aspect = 16.0 / 9.0,
+            near = 0.05,
+            far = 100.0,
+            direction = Camera.Fov.VERTICAL
+        )
     }
 )
 ```
@@ -430,11 +437,52 @@ ViewNode(
     invertFrontFaceWinding: Boolean = false,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
-    apply: ViewNodeImpl.() -> Unit = {},
+    scale: Scale = Scale(1f),
+    isVisible: Boolean = true,
+    cameraPositionProvider: (() -> Position)? = null,
+    apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit
 )
 ```
+
+`position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider` and `viewContent` follow
+recomposition. `unlit` and `invertFrontFaceWinding` are read once, when the node is created, and
+`apply` runs once at the same moment. At `scale = Scale(1f)` the quad measures 1 m per 250 px of
+content, so a card usually wants a `scale` well under 1.
+
+### Facing the camera
+
+Pass `cameraPositionProvider`, the parameter [BillboardNode](#billboardnode) and
+[TextNode](#textnode) take, with the same meaning: the card turns to face the position you
+return — yaw and pitch, never roll — and follows an orbiting camera, a moving card and a rotating
+parent by itself.
+
+```kotlin
+val windowManager = rememberViewNodeManager()
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode, viewNodeWindowManager = windowManager) {
+    ViewNode(
+        windowManager = windowManager,
+        position = Position(0f, 0.4f, 0f),
+        scale = Scale(0.12f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    ) {
+        Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") }
+    }
+}
+```
+
+`rotation` is ignored while a provider is set and applies again when it goes back to `null`. For
+an upright card that only turns about the vertical axis, report the camera levelled with it:
+`{ cameraNode.worldPosition.copy(y = 0.4f) }`.
+
+A card beside the model, off the view axis, faces the eye at an angle to the screen and reads as
+a parallelogram. To keep it parallel to the screen — a rectangle — report a point offset from the
+card the way the camera is offset from its orbit target:
+`{ card.worldPosition + (cameraNode.worldPosition - target) }`, `card` being the node kept from
+`apply`. The 2D in 3D demo's Inspect card does this.
 
 ### Example
 
@@ -664,17 +712,29 @@ PathNode(
 
 ## MeshNode
 
-Arbitrary triangle mesh from raw vertex / index buffers. Use this when none of the procedural helpers fit — e.g. loading a `MeshDescriptor` you built yourself, or generating marching-cubes output.
+Arbitrary mesh from Filament vertex / index buffers. Use this when none of the procedural helpers fit — e.g. generating marching-cubes output. Build the buffers with `Geometry.Builder` from plain `Geometry.Vertex(position, normal, uvCoordinate, color)` records.
 
 ```kotlin
+val geometry = remember(engine) {
+    Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
+        .vertices(myVertices)                 // List<Geometry.Vertex>
+        .indices(myIndices)                   // List<Int>, 3 per triangle
+        .build(engine)
+}
+// MeshNode does NOT own buffers it was handed: free them yourself. Declare this BEFORE the
+// MeshNode so it is disposed after it.
+DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
+
 MeshNode(
-    vertices = vertexFloatArray,           // [x,y,z, x,y,z, …]
-    normals = normalFloatArray,            // [nx,ny,nz, …] (optional — auto-computed if null)
-    uvs = uvFloatArray,                    // [u,v, u,v, …] (optional)
-    indices = indexIntArray,               // triangle indices
+    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+    vertexBuffer = geometry.vertexBuffer,
+    indexBuffer = geometry.indexBuffer,
+    boundingBox = geometry.boundingBox,       // without it: no culling, no shadows
     materialInstance = myMaterial
 )
 ```
+
+`MeshNode` keeps the buffers it was given. When the vertex count changes at runtime there is no `GeometryNode` composable: use the imperative class `io.github.sceneview.node.GeometryNode(engine, geometry, materialInstances)`, which owns the `Geometry` and follows `updateGeometry(vertices, indices)` rebuilds. Attach it under a composable parent with `Node(apply = { addChildNode(geometryNode) })` and destroy it yourself (`geometryNode.destroy()` in a `DisposableEffect`).
 
 **When to use MeshNode vs CubeNode / SphereNode:**
 
@@ -686,26 +746,60 @@ MeshNode(
 
 ## TextNode
 
-SDF-based 3D text. Crisp at any distance, scales cleanly.
+A one-line text label. The text is drawn with Android `Canvas` into a bitmap — centred, on a
+rounded background — and shown on a flat quad that can turn toward the camera.
+
+### Signature
 
 ```kotlin
 TextNode(
-    text = "Hello, SceneView!",
-    size = 0.3f,                           // character height in meters
-    position = Position(0f, 1.5f, -2f),
-    materialInstance = remember(materialLoader) {
-        materialLoader.createColorInstance(Color.White, unlit = true)
-    }
+    text: String,
+    fontSize: Float = 48f,                 // pixels in the label bitmap, not metres
+    textColor: Int = android.graphics.Color.WHITE,
+    backgroundColor: Int = 0xCC000000.toInt(),
+    typeface: android.graphics.Typeface = android.graphics.Typeface.DEFAULT_BOLD,
+    widthMeters: Float = 0.6f,
+    heightMeters: Float = 0.2f,
+    position: Position = Position(x = 0f),
+    scale: Scale = Scale(1f),
+    cameraPositionProvider: (() -> Position)? = null,
+    apply: TextNode.() -> Unit = {},
+    content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
 
-For reactive Compose-style text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
+### Example
+
+```kotlin
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    TextNode(
+        text = "Hello, SceneView!",
+        typeface = Typeface.create("serif", Typeface.ITALIC),
+        position = Position(0f, 1.5f, -2f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
+}
+```
+
+### Gotchas
+
+- **It faces the camera only when given a `cameraPositionProvider`.** Without one the label
+  keeps its parent's orientation. There is no `rotation` parameter.
+- **`text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` and
+  `cameraPositionProvider` follow recomposition.** `widthMeters` and `heightMeters` are read
+  once, when the node is created.
+- **The size of the label is `widthMeters` × `heightMeters`**, not `fontSize`: the bitmap is
+  512 × 128 px and is stretched over the quad, so keep the 4:1 ratio or the glyphs deform.
+
+For multi-line or styled text, prefer [ViewNode](#viewnode) with a `Text()` inside — it supports typography, rich formatting, layout.
 
 ---
 
 ## ImageNode
 
-A textured quad. Three overloads exist — bitmap, URL, or already-loaded `Texture`.
+A textured quad. Three overloads exist — `bitmap: Bitmap`, `imageFileLocation: String` (path under `src/main/assets/`), or `@DrawableRes imageResId: Int`. None loads from a URL: decode remote images into a `Bitmap` yourself.
 
 ```kotlin
 ImageNode(
@@ -719,48 +813,107 @@ ImageNode(
 
 ## VideoNode
 
-Plays a `MediaPlayer` video onto a 3D quad. Supports optional chroma keying (green-screen removal).
+Plays a video onto a 3D quad. Supports optional chroma keying (green-screen removal).
 
 ```kotlin
-val mediaPlayer = remember {
-    MediaPlayer.create(context, R.raw.my_video).apply { isLooping = true }
-}
-DisposableEffect(mediaPlayer) {
-    mediaPlayer.start()
-    onDispose { mediaPlayer.release() }
-}
-
 VideoNode(
-    player = mediaPlayer,
+    videoPath = "videos/promo.mp4", // under assets/, or an https://, file:// or content:// location
+    autoPlay = isPlaying,           // reactive: true plays, false pauses
     size = Size(x = 1.6f, y = 0.9f),
     chromaKeyColor = android.graphics.Color.GREEN, // optional green-screen key
-    position = Position(0f, 1f, -2f)
+    position = Position(0f, 1f, -2f),
+    onError = { cause -> videoError = cause }      // missing file, unsupported codec, broken stream
 )
 ```
+
+The video is prepared off the main thread: the node appears once it is ready, and until then, or
+if it fails, it emits nothing. To show a placeholder and a fallback, hold the player yourself —
+`rememberMediaPlayer` returns where it stands:
+
+```kotlin
+when (val video = rememberMediaPlayer("videos/promo.mp4")) {
+    is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(0f, 1f, -2f))
+    is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(0f, 1f, -2f))
+    MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(0f, 1f, -2f))
+}
+```
+
+The player is released when the location changes and when the call leaves the composition. Both
+APIs are `@ExperimentalSceneViewApi`.
+
+!!! warning "Never prepare a player inside `remember { }`"
+    `MediaPlayer.create(…)` and `MediaPlayer.prepare()` parse the file on the calling thread: in
+    `remember { }` that is the main thread, during composition. `VideoNode(player = …)` takes a
+    player you prepared with `prepareAsync()`.
 
 ---
 
 ## BillboardNode
 
-A wrapper that makes its children always face the camera. Commonly used for in-world labels.
+A bitmap on a flat quad that turns toward the camera — an [ImageNode](#imagenode) that
+re-orients itself every frame. It faces the camera only when given a `cameraPositionProvider`.
+[TextNode](#textnode) is a `BillboardNode` whose bitmap is rendered from a string.
 
 ```kotlin
-BillboardNode(position = Position(0f, 2f, 0f)) {
-    TextNode(text = "Tap me", size = 0.15f)
+val cameraNode = rememberCameraNode(engine)
+
+SceneView(engine = engine, cameraNode = cameraNode) {
+    BillboardNode(
+        bitmap = markerBitmap,
+        widthMeters = 0.4f,
+        heightMeters = 0.4f,
+        position = Position(0f, 2f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
+
+### What "facing the camera" means
+
+The same on `BillboardNode`, `TextNode` and [ViewNode](#viewnode), which all take
+`cameraPositionProvider: (() -> Position)? = null`:
+
+- **A full look-at.** The front of the quad points at the position you return and its top edge
+  stays toward world `+Y`: it yaws and pitches, and never rolls.
+- **Yaw only**, for an upright sign: report the camera levelled with the node,
+  `{ cameraNode.worldPosition.copy(y = signHeight) }`.
+- **It follows the camera, the node and its parent.** A label on a turntable keeps facing you.
+- **It follows recomposition.** Swap the provider, or pass `null` to stop turning: the node stays
+  as it was last turned. The node class exposes the same thing as a `cameraPositionProvider`
+  property.
+- **While it is set, the node owns its orientation.** A `rotation` or `quaternion` written by
+  hand is overwritten. Set the provider through the parameter, not inside `apply`.
+- **It costs nothing while nothing moves**: a `FrameRatePolicy.OnDemand` scene still parks.
 
 ---
 
 ## ReflectionProbeNode
 
-A local reflection capture — adds spherical harmonics / cubemap reflections for the area around the node.
+Overrides the scene's indirect light (IBL) with a baked `Environment` inside a spherical zone. With `radius = 0f` (the default) the probe is global and always active; otherwise it applies only while `cameraPosition` is within `radius` metres of `position`.
 
 ```kotlin
-ReflectionProbeNode(
-    position = Position(0f, 1f, 0f),
-    extent = Size(x = 5f, y = 5f, z = 5f)
-)
+val scene = rememberScene(engine)
+val probeEnv = rememberEnvironment(environmentLoader) {
+    environmentLoader.createHDREnvironment("environments/office.hdr")
+        ?: createEnvironment(environmentLoader)
+}
+val cameraNode = rememberCameraNode(engine)
+var cameraPos by remember { mutableStateOf(Position()) }
+
+SceneView(
+    engine = engine,
+    scene = scene,
+    cameraNode = cameraNode,
+    onFrame = { cameraPos = cameraNode.worldPosition }
+) {
+    ReflectionProbeNode(
+        filamentScene = scene,          // the same Filament Scene passed to SceneView
+        environment = probeEnv,
+        position = Position(0f, 1f, 0f),
+        radius = 3f,
+        cameraPosition = cameraPos
+    )
+}
 ```
 
 ---
@@ -774,17 +927,22 @@ Follows a fixed ARCore `Anchor`. Once placed, the node stays pinned to that real
 ```kotlin
 var anchors by remember { mutableStateOf(listOf<Anchor>()) }
 val drone = rememberModelInstance(modelLoader, "models/drone.glb")
+// Latest ARCore Frame: a plain holder, not state, so it does not recompose every frame.
+val latestFrame = remember { arrayOfNulls<Frame>(1) }
 
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
+    onSessionUpdated = { _, frame -> latestFrame[0] = frame },
     onGestureListener = rememberOnGestureListener(
         onSingleTapConfirmed = { motionEvent, node ->
-            val hit = sessionRef?.frame?.hitTest(motionEvent)?.firstOrNull {
-                val tr = it.trackable
-                tr is Plane && tr.isPoseInPolygon(it.hitPose)
-            }
-            hit?.createAnchor()?.let { newAnchor ->
-                anchors = anchors + newAnchor
+            if (node == null) { // empty space, not a placed model
+                val hit = latestFrame[0]?.hitTest(motionEvent)?.firstOrNull {
+                    val tr = it.trackable
+                    tr is Plane && tr.isPoseInPolygon(it.hitPose)
+                }
+                hit?.createAnchor()?.let { newAnchor ->
+                    anchors = anchors + newAnchor
+                }
             }
         }
     ),
@@ -905,12 +1063,13 @@ ARSceneView(
 
 ## AugmentedFaceNode
 
-Front-camera face tracking (iOS-like FaceID style overlays). Provides an `ARFaceMesh` with vertices, normals, and texture coords.
+Front-camera face tracking (iOS-like FaceID style overlays). Renders the ARCore `AugmentedFace` mesh (vertices, normals, texture coordinates), updated every frame.
 
 ```kotlin
 AugmentedFaceNode(
     augmentedFace = face,
-    faceMeshTexture = mustacheTexture  // optional overlay texture
+    meshMaterialInstance = faceMaterial,  // optional; e.g. a textured overlay material
+    computeTangents = true                // set false for an unlit material
 )
 ```
 
@@ -918,24 +1077,75 @@ AugmentedFaceNode(
 
 ## CloudAnchorNode
 
-Hosts an anchor to the ARCore Cloud (returns a cloud anchor ID) or resolves a previously hosted one. Requires an ARCore Cloud Anchor API key.
+Hosts an anchor to the ARCore Cloud (returns a cloud anchor ID) or resolves a previously hosted one. Requires an ARCore Cloud Anchor API key. The composable always takes a local `anchor`; hosting is an explicit `host(session, ttlDays)` call (`ttlDays` in `1..365`), and `onHosted` receives the ID **and** the `CloudAnchorState`.
 
 ```kotlin
+import com.google.ar.core.Frame
+import com.google.ar.core.Session
+
+var arSession by remember { mutableStateOf<Session?>(null) }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+var hostStatus by remember { mutableStateOf<String?>(null) }
+val cloudNode = remember {
+    java.util.concurrent.atomic.AtomicReference<
+        io.github.sceneview.ar.node.CloudAnchorNode?
+    >(null)
+}
+
+// ARSceneView parameter — keeps the session and the latest frame:
+//   onSessionUpdated = { session, frame -> arSession = session; latestFrame = frame }
+
+// Inside ARSceneView { } (ARSceneScope):
 CloudAnchorNode(
     anchor = localAnchor,
-    ttlDays = 7,
-    onHosted = { cloudId -> saveCloudId(cloudId) }
+    onHosted = { cloudAnchorId, state ->
+        hostStatus = if (cloudAnchorId != null && !state.isError) {
+            saveCloudId(cloudAnchorId)
+            "Anchor hosted"
+        } else {
+            "Hosting failed: $state"
+        }
+    },
+    apply = { cloudNode.set(this) }
 )
+
+// Regular Compose UI, outside ARSceneView (e.g. a Box overlay on top of it):
+Button(onClick = {
+    val session = arSession ?: return@Button
+    val cameraPose = latestFrame?.camera?.pose ?: return@Button
+    if (session.estimateFeatureMapQualityForHosting(cameraPose) ==
+        Session.FeatureMapQuality.INSUFFICIENT
+    ) {
+        hostStatus = "Move around to capture more of the scene"
+    } else {
+        hostStatus = "Hosting…"
+        cloudNode.get()?.host(session, ttlDays = 7)
+    }
+}) { Text("Host anchor") }
+hostStatus?.let { Text(it) }
 ```
 
-Or on the resolving side:
+Do not start hosting while feature-map quality is `INSUFFICIENT`: tell the user to move around
+instead. There is no future to keep or cancel: `host()` cancels the node's previous request, and
+the node cancels an in-flight request when it leaves composition.
+
+Or on the resolving side — resolve the ID to an `Anchor` first, then declare the node:
 
 ```kotlin
-CloudAnchorNode(
-    cloudAnchorId = savedCloudId,
-    onResolved = { anchor -> /* place content */ }
-)
+var resolved by remember { mutableStateOf<Anchor?>(null) }
+DisposableEffect(arSession, savedCloudId) {
+    val future = arSession?.resolveCloudAnchorAsync(savedCloudId) { anchor, state ->
+        if (!state.isError) resolved = anchor
+    }
+    onDispose { future?.cancel() }
+}
+// In the ARSceneView content:
+resolved?.let { anchor ->
+    CloudAnchorNode(anchor = anchor, cloudAnchorId = savedCloudId) { /* place content */ }
+}
 ```
+
+`CloudAnchorNode.resolve(engine, session, cloudAnchorId) { state, node -> }` is the imperative equivalent: it returns a `ResolveCloudAnchorFuture` and delivers a ready `CloudAnchorNode` (or `null` on error) to the callback.
 
 ---
 
@@ -948,7 +1158,7 @@ Geospatial building and terrain meshes from ARCore's Streetscape Geometry API. E
 streetscapeGeometries.forEach { geom ->
     StreetscapeGeometryNode(
         streetscapeGeometry = geom,
-        materialInstance = buildingMaterial
+        meshMaterialInstance = buildingMaterial
     )
 }
 ```
@@ -981,10 +1191,12 @@ ModelNode(
         position = Position(0f, 2f, 0f),
         apply = { intensity(30_000f); color(1f, 0.8f, 0.5f) }
     )
-    // This billboard label follows the ship too.
-    BillboardNode(position = Position(0f, 2.5f, 0f)) {
-        TextNode(text = "SS SceneView", size = 0.2f)
-    }
+    // This label follows the ship too, and turns toward the camera.
+    TextNode(
+        text = "SS SceneView",
+        position = Position(0f, 2.5f, 0f),
+        cameraPositionProvider = { cameraNode.worldPosition }
+    )
 }
 ```
 
@@ -1024,7 +1236,13 @@ LightNode(
 Button(onClick = { glowing = !glowing }) { Text("Toggle glow") }
 ```
 
-Parameters that **rebuild geometry** (`size` on `CubeNode`, `radius` on `SphereNode`, `vertices` on `MeshNode`) also work from state — but cost a mesh rebuild each change. Keep them monotonic or use `derivedStateOf` to debounce.
+Procedural geometry parameters also work from state. A radius, size or centre change reuses
+its buffers. Changing tessellation (`SphereNode(stacks, slices)`, `CylinderNode(sideCount)`,
+`ConeNode(sideCount)`, `TorusNode(majorSegments, minorSegments)`,
+`CapsuleNode(capStacks, sideSlices)`), growing `PathNode(points)` or `TubeNode(points)`,
+or adding `ShapeNode(color)` rebuilds buffers when their counts or attribute layout change.
+The library rebinds every node sharing the geometry and updates primitive ranges and bounds.
+Drive these parameters directly from state; no `key` or node recreation is needed.
 
 ---
 
@@ -1056,11 +1274,12 @@ Every node composable has an `apply` parameter — a lambda with the impl class 
 ```kotlin
 ModelNode(
     modelInstance = ship,
+    animationName = "Idle",        // declarative: plays and loops one named animation
     apply = {
-        // Direct access to ModelNodeImpl internals
-        setReceiveShadows(true)
-        setCastShadows(true)
-        getAnimator()?.applyAnimation("Idle", 0f)
+        // Direct access to ModelNodeImpl members
+        isShadowReceiver = true
+        isShadowCaster = true
+        // `animator` (Filament gltfio Animator) and playAnimation(...) are also available here
     }
 )
 ```
@@ -1095,7 +1314,7 @@ LightNode(
 | Using `MeshNode` for loaded glTF content | No animations, no PBR textures | Use `ModelNode` with `rememberModelInstance` |
 | Not handling `rememberModelInstance` returning `null` | Conditional branches crash at launch | Use `?.let { }` or `if (instance != null)` guards |
 | Showing a loading state on `null` and switching locations | No loading gap — the previous instance is returned until the new one loads ([#3900](https://github.com/sceneview/sceneview/issues/3900)) | Wrap the call in `key(location) { rememberModelInstance(...) }` so `null` is observed during the switch |
-| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android (since 4.28.0) and the web build both convert embedded WebP textures automatically — the message survives only for WebP kept in separate `.webp` files beside a `.gltf`; re-encode those to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [#3085](https://github.com/sceneview/sceneview/issues/3085), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
+| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android and the web build both convert embedded WebP textures automatically, and Android also converts separate `.webp` files beside a `.gltf` — the message survives only for those on the web; re-encode them to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [#3085](https://github.com/sceneview/sceneview/issues/3085), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
 | Calling `node.destroy()` manually | Use-after-free, crashes on recomposition | Let the composable own the lifecycle |
 
 ---
@@ -1103,6 +1322,6 @@ LightNode(
 ## See also
 
 - [`llms.txt`](../../llms.txt) — the machine-readable API surface consumed by `sceneview-mcp`
-- [`DESIGN.md`](../../DESIGN.md) — the design system for any UI around a `Scene`
-- [Samples](../../samples/) — runnable apps for every platform
+- [`DESIGN.md`](https://github.com/sceneview/sceneview/blob/main/DESIGN.md) — the design system for any UI around a `Scene`
+- [Samples](samples.md) — runnable apps for every platform
 - [sceneview-mcp](https://www.npmjs.com/package/sceneview-mcp) — MCP server that exposes this reference to any MCP client

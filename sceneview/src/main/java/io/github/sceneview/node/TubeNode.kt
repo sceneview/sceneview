@@ -90,5 +90,7 @@ open class TubeNode private constructor(
         radialSegments: Int = geometry.radialSegments,
         closed: Boolean = geometry.closed,
         caps: Boolean = geometry.caps
-    ) = setGeometry(geometry.update(engine, points, radius, radialSegments, closed, caps))
+    ) {
+        geometry.update(engine, points, radius, radialSegments, closed, caps)
+    }
 }

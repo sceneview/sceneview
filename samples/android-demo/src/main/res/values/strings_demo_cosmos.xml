@@ -9,5 +9,9 @@
     <!-- The Star scene's two views, switched by the pill over the dock. -->
     <string name="demo_cosmos_starlight">Starlight</string>
     <string name="demo_cosmos_spacetime">Spacetime</string>
+    <!-- The dock's voyage item: a one-word caption, and the full phrase as its accessible name. -->
+    <string name="demo_cosmos_autoplay">Autoplay</string>
+    <string name="demo_cosmos_autoplay_play">Autoplay the four scenes</string>
+    <string name="demo_cosmos_autoplay_pause">Pause autoplay</string>
     <string name="demo_cosmos_spacetime_legend">Spacetime: every mass bends the fabric</string>
 </resources>

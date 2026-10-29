@@ -91,7 +91,11 @@ describe("migrateCode", () => {
 
   it("replaces onTapArPlane with comment", () => {
     const result = migrateCode(`fragment.onTapArPlane {`);
-    expect(result.migratedCode).toContain("onTouchEvent");
+    expect(result.migratedCode).toContain("onSingleTapConfirmed");
+    expect(result.migratedCode).toContain("node == null");
+    expect(result.migratedCode).toContain("createAnchorOrNull()");
+    expect(result.migratedCode).not.toContain("onTouchEvent");
+    expect(result.migratedCode).not.toContain("ACTION_UP");
   });
 
   it("adds warning for Dispatchers.IO with modelLoader", () => {

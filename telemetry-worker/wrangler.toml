@@ -40,7 +40,9 @@ id = "9a40d334be6149f7a4ba18451a60245f"
 [vars]
 ENVIRONMENT = "production"
 
-# Optional: protect /v1/stats with a bearer token
+# Required for the read routes (/v1/stats, /v1/timeseries, /v1/top-clients,
+# /v1/funnel, /v1/export): without it they refuse every request (401). Ingestion
+# does not need it.
 # wrangler secret put STATS_TOKEN
 
 # ── Cron trigger (daily rollup) ──────────────────────────────────────────────

@@ -7,9 +7,10 @@ import SceneViewSwift
 /// About tab — per the SceneView design system (`DESIGN.md` "Demo App About").
 ///
 /// The identity block (launcher icon, name, version, tagline) flat on the page,
-/// the support card — the screen's one emphasised surface — then a series of
+/// the "More apps built with SceneView" group, then a series of
 /// `.regularMaterial` row cards (Open Source, Docs, GitHub, 3D Playground,
-/// Credits), and a footer with attribution.
+/// Credits), and a footer with attribution. The support card sits right under
+/// the identity block, as on Android (see "Support" below).
 struct AboutTab: View {
     private static let version: String = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -19,15 +20,21 @@ struct AboutTab: View {
     // Sketchfab model in `SampleAssets`); #3214 — bundled assets too, from
     // the generated `BundledCredits.json`.
     @State private var showCreditsSheet = false
+    /// "Support SceneView" — the tips sheet, opened from the support card.
+    @State private var showSupportSheet = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 20) {
                     identity
+                    supportCard
                     if !HDPackStore.shared.manifest.assets.isEmpty {
                         HDPackSettingsRow()
                     }
+                    #if os(iOS)
+                    AboutMoreAppsSection()
+                    #endif
                     aboutCards
                     // Shown before Firebase is configured too: in the consent zone the
                     // switch is how a refusal is reversed.
@@ -48,6 +55,9 @@ struct AboutTab: View {
             .navigationTitle("About")
             .sheet(isPresented: $showCreditsSheet) {
                 CreditsSheet()
+            }
+            .sheet(isPresented: $showSupportSheet, onDismiss: { SupportStore.shared.sheetDismissed() }) {
+                SupportSheet(presentation: .about) { showSupportSheet = false }
             }
         }
     }
@@ -143,9 +153,44 @@ struct AboutTab: View {
 
     // MARK: - Support
 
-    // No donation links on iOS: App Review rejected 4.48.0 under guideline
-    // 3.1.1 (donations must use In-App Purchase outside the US storefront).
-    // Android keeps `AboutSupportCard`; the GitHub row below stays.
+    // App Review rejected 4.48.0 for a donation *link* (guideline 3.1.1:
+    // outside the US storefront a tip must be an In-App Purchase). So on Apple
+    // platforms the card opens `SupportSheet`, three consumable tips through
+    // StoreKit, and never leaves the app. Same title and place as Android's
+    // `AboutSupportCard`: the only tinted surface of the screen.
+
+    private var supportCard: some View {
+        Button { showSupportSheet = true } label: {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                HStack(spacing: SceneViewTokens.Space.sm) {
+                    Image(systemName: "heart")
+                        .font(.system(size: 18, weight: .semibold))
+                        .accessibilityHidden(true)
+                    Text("Support SceneView")
+                        .font(SceneViewTokens.TypeScale.card)
+                    Spacer(minLength: SceneViewTokens.Space.xs)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .opacity(0.7)
+                        .accessibilityHidden(true)
+                }
+                Text("Open source, maintained by volunteers, funded by the people who use it.")
+                    .font(SceneViewTokens.TypeScale.body)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
+            .padding(SceneViewTokens.Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SceneViewTokens.HomeColor.secondaryContainer,
+                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("about-support")
+    }
 
     // MARK: - Footer
 
@@ -241,6 +286,144 @@ private struct AboutCard: View {
         )
     }
 }
+
+// MARK: - More apps
+
+/// Another published app built with SceneView, as one row of the "More apps"
+/// group.
+///
+/// `appStoreId` is the whole link: the row opens that id's App Store listing.
+struct MoreApp: Identifiable, Equatable {
+    /// The App Store's numeric id of the app (`trackId` in the lookup API).
+    let appStoreId: Int
+    /// Image set holding the app's own App Store icon — never a stand-in glyph.
+    let icon: String
+    /// The name as the App Store displays it.
+    let name: String
+    /// One line on what the app does for the person holding the phone.
+    let summary: String
+
+    var id: Int { appStoreId }
+
+    /// The listing, storefront-neutral: the App Store picks the reader's own.
+    /// On a device it opens in the App Store app, as a universal link.
+    var storeURL: URL? { URL(string: "https://apps.apple.com/app/id\(appStoreId)") }
+
+    /// The maintainer's other apps **on the App Store**, built on this SDK.
+    ///
+    /// An app enters this list once its App Store listing is live, and only
+    /// with an App Store link: Android lists Will It Fit too, but that app has
+    /// no iOS release, and an iOS app does not point at another store.
+    static let all: [MoreApp] = [
+        MoreApp(
+            appStoreId: 6790808866,
+            icon: "about_app_ar_model_viewer",
+            name: "3D AR Model Viewer",
+            summary: "Open any 3D file and see it at real size in your room."
+        ),
+    ]
+}
+
+#if os(iOS)
+/// "More apps built with SceneView": a plain group of rows under the identity
+/// block — the iOS twin of Android's `AboutGroup` of `AboutAppRow`s (#4414).
+///
+/// Listed, not advertised (`DESIGN.md` "Demo App About"): the same header and
+/// the same card as the "Privacy & notifications" group, no tinted surface, no
+/// badge, no button. The icons are the only colour.
+private struct AboutMoreAppsSection: View {
+    var body: some View {
+        let about = SceneViewTokens.About.self
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Text("More apps built with SceneView")
+                .font(SceneViewTokens.TypeScale.captionSemibold)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .textCase(.uppercase)
+                .padding(.leading, SceneViewTokens.Space.xs)
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(spacing: 0) {
+                ForEach(MoreApp.all) { app in
+                    if app != MoreApp.all.first {
+                        Divider()
+                            .overlay(SceneViewTokens.HomeColor.outlineSubtle)
+                            // Starts under the name, past the icon's slot.
+                            .padding(.leading, about.rowInset * 2 + SceneViewTokens.Glass.iconButtonSize)
+                    }
+                    AboutAppRow(app: app)
+                }
+            }
+            .materialGlassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
+        }
+    }
+}
+
+/// One app of the "More apps" group: its App Store icon, its name, one line on
+/// what it does, and the arrow every row that leaves the app carries.
+///
+/// A `Link`, like `AboutCard`: it opens through the environment's `openURL`,
+/// so `trackOutboundLinks()` logs it as a `store` outbound link.
+private struct AboutAppRow: View {
+    let app: MoreApp
+
+    var body: some View {
+        if let url = app.storeURL {
+            Link(destination: url) { content }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(app.name): \(app.summary). Opens the App Store")
+                .accessibilityIdentifier("about-more-app-\(app.appStoreId)")
+        }
+    }
+
+    private var content: some View {
+        let about = SceneViewTokens.About.self
+        // Around the icon, not over it: painted on top, the light-theme
+        // hairline is a pale ring eating into a dark picture.
+        let iconShape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs, style: .continuous)
+        let innerShape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xs - about.appIconHairline,
+                                          style: .continuous)
+        return HStack(spacing: about.rowInset) {
+            Image(app.icon)
+                .resizable()
+                .interpolation(.high)
+                .clipShape(innerShape)
+                .padding(about.appIconHairline)
+                .overlay(iconShape.strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                                                lineWidth: about.appIconHairline))
+                .frame(width: about.appIcon, height: about.appIcon)
+                // Centred in the slot of an `AboutCard`'s tile, so the name
+                // starts on the same line as the titles of the cards below.
+                .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
+                // Decorative: the name beside it is the row's accessible name.
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs / 2) {
+                Text(app.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(app.summary)
+                    .font(.caption)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: SceneViewTokens.Space.xs)
+
+            Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, about.rowInset)
+        .padding(.vertical, SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
+        .contentShape(Rectangle())
+    }
+}
+#endif
 
 // MARK: - About mark stage
 

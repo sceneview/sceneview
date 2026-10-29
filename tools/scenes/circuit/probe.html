@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>scene</title>
+<style>html,body{margin:0;height:100%;background:#000}canvas{width:100vw;height:100vh;display:block}#log{position:fixed;left:8px;bottom:8px;color:#8f8;font:11px monospace;white-space:pre}</style>
+<canvas id="c"></canvas><div id="log"></div>
+<script src="/js/filament/filament.js"></script><script src="/js/sceneview.js"></script><script src="/assets/scenes/circuit.js"></script>
+<script>
+const q = new URLSearchParams(location.search), L = [];
+const log = s => { L.push(s); if (q.get('log') === '1') document.getElementById('log').textContent = L.join('\n'); };
+const C = SVScenes.circuit, t0 = performance.now();
+const create = Object.assign({}, C.create); if (q.get('ibl')) create.iblUrl = '/__probe/' + q.get('ibl'); if (q.get('ibli')) create.iblIntensity = +q.get('ibli');
+SceneView.create('c', create).then(async sv => {
+  window.sv = sv;
+  await sv.loadModel(q.get('glb') ? '/__probe/' + q.get('glb') : C.model);
+  const ctl = window.ctl = C.setup(sv, { canvas: document.getElementById('c'), adaptive: q.get('adaptive') === '1', tier: q.get('tier') != null ? +q.get('tier') : undefined });
+  if (q.get('shift')) ctl.setFrame(+q.get('shift'), +(q.get('zoom') || 1));
+  if (q.get('a')) sv.setCameraOrbit({ angle: +q.get('a'), height: +(q.get('h') || 1), radius: +(q.get('r') || 6.5), fov: +(q.get('fov') || 30), target: [+(q.get('tx') || 0), +(q.get('ty') || 0.62), +(q.get('tz') || 0.25)] });
+  else if (q.get('play') === '1') ctl.play(); else ctl.hold(q.get('t') != null ? +q.get('t') : undefined);
+  if (q.get('js')) (0, eval)(q.get('js'));
+  window.__first = performance.now() - t0; log('first ' + window.__first.toFixed(0) + ' ms');
+  let n = 0, s = performance.now(); sv.onFrame(() => { n++; });
+  if (q.get('spin') === '1') { const tick = () => { sv.setCameraOrbit({ angle: sv.getCameraOrbit().angle + 0.004 }); requestAnimationFrame(tick); }; tick(); }
+  setTimeout(() => { n = 0; s = performance.now(); }, 3000);   // shader warm-up is not the frame rate
+  setTimeout(() => { window.__fps = n / ((performance.now() - s) / 1000); log('fps ' + window.__fps.toFixed(1) + ' tier ' + ctl.tier); window.__done = true; }, 7000);
+}).catch(err => log('ERR ' + err.message));
+</script>

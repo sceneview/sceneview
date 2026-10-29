@@ -82,12 +82,16 @@ class RerunTsdf(
     /**
      * Fuses [frame] — raw depth in millimetres, its confidence, a colour per pixel, the depth
      * image's own lens and the pose of the camera that took it — into the field. Pixels outside
-     * [[DepthBackProjection.NEAR_M], [DepthBackProjection.FAR_M]] or under [minConfidence] are
+     * [[DepthBackProjection.NEAR_M], [farM]] (by default [DepthBackProjection.FAR_M]) or under [minConfidence] are
      * skipped. Voxel-centric: every voxel of every block a ray ends in is projected into the
      * depth image, and takes the projective distance `depth − z` of the pixel it lands on.
      */
     @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
-    fun integrate(frame: DepthFrame, minConfidence: Int = DepthBackProjection.MIN_CONFIDENCE): TsdfIntegration {
+    fun integrate(
+        frame: DepthFrame,
+        minConfidence: Int = DepthBackProjection.MIN_CONFIDENCE,
+        farM: Float = DepthBackProjection.FAR_M,
+    ): TsdfIntegration {
         val w = frame.width
         val h = frame.height
         val depth = FloatArray(w * h)
@@ -95,7 +99,7 @@ class RerunTsdf(
         for (i in 0 until w * h) {
             val d = (frame.depthMm[i].toInt() and 0xFFFF) / MM_PER_M
             val c = frame.confidence?.let { it[i].toInt() and 0xFF } ?: FULL_CONFIDENCE
-            if (d in DepthBackProjection.NEAR_M..DepthBackProjection.FAR_M && c >= minConfidence) {
+            if (d in DepthBackProjection.NEAR_M..farM && c >= minConfidence) {
                 depth[i] = d
                 conf[i] = c / FULL_CONFIDENCE.toFloat()
             }
@@ -193,14 +197,14 @@ class RerunTsdf(
     /**
      * Fuses a saved dense cloud — surfels with unit normals, [DenseFusion]'s output — into the
      * field: each surfel writes its signed distance `(v − p) · n` into the voxels of a thin
-     * column along its normal, fading with the distance off that axis. The model of a scan whose
-     * raw depth is gone: a kept session, reopened. [progress] gets the share done now and then.
+     * column along its normal, fading with the distance off that axis. A coarsened surfel (level
+     * L, #4629) covers 2^L × 2^L level-0 surfels, so it writes one column at each of their places.
+     * The model of a scan whose raw depth is gone: a kept session, reopened. [progress] gets the
+     * share done now and then.
      */
-    @Suppress("NestedBlockDepth", "LoopWithTooManyJumpStatements")
+    @Suppress("LoopWithTooManyJumpStatements")
     fun integrateSurfels(cloud: DenseCloud, progress: (Float) -> Unit = {}) {
         val normals = cloud.normals ?: return
-        val reach = ceil(truncationM / voxelM).toInt()
-        val lateral = LATERAL_VOXELS * voxelM
         for (i in 0 until cloud.count) {
             if (i % PROGRESS_STEP == 0) progress(i.toFloat() / cloud.count)
             val px = cloud.positions[i * 3]
@@ -211,30 +215,64 @@ class RerunTsdf(
             val nz = normals[i * 3 + 2]
             if (!finite(px, py, pz) || !finite(nx, ny, nz)) continue
             val colour = cloud.colors[i]
-            for (k in -reach..reach) {
-                val qx = px + nx * k * voxelM
-                val qy = py + ny * k * voxelM
-                val qz = pz + nz * k * voxelM
-                val ix = floor(qx / voxelM).toInt()
-                val iy = floor(qy / voxelM).toInt()
-                val iz = floor(qz / voxelM).toInt()
-                for (c in 0 until 8) {
-                    val gx = ix + (c and 1)
-                    val gy = iy + ((c shr 1) and 1)
-                    val gz = iz + (c shr 2)
-                    val ox = gx * voxelM - px
-                    val oy = gy * voxelM - py
-                    val oz = gz * voxelM - pz
-                    val along = ox * nx + oy * ny + oz * nz
-                    if (abs(along) > truncationM) continue
-                    val off = sqrt(maxOf(0f, ox * ox + oy * oy + oz * oz - along * along))
-                    if (off > lateral) continue
-                    val w = maxOf(MIN_SURFEL_WEIGHT, 1f - off / lateral)
-                    update(gx, gy, gz, along, w, if (abs(along) < voxelM) colour else 0)
+            val side = 1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT)
+            if (side == 1) {
+                splat(px, py, pz, nx, ny, nz, colour)
+                continue
+            }
+            // Two tangents of the surfel's plane, a level-0 surfel apart, centred on it.
+            val ax = if (abs(ny) < TANGENT_SWITCH) 0f else 1f
+            val ay = if (abs(ny) < TANGENT_SWITCH) 1f else 0f
+            var tx = ay * nz
+            var ty = -ax * nz
+            var tz = ax * ny - ay * nx
+            val tl = sqrt(tx * tx + ty * ty + tz * tz).takeIf { it > 1e-6f } ?: continue
+            val step = DenseFusion.VOXEL_M / tl
+            tx *= step
+            ty *= step
+            tz *= step
+            val bx = ny * tz - nz * ty
+            val by = nz * tx - nx * tz
+            val bz = nx * ty - ny * tx
+            val centre = (side - 1) / 2f
+            for (u in 0 until side) {
+                for (v in 0 until side) {
+                    val a = u - centre
+                    val c = v - centre
+                    splat(px + tx * a + bx * c, py + ty * a + by * c, pz + tz * a + bz * c, nx, ny, nz, colour)
                 }
             }
         }
         progress(1f)
+    }
+
+    /** One level-0 surfel at ([px], [py], [pz]), unit normal ([nx], [ny], [nz]), into the field. */
+    @Suppress("LongParameterList", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
+    private fun splat(px: Float, py: Float, pz: Float, nx: Float, ny: Float, nz: Float, colour: Int) {
+        val reach = ceil(truncationM / voxelM).toInt()
+        val lateral = LATERAL_VOXELS * voxelM
+        for (k in -reach..reach) {
+            val qx = px + nx * k * voxelM
+            val qy = py + ny * k * voxelM
+            val qz = pz + nz * k * voxelM
+            val ix = floor(qx / voxelM).toInt()
+            val iy = floor(qy / voxelM).toInt()
+            val iz = floor(qz / voxelM).toInt()
+            for (c in 0 until 8) {
+                val gx = ix + (c and 1)
+                val gy = iy + ((c shr 1) and 1)
+                val gz = iz + (c shr 2)
+                val ox = gx * voxelM - px
+                val oy = gy * voxelM - py
+                val oz = gz * voxelM - pz
+                val along = ox * nx + oy * ny + oz * nz
+                if (abs(along) > truncationM) continue
+                val off = sqrt(maxOf(0f, ox * ox + oy * oy + oz * oz - along * along))
+                if (off > lateral) continue
+                val w = maxOf(MIN_SURFEL_WEIGHT, 1f - off / lateral)
+                update(gx, gy, gz, along, w, if (abs(along) < voxelM) colour else 0)
+            }
+        }
     }
 
     /**
@@ -354,6 +392,9 @@ class RerunTsdf(
         /** A surfel reaches this many voxels off its normal. */
         private const val LATERAL_VOXELS = 1.5f
         private const val MIN_SURFEL_WEIGHT = 0.05f
+
+        /** A normal this close to ±Y takes +X, not +Y, to build its tangents from. */
+        private const val TANGENT_SWITCH = 0.9f
         private const val PROGRESS_STEP = 16_384
 
         private const val MM_PER_M = 1000f

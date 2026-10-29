@@ -11,8 +11,9 @@ import SceneViewSwift
 /// further from the target, swung 24° round world +Y and lifted by 22 % of the
 /// orbit radius; it flies to the resting pose over 700 ms (`duration-long`) on
 /// `ease-expressive`, cubic-bezier(0.2, 0, 0, 1). The model only settles: it
-/// starts 6 % of the camera distance below its resting place and rises on the
-/// one spring (damping ratio 0.85, stiffness 450), started with the flight.
+/// starts 2 % of the camera distance above its resting place and is set down
+/// on the one spring (damping ratio 0.85, stiffness 450), started with the
+/// flight; the overshoot is held at rest, as on Android's showroom floor.
 ///
 /// **Recenter** flies from the eye on screen back to rest in a straight line
 /// (Android #3622) instead of replaying the swing, and the model settles again.
@@ -27,7 +28,7 @@ struct ViewerEntranceFlight: Equatable {
     static let startDistanceScale: Float = 1.55
     static let startYawDegrees: Float = 24
     static let startLiftFraction: Float = 0.22
-    static let settleDropFraction: Float = 0.06
+    static let settleLiftFraction: Float = 0.02
     /// `ease-expressive`.
     static let curve = UnitCurve.bezier(
         startControlPoint: UnitPoint(x: 0.2, y: 0),
@@ -54,7 +55,7 @@ struct ViewerEntranceFlight: Equatable {
     }
 
     /// The camera has landed and the model has settled.
-    var isFinished: Bool { elapsed >= Self.duration && settleDrop == 0 }
+    var isFinished: Bool { elapsed >= Self.duration && settleLift == 0 }
 
     /// Advances by one frame of `dt` seconds, capped at ``maxStep``.
     mutating func advance(by dt: Double) {
@@ -71,12 +72,14 @@ struct ViewerEntranceFlight: Equatable {
         Self.pose(rest: rest, start: start, progress: progress)
     }
 
-    /// How far below its resting place the model sits, in scene units. Zero
-    /// once the spring is within 0.1 % of rest.
-    var settleDrop: Float {
+    /// How far above its resting place the model sits, in scene units: it is
+    /// set down from just above, as on Android's showroom, never through the
+    /// floor, so the spring's overshoot is held at rest. Zero once the spring
+    /// is within 0.1 % of rest.
+    var settleLift: Float {
         let remaining = 1 - Self.settleSpring.value(target: 1.0, time: elapsed)
-        guard abs(remaining) > 0.001 else { return 0 }
-        return rest.distance * Self.settleDropFraction * Float(remaining)
+        guard remaining > 0.001 else { return 0 }
+        return rest.distance * Self.settleLiftFraction * Float(remaining)
     }
 
     static func pose(rest: SceneCameraPose, start: Start, progress: Float) -> SceneCameraPose {
@@ -294,7 +297,7 @@ final class ViewerEntranceDriver {
             guard let flight, written.contains(where: { $0.approximatelyMatches(reported, tolerance: 1e-3) }) else { return }
             // The start pose is drawn: show the model, low, and fly.
             entity?.components.remove(OpacityComponent.self)
-            entity?.position.y = restY - flight.settleDrop
+            entity?.position.y = restY + flight.settleLift
             phase = .flying
             runLoop()
         case .flying:
@@ -328,7 +331,7 @@ final class ViewerEntranceDriver {
                 last = now
                 flight.advance(by: Double(dt.components.seconds) + Double(dt.components.attoseconds) * 1e-18)
                 self.flight = flight
-                self.entity?.position.y = self.restY - flight.settleDrop
+                self.entity?.position.y = self.restY + flight.settleLift
                 if flight.pose != self.pose { self.write(flight.pose) }
                 if flight.isFinished {
                     let landed = self.onLanded

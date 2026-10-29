@@ -17,9 +17,34 @@ describe("generateScene", () => {
     const result = generateScene("AR scene with a chair placed in real world");
     expect(result.code).toContain("ARSceneView(");
     expect(result.code).toContain("AnchorNode");
-    expect(result.code).toContain("onTouchEvent");
+    expect(result.code).toContain("onSingleTapConfirmed");
     expect(result.isAR).toBe(true);
     expect(result.dependencies[0]).toContain("arsceneview");
+  });
+
+  it("hit-tests the latest ARCore frame on a confirmed tap on empty space", () => {
+    const code = generateScene("AR scene with an editable chair").code;
+    expect(code).toContain("onSessionUpdated = { _, frame -> latestFrame = frame }");
+    expect(code).toContain("onGestureListener = rememberOnGestureListener(");
+    expect(code).toContain("onSingleTapConfirmed = { event, node ->");
+    expect(code).toContain("if (node == null)");
+    expect(code).toContain("(it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true");
+    expect(code).toContain("createAnchorOrNull()");
+    expect(code).toContain("?.let { anchor = it }");
+    expect(code).not.toContain("onTouchEvent");
+    expect(code).not.toContain("ACTION_UP");
+    expect(code).not.toContain("anchorCreated");
+    expect(code).not.toContain("hitResult.createAnchor()");
+  });
+
+  it("imports the ARCore Plane and the SceneView tap helpers in AR scenes only", () => {
+    const ar = generateScene("AR scene with a chair").code;
+    expect(ar.startsWith("import com.google.ar.core.Anchor\n")).toBe(true);
+    expect(ar).toContain("import com.google.ar.core.Plane\n");
+    expect(ar).toContain("import com.google.ar.core.Frame\n");
+    expect(ar).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
+    expect(ar).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+    expect(generateScene("a red sphere").code.startsWith("@Composable")).toBe(true);
   });
 
   it("includes light in every scene", () => {

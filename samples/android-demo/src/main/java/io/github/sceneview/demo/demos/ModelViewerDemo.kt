@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -48,7 +49,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.activity.compose.BackHandler
@@ -78,6 +78,9 @@ import androidx.compose.ui.unit.dp
 import io.github.sceneview.SceneView
 import io.github.sceneview.createDefaultCameraManipulator
 import io.github.sceneview.rememberCameraNode
+import io.github.sceneview.rememberFillLightNode
+import io.github.sceneview.rememberMainLightNode
+import io.github.sceneview.rememberView
 import io.github.sceneview.model.model
 import io.github.sceneview.Aabb
 import io.github.sceneview.toAabb
@@ -85,6 +88,7 @@ import io.github.sceneview.verticalFovDegreesForFocalLength
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.LocalDemoFullScreen
 import io.github.sceneview.demo.LocalDemoSceneCover
 import io.github.sceneview.demo.LocalDemoSheetCover
 import androidx.compose.foundation.layout.WindowInsets
@@ -111,6 +115,7 @@ import io.github.sceneview.demo.common.rememberModelDemoEnvironment
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.GlassActionPill
 import io.github.sceneview.demo.ui.viewer.BundledViewerModel
+import io.github.sceneview.demo.ui.viewer.CatalogueShelf
 import io.github.sceneview.demo.ui.viewer.AnimationBar
 import io.github.sceneview.demo.ui.viewer.EnvironmentSheet
 import io.github.sceneview.demo.ui.viewer.ModelPickerSheet
@@ -121,7 +126,19 @@ import io.github.sceneview.demo.OpenedModelIntent
 import io.github.sceneview.core.threemf.ModelUnitGuess
 import io.github.sceneview.core.threemf.ThreeMfUnit
 import io.github.sceneview.demo.ui.viewer.ViewerEnvironment
-import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
+import io.github.sceneview.demo.ui.viewer.ShowroomFloor
+import io.github.sceneview.demo.ui.viewer.ShowroomReflection
+import io.github.sceneview.demo.ui.viewer.rememberShowroomReflection
+import io.github.sceneview.demo.ui.viewer.ShowroomMath
+import io.github.sceneview.demo.ui.viewer.ShowroomStage
+import io.github.sceneview.demo.ui.viewer.ViewerGroundGrid
+import io.github.sceneview.demo.ui.viewer.ViewerOpeningMove
+import io.github.sceneview.demo.ui.viewer.flyToOne
+import io.github.sceneview.demo.ui.viewer.ShowroomToneMapping
+import io.github.sceneview.demo.ui.viewer.ShowroomViewOptions
+import io.github.sceneview.demo.ui.viewer.rememberShowroomStage
+import io.github.sceneview.demo.ui.viewer.showroomIsDark
+import dev.romainguy.kotlin.math.length
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.SURPRISE_POOL
 import io.github.sceneview.demo.demos.internal.SurprisePrefetch
@@ -271,10 +288,40 @@ private val BUNDLED_VIEWER_MODELS = listOf(
     BundledViewerModel("models/khronos_iridescent_dish.glb", "Olive Dish", R.string.demo_model_desc_olive_dish),
     BundledViewerModel("models/khronos_lantern.glb", "Lantern", R.string.demo_model_desc_lantern),
     BundledViewerModel("models/khronos_toy_car.glb", "Toy Car", R.string.demo_model_desc_toy_car),
-    // The three.js Soldier is authored facing -Z: from the viewer's +Z camera it showed its back,
-    // while its picker card showed a face (#3828).
-    BundledViewerModel("models/threejs_soldier.glb", "Soldier", R.string.demo_model_desc_soldier, frontYaw = 180f),
+    // Quaternius Ranger, CC0 (#4586): it replaced the three.js Soldier, a Mixamo character. It is
+    // authored facing +Z, toward the viewer's camera, so it needs no frontYaw (the Soldier faced -Z
+    // and needed 180°, #3828).
+    BundledViewerModel("models/quaternius_ranger.glb", "Ranger", R.string.demo_model_desc_ranger),
 )
+
+/**
+ * A model that only exists in the HD pack: no bundled file, its card render as thumbnail
+ * (`model_thumb_hd_<id with underscores>`) until the download lands.
+ *
+ * Catalogue products open three-quarter, as their cards show them, like the mammoth: the
+ * framing then fits the footprint of the TURNED box. Head-on, a 4.69 m car was framed on its
+ * 1.9 m width and its length ran off both screen edges as soon as it turned.
+ *
+ * [facesMinusZ] marks a file authored facing -Z, like the Soldier: the viewer's +Z camera saw
+ * its back — the MINI's tail lights, the phones' and the tablet's camera side. The web viewer
+ * surveyed every catalogue file and turns the same five by 180° (#4575).
+ */
+private fun hdOnly(
+    id: String,
+    title: String,
+    @StringRes description: Int,
+    facesMinusZ: Boolean = false,
+) = BundledViewerModel(
+    assetPath = null,
+    displayName = title,
+    description = description,
+    frontYaw = if (facesMinusZ) CATALOGUE_FRONT_YAW + 180f else CATALOGUE_FRONT_YAW,
+    hdAssetId = id,
+    thumbnailStem = "hd_" + id.replace('-', '_'),
+)
+
+/** The catalogue's opening turn, the mammoth's and the rover's (see [hdOnly]). */
+private const val CATALOGUE_FRONT_YAW = -30f
 
 /**
  * The Models sheet's "Museum & Space" shelf (2026-09-29): museum scans from the HD pack,
@@ -319,13 +366,281 @@ private val MUSEUM_VIEWER_MODELS = listOf(
         thumbnailStem = "hd_perseverance",
         autoplayAnimations = false,
     ),
+    // Real-product catalogue (#4560): museum pieces and one sci-fi drone, at real size.
+        hdOnly(
+            "bell-x1", "Bell X-1 (1947)",
+            R.string.demo_model_desc_hd_bell_x1,
+        ),
+        hdOnly(
+            "triceratops-skeleton", "Triceratops skeleton",
+            R.string.demo_model_desc_hd_triceratops_skeleton,
+        ),
+        hdOnly(
+            "fangyi-bronze", "Fangyi bronze vessel",
+            R.string.demo_model_desc_hd_fangyi_bronze,
+        ),
+        hdOnly(
+            "canon-at1", "Canon AT-1 (1977)",
+            R.string.demo_model_desc_hd_canon_at1,
+        ),
+        hdOnly(
+            "citroen-h-van", "Citroën H-style van",
+            R.string.demo_model_desc_hd_citroen_h_van,
+            facesMinusZ = true,
+        ),
+        hdOnly(
+            "mech-drone", "Mech drone (sci-fi)",
+            R.string.demo_model_desc_hd_mech_drone,
+        ),
 )
 
-/** Every entry of the Models sheet, bundled and Museum & Space. */
-private val ALL_VIEWER_MODELS = BUNDLED_VIEWER_MODELS + MUSEUM_VIEWER_MODELS
+/**
+ * The Models sheet's real-product shelves (#4560): everyday objects people actually own —
+ * furniture, cars, bikes, appliances, tech, sneakers — each at its real size, one shelf per
+ * category, everyday first. Like Museum & Space they come from the HD pack, one download per
+ * model on its pill's tap: 60 files and ~230 MB is not something the APK can carry. The same
+ * GLBs back the website's catalogue on `/view` (`assets/catalog.json`).
+ */
+private val CATALOGUE_SHELVES = listOf(
+    CatalogueShelf(R.string.demo_model_picker_cat_furniture, listOf(
+        hdOnly(
+            "ikea-nockeby-sofa", "IKEA NOCKEBY sofa",
+            R.string.demo_model_desc_hd_ikea_nockeby_sofa,
+        ),
+        hdOnly(
+            "ikea-kallax-shelf", "IKEA KALLAX shelf",
+            R.string.demo_model_desc_hd_ikea_kallax_shelf,
+        ),
+        hdOnly(
+            "ikea-linnmon-alex-desk", "IKEA LINNMON / ALEX desk",
+            R.string.demo_model_desc_hd_ikea_linnmon_alex_desk,
+        ),
+        hdOnly(
+            "ikea-trensum-mirror", "IKEA TRENSUM mirror",
+            R.string.demo_model_desc_hd_ikea_trensum_mirror,
+        ),
+        hdOnly(
+            "rivet-sloane-sofa", "Rivet Sloane sofa",
+            R.string.demo_model_desc_hd_rivet_sloane_sofa,
+        ),
+        hdOnly(
+            "stone-beam-dalton-sofa", "Stone & Beam Dalton sofa",
+            R.string.demo_model_desc_hd_stone_beam_dalton_sofa,
+        ),
+        hdOnly(
+            "rivet-aiden-armchair", "Rivet Aiden armchair",
+            R.string.demo_model_desc_hd_rivet_aiden_armchair,
+        ),
+        hdOnly(
+            "wishbone-chair", "Wishbone dining chair",
+            R.string.demo_model_desc_hd_wishbone_chair,
+        ),
+        hdOnly(
+            "rivet-arc-floor-lamp", "Rivet arc floor lamp",
+            R.string.demo_model_desc_hd_rivet_arc_floor_lamp,
+        ),
+        hdOnly(
+            "rivet-anne-desk", "Rivet Anne desk",
+            R.string.demo_model_desc_hd_rivet_anne_desk,
+        ),
+        hdOnly(
+            "rivet-media-console", "Rivet media console",
+            R.string.demo_model_desc_hd_rivet_media_console,
+        ),
+    )),
+    CatalogueShelf(R.string.demo_model_picker_cat_cars, listOf(
+        hdOnly(
+            "tesla-model-3", "Tesla Model 3",
+            R.string.demo_model_desc_hd_tesla_model_3,
+        ),
+        hdOnly(
+            "peugeot-2008", "Peugeot 2008",
+            R.string.demo_model_desc_hd_peugeot_2008,
+        ),
+        hdOnly(
+            "mini-cooper-s", "MINI Cooper S",
+            R.string.demo_model_desc_hd_mini_cooper_s,
+            facesMinusZ = true,
+        ),
+        hdOnly(
+            "fiat-500-classic", "Fiat 500 (classic)",
+            R.string.demo_model_desc_hd_fiat_500_classic,
+        ),
+    )),
+    CatalogueShelf(R.string.demo_model_picker_cat_bikes, listOf(
+        hdOnly(
+            "mongoose-tyax-mtb", "Mongoose Tyax mountain bike",
+            R.string.demo_model_desc_hd_mongoose_tyax_mtb,
+        ),
+        hdOnly(
+            "tier-escooter", "TIER e-scooter",
+            R.string.demo_model_desc_hd_tier_escooter,
+        ),
+        hdOnly(
+            "vespa-et3", "Vespa Primavera ET3",
+            R.string.demo_model_desc_hd_vespa_et3,
+        ),
+        hdOnly(
+            "city-bike", "City bike",
+            R.string.demo_model_desc_hd_city_bike,
+        ),
+    )),
+    CatalogueShelf(R.string.demo_model_picker_cat_home, listOf(
+        hdOnly(
+            "kitchenaid-stand-mixer", "KitchenAid stand mixer",
+            R.string.demo_model_desc_hd_kitchenaid_stand_mixer,
+        ),
+        hdOnly(
+            "smeg-toaster", "SMEG toaster",
+            R.string.demo_model_desc_hd_smeg_toaster,
+        ),
+        hdOnly(
+            "dyson-hot-cool-fan", "Dyson Hot+Cool fan",
+            R.string.demo_model_desc_hd_dyson_hot_cool_fan,
+        ),
+        hdOnly(
+            "amazonbasics-portable-ac", "AmazonBasics portable AC",
+            R.string.demo_model_desc_hd_amazonbasics_portable_ac,
+        ),
+        hdOnly(
+            "glass-kettle", "Glass kettle",
+            R.string.demo_model_desc_hd_glass_kettle,
+        ),
+        hdOnly(
+            "glass-door-fridge", "Glass-door fridge",
+            R.string.demo_model_desc_hd_glass_door_fridge,
+        ),
+    )),
+    CatalogueShelf(R.string.demo_model_picker_cat_tech, listOf(
+        hdOnly(
+            "iphone-13-pro-max", "iPhone 13 Pro Max",
+            R.string.demo_model_desc_hd_iphone_13_pro_max,
+            facesMinusZ = true,
+        ),
+        hdOnly(
+            "galaxy-s21-ultra", "Samsung Galaxy S21 Ultra",
+            R.string.demo_model_desc_hd_galaxy_s21_ultra,
+            facesMinusZ = true,
+        ),
+        hdOnly(
+            "macbook-pro-13", "MacBook Pro 13\"",
+            R.string.demo_model_desc_hd_macbook_pro_13,
+        ),
+        hdOnly(
+            "ipad-mini-6", "iPad mini 6",
+            R.string.demo_model_desc_hd_ipad_mini_6,
+            facesMinusZ = true,
+        ),
+        hdOnly(
+            "apple-watch-series-7", "Apple Watch Series 7",
+            R.string.demo_model_desc_hd_apple_watch_series_7,
+        ),
+        hdOnly(
+            "airpods-pro", "AirPods Pro",
+            R.string.demo_model_desc_hd_airpods_pro,
+        ),
+        hdOnly(
+            "nintendo-switch-oled", "Nintendo Switch OLED",
+            R.string.demo_model_desc_hd_nintendo_switch_oled,
+        ),
+        hdOnly(
+            "xbox-wireless-controller", "Xbox Wireless Controller",
+            R.string.demo_model_desc_hd_xbox_wireless_controller,
+        ),
+        hdOnly(
+            "sony-mdr-7506", "Sony MDR-7506 headphones",
+            R.string.demo_model_desc_hd_sony_mdr_7506,
+        ),
+        hdOnly(
+            "skullcandy-crusher", "Skullcandy Crusher headphones",
+            R.string.demo_model_desc_hd_skullcandy_crusher,
+        ),
+        hdOnly(
+            "jbl-tour-one-m3-v2", "JBL Tour One M3 headphones",
+            R.string.demo_model_desc_hd_jbl_tour_one_m3_v2,
+        ),
+        hdOnly(
+            "jbl-charge-speaker", "JBL Charge speaker",
+            R.string.demo_model_desc_hd_jbl_charge_speaker,
+        ),
+        hdOnly(
+            "ue-boom-speaker", "Ultimate Ears BOOM speaker",
+            R.string.demo_model_desc_hd_ue_boom_speaker,
+        ),
+        hdOnly(
+            "gopro-hero-8", "GoPro HERO8",
+            R.string.demo_model_desc_hd_gopro_hero_8,
+        ),
+        hdOnly(
+            "canon-eos-rp-v2", "Canon EOS RP camera",
+            R.string.demo_model_desc_hd_canon_eos_rp_v2,
+        ),
+        hdOnly(
+            "instax-mini-8", "Instax Mini 8 camera",
+            R.string.demo_model_desc_hd_instax_mini_8,
+        ),
+        hdOnly(
+            "dji-mavic-3-v2", "DJI Mavic 3 drone",
+            R.string.demo_model_desc_hd_dji_mavic_3_v2,
+        ),
+        hdOnly(
+            "desktop-3d-printer", "Desktop 3D printer",
+            R.string.demo_model_desc_hd_desktop_3d_printer,
+        ),
+    )),
+    CatalogueShelf(R.string.demo_model_picker_cat_fashion, listOf(
+        hdOnly(
+            "air-jordan-1", "Nike Air Jordan 1",
+            R.string.demo_model_desc_hd_air_jordan_1,
+        ),
+        hdOnly(
+            "nike-pegasus-36", "Nike Air Zoom Pegasus 36",
+            R.string.demo_model_desc_hd_nike_pegasus_36,
+        ),
+        hdOnly(
+            "converse-chuck-taylor", "Converse Chuck Taylor",
+            R.string.demo_model_desc_hd_converse_chuck_taylor,
+        ),
+        hdOnly(
+            "adidas-high-top", "adidas high-top sneaker",
+            R.string.demo_model_desc_hd_adidas_high_top,
+        ),
+        hdOnly(
+            "reebok-fueltrain", "Reebok FUELTRAIN",
+            R.string.demo_model_desc_hd_reebok_fueltrain,
+        ),
+        hdOnly(
+            "ugg-classic-tall", "UGG Classic Tall boot",
+            R.string.demo_model_desc_hd_ugg_classic_tall,
+        ),
+        hdOnly(
+            "jansport-backpack", "JanSport backpack",
+            R.string.demo_model_desc_hd_jansport_backpack,
+        ),
+        hdOnly(
+            "rolex-watch-v2", "Rolex watch",
+            R.string.demo_model_desc_hd_rolex_watch_v2,
+        ),
+        hdOnly(
+            "moto-helmet-v2", "Motorcycle helmet",
+            R.string.demo_model_desc_hd_moto_helmet_v2,
+        ),
+        hdOnly(
+            "tennis-racket", "Tennis racket",
+            R.string.demo_model_desc_hd_tennis_racket,
+        ),
+        hdOnly(
+            "photorealistic-guitar-v2", "Electric guitar",
+            R.string.demo_model_desc_hd_photorealistic_guitar_v2,
+        ),
+    )),
+)
 
-/** The lighting a Museum & Space model opens under: the viewer's "Studio" softbox. */
-private const val MUSEUM_ENVIRONMENT = "environments/studio_warm_2k.hdr"
+/** Every HD entry of the Models sheet: the product shelves and Museum & Space. */
+private val HD_STUDIO_MODELS = CATALOGUE_SHELVES.flatMap { it.models } + MUSEUM_VIEWER_MODELS
+
+/** Every entry of the Models sheet: bundled, the product shelves and Museum & Space. */
+private val ALL_VIEWER_MODELS = BUNDLED_VIEWER_MODELS + HD_STUDIO_MODELS
 
 /** The section a scene card of the Models sheet opens. */
 private fun ViewerScene.mode(): ModelViewerMode = when (this) {
@@ -348,13 +663,10 @@ private fun ViewerScene.mode(): ModelViewerMode = when (this) {
 private const val MODEL_COVER_FRAMES = 2
 
 /**
- * Length of the camera fly-in when the model lands (#3406). Twice `duration-medium`:
- * a screen transition is 350 ms, but this one is the subject arriving rather than a
- * surface changing, and under 500 ms the dolly reads as a stutter instead of a move.
- * Long enough to be seen, short enough that the first drag is never waiting on it —
- * and a touch cancels it outright.
+ * Length of the camera fly-in when the model lands (#3406): the shared opening move's
+ * `motion-entrance` (#4651). A touch cancels it outright.
  */
-private const val CAMERA_ENTRANCE_MILLIS = 700
+private const val CAMERA_ENTRANCE_MILLIS = ViewerOpeningMove.DURATION_MILLIS
 
 /**
  * How long the resting framing takes to follow a change of the chrome insets or the viewport
@@ -366,33 +678,13 @@ private const val FRAMING_SETTLE_MILLIS = 350
 private val NoContentPadding = PaddingValues(0.dp)
 
 /**
- * Largest step, in seconds, one frame may advance the camera flights by. The frames that first
- * show a model are the ones its upload drops; a flight timed on the wall clock spends itself in
- * those gaps and reaches the screen as a cut. Capped, a dropped frame only makes it run longer.
+ * The clip a model opens on: the one named "Idle" when the model has one (Blender exports often
+ * prefix the armature, `CharacterArmature|Idle`), otherwise the first.
  */
-private const val MAX_FLIGHT_STEP_SECONDS = 1f / 20f
-
-/**
- * Animates this value from where it is to `1f` over [durationMillis] of *frames*, eased by
- * [easing]. Unlike `animateTo(tween(...))`, which reads the wall clock, each frame advances by
- * at most [MAX_FLIGHT_STEP_SECONDS], so a stall pauses the flight instead of skipping it.
- */
-private suspend fun Animatable<Float, *>.flyToOne(
-    durationMillis: Int,
-    easing: androidx.compose.animation.core.Easing,
-) {
-    val duration = durationMillis / 1000f
-    val start = value
-    var elapsed = 0f
-    var last = withFrameNanos { it }
-    while (elapsed < duration) {
-        val now = withFrameNanos { it }
-        elapsed += ((now - last) / 1_000_000_000f).coerceIn(0f, MAX_FLIGHT_STEP_SECONDS)
-        last = now
-        val t = easing.transform((elapsed / duration).coerceAtMost(1f))
-        snapTo(start + (1f - start) * t)
-    }
-}
+private fun defaultClipIndex(animator: com.google.android.filament.gltfio.Animator): Int =
+    (0 until animator.animationCount).firstOrNull {
+        animator.getAnimationName(it).substringAfterLast('|').equals("Idle", ignoreCase = true)
+    } ?: 0
 
 /**
  * The resting framing the camera is actually aimed with — the live [DemoMath.ViewerFraming],
@@ -513,26 +805,31 @@ private fun SingleModelSection(
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
+    val materialLoader = rememberMaterialLoader(engine)
+    // The viewer owns its view, so the studio showroom can grade it and fog it (ShowroomStage).
+    val view = rememberView(engine)
+    val showroomDark = showroomIsDark()
+    val showroomPalette = if (showroomDark) SceneViewTokens.Showroom.Dark else SceneViewTokens.Showroom.Light
+    val showroom = rememberShowroomStage(engine, view, materialLoader)
+    val showroomReflection = rememberShowroomReflection(engine, view)
     var modelSheetOpen by remember { mutableStateOf(false) }
     var environmentSheetOpen by remember { mutableStateOf(false) }
     // Height the open Lighting sheet covers from the bottom edge, as it measures itself (#4053).
     var environmentSheetCover by remember { mutableStateOf(0.dp) }
-    // Chinese Garden leads, and the flagship viewer opens on it (#3402). The old default —
-    // `studio_2k` — gave correct light but no colour, and on the near-black stage the hero
-    // read as a grey object on a black field. Measured on the emulator against every bundled
-    // HDR: the studios are neutral, `outdoor_cloudy` is flat by construction, and the two
-    // night maps are darker than the stage. The garden is the one that makes a PBR viewer
-    // look like a PBR viewer — green canopy and blue sky across
-    // the chrome, a hard sun glint, real depth in the visor — and it is bright enough that
-    // the model never sinks into the stage in either theme. The list still leads with the
-    // default so "Reset lighting" is the first tile.
+    // The studio showroom leads, and every model opens in it: a seamless cyclorama — a polished
+    // floor with a pool of light under the subject, dissolving into a gradient backdrop with no
+    // horizon line — lit by the matching studio map, white in light theme and charcoal in dark.
+    // It replaces the flat near-black stage, on which a car mirrored a grey softbox studio that
+    // nobody could see. Every other map stays one tap away, shown in that same showroom, and
+    // "Reset lighting" brings the showroom back.
     //
     // #4052 — every name says what the HDR shows, and every tile is rendered from it. The
     // bundled `sunset_2k.hdr` is an overcast seascape, so "Sunset" is Poly Haven's "The Sky Is
     // On Fire" (CC0). `studio_warm_2k.hdr` is the grey softbox studio and `studio_2k.hdr` a
     // sunlit living room, so they read "Studio" and "Interior" — the names Material Studio
     // already gives the same two files.
-    val viewerEnvironments = remember { listOf(
+    val viewerEnvironments = remember(showroomDark) { listOf(
+        ViewerEnvironment(ShowroomMath.hdrPath(showroomDark), "Showroom"),
         ViewerEnvironment("environments/chinese_garden_2k.hdr", "Chinese Garden"),
         ViewerEnvironment("environments/sky_on_fire_2k.hdr", "Sunset"),
         ViewerEnvironment("environments/studio_warm_2k.hdr", "Studio"),
@@ -541,8 +838,7 @@ private fun SingleModelSection(
         ViewerEnvironment("environments/night_sky_2k.hdr", "Night Sky"),
         ViewerEnvironment("environments/rooftop_night_2k.hdr", "Rooftop Night"),
     ) }
-    // The lighting the user picked in the sheet; `null` = the default, which follows the model
-    // on stage (see `stageIsMuseumScan`).
+    // The lighting the user picked in the sheet; `null` = the showroom of the current theme.
     var userEnvironment by remember { mutableStateOf<ViewerEnvironment?>(null) }
     var iblIntensity by remember { mutableStateOf(1f) }
     var showEnvironment by remember { mutableStateOf(false) }
@@ -727,32 +1023,11 @@ private fun SingleModelSection(
                 ?.firstOrNull { android.net.Uri.fromFile(hdStore.fileFor(it)).toString() == loc }
         }
     }
-    // Museum & Space opens under Studio. The scans are pale and matte (the mammoth has no
-    // colour texture at all), so the garden's green canopy tints them and its sun blooms into
-    // a halo round the bones; the softbox shows them as the museum does, as iOS does. Only
-    // the default is swapped: a lighting the user picked stays.
-    // The default follows the model ON STAGE, not the pick (#4171): switched at the pick, the
-    // Apollo capsule held on stage while the Soldier loaded took the garden's warm light for
-    // seconds — the "yellow flash". It is derived here, in composition, so it changes in the
-    // very frame the replacement is handed over (an effect would lag it by one frame).
-    // A file the user opened, or a Surprise pick, is never a Museum scan. `null` while nothing is
-    // on stage (a Museum entry still downloading behind its poster): the last answer holds, so
-    // Museum → Museum never decodes the garden in between.
-    val stageIsMuseumScan: Boolean? = when {
-        activeModelInstance == null -> null
-        streamedModelInstance != null -> false
-        else -> hdAssetOnStage?.id?.let { id -> MUSEUM_VIEWER_MODELS.any { it.hdAssetId == id } } ?: false
-    }
-    // Plain holder, not state: its value is a pure function of what is on stage, so a discarded
-    // composition that wrote it leaves nothing wrong behind.
-    val stageMuseumLatch = remember { BooleanArray(1) }
-    val stageShowsMuseumScan = stageIsMuseumScan ?: stageMuseumLatch[0]
-    stageMuseumLatch[0] = stageShowsMuseumScan
-    val requestedEnvironment = userEnvironment ?: if (stageShowsMuseumScan) {
-        viewerEnvironments.first { it.assetPath == MUSEUM_ENVIRONMENT }
-    } else {
-        viewerEnvironments.first()
-    }
+    // Every model opens in the showroom of the current theme — a car, a sneaker and the pale,
+    // matte Museum scans alike (the neutral studio shows them as the museum does, as iOS does,
+    // where the garden's canopy tinted them green). A lighting the user picked stays. One default
+    // for every model also retires the per-model switch of #4171 and its "yellow flash".
+    val requestedEnvironment = userEnvironment ?: viewerEnvironments.first()
     // Metres per model unit of the instance on screen: an HD file authored in centimetres (the
     // Apollo 11 scans) is shown at its real size.
     val modelScale = hdAssetOnStage?.scale ?: 1f
@@ -775,7 +1050,7 @@ private fun SingleModelSection(
     LaunchedEffect(activeModelInstance, animationSelection) {
         if (!stageShowsSelection || lastAnimationReset == animationSelection) return@LaunchedEffect
         lastAnimationReset = animationSelection
-        selectedAnimation = 0
+        selectedAnimation = activeModelInstance?.animator?.let(::defaultClipIndex) ?: 0
         animationProgress = 0f
         animationPlaying = streamedModelInstance != null || selectedModel.autoplayAnimations
     }
@@ -829,8 +1104,12 @@ private fun SingleModelSection(
         if (!animationPlaying) {
             animator.applyAnimation(selectedAnimation, animationProgress * duration)
             animator.updateBoneMatrices()
+            renderInvalidator.requestRender()
             return@LaunchedEffect
         }
+        // This loop is the only thing animating the model (the node no longer auto-plays every
+        // clip), and an animator write-back invalidates nothing under render-on-demand: each
+        // pose asks for the frame that shows it.
         var start = 0L
         while (animationPlaying) {
             withFrameNanos { now ->
@@ -839,6 +1118,7 @@ private fun SingleModelSection(
                 animationProgress = (seconds % duration) / duration
                 animator.applyAnimation(selectedAnimation, animationProgress * duration)
                 animator.updateBoneMatrices()
+                renderInvalidator.requestRender()
             }
         }
     }
@@ -846,15 +1126,18 @@ private fun SingleModelSection(
     // Auto-fit camera framing (#1439, reworked after QA round 3). The model is rendered at its
     // true glTF size and is never moved: `DemoMath.viewerFraming` places the CAMERA from the
     // instance's real AABB so the model spans ~65 % of the band the chrome leaves visible
-    // (identity row → dock), centred on its bounding-box centre, seen from the front (+Z) and
-    // 12° above. The library's `autoCenterContent` is OFF for this scene — it would translate
-    // the content root to the origin while the camera aims at the measured centre, and that
-    // double offset is what put the Fox's tail in the lens.
-    Box(Modifier.fillMaxSize().background(SceneViewTokens.Stage.background)) {
+    // (identity row → dock), centred on its bounding-box centre, seen from the front (+Z), low
+    // for a car and higher for a watch ([ShowroomMath.pitchDegrees]). The library's
+    // `autoCenterContent` is OFF for this scene — it would translate the content root to the
+    // origin while the camera aims at the measured centre, and that double offset is what put
+    // the Fox's tail in the lens.
+    // The ground behind the surface is the showroom's horizon band, the colour the scene's edges
+    // meet, so a surface still attaching shows no dark frame.
+    Box(Modifier.fillMaxSize().background(showroomPalette.horizon)) {
     // Every bundled model — the Damaged Helmet included — is framed at its loaded glTF pose.
     // The helmet's root node already carries the +90° X quaternion that stands it upright under
     // glTF +Y-up/+Z-front, so its world AABB is right as loaded; an extra -90° X here tipped it
-    // crown-forward. The camera always looks from +Z, 12° above (the Khronos sample-viewer home).
+    // crown-forward. The camera always looks from +Z, from above.
     // Measured in world units: an HD model shown at its real size (`modelScale`) is framed at it.
     // A bundled model turned by `frontYaw` is framed by the footprint of the TURNED box: at -30°
     // the mammoth's tusks reached past the screen edge when framed by its unturned AABB.
@@ -884,6 +1167,15 @@ private fun SingleModelSection(
             }
     }
     val modelCenter = bounds?.center ?: Position(0f, 0f, 0f)
+    // The showroom under the subject: its floor at the box's base, its contact shadows on the
+    // UNTURNED footprint (the shadow quads turn with the model), every size in its radius.
+    val footprint = remember(activeModelInstance, modelScale) {
+        val instance = activeModelInstance ?: return@remember null
+        runCatching { instance.model.boundingBox.toAabb() }.getOrNull()?.takeUnless { it.isEmpty }
+            ?.let { it.halfExtent * modelScale }
+    }
+    val stageFloorY = bounds?.let { it.center.y - it.halfExtent.y } ?: 0f
+    val stageRadius = bounds?.let { length(it.halfExtent) } ?: 1f
     // Live auto-fit distance, written by the scene block (which knows the chrome insets) so the
     // "Camera distance" slider below can display it. 1.4 m until the bounds are measurable.
     var autoFitRadius by remember { mutableStateOf(1.4f) }
@@ -993,28 +1285,32 @@ private fun SingleModelSection(
     )
     val viewerEnvironment = loadedEnvironment ?: fallbackEnvironment
     if (loadedEnvironment != null) firstEnvironmentLoaded = true
-    LaunchedEffect(viewerEnvironment, iblIntensity) {
-        viewerEnvironment.indirectLight?.intensity = 30_000f * iblIntensity
+    // The map actually lighting the scene — the previous one stays up while the next loads, so
+    // this follows the loaded environment, not the pick. `null` while the neutral fallback is up.
+    val litEnvironmentPath = remember(loadedEnvironment) {
+        if (loadedEnvironment != null) requestedEnvironment.assetPath else null
+    }
+    // Lit by the showroom's own studio map: tone-mapped with PBR Neutral and without the SDK's
+    // sun, whose hard overhead glint the studio's softbox replaces.
+    val showroomLit = ShowroomMath.isShowroom(litEnvironmentPath)
+    // The showroom is drawn unless the user shows the map itself as the background. Gated on the
+    // skybox actually being there, not on the toggle alone: turning the environment on reloads
+    // the HDR with its skybox, and the one still on screen meanwhile has none.
+    val showroomStaged = !(showEnvironment && loadedEnvironment?.skybox != null)
+    LaunchedEffect(viewerEnvironment, iblIntensity, litEnvironmentPath) {
+        viewerEnvironment.indirectLight?.intensity = ShowroomMath.baseIntensity(litEnvironmentPath) * iblIntensity
         // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
         // again — so dimming it reaches the engine and nothing else. Under `OnDemand` the new
         // ambient would sit there with no frame coming to show it (#3718).
         renderInvalidator.requestRender()
     }
-    // With the environment hidden, the model stands on the stage colour, as on iOS — not on the
-    // renderer's black clear, which covered the Box's `Stage.background` edge to edge. The
-    // backdrop is pre-compensated for the tone mapper (see ViewerBackdrop). `copy` shares the
-    // environment's Filament handles and is never itself destroyed; only the backdrop is ours.
-    val stageBackdrop = remember(engine) { ViewerBackdrop.create(engine) }
-    DisposableEffect(stageBackdrop) {
-        onDispose { engine.destroySkybox(stageBackdrop) }
+    // With the environment hidden, the model stands in the showroom: its backdrop replaces the
+    // map's skybox (`copy` shares the environment's Filament handles and is never itself
+    // destroyed; the backdrop belongs to the stage).
+    val stagedEnvironment = remember(viewerEnvironment, showroomStaged, showroom) {
+        if (showroomStaged) viewerEnvironment.copy(skybox = showroom.skybox) else viewerEnvironment
     }
-    // Gated on the skybox actually being there, not on the toggle alone: turning the environment
-    // on reloads the HDR with its skybox, and the one still on screen meanwhile has none — handed
-    // over as is, it would drop the view to the renderer's black clear until the reload lands.
-    val stagedEnvironment = remember(viewerEnvironment, showEnvironment, stageBackdrop) {
-        if (showEnvironment && loadedEnvironment?.skybox != null) viewerEnvironment
-        else viewerEnvironment.copy(skybox = stageBackdrop)
-    }
+    ShowroomToneMapping(engine, view, neutral = showroomLit, requestRender = renderInvalidator::requestRender)
     // The arrival (#3406) — camera fly-in and model settle, started together and gated on
     // the frame that actually SHOWS the model. Keying these on `bounds` alone (what the
     // settle used to do) spent the whole animation behind the loading cover: the model was
@@ -1062,7 +1358,7 @@ private fun SingleModelSection(
         launch { fitProgress.animateTo(1f, SceneViewTokens.Motion.spring()) }
         // The flight is read by the camera manipulator from inside the render loop; wake it.
         renderInvalidator.requestRender()
-        entranceProgress.flyToOne(CAMERA_ENTRANCE_MILLIS, SceneViewTokens.Ease.expressive)
+        entranceProgress.flyToOne(CAMERA_ENTRANCE_MILLIS, ViewerOpeningMove.easing)
     }
     // Back closes transient chrome before leaving the demo.
     val anySheetOpen = animationBarOpen || modelSheetOpen || environmentSheetOpen
@@ -1309,6 +1605,7 @@ private fun SingleModelSection(
                         activeModelInstance?.animator?.takeIf { selectedAnimation in 0 until it.animationCount }?.let { animator ->
                             animator.applyAnimation(selectedAnimation, it * animator.getAnimationDuration(selectedAnimation))
                             animator.updateBoneMatrices()
+                            renderInvalidator.requestRender()
                         }
                     })
             }
@@ -1349,6 +1646,9 @@ private fun SingleModelSection(
         chromeToggleOnTap = true,
         // The Lighting sheet is glass (#3827): the dock would show through it.
         dockHidden = environmentSheetOpen,
+        // The showroom follows the theme — a white studio in light, a charcoal one in dark — so
+        // the glass over it does too.
+        themedStage = true,
     ) {
         // The scene fills the viewport edge to edge; the chrome floats over it. Framing
         // therefore needs the band the chrome leaves visible: the identity row at the top
@@ -1369,10 +1669,17 @@ private fun SingleModelSection(
             if (environmentSheetOpen) environmentSheetCover else 0.dp,
             LocalDemoSheetCover.current,
         )
-        val bottomInset = maxOf(
-            SETTINGS_FAB_RESERVED_SPACE + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-            sheetCover,
-        )
+        // Full screen (#4558): no dock to keep the model above, and no sheet — the model takes the
+        // whole window, and gets its band back on the way out.
+        val fullScreen = LocalDemoFullScreen.current
+        val bottomInset = if (fullScreen) {
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        } else {
+            maxOf(
+                SETTINGS_FAB_RESERVED_SPACE + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
+                sheetCover,
+            )
+        }
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             // A phone held sideways (#4326): the lens projects into the area the chrome and the
             // sheets leave free, wherever they are right now, so the model is drawn — and picked —
@@ -1412,18 +1719,31 @@ private fun SingleModelSection(
             val easedFraming = remember { EasedFraming() }
             val framingBlend = remember { Animatable(1f) }
             var framingEaseGeneration by remember { mutableStateOf(0) }
+            // A full-screen toggle (#4558) re-frames on `motion-focus`, the chrome's own move; an
+            // inset settling or a sheet keeps the short settle.
+            val framedFullScreen = remember { booleanArrayOf(fullScreen) }
+            var framingEaseIsFocus by remember { mutableStateOf(false) }
             SideEffect {
-                if (easedFraming.retarget(framing, bounds, framingBlend.value)) framingEaseGeneration++
+                val focusMove = framedFullScreen[0] != fullScreen
+                framedFullScreen[0] = fullScreen
+                if (easedFraming.retarget(framing, bounds, framingBlend.value)) {
+                    framingEaseIsFocus = focusMove
+                    framingEaseGeneration++
+                }
             }
             LaunchedEffect(framingEaseGeneration) {
                 if (framingEaseGeneration == 0) return@LaunchedEffect
                 framingBlend.snapTo(0f)
                 easedFraming.release()
                 renderInvalidator.requestRender()
-                framingBlend.flyToOne(
-                    FRAMING_SETTLE_MILLIS,
-                    androidx.compose.animation.core.FastOutSlowInEasing,
-                )
+                if (framingEaseIsFocus) {
+                    framingBlend.flyToOne(SceneViewTokens.Motion.focusMillis, SceneViewTokens.Ease.expressive)
+                } else {
+                    framingBlend.flyToOne(
+                        FRAMING_SETTLE_MILLIS,
+                        androidx.compose.animation.core.FastOutSlowInEasing,
+                    )
+                }
             }
             // Camera orbits; the model stays fixed at its glTF pose. The resting pose is flown
             // to when the model lands (#3406) and then held live.
@@ -1442,6 +1762,11 @@ private fun SingleModelSection(
             // remembered or a state read, never this composition's `framing`.
             val aimFraming = { easedFraming.current(framingBlend.value) ?: liveFraming.value }
             val liveCenter = androidx.compose.runtime.rememberUpdatedState(modelCenter)
+            val liveEyeFloor = androidx.compose.runtime.rememberUpdatedState(
+                bounds?.takeIf { showroomStaged }?.halfExtent?.let {
+                    stageFloorY + ShowroomMath.MIN_EYE_HEIGHT_EXTENTS * 2f * maxOf(it.x, it.y, it.z)
+                },
+            )
             val livePivot = {
                 val f = aimFraming()
                 val c = liveCenter.value
@@ -1465,6 +1790,8 @@ private fun SingleModelSection(
             // the entrance effect has claimed it (see `entranceOwner`).
             val manipulatorContent = remember { java.util.concurrent.atomic.AtomicReference<Any?>(null) }
             val manipulatorInstance = remember { java.util.concurrent.atomic.AtomicReference<Any?>(null) }
+            // Whether any model has been on stage yet (see the zoom reset below).
+            val stageHadModel = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
             val cameraManipulator = remember {
                 EntranceCameraManipulator(
                     eye = {
@@ -1482,6 +1809,11 @@ private fun SingleModelSection(
                     // A pinch publishes its distance to the SAME state the slider writes, so the
                     // two controls agree and the readout follows the gesture.
                     onDistanceChange = { DemoSettings.cameraDistance = it },
+                    // The web viewer's floor: the eye stays 2 % of the subject's size above it.
+                    minEyeHeight = { liveEyeFloor.value },
+                    // ...and looks down at it by a few degrees at least: lower, the lit floor
+                    // and the backdrop meet in a line (the web's unlit floor does not).
+                    minEyeElevationDegrees = ShowroomMath.MIN_EYE_ELEVATION_DEGREES,
                 )
             }
             // A new model on stage: what a rebuilt manipulator used to start from — no orbit, no
@@ -1489,6 +1821,14 @@ private fun SingleModelSection(
             // that draws the model is aimed for it.
             SideEffect {
                 if (manipulatorInstance.get() !== activeModelInstance) {
+                    // The zoom belongs to the model it was set on. `DemoSettings.cameraDistance` is
+                    // one absolute distance in metres: carried over, a pinch-out on 6 cm earbuds
+                    // left the next helmet a speck off to the side, and a pinch-in left it filling
+                    // the screen (QA pass 2026-10-16). The first model keeps it — that is the
+                    // `camera_distance` deep link, set before anything is on stage.
+                    if (stageHadModel.getAndSet(activeModelInstance != null || stageHadModel.get())) {
+                        DemoSettings.cameraDistance = null
+                    }
                     manipulatorInstance.set(activeModelInstance)
                     manipulatorContent.set(bounds)
                     cameraManipulator.startOver()
@@ -1500,26 +1840,121 @@ private fun SingleModelSection(
             // frames at ~5 mm, so a fixed 1 cm near plane clips it away entirely and no amount of
             // recentring brings it back. `viewerNearPlane` keeps the default for everything that
             // already worked and only tightens it for a subject smaller than it.
-            val cameraNode = rememberCameraNode(engine)
+            // The product-shot lens: a moderate telephoto flattens the bonnet a 28 mm wide angle
+            // bulged towards the lens, as a car configurator or a product page frames it.
+            val cameraNode = rememberCameraNode(engine) { focalLength = VIEWER_FOCAL_LENGTH_MM }
             // In the frame the radius changes, not one later (see `fitRadius`).
             SideEffect {
                 val near = DemoMath.viewerNearPlane(fitRadius)
                 if (cameraNode.near != near) cameraNode.near = near
             }
+            // The showroom lights the subject with its own studio alone: the SDK's sun and fill
+            // laid a second, unrelated glint on every car body. Every other map keeps them.
+            val mainLight = rememberMainLightNode(engine)
+            val fillLight = rememberFillLightNode(engine)
+            // The stage follows the look in the composition that changes it, and the eye after
+            // every presented frame: the fog's horizon band sits at the eye's height.
+            SideEffect {
+                val look = ShowroomStage.Look(
+                    palette = showroomPalette,
+                    isDark = showroomDark,
+                    neutral = showroomLit,
+                    irradiance = ShowroomMath.upwardIrradiance(litEnvironmentPath),
+                    baseIntensity = ShowroomMath.baseIntensity(litEnvironmentPath),
+                    slider = iblIntensity,
+                    exposure = ShowroomMath.exposure(
+                        cameraNode.aperture, cameraNode.shutterSpeed, cameraNode.sensitivity,
+                    ),
+                    lights = !showroomLit,
+                    staged = showroomStaged,
+                    center = modelCenter,
+                    floorY = stageFloorY,
+                    radius = stageRadius,
+                )
+                if (showroom.dress(look, cameraNode.worldPosition)) renderInvalidator.requestRender()
+            }
+            // The subject mirrored in the showroom floor, as on the web viewer's /view. Not on a
+            // low-RAM device, the bottom rung of the home hero's tiers: a second render of the
+            // subject every other frame while the eye moves costs the Pixel 4a about 7 % of its
+            // frames, a low-RAM GPU more than it has.
+            val reflectionAllowed = remember(context) {
+                context.getSystemService(android.app.ActivityManager::class.java)?.isLowRamDevice != true
+            }
+            val settleLift = fitRadius * 0.02f * (1f - fitProgress.value).coerceAtLeast(0f)
+            val reflectionOn = reflectionAllowed && showroomStaged
+            SideEffect {
+                val pose = if (reflectionOn && bounds != null && footprint != null) {
+                    ShowroomReflection.Pose(
+                        center = modelCenter,
+                        floorY = stageFloorY - ShowroomMath.FLOOR_DROP_RADII * stageRadius,
+                        radius = stageRadius,
+                        halfWidth = footprint.x,
+                        halfDepth = footprint.z,
+                        height = 2f * bounds.halfExtent.y,
+                        yawDegrees = modelYaw + frontYaw,
+                        lift = settleLift,
+                        isDark = showroomDark,
+                    )
+                } else {
+                    null
+                }
+                if (showroomReflection.set(showroom.floorMaterial, pose)) renderInvalidator.requestRender()
+            }
+            val stageOnFrame: (Long) -> Unit = remember(
+                onFrame,
+                showroom,
+                showroomReflection,
+                cameraNode,
+                renderInvalidator,
+            ) {
+                { nanos ->
+                    onFrame(nanos)
+                    if (showroom.onFrame(cameraNode.worldPosition)) renderInvalidator.requestRender()
+                    // The floor's mirror image follows the eye one frame behind it.
+                    if (showroomReflection.onFrame()) renderInvalidator.requestRender()
+                }
+            }
             SceneView(
                 modifier = Modifier.fillMaxSize(),
                 renderInvalidator = renderInvalidator,
-                onFrame = onFrame,
+                onFrame = stageOnFrame,
                 engine = engine,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
+                view = view,
                 environment = stagedEnvironment,
+                mainLightNode = mainLight.takeUnless { showroomLit },
+                fillLightNode = fillLight.takeUnless { showroomLit },
                 // OFF: the camera is aimed at the measured bbox centre, see the framing notes.
                 autoCenterContent = false,
                 contentPadding = sceneFrame?.contentPadding ?: NoContentPadding,
                 cameraNode = cameraNode,
                 cameraManipulator = cameraManipulator,
             ) {
+                // The showroom floor and the contact shadows that ground the subject on it.
+                if (bounds != null && footprint != null) {
+                    ShowroomFloor(
+                        stage = showroom,
+                        center = modelCenter,
+                        floorY = stageFloorY,
+                        radius = stageRadius,
+                        halfWidth = footprint.x,
+                        halfDepth = footprint.z,
+                        yawDegrees = modelYaw + frontYaw,
+                        showFloor = showroomStaged,
+                        shadowAlpha = fitProgress.value,
+                    )
+                }
+                // The ground grid every viewer shares (#4651), on the floor the model settles onto.
+                if (bounds != null) {
+                    ViewerGroundGrid(
+                        floorY = stageFloorY,
+                        target = modelCenter,
+                        isDark = showroomDark,
+                        requestRender = renderInvalidator::requestRender,
+                    )
+                }
                 activeModelInstance?.let { instance ->
                     // "Spin scene" turns the model about its bounding-box centre, not the glTF
                     // origin: counter-translate the pivot so the centre stays put under the camera.
@@ -1537,24 +1972,38 @@ private fun SingleModelSection(
                     val (rx, rz) = DemoMath.rotateAroundCentre(modelCenter.x, modelCenter.z, yaw)
                     ModelNode(
                         modelInstance = instance,
-                        // `autoAnimate` plays EVERY clip at once: a model that opens still
-                        // (Perseverance, 23 rig clips) must not start them behind the bar's back.
-                        autoAnimate = streamedModelInstance != null || selectedModel.autoplayAnimations,
+                        // `autoAnimate` plays EVERY clip at once (documented SDK behaviour): on a
+                        // character with Idle, Walk, Run… the clips blend into one broken pose,
+                        // fists clenched and arms half raised. The viewer plays exactly one clip,
+                        // the bar's, from its own loop above — so the node never auto-plays.
+                        autoAnimate = false,
                         // No `scaleToUnits` — the model renders at its true glTF size and the
-                        // camera adapts to it (#1439). The settle spring drops the model in
-                        // from slightly below its resting pose.
-                        position = Position(
-                            modelCenter.x - rx,
-                            -fitRadius * 0.06f * (1f - fitProgress.value),
-                            modelCenter.z - rz,
-                        ),
+                        // camera adapts to it (#1439). The settle spring sets the model down on
+                        // the showroom floor from just above it — never through it, so the
+                        // spring's overshoot is held at the floor.
+                        position = Position(modelCenter.x - rx, settleLift, modelCenter.z - rz),
                         rotation = Rotation(y = yaw),
                         // Real-world size of an HD file authored in other units (Apollo 11: cm).
                         // `modelCenter` is already scaled, so the spin pivot stays put.
                         scale = Scale(modelScale),
+                        // The only renderables the floor's mirror view sees (ShowroomReflection).
+                        apply = {
+                            renderableNodes.forEach {
+                                it.setLayerMask(ShowroomReflection.MIRROR_LAYER, ShowroomReflection.MIRROR_LAYER)
+                            }
+                        },
                     )
                 }
             }
+            // After the scene: it re-applies the SDK's render-quality preset when it starts.
+            ShowroomViewOptions(
+                view = view,
+                isDark = showroomDark,
+                staged = showroomStaged,
+                showroomLit = showroomLit,
+                radius = stageRadius,
+                requestRender = renderInvalidator::requestRender,
+            )
 
             // A Museum & Space scan with no model on the stage yet: its own render (the picker
             // card's image, made from the same GLB) stands in, under the pill that says how far
@@ -1591,16 +2040,30 @@ private fun SingleModelSection(
             HdPackPerfProbe.start(it.key)
             if (openedFile != null) openedFileLeavingInstance = LeavingStage(activeModelInstance)
             cancelSurprise(); onSelectModel(it); streamedFileUrl = null; modelSheetOpen = false
+            // A catalogue entry with no stand-in is only its card's still render until its file is
+            // in: nothing a pinch or "Spin scene" can move. Fetch it on Wi-Fi now, not on a pill
+            // tap the user has no reason to look for (see HdPack.fetchOnWifi).
+            val hdId = it.hdAssetId
+            if (it.assetPath == null && hdId != null) HdPack.fetchOnWifi(context, hdId)
         },
         onScene = { cancelSurprise(); modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
+        catalogueShelves = CATALOGUE_SHELVES.takeIf { hdStore != null }.orEmpty(),
         museumModels = MUSEUM_VIEWER_MODELS.takeIf { hdStore != null }.orEmpty(),
     )
     if (hdDialogOpen && hdStore != null) {
         HdPackDownloadDialog(
             // This model's own file: a Museum pill never downloads the rest of the pack.
             totalBytes = hdAsset?.bytes ?: hdStore.manifest.missingBytes(hdReadyIds),
-            onConfirm = { hdDialogOpen = false; HdPack.downloadNow(context, assetId = hdAsset?.id) },
+            onConfirm = {
+                hdDialogOpen = false
+                HdPack.downloadNow(
+                    context,
+                    assetId = hdAsset?.id,
+                    // A pick's Wi-Fi fetch parked on mobile data gives way to "now, any network".
+                    replaceWifiWait = hdAssetStatus == HdPackStatus.WaitingForWifi,
+                )
+            },
             onDismiss = { hdDialogOpen = false },
         )
     }
@@ -1634,10 +2097,10 @@ private fun SingleModelSection(
     if (environmentSheetOpen) EnvironmentSheet(
         environments = viewerEnvironments,
         selectedPath = requestedEnvironment.assetPath, intensity = iblIntensity, showEnvironment = showEnvironment,
-        onSelect = { userEnvironment = it },
+        // "Showroom" is the default rather than a pick: it follows the theme, white or charcoal.
+        onSelect = { picked -> userEnvironment = picked.takeUnless { ShowroomMath.isShowroom(it.assetPath) } },
         onIntensity = { iblIntensity = it }, onShowEnvironment = { showEnvironment = it },
-        // Back to the default, which follows the model on stage: Studio for a Museum & Space
-        // scan, the garden for everything else — as on iOS.
+        // Back to the default: the showroom of the current theme.
         onReset = { userEnvironment = null; iblIntensity = 1f; showEnvironment = false },
         onDismiss = { environmentSheetOpen = false },
         onCoveredHeightChange = { environmentSheetCover = it },
@@ -1975,7 +2438,7 @@ private val PARK_LAWN_COLOR = Color(0xFF435646)
 //
 // ⚠️ WHAT loads depends on the build. With a Sketchfab API key the resolver streams
 // the `park` category — oaks, bench, lamp and fern. Without one it substitutes each
-// slug's BUNDLED fallback: a soldier, the sheen chair, a lantern and a shiba. Same demo id,
+// slug's BUNDLED fallback: the Ranger, the sheen chair, a lantern and a shiba. Same demo id,
 // same layout, completely different picture — worth knowing before reading a
 // screenshot of this section as evidence of anything (#2913). The chip label names
 // the CATALOGUE ENTRY, not the geometry, so on a fallback build it still reads
@@ -2007,7 +2470,7 @@ private val PARK_LAWN_COLOR = Color(0xFF435646)
 // The previous "tabletop" composition (shiba + lantern + helmet + dragon, all
 // bundled) is replaced by the streamed `park` category from [SampleAssets].
 // Offline fallback is per-slug (`shiba.glb` / `khronos_lantern.glb` /
-// `threejs_soldier.glb` etc.) so the demo still renders four nodes when no
+// `quaternius_ranger.glb` etc.) so the demo still renders four nodes when no
 // Sketchfab key is configured — the visual swap is documented in the CHANGELOG
 // but the user-visible behaviour stays "4 nodes, 4 chips, 1 spin toggle".
 //
@@ -2118,7 +2581,7 @@ private fun MultiModelSection(
     )
 
     // Same asset-source vocabulary as the other streamed demos, and what keeps the chip
-    // labels honest: they name the catalogue entry, and an "Offline model" pill says
+    // labels honest: they name the catalogue entry, and a "Built-in model" pill says
     // the geometry under them is the bundled stand-in rather than the oak the label
     // names (#2933).
     //
@@ -2132,11 +2595,11 @@ private fun MultiModelSection(
     // `allLoaded` watches the INSTANCES while the probe's fallback branch watches the
     // FILES — two different signals on purpose, which is what makes this a MOVING
     // verdict during load: a slot that falls back last flips the pill Streaming →
-    // Offline after the fact. All four slots are streamed `park` slugs, so the whole
+    // Built-in after the fact. All four slots are streamed `park` slugs, so the whole
     // list is passed; none is a bundled-by-design slot.
     //
     // Whole-scene and pessimistic (see the probe): one fallen-back slot out of four
-    // reads "Offline model" for all of them, and the pill never says which one swapped.
+    // reads "Built-in model" for all of them, and the pill never says which one swapped.
     val assetSource = if (slugs.all { it == null }) {
         null
     } else {
@@ -2356,6 +2819,7 @@ private fun MultiModelSection(
         onSelect = { modelSheetOpen = false; onOpenModel(it) },
         onScene = { modelSheetOpen = false; onModeChange(it.mode()) },
         onDismiss = { modelSheetOpen = false },
+        catalogueShelves = CATALOGUE_SHELVES.takeIf { rememberHdPackStore() != null }.orEmpty(),
         museumModels = MUSEUM_VIEWER_MODELS.takeIf { rememberHdPackStore() != null }.orEmpty(),
     )
 }
@@ -2495,13 +2959,16 @@ internal fun viewerHomeFraming(
     topInset: Float,
     bottomInset: Float,
     restingAspect: Float?,
-): DemoMath.ViewerFraming =
-    if (restingAspect != null) {
+): DemoMath.ViewerFraming {
+    // Low for a car, higher for a watch: the pitch follows the subject's longest side.
+    val pitch = ShowroomMath.pitchDegrees(maxOf(extents.x, extents.y, extents.z))
+    return if (restingAspect != null) {
         DemoMath.viewerFraming(
             extentX = extents.x, extentY = extents.y, extentZ = extents.z,
             viewportWidth = restingAspect, viewportHeight = 1f,
             topInset = 0f, bottomInset = 0f,
             verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+            pitchDegrees = pitch,
         )
     } else {
         DemoMath.viewerFraming(
@@ -2509,8 +2976,13 @@ internal fun viewerHomeFraming(
             viewportWidth = viewportWidth, viewportHeight = viewportHeight,
             topInset = topInset, bottomInset = bottomInset,
             verticalFovDegrees = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM),
+            pitchDegrees = pitch,
         )
     }
+}
 
-/** The SDK's default lens, which the viewer keeps. */
-private const val VIEWER_FOCAL_LENGTH_MM = 28.0
+/**
+ * The viewer's lens: a moderate telephoto, the product-shot focal length — the SDK's 28 mm
+ * default bulged a car's bonnet towards the lens.
+ */
+internal const val VIEWER_FOCAL_LENGTH_MM = 40.0

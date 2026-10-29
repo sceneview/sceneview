@@ -1,8 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `ar-depth-of-field` demo (registered by `ArDepthOfFieldFragment.kt`).
-     Android's resource merger fans every `res/values/*.xml` file in, so
+<!-- Strings for the `ar-depth-of-field` demo, "Portrait focus" since #4649 (registered by
+     `ArDepthOfFieldFragment.kt`; the id stays so existing links keep working). Android's
+     resource merger fans every `res/values/*.xml` file in, so
      `R.string.demo_ar_depth_of_field_title` etc. remains globally resolvable. -->
 <resources>
-    <string name="demo_ar_depth_of_field_title">AR Depth of Field</string>
-    <string name="demo_ar_depth_of_field_subtitle">Tap to focus, real-world bokeh blur</string>
+    <string name="demo_ar_depth_of_field_title">Portrait focus</string>
+    <string name="demo_ar_depth_of_field_subtitle">Keep the sneaker sharp, blur the room behind it</string>
+    <!-- Before / after switch, as in a phone camera's portrait mode. -->
+    <string name="portrait_mode_original">Original</string>
+    <string name="portrait_mode_portrait">Portrait</string>
+    <!-- Live status over the camera. -->
+    <string name="portrait_status_original">Original: everything is in focus</string>
+    <string name="portrait_status_waiting">Point your phone at the sneaker</string>
+    <string name="portrait_status_subject">Focused on the sneaker, %1$s away. The room behind it blurs</string>
+    <string name="portrait_status_point">Focused at %1$s. Tap the sneaker to focus on it again</string>
+    <string name="portrait_status_unsupported">This phone has no ARCore Depth, so the room cannot blur</string>
+    <string name="portrait_distance_metres">%1$.2f m</string>
+    <!-- Settings sheet. -->
+    <string name="portrait_how_title">How it works</string>
+    <string name="portrait_how_body">Like a phone camera\'s portrait mode: the sneaker stays sharp and the room blurs with its distance, read from ARCore Depth. Walk around it and the focus follows the sneaker. Tap the room to focus there instead, tap the sneaker to come back. Switch to Original to compare.</string>
+    <string name="portrait_blur">Blur</string>
+    <string name="portrait_focus_distance">Focus distance</string>
+    <string name="portrait_refocus">Focus on the sneaker</string>
+    <string name="portrait_focus_point">Focus point</string>
 </resources>

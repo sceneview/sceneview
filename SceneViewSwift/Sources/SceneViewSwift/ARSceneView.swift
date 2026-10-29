@@ -110,6 +110,12 @@ public struct ARSceneView: UIViewRepresentable {
     private var showCoachingOverlay: Bool
     private var showPlacementReticle: Bool
     private var groundingShadows: Bool
+    /// Set by ``placementShadow(_:)``; `nil` falls back to `groundingShadows`.
+    var placementShadowStyle: ARPlacementShadow? = nil
+    /// ``placementShadow(_:)`` if set, else the `groundingShadows` flag.
+    var resolvedPlacementShadow: ARPlacementShadow {
+        placementShadowStyle ?? (groundingShadows ? .grounding : .none)
+    }
     private var cameraExposure: Float?
     private var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
     private var onSessionStarted: ((ARView) -> Void)?
@@ -123,6 +129,8 @@ public struct ARSceneView: UIViewRepresentable {
     private var depthSource: DepthSource?
     private var onDepthFrame: ((ARDepthFrame?) -> Void)?
     private var onDepthSourceState: ((DepthSourceState) -> Void)?
+    /// Set via ``sceneRecorder(_:)``.
+    var sceneRecorder: SceneRecorder?
 
     private var planeDetection: PlaneDetectionMode { configuration.planeDetection }
     private var faceTracking: Bool { configuration.mode == .faceTracking }
@@ -181,7 +189,8 @@ public struct ARSceneView: UIViewRepresentable {
     ///     (#2241/#894). Applied to every model entity of anchors added to
     ///     `arView.scene` *synchronously inside* the `onTapOnPlane` callback (the
     ///     documented placement flow); content anchored later (e.g. after an async model
-    ///     load) must set the component itself. Default true.
+    ///     load) must set the component itself. Default true. ``placementShadow(_:)``
+    ///     overrides it, e.g. with a procedural ``ContactShadowNode`` of tunable intensity.
     ///   - imageTrackingDatabase: Set of reference images to detect. Use
     ///     `AugmentedImageNode.createImageDatabase()` or
     ///     `AugmentedImageNode.referenceImages(inGroupNamed:)` to create.
@@ -568,7 +577,7 @@ public struct ARSceneView: UIViewRepresentable {
         // The reticle is driven per frame from `session(_:didUpdate:)`; grounding
         // shadows are applied in `handleTap` to the anchors the callback places.
         context.coordinator.showPlacementReticle = showPlacementReticle
-        context.coordinator.groundingShadows = groundingShadows
+        context.coordinator.updatePlacementShadow(resolvedPlacementShadow, in: arView)
 
         // Coaching overlay. Never on a face-tracking session: its goals are all
         // plane goals ("Move the device to detect a surface"), which is nonsense
@@ -688,6 +697,7 @@ public struct ARSceneView: UIViewRepresentable {
 
     public func updateUIView(_ arView: ARView, context: Context) {
         let coordinator = context.coordinator
+        coordinator.syncRecorder(sceneRecorder, on: arView)
         syncCallbacks(on: coordinator, environment: context.environment)
         // Reactive too: a host that supplies `onTapOnPlane` only on a later
         // render gets the recognizer then, and one that drops it gets the
@@ -719,7 +729,7 @@ public struct ARSceneView: UIViewRepresentable {
         // whole view (`.id(...)`) to toggle them — which restarted the AR
         // session and dropped everything placed in it.
         context.coordinator.showPlacementReticle = showPlacementReticle
-        context.coordinator.groundingShadows = groundingShadows
+        context.coordinator.updatePlacementShadow(resolvedPlacementShadow, in: arView)
         context.coordinator.syncPlaneOverlay(
             on: arView,
             enabled: showPlaneOverlay && planeDetection != .none
@@ -733,7 +743,10 @@ public struct ARSceneView: UIViewRepresentable {
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
         // (or removes) a post-process render callback on the ARView.
-        coordinator.applyExposure(cameraExposure, on: arView)
+        if coordinator.applyExposure(cameraExposure, on: arView) {
+            // A recording tap wraps the post-process slot: it takes the new filter inside.
+            coordinator.captureSource?.postProcessReplaced()
+        }
 
         // Diff light slots and swap entities when the caller's modifier value
         // changed since last frame. Mirrors the reactive light path in
@@ -759,6 +772,8 @@ public struct ARSceneView: UIViewRepresentable {
     /// safety net (#2407); this is the primary, deterministic path. The teardown
     /// is idempotent, so the two paths never double-free.
     public static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        // First, so a recording's tap gives the post-process slot back before teardown.
+        coordinator.syncRecorder(nil, on: uiView)
         coordinator.tearDownScene(in: uiView)
     }
 
@@ -908,7 +923,7 @@ public struct ARSceneView: UIViewRepresentable {
     /// Copies the unprocessed frame into the destination texture so a failed
     /// filter degrades to "no exposure adjustment" instead of "no frame".
     @available(iOS 15.0, *)
-    private static func passThrough(_ context: ARView.PostProcessContext) {
+    static func passThrough(_ context: ARView.PostProcessContext) {
         guard let blit = context.commandBuffer.makeBlitCommandEncoder() else { return }
         blit.copy(from: context.sourceColorTexture, to: context.targetColorTexture)
         blit.endEncoding()
@@ -924,6 +939,9 @@ public struct ARSceneView: UIViewRepresentable {
     }
 
     private var coachingGoal: ARCoachingOverlayView.Goal {
+        // Instant placement shows the model before any plane exists: coach tracking only, so
+        // the overlay does not hide it while asking for a surface it no longer needs.
+        if placementController?.instantPlacement == true { return .tracking }
         switch planeDetection {
         case .horizontal: return .horizontalPlane
         case .vertical: return .verticalPlane
@@ -957,6 +975,12 @@ public struct ARSceneView: UIViewRepresentable {
         var onFrame: ((ARFrame, ARView) -> Void)?
         /// Depth maps for ``ARSceneView/depthSource(_:)``; created on first use.
         var depthPipeline: ARDepthPipeline?
+        /// The recorder from ``ARSceneView/sceneRecorder(_:)`` and the source it captures
+        /// this view through.
+        var sceneRecorder: SceneRecorder?
+        var captureSource: ARViewCaptureSource?
+        /// Detaches the recorder while the view is out of a window, see `syncRecorder`.
+        var recorderWindowWatcher: WindowWatcher?
         var faceTrackingSession = false
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?
@@ -1051,10 +1075,10 @@ public struct ARSceneView: UIViewRepresentable {
         /// ``session(_:didUpdate:)`` (#894 — Android `PlacementReticle` parity).
         var showPlacementReticle: Bool = false
 
-        /// Whether anchors placed via `onTapOnPlane` automatically receive
-        /// `GroundingShadowComponent(castsShadow: true)` on their model
-        /// entities (#894 — Android `ShadowReceiverPlane` analogue).
-        var groundingShadows: Bool = true
+        /// The shadow anchors placed via `onTapOnPlane` automatically receive —
+        /// `GroundingShadowComponent(castsShadow: true)` on their model entities
+        /// by default (#894 — Android `ShadowReceiverPlane` analogue).
+        var placementShadow: ARPlacementShadow = .grounding
 
         /// World anchor hosting the reticle disc. Created lazily on the first
         /// successful raycast, hidden (`isEnabled = false`) while the ray
@@ -1144,20 +1168,25 @@ public struct ARSceneView: UIViewRepresentable {
         ///   reinstalled on every SwiftUI render.
         /// - new value: installs the closure once, remembers it owns the slot.
         /// - value → `nil`: removes the callback, but only if it is still ours.
+        ///
+        /// Returns `true` when it wrote the post-process slot.
         @MainActor
-        func applyExposure(_ ev: Float?, on arView: ARView) {
-            guard appliedExposure != ev else { return }
+        @discardableResult
+        func applyExposure(_ ev: Float?, on arView: ARView) -> Bool {
+            guard appliedExposure != ev else { return false }
             appliedExposure = ev
-            guard #available(iOS 15.0, *) else { return }   // stored, silently ignored
+            guard #available(iOS 15.0, *) else { return false }   // stored, silently ignored
             guard let ev else {
                 if ownsPostProcess {
                     arView.renderCallbacks.postProcess = nil
                     ownsPostProcess = false
+                    return true
                 }
-                return
+                return false
             }
             ARSceneView.applyExposurePostProcess(ev, to: arView, cache: exposureContextCache)
             ownsPostProcess = true
+            return true
         }
 
         // MARK: - Session lifecycle
@@ -1616,26 +1645,27 @@ public struct ARSceneView: UIViewRepresentable {
             let column = firstResult.worldTransform.columns.3
             let position = SIMD3<Float>(column.x, column.y, column.z)
 
-            // Grounding shadows (#894): snapshot the scene's anchors, let the
-            // callback place its content, then give every model entity the
-            // callback anchored a RealityKit contact shadow. Covers the
-            // documented synchronous placement flow; asynchronously anchored
-            // content must set `GroundingShadowComponent` itself.
-            let anchorsBefore = groundingShadows
-                ? Set(arView.scene.anchors.map(\.id)) : []
+            // Placement shadows (#894): snapshot the scene's anchors, let the
+            // callback place its content, then ground what the callback
+            // anchored (`ARPlacementShadow`). Covers the documented synchronous
+            // placement flow; asynchronously anchored content must be grounded
+            // by the app.
+            let style = placementShadow
+            let anchorsBefore = style == .none
+                ? [] : Set(arView.scene.anchors.map(\.id))
             onTapOnPlane(position, arView)
-            if groundingShadows {
-                applyGroundingShadows(in: arView, addedSince: anchorsBefore)
-            }
+            applyPlacementShadow(style, in: arView, addedSince: anchorsBefore)
         }
 
         /// Applies `GroundingShadowComponent(castsShadow: true)` to every model
         /// entity under anchors that joined `arView.scene` after the snapshot —
         /// the RealityKit analogue of Android's invisible `ShadowReceiverPlane`
         /// (#2241/#894): RealityKit itself renders the contact shadow onto the
-        /// detected real-world surface, no shadow-catcher geometry needed.
+        /// detected real-world surface, no shadow-catcher geometry needed. Content that
+        /// already carries a ``ContactShadowNode`` keeps that one alone, never two shadows.
         func applyGroundingShadows(in arView: ARView, addedSince existing: Set<Entity.ID>) {
-            for anchor in arView.scene.anchors where !existing.contains(anchor.id) {
+            for anchor in arView.scene.anchors
+            where !existing.contains(anchor.id) && !anchor.containsContactShadow {
                 Self.applyGroundingShadow(to: anchor)
             }
         }
@@ -1644,6 +1674,8 @@ public struct ARSceneView: UIViewRepresentable {
         /// descendants that render a model. Idempotent — re-setting the
         /// component on an entity that already has one is a no-op overwrite.
         static func applyGroundingShadow(to entity: Entity) {
+            // A contact-shadow decal must not throw a shadow of its own quad.
+            if entity.components.has(ContactShadowComponent.self) { return }
             if entity.components.has(ModelComponent.self) {
                 entity.components.set(GroundingShadowComponent(castsShadow: true))
             }

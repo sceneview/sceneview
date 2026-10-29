@@ -341,6 +341,7 @@ device-qa-report.json
 # never committed. A new file here goes through `tools/fetch-assets.sh --register`.
 /samples/android-demo/src/main/assets/models/*.glb
 /samples/android-demo/src/main/assets/environments/*.hdr
+/samples/android-demo/src/main/assets/environments/*.ktx
 /samples/android-demo/src/main/assets/splats/*.spz
 /samples/android-demo/src/main/assets/splats/*.ply
 /samples/android-tv-demo/src/main/assets/models/*.glb

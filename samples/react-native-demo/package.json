@@ -1,6 +1,6 @@
 {
   "name": "sceneview-react-native-demo",
-  "version": "4.52.0",
+  "version": "4.63.0",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -25,6 +25,9 @@
   },
   "overrides": {
     "underscore": "^1.13.8",
-    "fast-xml-parser": "^5.7.0"
+    "fast-xml-parser": "^5.7.0",
+    "js-yaml": {
+      "argparse": "^2.0.1"
+    }
   }
 }

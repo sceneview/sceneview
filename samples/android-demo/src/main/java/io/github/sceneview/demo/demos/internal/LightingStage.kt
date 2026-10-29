@@ -13,21 +13,17 @@ import kotlin.math.tan
  * The one stage both lighting demos light — geometry, rig math and the environment catalogue,
  * as pure functions so they can be read, unit-tested and reused without a Filament engine.
  *
- * ## Why the two demos share a stage
+ * ## Why one stage
  *
  * `lighting` and `lighting-lab` used to be seven modes across two cards, each mode building its
- * own engine around the same helmet and each answering a different question badly. They are now
- * two **roles** over one subject:
+ * own engine around the same helmet and each answering a different question badly. #3496 made
+ * them two roles over one subject — a showcase (*where does the light come from?*) and a
+ * workbench (*what can I turn?*) — and #4603 folded the workbench into the showcase, because on
+ * the device the two read as the same sample twice. `lighting` now has three rigs (image-based,
+ * studio, sun) and, under every rig, the reflection-probe and frame switches the lab carried.
  *
- * - **`lighting`** — the showcase: *where does the light come from?* Three rigs (image-based,
- *   studio, sun), few controls each.
- * - **`lighting-lab`** — the workbench: *what can I turn?* One rig, every knob live on the same
- *   frame.
- *
- * Sharing the stage is what makes that split readable: the subject is identical on both screens,
- * so the only thing that changes between them is the job. Everything in here is therefore
- * expressed once — the floor, the hero, the two photographic probe balls, and the three-point rig
- * — and both screens compose it.
+ * Everything in here is expressed once — the floor, the hero, the two photographic probe balls,
+ * and the three-point rig — so a rig change only changes the light.
  *
  * ## The probe balls
  *
@@ -369,7 +365,7 @@ object LightingStage {
      */
     fun groundToneFor(file: String): Color? = environments.firstOrNull { it.file == file }?.swatchBottom
 
-    /** The environment the lab's local reflection probe overrides with — deliberately unmissable. */
+    /** The environment the local reflection probe overrides with — deliberately unmissable. */
     const val PROBE_ENVIRONMENT_FILE: String = "environments/sunset_2k.hdr"
 
     /**
@@ -498,7 +494,7 @@ object LightingStage {
     /**
      * Share of the sky's brightness the faded floor takes when a photograph is behind it — see
      * `StageFade.apply`'s `skyTint`. Well under 1 so the far floor reads as ground in the sky's
-     * tone rather than as the sky itself, blown out; the Image rig and the Lab use this one.
+     * tone rather than as the sky itself, blown out; the Image rig uses this one.
      */
     const val STAGE_FADE_SKY_TINT: Float = 0.45f
 
@@ -543,7 +539,7 @@ object LightingStage {
 
     // ── Fog presets ──────────────────────────────────────────────────────────────────────────
 
-    /** A fog colour preset for the lab. */
+    /** A fog colour preset for the Frame section. */
     data class FogColor(val label: String, val color: Color)
 
     val fogColors: List<FogColor> = listOf(
@@ -566,7 +562,7 @@ object LightingStage {
     /** Sun intensity, lux. Above Filament's 110 klx default so it reads against a bright sky. */
     const val SUN_INTENSITY: Float = 160_000f
 
-    /** IBL intensity range for the lab, in lux. The library's balanced default is 10 klx. */
+    /** IBL intensity range for the Image rig, in lux. The library's balanced default is 10 klx. */
     const val IBL_INTENSITY_DEFAULT: Float = 10_000f
     const val IBL_INTENSITY_MIN: Float = 500f
     const val IBL_INTENSITY_MAX: Float = 60_000f
@@ -582,7 +578,7 @@ object LightingStage {
      * (f/12, 1/200 s, ISO 200). Fed a 10 klx indirect light, on-device QA on 2026-09-08 came
      * back a flat white rectangle: no helmet, no floor, no probes.
      *
-     * So both screens keep the shipped aperture and shutter and move **sensitivity** only, which
+     * So the demo keeps the shipped aperture and shutter and move **sensitivity** only, which
      * is what a photographer changes when the light is fixed: 1.0 is exactly the SDK default,
      * 0.25 is two stops down and 3.0 is a little over one and a half stops up.
      */

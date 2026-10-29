@@ -153,8 +153,30 @@ internal object CosmosSpacetime {
     /** `S` on flat, unshadowed sheet: what [SHADE_GAIN] scales to the base colour. */
     val SHADE_FLAT = AMBIENT + (1f - AMBIENT) * (LIGHT[1] + WRAP) / (1f + WRAP)
 
-    /** The sheet's colour on the flat, lit plane, sRGB #6E7680 — the reference's grey. */
-    const val SHEET_BASE_SRGB = 0xFF6E7680.toInt()
+    /**
+     * The sheet's colour on the flat, lit plane, sRGB #1C2638 — DESIGN.md `cosmos-sheet`. A deep
+     * slate, not the reference's #6E7680 grey: that grey filled the frame as a washed-out disc
+     * (#4623), and the grid needs a dark ground to glow on.
+     */
+    const val SHEET_BASE_SRGB = 0xFF1C2638.toInt()
+
+    /** A grid line's colour on screen at full glow, sRGB #A4C1FF — DESIGN.md `cosmos-sheet-grid`. */
+    const val SHEET_GRID_SRGB = 0xFFA4C1FF.toInt()
+
+    /** World units between two grid lines on the flat sheet; `cosmos_spacetime.mat` draws 1 / 0.5. */
+    const val GRID_LINE_SPACING = 0.5f
+
+    /** Grid line weights: the one-pixel core and the soft halo around it. */
+    const val GRID_CORE = 0.8f
+    const val GRID_HALO = 0.22f
+
+    /** The grid's gain at the star's well (1 + this), easing to 1 at [GRID_WELL_RADIUS]. */
+    const val GRID_WELL_GAIN = 0.6f
+    const val GRID_WELL_RADIUS = 3f
+
+    /** The grid fades out, squared, from [GRID_FADE_START] to [GRID_FADE_END], inside the rim. */
+    const val GRID_FADE_START = 2f
+    const val GRID_FADE_END = 11f
 
     // ─── Camera ────────────────────────────────────────────────────────────────────────────
 
@@ -566,10 +588,24 @@ internal object CosmosSpacetime {
     fun contrast(a: Float, b: Float): Float = (max(a, b) + 0.05f) / (min(a, b) + 0.05f)
 
     /** The sheet's base colour as linear rgb, the screen value [screenFactor] scales. */
-    fun sheetBaseLinear(): FloatArray = floatArrayOf(
-        srgbToLinear(SHEET_BASE_SRGB shr 16 and 0xFF),
-        srgbToLinear(SHEET_BASE_SRGB shr 8 and 0xFF),
-        srgbToLinear(SHEET_BASE_SRGB and 0xFF),
+    fun sheetBaseLinear(): FloatArray = linear(SHEET_BASE_SRGB)
+
+    /** The grid lines' colour as linear rgb, the screen value [gridGlow] scales. */
+    fun sheetGridLinear(): FloatArray = linear(SHEET_GRID_SRGB)
+
+    /**
+     * How strongly a grid line glows at [starDistance] from the star, before the line's own
+     * coverage and a world's shadow: the well's gain times the fade towards the rim.
+     */
+    fun gridGlow(starDistance: Float): Float {
+        val fade = 1f - smoothstep(GRID_FADE_START, GRID_FADE_END, starDistance)
+        return (1f + GRID_WELL_GAIN * (1f - smoothstep(0f, GRID_WELL_RADIUS, starDistance))) * fade * fade
+    }
+
+    private fun linear(argb: Int): FloatArray = floatArrayOf(
+        srgbToLinear(argb shr 16 and 0xFF),
+        srgbToLinear(argb shr 8 and 0xFF),
+        srgbToLinear(argb and 0xFF),
     )
 }
 

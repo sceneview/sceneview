@@ -1,0 +1,59 @@
+{
+  "identifier": "5E5E0000",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "5E5E0001",
+      "localizations": [
+        {
+          "description": "Helps keep SceneView free and open source.",
+          "displayName": "Support SceneView · Small",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "io.github.sceneview.demo.support.small",
+      "referenceName": "Support SceneView Small",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "9.99",
+      "familyShareable": false,
+      "internalID": "5E5E0002",
+      "localizations": [
+        {
+          "description": "Helps keep SceneView free and open source.",
+          "displayName": "Support SceneView · Medium",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "io.github.sceneview.demo.support.medium",
+      "referenceName": "Support SceneView Medium",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "24.99",
+      "familyShareable": false,
+      "internalID": "5E5E0003",
+      "localizations": [
+        {
+          "description": "Helps keep SceneView free and open source.",
+          "displayName": "Support SceneView · Large",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "io.github.sceneview.demo.support.large",
+      "referenceName": "Support SceneView Large",
+      "type": "Consumable"
+    }
+  ],
+  "settings": {
+    "_locale": "en_US"
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}

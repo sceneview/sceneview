@@ -34,6 +34,19 @@ class DeepLinkRouterTest {
 
 
     @Test
+    fun `retired lighting lab links open the merged lighting demo`() {
+        // #4603 folded Lighting Lab into Lighting; every id that used to land on the
+        // lab must keep resolving, on the default rig.
+        listOf("lighting-lab", "reflection-probes", "post-processing", "fog").forEach { id ->
+            val uri = Uri.parse("sceneview://demo/$id")
+            assertEquals(id, "lighting", DeepLinkRouter.parse(uri))
+            assertNull(id, DeepLinkRouter.resolveInitialTab(id, null))
+            assertTrue(id, ALL_DEMOS.none { it.id == id })
+        }
+        assertTrue(ALL_DEMOS.any { it.id == "lighting" })
+    }
+
+    @Test
     fun `old physics tab link opens rolling balls with no tab`() {
         val uri = Uri.parse("sceneview://demo/animation-physics?tab=1")
         val launch = DeepLinkRouter.resolveLaunch(
@@ -113,7 +126,7 @@ class DeepLinkRouterTest {
     // slice redirects onto. The router only inspects `id`, so the title /
     // subtitle resources are arbitrary (see the note above).
     private val regroupRegistry = listOf(
-        DemoEntry("lighting-lab", R.string.demo_lighting_lab_title, R.string.demo_lighting_lab_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test"), addedIn = "4.0.0"),
+        DemoEntry("lighting", R.string.demo_lighting_title, R.string.demo_lighting_subtitle, "Rendering", Icons.Filled.ViewInAr, order = 6, tags = setOf("test"), addedIn = "4.0.0"),
         DemoEntry("camera-gestures", R.string.demo_camera_and_gestures_title, R.string.demo_camera_and_gestures_subtitle, "Interaction", Icons.Filled.ViewInAr, order = 7, tags = setOf("test"), addedIn = "4.0.0"),
         DemoEntry("ar-geospatial-anchors", R.string.demo_ar_geospatial_anchors_title, R.string.demo_ar_geospatial_anchors_subtitle, "AR Anchors", Icons.Filled.ViewInAr, order = 8, tags = setOf("test"), addedIn = "4.0.0"),
     )
@@ -389,7 +402,7 @@ class DeepLinkRouterTest {
 
     // ── #2239 catalogue regroup — the four ids retired by the section slice ───
     //
-    // `fog` -> `lighting-lab` (mode 4), `gesture-feedback-preview` ->
+    // `fog` -> `lighting-lab` (mode 4; `lighting` since #4603), `gesture-feedback-preview` ->
     // `camera-gestures` (which #3500 rebuilt without modes), and `ar-terrain` /
     // `ar-rooftop` -> `ar-geospatial-anchors` (modes 0 and 1). Every one of these ids is on the
     // public deep-link surface — docs, QR codes, the Maestro flows that
@@ -399,7 +412,7 @@ class DeepLinkRouterTest {
     @Test
     fun `catalogue-regroup retired ids resolve to their consolidated demo`() {
         val expected = mapOf(
-            "fog" to "lighting-lab",
+            "fog" to "lighting",
             "gesture-feedback-preview" to "camera-gestures",
             "ar-terrain" to "ar-geospatial-anchors",
             "ar-rooftop" to "ar-geospatial-anchors",
@@ -426,7 +439,8 @@ class DeepLinkRouterTest {
     fun `catalogue-regroup aliases pre-select the mode that holds their content`() {
         // #3496 rebuilt `lighting-lab` as one tab-less bench, so `fog` — like the
         // three other ids the lab absorbed — no longer pre-selects anything: the
-        // fog switch is live on the only frame the lab has.
+        // fog switch is live on the only frame the lab had, and #4603 put it under every
+        // rig of `lighting`, whichever rig is up.
         assertNull(DeepLinkRouter.ALIAS_INITIAL_TAB["fog"])
         assertNull(DeepLinkRouter.resolveInitialTab("fog", null))
         // lighting: [Image, Studio, Sun] — `dynamic-sky` is the Sun rig.
@@ -467,6 +481,11 @@ class DeepLinkRouterTest {
             "ar-hand-tracking" to "ar-xr",
             "ar-xr-face" to "ar-xr",
             "video-recording" to "cosmos",
+            // AR catalogue clean-up, wave 1 (`ar-ml-object-label` stays registered, unlisted:
+            // it is Point & Ask's on-device fallback).
+            "ar-fog" to "lighting",
+            "ar-scene-mesh" to "ar-geospatial-anchors",
+            "ar-depth-collider" to "rolling-balls",
         )
         expected.forEach { (retired, card) ->
             assertEquals("validate('$retired')", card, DeepLinkRouter.validate(retired, ALL_DEMOS))
@@ -482,7 +501,15 @@ class DeepLinkRouterTest {
             )
             assertNull("'$retired' is retired", ALL_DEMOS.find { it.id == retired })
         }
-        assertEquals("Android ships 43 cards after step 0", 43, ALL_DEMOS.size)
+        // 42 since #4603 folded `lighting-lab` into `lighting`, plus Finger Drawing (#4082) and
+        // Pool in the garden; 41 since wave 1 of the AR catalogue clean-up retired three AR ids
+        // and hid a fourth (`ar-ml-object-label`, registered but unlisted as Point & Ask's
+        // on-device fallback); 42 with Camera Path; 43 with Model Thumbnails.
+        assertEquals(
+            "Android registers 43 demos after step 0, #4603, Finger Drawing, Pool in the garden, wave 1, Camera Path and Model Thumbnails",
+            43,
+            ALL_DEMOS.size,
+        )
     }
 
     @Test
@@ -518,8 +545,14 @@ class DeepLinkRouterTest {
         // The old in-card tabs keep their index inside the default mode.
         assertEquals(DeepLinkRouter.Launch("ar-placement", 1), launch("wall-placement"))
         assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 1), launch("ar-rooftop"))
-        // `ar-scene-mesh` lost its Streetscape mode, so it reads no tab any more.
-        assertEquals(DeepLinkRouter.Launch("ar-scene-mesh", null), launch("ar-scene-mesh", "1"))
+        // AR catalogue clean-up, wave 1: the four retired AR cards open the sample that now
+        // carries their subject, on the mode that shows it.
+        assertEquals(DeepLinkRouter.Launch("ar-geospatial-anchors", 2), launch("ar-scene-mesh"))
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", 2), launch("ar-depth-collider"))
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", 2), launch("rolling-balls", "table"))
+        // Point & Ask's fallback opens the ML Kit object labels themselves, never Point & Ask.
+        assertEquals(DeepLinkRouter.Launch("ar-ml-object-label", null), launch("ar-ml-object-label"))
+        assertEquals(DeepLinkRouter.Launch("lighting", null), launch("ar-fog"))
     }
 
     @Test
@@ -565,15 +598,9 @@ class DeepLinkRouterTest {
     fun `resolveInitialTab returns null for a default-tab alias or a plain id`() {
         // Aliases that land on tab 0 are intentionally absent from ALIAS_INITIAL_TAB.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-mesh", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("text", null))
         // `shape` joined them in #3423: `custom-geometry` was rebuilt around a single
         // runtime-generated mesh and has no tabs left to pre-select.
         assertNull(DeepLinkRouter.resolveInitialTab("shape", null))
-        // `image`, `video` and `billboard` joined them in #3424: `two-d-in-three-d` was
-        // rebuilt around a single annotated scene and has no tabs left to pre-select.
-        assertNull(DeepLinkRouter.resolveInitialTab("image", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("video", null))
-        assertNull(DeepLinkRouter.resolveInitialTab("billboard", null))
         // `scene-gallery` joined them in #4039: the Models demo lost its Gallery section, and
         // the old link opens the Single Model section (a stale index 2 would fall to the
         // default anyway, but only through the composable's clamp).
@@ -586,6 +613,37 @@ class DeepLinkRouterTest {
         // A live consolidated id with no tab hint keeps its default tab.
         assertNull(DeepLinkRouter.resolveInitialTab("custom-geometry", null))
         assertNull(DeepLinkRouter.resolveInitialTab(null, null))
+    }
+
+    @Test
+    fun `2D in 3D routes named modes and every retired media id`() {
+        fun launch(id: String, tab: String? = null) =
+            DeepLinkRouter.resolveLaunch(
+                demoId = DeepLinkRouter.validate(id, ALL_DEMOS), rawId = id, tabParam = tab)
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", null), launch("two-d-in-three-d"))
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch("two-d-in-three-d", "inspect"))
+        assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch("two-d-in-three-d", "media"))
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias))
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch(alias, "0"))
+        }
+    }
+
+    @Test
+    fun `a named tab on a retired id names a mode of the demo it lands on`() {
+        fun launch(id: String, tab: String? = null) =
+            DeepLinkRouter.resolveLaunch(
+                demoId = DeepLinkRouter.validate(id, ALL_DEMOS), rawId = id, tabParam = tab)
+        // `video` alone opens Media; `?tab=inspect` is a mode of `two-d-in-three-d`, the demo
+        // the link lands on, so it wins over the alias default instead of being unrecognised.
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 0), launch(alias, "inspect"))
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias, "media"))
+            // A name that belongs to another demo is still unrecognised: the alias default holds.
+            assertEquals(DeepLinkRouter.Launch("two-d-in-three-d", 1), launch(alias, "spacetime"))
+        }
+        // A retired id that names no mode of its new home still drops any tab, named or not.
+        assertEquals(DeepLinkRouter.Launch("rolling-balls", null), launch("physics", "pendulum"))
     }
 
     @Test
@@ -786,23 +844,27 @@ class DeepLinkRouterTest {
     // ── `--es qa_state <id>` — the one QA state seam (#3421, #3455) ────────────────────
 
     /**
-     * Under `qa_mode` the extra is passed through verbatim (trimmed): the router does not
-     * know any demo's vocabulary, so both Cloud Anchor and Point & Ask ids must survive it
-     * unchanged for each demo's own resolver to recognise them.
+     * In a debug build under `qa_mode` the extra is passed through verbatim (trimmed): the
+     * router does not know any demo's vocabulary, so both Cloud Anchor and Point & Ask ids
+     * must survive it unchanged for each demo's own resolver to recognise them. `debugBuild`
+     * is explicit so this also holds under `testReleaseUnitTest`; the release answer is
+     * pinned by `QaStateReleaseGuardTest` (#4555).
      */
     @Test
     fun `qa_state is accepted when qa_mode is on`() {
-        assertEquals("placing", DeepLinkRouter.resolveQaState(qaMode = true, raw = "placing"))
-        assertEquals("resolve_not_found", DeepLinkRouter.resolveQaState(qaMode = true, raw = "resolve_not_found"))
-        assertEquals("failed-persistent", DeepLinkRouter.resolveQaState(qaMode = true, raw = "failed-persistent"))
-        assertEquals("ready", DeepLinkRouter.resolveQaState(qaMode = true, raw = "  ready "))
+        fun resolve(raw: String) = DeepLinkRouter.resolveQaState(qaMode = true, raw = raw, debugBuild = true)
+        assertEquals("placing", resolve("placing"))
+        assertEquals("resolve_not_found", resolve("resolve_not_found"))
+        assertEquals("failed-persistent", resolve("failed-persistent"))
+        assertEquals("ready", resolve("  ready "))
     }
 
     /**
      * Without `qa_mode` the extra is ignored outright — a pinned state makes a screen claim
      * something that never happened, so `adb shell am start --es qa_state hosted` against a
-     * production install must be a no-op. This is the path that keeps the seam out of
-     * release builds; a blank id is dropped on either path.
+     * install that did not opt into QA must be a no-op. On a release build the id is
+     * dropped even under `qa_mode` (`QaStateReleaseGuardTest`, #4555); a blank id is
+     * dropped on either path.
      */
     @Test
     fun `qa_state is ignored when qa_mode is off`() {

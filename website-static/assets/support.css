@@ -1,0 +1,158 @@
+/* SceneView website — the support prompt (assets/support.js).
+ *
+ * It runs on the "Stage" home page (tokens.css) and on the pages still on styles.css:
+ * each colour reads the Stage token and falls back to the same value where tokens.css
+ * is absent, dark first.
+ * Contrast ratios are WCAG 2.x, measured on the card surface (surface-1):
+ *   dark  — text 14.6, text-2 8.3, text-3 5.4, accent 7.6, on-accent on fill 9.5,
+ *           control edge (outline) 3.54
+ *   light — text 19.1, text-2 8.1, text-3 6.2, accent 6.1, on-accent on fill 6.1,
+ *           control edge (outline) 4.15
+ * Theme: dark by default; light when the OS asks for it and the visitor did not pick
+ * dark, or when the visitor picked light (both sites set data-theme on <html>). */
+
+.svs {
+  --svs-surface: var(--surface-1, #1C2230);
+  --svs-surface-2: var(--surface-2, #262E3D);
+  --svs-hairline: var(--hairline, #3A4456);
+  --svs-outline: var(--outline, #6B7791);
+  --svs-text: var(--text, #F3F5F9);
+  --svs-text-2: var(--text-2, #B4BCCB);
+  --svs-text-3: var(--text-3, #8D97A8);
+  --svs-accent: var(--accent, #8AB4FF);
+  --svs-fill: var(--accent-fill, #8AB4FF);
+  --svs-on-fill: var(--on-accent, #06080C);
+  --svs-warm: var(--warm, #FFB86B);
+  --svs-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 24px 64px -16px rgba(0,0,0,.75);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .svs {
+    --svs-surface: var(--surface-1, #FFFFFF);
+    --svs-surface-2: var(--surface-2, #ECEFF3);
+    --svs-hairline: var(--hairline, #C9D0DA);
+    --svs-outline: var(--outline, #737D8F);
+    --svs-text: var(--text, #0A0D13);
+    --svs-text-2: var(--text-2, #465061);
+    --svs-text-3: var(--text-3, #586272);
+    --svs-accent: var(--accent, #0B5BD3);
+    --svs-fill: var(--accent-fill, #0B5BD3);
+    --svs-on-fill: var(--on-accent, #FFFFFF);
+    --svs-warm: var(--warm, #A2560A);
+    --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] .svs {
+  --svs-surface: var(--surface-1, #FFFFFF);
+  --svs-surface-2: var(--surface-2, #ECEFF3);
+  --svs-hairline: var(--hairline, #C9D0DA);
+  --svs-outline: var(--outline, #737D8F);
+  --svs-text: var(--text, #0A0D13);
+  --svs-text-2: var(--text-2, #465061);
+  --svs-text-3: var(--text-3, #586272);
+  --svs-accent: var(--accent, #0B5BD3);
+  --svs-fill: var(--accent-fill, #0B5BD3);
+  --svs-on-fill: var(--on-accent, #FFFFFF);
+  --svs-warm: var(--warm, #A2560A);
+  --svs-shadow: 0 2px 4px rgba(10,13,19,.06), 0 32px 64px -24px rgba(10,13,19,.30);
+  color-scheme: light;
+}
+
+.svs {
+  /* Under the mobile menu sheet (60), over the header (50). */
+  position: fixed; z-index: 55;
+  right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  padding: 20px 20px 16px;
+  border-radius: 24px; border: 1px solid var(--svs-hairline);
+  background: var(--svs-surface); color: var(--svs-text); box-shadow: var(--svs-shadow);
+  font: 400 1rem/1.5 "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transform: translateY(16px); opacity: 0;
+  transition: transform 420ms cubic-bezier(.16, 1, .3, 1), opacity 220ms ease-out;
+}
+.svs[data-state="in"] { transform: none; opacity: 1; }
+.svs[data-state="leave"] { transform: translateY(16px); opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .svs { transform: none; transition: opacity 140ms linear; }
+  .svs[data-state="leave"] { transform: none; }
+}
+.svs *, .svs *::before, .svs *::after { box-sizing: border-box; }
+.svs [hidden] { display: none !important; }
+.svs :where(p, h2) { margin: 0; }
+.svs svg { display: block; width: 100%; height: 100%; }
+.svs :focus-visible { outline: 2px solid var(--svs-accent); outline-offset: 2px; }
+
+.svs__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-right: -10px; }
+.svs__head > div { min-width: 0; padding-top: 2px; }
+.svs__eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: 500 .75rem/1 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--svs-text-3);
+  margin-bottom: 10px;
+}
+.svs__heart { width: 16px; height: 16px; color: var(--svs-warm); flex: none; }
+.svs__close {
+  width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 11px; margin-top: -10px;
+  border: 0; border-radius: 999px; background: transparent; color: var(--svs-text-2); cursor: pointer;
+}
+.svs__close:hover { background: var(--svs-surface-2); color: var(--svs-text); }
+
+.svs__title { font-size: 1.25rem; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; color: var(--svs-text); }
+.svs__text { margin-top: 6px; font-size: .9375rem; line-height: 1.5; color: var(--svs-text-2); }
+
+.svs__freq {
+  display: inline-flex; margin-top: 16px; padding: 3px; gap: 2px;
+  border-radius: 999px; background: var(--svs-surface-2);
+}
+.svs__freq button {
+  min-height: 34px; padding: 0 14px; border: 0; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--svs-text-2); font: inherit; font-size: .875rem; font-weight: 600;
+}
+.svs__freq button[aria-pressed="true"] { background: var(--svs-surface); color: var(--svs-text); box-shadow: 0 0 0 1px var(--svs-outline) inset; }
+
+.svs__amts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+.svs__amt {
+  display: grid; place-items: center; min-height: 48px; padding: 0 6px;
+  border-radius: 14px; border: 1px solid var(--svs-outline);
+  background: var(--svs-surface); color: var(--svs-text);
+  font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; white-space: nowrap;
+  transition: transform 140ms cubic-bezier(.16, 1, .3, 1), background-color 220ms, border-color 220ms;
+}
+.svs__amt:hover { border-color: var(--svs-accent); background: var(--svs-surface-2); }
+.svs__amt:active { transform: scale(.97); }
+/* $20 is the suggested amount: the only filled button. */
+.svs__amt[data-amount="20"] { background: var(--svs-fill); border-color: transparent; color: var(--svs-on-fill); }
+.svs__amt[data-amount="20"]:hover { background: var(--svs-fill); filter: brightness(1.08); }
+.svs__amt--other { font-size: .9375rem; }
+
+.svs__foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px -8px 0; }
+.svs__never, .svs__alt {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px;
+  border: 0; background: none; cursor: pointer; font: inherit; font-size: .875rem;
+  color: var(--svs-text-2); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--svs-outline);
+}
+.svs__alt { color: var(--svs-accent); text-decoration-color: currentColor; }
+.svs__never:hover { color: var(--svs-text); }
+.svs__note { font-size: .8125rem; line-height: 1.4; color: var(--svs-text-3); }
+
+.svs__thanks { padding: 8px 0 4px; }
+
+/* Phones: full width in the thumb zone, 16 px gutters, above the home indicator. */
+@media (max-width: 599px) {
+  .svs {
+    left: 16px; right: 16px; width: auto; max-width: none;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 16px 12px; border-radius: 20px;
+  }
+  .svs__eyebrow { display: none; }
+  .svs__head > div { padding-top: 0; }
+  .svs__close { margin-top: -12px; }
+  .svs__title { font-size: 1.125rem; }
+  .svs__text { font-size: .875rem; }
+  .svs__freq { margin-top: 12px; }
+  .svs__amts { margin-top: 10px; }
+}
+
+@media print { .svs { display: none !important; } }

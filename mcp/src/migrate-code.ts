@@ -74,7 +74,7 @@ const MIGRATION_RULES: MigrationRule[] = [
     pattern: /\bPlacementNode\b/g,
     replacement: "/* PlacementNode removed — use AnchorNode + HitResultNode */",
     explanation:
-      "`PlacementNode` removed. Use `AnchorNode(anchor = hitResult.createAnchor())` + `HitResultNode`.",
+      "`PlacementNode` removed. Use `HitResultNode` for the cursor and `AnchorNode(anchor = anchor)` for the placed model, with `anchor` created by `latestFrame?.hitTest(event)?.firstOrNull { … }?.createAnchorOrNull()` in `rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })`.",
   },
   {
     id: "replace-view-renderable",
@@ -141,9 +141,9 @@ const MIGRATION_RULES: MigrationRule[] = [
     id: "replace-worldPosition-ar",
     pattern: /(\w+)\.worldPosition\s*=\s*(.+)/g,
     replacement:
-      "// $1.worldPosition = $2  ← replaced by AnchorNode(anchor = hitResult.createAnchor()) in 3.0",
+      "// $1.worldPosition = $2  ← replaced by AnchorNode(anchor = anchor) in 3.0 (anchor from an ARCore plane hit's createAnchorOrNull())",
     explanation:
-      "Manual `worldPosition` in AR causes drift. Use `AnchorNode(anchor = hitResult.createAnchor())` instead.",
+      "Manual `worldPosition` in AR causes drift. Use `AnchorNode(anchor = anchor)` instead, with `anchor` from `createAnchorOrNull()` on an in-polygon ARCore plane hit (`latestFrame?.hitTest(event)`).",
   },
 
   // ── Camera manipulator ─────────────────────────────────────────────────
@@ -212,14 +212,14 @@ const MIGRATION_RULES: MigrationRule[] = [
       "`ArFragment` (Android View-based) removed. Use `ARSceneView(...)` composable in Jetpack Compose.",
   },
 
-  // ── onTapArPlane → onTouchEvent ─────────────────────────────────────
+  // ── onTapArPlane → onSingleTapConfirmed ────────────────────────────
   {
     id: "replace-onTapArPlane",
     pattern: /\.onTapArPlane\s*\{/g,
     replacement:
-      "// .onTapArPlane removed — use ARSceneView(onTouchEvent = { hitResult, motionEvent ->",
+      "// .onTapArPlane removed — use ARSceneView(onSessionUpdated = { _, frame -> latestFrame = frame }, onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { motionEvent, node -> if (node == null) latestFrame?.hitTest(motionEvent)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()?.let { anchor = it } }))",
     explanation:
-      "`.onTapArPlane` removed. Use `ARSceneView(onTouchEvent = { hitResult, motionEvent -> ... })` and call `hitResult.createAnchor()` yourself.",
+      "`.onTapArPlane` removed. Keep the latest `Frame` from `onSessionUpdated`, then in `ARSceneView(onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { motionEvent, node -> if (node == null) ... }))` call `latestFrame?.hitTest(motionEvent)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()`. Never place on a raw `ACTION_UP` in `onTouchEvent`: it also fires when a drag or a pinch ends. Imports: `com.google.ar.core.Plane`, `io.github.sceneview.ar.arcore.createAnchorOrNull`, `io.github.sceneview.rememberOnGestureListener`.",
   },
 ];
 
@@ -323,7 +323,7 @@ export function migrateCode(code: string): MigrationResult {
   }
   if (code.includes("onTapArPlane")) {
     warnings.push(
-      "`onTapArPlane` callback removed. In 3.0, use `onTouchEvent` on `ARScene` and call `hitResult.createAnchor()` yourself."
+      "`onTapArPlane` callback removed. In 3.0, use `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { motionEvent, node -> if (node == null) … })` on `ARSceneView`, hit-test the latest ARCore `Frame` (`frame.hitTest(motionEvent)`), then `createAnchorOrNull()` on the in-polygon plane hit."
     );
   }
 

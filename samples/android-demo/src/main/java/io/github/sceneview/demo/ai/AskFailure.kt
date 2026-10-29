@@ -109,6 +109,37 @@ enum class AskFailure(
         recovery = AskRecovery.AimAndRetry,
     ),
 
+    /**
+     * AICore is installed but still setting itself up — `BINDING_FAILURE` (601) or
+     * `FEATURE_NOT_FOUND` (606). Clears by itself, so it is retryable, never terminal (#2648).
+     */
+    AicoreNotReady(
+        R.string.demo_point_and_ask_error_not_ready,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
+
+    /**
+     * The model download stopped without a more specific code — in practice a dropped
+     * network (ML Kit reports `DOWNLOAD_ERROR` / `UNKNOWN` for an unresolvable host). Shown on
+     * the download card with a retry, never as "unsupported" (#2648).
+     */
+    DownloadInterrupted(
+        R.string.demo_point_and_ask_error_download,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
+
+    /**
+     * No text arrived within [ASK_FIRST_TOKEN_TIMEOUT_MS]. A hung inference used to leave the
+     * demo on "thinking" forever with every later tap swallowed by the busy guard (#2648).
+     */
+    TimedOut(
+        R.string.demo_point_and_ask_error_timeout,
+        isTerminal = false,
+        recovery = AskRecovery.Retry,
+    ),
+
     /** Anything else, including a non-ML-Kit throwable. */
     Unknown(
         R.string.demo_point_and_ask_error,
@@ -117,7 +148,34 @@ enum class AskFailure(
     ),
     ;
 
+    /**
+     * For a terminal failure, the reason the unavailable card shows. Only the two terminal
+     * values reach [AskAvailability.Unsupported]; anything else maps to the generic reason.
+     */
+    fun unavailableReason(): AskUnavailableReason = when (this) {
+        NeedsSystemUpdate -> AskUnavailableReason.NeedsSystemUpdate
+        ModelUnavailable -> AskUnavailableReason.NotSupported
+        AicoreNotReady -> AskUnavailableReason.AicoreNotReady
+        else -> AskUnavailableReason.StatusCheckFailed
+    }
+
     companion object {
+        /**
+         * The `GenAiException` error code carried anywhere in [error]'s cause chain, or `null`
+         * when there is none — logged on every failure so a logcat reader sees the raw code,
+         * not only our classification of it (#2648).
+         */
+        fun errorCodeOf(error: Throwable?): Int? {
+            var current = error
+            var depth = 0
+            while (current != null && depth < MAX_CAUSE_DEPTH) {
+                if (current is GenAiException) return current.errorCode
+                current = current.cause.takeIf { it !== current }
+                depth++
+            }
+            return null
+        }
+
         /**
          * Maps a throwable raised by the ML Kit GenAI Prompt API onto an [AskFailure].
          *
@@ -129,16 +187,7 @@ enum class AskFailure(
          * The cause chain is walked because ML Kit wraps the AICore failure in whatever
          * the coroutine adapter threw on some paths.
          */
-        fun of(error: Throwable?): AskFailure {
-            var current = error
-            var depth = 0
-            while (current != null && depth < MAX_CAUSE_DEPTH) {
-                if (current is GenAiException) return ofErrorCode(current.errorCode)
-                current = current.cause.takeIf { it !== current }
-                depth++
-            }
-            return Unknown
-        }
+        fun of(error: Throwable?): AskFailure = errorCodeOf(error)?.let(::ofErrorCode) ?: Unknown
 
         /** Visible for tests — the pure code → failure mapping, no throwable needed. */
         fun ofErrorCode(code: Int): AskFailure = when (code) {
@@ -148,6 +197,7 @@ enum class AskFailure(
             BUSY, PER_APP_BATTERY_USE_QUOTA_EXCEEDED, BACKGROUND_USE_BLOCKED -> Busy
             REQUEST_TOO_LARGE, REQUEST_TOO_SMALL -> RequestTooLarge
             INVALID_INPUT_IMAGE -> InvalidImage
+            BINDING_FAILURE, FEATURE_NOT_FOUND -> AicoreNotReady
             else -> Unknown
         }
 
@@ -172,6 +222,10 @@ enum class AskFailure(
         private const val REQUEST_TOO_SMALL = -100
         private const val AICORE_INCOMPATIBLE = -101
         private const val INVALID_INPUT_IMAGE = -102
+
+        /** AICore service codes from the ML Kit troubleshooting page (not in `ErrorCode`). */
+        private const val BINDING_FAILURE = 601
+        private const val FEATURE_NOT_FOUND = 606
 
         /** Guards against a self-referential or pathologically deep cause chain. */
         private const val MAX_CAUSE_DEPTH = 8

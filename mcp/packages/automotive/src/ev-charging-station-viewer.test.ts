@@ -36,7 +36,8 @@ describe("generateEvChargingStationViewer", () => {
     expect(code).toContain("rememberEngine()");
     expect(code).toContain("rememberModelLoader");
     expect(code).toContain("rememberModelInstance");
-    expect(code).toContain("rememberCollisionSystem");
+    // SceneView already defaults collisionSystem = rememberCollisionSystem(view)
+    expect(code).not.toContain("rememberCollisionSystem");
     expect(code).toContain("ModelNode");
   });
 
@@ -51,13 +52,18 @@ describe("generateEvChargingStationViewer", () => {
     const code = generateEvChargingStationViewer({ ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
-    expect(code).toContain("onTapAR");
+    // ARSceneView has no onTapAR — taps are hit-tested against the latest frame
+    expect(code).not.toContain("onTapAR");
+    expect(code).toContain("rememberOnGestureListener(");
+    expect(code).toContain("latestFrame?.hitTest(e)");
   });
 
-  it("includes LightNode with named apply parameter (not a trailing lambda)", () => {
+  it("includes LightNode with its type and named apply parameter (not a trailing lambda)", () => {
     const code = generateEvChargingStationViewer();
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

@@ -1,34 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Strings for the `ar-scene-mesh` demo (registered by ArSceneMeshFragment.kt).
-     Android's resource merger fans every res/values/*.xml file in, so
-     R.string.demo_ar_scene_mesh_title etc. remains globally resolvable.
-     Adding a new demo never needs to touch strings.xml — see #1870.
+<!-- Strings for the Streetscape mode of `ar-geospatial-anchors` (ARSceneGeometryDemo.kt).
+     Android's resource merger fans every res/values/*.xml file in, so these names
+     remain globally resolvable. Adding a new demo never needs to touch strings.xml —
+     see #1870.
 
-     Since #3463 this card is "Scene Geometry" and hosts two modes: Mesh (the
-     classified SceneMeshNode) and Streetscape (the raw StreetscapeGeometryNode,
-     formerly the `ar-streetscape` demo). The Streetscape mode's own copy lives
-     here under a `_streetscape_` infix — the retired demo's own strings file is
-     gone, its deep link resolves through DEMO_ID_ALIASES. -->
+     The `demo_ar_scene_mesh_` prefix is historical: this file belonged to the
+     `ar-scene-mesh` card ("Scene Geometry"). The AR catalogue clean-up, wave 1, folded
+     that card into the Streetscape mode as its "Colour buildings & terrain" switch;
+     the old link resolves through DEMO_ID_ALIASES. -->
 <resources>
-    <string name="demo_ar_scene_mesh_title">Scene Geometry</string>
-    <string name="demo_ar_scene_mesh_subtitle">Explore the shape of nearby buildings</string>
+    <!-- Settings sheet: the switch that picks SceneMeshNode (on) or the raw
+         StreetscapeGeometryNode (off), and the one-line explainer under it. -->
+    <string name="demo_ar_scene_mesh_colour_switch">Colour buildings &amp; terrain</string>
+    <string name="demo_ar_scene_mesh_colour_on_explainer">SceneMeshNode colours every surface by its MeshClassification — one hue for terrain, another for buildings. The same enum labels an ARKit scene-reconstruction mesh, so classification-driven code runs unchanged on both platforms.</string>
+    <string name="demo_ar_scene_mesh_colour_off_explainer">StreetscapeGeometryNode is the raw node the coloured one builds on: the same Geospatial surfaces, one material for all of them, no classification.</string>
 
-    <!-- Segmented-button labels. Order matches SceneGeometryMode and the
-         DeepLinkRouter.ALIAS_INITIAL_TAB index (`ar-streetscape` = 1). -->
-    <string name="demo_ar_scene_mesh_mode_mesh">Mesh</string>
-    <string name="demo_ar_scene_mesh_mode_streetscape">Streetscape</string>
-
-    <!-- One-line explainer per mode, shown above the toggle in the controls sheet. -->
-    <string name="demo_ar_scene_mesh_mode_mesh_explainer">SceneMeshNode color-codes every geometry by its MeshClassification — one hue for terrain, another for buildings. The same enum labels an ARKit scene-reconstruction mesh, so classification-driven code runs unchanged on both platforms.</string>
-    <string name="demo_ar_scene_mesh_mode_streetscape_explainer">StreetscapeGeometryNode is the raw node the classified one subclasses: the same Geospatial trackables, one material for all of them, no classification.</string>
-
-    <!-- Status pill, Mesh mode. -->
-    <string name="demo_ar_scene_mesh_rendering">Rendering %1$d mesh(es)</string>
-    <string name="demo_ar_scene_mesh_looking">Looking for scene mesh…</string>
-    <!-- Shown after ~15 s of tracking with no geometry found (#1615). -->
-    <string name="demo_ar_scene_mesh_no_geometry_hint">No scene mesh found. This demo needs an outdoor location with Google Street View coverage — point at nearby buildings. It will not find geometry indoors.</string>
-
-    <!-- Status pill, Streetscape mode. -->
+    <!-- Status pill. -->
     <string name="demo_ar_scene_mesh_streetscape_rendering">Rendering %1$d structure(s)</string>
     <string name="demo_ar_scene_mesh_streetscape_looking">Looking for streetscape geometry…</string>
     <!-- Shown after ~15 s of tracking with no geometry found and no unsupported-device
@@ -37,7 +24,6 @@
          outside rather than spinning on "Looking for streetscape geometry…" forever. -->
     <string name="demo_ar_scene_mesh_streetscape_no_geometry_hint">No streetscape geometry found. This demo needs an outdoor location with Google Street View coverage — point at nearby buildings. It will not find anything indoors.</string>
 
-    <!-- Shared status copy — both modes run the same Geospatial session. -->
     <string name="demo_ar_scene_mesh_scanning">Scanning environment…</string>
     <!-- Why nothing is drawn yet, one sentence per cause instead of one for all of them.
          In the order the screen rules them out: the phone's Location switch, Earth's
@@ -49,16 +35,13 @@
     <string name="demo_ar_scene_mesh_covered_nothing_in_view">Street View covers this spot, but nothing has loaded yet. From outdoors, slowly pan across the buildings opposite — it does not work indoors.</string>
     <string name="demo_ar_scene_mesh_geospatial_unavailable">%1$s — try outdoors near mapped buildings. This feature also needs cloud setup.</string>
 
-    <!-- Permission gate. Both modes need CAMERA + ACCESS_FINE_LOCATION before an
-         ARSceneView may be mounted at all. -->
+    <!-- Permission gate: CAMERA + ACCESS_FINE_LOCATION before an ARSceneView may be
+         mounted at all. -->
     <string name="demo_ar_scene_mesh_requesting_permissions">Requesting permissions…</string>
-    <string name="demo_ar_scene_mesh_camera_denied">Camera permission denied — AR cannot run</string>
-    <string name="demo_ar_scene_mesh_location_denied">Location permission denied — Scene Mesh needs ACCESS_FINE_LOCATION</string>
     <string name="demo_ar_scene_mesh_streetscape_denied">Location permission denied — Streetscape Geometry needs ACCESS_FINE_LOCATION</string>
     <string name="demo_ar_scene_mesh_retry">Retry</string>
-    <string name="demo_ar_scene_mesh_open_settings">Open Settings</string>
 
-    <!-- Classification legend, Mesh mode only. -->
+    <!-- Classification legend, shown with the colour switch on. -->
     <string name="demo_ar_scene_mesh_legend_title">Classification</string>
     <string name="demo_ar_scene_mesh_legend_terrain">Terrain</string>
     <string name="demo_ar_scene_mesh_legend_building">Building</string>

@@ -15,8 +15,8 @@
 # WHAT IT DOES NOT DO: place anything. The object is placed automatically on
 # the first usable surface — there is no tap-to-place step to drive, and the
 # arm64 emulator replays no ARCore frames, so a placement never happens here.
-# The placed / no-surface / tracking-lost states are photographed by
-# `PlacementBottomAnchorSnapshotTest` (Roborazzi) instead.
+# The placed / no-surface / tracking-lost states are measured by
+# `PlacementBottomAnchorStatesTest` (Robolectric) instead.
 #
 # REQUIRES the ARCore-friendly emulator from
 # `.claude/scripts/setup-ar-emulator.sh` (virtualscene back camera, host GPU,

@@ -150,6 +150,48 @@ describe("AR samples", () => {
   it("has 2 iOS AR samples", () => {
     expect(iosArIds).toHaveLength(2);
   });
+
+  // Tap-to-place on a raw ACTION_UP in onTouchEvent moved the model at the end of every drag
+  // or pinch and, returning true, hid the UP from the gesture detector (#4755 follow-up).
+  for (const id of ["ar-model-viewer", "ar-surface-cursor"] as const) {
+    it(`${id}: places on a confirmed tap on empty space, not on ACTION_UP`, () => {
+      const code = SAMPLES[id].code;
+      expect(code).toContain("onGestureListener = rememberOnGestureListener(");
+      expect(code).toContain("onSingleTapConfirmed = {");
+      expect(code).toContain("if (node == null)");
+      expect(code).toContain("(it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true");
+      expect(code).toContain("createAnchorOrNull()");
+      expect(code).toContain("isEditable = true");
+      expect(code).not.toContain("onTouchEvent = {");
+      expect(code).not.toContain("ACTION_UP)");
+      expect(code).not.toContain("anchorCreated");
+      expect(code).not.toContain("MotionEvent");
+      // The old anchor is detached by the AnchorNode leaving composition, not by hand.
+      expect(code).not.toContain(".detach()");
+    });
+
+    it(`${id}: imports the ARCore Plane and the SceneView tap helpers`, () => {
+      const code = SAMPLES[id].code;
+      expect(code).toContain("import com.google.ar.core.Plane\n");
+      expect(code).toContain("import com.google.ar.core.Frame\n");
+      expect(code).toContain("import com.google.ar.core.Anchor\n");
+      expect(code).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
+      expect(code).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+      expect(code).not.toContain("import io.github.sceneview.collision.Plane");
+    });
+  }
+
+  it("ar-surface-cursor keeps every placed model and places at the cursor", () => {
+    const code = SAMPLES["ar-surface-cursor"].code;
+    expect(code).toContain("placedAnchors = placedAnchors + it");
+    expect(code).toContain("latestFrame?.hitTest(view.width / 2f, view.height / 2f)");
+    // A tap on the reticle must still count as empty space.
+    expect(code).toContain("isTouchable = false");
+  });
+
+  it("ar-model-viewer replaces its single anchor", () => {
+    expect(SAMPLES["ar-model-viewer"].code).toContain("?.let { anchor = it }");
+  });
 });
 
 describe("3D samples", () => {

@@ -16,13 +16,16 @@ import kotlin.math.sqrt
 
 /**
  * A dense coloured cloud: [positions] flat world-space xyz in metres, [colors] `0xFFRRGGBB` (`0`
- * = none), [normals] flat unit xyz (or `null`), [confidences] 0–255 (or `null`), one per point.
+ * = none), [normals] flat unit xyz (or `null`), [confidences] 0–255 (or `null`), and [levels],
+ * each point's detail level (or `null`, all level 0), one per point. A point at level L stands
+ * for a voxel 2^L times the cloud's own (#4629: [DenseFusion] coarsens broad surfaces).
  */
 class DenseCloud(
     val positions: FloatArray,
     val colors: IntArray,
     val normals: FloatArray? = null,
     val confidences: ByteArray? = null,
+    val levels: ByteArray? = null,
 ) {
     val count: Int get() = colors.size
 
@@ -30,7 +33,11 @@ class DenseCloud(
         require(positions.size == colors.size * 3) { "${positions.size / 3} positions for ${colors.size} colours" }
         require(normals == null || normals.size == positions.size) { "one normal per point" }
         require(confidences == null || confidences.size == colors.size) { "one confidence per point" }
+        require(levels == null || levels.size == colors.size) { "one level per point" }
     }
+
+    /** Point [index]'s detail level: its surfel is `voxel · 2^level` wide. */
+    fun levelOf(index: Int): Int = levels?.get(index)?.toInt()?.and(0xFF) ?: 0
 
     /** `[minX, minY, minZ, maxX, maxY, maxZ]`, all zero for an empty cloud. */
     fun bounds(): FloatArray {
@@ -56,26 +63,29 @@ class DenseCloud(
 
 /**
  * The `dense/points.bin` blob, SVPC version 1. Little-endian, a 32-byte header then one section
- * per attribute (structure of arrays), 12 bytes a point with every section:
+ * per attribute (structure of arrays), 12 bytes a point with the first four sections:
  *
  * ```
  * 0  "SVPC"            magic
  * 4  u32 version       1
  * 8  u32 count         points
- * 12 u32 flags         bit 0 normals, bit 1 confidence; other bits reserved (0)
+ * 12 u32 flags         bit 0 normals, bit 1 confidence, bit 2 levels; other bits reserved (0)
  * 16 f32 × 3 origin    metres
  * 28 f32 scale         metres per unit, 0.001 unless the cloud is wider than ±32.767 m
  * 32 i16 × 3 × count   position = origin + q · scale
  *    u8 × 3 × count    colour r, g, b (sRGB)
  *    u8 × count        confidence 0–255             (flag bit 1)
  *    i8 × 2 × count    octahedral unit normal ×127  (flag bit 0)
+ *    u8 × count        detail level, voxel × 2^level (flag bit 2)
  * ```
  *
  * Encoder rules, so another writer gives the same bytes: origin is the centre of the cloud's
  * bounds; scale is a millimetre, or `half extent / 32767` for a wider cloud; a value is rounded
  * half away from zero, then clamped to ±32767; a normal maps onto the octahedron (lower half
- * folded over), each coordinate `×127`, rounded the same way. A reader skips a blob whose magic
- * or version it does not know.
+ * folded over), each coordinate `×127`, rounded the same way. The levels section is written only
+ * when a point is coarser than level 0 (#4629), so a scan that never coarsened keeps the bytes it
+ * had; it comes last, so a reader that does not know it reads the rest unchanged. A reader skips
+ * a blob whose magic or version it does not know.
  */
 object SvpcCodec {
     /** `"SVPC"` read as a little-endian u32. */
@@ -84,6 +94,7 @@ object SvpcCodec {
     const val HEADER_BYTES = 32
     const val FLAG_NORMALS = 1
     const val FLAG_CONFIDENCE = 2
+    const val FLAG_LEVELS = 4
 
     /** A millimetre: the step of every cloud that fits ±32.767 m around its centre. */
     const val SCALE_M = 0.001f
@@ -94,6 +105,7 @@ object SvpcCodec {
         var perPoint = 6 + 3
         if (flags and FLAG_CONFIDENCE != 0) perPoint += 1
         if (flags and FLAG_NORMALS != 0) perPoint += 2
+        if (flags and FLAG_LEVELS != 0) perPoint += 1
         return HEADER_BYTES + perPoint * count
     }
 
@@ -107,6 +119,8 @@ object SvpcCodec {
         var flags = 0
         if (cloud.normals != null) flags = flags or FLAG_NORMALS
         if (cloud.confidences != null) flags = flags or FLAG_CONFIDENCE
+        val levels = cloud.levels?.takeIf { l -> l.any { it.toInt() != 0 } }
+        if (levels != null) flags = flags or FLAG_LEVELS
         val out = ByteBuffer.allocate(sizeOf(n, flags)).order(ByteOrder.LITTLE_ENDIAN)
         out.putInt(MAGIC).putInt(VERSION).putInt(n).putInt(flags)
         out.putFloat(origin[0]).putFloat(origin[1]).putFloat(origin[2]).putFloat(scale)
@@ -123,6 +137,7 @@ object SvpcCodec {
                 out.put((oct shr 8).toByte()).put(oct.toByte())
             }
         }
+        levels?.let { out.put(it) }
         return out.array()
     }
 
@@ -135,7 +150,7 @@ object SvpcCodec {
         val n = input.int
         val flags = input.int
         if (n < 0 || n > (length - HEADER_BYTES) / 9) return null
-        if (length < sizeOf(n, flags and (FLAG_NORMALS or FLAG_CONFIDENCE))) return null
+        if (length < sizeOf(n, flags and KNOWN_FLAGS)) return null
         val origin = floatArrayOf(input.float, input.float, input.float)
         val scale = input.float
         if (!(scale > 0f) || origin.any { !it.isFinite() }) return null
@@ -155,7 +170,8 @@ object SvpcCodec {
         } else {
             null
         }
-        return DenseCloud(positions, colors, normals, confidences)
+        val levels = if (flags and FLAG_LEVELS != 0) ByteArray(n).also { input.get(it) } else null
+        return DenseCloud(positions, colors, normals, confidences, levels)
     }
 
     /** Round half away from zero, then clamp to ±[limit]: Swift's `.rounded()`, not `Math.round`. */
@@ -203,6 +219,7 @@ object SvpcCodec {
     private fun signNotZero(v: Float) = if (v >= 0f) 1f else -1f
 
     private const val OCT_MAX = 127
+    private const val KNOWN_FLAGS = FLAG_NORMALS or FLAG_CONFIDENCE or FLAG_LEVELS
 }
 
 /**
@@ -279,18 +296,18 @@ object DepthBackProjection {
         Vec3((px - cx) * depthM / fx, -(py - cy) * depthM / fy, -depthM)
 
     /**
-     * The surfels of [frame]: every pixel with depth in [[NEAR_M], [FAR_M]], confidence ≥
+     * The surfels of [frame]: every pixel with depth in [[NEAR_M], [farM]], confidence ≥
      * [minConfidence] and a normal — from its neighbours, none across a depth jump
      * ([EDGE_FRACTION]) — facing the camera by at least [MIN_VIEW_COSINE].
      */
     @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements", "NestedBlockDepth")
-    fun project(frame: DepthFrame, minConfidence: Int = MIN_CONFIDENCE): DenseSamples {
+    fun project(frame: DepthFrame, minConfidence: Int = MIN_CONFIDENCE, farM: Float = FAR_M): DenseSamples {
         val w = frame.width
         val h = frame.height
         val depth = FloatArray(w * h)
         for (i in 0 until w * h) {
             val d = (frame.depthMm[i].toInt() and 0xFFFF) / 1000f
-            depth[i] = if (d in NEAR_M..FAR_M) d else 0f
+            depth[i] = if (d in NEAR_M..farM) d else 0f
         }
         val capacity = w * h
         val positions = FloatArray(capacity * 3)
@@ -358,246 +375,6 @@ object DepthBackProjection {
     }
 }
 
-/** What one [DenseFusion.add] did: voxels created, samples merged into voxels, voxels in all. */
-data class DenseFuseStats(val added: Int, val kept: Int, val total: Int)
-
-/**
- * The dense map: samples merged into [voxelM] voxels, deduplicated by a primitive
- * open-addressing hash — a voxel seen again averages its position, colour and normal, each
- * sample weighted by [DenseSamples.weights] (a near, confident, face-on view outweighs a far,
- * doubtful, grazing one) up to [MAX_WEIGHT] full views, so it keeps following a better view, and
- * keeps its best confidence. It also counts the [add] calls — depth frames — that saw it, so
- * [cloud] can leave out a voxel one frame alone saw: the dust a noisy depth leaves in the air.
- * Capped at [maxPoints] voxels; voxels keep their insertion order, so a prefix of the cloud is
- * the map as it stood earlier. Single-threaded: one fusion at a time, off the main thread.
- */
-class DenseFusion(val voxelM: Float = VOXEL_M, val maxPoints: Int = MAX_POINTS) {
-    var count: Int = 0
-        private set
-
-    private var keys = LongArray(INITIAL_SLOTS) { EMPTY }
-    private var slots = IntArray(INITIAL_SLOTS)
-    private var px = FloatArray(INITIAL_POINTS)
-    private var py = FloatArray(INITIAL_POINTS)
-    private var pz = FloatArray(INITIAL_POINTS)
-    private var nx = FloatArray(INITIAL_POINTS)
-    private var ny = FloatArray(INITIAL_POINTS)
-    private var nz = FloatArray(INITIAL_POINTS)
-    private var r = FloatArray(INITIAL_POINTS)
-    private var g = FloatArray(INITIAL_POINTS)
-    private var b = FloatArray(INITIAL_POINTS)
-    private var weight = FloatArray(INITIAL_POINTS)
-    private var colorWeight = FloatArray(INITIAL_POINTS)
-    private var confidence = ByteArray(INITIAL_POINTS)
-    private var views = IntArray(INITIAL_POINTS)
-    private var lastView = IntArray(INITIAL_POINTS)
-
-    /** The current [add] call, numbered from 1: a voxel's views grow once per call. */
-    private var view = 0
-
-    /** Merges [samples] into the map. */
-    @Suppress("LoopWithTooManyJumpStatements") // one skip per rejected sample
-    fun add(samples: DenseSamples): DenseFuseStats {
-        view++
-        var added = 0
-        var kept = 0
-        for (i in 0 until samples.count) {
-            val x = samples.positions[i * 3]
-            val y = samples.positions[i * 3 + 1]
-            val z = samples.positions[i * 3 + 2]
-            if (!x.isFinite() || !y.isFinite() || !z.isFinite()) continue
-            val key = voxelKey(x, y, z, voxelM)
-            var index = find(key)
-            if (index < 0) {
-                if (count >= maxPoints) continue
-                index = insert(key)
-                added++
-            }
-            merge(index, x, y, z, samples, i)
-            kept++
-        }
-        return DenseFuseStats(added, kept, count)
-    }
-
-    /**
-     * The map's first [limit] voxels as a cloud — averaged positions, colours, unit normals —
-     * leaving out those fewer than [minViews] depth frames saw ([MIN_VIEWS] for a saved scan),
-     * and [maxPoints] at most: past it, every n-th voxel, so a capped cloud still covers the whole
-     * room — thinner — rather than the corner scanned first.
-     */
-    fun cloud(limit: Int = count, minViews: Int = 1, maxPoints: Int = Int.MAX_VALUE): DenseCloud {
-        val first = limit.coerceIn(0, count)
-        val cap = minOf(first, maxPoints.coerceAtLeast(0))
-        val stride = if (cap == 0) 1 else (first + cap - 1) / cap
-        val kept = IntArray(cap)
-        var n = 0
-        var i = 0
-        while (i < first && n < cap) {
-            if (views[i] >= minViews) kept[n++] = i
-            i += stride
-        }
-        val positions = FloatArray(n * 3)
-        val normals = FloatArray(n * 3)
-        val colors = IntArray(n)
-        val confidences = ByteArray(n)
-        for (o in 0 until n) {
-            val i = kept[o]
-            positions[o * 3] = px[i]
-            positions[o * 3 + 1] = py[i]
-            positions[o * 3 + 2] = pz[i]
-            val l = sqrt(nx[i] * nx[i] + ny[i] * ny[i] + nz[i] * nz[i])
-            if (l > 1e-6f) {
-                normals[o * 3] = nx[i] / l
-                normals[o * 3 + 1] = ny[i] / l
-                normals[o * 3 + 2] = nz[i] / l
-            } else {
-                normals[o * 3 + 1] = 1f // opposite views cancelled out: face up
-            }
-            colors[o] = if (colorWeight[i] == 0f) 0 else {
-                (0xFF shl 24) or (channel(r[i]) shl 16) or (channel(g[i]) shl 8) or channel(b[i])
-            }
-            confidences[o] = confidence[i]
-        }
-        return DenseCloud(positions, colors, normals, confidences)
-    }
-
-    private fun merge(index: Int, x: Float, y: Float, z: Float, samples: DenseSamples, i: Int) {
-        if (lastView[index] != view) {
-            lastView[index] = view
-            views[index]++
-        }
-        val sw = (samples.weights?.get(i) ?: 1f).coerceAtLeast(MIN_SAMPLE_WEIGHT)
-        // A running weighted mean; past MAX_WEIGHT a new sample still moves it by sw / MAX_WEIGHT.
-        val w = minOf(weight[index] + sw, MAX_WEIGHT)
-        weight[index] = w
-        val k = sw / w
-        px[index] += (x - px[index]) * k
-        py[index] += (y - py[index]) * k
-        pz[index] += (z - pz[index]) * k
-        nx[index] += samples.normals[i * 3] * sw
-        ny[index] += samples.normals[i * 3 + 1] * sw
-        nz[index] += samples.normals[i * 3 + 2] * sw
-        // Keep the summed normal bounded so a long-seen voxel still turns with new views.
-        val l = abs(nx[index]) + abs(ny[index]) + abs(nz[index])
-        if (l > MAX_WEIGHT) {
-            val s = MAX_WEIGHT / l
-            nx[index] *= s
-            ny[index] *= s
-            nz[index] *= s
-        }
-        val c = samples.colors[i]
-        if (c != 0) {
-            val cw = minOf(colorWeight[index] + sw, MAX_WEIGHT)
-            colorWeight[index] = cw
-            val ck = sw / cw
-            r[index] += ((c shr 16 and 0xFF) - r[index]) * ck
-            g[index] += ((c shr 8 and 0xFF) - g[index]) * ck
-            b[index] += ((c and 0xFF) - b[index]) * ck
-        }
-        val conf = samples.confidences[i].toInt() and 0xFF
-        if (conf > (confidence[index].toInt() and 0xFF)) confidence[index] = conf.toByte()
-    }
-
-    private fun find(key: Long): Int {
-        val mask = keys.size - 1
-        var slot = mix(key) and mask
-        while (true) {
-            val k = keys[slot]
-            if (k == EMPTY) return -1
-            if (k == key) return slots[slot]
-            slot = (slot + 1) and mask
-        }
-    }
-
-    private fun insert(key: Long): Int {
-        if ((count + 1) * 2 > keys.size) rehash(keys.size * 2)
-        if (count == px.size) grow(px.size * 2)
-        val mask = keys.size - 1
-        var slot = mix(key) and mask
-        while (keys[slot] != EMPTY) slot = (slot + 1) and mask
-        keys[slot] = key
-        slots[slot] = count
-        weight[count] = 0f
-        colorWeight[count] = 0f
-        confidence[count] = 0
-        views[count] = 0
-        lastView[count] = 0
-        px[count] = 0f; py[count] = 0f; pz[count] = 0f
-        nx[count] = 0f; ny[count] = 0f; nz[count] = 0f
-        r[count] = 0f; g[count] = 0f; b[count] = 0f
-        return count++
-    }
-
-    private fun rehash(size: Int) {
-        val oldKeys = keys
-        val oldSlots = slots
-        keys = LongArray(size) { EMPTY }
-        slots = IntArray(size)
-        val mask = size - 1
-        for (s in oldKeys.indices) {
-            val k = oldKeys[s]
-            if (k == EMPTY) continue
-            var slot = mix(k) and mask
-            while (keys[slot] != EMPTY) slot = (slot + 1) and mask
-            keys[slot] = k
-            slots[slot] = oldSlots[s]
-        }
-    }
-
-    private fun grow(size: Int) {
-        px = px.copyOf(size); py = py.copyOf(size); pz = pz.copyOf(size)
-        nx = nx.copyOf(size); ny = ny.copyOf(size); nz = nz.copyOf(size)
-        r = r.copyOf(size); g = g.copyOf(size); b = b.copyOf(size)
-        weight = weight.copyOf(size)
-        colorWeight = colorWeight.copyOf(size)
-        confidence = confidence.copyOf(size)
-        views = views.copyOf(size)
-        lastView = lastView.copyOf(size)
-    }
-
-    companion object {
-        /** The design's surfel size: 2 cm. */
-        const val VOXEL_M = 0.02f
-
-        /** 500 k surfels: a room, 6 MB of SVPC. */
-        const val MAX_POINTS = 500_000
-
-        /** A voxel's weight stops growing at this many full-weight views. */
-        const val MAX_WEIGHT = 32f
-
-        /**
-         * Depth frames that must see a voxel for a saved scan to keep it: a voxel only one frame
-         * saw is most often that frame's noise.
-         */
-        const val MIN_VIEWS = 2
-
-        /** The least a sample counts, so a weight never divides by zero. */
-        private const val MIN_SAMPLE_WEIGHT = 1e-4f
-
-        private const val INITIAL_SLOTS = 1 shl 14
-        private const val INITIAL_POINTS = 1 shl 13
-
-        /** Never a key: [voxelKey] leaves the sign bit clear. */
-        private const val EMPTY = -1L
-
-        /** The voxel of ([x], [y], [z]) at [size]: 21 bits per axis, like [ArDebugTrace]'s map. */
-        fun voxelKey(x: Float, y: Float, z: Float, size: Float): Long {
-            val ix = floor(x / size).toLong() and 0x1FFFFF
-            val iy = floor(y / size).toLong() and 0x1FFFFF
-            val iz = floor(z / size).toLong() and 0x1FFFFF
-            return (ix shl 42) or (iy shl 21) or iz
-        }
-
-        private fun mix(key: Long): Int {
-            var h = key * -0x61c8864680b583ebL
-            h = h xor (h ushr 29)
-            return h.toInt() and Int.MAX_VALUE
-        }
-
-        private fun channel(v: Float) = (v + 0.5f).toInt().coerceIn(0, 255)
-    }
-}
-
 /**
  * The replay's dense layer without a custom shader — the design's zero-shader parity fallback:
  * each surfel a square quad pre-expanded on the CPU, lying in the plane its normal gives, its
@@ -616,13 +393,87 @@ object DenseSurfels {
     /** Surfels [ATLAS_SIZE]² can colour. */
     const val MAX_SURFELS = ATLAS_SIZE * ATLAS_SIZE
 
-    /** Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`. */
+    /**
+     * The distance under which a surfel shrinks towards a dot (#4742): `scan_surfel.mat` scales
+     * it about its centre by `(depth / NEAR_FADE_M)²`, so its side on screen falls to nothing as
+     * the camera reaches it. A surfel is a few centimetres wide in the world, so one the camera
+     * passed close to — the saving orbit leaving the room through a wall, the live eye next to a
+     * surface — grew into a square over most of the screen. Farther, every level is drawn as
+     * built, so walls keep no holes.
+     */
+    const val NEAR_FADE_M = 0.3f
+
+    /**
+     * The largest side a surfel is drawn at, as a fraction of the view's height: a backstop for
+     * the coarsest levels just past [NEAR_FADE_M]. A level-[DenseFusion.MAX_LEVEL] surfel (about
+     * 10 cm) reaches it only closer than ~0.36 m on a phone's lens; a level-0 one never does.
+     */
+    const val MAX_SCREEN_SIDE = 0.25f
+
+    /**
+     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height, about the largest a finest
+     * surfel is drawn (at [NEAR_FADE_M]). A surfel the map coarsened keeps its width in the room,
+     * so a wall past about a metre stays whole at every level; nearer, it shrinks to the size of a
+     * fine one instead of growing into a square over the camera.
+     */
+    const val LIVE_MAX_SCREEN_SIDE = 0.1f
+
+    /** The largest side a view draws a surfel at: [LIVE_MAX_SCREEN_SIDE] over the camera ([live]). */
+    fun maxScreenSide(live: Boolean): Float = if (live) LIVE_MAX_SCREEN_SIDE else MAX_SCREEN_SIDE
+
+    /**
+     * What `scan_surfel.mat`'s vertex stage scales a surfel's corners by about its centre — its
+     * centre [depth] metres ahead, [halfDiagonal] metres from centre to corner, through a
+     * projection whose `[1][1]` term is [clipYScale]: `1` past [nearFade] while its side on
+     * screen stays under [maxSide] of the view's height, `(depth / nearFade)²` nearer, and never
+     * more than keeps it under [maxSide].
+     */
+    fun screenScale(
+        halfDiagonal: Float,
+        depth: Float,
+        clipYScale: Float,
+        maxSide: Float = MAX_SCREEN_SIDE,
+        nearFade: Float = NEAR_FADE_M,
+    ): Float {
+        val d = depth.coerceAtLeast(MIN_DEPTH_M)
+        val side = halfDiagonal * SQRT_2 * clipYScale / (2f * d)
+        val fade = (d / nearFade).coerceAtMost(1f)
+        return minOf(fade * fade, maxSide / side.coerceAtLeast(MIN_SIDE))
+    }
+
+    /**
+     * Each vertex of a [mesh] made by [mesh] minus the centre of its surfel, xyz per vertex: the
+     * `custom0` attribute `scan_surfel.mat` finds the centre with. Four vertices per surfel.
+     */
+    fun cornerOffsets(mesh: DebugMesh): FloatArray {
+        val p = mesh.positions
+        val out = FloatArray(mesh.vertexCount * 3)
+        var q = 0
+        while (q + 4 <= mesh.vertexCount) {
+            for (axis in 0 until 3) {
+                val base = q * 3 + axis
+                val centre = (p[base] + p[base + 3] + p[base + 6] + p[base + 9]) / 4f
+                for (corner in 0 until 4) out[base + corner * 3] = p[base + corner * 3] - centre
+            }
+            q += 4
+        }
+        return out
+    }
+
+    private const val SQRT_2 = 1.4142135f
+    private const val MIN_DEPTH_M = 1e-4f
+    private const val MIN_SIDE = 1e-6f
+
+    /**
+     * Two triangles and four vertices per surfel, surfel `i` at indices `6i until 6i + 6`; a
+     * surfel of level L ([DenseCloud.levelOf]) 2^L times as wide, so a coarsened wall stays whole.
+     */
     fun mesh(cloud: DenseCloud, voxelM: Float): DebugMesh {
         val n = minOf(cloud.count, MAX_SURFELS)
         val mesh = DebugMesh(maxOf(n * 4, 1))
-        val half = voxelM * HALF_SIDE_VOXELS
         val normals = cloud.normals
         for (i in 0 until n) {
+            val half = voxelM * HALF_SIDE_VOXELS * (1 shl cloud.levelOf(i).coerceAtMost(DenseFusion.LEVEL_LIMIT))
             val x = cloud.positions[i * 3]
             val y = cloud.positions[i * 3 + 1]
             val z = cloud.positions[i * 3 + 2]

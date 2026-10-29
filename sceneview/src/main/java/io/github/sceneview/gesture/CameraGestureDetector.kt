@@ -9,6 +9,7 @@ import com.google.android.filament.utils.Manipulator
 import com.google.android.filament.utils.distance
 import com.google.android.filament.utils.mix
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
 import io.github.sceneview.node.CameraNode
@@ -86,6 +87,16 @@ open class CameraGestureDetector(
          *               (move away).
          */
         fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) {}
+
+        /**
+         * A finger touched the scene: stop any movement still coasting from the previous gesture
+         * (see [io.github.sceneview.gesture.Inertia]) right where it is.
+         *
+         * Called by [CameraGestureDetector] on every touch-down, before the new gesture is even
+         * recognised — the way a scrolling list stops under the finger. The default
+         * implementation does nothing, so a manipulator without inertia needs no change.
+         */
+        fun stopInertia() {}
 
         /**
          * Whether this manipulator still owes frames even though the camera is **not moving right
@@ -211,6 +222,71 @@ open class CameraGestureDetector(
         var doubleTapZoomDurationSeconds: Float = DEFAULT_DOUBLE_TAP_ZOOM_DURATION_SECONDS
 
         /**
+         * How orbit, pan and pinch-zoom coast once the finger lifts. [Inertia.Default] (the
+         * default): a flick keeps turning the camera at the finger's speed and slows down to a
+         * stop; [Inertia.None]: the camera stops dead on release. A new touch always stops a
+         * coast. Changing it mid-coast applies from the next frame.
+         *
+         * ```kotlin
+         * rememberCameraManipulator(orbitRadius = 3f, inertia = Inertia.None)
+         * ```
+         */
+        var inertia: Inertia = Inertia.Default
+            set(value) {
+                field = value
+                grabInertia.inertia = value
+                zoomInertia.inertia = value
+            }
+
+        /** Clock the release velocity is measured against, in nanoseconds. Injectable for tests. */
+        internal var nanoTime: () -> Long = System::nanoTime
+
+        /** Orbit / pan pointer velocity, in pixels. */
+        private val grabInertia = InertiaTracker(
+            dimensions = 2,
+            minSpeed = GRAB_INERTIA_STOP_PX_PER_SECOND,
+            maxSpeed = GRAB_INERTIA_MAX_PX_PER_SECOND,
+            minReleaseSpeed = GRAB_INERTIA_RELEASE_PX_PER_SECOND,
+        )
+
+        /** Pinch velocity, in [pinchZoomDelta] units (natural log of the distance ratio). */
+        private val zoomInertia = InertiaTracker(
+            dimensions = 1,
+            minSpeed = ZOOM_INERTIA_STOP_PER_SECOND,
+            maxSpeed = ZOOM_INERTIA_MAX_PER_SECOND,
+            minReleaseSpeed = ZOOM_INERTIA_RELEASE_PER_SECOND,
+        )
+
+        /** A user grab (orbit or pan) is open on the Filament manipulator. */
+        private var grabbing = false
+
+        /** The Filament grab is held open after release, fed by a coasting virtual pointer. */
+        private var grabCoasting = false
+        private var coastX = 0f
+        private var coastY = 0f
+        private var zoomCumulative = 0f
+        private var zoomX = 0
+        private var zoomY = 0
+        private val coastStep = FloatArray(2)
+
+        private fun nowSeconds(): Double = nanoTime() / 1_000_000_000.0
+
+        /** `true` while an orbit, pan or zoom is still coasting after release. */
+        val isCoasting: Boolean get() = grabCoasting || zoomInertia.isCoasting
+
+        override val isFrameActive: Boolean
+            get() = isCoasting || animationDuration > 0f
+
+        override fun stopInertia() {
+            if (grabCoasting) {
+                grabCoasting = false
+                manipulator.grabEnd()
+            }
+            grabInertia.stop()
+            zoomInertia.stop()
+        }
+
+        /**
          * In-flight double-tap zoom: where it started, where it lands, and how far along it is.
          * Advanced from [update] (the render loop already ticks that every frame), so the SDK
          * needs neither a coroutine nor a second frame callback for it. `animationDuration <= 0`
@@ -322,22 +398,68 @@ open class CameraGestureDetector(
         override fun grabBegin(x: Int, y: Int, strafe: Boolean) {
             // The user's own gesture always wins over an animation still playing.
             cancelDoubleTapZoom()
+            stopInertia()
             // Last moment the pose is still readable — `grabUpdate` is what re-plants the target.
             currentOrbitDistance()
             manipulator.grabBegin(x, y, strafe)
+            grabbing = true
+            coastX = x.toFloat()
+            coastY = y.toFloat()
+            grabInertia.reset()
+            grabInertia.addSample(nowSeconds(), coastX, coastY)
         }
 
         override fun grabUpdate(x: Int, y: Int) {
             manipulator.grabUpdate(x, y)
+            if (grabbing) {
+                coastX = x.toFloat()
+                coastY = y.toFloat()
+                grabInertia.addSample(nowSeconds(), coastX, coastY)
+            }
         }
 
         override fun grabEnd() {
-            manipulator.grabEnd()
+            if (!grabbing) {
+                // The detector ends every gesture with a grabEnd, a pinch or a tap included —
+                // forward it as before, but it must not cut a coast that is not its own.
+                if (!grabCoasting) manipulator.grabEnd()
+                return
+            }
+            grabbing = false
+            // Keep Filament's grab open and let `update` move a virtual pointer along the release
+            // velocity: orbit and pan coast through the very code path the finger used.
+            grabCoasting = grabInertia.release(nowSeconds())
+            if (!grabCoasting) manipulator.grabEnd()
+        }
+
+        private fun advanceGrabCoast(deltaTime: Float) {
+            if (!grabCoasting) return
+            val going = grabInertia.advance(deltaTime, coastStep)
+            coastX += coastStep[0]
+            coastY += coastStep[1]
+            manipulator.grabUpdate(coastX.roundToInt(), coastY.roundToInt())
+            if (!going) {
+                grabCoasting = false
+                manipulator.grabEnd()
+            }
+        }
+
+        private fun advanceZoomCoast(deltaTime: Float) {
+            if (!zoomInertia.isCoasting) return
+            zoomInertia.advance(deltaTime, coastStep)
+            // A coast that runs into the zoom limit stops there instead of pressing on it.
+            if (!applyZoomDelta(zoomX, zoomY, coastStep[0])) zoomInertia.stop()
         }
 
         override fun scrollBegin(x: Int, y: Int, separation: Float) {
             // A pinch takes over from a double-tap zoom still in flight.
             cancelDoubleTapZoom()
+            stopInertia()
+            zoomInertia.reset()
+            zoomCumulative = 0f
+            zoomX = x
+            zoomY = y
+            zoomInertia.addSample(nowSeconds(), zoomCumulative)
             // Seed the tracked radius from the manipulator while its reported target is still the
             // orbit pivot (see [orbitDistance]) — cheap, and a no-op once measured.
             currentOrbitDistance()
@@ -348,6 +470,18 @@ open class CameraGestureDetector(
             // Filament Manipulator instance needed).
             val zoomDelta =
                 pinchZoomDelta(prevSeparation, currSeparation, pinchZoomSpeed, pinchZoomDamping)
+            zoomCumulative += zoomDelta
+            zoomInertia.addSample(nowSeconds(), zoomCumulative)
+            zoomX = x
+            zoomY = y
+            applyZoomDelta(x, y, zoomDelta)
+        }
+
+        /**
+         * Dollies by [zoomDelta] ([pinchZoomDelta] units) — the pinch and its coast share it.
+         * Returns `false` when the zoom limit left nothing to move.
+         */
+        private fun applyZoomDelta(x: Int, y: Int, zoomDelta: Float): Boolean {
             val distance = if (isOrbitMode()) currentOrbitDistance() else -1f
             if (distance <= 0f) {
                 // Either no usable pose to scale against, or a mode where "distance" is not what
@@ -355,7 +489,7 @@ open class CameraGestureDetector(
                 // scrolls its move *speed*, neither of which is a dolly. Hand those Filament's own
                 // step rather than a dolly conversion that does not apply to them.
                 manipulator.scroll(x, y, zoomDelta)
-                return
+                return true
             }
             val home = if (homeDistance > 0f) homeDistance else distance
             // Relative dolly: the same pinch covers the same *fraction* of the distance whatever
@@ -366,12 +500,15 @@ open class CameraGestureDetector(
                 minDistance = home * minZoomDistanceFactor,
                 maxDistance = home * maxZoomDistanceFactor,
             )
-            if (next == distance) return
+            if (next == distance) return false
             manipulator.scroll(x, y, dollyScrollDelta(distance, next, manipulatorZoomSpeed))
             orbitDistance = next
+            return true
         }
 
-        override fun scrollEnd() {}
+        override fun scrollEnd() {
+            zoomInertia.release(nowSeconds())
+        }
 
         /**
          * Starts the animated dolly towards (or away from) the orbit pivot.
@@ -399,6 +536,7 @@ open class CameraGestureDetector(
                 maxDistanceFactor = maxZoomDistanceFactor,
             )
             if (target == distance) return
+            stopInertia()
             animationX = x
             animationY = y
             animationStartDistance = distance
@@ -419,6 +557,8 @@ open class CameraGestureDetector(
 
         override fun update(deltaTime: Float) {
             advanceDoubleTapZoom(deltaTime)
+            advanceGrabCoast(deltaTime)
+            advanceZoomCoast(deltaTime)
             manipulator.update(deltaTime)
         }
 
@@ -509,6 +649,24 @@ open class CameraGestureDetector(
              * curve: small pinches stay 1:1, large pinches are progressively softened.
              */
             const val DEFAULT_PINCH_ZOOM_DAMPING: Float = 0.7f
+
+            /** Slowest orbit / pan release that coasts, in pixels per second (≈ a list fling). */
+            internal const val GRAB_INERTIA_RELEASE_PX_PER_SECOND: Float = 150f
+
+            /** Orbit / pan coast ends under this pointer speed, in pixels per second. */
+            internal const val GRAB_INERTIA_STOP_PX_PER_SECOND: Float = 8f
+
+            /** Fastest an orbit / pan may coast, so a frantic flick cannot blur the camera. */
+            internal const val GRAB_INERTIA_MAX_PX_PER_SECOND: Float = 5000f
+
+            /** Slowest pinch release that coasts, in ln(distance ratio) per second. */
+            internal const val ZOOM_INERTIA_RELEASE_PER_SECOND: Float = 0.4f
+
+            /** Pinch coast ends under this speed, in ln(distance ratio) per second. */
+            internal const val ZOOM_INERTIA_STOP_PER_SECOND: Float = 0.02f
+
+            /** Fastest a pinch may coast: at most ~2.9× the distance over a whole coast. */
+            internal const val ZOOM_INERTIA_MAX_PER_SECOND: Float = 3f
         }
     }
 
@@ -650,7 +808,10 @@ open class CameraGestureDetector(
     fun onTouchEvent(event: MotionEvent) {
         val touch = TouchPair.of(event, viewHeight())
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> twoFingerTapCandidate = false
+            MotionEvent.ACTION_DOWN -> {
+                twoFingerTapCandidate = false
+                stopInertia()
+            }
 
             MotionEvent.ACTION_POINTER_DOWN -> beginTwoFingerTap(event, touch)
 
@@ -721,6 +882,8 @@ open class CameraGestureDetector(
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_UP -> {
                 twoFingerTapCandidate = false
                 endGesture()
+                // A cancelled stream (a parent intercepted it) is not a release: nothing coasts.
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) stopInertia()
             }
         }
     }
@@ -770,11 +933,27 @@ open class CameraGestureDetector(
         )
     }
 
+    /**
+     * Stops whatever the camera is still coasting from the previous gesture. Called on every
+     * touch-down; `SceneView` also calls it when the touch lands on an editable node, which this
+     * detector then never sees.
+     */
+    fun stopInertia() {
+        val manipulator = cameraManipulator ?: return
+        // Same tolerance as [requestZoom]: a Java manipulator compiled before the default method
+        // existed must not crash on it.
+        runCatching { manipulator.stopInertia() }
+    }
+
     private fun endGesture() {
         tentativePanEvents.clear()
         tentativeOrbitEvents.clear()
         tentativeZoomEvents.clear()
+        val ended = currentGesture
         currentGesture = Gesture.NONE
+        // A pinch ends with scrollEnd — which is what starts its coast — then the grabEnd every
+        // gesture has always received.
+        if (ended == Gesture.ZOOM) cameraManipulator?.scrollEnd()
         cameraManipulator?.grabEnd()
     }
 
@@ -871,6 +1050,31 @@ class FovZoomCameraManipulator @JvmOverloads constructor(
     private val pinchFovSpeed: Float = DEFAULT_PINCH_FOV_SPEED,
 ) : CameraGestureDetector.CameraManipulator {
     private var currentFov: Double = 60.0
+    private var fovCumulative = 0f
+    private val coastStep = FloatArray(1)
+    private val fovInertia = InertiaTracker(
+        dimensions = 1,
+        minSpeed = scaledZoomThreshold(
+            CameraGestureDetector.DefaultCameraManipulator.ZOOM_INERTIA_STOP_PER_SECOND,
+        ),
+        maxSpeed = scaledZoomThreshold(
+            CameraGestureDetector.DefaultCameraManipulator.ZOOM_INERTIA_MAX_PER_SECOND,
+        ),
+        minReleaseSpeed = scaledZoomThreshold(
+            CameraGestureDetector.DefaultCameraManipulator.ZOOM_INERTIA_RELEASE_PER_SECOND,
+        ),
+    )
+
+    /** Clock the release velocity is measured against, in nanoseconds. Injectable for tests. */
+    internal var nanoTime: () -> Long = System::nanoTime
+
+    private fun nowSeconds(): Double = nanoTime() / 1_000_000_000.0
+
+    private fun scaledZoomThreshold(threshold: Float): Float {
+        val fovSpeed = pinchFovSpeed.takeIf { it.isFinite() && it > 0f } ?: DEFAULT_PINCH_FOV_SPEED
+        return threshold * fovSpeed /
+            CameraGestureDetector.DefaultCameraManipulator.DEFAULT_PINCH_ZOOM_SPEED
+    }
 
     override fun setViewport(width: Int, height: Int) = inner.setViewport(width, height)
     override fun getTransform(): Transform = inner.getTransform()
@@ -879,25 +1083,57 @@ class FovZoomCameraManipulator @JvmOverloads constructor(
     override fun grabEnd() = inner.grabEnd()
 
     override fun scrollBegin(x: Int, y: Int, separation: Float) {
-        // Snapshot the current FOV at gesture start so the delta is applied to a stable base.
-        // We can't query the Camera directly for current FOV (Filament's Camera API exposes
-        // setProjection but not a getter), so we track it locally.
+        stopInertia()
+        fovCumulative = 0f
+        fovInertia.reset()
+        fovInertia.addSample(nowSeconds(), fovCumulative)
     }
 
     override fun scrollUpdate(x: Int, y: Int, prevSeparation: Float, currSeparation: Float) {
         // Pinch out (curr > prev) ⇒ user wants to zoom IN ⇒ smaller FOV.
         // Pure math is in [nextFov] for unit testability without a Filament Camera.
-        currentFov = nextFov(currentFov, prevSeparation, currSeparation, fovRangeDegrees, pinchFovSpeed)
-        cameraNode.setProjection(fovInDegrees = currentFov, direction = Camera.Fov.VERTICAL)
+        val nextFov = nextFov(
+            currentFov, prevSeparation, currSeparation, fovRangeDegrees, pinchFovSpeed,
+        )
+        fovCumulative += (nextFov - currentFov).toFloat()
+        fovInertia.addSample(nowSeconds(), fovCumulative)
+        applyFov(nextFov)
     }
 
-    override fun scrollEnd() {}
-    override fun update(deltaTime: Float) = inner.update(deltaTime)
+    override fun scrollEnd() {
+        fovInertia.release(nowSeconds())
+    }
+
+    override fun update(deltaTime: Float) {
+        if (fovInertia.isCoasting) {
+            fovInertia.advance(deltaTime, coastStep)
+            val nextFov = (currentFov + coastStep[0]).coerceIn(
+                fovRangeDegrees.start.toDouble(),
+                fovRangeDegrees.endInclusive.toDouble(),
+            )
+            if (nextFov == currentFov) fovInertia.stop() else applyFov(nextFov)
+        }
+        inner.update(deltaTime)
+    }
+
+    private fun applyFov(fov: Double) {
+        currentFov = fov
+        cameraNode.setProjection(fovInDegrees = fov, direction = Camera.Fov.VERTICAL)
+    }
 
     // Double-tap stays a dolly, handled by the inner manipulator: this class only re-maps the
     // *pinch* to a FOV change, and a double-tap that narrowed the lens instead of approaching the
     // subject would contradict the dolly the orbit/pan half of the camera still does.
     override fun doubleTapZoom(x: Int, y: Int, zoomIn: Boolean) = inner.doubleTapZoom(x, y, zoomIn)
+    override fun stopInertia() {
+        fovInertia.stop()
+        // Same tolerance as [CameraGestureDetector.stopInertia]: a Java manipulator compiled
+        // before the default method existed throws `AbstractMethodError` on it — and
+        // [scrollBegin] calls this on every pinch.
+        runCatching { inner.stopInertia() }
+    }
+
+    override val isFrameActive: Boolean get() = fovInertia.isCoasting || inner.isFrameActive
 
     companion object {
         const val DEFAULT_PINCH_FOV_SPEED: Float = 0.05f

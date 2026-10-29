@@ -524,6 +524,8 @@ class MaterialLoader(
         setTexture("splatOrder", orderTexture, dataSampler)
         setParameter("texWidth", textureSize)
         setParameter("instanceOffset", instanceOffset)
+        // createView's PBR Neutral; SplatNode flips it for a Filmic (AR) view.
+        setParameter("inverseFilmic", false)
     }
 
     /**
@@ -557,6 +559,8 @@ class MaterialLoader(
         setTexture("splatColorOpacity", colorOpacityTexture, dataSampler)
         setParameter("texWidth", textureSize)
         setParameter("instanceOffset", instanceOffset)
+        // createView's PBR Neutral; SplatNode flips it for a Filmic (AR) view.
+        setParameter("inverseFilmic", false)
     }
 
     fun destroyMaterial(material: Material) {

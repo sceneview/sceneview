@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "_comment": "SceneView shared 3D asset catalog. Source of truth for all demo assets across platforms.",
   "version": "1.0.0",
-  "lastUpdated": "2026-09-29",
+  "lastUpdated": "2026-10-14",
   "sources": {
     "sketchfab": {
       "apiBase": "https://api.sketchfab.com/v3",
@@ -2654,6 +2654,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac",
       "author": "sayedgamal655",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "moto_helmet_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/moto_helmet.glb",
@@ -2686,6 +2689,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b",
       "author": "aurumjuda747",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "dji_mavic_3_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/dji_mavic_3.glb",
@@ -2718,6 +2724,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16",
       "author": "cubemodelex",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "jbl_tour_one_m3_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/jbl_tour_one_m3.glb",
@@ -2750,6 +2759,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1",
       "author": "fahadratul",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "canon_eos_rp_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/canon_eos_rp.glb",
@@ -2782,6 +2794,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/rolex-watch-0fde5c5f56d841cda53ae4a01f66dfaf",
       "author": "sudo-self",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rolex_watch_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/rolex_watch.glb",
@@ -2847,6 +2862,9 @@
       "sourceUrl": "https://sketchfab.com/3d-models/photorealistic-western-guitar-f8d68a2c328345418db71b36f44168b9",
       "author": "Keandir",
       "license": "CC-BY-4.0",
+      "shippedAs": [
+        "photorealistic_guitar_v2.glb"
+      ],
       "formats": {
         "glb": {
           "file": "models/glb/photorealistic_guitar.glb",
@@ -3018,16 +3036,17 @@
       "cameraDistance": 1.5
     },
     {
-      "id": "threejs_soldier",
-      "name": "Soldier",
-      "source": "threejs",
-      "sourceUrl": "https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb",
-      "author": "Tomás Laulhé (modified by Don McCurdy)",
+      "id": "quaternius_ranger",
+      "name": "Ranger",
+      "_comment": "Built for the demos from three free Standard packs by Quaternius, all CC0: the Male_Ranger outfit of 'Modular Character Outfits - Fantasy' (https://quaternius.com/packs/modularcharacteroutfitsfantasy.html) the head, eyes and eyebrows of Superhero_Male from 'Universal Base Characters' (https://quaternius.com/packs/universalbasecharacters.html), since the outfit ships without a head, and five clips of the 'Universal Animation Library' (https://quaternius.com/packs/universalanimationlibrary.html); all three packs share one skeleton. Clips renamed Idle, Walk, Run (Jog_Fwd_Loop), Sprint, Dance. Replaces threejs_soldier, a Mixamo character that was credited CC0 by mistake (#4586).",
+      "source": "quaternius",
+      "sourceUrl": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+      "author": "Quaternius",
       "license": "CC0-1.0",
       "formats": {
         "glb": {
-          "file": "models/glb/threejs_soldier.glb",
-          "size": "1.3MB"
+          "file": "models/glb/quaternius_ranger.glb",
+          "size": "5.7MB"
         }
       },
       "tags": [
@@ -3038,10 +3057,33 @@
       ],
       "usedIn": [
         "android-demo",
-        "android-tv-demo",
-        "ios-demo"
+        "android-tv-demo"
       ],
-      "defaultScale": 0.3,
+      "defaultScale": 1.0,
+      "cameraDistance": 2.5
+    },
+    {
+      "id": "threejs_robot_expressive",
+      "name": "Expressive Robot",
+      "_comment": "Website-only: served from website-static/models/platforms, no demo bundles it. Licence stated in the folder's README.md.",
+      "source": "threejs",
+      "sourceUrl": "https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive",
+      "author": "Tomás Laulhé (Quaternius), modified by Don McCurdy",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "threejs_robot_expressive.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "character",
+        "animated",
+        "robot",
+        "reference"
+      ],
+      "usedIn": [
+        "website"
+      ],
+      "defaultScale": 1.0,
       "cameraDistance": 2.5
     },
     {
@@ -3069,6 +3111,31 @@
       "cameraDistance": 4.0
     },
     {
+      "id": "sceneview_night_circuit",
+      "name": "Night Circuit (Car Concept on a start grid)",
+      "_comment": "Website-only: the home hero scene. The car is the Khronos Car Concept (logos replaced, textures resized); the set, lights, rain and environment map are generated by tools/scenes/circuit/.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+      "author": "Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "NightCircuit.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "scene",
+        "night",
+        "rain"
+      ],
+      "usedIn": [
+        "website"
+      ],
+      "defaultScale": 1.0,
+      "cameraDistance": 6.5
+    },
+    {
       "id": "khronos_iridescence_lamp",
       "name": "Iridescence Lamp",
       "_comment": "Website-only: served from website-static/models/platforms, no demo bundles it.",
@@ -3091,6 +3158,1381 @@
       ],
       "defaultScale": 1.0,
       "cameraDistance": 2.5
+    },
+    {
+      "id": "ikea_nockeby_sofa",
+      "name": "IKEA NOCKEBY sofa",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "db5d6bbf7f34482ca1be89456fcc4070",
+      "sourceUrl": "https://sketchfab.com/3d-models/sofa-ikea-nockeby-db5d6bbf7f34482ca1be89456fcc4070",
+      "author": "Filipe.Soares",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ikea_nockeby_sofa.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ikea_kallax_shelf",
+      "name": "IKEA KALLAX shelf",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "e2d30124563947608a500df26f77b659",
+      "sourceUrl": "https://sketchfab.com/3d-models/kallax-shelf-e2d30124563947608a500df26f77b659",
+      "author": "CN Entertainment",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ikea_kallax_shelf.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ikea_linnmon_alex_desk",
+      "name": "IKEA LINNMON / ALEX desk",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "902aa1b8083741bdbc2b09e092c2b39a",
+      "sourceUrl": "https://sketchfab.com/3d-models/ikea-linnmonalex-desk-902aa1b8083741bdbc2b09e092c2b39a",
+      "author": "janicezhao",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ikea_linnmon_alex_desk.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ikea_trensum_mirror",
+      "name": "IKEA TRENSUM mirror",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "258799ba04874be4a972b13eaf180fa0",
+      "sourceUrl": "https://sketchfab.com/3d-models/mirror-ikea-trensum-258799ba04874be4a972b13eaf180fa0",
+      "author": "YouniqueĪdeaStudio",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ikea_trensum_mirror.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "rivet_sloane_sofa",
+      "name": "Rivet Sloane sofa",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B072PZC1KS.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rivet_sloane_sofa.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "stone_beam_dalton_sofa",
+      "name": "Stone & Beam Dalton sofa",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07HZ6HH61.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "stone_beam_dalton_sofa.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "rivet_aiden_armchair",
+      "name": "Rivet Aiden armchair",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X2WN27.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rivet_aiden_armchair.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "wishbone_chair",
+      "name": "Wishbone dining chair",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QJ1X2QB.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "wishbone_chair.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "rivet_arc_floor_lamp",
+      "name": "Rivet arc floor lamp",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B073772DH1.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rivet_arc_floor_lamp.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "rivet_anne_desk",
+      "name": "Rivet Anne desk",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07B7DL32P.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rivet_anne_desk.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "rivet_media_console",
+      "name": "Rivet media console",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B084QWW4LR.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "rivet_media_console.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "furniture",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "tesla_model_3",
+      "name": "Tesla Model 3",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "123c10f376ec4f18b93c73afc382808b",
+      "sourceUrl": "https://sketchfab.com/3d-models/tesla-model-3-123c10f376ec4f18b93c73afc382808b",
+      "author": "David_Holiday",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "tesla_model_3.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "peugeot_2008",
+      "name": "Peugeot 2008",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "93efd164d3374295a8ac04c36e329429",
+      "note": "Modified derivative (CC-BY-4.0 indicate-changes): the source body and roof sampled a baked rainbow stripe texture; the hosted copy drops that texture on the Bianca_White and 2020_Peugeot_e-2008_black materials and sets plain Vertigo Blue (#1E4C9A, metallic 0.6, roughness 0.32) and gloss black base-colour factors. Geometry and every other material are untouched.",
+      "sourceUrl": "https://sketchfab.com/3d-models/2020-peugeot-2008-93efd164d3374295a8ac04c36e329429",
+      "author": "David_Holiday",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "peugeot_2008.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "mini_cooper_s",
+      "name": "MINI Cooper S",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "b262744901a04cda823f17289d1a4847",
+      "sourceUrl": "https://sketchfab.com/3d-models/mini-cooper-s-b262744901a04cda823f17289d1a4847",
+      "author": "cenobyte",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "mini_cooper_s.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "fiat_500_classic",
+      "name": "Fiat 500 (classic)",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "4606659ff31142e3b8080f995514452f",
+      "sourceUrl": "https://sketchfab.com/3d-models/fiat-500-4606659ff31142e3b8080f995514452f",
+      "author": "Francesco Coldesina",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "fiat_500_classic.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "car",
+        "vehicle",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "mongoose_tyax_mtb",
+      "name": "Mongoose Tyax mountain bike",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "d5c7ab157aa84eb08e2deaee6165e764",
+      "sourceUrl": "https://sketchfab.com/3d-models/mtb-mongoose-tyax-d5c7ab157aa84eb08e2deaee6165e764",
+      "author": "Saushkin",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "mongoose_tyax_mtb.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "bike",
+        "scooter",
+        "mobility",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "tier_escooter",
+      "name": "TIER e-scooter",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "9479a6d3f1474971afde26b33fe96c55",
+      "sourceUrl": "https://sketchfab.com/3d-models/tier-scooter-9479a6d3f1474971afde26b33fe96c55",
+      "author": "Niilo Poutanen",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "tier_escooter.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "bike",
+        "scooter",
+        "mobility",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "vespa_et3",
+      "name": "Vespa Primavera ET3",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "5e9b5072b2224ba982366490ad5f31d9",
+      "sourceUrl": "https://sketchfab.com/3d-models/old-scooter-5e9b5072b2224ba982366490ad5f31d9",
+      "author": "Nadia Ribitis",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "vespa_et3.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "bike",
+        "scooter",
+        "mobility",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "city_bike",
+      "name": "City bike",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "197dd882a69846e0825e80566996cbba",
+      "sourceUrl": "https://sketchfab.com/3d-models/bicycle-197dd882a69846e0825e80566996cbba",
+      "author": "TheDrone",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "city_bike.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "bike",
+        "scooter",
+        "mobility",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "kitchenaid_stand_mixer",
+      "name": "KitchenAid stand mixer",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "note": "Modified derivative (CC-BY-4.0 indicate-changes): the hosted copy removes the power cord trailing on the counter, its plug and the strain relief hanging on it (#4614), so the bounds are the mixer's own (23 x 36 x 39 cm instead of 32 x 36 x 53 cm), and re-centres the footprint on the origin. The cord's entry on the motor head, every other mesh and every material are untouched.",
+      "source": "sketchfab",
+      "sourceId": "716dfa11eb8f4020833584a3c3d09d5d",
+      "sourceUrl": "https://sketchfab.com/3d-models/kitchenaid-stand-mixer-716dfa11eb8f4020833584a3c3d09d5d",
+      "author": "MelissaVerdonck",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "kitchenaid_stand_mixer.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "smeg_toaster",
+      "name": "SMEG toaster",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "646838d76f204c83ae952e049f2948b1",
+      "sourceUrl": "https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1",
+      "author": "The Fresh Lab",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "smeg_toaster.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "dyson_hot_cool_fan",
+      "name": "Dyson Hot+Cool fan",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "f31f9a62d4f64d2293d3e3969a30737e",
+      "sourceUrl": "https://sketchfab.com/3d-models/dyson-hotcool-fan-f31f9a62d4f64d2293d3e3969a30737e",
+      "author": "Mr. Max",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "dyson_hot_cool_fan.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "amazonbasics_portable_ac",
+      "name": "AmazonBasics portable AC",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "abo",
+      "sourceUrl": "https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07N6RTLP7.glb",
+      "author": "Amazon.com",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "amazonbasics_portable_ac.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "glass_kettle",
+      "name": "Glass kettle",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "3f646a36c0a142cfa451af70357f4235",
+      "sourceUrl": "https://sketchfab.com/3d-models/glass-kettle-3f646a36c0a142cfa451af70357f4235",
+      "author": "Halil Kantarci",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "glass_kettle.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "glass_door_fridge",
+      "name": "Glass-door fridge",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "khronos",
+      "sourceUrl": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CommercialRefrigerator",
+      "author": "Darmstadt Graphics Group GmbH; based on \"Commercial Fridge\" by Sean Thomas",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "glass_door_fridge.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "appliance",
+        "kitchen",
+        "home",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "iphone_13_pro_max",
+      "name": "iPhone 13 Pro Max",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "4328dea00e47497dbeac73c556121bc9",
+      "sourceUrl": "https://sketchfab.com/3d-models/apple-iphone-13-pro-max-4328dea00e47497dbeac73c556121bc9",
+      "author": "DatSketch",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "iphone_13_pro_max.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "galaxy_s21_ultra",
+      "name": "Samsung Galaxy S21 Ultra",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "cd962832be7744efb6b37fe0ee2027e7",
+      "sourceUrl": "https://sketchfab.com/3d-models/samsung-galaxy-s21-ultra-cd962832be7744efb6b37fe0ee2027e7",
+      "author": "DatSketch",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "galaxy_s21_ultra.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "macbook_pro_13",
+      "name": "MacBook Pro 13\"",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "efab224280fd4c3993c808107f7c0b38",
+      "sourceUrl": "https://sketchfab.com/3d-models/macbook-pro-13-inch-2020-efab224280fd4c3993c808107f7c0b38",
+      "author": "timblewee",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "macbook_pro_13.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ipad_mini_6",
+      "name": "iPad mini 6",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "f363c2b1c74a462588db184bd4fb024e",
+      "sourceUrl": "https://sketchfab.com/3d-models/ipad-mini-6-2021-f363c2b1c74a462588db184bd4fb024e",
+      "author": "DatSketch",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ipad_mini_6.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "apple_watch_series_7",
+      "name": "Apple Watch Series 7",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "cf15ecbf159f42a28df5e56bdfa666bb",
+      "sourceUrl": "https://sketchfab.com/3d-models/apple-watch-series-7-free-watch-face-sdctm-cf15ecbf159f42a28df5e56bdfa666bb",
+      "author": "SDC PERFORMANCE™️",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "apple_watch_series_7.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "airpods_pro",
+      "name": "AirPods Pro",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "4478dddbfa244f6f9b93eebbd027a73b",
+      "sourceUrl": "https://sketchfab.com/3d-models/airpods-pro-4478dddbfa244f6f9b93eebbd027a73b",
+      "author": "JY_JY_",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "airpods_pro.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "nintendo_switch_oled",
+      "name": "Nintendo Switch OLED",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "9b8721e10a4f4a689fc4f72cdcee4b01",
+      "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-oled-model-9b8721e10a4f4a689fc4f72cdcee4b01",
+      "author": "rtql8d",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "nintendo_switch_oled.glb"
+      ],
+      "formats": {
+        "glb": {
+          "file": "models/glb/nintendo_switch_oled.glb",
+          "size": "2.5MB"
+        }
+      },
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo",
+        "web-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "xbox_wireless_controller",
+      "name": "Xbox Wireless Controller",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "29cc9624894a4f2cae7d2a675044db45",
+      "sourceUrl": "https://sketchfab.com/3d-models/xbox-inalambric-controller-black-29cc9624894a4f2cae7d2a675044db45",
+      "author": "Chistodrako._.",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "xbox_wireless_controller.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "sony_mdr_7506",
+      "name": "Sony MDR-7506 headphones",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "05735b74d3524f00b648231138122a28",
+      "sourceUrl": "https://sketchfab.com/3d-models/sony-mdr-7506-headphones-05735b74d3524f00b648231138122a28",
+      "author": "AndreiVNK",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "sony_mdr_7506.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "skullcandy_crusher",
+      "name": "Skullcandy Crusher headphones",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "4e902017e4624547b440da0a6658a689",
+      "sourceUrl": "https://sketchfab.com/3d-models/headphones-skullcandy-crusher-wireless-4e902017e4624547b440da0a6658a689",
+      "author": "Ankledot",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "skullcandy_crusher.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "jbl_charge_speaker",
+      "name": "JBL Charge speaker",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "google-scanned-objects",
+      "sourceUrl": "https://app.gazebosim.org/GoogleResearch/fuel/models/JBL_Charge_Speaker_portable_wireless_wired_Green",
+      "author": "Google LLC",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "jbl_charge_speaker.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ue_boom_speaker",
+      "name": "Ultimate Ears BOOM speaker",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "google-scanned-objects",
+      "sourceUrl": "https://app.gazebosim.org/GoogleResearch/fuel/models/Logitech_Ultimate_Ears_Boom_Wireless_Speaker_Night_Black",
+      "author": "Google LLC",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ue_boom_speaker.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "gopro_hero_8",
+      "name": "GoPro HERO8",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "3b38ac33b19d49d4b23b8125c6e1912b",
+      "sourceUrl": "https://sketchfab.com/3d-models/gopro-hero-8-3b38ac33b19d49d4b23b8125c6e1912b",
+      "author": "Umezawa",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "gopro_hero_8.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "instax_mini_8",
+      "name": "Instax Mini 8 camera",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "606912cf09074dcbb35f6c4a3842d528",
+      "sourceUrl": "https://sketchfab.com/3d-models/instax-mini-8-instant-camera-606912cf09074dcbb35f6c4a3842d528",
+      "author": "mariainggrid",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "instax_mini_8.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "desktop_3d_printer",
+      "name": "Desktop 3D printer",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "0e825a8d48b14bee883a131fe029d4fc",
+      "sourceUrl": "https://sketchfab.com/3d-models/3d-printer-0e825a8d48b14bee883a131fe029d4fc",
+      "author": "Gregsterius",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "desktop_3d_printer.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "electronics",
+        "tech",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "air_jordan_1",
+      "name": "Nike Air Jordan 1",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "a4b434181fbb48008ad460722fd53725",
+      "sourceUrl": "https://sketchfab.com/3d-models/air-jordan-1-a4b434181fbb48008ad460722fd53725",
+      "author": "makoto",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "air_jordan_1.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "nike_pegasus_36",
+      "name": "Nike Air Zoom Pegasus 36",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "00fd99e778c244c3bd3b65f99dad7cb2",
+      "sourceUrl": "https://sketchfab.com/3d-models/nike-air-zoom-pegasus-36-00fd99e778c244c3bd3b65f99dad7cb2",
+      "author": "quaz30",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "nike_pegasus_36.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "converse_chuck_taylor",
+      "name": "Converse Chuck Taylor",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "bc791439d26f4dd9974819c168e12385",
+      "sourceUrl": "https://sketchfab.com/3d-models/converse-free-bc791439d26f4dd9974819c168e12385",
+      "author": "Yaroslav Karas",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "converse_chuck_taylor.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "adidas_high_top",
+      "name": "adidas high-top sneaker",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "89b7408463b144d0bd157cc788dd496d",
+      "sourceUrl": "https://sketchfab.com/3d-models/sneakers-adidas-yellow-black-89b7408463b144d0bd157cc788dd496d",
+      "author": "mr.pinoux",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "adidas_high_top.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "reebok_fueltrain",
+      "name": "Reebok FUELTRAIN",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "google-scanned-objects",
+      "sourceUrl": "https://app.gazebosim.org/GoogleResearch/fuel/models/Reebok_FUELTRAIN",
+      "author": "Google LLC",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "reebok_fueltrain.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "ugg_classic_tall",
+      "name": "UGG Classic Tall boot",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "google-scanned-objects",
+      "sourceUrl": "https://app.gazebosim.org/GoogleResearch/fuel/models/UGG_Classic_Tall_Womens_Boots_Chestnut_7",
+      "author": "Google LLC",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "ugg_classic_tall.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "jansport_backpack",
+      "name": "JanSport backpack",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "google-scanned-objects",
+      "sourceUrl": "https://app.gazebosim.org/GoogleResearch/fuel/models/Jansport_School_Backpack_Blue_Streak",
+      "author": "Google LLC",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "jansport_backpack.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "tennis_racket",
+      "name": "Tennis racket",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "c314dcce06ba488ca624957f579b8196",
+      "sourceUrl": "https://sketchfab.com/3d-models/tennis-racket-c314dcce06ba488ca624957f579b8196",
+      "author": "Yanez Designs",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "tennis_racket.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "fashion",
+        "sport",
+        "real-product",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "perseverance_rover",
+      "name": "Perseverance Mars rover",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "nasa",
+      "sourceUrl": "https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Mars%202020%20Perseverance%20Rover",
+      "author": "NASA/JPL-Caltech",
+      "license": "NASA Media Usage Guidelines (no endorsement implied; insignia removed)",
+      "shippedAs": [
+        "perseverance_rover.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "bell_x1",
+      "name": "Bell X-1 (1947)",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "smithsonian",
+      "sourceUrl": "http://n2t.net/ark:/65665/nv99a205dd3-3969-43d2-971c-d3d3e6c6b1f2",
+      "author": "Smithsonian National Air and Space Museum",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "bell_x1.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "triceratops_skeleton",
+      "name": "Triceratops skeleton",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "smithsonian",
+      "sourceUrl": "http://n2t.net/ark:/65665/305d36697-5158-4947-8d0b-521db04bae9b",
+      "author": "Smithsonian National Museum of Natural History",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "triceratops_skeleton.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "fangyi_bronze",
+      "name": "Fangyi bronze vessel",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceUrl": "https://asia.si.edu/object/F1930.54a-b/",
+      "author": "Smithsonian National Museum of Asian Art",
+      "license": "CC0-1.0",
+      "shippedAs": [
+        "fangyi_bronze.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "canon_at1",
+      "name": "Canon AT-1 (1977)",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "9de66868d0f240e985da00c9480bfc82",
+      "sourceUrl": "https://sketchfab.com/3d-models/canon-at-1-retro-camera-9de66868d0f240e985da00c9480bfc82",
+      "author": "AleixoAlonso",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "canon_at1.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "citroen_h_van",
+      "name": "Citroën H-style van",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "a350a422d200485ea57778dc42139edc",
+      "sourceUrl": "https://sketchfab.com/3d-models/french-delivery-van-low-poly-model-a350a422d200485ea57778dc42139edc",
+      "author": "Daniel Zhabotinsky",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "citroen_h_van.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
+    },
+    {
+      "id": "mech_drone",
+      "name": "Mech drone (sci-fi)",
+      "_comment": "Real-product catalogue (#4560): website gallery (view.html) and Android HD pack, real-world scale, base at the origin.",
+      "source": "sketchfab",
+      "sourceId": "8d06874aac5246c59edb4adbe3606e0e",
+      "sourceUrl": "https://sketchfab.com/3d-models/mech-drone-8d06874aac5246c59edb4adbe3606e0e",
+      "author": "Willy Decarpentrie",
+      "license": "CC-BY-4.0",
+      "shippedAs": [
+        "mech_drone.glb"
+      ],
+      "formats": {},
+      "tags": [
+        "museum",
+        "space",
+        "history",
+        "real-scale"
+      ],
+      "usedIn": [
+        "website",
+        "android-demo"
+      ],
+      "defaultScale": 1.0
     }
   ],
   "environments": [
@@ -3098,7 +4540,12 @@
       "id": "rooftop_night",
       "name": "Rooftop Night",
       "source": "polyhaven",
+      "sourceId": "rooftop_night",
+      "sourceUrl": "https://polyhaven.com/a/rooftop_night",
+      "author": "Greg Zaal",
+      "license": "CC0-1.0",
       "file": "environments/hdr/rooftop_night_2k.hdr",
+      "note": "Verified 2026-10-10 against the Poly Haven download: a 1024x512 downsample of rooftop_night_2k.hdr (median pixel difference 0.3%) (#4453)",
       "tags": [
         "night",
         "urban",
@@ -3112,7 +4559,12 @@
       "id": "studio",
       "name": "Studio",
       "source": "polyhaven",
+      "sourceId": "christmas_photo_studio_07",
+      "sourceUrl": "https://polyhaven.com/a/christmas_photo_studio_07",
+      "author": "Sergej Majboroda",
+      "license": "CC0-1.0",
       "file": "environments/hdr/studio_2k.hdr",
+      "note": "Verified 2026-10-10 against the Poly Haven download: pixel-identical to christmas_photo_studio_07_1k.hdr (#4453)",
       "tags": [
         "neutral",
         "studio",
@@ -3156,7 +4608,12 @@
       "id": "studio_warm",
       "name": "Studio Warm",
       "source": "polyhaven",
+      "sourceId": "studio_small_08",
+      "sourceUrl": "https://polyhaven.com/a/studio_small_08",
+      "author": "Sergej Majboroda",
+      "license": "CC0-1.0",
       "file": "environments/hdr/studio_warm_2k.hdr",
+      "note": "Verified 2026-10-10 against the Poly Haven download: pixel-identical to studio_small_08_1k.hdr (#4453)",
       "tags": [
         "warm",
         "cozy",

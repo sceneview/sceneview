@@ -16,6 +16,8 @@ import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.After
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -137,13 +139,14 @@ class DemoInteractionTest {
      * rather than passed as a literal — so the `By.text(...)` match stays in sync with
      * the string resources and never drifts when a demo title is renamed.
      */
-    private fun openDemo(demoId: String) {
+    private fun openDemo(demoId: String, tab: String? = null) {
         val titleRes = ALL_DEMOS.firstOrNull { it.id == demoId }?.titleRes
             ?: error("openDemo: demo id '$demoId' is not registered in ALL_DEMOS")
         val expectedTitle = context.getString(titleRes)
         val intent = Intent().apply {
             setClassName(pkg, DemoHostActivity::class.java.name)
             putExtra(DemoHostActivity.EXTRA_DEMO_ID, demoId)
+            tab?.let { putExtra(DeepLinkRouter.QUERY_PARAM_TAB, it) }
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
@@ -571,52 +574,49 @@ class DemoInteractionTest {
     }
 
     // ── 8. Post Processing — 4 toggle rows ────────────────────────────────────
-    // #2239 Batch 2 folded `post-processing` into `lighting-lab`; since #3496 the
-    // lab has no tabs and its SSAO / MSAA / FXAA / dithering switches are driven by
-    // `lightingLab_benchControls` below.
+    // #2239 Batch 2 folded `post-processing` into `lighting-lab`, and #4603 folded the
+    // lab into `lighting`: its SSAO / MSAA / FXAA / dithering switches are driven by
+    // `lighting_reflectionsAndFrame` below.
 
-    // ── 8. Lighting Lab — every knob on one bench ─────────────────────────────
+    // ── 8. Lighting — reflections and frame options (the former Lighting Lab) ──
 
     @Test
-    fun lightingLab_benchControls() {
-        // #3496 — the lab's five modes (Sky, Environment, Reflections, Post-FX, Fog)
-        // are gone: one fixed key over a studio HDR, and every knob live at once on
-        // the same frame. `dynamic-sky` moved to `lighting`'s Sun rig, which
-        // `lighting_allThreeRigs` covers.
-        openDemo("lighting-lab")
+    fun lighting_reflectionsAndFrame() {
+        // #4603 — Lighting Lab's bench now sits under every rig of `lighting`: the
+        // Image rig gains its environment intensity, and the Reflections and Frame
+        // sections apply to whichever rig is up. Screenshot ids keep the `lab` stem so
+        // a run still compares with the ones before the merge.
+        openDemo("lighting")
         screenshot("31_lab_default")
 
-        // ── Camera ────────────────────────────────────────────────────────────
-        dragSlider("Exposure", fraction = 1.0f); screenshot("31a_lab_exposure_max")
-        dragSlider("Exposure", fraction = 0.0f); screenshot("31b_lab_exposure_min")
-        dragSlider("Exposure", fraction = 0.3f)
-
-        // ── Environment — intensity, sky, rotation, local reflection probe ────
+        // ── Image rig — environment intensity, sky switch ─────────────────────
         dragSlider("Environment intensity", fraction = 1.0f)
         screenshot("32_lab_ibl_max")
         dragSlider("Environment intensity", fraction = 0.1f)
         screenshot("32a_lab_ibl_min")
+        tap("Draw the sky"); screenshot("32c_lab_sky_off")
         dragSlider("Environment rotation", fraction = 0.5f)
         screenshot("32b_lab_ibl_rotated")
-        tap("Draw the sky"); screenshot("32c_lab_sky_on")
         tap("Draw the sky")
-        tap("Local reflection probe"); screenshot("32d_lab_probe_on")
-        dragSlider("Probe radius", fraction = 1.0f); screenshot("32e_lab_probe_wide")
-        tap("Local reflection probe")
 
-        // ── Frame — SSAO, fog and its presets, then the AA switches ───────────
-        tap("Ambient occlusion"); screenshot("33_lab_ssao_off")
-        tap("Ambient occlusion")
+        // ── Reflections — local probe and its area ────────────────────────────
+        tap("Local reflections"); screenshot("32d_lab_probe_on")
+        dragSlider("Reflection area", fraction = 1.0f); screenshot("32e_lab_probe_wide")
+        tap("Local reflections")
+
+        // ── Frame — contact shading, fog and its presets, then the AA switches ─
+        tap("Contact shading"); screenshot("33_lab_ssao_off")
+        tap("Contact shading")
         tap("Fog"); screenshot("33a_lab_fog_on")
         dragSlider("Fog density", fraction = 1.0f); screenshot("33b_lab_fog_dense")
         tap("Warm haze"); screenshot("33c_lab_fog_warm")
         tap("Smoke"); screenshot("33d_lab_fog_smoke")
         tap("Mist")
         tap("Fog")
-        tap("MSAA 4×"); screenshot("34_lab_msaa_on")
-        tap("MSAA 4×")
-        tap("FXAA"); screenshot("34a_lab_fxaa_off")
-        tap("FXAA")
+        tap("Smooth edges · geometry"); screenshot("34_lab_msaa_off")
+        tap("Smooth edges · geometry")
+        tap("Smooth edges · image"); screenshot("34a_lab_fxaa_off")
+        tap("Smooth edges · image")
         screenshot("35_lab_back_to_defaults")
     }
 
@@ -715,62 +715,61 @@ class DemoInteractionTest {
     // lands. Covered by `lighting_allThreeRigs`, which cycles the environment
     // swatches.
 
-    // ── 12. 2D in 3D — Compose cards on ViewNode quads ────────────────────
-    //
-    // #3424 rebuilt this demo from scratch around `ViewNode`, so the four
-    // segmented tabs (Text / Image / Video / Billboard) that used to be driven
-    // from sections 20, 21 and 22b below are gone; the retired `text`, `image`,
-    // `video` and `billboard` deep-link ids still resolve here through
-    // `DEMO_ID_ALIASES`, but none of them pre-selects anything any more.
-    //
-    // What replaced them: one turntable scene with three world-anchored call-out
-    // cards and one live control card, plus the dock's Billboard toggle, the
-    // Always-on-top switch and two sliders.
-    //
-    // The retired Billboard tab was also the home of the `@Ignore`d
-    // `billboard_visibilityChips`, parked since 2026-04-23 on a Filament UAF
-    // (`Invalid texture still bound to MaterialInstance`, SIGABRT — #887) that
-    // fired when Compose dropped a `BillboardNode`/`ImageNode` and its
-    // `MaterialInstance` was destroyed with a texture still bound. Neither node
-    // type is in this demo any more, so the test goes with the scene it drove;
-    // #887 stays open on `sceneview/` and is not claimed fixed here.
+    // ── 12. 2D in 3D — picking and media playback, one scene ─────────────────────
 
     @Test
-    fun twoDInThreeD_billboardAndDepth() {
+    fun twoDInThreeD_inspectMaterialsAndDepth() {
         openDemo("two-d-in-three-d")
-        screenshot("49_twoDInThreeD_default")
+        val reset = context.getString(R.string.demo_two_d_in_three_d_reset)
+        // A dock item's label and its click target are two nodes with the same bounds: the
+        // enabled state is on the clickable parent, the label node always reports enabled.
+        fun resetEnabled() = requireNotNull(device.findObject(By.desc(reset))).parent.isEnabled
+        check(!resetEnabled()) { "Reset must start disabled" }
+        screenshot("49_twoDInThreeD_inspect")
 
-        // Billboard is a DockItem, not a sheet control — it lives in the bottom
-        // floating toolbar and is reached by its content description.
-        tapByDesc("Billboard")
-        screenshot("50_twoDInThreeD_fixed_orientation")
+        // Swatches live on a texture, outside the accessibility tree: tap their projected screen
+        // positions, never invoke a semantics click on the view. Both points are measured on the
+        // shared Pixel_7a AVD (1280 x 2856, portrait), with the media wall above the rocket since
+        // #4624: the window, then the Gold swatch, bottom right of the card at the rocket's right.
+        device.click((device.displayWidth * 0.5f).toInt(), (device.displayHeight * 0.63f).toInt())
+        Thread.sleep(800)
+        screenshot("50_twoDInThreeD_part_selected")
+        device.click((device.displayWidth * 0.89f).toInt(), (device.displayHeight * 0.677f).toInt())
+        Thread.sleep(800)
+        check(resetEnabled()) { "Swatch tap must change a part" }
+        screenshot("51_twoDInThreeD_restyled")
 
-        tapByDesc("Billboard")
-        screenshot("51_twoDInThreeD_billboarded_again")
-
-        // Depth: off, the model swallows the far card; on, the card floats over it.
-        tap("Always on top")
-        screenshot("52_twoDInThreeD_always_on_top")
-
-        tap("Always on top")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
+        screenshot("52_twoDInThreeD_spinning")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_spin))
+        tapByDesc(reset)
+        check(!resetEnabled()) { "Reset must restore the original materials" }
+        tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))
         screenshot("52a_twoDInThreeD_depth_tested")
+        tap(context.getString(R.string.demo_two_d_in_three_d_always_on_top))
+        device.pressBack()
+        device.click((device.displayWidth * 0.1f).toInt(), (device.displayHeight * 0.35f).toInt())
+        screenshot("52b_twoDInThreeD_dismissed")
     }
 
     @Test
-    fun twoDInThreeD_cardSizeAndDistance() {
-        openDemo("two-d-in-three-d")
-
-        // Both sliders are LabeledSliders, so they are driven by contentDescription.
-        dragSliderByDesc("Card size", fraction = 1.0f)
-        screenshot("52b_twoDInThreeD_cards_max")
-        dragSliderByDesc("Card size", fraction = 0.0f)
-        screenshot("52c_twoDInThreeD_cards_min")
-        dragSliderByDesc("Card size", fraction = 0.5f)
-
-        dragSliderByDesc("Card distance", fraction = 1.0f)
-        screenshot("52d_twoDInThreeD_cards_far")
-        dragSliderByDesc("Card distance", fraction = 0.0f)
-        screenshot("52e_twoDInThreeD_cards_near")
+    fun twoDInThreeD_mediaPlaybackAndFacing() {
+        // The media nodes share the rocket's scene (#4624); the old `?tab=media` token still
+        // lands on the same screen.
+        openDemo("two-d-in-three-d", tab = "media")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_pause))
+        screenshot("52c_twoDInThreeD_media_paused")
+        tapByDesc(context.getString(R.string.demo_two_d_in_three_d_play))
+        // Face camera is a settings switch: flip it, close the sheet, walk around.
+        tap(context.getString(R.string.demo_two_d_in_three_d_face_camera))
+        device.pressBack()
+        device.swipe((device.displayWidth * 0.75f).toInt(), (device.displayHeight * 0.4f).toInt(),
+            (device.displayWidth * 0.25f).toInt(), (device.displayHeight * 0.4f).toInt(), 30)
+        Thread.sleep(800)
+        screenshot("52d_twoDInThreeD_media_fixed")
+        tap(context.getString(R.string.demo_two_d_in_three_d_face_camera))
+        device.pressBack()
+        screenshot("52e_twoDInThreeD_media_facing")
     }
 
     // ── 13. Secondary Camera — 4 PiP angle chips ──────────────────────────────
@@ -879,14 +878,11 @@ class DemoInteractionTest {
 
     // ── 19. Reflection Probes ─────────────────────────────────────────────────
     // #2239 Batch 2 — `reflection-probes` consolidated into `lighting-lab`; since
-    // #3496 the probe is a switch plus a radius slider on the lab's one bench.
-    // Covered by `lightingLab_benchControls` above.
+    // #3496 the probe is a switch plus a radius slider, which #4603 moved into
+    // `lighting`'s Reflections section. Covered by `lighting_reflectionsAndFrame` above.
 
     // ── 20/21. Image + Text Labels ─────────────────────────────
-    // #2239 Batch 1 consolidated `image` and `text` into `two-d-in-three-d`;
-    // #3424 then rebuilt that demo from scratch, so its Image and Text tabs — and
-    // the `Scale:` / `Font Size:` sliders and the "Display Text" field these two
-    // tests drove — no longer exist. Covered by `twoDInThreeD_*` in section 12.
+    // Retired image/text links open the Media gallery, covered in section 12.
 
     // ── 22a. ViewNode — visible toggle + coord-tap on the in-scene card ──────
 
@@ -923,9 +919,7 @@ class DemoInteractionTest {
     }
 
     // ── 22b. Video ─────────────────────────────────────
-    // #2239 Batch 1 consolidated `video` into `two-d-in-three-d`; #3424's rebuild
-    // dropped the `VideoNode` tab along with the rest of them. `VideoNode` itself
-    // is unchanged and still shipped — it simply has no demo driving it here.
+    // The retired video link opens Media, whose playback is covered in section 12.
 
     // ── 22c. Model Viewer — just verify the scaffold + initial render ────────
 
@@ -997,5 +991,24 @@ class DemoInteractionTest {
 
         tap("Reset Colors")
         screenshot("87_collision_after_reset")
+    }
+
+    // ── 24. Model Thumbnails — the grid fills ─────────────────────────────────
+
+    @Test
+    fun modelThumbnails_gridFills() {
+        // Off-screen thumbnails (#4822): the status line reads "Rendering n of m…" until
+        // every thumbnail asked for is done, then turns into a summary.
+        openDemo("model-thumbnails")
+        val rendering = context.getString(R.string.demo_model_thumbnails_progress, 0, 0)
+            .substringBefore(" 0")
+        assertTrue(
+            "the thumbnails never finished rendering",
+            device.wait(Until.gone(By.textStartsWith(rendering)), 120_000L),
+        )
+        screenshot("94_modelThumbnails_grid")
+        // A cell whose thumbnail failed is read "No thumbnail for <model>": none on screen.
+        val noThumbnail = context.getString(R.string.demo_model_thumbnails_cell_failed, "").trim()
+        assertNull(device.findObject(By.descStartsWith(noThumbnail)))
     }
 }

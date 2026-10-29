@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -46,9 +47,12 @@ import kotlinx.coroutines.launch
  *
  * - A dedicated **supervisor [CoroutineScope]** owns all message I/O, so one
  *   failing job never tears the session down.
- * - The outbound queue is a **`CONFLATED` [Channel]** — [onFrame] may be
- *   called from the AR render loop, so enqueuing is non-blocking and the
- *   newest pose silently wins under backpressure.
+ * - The outbound queue never blocks the caller — [onFrame] may be called
+ *   from the AR render loop. It keeps **one pending line per thing a peer
+ *   must end up knowing**: the newest camera pose replaces the pose still
+ *   waiting (a pose is only worth its latest value), while each node key's
+ *   latest placement or removal, the shared anchor id and the `hello` keep
+ *   their own slot and are never dropped by a line enqueued behind them.
  * - A lifecycle-bound [rememberCollaborativeSession] helper wires `start` /
  *   `stop` to the composition.
  *
@@ -60,8 +64,22 @@ import kotlinx.coroutines.launch
  * - [onFrame] is designed to be called from the AR render callback (main
  *   thread). It only *reads* the camera pose and does a non-blocking
  *   `trySend` — no Filament/JNI mutation, no blocking I/O.
- * - Inbound messages are merged on the supervisor scope; observers read the
- *   results via the Compose-observable [participants] / [placedNodes].
+ * - Inbound messages are merged on the supervisor scope, one at a time and
+ *   in arrival order; observers read the results via the Compose-observable
+ *   [participants] / [placedNodes].
+ *
+ * ### Conflict policy
+ *
+ * Placements ([placeNode]) and removals ([removeNode]) of one node key are
+ * ordered by a per-key counter carried on the wire, with the peer id breaking
+ * a tie: last-writer-wins, the same on every device whatever order the lines
+ * arrive in. A removed node stays removed when a placement written earlier
+ * arrives late. [CollaborativeState] documents the order and its two limits:
+ * peers that predate the counter are merged in arrival order, and only the
+ * most recent [CollaborativeState.MAX_NODES] removals are remembered.
+ *
+ * A device that joins late is **not** sent the nodes placed before it joined:
+ * it sees a node at that node's next write.
  *
  * ### Security & trust model (#2569)
  *
@@ -101,8 +119,9 @@ import kotlinx.coroutines.launch
  *
  * @param transport   the [CollaborativeTransport] relaying messages between peers.
  * @param displayName a human-readable name broadcast to other peers.
- * @param poseRateHz  maximum number of camera-pose broadcasts per second.
- *   Later poses inside a tick are dropped. Default 10 Hz; `0` disables throttling.
+ * @param poseRateHz  maximum number of camera-pose broadcasts per second, for
+ *   [onFrame] and [broadcastLocalPose] alike. Default 10 Hz; `0` or less sends
+ *   every pose.
  * @param tag         Logcat tag for non-fatal warnings.
  * @param ioDispatcher coroutine dispatcher for the message I/O supervisor scope.
  *   Defaults to [Dispatchers.Default]. Inject a [kotlinx.coroutines.test.TestCoroutineDispatcher]
@@ -122,6 +141,15 @@ public constructor(
     public companion object {
         /** Default camera-pose broadcast rate, in Hz. */
         public const val DEFAULT_POSE_RATE_HZ: Int = 10
+
+        // Outbox slots. A node key is appended to the node prefix, so no node
+        // key can collide with the three fixed slots.
+        private const val OUTBOX_HELLO = "hello"
+        private const val OUTBOX_ANCHOR = "anchor"
+        private const val OUTBOX_POSE = "pose"
+        private const val OUTBOX_NODE_PREFIX = "node:"
+
+        private const val MILLIS_PER_SECOND = 1000L
     }
 
     private val localPeerId: String = transport.localPeerId
@@ -133,16 +161,41 @@ public constructor(
     // and advance the session on virtual time via advanceUntilIdle().
     private val scope = CoroutineScope(ioDispatcher + SupervisorJob())
 
-    // Conflated: enqueuing from the render loop never blocks; the newest
-    // outbound line wins if the writer is momentarily behind.
-    private val outbox = Channel<ByteArray>(capacity = Channel.CONFLATED)
+    // Guards the merged state and the publishes that follow a change.
+    // placeNode / removeNode mutate it on the caller's thread while inbound
+    // merges run on the session scope, which may be a thread pool.
+    private val stateLock = Any()
+
+    // Outbound lines waiting for the writer loop, one slot per thing a peer
+    // must end up knowing (see the OUTBOX_* slots). A newer line replaces only
+    // the line in its own slot: the latest pose wins under backpressure, and a
+    // placement, the anchor id or the hello is never dropped by a later line.
+    private val outboxLock = Any()
+    private val outbox = LinkedHashMap<String, ByteArray>()
+    private val outboxSignal = Channel<Unit>(capacity = Channel.CONFLATED)
+
+    // Inbound lines in arrival order, drained by ONE coroutine: a launch per
+    // message on a multi-threaded dispatcher would apply two writes to the same
+    // key in either order, on maps that are not thread-safe.
+    private val inbox = Channel<Inbound>(capacity = Channel.UNLIMITED)
 
     private var incomingHandle: AutoCloseable? = null
 
     @Volatile private var started = false
-    @Volatile private var lastPoseEmitNanos: Long = 0L
-    private val minPoseIntervalNanos: Long =
-        if (poseRateHz <= 0) 0L else 1_000_000_000L / poseRateHz
+
+    // Pose throttle. The first pose goes out at once and opens a window of
+    // poseIntervalMillis; while it is open the newest pose waits in
+    // pendingPose and goes out when the window closes, which opens the next
+    // one. A window that closes with nothing waiting ends the cycle.
+    private val poseIntervalMillis: Long =
+        if (poseRateHz <= 0) 0L else (MILLIS_PER_SECOND + poseRateHz - 1) / poseRateHz
+    private val poseLock = Any()
+    private var poseWindowOpen = false
+    private var pendingPose: PendingPose? = null
+
+    // The wall clock behind node counters and pose timestamps. A test
+    // replaces it to place two writes at the same instant.
+    internal var epochMillis: () -> Long = { System.currentTimeMillis() }
 
     /**
      * The shared coordinate-frame [CloudAnchorNode], once [host] has succeeded
@@ -162,7 +215,8 @@ public constructor(
     /**
      * Every node placed by any peer, in shared-anchor local space. Reconcile
      * your scene graph against this each frame: instantiate new keys, move
-     * existing ones, remove vanished ones.
+     * existing ones, remove vanished ones. One entry per key, resolved by the
+     * deterministic last-writer-wins policy described above.
      */
     public val placedNodes: List<PlacedNode> get() = _placedNodes
 
@@ -191,22 +245,33 @@ public constructor(
         // Drop participants whose transport link died.
         transport.peers
             .onEach { live ->
-                if (state.retainParticipants(live)) publishParticipants()
+                synchronized(stateLock) {
+                    if (state.retainParticipants(live)) publishParticipants()
+                }
             }
             .launchIn(scope)
 
-        // Writer loop — drains the conflated outbox to the transport.
+        // Reader loop — merges inbound lines one at a time, in arrival order.
         scope.launch {
-            for (line in outbox) {
-                try {
-                    transport.send(line)
-                } catch (e: Exception) {
-                    logWarning("send failed: ${e.message}")
+            for (inbound in inbox) merge(inbound.peerId, inbound.bytes)
+        }
+
+        // Writer loop — one wake-up drains every pending outbound line, so the
+        // conflated signal never costs a line.
+        scope.launch {
+            while (outboxSignal.receiveCatching().isSuccess) {
+                while (true) {
+                    val line = nextOutboundLine() ?: break
+                    try {
+                        transport.send(line)
+                    } catch (e: Exception) {
+                        logWarning("send failed: ${e.message}")
+                    }
                 }
             }
         }
 
-        enqueue(CollaborativeWireFormat.hello(localPeerId, displayName))
+        enqueue(OUTBOX_HELLO, CollaborativeWireFormat.hello(localPeerId, displayName))
     }
 
     /**
@@ -230,7 +295,8 @@ public constructor(
         }
         incomingHandle = null
         scope.cancel()
-        outbox.close()
+        outboxSignal.close()
+        inbox.close()
     }
 
     // ── Shared anchor — host / resolve ────────────────────────────────────
@@ -268,7 +334,10 @@ public constructor(
             val ok = cloudAnchorId != null && !hostState.isError
             if (ok && cloudAnchorId != null) {
                 _sharedCloudAnchorId = cloudAnchorId
-                enqueue(CollaborativeWireFormat.anchor(localPeerId, cloudAnchorId, name))
+                enqueue(
+                    OUTBOX_ANCHOR,
+                    CollaborativeWireFormat.anchor(localPeerId, cloudAnchorId, name),
+                )
             } else {
                 logWarning("host failed: $hostState")
             }
@@ -314,15 +383,14 @@ public constructor(
      * marker consistently.
      *
      * Call from the AR render callback (`onSessionUpdated`). Non-blocking and
-     * rate-limited to [poseRateHz]: it only reads the camera pose and does a
-     * `trySend`, so it is safe on the main render thread. A no-op until a
-     * shared anchor exists ([sharedAnchorNode] non-null) — without a shared
-     * frame, a pose is not comparable across devices.
+     * rate-limited like [broadcastLocalPose]: it only reads the camera pose
+     * and queues a line, so it is safe on the main render thread. A no-op
+     * until a shared anchor exists ([sharedAnchorNode] non-null) — without a
+     * shared frame, a pose is not comparable across devices.
      */
     public fun onFrame(frame: Frame) {
         if (!started) return
         val anchorPose = sharedAnchorNode?.anchor?.pose ?: return
-        if (!shouldEmitPose(frame.timestamp)) return
         // Express the camera pose RELATIVE to the shared anchor:
         //   relative = anchorPose⁻¹ ∘ cameraPose
         // so the numbers mean the same thing on every device regardless of
@@ -335,23 +403,80 @@ public constructor(
      * Lower-level overload that broadcasts an already-shared-anchor-relative
      * [relativePose]. Useful for non-ARCore hosts or tests. [onFrame] is the
      * convenient path for a real AR session.
+     *
+     * Rate-limited to `poseRateHz`, so it can be called every frame. The
+     * first pose is sent at once. Of the poses that follow within one
+     * interval (`1 / poseRateHz` seconds) only the newest is kept, and it is
+     * sent when the interval ends — the pose a device stops on always reaches
+     * the peers. `poseRateHz = 0` sends every pose.
      */
     public fun broadcastLocalPose(relativePose: Pose) {
+        broadcastLocalPose(
+            floatArrayOf(relativePose.tx(), relativePose.ty(), relativePose.tz()),
+            floatArrayOf(
+                relativePose.qx(), relativePose.qy(), relativePose.qz(), relativePose.qw(),
+            ),
+        )
+    }
+
+    /** [broadcastLocalPose] without the ARCore type, for JVM tests. */
+    internal fun broadcastLocalPose(translation: FloatArray, quaternion: FloatArray) {
         if (!started) return
-        val t = floatArrayOf(relativePose.tx(), relativePose.ty(), relativePose.tz())
-        val q = floatArrayOf(
-            relativePose.qx(), relativePose.qy(), relativePose.qz(), relativePose.qw(),
-        )
-        enqueue(
-            CollaborativeWireFormat.pose(localPeerId, System.currentTimeMillis(), t, q),
-        )
+        // Checked here, where the caller can see it: a pose that waits is
+        // serialized later, on the session scope.
+        require(translation.size == 3) { "translation must have 3 components" }
+        require(quaternion.size == 4) { "quaternion must have 4 components" }
+        // Stamped now, not when the throttle lets it out: the timestamp says
+        // when the device was there.
+        val pose = PendingPose(epochMillis(), translation, quaternion)
+        if (poseIntervalMillis <= 0L) {
+            enqueue(OUTBOX_POSE, pose.toLine())
+            return
+        }
+        synchronized(poseLock) {
+            if (poseWindowOpen) {
+                // Kept as numbers: called every frame, and a pose that a newer
+                // one replaces is never serialized.
+                pendingPose = pose
+                return
+            }
+            poseWindowOpen = true
+            // Queued under the lock, like the trailing pose below, so two
+            // poses never reach the outbox in the wrong order.
+            enqueue(OUTBOX_POSE, pose.toLine())
+        }
+        scope.launch {
+            while (true) {
+                delay(poseIntervalMillis)
+                synchronized(poseLock) {
+                    val trailing = pendingPose
+                    pendingPose = null
+                    if (trailing == null) {
+                        poseWindowOpen = false
+                        return@launch
+                    }
+                    enqueue(OUTBOX_POSE, trailing.toLine())
+                }
+            }
+        }
+    }
+
+    private inner class PendingPose(
+        private val epochMs: Long,
+        private val translation: FloatArray,
+        private val quaternion: FloatArray,
+    ) {
+        fun toLine(): String =
+            CollaborativeWireFormat.pose(localPeerId, epochMs, translation, quaternion)
     }
 
     // ── Placed-node broadcast ─────────────────────────────────────────────
 
     /**
      * Broadcasts that the local user placed (or moved) a node, so every peer
-     * can mirror it.
+     * can mirror it. Calling it again with a [nodeKey] that already exists
+     * moves that node — including one a peer placed, which then becomes this
+     * user's (see the class-level *Conflict policy*).
      *
      * Coordinates are in the **shared anchor's local space** — compute them as
      * `sharedAnchorNode.anchor.pose.inverse().compose(worldPose)` before
@@ -377,54 +502,98 @@ public constructor(
         scale: FloatArray = floatArrayOf(1f, 1f, 1f),
     ) {
         if (!started) return
-        // Reflect the local placement into our own state so placedNodes is a
-        // complete picture (it would otherwise only contain remote nodes —
-        // CollaborativeState ignores self-originated messages).
-        val placed = PlacedNode(nodeKey, modelKey, translation, quaternion, scale, localPeerId)
-        if (mergeLocalNode(placed)) publishNodes()
-        enqueue(
-            CollaborativeWireFormat.node(
-                localPeerId, nodeKey, modelKey, translation, quaternion, scale,
-            ),
-        )
+        synchronized(stateLock) {
+            val logicalClock = state.nextNodeClock(nodeKey, epochMillis())
+            // Serialized first: it validates the arrays, so a call it rejects
+            // changes nothing on this device either.
+            val line = CollaborativeWireFormat.node(
+                localPeerId, nodeKey, modelKey, translation, quaternion, scale, logicalClock,
+            )
+            val placement = CollaborativeMessage.NodeState(
+                localPeerId, nodeKey, modelKey, translation, quaternion, scale, logicalClock,
+            )
+            // Reflected at once, through the same merge as an inbound line.
+            if (!state.applyLocal(placement)) {
+                logWarning("placeNode($nodeKey) not applied: the key's counter is exhausted")
+                return
+            }
+            publishNodes()
+            // Queued under the state lock: two threads writing one key must
+            // queue their lines in counter order, or the older line would be
+            // the one left in the key's outbox slot.
+            enqueue(OUTBOX_NODE_PREFIX + nodeKey, line)
+        }
+    }
+
+    /**
+     * Removes the node [nodeKey] from the shared scene, on this device and on
+     * every peer — whoever placed it. It leaves [placedNodes] at once.
+     *
+     * The removal is ordered like a placement (see the class-level *Conflict
+     * policy*): a placement written before it and delivered after it does not
+     * bring the node back, and a later [placeNode] with the same key places
+     * the node again.
+     *
+     * A no-op when [nodeKey] is not in [placedNodes].
+     *
+     * @param nodeKey the key the node was placed with.
+     */
+    public fun removeNode(nodeKey: String) {
+        if (!started) return
+        synchronized(stateLock) {
+            if (!state.isPlaced(nodeKey)) return
+            val logicalClock = state.nextNodeClock(nodeKey, epochMillis())
+            val removal = CollaborativeMessage.NodeRemoval(localPeerId, nodeKey, logicalClock)
+            if (!state.applyLocal(removal)) {
+                logWarning("removeNode($nodeKey) not applied: the key's counter is exhausted")
+                return
+            }
+            publishNodes()
+            // Same slot as the key's placements: a removal replaces a
+            // placement of that key still waiting to be sent, and the reverse.
+            enqueue(
+                OUTBOX_NODE_PREFIX + nodeKey,
+                CollaborativeWireFormat.remove(localPeerId, nodeKey, logicalClock),
+            )
+        }
     }
 
     // ── Internals ─────────────────────────────────────────────────────────
 
-    private val localNodes = LinkedHashMap<String, PlacedNode>()
-
-    private fun mergeLocalNode(placed: PlacedNode): Boolean {
-        val previous = localNodes.put(placed.nodeKey, placed)
-        return previous != placed
-    }
+    private class Inbound(val peerId: String, val bytes: ByteArray)
 
     private fun onTransportMessage(peerId: String, bytes: ByteArray) {
-        // Marshal everything onto the session scope so merge + publish never
-        // race with the writer loop or the peers flow.
-        scope.launch {
-            val line = bytes.toString(Charsets.UTF_8)
-            val message = CollaborativeWireFormat.parse(line) ?: run {
-                logVerbose("dropped unparseable line from $peerId")
-                return@launch
-            }
-            // Security (#2569): identity is bound to the CONNECTION the
-            // message arrived on (the transport peer id) — never to the
-            // peer-controlled "peer" body field. No message type
-            // is legitimately relayed on another peer's behalf, so a mismatch
-            // is impersonation (forged pose, bye-eviction, roster flooding
-            // under thousands of distinct forged keys) and is dropped whole.
-            if (message.peerId != peerId) {
-                logWarning(
-                    "dropped spoofed message: transport peer '$peerId' " +
-                        "claimed to be '${message.peerId}'",
-                )
-                return@launch
-            }
-            if (state.apply(message)) {
-                publishParticipants()
-                publishNodes()
-                state.sharedAnchor?.let { _sharedCloudAnchorId = it.cloudAnchorId }
-            }
+        // Queued, never merged on the transport's thread: the reader loop is
+        // the only place inbound state changes, so two lines cannot race or
+        // swap. A no-op once stop() has closed the inbox.
+        inbox.trySend(Inbound(peerId, bytes))
+    }
+
+    private fun merge(peerId: String, bytes: ByteArray) {
+        val line = bytes.toString(Charsets.UTF_8)
+        val message = CollaborativeWireFormat.parse(line)
+        if (message == null) {
+            logVerbose("dropped unparseable line from $peerId")
+            return
+        }
+        // Security (#2569): identity is bound to the CONNECTION the
+        // message arrived on (the transport peer id) — never to the
+        // peer-controlled "peer" body field. No message type
+        // is legitimately relayed on another peer's behalf, so a mismatch
+        // is impersonation (forged pose, bye-eviction, roster flooding
+        // under thousands of distinct forged keys) and is dropped whole.
+        if (message.peerId != peerId) {
+            logWarning(
+                "dropped spoofed message: transport peer '$peerId' " +
+                    "claimed to be '${message.peerId}'",
+            )
+            return
+        }
+        synchronized(stateLock) {
+            if (!state.apply(message)) return
+            publishParticipants()
+            publishNodes()
+            state.sharedAnchor?.let { _sharedCloudAnchorId = it.cloudAnchorId }
         }
     }
 
@@ -433,31 +602,27 @@ public constructor(
     }
 
     private fun publishNodes() {
-        // placedNodes is the union of remote nodes (from CollaborativeState)
-        // and the local user's own placements (localNodes) — remote entries
-        // for a key shadow nothing, but a local key the network also knows
-        // about resolves to whichever side wrote last via lastWriterWins.
-        val merged = LinkedHashMap<String, PlacedNode>()
-        localNodes.forEach { (k, v) -> merged[k] = v }
-        state.placedNodes.forEach { merged[it.nodeKey] = it }
-        _placedNodes = merged.values.toList()
+        _placedNodes = state.placedNodes
     }
 
     /**
-     * Enqueue a serialized line for the writer loop. Non-blocking: `trySend`
-     * onto the conflated outbox, so a render-loop caller is never blocked and
-     * the newest line wins under backpressure.
+     * Queues a serialized line for the writer loop, in [slot]. Non-blocking, so
+     * a render-loop caller is never held up. A line still waiting in the same
+     * slot is replaced — that is what conflates poses — and moved to the back,
+     * so the newest write of a slot is also the last one sent.
      */
-    private fun enqueue(line: String) {
-        outbox.trySend(line.toByteArray(Charsets.UTF_8))
+    private fun enqueue(slot: String, line: String) {
+        val bytes = line.toByteArray(Charsets.UTF_8)
+        synchronized(outboxLock) {
+            outbox.remove(slot)
+            outbox[slot] = bytes
+        }
+        outboxSignal.trySend(Unit)
     }
 
-    private fun shouldEmitPose(timestampNanos: Long): Boolean {
-        if (minPoseIntervalNanos <= 0L) return true
-        val delta = timestampNanos - lastPoseEmitNanos
-        if (delta < minPoseIntervalNanos) return false
-        lastPoseEmitNanos = timestampNanos
-        return true
+    private fun nextOutboundLine(): ByteArray? = synchronized(outboxLock) {
+        val pending = outbox.values.iterator()
+        if (pending.hasNext()) pending.next().also { pending.remove() } else null
     }
 
     private fun logWarning(msg: String) {

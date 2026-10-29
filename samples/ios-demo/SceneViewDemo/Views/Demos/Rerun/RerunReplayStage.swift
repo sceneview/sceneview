@@ -200,9 +200,14 @@ final class RerunStageRenderer {
         if orbit.following { orbit.home = home }
         if !orbit.hasFramedContent, bounds != nil {
             orbit.hasFramedContent = true
-            if orbit.drift { orbit.playIntro(from: RerunIntro.start(for: home)) } else { orbit.snap(to: home) }
+            // The entrance needs a running camera: a stage installed on a paused replay opens framed.
+            if orbit.drift && session.playback.cameraAdvances {
+                orbit.playIntro(from: RerunIntro.start(for: home))
+            } else {
+                orbit.snap(to: home)
+            }
         }
-        orbit.update(delta: delta)
+        orbit.update(delta: delta, advancing: session.playback.cameraAdvances)
         let lift = compact ? 0 : Self.mainLift
         let (eye, target) = orbit.eyeAndTarget(lift: lift, heightPixels: heightPixels)
         camera.look(at: target, from: eye, relativeTo: nil)

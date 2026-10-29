@@ -11,14 +11,14 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Regression contract for #3523 — a native SIGSEGV in `libgltfio-jni` seen when a cancelled
- * `ModelLoader.loadModel` coroutine's `destroyOnCancel` cleanup called `destroyModel` on an
+ * `ModelLoader.loadModel` coroutine's `destroyOnFailure` cleanup called `destroyModel` on an
  * asset `clear()` had already destroyed (or the reverse). `runCatching` cannot turn a JNI
  * double-free into a catchable exception — it is a process-level `SIGSEGV` — so the fix has to
  * make it structurally impossible to reach `AssetLoader.safeDestroyModel` twice for the same
  * asset, not catch the fallout.
  *
  * [claimAndDestroy] is the extracted, Filament-free core of that guard: `ModelLoader.destroyModel`
- * is every one of `destroyModel` (direct calls), `destroyOnCancel`'s cleanup and `clear()`'s
+ * is every one of `destroyModel` (direct calls), `destroyOnFailure`'s cleanup and `clear()`'s
  * sweep routed through it against the same `models` registry. These tests exercise the guard
  * directly — a fake "native" resource and a `destroy` callback that counts and records calls —
  * without needing a real Filament `Engine`/`AssetLoader`, which this module's JVM unit tests
@@ -44,8 +44,8 @@ class ModelDestroyIdempotenceTest {
         val destroyed = mutableListOf<String>()
 
         claimAndDestroy(registry, "model") { destroyed += it }
-        // This is the exact shape of the crash: destroyOnCancel's cleanup calling destroyModel
-        // on a model clear() (or another destroyOnCancel) already tore down.
+        // This is the exact shape of the crash: destroyOnFailure's cleanup calling destroyModel
+        // on a model clear() (or another destroyOnFailure) already tore down.
         claimAndDestroy(registry, "model") { destroyed += it }
 
         assertEquals(
@@ -78,7 +78,7 @@ class ModelDestroyIdempotenceTest {
 
     /**
      * Simulates the exact race from the tombstone: `clear()`'s synchronous sweep over a
-     * `models.toList()` snapshot racing a cancelled coroutine's `destroyOnCancel` cleanup for
+     * `models.toList()` snapshot racing a cancelled coroutine's `destroyOnFailure` cleanup for
      * the very same model, on two different threads, with no synchronization between the two
      * call sites beyond the shared registry. Runs many trials because the original bug was
      * timing-dependent (~2 crashes per 10 QA runs) — a single trial passing would not be
@@ -132,7 +132,7 @@ class ModelDestroyIdempotenceTest {
 
         // clear(): synchronous sweep over a snapshot of the registry.
         registry.toList().forEach(::destroyModel)
-        // The cancelled coroutine's destroyOnCancel cleanup, queued on the main dispatcher
+        // The cancelled coroutine's destroyOnFailure cleanup, queued on the main dispatcher
         // behind clear(), finally gets to run.
         destroyModel("model")
 

@@ -1542,8 +1542,8 @@ if changed:
         for OLD_V in $OLD_VERSIONS; do
             [ "$OLD_V" = "$SOURCE_VERSION" ] && continue
             OLD_V_RE="${OLD_V//./\\.}"
-            if grep -qE "(\"softwareVersion\": \"$OLD_V_RE\"|// Version: $OLD_V_RE|sceneview-web@$OLD_V_RE)" "$WEBSITE_INDEX" 2>/dev/null; then
-                _sed_inplace "s/\"softwareVersion\": \"$OLD_V_RE\"/\"softwareVersion\": \"$SOURCE_VERSION\"/g; s|// Version: $OLD_V_RE|// Version: $SOURCE_VERSION|g; s|sceneview-web@$OLD_V_RE|sceneview-web@$SOURCE_VERSION|g" "$WEBSITE_INDEX"
+            if grep -qE "(\"softwareVersion\": \"$OLD_V_RE\"|// Version: $OLD_V_RE|sceneview-web@$OLD_V_RE|sceneview/sceneview@v$OLD_V_RE)" "$WEBSITE_INDEX" 2>/dev/null; then
+                _sed_inplace "s/\"softwareVersion\": \"$OLD_V_RE\"/\"softwareVersion\": \"$SOURCE_VERSION\"/g; s|// Version: $OLD_V_RE|// Version: $SOURCE_VERSION|g; s|sceneview-web@$OLD_V_RE|sceneview-web@$SOURCE_VERSION|g; s|sceneview/sceneview@v$OLD_V_RE|sceneview/sceneview@v$SOURCE_VERSION|g" "$WEBSITE_INDEX"
                 echo -e "  Fixed: website-static/index.html (softwareVersion / iOS snippet / CDN pin $OLD_V -> $SOURCE_VERSION)"
             fi
         done

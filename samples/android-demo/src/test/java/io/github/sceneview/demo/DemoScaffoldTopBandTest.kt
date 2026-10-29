@@ -3,13 +3,20 @@ package io.github.sceneview.demo
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -193,7 +200,10 @@ class DemoScaffoldTopBandTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(DemoScaffoldTestTags.ASSET_SOURCE_CHIP).assertIsDisplayed()
         composeRule.onNodeWithText(title).assertExists()
-        composeRule.onNodeWithText("Offline").assertIsDisplayed()
+        // The title comes first: a source label there is no room for steps aside rather than
+        // cut the screen's name down to "A …". The pill still says it to a screen reader.
+        composeRule.onNodeWithText("Built-in model").assertIsNotDisplayed()
+        composeRule.onNodeWithContentDescription("Asset source: Built-in model").assertExists()
         composeRule.onNodeWithContentDescription("Navigate back").assertIsDisplayed()
 
         val pill = composeRule.onNodeWithTag(DemoScaffoldTestTags.ASSET_SOURCE_CHIP)
@@ -205,6 +215,81 @@ class DemoScaffoldTopBandTest {
                 "a long title must ellipsise, not push the overflow button off screen.",
             pill.right <= row.right,
         )
+    }
+
+    @Test
+    fun identityPill_namesTheAssetSource_besideATitleThatFits() {
+        // The suffix names where the model comes from. It used to read "Offline", which a
+        // phone on Wi-Fi took for a statement about its connection (#4503).
+        showPlacementIdentity(fontScale = 1.0f)
+        composeRule.onNodeWithText("AR Placement").assertIsDisplayed()
+        composeRule.onNodeWithText("Built-in model").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h480dp-xhdpi")
+    fun identityPill_onASmallWindowAtMaximumFontScale_givesTheTitleTheWholePill() {
+        // Here the label and the title do not both fit. The label used to be measured first
+        // and the title read "AR …"; now the label steps aside and the title has the pill.
+        showPlacementIdentity(fontScale = 2.0f)
+        composeRule.onNodeWithText("AR Placement").assertIsDisplayed()
+        composeRule.onNodeWithText("Built-in model").assertIsNotDisplayed()
+        val layouts = mutableListOf<TextLayoutResult>()
+        composeRule.onNodeWithText("AR Placement").fetchSemanticsNode()
+            .config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        val shown = layouts.first().getLineEnd(0, visibleEnd = true)
+        assertTrue(
+            "only $shown characters of \"AR Placement\" are left in the identity pill",
+            shown >= "AR Placem".length,
+        )
+    }
+
+    @Test
+    fun identityPill_dropsTheGapWithTheLabel_andBringsBothBackWithTheWidth() {
+        var width by mutableStateOf(NARROW_WINDOW)
+        composeRule.setContent {
+            SceneViewDemoTheme(darkTheme = false) {
+                Box(Modifier.width(width)) {
+                    DemoScaffold(
+                        title = "AR Placement",
+                        onBack = {},
+                        assetSource = AssetSourceState.Bundled,
+                    ) {}
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Built-in model").assertIsNotDisplayed()
+        val title = composeRule.onNodeWithText("AR Placement").getUnclippedBoundsInRoot()
+        val pill = composeRule.onNodeWithTag(DemoScaffoldTestTags.ASSET_SOURCE_CHIP)
+            .getUnclippedBoundsInRoot()
+        val before = title.left - pill.left
+        val after = pill.right - title.right
+        assertTrue(
+            "with its label dropped the pill keeps $after after the title and $before before " +
+                "it — the label's 8 dp gap must go with the label.",
+            after - before < 1.dp,
+        )
+
+        width = WIDE_WINDOW
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("AR Placement").assertIsDisplayed()
+        composeRule.onNodeWithText("Built-in model").assertIsDisplayed()
+    }
+
+    private fun showPlacementIdentity(fontScale: Float) {
+        composeRule.setContent {
+            ScaledDensity(fontScale) {
+                SceneViewDemoTheme(darkTheme = false) {
+                    DemoScaffold(
+                        title = "AR Placement",
+                        onBack = {},
+                        assetSource = AssetSourceState.Bundled,
+                    ) {}
+                }
+            }
+        }
+        composeRule.waitForIdle()
     }
 
     private fun assertChildrenStack(fontScale: Float) {
@@ -261,6 +346,8 @@ class DemoScaffoldTopBandTest {
     }
 
     private companion object {
+        val NARROW_WINDOW = 240.dp
+        val WIDE_WINDOW = 411.dp
         const val PROBE_PLAIN = "top-overlay-probe-plain"
         const val PROBE_FIRST = "top-overlay-probe-first"
         const val PROBE_SECOND = "top-overlay-probe-second"

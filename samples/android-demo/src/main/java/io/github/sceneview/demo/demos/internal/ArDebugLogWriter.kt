@@ -41,6 +41,16 @@ object ArDebugLogWriter {
             put("kept", event.kept)
             put("total", event.total)
         }.toString()
+        is ArDebugEvent.FloorCells -> buildJsonObject {
+            put("t", event.nanos)
+            put("type", "floor_cells")
+            putJsonArray("cells") {
+                for (key in event.keys) {
+                    add(JsonPrimitive(CoverageGrid.cxOf(key)))
+                    add(JsonPrimitive(CoverageGrid.czOf(key)))
+                }
+            }
+        }.toString()
     }
 
     /** The whole log, one event per line. */
@@ -50,6 +60,52 @@ object ArDebugLogWriter {
             append(line).append('\n')
         }
     }
+
+    /**
+     * The whole log as the UTF-8 bytes [write] would encode to, without ever holding it as one
+     * string: each line goes straight into small fixed chunks, then into one array of the exact size.
+     * A long scan's log runs to tens of megabytes, and on Android a `String` of it weighs twice
+     * that, its `StringBuilder` up to four times while it grows — the copies that ran a save out
+     * of memory (#4815).
+     */
+    fun writeBytes(events: List<ArDebugEvent>): ByteArray {
+        val chunks = ArrayList<ByteArray>()
+        var chunk = ByteArray(CHUNK)
+        var used = 0
+        var total = 0L
+        fun put(bytes: ByteArray) {
+            var at = 0
+            while (at < bytes.size) {
+                if (used == chunk.size) {
+                    chunks += chunk
+                    chunk = ByteArray(CHUNK)
+                    used = 0
+                }
+                val n = minOf(bytes.size - at, chunk.size - used)
+                System.arraycopy(bytes, at, chunk, used, n)
+                used += n
+                at += n
+            }
+            total += bytes.size
+        }
+        for (event in events) {
+            val line = line(event) ?: continue
+            put(line.toByteArray(Charsets.UTF_8))
+            put(NEWLINE)
+        }
+        check(total <= Int.MAX_VALUE) { "log of $total bytes" }
+        val out = ByteArray(total.toInt())
+        var at = 0
+        for (full in chunks) {
+            System.arraycopy(full, 0, out, at, full.size)
+            at += full.size
+        }
+        System.arraycopy(chunk, 0, out, at, used)
+        return out
+    }
+
+    private const val CHUNK = 1 shl 16
+    private val NEWLINE = byteArrayOf('\n'.code.toByte())
 
     private fun pose(nanos: Long, type: String, entity: String, pose: DebugPose): String? {
         val values = floatArrayOf(pose.x, pose.y, pose.z, pose.qx, pose.qy, pose.qz, pose.qw)

@@ -161,20 +161,62 @@ class DemoSmokeTest {
 
     @Test
     fun a06_arRerun_smokeOpen() {
-        openDemoTolerant("ar-rerun", "Rerun AR Replay")
+        openDemoTolerant("ar-rerun", "3D Scan")
         screenshot("s06_ar_rerun")
     }
 
-    // Record mode: the landing's "Record your room" opens the live room scan. The emulator
+    // Record mode: the landing's "Start scanning" opens the live scan. The emulator
     // cannot track (#2754), so this only proves the switch into the camera screen survives
     // without a crash; the scan itself is checked on a Pixel from the PR's needs-device list.
     @Test
     fun a06b_arRerun_recordSmokeOpen() {
-        openDemoTolerant("ar-rerun", "Rerun AR Replay")
-        device.wait(Until.findObject(By.text("Record your room")), timeout)?.click()
+        openDemoTolerant("ar-rerun", "3D Scan")
+        device.wait(Until.findObject(By.text("Start scanning")), timeout)?.click()
         Thread.sleep(5000)
         screenshot("s06b_ar_rerun_record")
         check(device.currentPackageName == pkg) { "The demo left the foreground after opening Record" }
+    }
+
+    // The system theme changes while the bundled replay's 3D view is on screen (#4330). The
+    // activity handles `uiMode` itself, so the scene stays and takes the other theme's colours
+    // on the layers it already draws. Rebuilding them freed textures their material instances
+    // still held: Filament aborted the process on the next frame, and this run with it.
+    @Test
+    fun a06c_arRerun_themeSwitchDuringReplay() =
+        switchThemeOverReplay(qaState = "replay", shot = "s06c_ar_rerun_theme_switch") { Thread.sleep(10000) }
+
+    private fun switchThemeOverReplay(
+        qaState: String,
+        shot: String,
+        rounds: Int = THEME_SWITCH_ROUNDS,
+        settle: () -> Unit,
+    ) {
+        val initial = device.executeShellCommand("cmd uimode night").substringAfter(": ").trim()
+        try {
+            context.startActivity(
+                Intent().apply {
+                    setClassName(pkg, MainActivity::class.java.name)
+                    putExtra("demo", "ar-rerun")
+                    putExtra("qa_mode", true)
+                    putExtra("qa_state", qaState)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+                },
+            )
+            device.wait(Until.hasObject(By.text("3D Scan")), timeout)
+            settle()
+            repeat(rounds) { round ->
+                for (night in listOf("yes", "no")) {
+                    device.executeShellCommand("cmd uimode night $night")
+                    Thread.sleep(SWITCH_SETTLE_MILLIS)
+                    check(device.currentPackageName == pkg) {
+                        "The demo left the foreground on round ${round + 1}, switching night mode to $night"
+                    }
+                }
+            }
+            screenshot(shot)
+        } finally {
+            device.executeShellCommand("cmd uimode night ${if (initial in NIGHT_MODES) initial else "no"}")
+        }
     }
 
     // Samples step 0 — `ar-streetscape` is now the Streetscape mode of the Geospatial
@@ -198,5 +240,16 @@ class DemoSmokeTest {
     fun z01_cameraControls_smokeOpen() {
         openDemoTolerant("camera-gestures", "Camera & Gestures")
         screenshot("s08_camera_controls")
+    }
+
+    private companion object {
+        /** What `cmd uimode night` takes back, to leave the device as it was found. */
+        val NIGHT_MODES = setOf("yes", "no", "auto")
+
+        /** Dark then light, this many times: the freed skybox is not read on every switch. */
+        const val THEME_SWITCH_ROUNDS = 3
+
+        /** A few rendered frames on the new theme, and time for an abort to take the process down. */
+        const val SWITCH_SETTLE_MILLIS = 1500L
     }
 }

@@ -65,13 +65,12 @@ struct RerunSessionsLanding: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            Text("Scan a room in 3D")
+            Text("3D Scan")
                 .font(SceneViewTokens.TypeScale.display)
                 .tracking(SceneViewTokens.TypeScale.displayTracking)
                 .foregroundStyle(SceneViewTokens.Glass.onGlass)
                 .accessibilityAddTraits(.isHeader)
-            Text("Walk around with your iPhone. SceneView keeps the camera's path, its photos, the "
-                 + "surfaces and the points, then replays the room in 3D.")
+            Text("Move around a space and watch it take shape.")
                 .font(SceneViewTokens.TypeScale.body)
                 .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -88,7 +87,7 @@ struct RerunSessionsLanding: View {
                         .background(SceneViewTokens.HomeColor.onPrimary.opacity(0.12), in: Circle())
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Record your room")
+                        Text("Start scanning")
                             .font(SceneViewTokens.TypeScale.title)
                             .tracking(SceneViewTokens.TypeScale.titleTracking)
                         Text("Everything stays on your iPhone.")

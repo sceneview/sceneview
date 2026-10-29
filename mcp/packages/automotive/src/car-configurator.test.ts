@@ -64,7 +64,7 @@ describe("generateCarConfigurator", () => {
     const code = generateCarConfigurator({ bodyStyle: "sedan", ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
-    expect(code).toContain("arsceneview:4.0.9");
+    expect(code).toContain("arsceneview:4.53.0");
     expect(code).toContain("android.permission.CAMERA");
   });
 
@@ -109,10 +109,12 @@ describe("generateCarConfigurator", () => {
     expect(code).toContain("FilterChip");
   });
 
-  it("includes LightNode with named apply parameter", () => {
+  it("includes LightNode with its type and named apply parameter", () => {
     const code = generateCarConfigurator({ bodyStyle: "sedan" });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

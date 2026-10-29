@@ -114,6 +114,22 @@ class NodeGestureDelegate(
      */
     private val claimedKinds = mutableSetOf<NodeEditingKind>()
 
+    /**
+     * The parent a `Begin` this delegate did not claim was bubbled to, when that parent
+     * accepted it. A `Node` subclass may accept by overriding `onMoveBegin` (or rotate/scale)
+     * without going through its own delegate — `AutoPlacementScene`'s anchor does — so
+     * [claimedKinds] alone would lose that owner, and with it the edit's inertia.
+     */
+    private val bubbledOwners = mutableMapOf<NodeEditingKind, Node>()
+
+    /** The node in this chain that accepted [kind], if the corresponding edit is still open. */
+    internal fun claimedNode(kind: NodeEditingKind): Node? =
+        if (kind in claimedKinds) {
+            node
+        } else {
+            bubbledOwners[kind]?.let { it.gestureDelegate.claimedNode(kind) ?: it }
+        }
+
     /** The set of [Node] transform properties currently being edited by a gesture. */
     var editingTransforms = setOf<KProperty1<Node, Any>>()
         set(value) {
@@ -176,7 +192,14 @@ class NodeGestureDelegate(
             true
         } else {
             // Delegate to parent via its virtual method to preserve polymorphic overrides
-            node.parent?.onMoveBegin(detector, e) ?: false
+            val parent = node.parent
+            val accepted = parent?.onMoveBegin(detector, e) ?: false
+            if (accepted && parent != null) {
+                bubbledOwners[NodeEditingKind.Move] = parent
+            } else {
+                bubbledOwners -= NodeEditingKind.Move
+            }
+            accepted
         }
     }
 
@@ -215,6 +238,7 @@ class NodeGestureDelegate(
             editingTransforms = editingTransforms - Node::position
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Move) }
         } else {
+            bubbledOwners -= NodeEditingKind.Move
             node.parent?.onMoveEnd(detector, e)
         }
     }
@@ -228,7 +252,14 @@ class NodeGestureDelegate(
             notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Rotate) }
             true
         } else {
-            node.parent?.onRotateBegin(detector, e) ?: false
+            val parent = node.parent
+            val accepted = parent?.onRotateBegin(detector, e) ?: false
+            if (accepted && parent != null) {
+                bubbledOwners[NodeEditingKind.Rotate] = parent
+            } else {
+                bubbledOwners -= NodeEditingKind.Rotate
+            }
+            accepted
         }
     }
 
@@ -268,6 +299,7 @@ class NodeGestureDelegate(
             editingTransforms = editingTransforms - Node::quaternion
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Rotate) }
         } else {
+            bubbledOwners -= NodeEditingKind.Rotate
             node.parent?.onRotateEnd(detector, e)
         }
     }
@@ -282,7 +314,14 @@ class NodeGestureDelegate(
             notifyEditingListeners { onEditingBegin(node, NodeEditingKind.Scale) }
             true
         } else {
-            node.parent?.onScaleBegin(detector, e) ?: false
+            val parent = node.parent
+            val accepted = parent?.onScaleBegin(detector, e) ?: false
+            if (accepted && parent != null) {
+                bubbledOwners[NodeEditingKind.Scale] = parent
+            } else {
+                bubbledOwners -= NodeEditingKind.Scale
+            }
+            accepted
         }
     }
 
@@ -319,6 +358,7 @@ class NodeGestureDelegate(
             editingTransforms = editingTransforms - Node::scale
             notifyEditingListeners { onEditingEnd(node, NodeEditingKind.Scale) }
         } else {
+            bubbledOwners -= NodeEditingKind.Scale
             node.parent?.onScaleEnd(detector, e)
         }
     }

@@ -5,9 +5,12 @@ import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * SharedPreferences-backed memory of the last source picked in the Explore tab
@@ -77,14 +80,43 @@ class ModelSourcesState internal constructor(
     }
 }
 
-/** Remember the Explore tab's source registry + selection for the current build. */
+/**
+ * Process-wide cache of the available sources. Building them creates the OkHttp
+ * clients, Sketchfab's on-disk HTTP cache and the JSON codecs, which held the main
+ * thread long enough on a cold process to freeze the tap on "Browse online models"
+ * (#4622). [load] does that work once, on [Dispatchers.IO]; later opens reuse it.
+ */
+internal object ModelSourceRegistry {
+    @Volatile
+    private var cached: List<ModelSource>? = null
+
+    /** The sources if a previous [load] already built them, else `null`. */
+    fun peek(): List<ModelSource>? = cached
+
+    /** Build the sources off the main thread, once per process. */
+    suspend fun load(context: Context): List<ModelSource> = cached ?: withContext(Dispatchers.IO) {
+        synchronized(this@ModelSourceRegistry) {
+            cached ?: ModelSourcesState.buildSources(context.applicationContext).also { cached = it }
+        }
+    }
+}
+
+/**
+ * Remember the Explore tab's source registry + selection for the current build.
+ *
+ * `null` until the sources are built — see [ModelSourceRegistry]. The caller shows
+ * its loading state meanwhile, so the first frame of the gallery never waits on them.
+ */
 @Composable
-fun rememberModelSources(): ModelSourcesState {
-    val context = LocalContext.current
-    return remember(context) {
-        val store = SelectedSourceStore(context)
-        val sources = ModelSourcesState.buildSources(context)
-        val initial = ModelSourcesState.resolveInitial(sources, store.load())
-        ModelSourcesState(sources, initial, store)
+fun rememberModelSources(): ModelSourcesState? {
+    val context = LocalContext.current.applicationContext
+    val sources by produceState(initialValue = ModelSourceRegistry.peek(), context) {
+        if (value == null) value = ModelSourceRegistry.load(context)
+    }
+    return remember(sources) {
+        sources?.let { available ->
+            val store = SelectedSourceStore(context)
+            ModelSourcesState(available, ModelSourcesState.resolveInitial(available, store.load()), store)
+        }
     }
 }

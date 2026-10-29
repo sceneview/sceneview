@@ -18,7 +18,7 @@
     <string name="demo_ar_depth_ml_running">%1$d ms per estimate · %2$.1f Hz · %3$d anchors · %4$d %% fit error</string>
     <string name="demo_ar_depth_ml_holding">Holding the last scale — find a surface again</string>
     <string name="demo_ar_depth_ml_throttled">Paused: the phone is too hot</string>
-    <string name="demo_ar_depth_ml_failed">Could not load the depth model: %1$s</string>
+    <string name="demo_ar_depth_ml_failed">Couldn\'t load the depth model. Try again.</string>
     <string name="demo_ar_depth_ml_credit">Apache-2.0 · runs on this device · near 0.3 m to far 5 m</string>
     <string name="demo_ar_depth_ml_download_meter">Model download progress</string>
 </resources>

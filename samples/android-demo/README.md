@@ -11,7 +11,7 @@ Play Store-ready showcase app demonstrating SceneView's full feature set.
 - **Shared demo chrome**: edge-to-edge scene with a glass back button, identity pill
   and overflow menu on top, and a floating bottom dock whose Controls item opens the
   settings sheet — tap the scene to hide the chrome
-- **48 interactive demos** in 9 catalogue sections (18 3D, 30 AR)
+- **41 interactive demos** in five catalogue sections (17 3D, 24 AR)
 - 3D model viewer with fitted framing, orbit camera, HDR environments, animation
   controls and an AR handoff
 - AR tap-to-place with plane detection
@@ -92,6 +92,7 @@ adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.MainA
 |---|---|---|
 | `ar-cloud-anchor` | `placing` `mapping` `ready_to_host` `hosting` `hosted` `host_failed` `resolve_empty` `resolve_ready` `resolving` `resolved` `resolve_not_found` `api_key_missing` `api_key_rejected` `no_network` (case- and separator-insensitive) | `cloudAnchorScenarioOf` |
 | `point-and-ask` | `checking` `downloadable` `downloading` `unsupported` `ready` `capturing` `thinking` `streaming` `answered` `failed` `failed-persistent` | `askStepForQaOverride` (`ASK_QA_STATE_IDS`) |
+| home (no `demo` extra) | `hero_still` — the still the hero stage shows where Filament cannot run (legacy guest SwiftShader, #4411), instead of the live flight | `HERO_STILL_QA_STATE` (`HomeHeroScene`) |
 
 ## Requirements
 

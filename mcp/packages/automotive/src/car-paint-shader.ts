@@ -114,15 +114,12 @@ ${hasFlakes ? `
 import androidx.compose.runtime.*
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.SceneView
-import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
-import io.github.sceneview.rememberNodes
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 
@@ -139,14 +136,15 @@ fun PaintedCarScene(modelAsset: String = "models/cars/sports_car.glb") {
     val modelLoader = rememberModelLoader(engine)
     val materialLoader = rememberMaterialLoader(engine)
     val environmentLoader = rememberEnvironmentLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 
     val modelInstance = rememberModelInstance(modelLoader, modelAsset)
 
-    // Main-thread material creation — returns null until both the model
-    // and the material file are loaded.
-    val paint: MaterialInstance? = remember(materialLoader) {
-        materialLoader.createMaterial("materials/car_paint.filamat")?.also {
+    // Main-thread material creation — one instance of the compiled paint,
+    // configured once and reused for every submesh.
+    val paint: MaterialInstance = remember(materialLoader) {
+        materialLoader.createInstance(
+            materialLoader.createMaterial("materials/car_paint.filamat")
+        ).also {
             // Base color (linear RGB, matches the hex passed to the generator).
             it.setParameter("baseColor", ${r.toFixed(4)}f, ${g.toFixed(4)}f, ${b.toFixed(4)}f)
             it.setParameter("metallic", ${effectiveMetallic.toFixed(3)}f)
@@ -162,19 +160,17 @@ fun PaintedCarScene(modelAsset: String = "models/cars/sports_car.glb") {
         modifier = Modifier.fillMaxSize(),
         engine = engine,
         modelLoader = modelLoader,
-        collisionSystem = collisionSystem,
         environment = environmentLoader.createHDREnvironment(
             assetFileLocation = "environments/studio_hdr.ktx"
         )!!,
     ) {
         modelInstance?.let { instance ->
-            // Swap every submesh material with our custom paint.
-            paint?.let { p ->
-                for (i in 0 until instance.materialInstances.size) {
-                    instance.materialInstances[i] = p
-                }
-            }
-            ModelNode(modelInstance = instance, scaleToUnits = 2.5f)
+            ModelNode(
+                modelInstance = instance,
+                scaleToUnits = 2.5f,
+                // Swap every submesh material with our custom paint.
+                apply = { setMaterialInstance(paint) }
+            )
         }
     }
 }
@@ -186,8 +182,8 @@ fun PaintedCarScene(modelAsset: String = "models/cars/sports_car.glb") {
     `. Base color ${baseColorHex}, metallic ${effectiveMetallic}, roughness ${effectiveRoughness}, clearcoat ${effectiveClearcoat}.`;
 
   const dependencies = [
-    "io.github.sceneview:sceneview:4.0.0-rc.1",
-    "Filament 1.70.x (matc compiler) to build the .mat into .filamat",
+    "io.github.sceneview:sceneview:4.53.0",
+    "Filament 1.72.x (matc compiler — must match the Filament version SceneView ships) to build the .mat into .filamat",
   ];
 
   return {

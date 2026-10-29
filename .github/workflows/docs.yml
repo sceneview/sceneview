@@ -71,7 +71,13 @@ jobs:
     # A data release (hd-pack-v1, assets-v1) must not redeploy the site from
     # its tag's commit, which can be older than main. SDK releases are v*;
     # data release tags must never start with "v".
-    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
+    # A maintenance release of the 2.x line (v2.3.4, cut from release/2.3.x) is
+    # a v* tag too, but its commit holds the 2.x tree: no website, no
+    # fetch-assets action. It must not build the site either.
+    if: >-
+      github.event_name != 'release' ||
+      (startsWith(github.event.release.tag_name, 'v') &&
+       !startsWith(github.event.release.tag_name, 'v2.'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

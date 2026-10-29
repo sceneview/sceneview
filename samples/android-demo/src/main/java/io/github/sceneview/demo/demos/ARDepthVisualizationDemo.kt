@@ -20,6 +20,7 @@ import io.github.sceneview.ar.depth.ArDepthFrame
 import io.github.sceneview.ar.depth.MlDepthSession
 import io.github.sceneview.ar.depth.MlDepthState
 import io.github.sceneview.ar.depth.ml.DepthAnythingV2Estimator
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.common.ArOverlayMeter
 import io.github.sceneview.demo.common.CardShell
@@ -368,6 +369,7 @@ fun ARDepthVisualizationDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -523,10 +525,7 @@ private fun DemoBottomOverlayScope.MlDepthCard(state: MlDepthState, downloadProg
                 )
             }
             MlDepthState.Throttled -> stringResource(R.string.demo_ar_depth_ml_throttled)
-            is MlDepthState.Failed -> stringResource(
-                R.string.demo_ar_depth_ml_failed,
-                state.error.message ?: state.error.javaClass.simpleName,
-            )
+            is MlDepthState.Failed -> stringResource(R.string.demo_ar_depth_ml_failed)
         }
         Text(
             text = body,

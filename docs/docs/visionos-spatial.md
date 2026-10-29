@@ -119,7 +119,7 @@ positions at display refresh rate. Up to 27 joints per hand are available.
 
 ### Requirements
 
-- visionOS 1.0+
+- visionOS 2.0+ (the minimum `Package.swift` declares)
 - App must be in a **Full Space** (not shared space) to access hand tracking data
 - `NSHandsTrackingUsageDescription` in Info.plist
 - `SpatialTrackingSession` must be configured and running
@@ -357,8 +357,7 @@ model.enableManipulation(
 
 ### Prerequisites
 
-- visionOS 1.0+ for volumes and basic immersive spaces
-- visionOS 2.0+ for `SpatialTrackingSession`, enhanced hand tracking, anchor geometry
+- visionOS 2.0+ (the package minimum) for volumes, basic immersive spaces, `SpatialTrackingSession`, enhanced hand tracking and anchor geometry
 - visionOS 26 for `ManipulationComponent`, `EnvironmentBlendingComponent`, `MeshInstancesComponent`
 - Apple Vision Pro hardware for testing (or Xcode Simulator for basic layout)
 

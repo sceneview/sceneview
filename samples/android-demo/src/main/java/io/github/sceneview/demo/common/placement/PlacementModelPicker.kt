@@ -169,9 +169,9 @@ val BUNDLED_PLACEMENT_MODELS: List<PlacementModel> = listOf(
     // Bundled showcases share a 0.3 m longest-axis preview on Android and iOS.
     // An explicitly imported or measured viewer selection retains its selected size basis.
     PlacementModel(
-        id = "soldier",
-        displayName = "Soldier",
-        assetLocation = "models/threejs_soldier.glb",
+        id = "ranger",
+        displayName = "Ranger",
+        assetLocation = "models/quaternius_ranger.glb",
         realWorldSizeMeters = 0.3f, // documented showcase preview
     ),
     PlacementModel(

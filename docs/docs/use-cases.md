@@ -80,9 +80,16 @@ fun ProductViewer(productGlb: String) {
 Let customers see how furniture looks in their room before purchasing.
 
 ```kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+
 @Composable
 fun ARFurniturePlacer(furnitureGlb: String) {
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val furniture = rememberModelInstance(modelLoader, furnitureGlb)
@@ -92,12 +99,18 @@ fun ARFurniturePlacer(furnitureGlb: String) {
         engine = engine,
         modelLoader = modelLoader,
         planeRenderer = anchor == null,  // hide planes after placement
-        onTouchEvent = { event, hitResult ->
-            if (event.action == MotionEvent.ACTION_UP && hitResult != null) {
-                anchor = hitResult.createAnchor()
+        onSessionUpdated = { _, frame -> latestFrame = frame },
+        // A confirmed tap on empty space: the end of a pinch on the placed model must not move it.
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { event, node ->
+                if (node == null) {
+                    latestFrame?.hitTest(event)
+                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                        ?.createAnchorOrNull()
+                        ?.let { anchor = it } // the old AnchorNode detaches its anchor
+                }
             }
-            true
-        }
+        )
     ) {
         anchor?.let { a ->
             AnchorNode(anchor = a) {
@@ -105,7 +118,7 @@ fun ARFurniturePlacer(furnitureGlb: String) {
                     ModelNode(
                         modelInstance = it,
                         scaleToUnits = 0.8f,
-                        isEditable = true  // pinch to scale, drag to move
+                        isEditable = true  // pinch to scale, twist to rotate
                     )
                 }
             }
@@ -114,7 +127,7 @@ fun ARFurniturePlacer(furnitureGlb: String) {
 }
 ```
 
-**~25 lines.** Tap to place, pinch to scale, drag to reposition. All built in.
+**~40 lines.** Tap to place, pinch to scale, twist to rotate. All built in.
 
 ---
 

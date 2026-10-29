@@ -1,0 +1,69 @@
+// ar_mesh_tint.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Colour overlay for meshes drawn into the AR camera image — Streetscape terrain and
+//             buildings, plane markers (#4623). Reads as a saturated tint over a bright wall and
+//             as the colour itself over a dark one, where an alpha-blended overlay turns to milk.
+// Used by:    samples/android-demo ARSceneGeometryDemo (Streetscape) and ARPlaneNodeDemo, through
+//             `rememberArMeshTintInstance` — nothing in the SDK.
+// Parameters:
+//   color    — float3, the overlay colour, linear RGB (set as sRGB, Filament converts).
+//   strength — float [0,1], the overlay's depth of colour (see below).
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+//
+// Why not `blending: transparent`: the AR view runs ToneMapper.Filmic, and the camera stream
+// pre-applies Inverse_Tonemap_Filmic so the feed round-trips. A white wall therefore sits at
+// ~1.1 in the buffer — above any overlay colour — and a 0.55-alpha blend composites to
+// 0.55 * colour + 0.45 * 1.1: the wall wins and the tone mapper returns a pastel (#d2a8ff
+// lilac over a white wall came out #e3dde9, #005bc1 came out #ced3e1). No alpha keeps the
+// room visible and the colour legible at the same time.
+//
+// The blend here is `out = a * S + S * dst` (srcRGB srcAlpha, dstRGB srcColor), with
+// S = color * strength * GAIN and a = LAID_DOWN:
+//   - the `S * dst` term multiplies the camera image by the colour — a filter, so the room's
+//     light and shade read through, in the colour (#1f8bff over a white wall → #2ddbf8, over a
+//     mid-grey floor → #0770cb);
+//   - over a dark corner `dst` is ~0 and the `a * S` term lays a deep version of the colour down
+//     itself (#023080), so the overlay never vanishes into the shadow.
+// `a` is small on purpose: the camera image is pre-inverted through Filmic, so a mid-grey floor
+// sits near 0.15 in the buffer, and any larger `a` drowns the floor's pattern (at 0.3 a rug's
+// stripes came out 1.3x apart under the overlay instead of 3x). GAIN lifts the colour out of
+// Filmic's toe, where an orange turns red. The framebuffer alpha is kept (srcA zero, dstA one).
+//
+// Faces are shaded from their screen-space derivative normal against a fixed key direction, so
+// a building's roof, its two visible walls and the ground beneath it take three different
+// strengths of the same colour: the form reads without lights, normals or an outline pass.
+material {
+    "name" : "AR Mesh Tint",
+    "parameters" : [
+        { "type" : "float3", "name" : "color" },
+        { "type" : "float", "name" : "strength" }
+    ],
+    "requires" : [ "position" ],
+    "shadingModel" : "unlit",
+    "blending" : "custom",
+    "blendFunction" : {
+        "srcRGB" : "srcAlpha",
+        "srcA" : "zero",
+        "dstRGB" : "srcColor",
+        "dstA" : "one"
+    },
+    "depthWrite" : false,
+    "depthCulling" : true,
+    "doubleSided" : true
+}
+fragment {
+    // How much of the colour is laid down on its own, over black (see the header).
+    #define LAID_DOWN 0.1
+    // Scales `strength` (a token in [0,1]) to the buffer's range (see the header).
+    #define GAIN 2.5
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp float3 p = getWorldPosition();
+        highp float3 n = normalize(cross(dFdx(p), dFdy(p)));
+        // Roofs and flat ground face the key and take the full colour; walls fall to ~0.5-0.8.
+        float facing = abs(dot(n, normalize(float3(0.35, 1.0, 0.55))));
+        float shade = 0.4 + 0.6 * facing;
+        material.baseColor = float4(materialParams.color * (materialParams.strength * GAIN * shade), LAID_DOWN);
+    }
+}

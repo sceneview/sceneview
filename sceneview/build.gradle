@@ -158,6 +158,11 @@ dependencies {
     androidTestImplementation libs.androidx.test.junit
     androidTestImplementation libs.androidx.test.runner
     androidTestImplementation libs.androidx.test.rules
+    // Compose test rule — ModelLoadStateComposeTest drives `rememberModelLoadState` in a real
+    // composition. Test APK only: the published AAR gains no dependency.
+    androidTestImplementation platform(libs.androidx.compose.bom)
+    androidTestImplementation libs.androidx.compose.ui.test.junit4
+    androidTestImplementation libs.androidx.compose.ui.test.manifest
 }
 
 apply plugin: "com.vanniktech.maven.publish"

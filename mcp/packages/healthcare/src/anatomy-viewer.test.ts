@@ -57,7 +57,7 @@ describe("generateAnatomyViewer", () => {
     const code = generateAnatomyViewer({ system: "skeleton", ar: true });
     expect(code).toContain("import io.github.sceneview.ar.ARSceneView");
     expect(code).toContain("ARSceneView(");
-    expect(code).toContain("arsceneview:4.0.9");
+    expect(code).toContain("arsceneview:4.53.0");
     expect(code).toContain("android.permission.CAMERA");
   });
 
@@ -88,10 +88,12 @@ describe("generateAnatomyViewer", () => {
     expect(code).not.toContain("AnatomyLabelsOverlay");
   });
 
-  it("includes LightNode with named apply parameter", () => {
+  it("includes LightNode with its type and named apply parameter", () => {
     const code = generateAnatomyViewer({ system: "skeleton" });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

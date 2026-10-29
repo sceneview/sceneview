@@ -166,6 +166,22 @@ public final class io/github/sceneview/animation/KeyframeTrack {
 	public final fun getKeyframes ()Ljava/util/List;
 }
 
+public final class io/github/sceneview/animation/LightCues {
+	public static final field INSTANCE Lio/github/sceneview/animation/LightCues;
+	public final fun blink (FFFF)F
+	public static synthetic fun blink$default (Lio/github/sceneview/animation/LightCues;FFFFILjava/lang/Object;)F
+	public final fun breathe (FFF)F
+	public static synthetic fun breathe$default (Lio/github/sceneview/animation/LightCues;FFFILjava/lang/Object;)F
+	public final fun fadeIn (FFFLkotlin/jvm/functions/Function1;)F
+	public static synthetic fun fadeIn$default (Lio/github/sceneview/animation/LightCues;FFFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)F
+	public final fun flash (FFFFF)F
+	public static synthetic fun flash$default (Lio/github/sceneview/animation/LightCues;FFFFFILjava/lang/Object;)F
+	public final fun glitch (FFFFI)F
+	public static synthetic fun glitch$default (Lio/github/sceneview/animation/LightCues;FFFFIILjava/lang/Object;)F
+	public final fun ignition (FFFI)F
+	public static synthetic fun ignition$default (Lio/github/sceneview/animation/LightCues;FFFIILjava/lang/Object;)F
+}
+
 public final class io/github/sceneview/animation/PlaybackMode : java/lang/Enum {
 	public static final field LOOP Lio/github/sceneview/animation/PlaybackMode;
 	public static final field ONCE Lio/github/sceneview/animation/PlaybackMode;
@@ -1089,6 +1105,50 @@ public final class io/github/sceneview/gesture/GestureTransformsKt {
 	public static synthetic fun applyRotationGesture$default (FFFILjava/lang/Object;)F
 	public static final fun applyScaleGesture (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;)Ldev/romainguy/kotlin/math/Float3;
 	public static synthetic fun applyScaleGesture$default (Ldev/romainguy/kotlin/math/Float3;FFLkotlin/ranges/ClosedFloatingPointRange;ILjava/lang/Object;)Ldev/romainguy/kotlin/math/Float3;
+}
+
+public final class io/github/sceneview/gesture/Inertia {
+	public static final field Companion Lio/github/sceneview/gesture/Inertia$Companion;
+	public static final field DEFAULT_TIME_CONSTANT_SECONDS F
+	public static final field DEFAULT_VELOCITY_WINDOW_SECONDS F
+	public fun <init> ()V
+	public fun <init> (FF)V
+	public synthetic fun <init> (FFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getTimeConstantSeconds ()F
+	public final fun getVelocityWindowSeconds ()F
+	public fun hashCode ()I
+	public final fun isEnabled ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/gesture/Inertia$Companion {
+	public final fun getDefault ()Lio/github/sceneview/gesture/Inertia;
+	public final fun getNone ()Lio/github/sceneview/gesture/Inertia;
+}
+
+public final class io/github/sceneview/gesture/InertiaTracker {
+	public static final field Companion Lio/github/sceneview/gesture/InertiaTracker$Companion;
+	public static final field STOPPED_GAP_SECONDS D
+	public fun <init> (IFFLio/github/sceneview/gesture/Inertia;F)V
+	public synthetic fun <init> (IFFLio/github/sceneview/gesture/Inertia;FILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun addSample (D[F)V
+	public final fun advance (F[F)Z
+	public final fun getDimensions ()I
+	public final fun getInertia ()Lio/github/sceneview/gesture/Inertia;
+	public final fun getMaxSpeed ()F
+	public final fun getMinReleaseSpeed ()F
+	public final fun getMinSpeed ()F
+	public final fun getSpeed ()F
+	public final fun isCoasting ()Z
+	public final fun release (D)Z
+	public final fun reset ()V
+	public final fun setInertia (Lio/github/sceneview/gesture/Inertia;)V
+	public final fun stop ()V
+	public final fun velocity (I)F
+}
+
+public final class io/github/sceneview/gesture/InertiaTracker$Companion {
 }
 
 public abstract interface class io/github/sceneview/gesture/OnGestureListener {

@@ -21,7 +21,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.52.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.63.0")
 ]
 ```
 
@@ -243,7 +243,7 @@ let node = try await ModelNode(asset)           // then display it
 | `CubeNode` | `GeometryNode.cube()` |
 | `SphereNode` | `GeometryNode.sphere()` |
 | `ShapeNode` | `ShapeNode(points:)` |
-| `LightNode(apply = { })` | `LightNode.directional()` |
+| `LightNode(type = LightManager.Type.DIRECTIONAL)` | `LightNode.directional()` |
 | `rememberEnvironment` | `.environment(.studio)` |
 | `CameraManipulator` | `CameraControls` |
 

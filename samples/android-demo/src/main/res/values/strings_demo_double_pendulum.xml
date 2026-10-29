@@ -6,7 +6,6 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_double_pendulum_title">Double Pendulum</string>
-    <string name="demo_double_pendulum_subtitle">Explore two linked arms in chaotic motion</string>
     <string name="demo_double_pendulum_lead_arm">Lead arm</string>
     <string name="demo_double_pendulum_trailing_arm">Trailing arm</string>
     <string name="demo_double_pendulum_gravity">Gravity</string>

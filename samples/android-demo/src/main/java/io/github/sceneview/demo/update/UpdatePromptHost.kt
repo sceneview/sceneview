@@ -61,7 +61,7 @@ import kotlin.math.floor
  * - "Downloading update…" — indeterminate until Play reports a size, then the wavy progress
  *   ring and the percentage (`motion-narration` in `DESIGN.md`).
  * - "Update ready" · **Restart**, until answered.
- * - "Update failed" · **Retry** · close.
+ * - "Update failed" · **Open Play Store** · close: the listing's own Update button is the way out.
  *
  * The surface is the same snackbar throughout — only its content is swapped — so a tap is
  * never followed by an empty screen. Nothing is blocked while it shows: it is a snackbar,
@@ -121,7 +121,7 @@ fun UpdatePromptHost(
 
 /**
  * One state of the update snackbar — stateless, drawn by [UpdatePromptHost] and by the
- * previews. [onAction] answers the action button (Update, Restart, Retry), [onDismiss] the
+ * previews. [onAction] answers the action button (Update, Restart, Open Play Store), [onDismiss] the
  * close button of the dismissible states.
  */
 @Composable
@@ -136,7 +136,7 @@ fun UpdatePromptSnackbar(
     val actionLabel = when (prompt) {
         UpdatePrompt.Available -> stringResource(R.string.sample_update_action)
         UpdatePrompt.ReadyToInstall -> stringResource(R.string.sample_update_restart)
-        UpdatePrompt.Failed -> stringResource(R.string.sample_update_retry)
+        UpdatePrompt.Failed -> stringResource(R.string.sample_update_open_store)
         UpdatePrompt.Waiting, is UpdatePrompt.Downloading -> null
     }
     val progress = (prompt as? UpdatePrompt.Downloading)?.progress

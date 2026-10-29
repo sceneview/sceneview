@@ -1,0 +1,56 @@
+// scan_surfel.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    3D Scan's dense cloud: one square surfel per point, its colour one texel of the
+//             atlas — the image material's look — with its size on screen clamped. A surfel is
+//             a few centimetres wide in the world, so one the camera passes close to (the
+//             saving orbit leaving the room through a wall, the live view's eye next to a
+//             surface) grew to a square covering most of the screen (#4742's white splats).
+//             The vertex stage shrinks a surfel nearer than [nearFade] about its centre by
+//             (depth / nearFade)², towards a dot, and caps any surfel at [maxSide] of the
+//             view's height; past nearFade every level is drawn exactly as before.
+// Used by:    samples/android-demo ReplayLayers (RerunReplayScene.kt), the dense layer only.
+// Vertex layout (DebugLayerNode, surfel mode):
+//   position — float3, the corner in model space.
+//   uv0      — float2, the surfel's texel centre in the atlas.
+//   custom0  — float3, the corner minus the surfel's centre, model space
+//              (DenseSurfels.cornerOffsets).
+// Parameters:
+//   texture  — sampler2d, the colour atlas (sRGB, nearest).
+//   maxSide  — float, the largest side a surfel is drawn at, as a fraction of the view's height
+//              (DenseSurfels.MAX_SCREEN_SIDE; DenseSurfels.screenScale is this stage on the JVM).
+//   nearFade — float, metres: a nearer surfel shrinks by (depth / nearFade)²
+//              (DenseSurfels.NEAR_FADE_M).
+// matc profile: mobile-only, OpenGL + Vulkan — this blob ships in the demo APK, not in the AAR.
+material {
+    "name" : "Scan Surfel",
+    "parameters" : [
+        { "type" : "sampler2d", "name" : "texture" },
+        { "type" : "float", "name" : "maxSide" },
+        { "type" : "float", "name" : "nearFade" }
+    ],
+    "requires" : [ "position", "uv0", "custom0" ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "culling" : "none"
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 offset = mulMat3x3Float3(getWorldFromModelMatrix(), getCustom0().xyz);
+        highp float3 centre = material.worldPosition.xyz - offset;
+        highp float depth = max(-mulMat4x4Float3(getViewFromWorldMatrix(), centre).z, 1e-4);
+        // The side on screen as a fraction of the view's height: the half-diagonal |offset| is
+        // side / sqrt(2), and the view is 2 * depth / clipFromView[1][1] tall at that depth.
+        highp float side = length(offset) * 1.41421356 * getClipFromViewMatrix()[1][1] / (2.0 * depth);
+        highp float fade = min(depth / materialParams.nearFade, 1.0);
+        highp float scale = min(fade * fade, materialParams.maxSide / max(side, 1e-6));
+        material.worldPosition.xyz = centre + offset * scale;
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor = texture(materialParams_texture, getUV0());
+        // As image_texture.mat (#2224): Filament does not premultiply unlit baseColor.
+        material.baseColor.rgb *= material.baseColor.a;
+    }
+}

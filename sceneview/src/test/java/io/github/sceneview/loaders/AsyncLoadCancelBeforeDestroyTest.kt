@@ -31,7 +31,7 @@ class AsyncLoadCancelBeforeDestroyTest {
 
     private val log = Collections.synchronizedList(mutableListOf<String>())
     private val registry = Collections.synchronizedList(mutableListOf<String>())
-    private val asyncLoad = AsyncLoadSlot<String>(beginLoad = {}, cancelLoad = { log += "cancel" })
+    private val asyncLoad = AsyncLoadSlot<String>(beginLoad = { true }, cancelLoad = { log += "cancel" })
 
     private fun load(model: String) {
         registry += model
@@ -110,16 +110,55 @@ class AsyncLoadCancelBeforeDestroyTest {
         // fails midway must still see the model as in flight.
         var seenInFlight: String? = null
         lateinit var slot: AsyncLoadSlot<String>
-        slot = AsyncLoadSlot(beginLoad = { seenInFlight = slot.inFlight }, cancelLoad = {})
+        slot = AsyncLoadSlot(
+            beginLoad = {
+                seenInFlight = slot.inFlight
+                true
+            },
+            cancelLoad = {},
+        )
         slot.begin("a")
         assertEquals("a", seenInFlight)
+    }
+
+    @Test
+    fun `begin reports whether the native load accepted the item`() {
+        val refusing = AsyncLoadSlot<String>(beginLoad = { false }, cancelLoad = {})
+        assertEquals(false, refusing.begin("a"))
+        assertEquals("A refused begin still holds the item, so its destroy cancels it", "a", refusing.inFlight)
+    }
+
+    @Test
+    fun `a refused begin hands the slot back to the load still decoding`() {
+        // gltfio returns before draining the previous load's decoders when it refuses a begin
+        // (meshopt failure): "a" may still be decoding, so it must stay the item in flight.
+        val restored = mutableListOf<String>()
+        val slot = AsyncLoadSlot<String>(
+            beginLoad = { it != "refused" },
+            cancelLoad = { log += "cancel" },
+            restoreLoad = { restored += it },
+        )
+        registry += listOf("a", "refused")
+        slot.begin("a")
+
+        assertEquals(false, slot.begin("refused"))
+
+        assertSame("a", slot.inFlight)
+        assertEquals("The native load must be pointed back at the previous item", listOf("a"), restored)
+        destroyAfterCancellingLoad(registry, "refused", slot) { log += "destroy($it)" }
+        destroyAfterCancellingLoad(registry, "a", slot) { log += "destroy($it)" }
+        assertEquals(
+            "The refused item is freed at once; the decoding one is still cancelled before it is freed",
+            listOf("destroy(refused)", "cancel", "destroy(a)"),
+            log,
+        )
     }
 
     @Test
     fun `the cancel callback learns whether a load was in flight`() {
         // ModelLoader only swaps its ResourceLoader when a real load was interrupted.
         val seen = mutableListOf<String?>()
-        val slot = AsyncLoadSlot<String>(beginLoad = {}, cancelLoad = { seen += it })
+        val slot = AsyncLoadSlot<String>(beginLoad = { true }, cancelLoad = { seen += it })
         slot.cancel()
         slot.begin("a")
         slot.cancel()
@@ -129,13 +168,13 @@ class AsyncLoadCancelBeforeDestroyTest {
     @Test
     fun `a load cancelled after asyncBeginLoad cancels before its cleanup destroy`() = runBlocking {
         // loadModel's own cleanup path: the coroutine is cancelled once the begin already ran, and
-        // destroyOnCancel frees the model on the "main" thread — through the same ordering.
+        // destroyOnFailure frees the model on the "main" thread — through the same ordering.
         val executor = Executors.newSingleThreadExecutor()
         try {
             val main = executor.asCoroutineDispatcher()
             val begun = CountDownLatch(1)
             val job = launch(Dispatchers.Default) {
-                destroyOnCancel("a", destroy = ::destroy, dispatcher = main) {
+                destroyOnFailure("a", destroy = ::destroy, dispatcher = main) {
                     withContext(main) { load("a") }
                     begun.countDown()
                     delay(10_000)

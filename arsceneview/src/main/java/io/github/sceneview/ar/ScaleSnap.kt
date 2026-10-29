@@ -6,11 +6,10 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /**
- * The pinch-scale detent of automatic placement: one source of truth for the 25–400 % range,
+ * The pinch-scale detent of automatic placement: one source of truth for the default 25–400 % range,
  * the 100 % snap window and the elastic rebound played when a pinch lands on 100 %.
  *
- * Pure math — the pivot node applies it, tests pin it. The same numbers ship on iOS
- * (`ARScaleSnap`).
+ * Pure math — the pivot node applies it, tests pin it.
  */
 internal object ScaleSnap {
     const val MIN: Float = 0.25f
@@ -44,21 +43,26 @@ internal object ScaleSnap {
         val enteredLimit: Boolean,
     )
 
-    fun step(previousDisplayed: Float, raw: Float): Step {
-        val clamped = raw.coerceIn(MIN, MAX)
-        val snapped = abs(clamped - 1f) < WINDOW
+    /** The default pinch range, [MIN]–[MAX]: what `AutoPlacementState.scaleRange` starts at. */
+    val RANGE: ClosedFloatingPointRange<Float> = MIN..MAX
+
+    fun step(previousDisplayed: Float, raw: Float, range: ClosedFloatingPointRange<Float> = RANGE): Step {
+        val clamped = raw.coerceIn(range.start, range.endInclusive)
+        // The 100 % detent only where 100 % is in range.
+        val snapped = abs(clamped - 1f) < WINDOW && 1f in range
         val displayed = if (snapped) 1f else clamped
         val wasSnapped = abs(previousDisplayed - 1f) < EPSILON
-        val atLimit = isAtLimit(displayed)
+        val atLimit = isAtLimit(displayed, range)
         return Step(
             displayed = displayed,
             snapped = snapped,
             enteredSnap = snapped && !wasSnapped,
-            enteredLimit = atLimit && !isAtLimit(previousDisplayed),
+            enteredLimit = atLimit && !isAtLimit(previousDisplayed, range),
         )
     }
 
-    fun isAtLimit(scale: Float): Boolean = scale <= MIN + EPSILON || scale >= MAX - EPSILON
+    fun isAtLimit(scale: Float, range: ClosedFloatingPointRange<Float> = RANGE): Boolean =
+        scale <= range.start + EPSILON || scale >= range.endInclusive - EPSILON
 
     /**
      * The raw (pre-snap) scale of a pinch, **relative to the gesture's start**: the scale the
@@ -85,9 +89,13 @@ internal object ScaleSnap {
      * is a toggle between real-world size and *their* size rather than a one-way door. Never
      * resized ⇒ `null`: the caller plays the rebound so the tap is felt, but nothing changes.
      */
-    fun doubleTapTarget(current: Float, remembered: Float?): Float? = when {
+    fun doubleTapTarget(
+        current: Float,
+        remembered: Float?,
+        range: ClosedFloatingPointRange<Float> = RANGE,
+    ): Float? = when {
         abs(current - 1f) > EPSILON -> 1f
-        remembered != null && abs(remembered - 1f) > EPSILON -> remembered.coerceIn(MIN, MAX)
+        remembered != null && abs(remembered - 1f) > EPSILON -> remembered.coerceIn(range.start, range.endInclusive)
         else -> null
     }
 

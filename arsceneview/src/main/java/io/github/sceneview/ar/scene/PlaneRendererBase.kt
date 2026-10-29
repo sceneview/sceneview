@@ -5,100 +5,55 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 
 /**
- * Shared contract for SceneView's ARCore plane renderers.
+ * Former shared contract of SceneView's two plane renderers.
  *
- * SceneView ships **two implementations** of detected-plane visualization, selectable via
- * [ARSceneView][io.github.sceneview.ar.ARSceneView]'s `planeRendererVersion` parameter:
- *
- *  * [PlaneRenderer] — the **default** renderer (V1) again as of v4.16.1. Draws each
- *    detected plane as a flat polygon textured with a procedural soft grid. Battle-tested.
- *  * [PlaneRendererV2] — **opt-in** (`Version.V2`). Draws each detected surface as soft,
- *    world-anchored dots that fade at the edges and with distance, reveals new and growing
- *    planes with a sweeping front, highlights the floor under the centre of the screen, and
- *    fades out when disabled — see [#3507](https://github.com/sceneview/sceneview/issues/3507).
- *    Its first design (#2203, briefly the default in v4.16.0) was reverted in v4.16.1.
- *
- * @see PlaneRenderer
- * @see PlaneRendererV2
- * @see Version
+ * Since 4.57.0 there is one plane renderer, [PlaneRenderer]
+ * ([#4307](https://github.com/sceneview/sceneview/issues/4307)): round dots on floors, upright
+ * dashes on walls, hollow rings on ceilings. This interface stays so that code compiled against
+ * an earlier 4.x keeps linking; [PlaneRenderer] and the deprecated [PlaneRendererV2] still
+ * implement it. New code uses [PlaneRenderer] directly.
  */
+@Deprecated(
+    "There is one plane renderer since 4.57.0: use PlaneRenderer.",
+    ReplaceWith("PlaneRenderer", "io.github.sceneview.ar.scene.PlaneRenderer"),
+)
 sealed interface PlaneRendererBase {
 
     /**
-     * Display size (in pixels) of the surface this renderer draws into. Set by `ARSceneView`
-     * whenever the surface is resized.
-     *
-     * Both renderers used to read it to place their centre-screen `Frame.hitTest` in
-     * [PlaneRenderer.PlaneRendererMode.RENDER_CENTER]. Since #3339 that hit test is gone —
-     * centre-plane selection is computed analytically from the camera pose, which needs no
-     * viewport size — so nothing in the SDK reads this today. It stays part of the contract
-     * because it is public API, and because any future screen-space work in a renderer needs
-     * exactly this value.
+     * Display size (in pixels) of the surface the renderer draws into. Set by `ARSceneView`
+     * whenever the surface is resized. Nothing in the SDK reads it since centre-plane selection
+     * is computed from the camera pose (#3339).
      */
     var viewSize: Size
 
-    /**
-     * Master switch — when `false`, plane visualization is fully suspended and no per-frame
-     * work runs in [update].
-     */
+    /** Draw the planes. Turning it off fades them out; plane detection keeps running. */
     var isEnabled: Boolean
 
-    /**
-     * Controls visibility of the plane grid overlay. When `false`, no planes are drawn but
-     * shadows can still be received independently — see [isShadowReceiver].
-     */
+    /** When `false`, no planes are drawn; shadows can still be received ([isShadowReceiver]). */
     var isVisible: Boolean
 
-    /**
-     * Controls whether scene renderables cast shadows onto detected planes.
-     *
-     * Independent of [isVisible]: a plane can be hidden but still receive shadows (useful
-     * for grounding placed objects on an invisible surface).
-     */
+    /** Whether scene renderables cast shadows onto the detected planes. */
     var isShadowReceiver: Boolean
 
-    /**
-     * Per-frame update hook — invoked once per AR frame from `ARSceneView`'s render loop
-     * with the live ARCore [Session] and [Frame]. Pulls the updated planes, builds /
-     * destroys per-plane visualizers as needed, and feeds plane geometry to Filament.
-     */
+    /** Per-frame update, called by `ARSceneView` with the live ARCore [Session] and [Frame]. */
     fun update(session: Session, frame: Frame)
 
-    /**
-     * Releases every native resource owned by the renderer (Filament materials, textures,
-     * vertex / index buffers, entities). Must be called exactly once when the host
-     * `ARSceneView` is disposed.
-     */
+    /** Releases every native resource owned by the renderer. Called once by `ARSceneView`. */
     fun destroy()
 
     /**
-     * Selects which plane-renderer implementation `ARSceneView` instantiates.
+     * Former selector of the plane-renderer implementation, read by `ARSceneView`'s
+     * `planeRendererVersion` parameter.
      *
-     * **Default is [V1]** as of v4.16.1 — the proven flat-polygon procedural-grid renderer.
-     * [V2] is opt-in experimental pending polish work — see
-     * [#2203](https://github.com/sceneview/sceneview/issues/2203). Switching versions at
-     * runtime triggers a renderer rebuild (the parameter is wired into the surrounding
-     * `remember(...)` keys), so toggling is safe but **not free** — pick once at composition
-     * root.
+     * **Ignored since 4.57.0**: both values draw with [PlaneRenderer], the only plane renderer.
+     * Delete the `planeRendererVersion` argument.
      */
+    @Deprecated("Ignored since 4.57.0: there is one plane renderer. Delete the planeRendererVersion argument.")
     enum class Version {
-        /**
-         * Default plane renderer — flat polygon + procedural unlit grid. Battle-tested,
-         * matches every existing AR demo. Default as of v4.16.1.
-         */
+        /** Formerly the textured-grid renderer. Ignored: draws with [PlaneRenderer]. */
         V1,
 
-        /**
-         * Experimental plane renderer — depth-driven mesh, PBR materials lit by ARCore's
-         * HDR estimate, type-aware floor / ceiling / wall material identities, and an
-         * 800 ms scan-in ring on first detection.
-         *
-         * **Visual quality not yet at the V1 polish level.** On-device QA in v4.16.0 showed
-         * the V2 output not matching the design intent, so the default was reverted to V1
-         * in v4.16.1 while V2 is polished. Opt in to help shape the redesign — see
-         * [#2203](https://github.com/sceneview/sceneview/issues/2203) for the research
-         * notes (`.claude/plans/v2-*.md`) and the discussion.
-         */
+        /** Formerly the dots renderer, which became [PlaneRenderer]. */
         V2
     }
 }

@@ -11,10 +11,11 @@ import io.github.sceneview.demo.demos.LightingDemo
 /**
  * Append-only fragment for the `lighting` demo. See [DemoFragment].
  *
- * Since #3496 the screen is the *showcase* half of the lighting pair — three rigs
- * (image-based, studio, sun) over the stage `lighting-lab` also lights. The retired
- * `movable-light` and `dynamic-sky` ids deep-link here through
- * [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
+ * Three rigs (image-based, studio, sun) over one stage (#3496), plus the reflection
+ * probe, contact shading, fog and anti-aliasing switches that used to be the separate
+ * `lighting-lab` card (#4603). The retired `lighting-lab`, `movable-light`,
+ * `dynamic-sky`, `reflection-probes`, `post-processing` and `fog` ids deep-link here
+ * through [io.github.sceneview.demo.DeepLinkRouter.DEMO_ID_ALIASES].
  */
 object LightingFragment : DemoFragment {
     override val entry: DemoEntry = DemoEntry(
@@ -25,9 +26,13 @@ object LightingFragment : DemoFragment {
         icon = Icons.Filled.Lightbulb,
         order = 4,
         addedIn = "4.0.0",
-        updatedIn = "4.49.0",
-        tags = setOf("light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr"),
-        // #3496 rebuilt the screen as a three-rig showcase over a shared stage.
+        updatedIn = "4.57.0",
+        tags = setOf(
+            "light", "hdr", "ibl", "studio", "key", "sun", "shadow", "pbr",
+            "skybox", "environment", "reflection", "exposure", "ssao", "fog", "post-fx",
+        ),
+        // #3496 rebuilt the screen as a three-rig showcase over a shared stage; #4603
+        // folded the Lighting Lab bench into it.
     )
 
     @Composable

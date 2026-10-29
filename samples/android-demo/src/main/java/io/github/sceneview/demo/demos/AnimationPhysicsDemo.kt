@@ -49,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import com.google.android.filament.Skybox
 import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
@@ -67,12 +66,13 @@ import io.github.sceneview.demo.sketchfab.SketchfabSlug
 import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.ModelLoader
-import io.github.sceneview.demo.theme.StageChrome
-import io.github.sceneview.demo.theme.themedStageChrome
+import io.github.sceneview.demo.common.StageSkyFog
+import io.github.sceneview.demo.common.rememberStageSkybox
+import io.github.sceneview.demo.common.themedStageSky
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Transform
-import io.github.sceneview.math.colorOf
-import io.github.sceneview.math.toLinearSpace
+import io.github.sceneview.math.Rotation
+import io.github.sceneview.math.Size
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.model
 import io.github.sceneview.toAabb
@@ -84,6 +84,9 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberView
+import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.LifecyclePausingLaunchedEffect
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.io.File
@@ -177,8 +180,8 @@ private data class AnimationModel(
 /**
  * Carousel of 6 animated models for [AnimationSection].
  *
- * Slot 0 is the bundled Khronos Fox (Survey, Walk, Run); slot 1 the historical
- * `threejs_soldier.glb` (bundled, 4 animations: 0=Idle, 1=Run, 2=TPose, 3=Walk).
+ * Slot 0 is the bundled Khronos Fox (Survey, Walk, Run); slot 1 the bundled Quaternius
+ * Ranger `quaternius_ranger.glb` (CC0, 5 clips: 0=Idle, 1=Walk, 2=Run, 3=Sprint, 4=Dance).
  * The next 4 slots stream the 4 entries from
  * the `animation` category of [SampleAssets] — each carries at least one
  * baked animation so the play/pause/speed/loop controls have something to
@@ -186,7 +189,7 @@ private data class AnimationModel(
  *
  * Streamed slots fall back to their registered bundled GLB when offline so
  * the demo always renders five carousel options (the bundled fallback for
- * three of the four streamed slugs is `threejs_soldier.glb` / `shiba.glb` /
+ * three of the four streamed slugs is `quaternius_ranger.glb` / `shiba.glb` /
  * `khronos_fox.glb` — those still ship in the APK).
  */
 private val ANIMATION_MODELS: List<AnimationModel> = run {
@@ -206,13 +209,12 @@ private val ANIMATION_MODELS: List<AnimationModel> = run {
             defaultAnimationIndex = 0,
         ),
         AnimationModel(
-            nameRes = R.string.demo_animation_physics_subject_soldier,
-            bundledAssetPath = "models/threejs_soldier.glb",
+            nameRes = R.string.demo_animation_physics_subject_ranger,
+            bundledAssetPath = "models/quaternius_ranger.glb",
             scaleToUnits = 1.0f,
-            // 3 = "Walk" — the strongest first-impression animation on the
-            // soldier rig (the cinematic REVEAL pull-back pairs with a walking
-            // subject). Kept as the historical default for visual stability.
-            defaultAnimationIndex = 3,
+            // 1 = "Walk" — the strongest first-impression clip on this rig, as it was on
+            // the three.js Soldier it replaced (#4586).
+            defaultAnimationIndex = 1,
         ),
         AnimationModel(
             nameRes = R.string.demo_animation_physics_subject_robot,
@@ -308,16 +310,24 @@ private fun AnimationSection(onBack: () -> Unit) {
         }
     } else null
 
-    // Studio stage (#3820), the Sketchfab default: studio HDR light, a neutral grey backdrop.
-    // A photographed place put the subject floating over whatever ground the panorama had (the
-    // garden's pond, the rooftop's car park before it); a plain backdrop has no ground to miss.
+    // Studio stage (#3820): studio HDR light. #4624 put the subject on the floor the other
+    // showcase demos stand on (2D in 3D, Geometry): the themed stage sky, its horizon fog and a
+    // ground plane under the feet, light and dark. The grey backdrop it replaces left the fox
+    // floating in a void with nothing to walk on, and in light theme the chrome over it stayed
+    // the dark media scrim.
     val hdrEnvironment = rememberHDREnvironment(
         environmentLoader,
         "environments/studio_2k.hdr",
         createSkybox = false,
     )
     val fallbackEnvironment = rememberEnvironment(environmentLoader)
-    val stageSkybox = remember(engine) { neutralStageSkybox(engine) }
+    val renderInvalidator = rememberRenderInvalidator()
+    val view = rememberView(engine)
+    val materialLoader = rememberMaterialLoader(engine)
+    val sky = themedStageSky()
+    val stageSkybox = rememberStageSkybox(engine, sky, renderInvalidator::requestRender)
+    StageSkyFog(view, sky, renderInvalidator::requestRender)
+    val floor = rememberMaterialInstance(materialLoader, sky.floor, 0f, 0.62f)
     val lightEnvironment = hdrEnvironment ?: fallbackEnvironment
     val activeEnvironment = remember(lightEnvironment, stageSkybox) {
         lightEnvironment.copy(skybox = stageSkybox)
@@ -326,16 +336,6 @@ private fun AnimationSection(onBack: () -> Unit) {
     // Pin the IBL intensity to the slider value — near SceneView's balanced 10k default a
     // subject is lit, far below it reads as an unlit black silhouette (#1468). Re-runs whenever
     // the active environment OR the slider value change, so dragging it updates in real time.
-    val renderInvalidator = rememberRenderInvalidator()
-    // The backdrop follows the theme: the neutral studio grey in light, the dark stage ground
-    // (`stage-background`) in dark. A fixed grey made the dark theme a pale slab behind dark
-    // chrome, and the dark Home card with it. Recoloured in place, never rebuilt: the demo
-    // activity handles `uiMode` itself and the scene is still drawing this skybox.
-    val darkStage = themedStageChrome() === StageChrome.Media
-    LaunchedEffect(stageSkybox, darkStage) {
-        stageSkybox.setStageColor(darkStage)
-        renderInvalidator.requestRender()
-    }
     LaunchedEffect(activeEnvironment, iblIntensity) {
         activeEnvironment.indirectLight?.intensity = iblIntensity
         // `IndirectLight` is a raw Filament object — the SDK hands it out and never sees it
@@ -788,9 +788,22 @@ private fun AnimationSection(onBack: () -> Unit) {
     //    [renderInvalidator] asks for the one frame that shows it. Applying it from
     //    `onFrame` instead would draw the previous pose and park — one frame behind, for good.
     val playing = isPlaying && !DemoSettings.qaMode
+    // A clip picked while the subject plays eases in from the pose on screen (#4624): a chip used
+    // to cut the fox from mid-stride to the first frame of the next clip in one frame.
+    val clipFade = remember(node) { ClipFade() }
+    val selectClip: (Int) -> Unit = { index ->
+        if (index != selectedAnim) {
+            if (playing && selectedAnim in animationNames.indices) clipFade.start(selectedAnim, clipTime)
+            selectedAnim = index
+        }
+    }
     val applyPose: (ModelNodeImpl) -> Unit = { animatedNode ->
         val animator = animatedNode.animator
-        if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
+        if (clipFade.active && clipFade.from in animationNames.indices && clipFade.from != selectedAnim) {
+            // Alpha 0 is the clip handed to `applyCrossFade`: the one being left.
+            animator.applyAnimation(selectedAnim, clipTime)
+            animator.applyCrossFade(clipFade.from, clipFade.fromTime, clipFade.alpha)
+        } else if (blendWeight > 0f && blendIndex in animationNames.indices && blendIndex != selectedAnim) {
             val blendDuration = animator.getAnimationDuration(blendIndex)
             animator.applyAnimation(blendIndex, clipTime / duration * blendDuration)
             animator.applyCrossFade(selectedAnim, clipTime, blendWeight)
@@ -808,6 +821,7 @@ private fun AnimationSection(onBack: () -> Unit) {
 
     DemoScaffold(
         bottomOverlayReservesScene = true,
+        themedStage = true,
         title = stringResource(R.string.demo_animation_physics_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
@@ -852,7 +866,8 @@ private fun AnimationSection(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                if (animationNames.size > 1) Text(
+                // Only while a blend is dialled in: at 0 % the line read as a debug readout.
+                if (animationNames.size > 1 && blendWeight > 0f) Text(
                     stringResource(R.string.demo_animation_physics_blend_status, clipName,
                         animationNames[blendIndex], (blendWeight * 100).toInt()),
                     style = MaterialTheme.typography.labelMedium,
@@ -895,7 +910,7 @@ private fun AnimationSection(onBack: () -> Unit) {
                         animationNames.forEachIndexed { index, name ->
                             FilterChip(
                                 selected = selectedAnim == index,
-                                onClick = { selectedAnim = index },
+                                onClick = { selectClip(index) },
                                 label = { Text(name) }
                             )
                         }
@@ -1008,9 +1023,9 @@ private fun AnimationSection(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
 
             // Model carousel — switches the active animated subject. Slot 0 is
-            // the bundled threejs soldier; slots 1–4 stream from the `animation`
-            // category of SampleAssets. Streamed slots fall back to the bundled
-            // soldier / shiba / fox GLBs when no Sketchfab key is configured.
+            // the bundled Khronos Fox, slot 1 the bundled Quaternius Ranger; the rest
+            // stream from the `animation` category of SampleAssets and fall back to the
+            // bundled ranger / shiba / fox GLBs when no Sketchfab key is configured.
             Text(stringResource(R.string.demo_animation_physics_subject), style = MaterialTheme.typography.labelLarge)
             Spacer(modifier = Modifier.height(SceneViewTokens.Space.xs))
             Row(
@@ -1092,7 +1107,12 @@ private fun AnimationSection(onBack: () -> Unit) {
                         // `LaunchedEffect` above, not here: `onFrame` runs after the frame it is
                         // named for was already presented.
                         if (playing && previous != 0L) {
-                            val next = clipTime + ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f) * speed
+                            val step = ((nanos - previous) / 1_000_000_000f).coerceAtMost(0.1f)
+                            if (clipFade.active) {
+                                val fromDuration = animatedNode.animator.getAnimationDuration(clipFade.from)
+                                clipFade.advance(step, step * speed, fromDuration)
+                            }
+                            val next = clipTime + step * speed
                             clipTime = if (loop) next % duration else next.coerceAtMost(duration)
                             if (!loop && clipTime >= duration) isPlaying = false
                             applyPose(animatedNode)
@@ -1109,12 +1129,17 @@ private fun AnimationSection(onBack: () -> Unit) {
                 },
                 renderInvalidator = renderInvalidator,
                 engine = engine,
+                view = view,
                 modelLoader = modelLoader,
+                materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
                 environment = activeEnvironment,
                 cameraNode = cameraNode,
                 cameraManipulator = activeManipulator,
             ) {
+                // The ground the subject walks on: grounded at y = 0 like every subject here.
+                PlaneNode(size = Size(STAGE_FLOOR_SIZE, STAGE_FLOOR_SIZE, 0f), rotation = Rotation(x = -90f),
+                    materialInstance = floor, apply = { isHittable = false })
                 modelInstance?.let { instance ->
                     ModelNode(
                         modelInstance = instance,
@@ -1254,25 +1279,43 @@ private const val ANIMATION_FILL = 0.82f
 private const val ANIMATION_START_YAW_DEGREES = 60f
 
 /**
- * Solid neutral backdrop for a studio stage. Filament skybox colours are linear: 0.4 reads as a
- * mid grey (~#A8A8AA), light enough to separate from the stage clear colour, dark enough for a
- * light floor to stand out. Freed with the engine (`rememberEngine` tears it down).
+ * The cross-fade a clip change plays while the subject is moving: the clip being left keeps
+ * running for [CLIP_FADE_SECONDS] while the new one takes over on an ease-in-out curve. Main
+ * thread only — the chip that starts it and the frame callback that advances it both run there.
  */
-internal fun neutralStageSkybox(engine: com.google.android.filament.Engine): Skybox =
-    Skybox.Builder().color(0.40f, 0.40f, 0.42f, 1.0f).build(engine)
+private class ClipFade {
+    var from = -1
+        private set
+    var fromTime = 0f
+        private set
+    private var elapsed = CLIP_FADE_SECONDS
 
-/**
- * The studio backdrop for the theme: [neutralStageSkybox]'s grey in light, `stage-background`
- * (#0B0F16, the dark stage every other demo stands on) in dark.
- */
-private fun Skybox.setStageColor(dark: Boolean) {
-    if (dark) {
-        val ground = colorOf(SceneViewTokens.Stage.background).toLinearSpace()
-        setColor(ground.r, ground.g, ground.b, 1.0f)
-    } else {
-        setColor(0.40f, 0.40f, 0.42f, 1.0f)
+    val active: Boolean get() = from >= 0 && elapsed < CLIP_FADE_SECONDS
+
+    /** Share of the new clip in the pose: 0 when the fade starts, 1 when it is over. */
+    val alpha: Float get() {
+        val t = (elapsed / CLIP_FADE_SECONDS).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    fun start(clip: Int, time: Float) {
+        from = clip
+        fromTime = time
+        elapsed = 0f
+    }
+
+    /** [wall] seconds of fade, [clipStep] seconds of the old clip at the current speed. */
+    fun advance(wall: Float, clipStep: Float, fromDuration: Float) {
+        elapsed += wall
+        fromTime = if (fromDuration > 0f) (fromTime + clipStep) % fromDuration else 0f
     }
 }
+
+/** Length of the cross-fade between two clips: long enough to read as a transition, not a lag. */
+private const val CLIP_FADE_SECONDS = 0.45f
+
+/** Side of the stage floor: far past the fog, so its edge is never seen. */
+private const val STAGE_FLOOR_SIZE = 90f
 
 /** One full turntable revolution — slow enough that the animation, not the camera, leads. */
 private const val ANIMATION_TURN_MILLIS = 40_000

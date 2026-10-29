@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SceneView Labs: early access for features that still need testing on real phones.
+     A community invitation, never a sale: no price, no tier, no "premium". Access is earned
+     by sending one report from the in-app reporter. -->
+<resources>
+    <string name="labs_title">SceneView Labs</string>
+    <string name="labs_tag">Early access</string>
+    <string name="labs_invite_body">Try what\'s next. Help us test new AR features on your phone before anyone else.</string>
+    <string name="labs_join_cta">Send a report to join</string>
+    <string name="labs_join_how">Your first report opens Labs right away. Send it from here, or from any demo: Settings, then Send feedback.</string>
+    <string name="labs_joined_body">You\'re in. Thanks for helping test SceneView.</string>
+    <string name="labs_switch_label">Show Labs features</string>
+    <plurals name="labs_count">
+        <item quantity="one">%d experiment to try</item>
+        <item quantity="other">%d experiments to try</item>
+    </plurals>
+    <plurals name="labs_count_off">
+        <item quantity="one">%d experiment waiting. Switch Labs on to see it.</item>
+        <item quantity="other">%d experiments waiting. Switch Labs on to see them.</item>
+    </plurals>
+    <string name="labs_empty">New experiments land here soon.</string>
+    <string name="labs_help_most">What helps most: a screen recording (Quick Settings, Screen record) attached to the issue, what you expected and what happened, and your phone model.</string>
+    <string name="labs_support">Want to do more? Support SceneView</string>
+    <string name="labs_badge">Labs</string>
+    <string name="labs_gate_title">This is a Labs experiment</string>
+    <string name="labs_gate_body_not_joined">It still needs testing on real phones, so it opens for people who help test. Send your first report and Labs opens right away.</string>
+    <string name="labs_gate_body_off">SceneView Labs is switched off. Turn it on to open this experiment.</string>
+    <string name="labs_sheet_title">You\'re testing a Labs feature</string>
+    <string name="labs_sheet_body">Tell us how it went. A screen recording helps most.</string>
+    <string name="labs_about_supporting">Early-access features you help test before anyone else.</string>
+</resources>

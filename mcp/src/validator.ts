@@ -81,7 +81,7 @@ const RULES: Rule[] = [
             severity: "warning",
             rule: "ar/node-not-anchor",
             message:
-              "Manually setting `worldPosition` inside an AR scene causes drift — ARCore remaps coordinates during tracking and plain nodes don't compensate. Use `AnchorNode(anchor = hitResult.createAnchor())` instead.",
+              "Manually setting `worldPosition` inside an AR scene causes drift — ARCore remaps coordinates during tracking and plain nodes don't compensate. Use `AnchorNode(anchor = anchor)` instead, with `anchor` from `createAnchorOrNull()` on an in-polygon ARCore plane hit (`latestFrame?.hitTest(event)` in `onSingleTapConfirmed`).",
             line,
           });
         });
@@ -229,7 +229,7 @@ const RULES: Rule[] = [
           severity: "error",
           rule: "ar/anchor-node-missing-anchor",
           message:
-            "`AnchorNode()` requires an `anchor` from a hit result. Use `AnchorNode(anchor = hitResult.createAnchor())` inside `onTouchEvent` or `onSessionUpdated`.",
+            "`AnchorNode()` requires an `anchor`. Create it on a confirmed tap — `onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) latestFrame?.hitTest(event)?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }?.createAnchorOrNull()?.let { anchor = it } })` — then declare `anchor?.let { AnchorNode(anchor = it) { … } }`.",
           line,
         });
       });

@@ -11,14 +11,13 @@ name: Nightly full CI
 # That is the right trade-off for the high-merge-rate cycle, but it means
 # NO single scheduled run exercises the full validation surface end-to-end.
 #
-# This workflow closes that gap: once a night it runs the FULL heavy suite
-# against `main` HEAD (compile + KMP/web/flutter builds + unit tests +
-# render tests) so a path-gated-out regression that slipped through still
-# surfaces within 24h.
+# This workflow closes that gap: once a night it runs the heavy legs whose
+# inputs changed since the last successful scheduled run. If `main` HEAD is
+# unchanged, the already-green result is reused and no heavy runner starts.
 #
-# It REUSES the existing workflows via `workflow_call` instead of
-# duplicating their job bodies — `ci.yml` is invoked with `force-all: true`
-# so its per-job path filter is bypassed.
+# It REUSES the existing workflows via `workflow_call` instead of duplicating
+# their job bodies. A manual dispatch still bypasses every path gate and runs
+# the complete validation surface.
 #
 # It is deliberately NOT a required check — it is a scheduled safety net,
 # not a PR gate.
@@ -37,20 +36,74 @@ permissions:
   contents: read
 
 jobs:
+  # ── Changes since the last successful scheduled run ───────────────────────
+  # The 2026-10-19 audit measured 2.9 runner-hours per night re-running the
+  # same SHA already covered by push CI. Scheduled runs reuse the last green
+  # night's SHA for per-leg path gates and skip every heavy workflow when HEAD
+  # is identical. A manual dispatch always runs everything.
+  nightly-changes:
+    name: Detect changes since last successful nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run-heavy: ${{ steps.changes.outputs.run-heavy }}
+      base-sha: ${{ steps.changes.outputs.base-sha }}
+    steps:
+      - name: Find the last successful scheduled SHA
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CURRENT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "run-heavy=true" >> "$GITHUB_OUTPUT"
+            echo "base-sha=" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — running every nightly leg."
+            exit 0
+          fi
+          LAST_SHA=$(gh run list --repo "$REPO" --workflow nightly-ci.yml \
+            --event schedule --status success -L 1 --json headSha \
+            --jq '.[0].headSha // ""' 2>/dev/null || true)
+          if [ -z "$LAST_SHA" ]; then
+            echo "run-heavy=true" >> "$GITHUB_OUTPUT"
+            echo "base-sha=" >> "$GITHUB_OUTPUT"
+            echo "::warning::No successful scheduled nightly found; running every leg."
+          elif [ "$LAST_SHA" = "$CURRENT_SHA" ]; then
+            echo "run-heavy=false" >> "$GITHUB_OUTPUT"
+            echo "base-sha=$LAST_SHA" >> "$GITHUB_OUTPUT"
+            echo "HEAD matches the last successful nightly ($LAST_SHA); skipping heavy legs."
+          else
+            echo "run-heavy=true" >> "$GITHUB_OUTPUT"
+            echo "base-sha=$LAST_SHA" >> "$GITHUB_OUTPUT"
+            echo "Diffing nightly legs from $LAST_SHA to $CURRENT_SHA."
+          fi
+
   # ── Full CI build/lint/test (path filter bypassed) ────────────────────────
-  # `force-all: true` bypasses ci.yml's per-job path filter so the entire PR
-  # validation surface runs in one reusable-workflow call.
+  # Scheduled runs dispatch only changed path groups; manual runs force all.
   full-ci:
     name: Full CI (forced)
+    needs: nightly-changes
+    if: needs.nightly-changes.outputs.run-heavy == 'true'
     uses: ./.github/workflows/ci.yml
     with:
-      force-all: true
+      force-all: ${{ github.event_name == 'workflow_dispatch' || needs.nightly-changes.outputs.base-sha == '' }}
+      base-sha: ${{ needs.nightly-changes.outputs.base-sha }}
     secrets: inherit
 
   # ── Render tests (emulator + iOS Simulator + Playwright web) ──────────────
   render-tests:
     name: Render tests
+    needs: nightly-changes
+    if: needs.nightly-changes.outputs.run-heavy == 'true'
     uses: ./.github/workflows/render-tests.yml
+    with:
+      base-sha: ${{ needs.nightly-changes.outputs.base-sha }}
     secrets: inherit
 
   # ── Device-QA harness (Maestro Android + Playwright web) ──────────────────
@@ -61,7 +114,11 @@ jobs:
   # internally (SwiftShader/Maestro flake), so it does not spam issues.
   device-qa:
     name: Device QA
+    needs: nightly-changes
+    if: needs.nightly-changes.outputs.run-heavy == 'true'
     uses: ./.github/workflows/device-qa.yml
+    with:
+      base-sha: ${{ needs.nightly-changes.outputs.base-sha }}
     secrets: inherit
 
   # ── Nightly health surfacing (#2732) ──────────────────────────────────────

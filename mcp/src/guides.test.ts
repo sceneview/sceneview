@@ -160,4 +160,20 @@ describe("AR_SETUP_GUIDE", () => {
   });
 
   versionChecks({ AR_SETUP_GUIDE });
+
+  it("places on a confirmed tap on empty space, not on ACTION_UP", () => {
+    expect(AR_SETUP_GUIDE).toContain("onGestureListener = rememberOnGestureListener(");
+    expect(AR_SETUP_GUIDE).toContain("onSingleTapConfirmed = { event, node ->");
+    expect(AR_SETUP_GUIDE).toContain("if (node == null)");
+    expect(AR_SETUP_GUIDE).toContain("?.createAnchorOrNull()");
+    expect(AR_SETUP_GUIDE).not.toContain("MotionEvent.ACTION_UP)");
+    expect(AR_SETUP_GUIDE).not.toContain("anchorCreated");
+    expect(AR_SETUP_GUIDE).not.toContain("onTouchEvent = { event, _ ->");
+  });
+
+  it("imports the ARCore Plane and the SceneView tap helpers", () => {
+    expect(AR_SETUP_GUIDE).toContain("import com.google.ar.core.Plane\n");
+    expect(AR_SETUP_GUIDE).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
+    expect(AR_SETUP_GUIDE).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+  });
 });

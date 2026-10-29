@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.common.placement
 
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.telemetry.AR_VIEW_SAMPLE_ID
 import io.github.sceneview.demo.telemetry.ArFunnelLog
 import io.github.sceneview.demo.telemetry.LocalSampleId
+import io.github.sceneview.demo.telemetry.arCoreVersionName
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -15,20 +17,25 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.PauseCircleOutline
@@ -41,23 +48,34 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
@@ -80,10 +98,16 @@ import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
+import io.github.sceneview.demo.LocalDemoChromeBottomWidth
+import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.reportsDemoSceneBottomCard
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForcedTrackingFailure
+import io.github.sceneview.demo.common.motionSensorSilentForced
+import io.github.sceneview.demo.common.rememberMotionSensorSilent
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
@@ -175,8 +199,30 @@ fun TapToPlaceArSession(
 
     // AR funnel (docs/docs/recipes/measure-ar-funnel.md), demo-app analytics only. The AR View
     // tab hosts this session outside any sample, hence its own id.
-    val funnel = remember { ArFunnelLog() }
+    val appContext = LocalContext.current.applicationContext
+    val funnel = remember { ArFunnelLog(arCoreVersion = { arCoreVersionName(appContext) }) }
     funnel.sampleId = LocalSampleId.current ?: AR_VIEW_SAMPLE_ID
+    // #4522: frames for ten seconds, never tracking, no reason from ARCore — is the gyroscope
+    // delivering at all? If not, say so instead of "Getting ready" for ever.
+    val motionSensorSilent = rememberMotionSensorSilent(
+        framesArriving = state.cameraReady,
+        tracking = state.isTracking,
+        failureReason = state.trackingFailureReason,
+        onSilent = funnel::motionSensorSilent,
+    )
+    SideEffect { state.motionSensorSilent = motionSensorSilent }
+    // #4510: a resumed session that delivers no frame has no callback to say so — ask on a timer.
+    // The timer follows the lifecycle the session itself resumes and pauses on: in the background
+    // it does not run, so time spent there is never counted as a session delivering no frame.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(funnel, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                delay(ArFunnelLog.FRAME_WATCH_MS)
+                funnel.framesExpected()
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -185,6 +231,7 @@ fun TapToPlaceArSession(
     ) {
         if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
         ARSceneView(
+            lifecycle = rememberHostLifecycle(),
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,
@@ -199,12 +246,18 @@ fun TapToPlaceArSession(
             planeFindingMode = Config.PlaneFindingMode.HORIZONTAL,
             instantPlacementMode = Config.InstantPlacementMode.DISABLED,
             sessionConfiguration = sessionConfiguration,
+            // The SDK's own card, kept off the mode pill and the dock (#4509).
+            // Stands down for the pinned QA state of #4522, which an emulator can only reach
+            // from a session that could not start.
+            arCoreAvailabilityOverlay = { if (!motionSensorSilentForced()) PlacementAvailabilityOverlay(it) },
             onSessionCreated = { funnel.sessionCreated() },
+            onSessionResumed = { funnel.sessionResumed() },
+            onSessionPaused = { funnel.sessionPaused() },
             onSessionFailure = { failure -> funnel.sessionFailed(failure) },
             onSessionUpdated = { session, frame: Frame ->
                 state.cameraReady = true
                 // ar_tracking_ready: the camera's own state, not the QA-shimmed one below.
-                funnel.frameTracked(frame.camera.trackingState == TrackingState.TRACKING)
+                funnel.frameTracked(frame.camera.trackingState)
                 // The #1881 QA shim forces a tracking failure on the emulator; the
                 // controller sees it as a real loss so both surfaces rehearse the state.
                 val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
@@ -432,7 +485,13 @@ fun BoxScope.TapToPlaceStatusOverlays(
     // overlay is silent on them). Silent while the SDK's "Couldn't start AR" card is up:
     // both are centred, and the coaching used to sit on that card's Try again button (#3986).
     val guidance = rememberArGuidanceState(state.controller, trackingFailureReason = trackingFailure)
-    val coachingCue = if (state.arCoreAvailability == null) guidance.cue else ArGuidanceCue.NONE
+    // Silent too once the phone's gyroscope is known to deliver nothing (#4522): "Getting
+    // ready" would never leave, and the card below says what to do.
+    val coachingCue = if (state.arCoreAvailability == null && !state.motionSensorSilent) {
+        guidance.cue
+    } else {
+        ArGuidanceCue.NONE
+    }
     ARCoachingOverlay(
         cue = coachingCue,
         surface = guidance.surface,
@@ -448,72 +507,125 @@ fun BoxScope.TapToPlaceStatusOverlays(
         lowLight = lowLight,
         coachingActive = coachingCue != ArGuidanceCue.NONE,
     )
-    val card = placementCard(state.phase)
+    val card = placementCard(state.phase, state.motionSensorSilent)
 
     // ── The one bottom anchor ─────────────────────────────────────────────────────────
     //
     // Everything this screen says lives in one stack, measured from one edge: the bottom
-    // of the safe area, plus the dock the scaffold parks there, plus one 16 dp gutter.
-    // Each child carries its own gutter as a TOP padding inside its visibility wrapper,
-    // so a hidden child contributes exactly nothing and the bottom-most visible thing
-    // sits 16 dp off the dock (#3237, measured on the goldens).
+    // of the safe area, plus the chrome the scaffold parks there — the dock, and the mode
+    // pill above it — plus one 16 dp gutter. Each child carries its own gutter as a TOP
+    // padding inside its visibility wrapper, so a hidden child contributes exactly nothing
+    // and the bottom-most visible thing sits 16 dp off the chrome (#3237, measured on the
+    // goldens).
+    //
+    // The stack is also bounded from above, by the identity row: at a large font size or in a
+    // short window the card gives up height (its text scrolls, its buttons stay) rather than
+    // running under the title or back down over the chrome (#4509).
     val chromeBottom = LocalDemoChromeBottomInset.current
-    var coachStackPx by remember { mutableIntStateOf(0) }
-
-    Column(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .testTag(PlacementTestTags.COACH_STACK)
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
-            )
-            .padding(horizontal = SceneViewTokens.Space.md)
-            .padding(bottom = chromeBottom + SceneViewTokens.Space.md)
-            // LAST in the chain: reports the stack's own content and nothing else.
-            .onSizeChanged { coachStackPx = it.height },
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // Live resize read-out — on screen while two fingers are on the model, and for a
-        // short window after (#3830) so there is something to tap back to 100 %.
-        PlacementScaleReadout(
-            percent = state.scalePercent,
-            isRealWorldSize = state.isRealWorldSize,
-            label = state.scaleLabel,
-            onReset = onResetScale,
-        )
-
-        // The decision cards (§2.2): no surface after 10 s, a placement that could not be
-        // recovered, a camera that never started.
-        PlacementActionCard(
-            card = if (state.modelLoading || state.modelError) null else card,
-            onViewIn3D = onViewIn3D,
-            onKeepScanning = { state.keepScanning() },
-            onScanAgain = { state.resetPlacement() },
-            onRestartSession = onRestartSession,
-        )
-
-        if (state.modelError) {
-            Button(onClick = { state.assetRetry++ }) { Text(stringResource(R.string.ar_place_try_again)) }
-        }
-
-        // The same dark near-opaque scrim every other AR demo coaches through (#3295). A
-        // null `text` animates the pill out. Last in the Column = nearest the dock = the
-        // fixed point of the anchor.
-        DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
-            text = when {
-                state.modelLoading -> stringResource(R.string.ar_place_loading_model)
-                state.modelError -> stringResource(R.string.ar_place_model_failed)
-                else -> coachingText(coaching)
-            },
-            tone = coachingTone(coaching),
-            icon = coachingIcon(coaching),
-            modifier = Modifier
-                .testTag(PlacementTestTags.COACHING_LINE)
-                .padding(top = SceneViewTokens.Space.sm),
-        )
+    val chromeWidth = LocalDemoChromeBottomWidth.current
+    val compactHeight = isDemoCompactHeight()
+    val shownCard = if (state.modelLoading || state.modelError) null else card
+    // The card's place outlives the card by its exit animation, so it fades out where it was.
+    var cardSlotHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(shownCard != null) {
+        if (shownCard == null) delay(SceneViewTokens.Duration.shortMillis.toLong())
+        cardSlotHeld = shownCard != null
     }
+    // And so does its kind: the card that is leaving decides where the stack stands.
+    var lastShownCard by remember { mutableStateOf<PlacementCard?>(null) }
+    SideEffect { if (shownCard != null) lastShownCard = shownCard }
+    val slotCard = shownCard ?: lastShownCard
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .matchParentSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(top = LocalDemoChromeTopInset.current),
+    ) {
+        val slot = coachStackSlot(
+            compactHeight = compactHeight,
+            cardShown = shownCard != null || cardSlotHeld,
+            bandWidth = maxWidth,
+            chromeWidth = chromeWidth,
+            chromeBottom = chromeBottom,
+            gutter = SceneViewTokens.Space.md,
+            minWidth = SceneViewTokens.ArOverlay.cardMinWidth,
+            maxWidth = SceneViewTokens.ArOverlay.maxWidth,
+        )
+        Column(
+            modifier = Modifier
+                .align(coachStackAlignment(slot, slotCard))
+                .testTag(PlacementTestTags.COACH_STACK)
+                .padding(horizontal = SceneViewTokens.Space.md)
+                .padding(bottom = slot.bottom)
+                .then(if (slot.besideChrome) Modifier.width(slot.width) else Modifier)
+                .reportsDemoSceneBottomCard(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CoachStackContent(
+                state = state,
+                card = shownCard,
+                coaching = coaching,
+                onViewIn3D = onViewIn3D,
+                onRestartSession = onRestartSession,
+                onResetScale = onResetScale,
+            )
+        }
+    }
+}
+
+/** The children of the placement screen's bottom stack, top to bottom. */
+@Composable
+private fun ColumnScope.CoachStackContent(
+    state: TapToPlaceState,
+    card: PlacementCard?,
+    coaching: PlacementCoachingMessage?,
+    onViewIn3D: (() -> Unit)?,
+    onRestartSession: (() -> Unit)?,
+    onResetScale: () -> Unit,
+) {
+    // Live resize read-out — on screen while two fingers are on the model, and for a
+    // short window after (#3830) so there is something to tap back to 100 %.
+    PlacementScaleReadout(
+        percent = state.scalePercent,
+        isRealWorldSize = state.isRealWorldSize,
+        label = state.scaleLabel,
+        onReset = onResetScale,
+    )
+
+    // The decision cards (§2.2): no surface after 10 s, a placement that could not be
+    // recovered, a camera that never started. The one child that yields height: it takes
+    // what the others leave, and no more than it needs.
+    PlacementActionCard(
+        card = card,
+        onViewIn3D = onViewIn3D,
+        onKeepScanning = { state.keepScanning() },
+        onScanAgain = { state.resetPlacement() },
+        onRestartSession = onRestartSession,
+        // The coach stack around it already keeps `space-md` from the screen edge.
+        edgeMargin = 0.dp,
+        modifier = Modifier.weight(1f, fill = false),
+    )
+
+    if (state.modelError) {
+        Button(onClick = { state.assetRetry++ }) { Text(stringResource(R.string.ar_place_try_again)) }
+    }
+
+    // The same dark near-opaque scrim every other AR demo coaches through (#3295). A
+    // null `text` animates the pill out. Last in the Column = nearest the dock = the
+    // fixed point of the anchor.
+    DemoBottomOverlayScope(this, 0.dp).DemoStatusBanner(
+        text = when {
+            state.modelLoading -> stringResource(R.string.ar_place_loading_model)
+            state.modelError -> stringResource(R.string.ar_place_model_failed)
+            else -> coachingText(coaching)
+        },
+        tone = coachingTone(coaching),
+        icon = coachingIcon(coaching),
+        modifier = Modifier
+            .testTag(PlacementTestTags.COACHING_LINE)
+            .padding(top = SceneViewTokens.Space.sm),
+    )
 }
 
 /** Test tags for the placement screen's bottom anchor. */
@@ -524,7 +636,7 @@ object PlacementTestTags {
     /** The live resize read-out — on screen only while two fingers are on the model. */
     const val SCALE_READOUT = "placement-scale-readout"
 
-    /** The anchored Column itself — the node whose measured content height is `coachStackPx`. */
+    /** The anchored Column itself: the whole bottom stack of the placement screen. */
     const val COACH_STACK = "placement-coach-stack"
 
     /** The action card (no surface / recovery failed / camera error). */
@@ -542,8 +654,7 @@ private fun coachingText(message: PlacementCoachingMessage?): String? = when (me
     PlacementCoachingMessage.MOVE_SLOWLY -> stringResource(R.string.ar_place_move_slowly)
     PlacementCoachingMessage.TRACKING_PAUSED -> stringResource(R.string.ar_place_tracking_paused)
     PlacementCoachingMessage.TRACKING_PAUSED_LOW_LIGHT ->
-        stringResource(R.string.ar_place_tracking_paused) + " " +
-            stringResource(R.string.ar_place_try_brighter_area)
+        stringResource(R.string.ar_place_tracking_paused_low_light)
 
     PlacementCoachingMessage.FINDING_PLACEMENT -> stringResource(R.string.ar_place_finding_placement)
     PlacementCoachingMessage.GESTURE_HINT -> stringResource(R.string.ar_place_gesture_hint)
@@ -577,7 +688,15 @@ private fun coachingIcon(message: PlacementCoachingMessage?): ImageVector? = whe
  * from the same `DESIGN.md` tokens as the coaching pill (`ar-scrim`, `radius-lg`,
  * `over-media-edge`, `dock-item` touch targets), with the primary action filled in the
  * theme's `primary` role.
+ *
+ * The card keeps its own side margin ([edgeMargin], `space-md`), like every AR Overlay Card
+ * (`CardShell`): most callers put it in the scaffold's `bottomOverlay` band, which spans the
+ * whole scene, and a card without a margin of its own went edge to edge there — Wall mode,
+ * the room dollhouse, the pool, the Cloud Anchors and comparison screens (#4531). The Place
+ * coach stack already pads its children by the same `space-md` and passes `0.dp`, so the
+ * card sits at one distance from the screen edge wherever it is shown.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlacementActionCard(
     card: PlacementCard?,
@@ -586,6 +705,8 @@ internal fun PlacementActionCard(
     onScanAgain: () -> Unit,
     onRestartSession: (() -> Unit)?,
     surface: PlacementSurface = PlacementSurface.SURFACE,
+    edgeMargin: Dp = SceneViewTokens.Space.md,
+    modifier: Modifier = Modifier,
 ) {
     // Latch the last card for the length of the exit animation, as the pill does.
     var lastCard by remember { mutableStateOf(PlacementCard.NO_SURFACE) }
@@ -598,6 +719,7 @@ internal fun PlacementActionCard(
 
     AnimatedVisibility(
         visible = card != null,
+        modifier = modifier,
         enter = fadeIn(
             tween(SceneViewTokens.Duration.mediumMillis, easing = SceneViewTokens.Ease.expressive)
         ) + slideInVertically(
@@ -613,7 +735,7 @@ internal fun PlacementActionCard(
     ) {
         val title: String
         val detail: String?
-        val primary: String
+        val primary: String?
         val onPrimary: (() -> Unit)?
         val secondary: String?
         val onSecondary: (() -> Unit)?
@@ -648,11 +770,24 @@ internal fun PlacementActionCard(
                 secondary = null
                 onSecondary = null
             }
+
+            // No action: restarting the session, or the app, does not bring a gyroscope back.
+            PlacementCard.MOTION_SENSOR_SILENT -> {
+                title = stringResource(R.string.ar_place_motion_sensor_title)
+                detail = stringResource(R.string.ar_place_motion_sensor_detail)
+                primary = null
+                onPrimary = null
+                secondary = null
+                onSecondary = null
+            }
         }
+        val hasSecondary = secondary != null && onSecondary != null
+        val hasPrimary = primary != null && onPrimary != null
 
         Column(
             modifier = Modifier
                 .padding(top = SceneViewTokens.Space.sm)
+                .padding(horizontal = edgeMargin)
                 .testTag(PlacementTestTags.PLACEMENT_CARD)
                 .widthIn(max = SceneViewTokens.ArOverlay.maxWidth)
                 .fillMaxWidth()
@@ -662,59 +797,106 @@ internal fun PlacementActionCard(
                 .padding(SceneViewTokens.Space.md),
             verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = SceneViewTokens.ArOverlay.onScrim,
-            )
-            if (detail != null) {
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = SceneViewTokens.ArOverlay.onScrimMuted,
-                )
-            }
-            Row(
+            // The words give way before the buttons do: in a window too short for the whole
+            // card they scroll, and the actions stay on screen and in reach (#4509).
+            val textScroll = rememberScrollState()
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = SceneViewTokens.Space.sm),
-                horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
+                    .weight(1f, fill = false)
+                    .scrollEdgeFade(textScroll)
+                    .verticalScroll(textScroll),
+                verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
             ) {
-                if (secondary != null && onSecondary != null) {
-                    TextButton(
-                        onClick = onSecondary,
-                        shape = buttonShape,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = SceneViewTokens.ArOverlay.onScrim,
-                        ),
-                        modifier = Modifier
-                            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-                            .testTag(PlacementTestTags.PLACEMENT_CARD_SECONDARY),
-                    ) {
-                        Text(secondary, style = MaterialTheme.typography.labelLarge)
-                    }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = SceneViewTokens.ArOverlay.onScrim,
+                )
+                if (detail != null) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = SceneViewTokens.ArOverlay.onScrimMuted,
+                    )
                 }
-                if (onPrimary != null) {
-                    Button(
-                        onClick = onPrimary,
-                        shape = buttonShape,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
-                        modifier = Modifier
-                            .heightIn(min = SceneViewTokens.Layout.touchTarget)
-                            .testTag(PlacementTestTags.PLACEMENT_CARD_PRIMARY),
-                    ) {
-                        Text(primary, style = MaterialTheme.typography.labelLarge)
+            }
+            // A FlowRow: at a large font size, or in the corner of a sideways phone, the two
+            // buttons no longer fit one line, and a Row would squeeze the second one's label.
+            if (hasPrimary || hasSecondary) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = SceneViewTokens.Space.sm),
+                    horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.xs),
+                ) {
+                    if (secondary != null && onSecondary != null) {
+                        TextButton(
+                            onClick = onSecondary,
+                            shape = buttonShape,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = SceneViewTokens.ArOverlay.onScrim,
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                                .testTag(PlacementTestTags.PLACEMENT_CARD_SECONDARY),
+                        ) {
+                            Text(secondary, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                    if (primary != null && onPrimary != null) {
+                        Button(
+                            onClick = onPrimary,
+                            shape = buttonShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = SceneViewTokens.Layout.touchTarget)
+                                .testTag(PlacementTestTags.PLACEMENT_CARD_PRIMARY),
+                        ) {
+                            Text(primary, style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * Dissolves the edge of a scrolling column that has more beyond it: words cut by a hard edge
+ * read as the end of the message, words that fade read as "there is more" (#4522 — the card of
+ * a phone held sideways at the largest text). Draws nothing extra while everything fits.
+ */
+private fun Modifier.scrollEdgeFade(scroll: ScrollState): Modifier = this
+    .graphicsLayer {
+        val scrollable = scroll.canScrollBackward || scroll.canScrollForward
+        compositingStrategy = if (scrollable) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+    }
+    .drawWithContent {
+        drawContent()
+        // A mask, not a colour: only its alpha reaches the screen.
+        val fade = SceneViewTokens.Space.md.toPx().coerceAtMost(size.height / 3)
+        if (scroll.canScrollBackward) {
+            drawRect(
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = fade),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+        if (scroll.canScrollForward) {
+            drawRect(
+                Brush.verticalGradient(
+                    listOf(Color.Black, Color.Transparent),
+                    startY = size.height - fade,
+                    endY = size.height,
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
 
 /**
  * The live pinch read-out: the placed model's size as a percentage of its real-world

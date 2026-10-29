@@ -389,7 +389,13 @@
       'ar-image': 'Image Detection',
       'ar-face': 'Face Tracking',
       'ar-cloud-anchor': 'Cloud Anchors',
-      'ar-scene-mesh': 'Scene Geometry',
+      // AR catalogue clean-up, wave 1 — three AR cards retired; the app resolves each
+      // old id through DeepLinkRouter.DEMO_ID_ALIASES to the sample that carries it.
+      'ar-scene-mesh': 'Geospatial Anchors',
+      'ar-depth-collider': 'Rolling Balls',
+      'ar-fog': 'Lighting',
+      // No card any more, but still routable: Point & Ask's on-device fallback.
+      'ar-ml-object-label': 'ML Kit Object Labels',
       // #3463 then samples step 0 — the Streetscape mode of the Geospatial Anchors
       // card; the app resolves the old id through DeepLinkRouter.DEMO_ID_ALIASES and
       // pre-selects that mode via ALIAS_INITIAL_TAB.
@@ -525,7 +531,7 @@
     // call — never to create a viewer — so the site's own Filament build
     // (`filamentWebsite`, a different pin from the one the bundle compiles
     // against) is the only renderer on the page, and the two never meet.
-    const VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.52.0'];
+    const VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.63.0'];
     const THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
 
     let viewerScriptsPromise = null;
@@ -651,10 +657,9 @@
         try {
           await SceneView.modelViewer('viewer-canvas', viewableUrl, {
             autoRotate: true,
-            // DESIGN.md `stage-background` (#0B0F16), in the linear space
-            // Filament clears with — so the canvas matches the stage frame
-            // around it in both themes.
-            backgroundColor: [0.0033, 0.0047, 0.0074, 1.0],
+            // DESIGN.md `stage-background` (#0B0F16), as displayed — so the
+            // canvas matches the stage frame around it in both themes.
+            backgroundColor: [0x0B / 255, 0x0F / 255, 0x16 / 255, 1.0],
           });
         } catch (renderError) {
           console.error('open: the renderer refused the model', renderError);

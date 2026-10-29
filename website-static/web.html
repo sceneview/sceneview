@@ -20,6 +20,7 @@
   <!-- Site analytics — GA4 loader shared by every static page (G-HX1JWGSMTH).
        Synchronous on purpose: /go/* interstitials call gtag() right after it. -->
   <script src="/assets/analytics.js"></script>
+  <script src="/assets/support.js" defer></script>
   <title>SceneView Web — One Line 3D for the Web</title>
   <meta name="description" content="SceneView Web: the lightest way to add 3D to any website. One script tag, one function call, powered by Filament.js WASM. ~70 KB gzipped.">
   <meta name="keywords" content="SceneView Web, 3D web, JavaScript 3D, Filament.js, WASM 3D, glTF viewer, GLB viewer, lightweight 3D, model viewer, web 3D library">
@@ -48,13 +49,13 @@
 
   <link rel="preload" href="styles.css" as="style">
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.52.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.63.0" as="script">
 
   <!-- Filament.js v1.72.1 WASM engine (required by SceneView Web) — version pinned by
        gradle/libs.versions.toml `filamentWebsite` + js/filament/RUNTIME.json (#2783) -->
   <script src="js/filament/filament.js"></script>
   <!-- SceneView Web library -->
-  <script src="js/sceneview.js?v=4.52.0"></script>
+  <script src="js/sceneview.js?v=4.63.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -785,7 +786,7 @@
     "url": "https://sceneview.github.io/web.html",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Web",
-    "softwareVersion": "4.52.0",
+    "softwareVersion": "4.63.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": {
@@ -1128,7 +1129,7 @@
             Call <code>loadModel(url)</code> later. Useful when the model URL is dynamic.
             Options include <code>transparent</code> (alpha canvas over the page),
             <code>renderMode</code>, <code>autoRotate</code>, <code>fov</code>,
-            <code>backgroundColor</code> and <code>iblUrl</code>.
+            <code>backgroundColor</code> (sRGB 0&ndash;1, as displayed) and <code>iblUrl</code>.
           </p>
         </div>
 
@@ -1276,6 +1277,8 @@
           <p class="web-api-card__desc">
             Cleans up all GPU resources, removes event listeners,
             and stops the render loop. Call when removing the viewer.
+            Safe to call more than once; loads still in flight are cancelled
+            and their promises reject with an <code>AbortError</code>.
           </p>
         </div>
       </div>

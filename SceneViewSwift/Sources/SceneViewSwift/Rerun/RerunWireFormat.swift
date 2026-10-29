@@ -408,7 +408,8 @@ public enum RerunWireFormat {
         public let path: String?
         /// URL into the SceneView Rerun viewer that already encodes the
         /// recording's location. Useful as a copy-paste hint — file:// URLs
-        /// won't be fetched from an HTTPS page, so re-host first.
+        /// won't be fetched from an HTTPS page, so re-host first, on an https
+        /// host that allows cross-origin requests (CORS).
         public let viewerUrl: String?
         /// Number of events that made it into the file.
         public let events: Int

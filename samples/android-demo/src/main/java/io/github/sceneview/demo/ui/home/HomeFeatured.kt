@@ -1,6 +1,7 @@
 package io.github.sceneview.demo.ui.home
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -72,10 +74,15 @@ sealed interface FeaturedPage {
      * editorial artwork. The Model Viewer page no longer passes one: it is the window
      * onto the live stage (#3948). `preview_hero_model_viewer` stays bundled unused —
      * assets are never deleted — framed for a full-span card should a page want it.
+     *
+     * [titleRes] overrides the demo's catalogue title on its page. The flagship passes the
+     * screen it opens, "Model Viewer" (#4622): titled "Models", its page read as a section
+     * and the Model Viewer was never seen on the home.
      */
     data class Demo(
         val entry: DemoEntry,
         @DrawableRes val heroArt: Int? = null,
+        @StringRes val titleRes: Int? = null,
     ) : FeaturedPage {
         override val key: String get() = keyFor(entry.id)
 
@@ -156,13 +163,16 @@ fun HomeFeaturedPager(
             when (val page = pages[index]) {
                 is FeaturedPage.Demo -> FeaturedCard(
                     height = height,
-                    title = stringResource(page.entry.titleRes),
+                    title = stringResource(page.titleRes ?: page.entry.titleRes),
                     subtitle = stringResource(page.entry.subtitleRes),
                     actionLabel = stringResource(R.string.home_hero_open),
                     media = if (page.key == windowKey) {
                         null
                     } else {
-                        page.heroArt?.let { painterResource(it) } ?: page.entry.previewPainter()
+                        // The band is the dark stage in both themes, so its pages take the
+                        // dark capture: a light-theme still put the white copy on pale wood
+                        // (Rolling Balls, #4622).
+                        page.heroArt?.let { painterResource(it) } ?: page.entry.previewPainter(dark = true)
                     },
                     onClick = { onDemoClick(page.entry.id) },
                     window = page.key == windowKey,
@@ -298,15 +308,24 @@ private fun FeaturedCard(
                     color = colors.heroPillBackground,
                     contentColor = colors.heroPillText,
                 ) {
-                    Box(
+                    // Label then arrow (#4622): a bare "Open" over the live stage read as a
+                    // caption. The arrow is decorative — the page is one merged button node.
+                    Row(
                         modifier = Modifier.padding(horizontal = home.heroPillPaddingHorizontal),
-                        contentAlignment = Alignment.Center,
+                        horizontalArrangement = Arrangement.spacedBy(home.heroPillIconGap),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             text = actionLabel,
                             style = SceneViewTokens.Type.body,
                             fontWeight = FontWeight.SemiBold,
                             color = colors.heroPillText,
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = colors.heroPillText,
+                            modifier = Modifier.size(home.heroPillIconSize),
                         )
                     }
                 }

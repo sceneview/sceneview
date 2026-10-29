@@ -112,6 +112,8 @@ describe("generateArShowroom", () => {
     const code = generateArShowroom({ location: "driveway", shadows: true });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

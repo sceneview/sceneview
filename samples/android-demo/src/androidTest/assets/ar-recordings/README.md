@@ -23,7 +23,7 @@ breadth-coverage harness works on a fresh checkout before #1442's fixtures land.
 
 ## How to add a new fixture
 
-See [`samples/android-demo/AR_TESTING.md`](../../../AR_TESTING.md) for the full
+See [`samples/android-demo/AR_TESTING.md`](../../../../AR_TESTING.md) for the full
 record → export → commit workflow. Short version:
 
 ```bash

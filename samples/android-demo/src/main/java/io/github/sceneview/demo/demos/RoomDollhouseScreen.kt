@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,21 +64,28 @@ import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AR_CAMERA_INIT_SCRIM_TIMEOUT_MS
 import io.github.sceneview.demo.DemoScaffold
+import io.github.sceneview.demo.DemoTopOverlayScope
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
+import io.github.sceneview.demo.common.ArCameraStagePermissionGate
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.placement.PlacementActionCard
+import io.github.sceneview.demo.common.rememberArCameraPermission
 import io.github.sceneview.demo.common.placement.PlacementCard
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.DollhouseArControl
 import io.github.sceneview.demo.demos.internal.DollhouseCopy
+import io.github.sceneview.demo.demos.internal.DollhousePlace
+import io.github.sceneview.demo.demos.internal.DollhouseScale
 import io.github.sceneview.demo.demos.internal.DollhouseStage
 import io.github.sceneview.demo.demos.internal.RerunStoredSession
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
 import io.github.sceneview.demo.demos.internal.ScanRoomStatus
+import io.github.sceneview.demo.demos.internal.dollhousePlace
 import io.github.sceneview.demo.demos.internal.dollhouseStage
 import io.github.sceneview.demo.demos.internal.scanRoomStatus
 import io.github.sceneview.demo.theme.LocalStageChrome
@@ -203,8 +211,12 @@ internal fun RoomDollhouseScreen(
         if (state.phase == PlacementPhase.ADJUSTING) showHint = false
         if (state.phase != PlacementPhase.PLACED && state.phase != PlacementPhase.ADJUSTING) invalidMove = false
     }
-    LaunchedEffect(state.phase, availability, inRoom) {
-        if (inRoom && state.phase == PlacementPhase.INITIALIZING && availability == null) {
+    // Only the AR view needs the camera: the 3D view, the list and the messages never ask.
+    val camera = rememberArCameraPermission()
+    LaunchedEffect(state.phase, availability, inRoom, camera.granted) {
+        // No camera yet is a permission card, not a camera that failed to start.
+        val starting = inRoom && camera.granted
+        if (starting && state.phase == PlacementPhase.INITIALIZING && availability == null) {
             delay(AR_CAMERA_INIT_SCRIM_TIMEOUT_MS)
             state.cameraFailed()
         }
@@ -224,6 +236,24 @@ internal fun RoomDollhouseScreen(
         state.selectPlacement()
         state.scaleTo(1f)
     }
+    // The pinch runs continuously from a quarter of the tabletop scale up to real size, in both
+    // modes (#4731): it used to stop at 400 % of the miniature, a 1:16 room at 1:4.
+    val pinchRange = room?.fit?.let { DollhouseScale.pinchRange(it, realSize) }
+    SideEffect { if (pinchRange != null) state.scaleRange = pinchRange }
+    // How much the placed room is pinched: 1 outside AR, where nothing is.
+    val pinch = if (inRoom && state.hasPlacement) state.scaleFactor else 1f
+    // The height the placed room rests at, read off its placement; null until one stands.
+    var restY by remember(state) { mutableStateOf<Float?>(null) }
+    val place = room?.fit?.let { fit ->
+        dollhousePlace(
+            placed = inRoom && state.hasPlacement,
+            realSize = realSize,
+            absoluteScale = DollhouseScale.absolute(fit, realSize, pinch),
+            restY = restY,
+            floorY = state.floorHeight,
+            cameraY = state.cameraHeight,
+        )
+    }
     val pickSession = { picked: RerunStoredSession ->
         if (picked.id != session?.id) onPickSession(picked)
     }
@@ -241,6 +271,9 @@ internal fun RoomDollhouseScreen(
     val fit = room?.fit
     // The scale pill shows once the room stands: in the 3D view, or placed in AR.
     val showsScale = hasSurfaces && (stage == DollhouseStage.Preview || canAdjust)
+    // A phone held sideways: the chip goes to the top end corner, the room to the band beside
+    // the chrome (DollhousePreview, #4527).
+    val compactHeight = isDemoCompactHeight()
     val card =when (state.phase) {
         PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
         PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
@@ -251,19 +284,37 @@ internal fun RoomDollhouseScreen(
         title = stringResource(R.string.demo_ar_splat_room_title),
         onBack = onBack,
         firstFrameRendered = ready,
+        // The permission card stands where the camera view would be: no scene to call ready.
+        hasScene = !(inRoom && !camera.granted),
         loadingLabel = DollhouseCopy.OPENING,
         // The camera feed is media; the 3D view, the empty state and the error follow the theme.
         themedStage = !inRoom,
-        peekHeader = if (fit != null && showsScale) {
-            DollhouseCopy.peek(title, fit, realSize && inRoom)
+        // The mode pill belongs to 3D Scan's landing, not to a session opened from it.
+        modeSwitch = null,
+        // Held sideways, the pill above the dock would stand in the middle of the room's band:
+        // the scale moves into the recording's chip, in the top end corner (#4527).
+        peekHeader = if (fit != null && showsScale && !compactHeight) {
+            DollhouseCopy.peek(title, fit, realSize && inRoom, pinch)
         } else null,
         onReset = if (inRoom) ::reset else null,
         // Which recording stands, by name and date, and the way to stand another.
         topOverlay = if (stage == DollhouseStage.InRoom || stage == DollhouseStage.Preview) {
             {
                 DollhouseRecordingChip(
+                    // Where the room stands, said only once it does, and only when it is known.
+                    // Held sideways the scale line below already says "Real size": once is enough.
+                    place = if (inRoom && !(compactHeight && showsScale && place == DollhousePlace.RealSize)) {
+                        DollhouseCopy.place(place)
+                    } else null,
                     title = session?.title ?: title,
                     origin = origin,
+                    scale = if (fit != null && showsScale && compactHeight) {
+                        DollhouseCopy.size(fit, realSize && inRoom, pinch)
+                    } else null,
+                    corner = compactHeight,
+                    note = if (compactHeight && stage == DollhouseStage.Preview && !arAvailable) {
+                        DollhouseCopy.NO_AR
+                    } else null,
                     choices = choices,
                     current = session,
                     onPick = pickSession,
@@ -274,7 +325,7 @@ internal fun RoomDollhouseScreen(
             Text(DollhouseCopy.INTRO, style = MaterialTheme.typography.bodyMedium)
             if (fit != null && hasSurfaces) {
                 Text(
-                    text = DollhouseCopy.size(fit, realSize && inRoom),
+                    text = DollhouseCopy.size(fit, realSize && inRoom, pinch),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(top = Space.sm),
                 )
@@ -319,9 +370,13 @@ internal fun RoomDollhouseScreen(
             )
             else -> emptyList()
         },
-        bottomOverlay = {
+        // Held sideways, nothing stands above the dock outside AR: the room's band runs beside
+        // the dock, measured, and the "no AR" note moves into the chip (#4527).
+        bottomOverlay = if (!compactHeight || stage == DollhouseStage.InRoom) {
+            {
             when (stage) {
-                DollhouseStage.InRoom -> {
+                // Without the camera the stage is the permission card, which says it all.
+                DollhouseStage.InRoom -> if (camera.granted) {
                     val status = scanRoomStatus(
                         phase = state.phase,
                         scanReady = true,
@@ -337,8 +392,8 @@ internal fun RoomDollhouseScreen(
                         ScanRoomStatus.MoveSlowly -> DollhouseCopy.PLACE_HINT
                         ScanRoomStatus.KeepOnSurface -> stringResource(R.string.ar_place_keep_on_surface)
                         ScanRoomStatus.TrackingPaused -> stringResource(R.string.ar_place_tracking_paused)
-                        ScanRoomStatus.TrackingPausedLowLight -> stringResource(R.string.ar_place_tracking_paused) +
-                            " " + stringResource(R.string.ar_place_try_brighter_area)
+                        ScanRoomStatus.TrackingPausedLowLight ->
+                            stringResource(R.string.ar_place_tracking_paused_low_light)
                         ScanRoomStatus.FindingPlacement -> stringResource(R.string.ar_place_finding_placement)
                         ScanRoomStatus.GestureHint -> DollhouseCopy.GESTURE_HINT
                         ScanRoomStatus.Scale -> fit?.let { DollhouseCopy.pinched(it, state.scaleFactor, realSize) }
@@ -356,7 +411,8 @@ internal fun RoomDollhouseScreen(
                     if (!arAvailable) DemoStatusBanner(DollhouseCopy.NO_AR, tone = DemoStatusTone.Guidance)
                 else -> Unit
             }
-        },
+            }
+        } else null,
     ) {
         val chrome = LocalStageChrome.current
         when (stage) {
@@ -393,7 +449,8 @@ internal fun RoomDollhouseScreen(
                     onShown = { previewShown = true },
                 )
             }
-            DollhouseStage.InRoom -> if (build != null && room != null) key(ar.sceneKey) {
+            DollhouseStage.InRoom -> if (build != null && room != null) ArCameraStagePermissionGate(camera) {
+                key(ar.sceneKey) {
                 // Leaving AR (3D view, another recording) retires this placement state: its
                 // AutoPlacementScene dismisses it on the way out, and a dismissed state never
                 // places again — coming back to AR opened on a camera that never placed the room.
@@ -416,8 +473,22 @@ internal fun RoomDollhouseScreen(
                         // The side the recording started from faces the user; at real size the
                         // room reaches away from where the miniature stood instead of being
                         // centred on it, around the camera (DollhouseOrientation).
+                        // At real size the room rests on the floor, not on the table the
+                        // miniature stood on (#4720).
+                        // `placement.pose` is no state: a finished drag replaces it, then ends the
+                        // adjustment. Reading the phase here is what recomposes this block after
+                        // each placement and each committed drag, so the pose below is the new one.
+                        val phase = state.phase
+                        val placedY = placement.pose.ty()
+                        val drop = if (realSize) {
+                            RoomDollhouse.floorDrop(state.floorHeight, placedY, state.scaleFactor)
+                        } else 0f
+                        // Where it rests, for the chip: the floor once it dropped to it; kept while
+                        // a drag is under way, read again once it is committed.
+                        val rests = if (drop != 0f) state.floorHeight else placedY
+                        SideEffect { if (phase != PlacementPhase.ADJUSTING) restY = rests }
                         Node(
-                            position = Position(z = orientation.offsetZ(realSize, scale)),
+                            position = Position(y = drop, z = orientation.offsetZ(realSize, scale)),
                             rotation = Rotation(y = orientation.yawDegrees),
                         ) {
                             DollhouseModel(
@@ -439,30 +510,37 @@ internal fun RoomDollhouseScreen(
                     }
                 }
                 ARCameraInitScrim(state.phase == PlacementPhase.INITIALIZING && !state.hasCameraFrame, availability)
+                }
             }
         }
     }
 }
 
 /**
- * The recording on the table, by name and date, on glass: a tap lists every kept recording,
+ * The recording, by name and date, on glass, under where it stands ([place], when known): a tap lists every kept recording,
  * newest first, with how many surfaces each kept — picking one stands it instead.
  */
 @Composable
-private fun DollhouseRecordingChip(
+private fun DemoTopOverlayScope.DollhouseRecordingChip(
+    place: String?,
     title: String,
     origin: String?,
     choices: List<LandingSession>,
     current: RerunStoredSession?,
     onPick: (RerunStoredSession) -> Unit,
+    scale: String? = null,
+    corner: Boolean = false,
+    note: String? = null,
 ) {
     val chrome = LocalStageChrome.current
     var menu by remember { mutableStateOf(false) }
     val canChange = choices.any { it.id != current?.id }
-    Box(modifier = Modifier.padding(horizontal = Space.md)) {
+    // In the top end corner, as wide as the replay's corner card at most (#4527).
+    val placement = if (corner) Modifier.align(Alignment.End) else Modifier
+    Box(modifier = placement.padding(horizontal = Space.md)) {
         Row(
             modifier = Modifier
-                .widthIn(max = MessageMaxWidth)
+                .widthIn(max = if (corner) DOLLHOUSE_CORNER_CARD_WIDTH else MessageMaxWidth)
                 .clip(RoundedCornerShape(Radius.md))
                 .background(chrome.glass)
                 .clickable(enabled = canChange, role = Role.Button, onClickLabel = DollhouseCopy.CHANGE_RECORDING) {
@@ -474,11 +552,14 @@ private fun DollhouseRecordingChip(
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
         ) {
             Column(modifier = Modifier.weight(1f, fill = false)) {
-                Text(
-                    text = DollhouseCopy.ON_THE_TABLE,
-                    style = Type.caption.copy(color = chrome.onGlassMuted),
-                    maxLines = 1,
-                )
+                if (place != null) {
+                    Text(
+                        text = place,
+                        style = Type.caption.copy(color = chrome.onGlassMuted),
+                        maxLines = 1,
+                        modifier = Modifier.testTag(DOLLHOUSE_PLACE_TAG),
+                    )
+                }
                 Text(
                     text = title,
                     style = Type.card.copy(color = chrome.onGlass),
@@ -491,6 +572,23 @@ private fun DollhouseRecordingChip(
                         style = Type.caption.copy(color = chrome.onGlassMuted),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (scale != null) {
+                    Text(
+                        text = scale,
+                        style = Type.caption.copy(color = chrome.onGlass),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (note != null) {
+                    Text(
+                        text = note,
+                        style = Type.caption.copy(color = chrome.onGlassMuted),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = Space.xs),
                     )
                 }
             }
@@ -629,3 +727,4 @@ internal const val DOLLHOUSE_NO_SURFACES_TAG = "ar_rerun_dollhouse_no_surfaces"
 internal const val DOLLHOUSE_RECORDING_TAG = "ar_rerun_dollhouse_recording"
 internal const val DOLLHOUSE_CHOICE_TAG = "ar_rerun_dollhouse_choice"
 internal const val DOLLHOUSE_PREVIEW_TAG = "ar_rerun_dollhouse_preview"
+internal const val DOLLHOUSE_PLACE_TAG = "ar_rerun_dollhouse_place"

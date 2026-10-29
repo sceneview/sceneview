@@ -89,6 +89,9 @@
         <!-- Point & Ask tells "no AICore on this device" from "AICore present but Gemini Nano
              unavailable" and only offers the AICore Play listing in the second case (#4028). -->
         <package android:name="com.google.android.aicore" />
+        <!-- "Browse online models" offers "Open in 3D AR Model Viewer" when that app is
+             installed, and its Play listing when it is not (#4622). -->
+        <package android:name="com.gorisse.thomas.arcamera" />
     </queries>
 
     <application
@@ -208,10 +211,19 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!--
+            `singleTop` is what makes a link reach a running app (#4502). With the default
+            `standard` mode a link sent while the app is open either stacked a second
+            MainActivity on the first (two navigation stacks, two renderers, Back walking
+            through both), or, when it equalled the intent the task was started with (the
+            app cold-started by that very link), only brought the task forward and was
+            dropped. `singleTop` delivers every such intent to `onNewIntent`.
+        -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|uiMode"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.SceneViewDemo.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -405,8 +417,8 @@
             implementation graph, which never sees a `debugImplementation`
             dependency, so every compose-rule unit test failed with "Unable to
             resolve activity ... ComponentActivity" in the release variant only,
-            and CI never ran that variant to notice (`verifyRoborazziDebug` is
-            debug-only). Declaring the same entry here — main manifest, shipped
+            and CI never ran that variant to notice (it ran only
+            `testDebugUnitTest`). Declaring the same entry here — main manifest, shipped
             in every build type — puts it in both variants' real manifest and
             resource-link pipeline. It has no launcher intent-filter and nothing
             in the app calls it, so it never appears as an entry point.

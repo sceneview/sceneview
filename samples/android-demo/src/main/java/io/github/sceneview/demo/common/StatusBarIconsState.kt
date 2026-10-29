@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -31,6 +32,14 @@ import androidx.core.view.WindowCompat
  * Now screens only *request* light icons ([RequestLightStatusBarIcons]); the count is the
  * single source of truth, and [ProvideStatusBarIcons] applies it: light icons while at
  * least one request is live, the theme's own set otherwise. Order no longer matters.
+ *
+ * The count is not the only thing that moves the flag, though. The activity handles rotation
+ * and the day/night switch itself, so nothing recreates the window — and on each of those
+ * configuration changes the platform puts the theme's own icons back: dark ones in the light
+ * theme, over a stage or a camera scrim that is dark. Nothing [ProvideStatusBarIcons] read had
+ * changed, so it did not run again and the dark icons stayed until the screen was left (#4345;
+ * seen on a phone on 3D Scan's live screen). It now runs again on every configuration change
+ * and writes what it wants without asking the window first.
  */
 @Stable
 class StatusBarIconsState internal constructor() {
@@ -63,6 +72,9 @@ fun RequestLightStatusBarIcons(active: Boolean = true) {
 fun ProvideStatusBarIcons(content: @Composable () -> Unit) {
     val state = remember { StatusBarIconsState() }
     val view = LocalView.current
+    // Read so that a rotation or a day/night switch runs the write below again: the platform
+    // re-applies the theme's icons on those, and the answer here may not have changed.
+    LocalConfiguration.current
     val themeIsLight = MaterialTheme.colorScheme.surface.luminance() >= 0.5f
     // `isAppearanceLightStatusBars` means "light *bars*", i.e. dark icons.
     val darkIcons = themeIsLight && state.lightIconRequests == 0
@@ -72,10 +84,8 @@ fun ProvideStatusBarIcons(content: @Composable () -> Unit) {
             .firstOrNull()
             ?.window
             ?: return@SideEffect
-        val controller = WindowCompat.getInsetsController(window, view)
-        if (controller.isAppearanceLightStatusBars != darkIcons) {
-            controller.isAppearanceLightStatusBars = darkIcons
-        }
+        // Written every time, not only when the window is read to disagree.
+        WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkIcons
     }
     CompositionLocalProvider(LocalStatusBarIcons provides state, content = content)
 }

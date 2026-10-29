@@ -30,8 +30,8 @@ import org.junit.runner.RunWith
  * whose `size` was assigned after construction rendered large and hit-tested small.
  *
  * Every assertion here reads the *real* collider back out of a real node driven by a real Filament
- * `Engine` — the JVM `RenderableNodeCollisionShapeContractTest` can only pin the wiring, because
- * `Node` cannot be constructed off-device at all (`src/test/.../node/UNTESTABLE.md`).
+ * `Engine`; `Node` cannot be constructed off-device at all
+ * (`src/test/.../node/UNTESTABLE.md`).
  *
  * Filament JNI is main-thread only, so every body runs inside `runOnMainSync`.
  */

@@ -11,6 +11,7 @@ import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.stl.StlLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
 import io.github.sceneview.core.threemf.ThreeMfUnit
+import io.github.sceneview.demo.feedback.UserChosenNames
 import java.io.File
 
 /**
@@ -111,6 +112,8 @@ object OpenedModelIntent {
      */
     fun stage(context: Context, uri: Uri, mimeType: String?): OpenedModel? {
         val declaredName = displayName(context, uri)
+        // The user's own file name: masked in any bug report this process files (#4526).
+        UserChosenNames.remember(declaredName)
         val declaredType = mimeType ?: runCatching { context.contentResolver.getType(uri) }.getOrNull()
         val target = File(openedModelsDir(context), STAGED_FILE_NAME)
         val copied = runCatching {

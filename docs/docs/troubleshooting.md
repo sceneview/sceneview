@@ -78,10 +78,12 @@ re-encodes WebP textures to PNG with Android's own decoder before handing the as
 `createAsset`. Either way a WebP-textured glTF loads with its textures. This costs one decode +
 PNG encode per texture at load time; a model without WebP textures is passed through untouched.
 
-One case is still **not** covered, and it logs an actionable `SceneView` error rather than failing
-silently: textures stored as **separate `.webp` files** next to a `.gltf`. Only images embedded in
-a GLB buffer view or in a `data:` URI are converted — an external URI is resolved later, by name,
-inside Filament.
+On Android this includes textures stored as **separate `.webp` files** next to a `.gltf`: the
+model declares them PNG, and `ModelLoader` converts each file's bytes once its resolver has read
+them. One that cannot be decoded is named in an actionable `SceneView` error and renders
+untextured; the rest of the model loads. On the web, separate `.webp` files are still **not**
+converted (logged too): only images embedded in a GLB buffer view or in a `data:` URI are. A
+resource you feed yourself later with `resourceLoader.addResourceData` is not converted either.
 
 On the web there is one more caveat: a canvas 2D context stores premultiplied colour, so a texture
 with *partial* transparency comes back with rounding error in its low-alpha texels. Fully opaque
@@ -90,6 +92,24 @@ textures round-trip exactly.
 **Fix for both:** re-encode the model's textures to PNG, JPEG, or KTX2, e.g.
 `npx @gltf-transform/cli optimize model.glb out.glb --texture-compress png`, or re-export from
 Blender with PNG/JPEG textures. PNG, JPEG, and KTX2 decode natively everywhere.
+
+### `UnsupportedGltfExtensionException` (AVIF textures, KHR meshopt)
+
+A glTF file can list extensions in `extensionsRequired`: a viewer that does not implement one of
+them must refuse the file. Filament's `gltfio` does not check that list itself, so such a model
+loads **untextured or broken**. `ModelLoader` now checks it before any Filament call.
+`awaitModelInstance` refuses such a model with `UnsupportedGltfExtensionException`, whose
+`extensions` names what is missing, and `rememberModelLoadState` gives `Failed`. Every other load
+(`createModel*`, `loadModel*`, the `load*Async` calls, `rememberModelInstance`) logs the
+unsupported extensions under the `ModelLoader` tag and loads the model as before.
+
+The usual culprits are `EXT_texture_avif` and `KHR_meshopt_compression` in exports from
+generation or optimisation pipelines. `ModelLoader.SUPPORTED_GLTF_EXTENSIONS` lists what works.
+gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read:
+`awaitModelInstance` and `rememberModelLoadState` refuse it, so re-export without `-mi`.
+**Fix:** re-export with PNG, JPEG or KTX2 textures and `EXT_meshopt_compression`, e.g.
+`npx @gltf-transform/cli optimize model.glb out.glb --texture-compress webp` (SceneView converts
+WebP for you) or `--texture-compress ktx2`.
 
 ### Black screen / no rendering
 
@@ -145,21 +165,38 @@ modelLoader.loadModelInstanceAsync("models/helmet.glb") { instance ->
 
 If the AR session never initialises or immediately throws an exception:
 
-1. **Camera permission.** `ARScene` requires `android.permission.CAMERA`. Request it before
+1. **Camera permission.** `ARSceneView` requires `android.permission.CAMERA`. Request it before
    displaying the AR composable.
 2. **ARCore installed.** The device needs *Google Play Services for AR*. On devices that do not
    ship with it pre-installed, the user must install it from the Play Store.
 3. **Physical device required.** ARCore has very limited emulator support. Always test AR features
    on a physical device.
-4. **Manifest metadata.** Your `AndroidManifest.xml` must declare ARCore support:
+4. **Manifest metadata.** `arsceneview` already declares `com.google.ar.core` as `optional`.
+   An app that can function without AR declares the AR camera and the camera as optional
+   features:
 
 ```xml
-<application>
-    <meta-data android:name="com.google.ar.core" android:value="required" />
-</application>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+</manifest>
 ```
 
-Set the value to `"optional"` if your app can function without AR.
+   An AR Required app overrides the `com.google.ar.core` value with `tools:replace`; without
+   it, the manifest merger fails:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+    <application>
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required"
+            tools:replace="android:value" />
+    </application>
+</manifest>
+```
 
 ---
 

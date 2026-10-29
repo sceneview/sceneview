@@ -1,7 +1,1 @@
-Cosmos gains a ringed world: a planet with translucent rings orbits the blue star, lit by it. Tap the planet or the star and the camera flies there.
-
-Home shows every demo's picture edge to edge, and opens on its most striking demos: Cosmos first, then Rerun AR Replay.
-
-Controls over the 3D scene use Liquid Glass, so the model shows through. The About tab shows the SceneView mark in 3D.
-
-Animation opens on a fox on a studio stage, Lighting Lab has a real stage, Video Texture plays again, and Spatial Audio fades with distance.
+This update keeps the app in step with the latest SceneView release. Nothing changes in how you use it.

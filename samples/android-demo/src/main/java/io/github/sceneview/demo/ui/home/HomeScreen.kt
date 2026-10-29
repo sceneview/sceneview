@@ -3,7 +3,6 @@
 package io.github.sceneview.demo.ui.home
 
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -71,6 +70,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -120,6 +121,7 @@ import io.github.sceneview.demo.categoryDisplayNameRes
 import io.github.sceneview.demo.freshDemos
 import io.github.sceneview.demo.freshness
 import io.github.sceneview.demo.freshnessWindowStart
+import io.github.sceneview.demo.telemetry.SearchTerm
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.motionFade
@@ -131,6 +133,8 @@ import io.github.sceneview.demo.ui.cascadeIn
 import io.github.sceneview.demo.ui.pressScale
 import io.github.sceneview.demo.ui.rememberCascade
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Test tags for the home screen. */
@@ -150,8 +154,8 @@ object HomeTestTags {
     /** Test tag of the "Featured" group header, right under the hero. */
     const val FEATURED_SECTION = "home-section-featured"
 
-    /** Test tag of the "Show all N samples" action that ends a filtered list. */
-    const val SHOW_ALL = "home-show-all"
+    /** Test tag of the section chip that scrolls to [category]. */
+    fun sectionChip(category: String): String = "home-chip-" + category.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 
     /** Test tag of one demo's row in the home list. */
     fun row(demoId: String): String = "home-row-$demoId"
@@ -161,8 +165,9 @@ object HomeTestTags {
  * The Showcase tab (design spec §2): one `LazyVerticalGrid`, one vertical scroll, no
  * nested scroll. Full-span header spacer, hero, then a standard Material 3 list: the
  * "What's new" row, the "Featured" group, a [BrowseOnlineRow] that opens the online
- * gallery, the chip row, then every demo as a [DemoListRow] in flat editorial
- * [DemoEntry.order], one grouped section per category. Above the chips a demo is pushed
+ * gallery, the section chips, then every demo as a [DemoListRow] in flat editorial
+ * [DemoEntry.order], one grouped section per category; a chip scrolls to its section
+ * ([homeSectionStarts]), it never filters. Above the chips a demo is pushed
  * once — the pager, then "Featured", then "What's new" ([homeTopSections]) — and a group
  * left with nothing of its own is not drawn (#4304). The 3D header is the
  * one showpiece; what is under it looks like any well-made app, which is what the Home
@@ -179,8 +184,9 @@ object HomeTestTags {
  * The header is a pinned overlay drawn over the grid: transparent with white type
  * while the stage is under it, `surface` at 100 % plus a bottom hairline once the
  * first item has scrolled away. Its search action swaps the wordmark row for a 48 dp
- * field; the category chips and the query are hoisted to `RootScreen` so they
- * survive tab switches and process death.
+ * field; the query is hoisted to `RootScreen` so it survives tab switches and
+ * process death, and `RootScreen` keeps this screen's saved state — the list's scroll
+ * position with it — while another tab or the online gallery is shown.
  *
  * The "What's new" sheet stays reachable from a small header action instead of
  * a full-span card — the grid is for demos only. Loading is skipped in
@@ -189,8 +195,6 @@ object HomeTestTags {
 @Composable
 fun HomeScreen(
     demos: List<DemoEntry>,
-    selectedCategory: String?,
-    onCategoryChange: (String?) -> Unit,
     query: String,
     onQueryChange: (String) -> Unit,
     onDemoClick: (String) -> Unit,
@@ -205,6 +209,12 @@ fun HomeScreen(
      */
     hasUnseenWhatsNew: Boolean = false,
     onWhatsNewSinceClick: () -> Unit = {},
+    /**
+     * A non-blank [query] the user settled on, with how many samples it shows — fired once the
+     * field has been still for [SearchTerm.SETTLE_MS], or straight away when a sample is tapped
+     * before that. Feeds the `search` event; defaulted so previews and snapshots ignore it.
+     */
+    onSearchSettled: (query: String, resultCount: Int) -> Unit = { _, _ -> },
     /**
      * The version the freshness markers are measured against — `VERSION_NAME`
      * in the app, a pinned value in the snapshot tests.
@@ -221,6 +231,12 @@ fun HomeScreen(
      * nothing else.
      */
     buildVersion: String = BuildConfig.VERSION_NAME,
+    /**
+     * The SceneView Labs card, drawn as the first section under the hero
+     * ([io.github.sceneview.demo.labs.LabsHomeCard] in the app). A slot so this screen knows
+     * nothing about Labs state; `null` in previews and the catalogue goldens.
+     */
+    labsCard: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val home = SceneViewTokens.Home
     val gridState = rememberLazyGridState()
@@ -238,24 +254,27 @@ fun HomeScreen(
             categoryLabel = stringResource(categoryDisplayNameRes(demo.category)),
             tags = demo.tags,
             order = demo.order,
-            fresh = demo.freshness(buildVersion) != DemoFreshness.None,
         )
     }
     val byId = remember(demos) { demos.associateBy { it.id } }
-    val anyFresh = searchEntries.any { it.fresh }
-    // A "What's new" selection saved by an older build, where something was fresh, falls
-    // back to All rather than to an empty grid: the chip is gone, nothing could clear it.
-    val activeCategory = selectedCategory.takeUnless { it == WHATS_NEW_FILTER && !anyFresh }
-    val visible = remember(searchEntries, activeCategory, query) {
-        filterDemos(searchEntries, activeCategory, query).mapNotNull { byId[it.id] }
+    val visible = remember(searchEntries, query) {
+        filterDemos(searchEntries, query).mapNotNull { byId[it.id] }
     }
     val searching = query.isNotBlank()
-    // A filter is a place the user went: Back leaves it for the whole catalogue before it
-    // leaves the app (#4304).
-    BackHandler(enabled = activeCategory != null) { onCategoryChange(null) }
-    // A header earns its row only when it separates something. With one category
-    // selected the chip already names it, and a lone header above a filtered grid
-    // is chrome repeating what the user just tapped.
+    val currentOnSearchSettled by rememberUpdatedState(onSearchSettled)
+    val currentVisibleCount by rememberUpdatedState(visible.size)
+    LaunchedEffect(query) {
+        if (query.isBlank()) return@LaunchedEffect
+        delay(SearchTerm.SETTLE_MS)
+        currentOnSearchSettled(query, currentVisibleCount)
+    }
+    // A sample tapped from a search counts that search even if the field never sat still.
+    val openDemo: (String) -> Unit = { id ->
+        if (searching) currentOnSearchSettled(query, visible.size)
+        onDemoClick(id)
+    }
+    // A header earns its row only when it separates something: a search whose results
+    // all sit in one category does not get a lone header above them.
     val showSections = remember(visible) { visible.map { it.category }.distinct().size > 1 }
 
     // Freshness — "New" / "Updated" per card, and the "What's new in 4.x"
@@ -291,6 +310,12 @@ fun HomeScreen(
                             // still (#3948). `preview_hero_model_viewer` stays bundled;
                             // no page draws it.
                             heroArt = null,
+                            // The flagship's page says what it opens (#4622).
+                            titleRes = if (entry.id == HERO_DEMO_ID) {
+                                R.string.demo_model_viewer_screen_title
+                            } else {
+                                null
+                            },
                         ),
                     )
                 }
@@ -301,11 +326,11 @@ fun HomeScreen(
     // already show, in priority order. Not drawn when the pager shows them all.
     val featuredShelf = remember(top, byId) { top.featured.mapNotNull { byId[it] } }
     // The rows under the chips. In the whole catalogue a demo drawn as a banner just above
-    // is not listed a second time; a chip or a search is a query and lists every match.
-    val rows = remember(visible, top, activeCategory, searching) {
+    // is not listed a second time; a search is a query and lists every match.
+    val rows = remember(visible, top, searching) {
         val listed = top.catalogue(
             ids = visible.map { it.id },
-            filtered = activeCategory != null || searching,
+            filtered = searching,
         ).toSet()
         visible.filter { it.id in listed }
     }
@@ -380,6 +405,24 @@ fun HomeScreen(
 
     val columns = homeListColumns(LocalConfiguration.current.screenWidthDp)
 
+    // Where each section chip scrolls to. The grid items above the catalogue are counted
+    // here, in the order the grid below declares them — a full-span item added above the
+    // chips must be counted here too, or every chip lands one item off.
+    val chipsShown = !searching && rows.map { it.category }.distinct().size > 1
+    val headItemCount = 1 + // header spacer
+        (if (searching) 0 else 1) + // hero
+        (if (!searching && labsCard != null) 1 else 0) + // Labs
+        (if (!searching && whatsNewLead != null) 1 else 0) +
+        (if (!searching && featuredShelf.isNotEmpty()) 1 + featuredShelf.size else 0) +
+        (if (searching) 0 else 1) + // browse online
+        (if (chipsShown) 1 else 0)
+    val sectionStarts = remember(rows, headItemCount, showSections) {
+        homeSectionStarts(headItemCount, rows.map { it.category }, showSections)
+    }
+    val scope = rememberCoroutineScope()
+    // The pinned header covers the grid's top band: a section lands just under it.
+    val headerHeightPx = with(LocalDensity.current) { home.headerHeight.roundToPx() }
+
     // The header's glass: the page under it, recorded once per frame and drawn again,
     // blurred, behind the header (API 31+, where `RenderEffect` exists).
     val backdrop = rememberGraphicsLayer()
@@ -445,18 +488,29 @@ fun HomeScreen(
                     HomeFeaturedPager(
                         pages = featuredPages,
                         height = heroHeight,
-                        onDemoClick = onDemoClick,
+                        onDemoClick = openDemo,
                         onWhatsNewClick = { whatsNewSheet.open() },
                         pagerState = featuredPagerState,
                         modifier = Modifier.testTag(HomeTestTags.HERO),
                     )
                 }
+                // SceneView Labs: the first section under the hero, one compact card that
+                // invites testers in, or carries the switch once they are.
+                if (!searching && labsCard != null) {
+                    item(key = LABS_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
+                        labsCard(
+                            Modifier
+                                .animateItem()
+                                .cascadeIn(cascade.delayFor(cascadeIndex++))
+                                .padding(top = home.groupGap - home.rowGap),
+                        )
+                    }
+                }
                 // "What's new": the one row that answers "what changed?" without a scroll
                 // through the catalogue (#3927). It counts the New / Updated cards and opens
                 // the sheet that lists them, over a catalogue left whole: selecting the
                 // filter chip from here read as "the app only has these samples" (#4304).
-                // The chip is still there for who wants the catalogue cut down. Absent
-                // when every fresh demo is already pushed by the pager or a banner.
+                // Absent when every fresh demo is already pushed by the pager or a banner.
                 if (!searching && whatsNewLead != null) {
                     item(key = WHATS_NEW_ITEM_KEY, span = { GridItemSpan(maxLineSpan) }) {
                         WhatsNewRow(
@@ -479,8 +533,8 @@ fun HomeScreen(
                 // The "Featured" group: what we want seen first, right under the hero and
                 // above the catalogue, so the flagship samples never wait for a scroll to
                 // the section they are filed in. Only the ones the pager does not show, and
-                // the whole catalogue below does not list them again (#4304); a chip or a
-                // search does, hence the distinct item key.
+                // the whole catalogue below does not list them again (#4304); a search
+                // does, hence the distinct item key.
                 if (!searching && featuredShelf.isNotEmpty()) {
                     item(key = "section-featured", span = { GridItemSpan(maxLineSpan) }) {
                         SectionHeader(
@@ -496,7 +550,7 @@ fun HomeScreen(
                         item(key = "featured-${demo.id}") {
                             DemoListRow(
                                 demo = demo,
-                                onClick = { onDemoClick(demo.id) },
+                                onClick = { openDemo(demo.id) },
                                 style = HomeRowStyle.Banner,
                                 freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                                 modifier = Modifier
@@ -517,16 +571,26 @@ fun HomeScreen(
                         )
                     }
                 }
-                item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
-                    CategoryChipRow(
-                        selected = activeCategory,
-                        onSelect = onCategoryChange,
-                        showWhatsNew = anyFresh,
-                        modifier = Modifier.padding(
-                            top = home.chipRowTopGap - home.rowGap,
-                            bottom = home.gridTopGap - home.rowGap,
-                        ),
-                    )
+                // The section chips: a table of contents, not a filter. A tap scrolls the
+                // catalogue so that section's header sits under the pinned header; the
+                // whole catalogue stays listed. Gone while searching — results are short,
+                // and the query already narrows them.
+                if (chipsShown) {
+                    item(key = "chips", span = { GridItemSpan(maxLineSpan) }) {
+                        SectionChipRow(
+                            categories = sectionStarts.keys.toList(),
+                            onSelect = { category ->
+                                val index = sectionStarts[category] ?: return@SectionChipRow
+                                scope.launch {
+                                    gridState.animateScrollToItem(index, scrollOffset = -headerHeightPx)
+                                }
+                            },
+                            modifier = Modifier.padding(
+                                top = home.chipRowTopGap - home.rowGap,
+                                bottom = home.gridTopGap - home.rowGap,
+                            ),
+                        )
+                    }
                 }
                 if (visible.isEmpty() && searching) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
@@ -563,7 +627,7 @@ fun HomeScreen(
                     item(key = "demo-${demo.id}") {
                         DemoListRow(
                             demo = demo,
-                            onClick = { onDemoClick(demo.id) },
+                            onClick = { openDemo(demo.id) },
                             style = HomeRowStyle.Fused,
                             freshness = freshnessById[demo.id] ?: DemoFreshness.None,
                             modifier = Modifier
@@ -575,19 +639,6 @@ fun HomeScreen(
                                     ),
                                 )
                                 .cascadeIn(cardDelay),
-                        )
-                    }
-                }
-                // A filtered list ends on the way back to the whole catalogue, with its
-                // size: someone who reached the bottom of "What's new" must not conclude
-                // the app stops there (#4304). Not while searching — the query is its own
-                // filter, and it has its own "Clear".
-                if (activeCategory != null && !searching) {
-                    item(key = "show-all", span = { GridItemSpan(maxLineSpan) }) {
-                        ShowAllRow(
-                            count = demos.size,
-                            onClick = { onCategoryChange(null) },
-                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -669,22 +720,25 @@ private const val HERO_ITEM_KEY = "hero"
 /** Grid key of the "What's new" row under the hero. */
 private const val WHATS_NEW_ITEM_KEY = "whats-new"
 
+/** Grid key of the SceneView Labs card, right under the hero. */
+private const val LABS_ITEM_KEY = "labs"
+
 /**
- * The layer under the grid that carries the sky and the live flight (#3948).
+ * The layer under the grid that carries the sky and the night circuit (#3948).
  *
  * Geometry: [height] tall from `-topInset` — the Scaffold pads the status bar and this
  * undoes it, so the sky reaches the top of the display and the status bar rides on it
  * ([HomeHeader] flips its icons to light meanwhile). At rest the featured band's grid
  * item sits at [restTop] below the content's top edge; as the grid scrolls, the stage
  * follows that item one-for-one, read in `graphicsLayer` at draw time so the scroll
- * costs no recomposition. Inside, the sky and the flight lag the band by a fraction
+ * costs no recomposition. Inside, the sky and the circuit lag the band by a fraction
  * ([HERO_PARALLAX]), which reads as depth; the stage clips its bounds so the lag never
  * leaks below the band, where the grid is transparent over the page. When the item has
  * left the viewport the layer is fully transparent and [active] is false, so the loop
  * is parked on its last frame — the frame that shows again, unchanged, on the way back.
  *
- * In inspection mode (goldens) the sky is painted and the flight is not: Roborazzi has
- * no GPU, and a still of a rendered frame would tie the goldens to a driver.
+ * In inspection mode the sky is painted and the circuit is not: `@Preview` and Robolectric
+ * have no GPU to render it with.
  */
 @Composable
 private fun HomeHeroStage(
@@ -708,6 +762,7 @@ private fun HomeHeroStage(
     val bandTop = topInset + restTop
     val bandHeight = height - bandTop - home.heroStageBleed
     val bandFraction = bandHeight.value / (bandHeight + home.heroStageBleed).value
+    val bandHeightPx = with(density) { bandHeight.toPx() }.coerceAtLeast(1f)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -735,23 +790,24 @@ private fun HomeHeroStage(
                         home.heroSkyHorizon + 0.1f to colors.heroSkyGround,
                         1f to colors.heroSkyTop,
                     ),
-                )
-                // The sun's glow, where the disc sits in the flight: the sky is warmest
-                // around it, as a sky is.
-                .drawBehind {
-                    drawRect(
-                        Brush.radialGradient(
-                            0f to colors.heroSkyHorizon.copy(alpha = 0.7f),
-                            0.45f to colors.heroSkyHorizon.copy(alpha = 0.25f),
-                            1f to Color.Transparent,
-                            center = Offset(size.width * HERO_SUN_X, size.height * home.heroSkyHorizon * 0.82f),
-                            radius = size.width * 0.6f,
-                        ),
-                    )
-                },
+                ),
         ) {
             if (!inspectionMode) {
-                HomeHeroScene(active = active, modifier = Modifier.fillMaxSize())
+                HomeHeroScene(
+                    active = active,
+                    modifier = Modifier.fillMaxSize(),
+                    // The scroll is the camera's: as the band leaves, the camera turns
+                    // further round the car and pushes in.
+                    scroll = {
+                        val travel = -(heroTravel() ?: 0f)
+                        (travel / bandHeightPx).coerceIn(0f, 1f)
+                    },
+                    // The car is framed between the header and the band's copy.
+                    contentPadding = PaddingValues(
+                        top = bandTop,
+                        bottom = home.heroStageBleed + bandHeight * (1f - home.heroScrimStart) * HERO_COPY_SHARE,
+                    ),
+                )
             }
         }
         // The legibility scrim under the band's copy — the hero's usual gradient, painted
@@ -783,8 +839,11 @@ private fun HomeHeroStage(
     }
 }
 
-/** Where the sun sits across the stage, as a fraction of its width — see `DuskFlight`. */
-private const val HERO_SUN_X = 0.31f
+/**
+ * How much of the scrimmed lower part of the band the camera treats as covered by the copy:
+ * the car may sit a little into the scrim, where it is still well lit.
+ */
+private const val HERO_COPY_SHARE = 0.8f
 
 /** Fraction of the band's scroll travel the stage's content lags behind. */
 private const val HERO_PARALLAX = 0.35f
@@ -805,12 +864,16 @@ internal val FEATURED_IDS = listOf("cosmos", "ar-placement", "model-viewer", "ar
 /**
  * The featured pager's demo pages (#3567), in page order: [HERO_DEMO_ID] first — it is the
  * demo the store listing, the deep link and the app icon all point at — then Cosmos, the
- * first of [FEATURED_IDS]. Two pages on purpose: a carousel nobody reaches the end of is a
- * list, and what the pager shows the "Featured" banners under it do not repeat
- * ([homeTopSections], #4304). The rest of [FEATURED_IDS] is therefore the banner group; a
- * page added here takes its demo out of the banners.
+ * first of [FEATURED_IDS], then the two newest showpieces that are not Labs experiments,
+ * Real-World Scan (a Gaussian-splat capture, 4.57) and Rolling Balls (4.55) (#4622: "one or
+ * two more cards"; a Labs id here would change the page count when Labs flips, see
+ * `LabsTest`). Four pages, not more: a carousel nobody
+ * reaches the end of is a list. What the pager shows the "Featured" banners under it do not
+ * repeat ([homeTopSections], #4304), which is why the two new pages are demos outside
+ * [FEATURED_IDS]: the banners keep the other three featured demos. A page added from
+ * [FEATURED_IDS] would take its demo out of the banners.
  */
-internal val FEATURED_PAGER_IDS = listOf(HERO_DEMO_ID, "cosmos")
+internal val FEATURED_PAGER_IDS = listOf(HERO_DEMO_ID, "cosmos", "splat-preview", "rolling-balls")
 
 @Composable
 private fun HomeHeader(
@@ -1037,16 +1100,13 @@ private fun SearchRow(
     }
 }
 
-/** `null` = All. Order is the chip order. */
 /**
- * The filter chips, in [io.github.sceneview.demo.DEMO_CATEGORIES] order after the
- * leading "All". Short labels, because the chip row is one horizontal scroll and
- * the long form is already carried by the section header the chip filters down to.
- * [io.github.sceneview.demo.DemoRegistryIntegrityTest] asserts this list covers
- * every registered category, so a new category can never ship without a chip.
+ * The section chips' short labels, one per category. Short, because the chip row is one
+ * horizontal scroll and the long form is the section header the chip scrolls to.
+ * [io.github.sceneview.demo.DemoRegistryIntegrityTest] asserts this map covers every
+ * registered category, so a new category can never ship without a chip.
  */
-private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
-    null to R.string.category_short_all,
+private val CHIP_LABELS: Map<String, Int> = mapOf(
     DemoCategory.CREATE to R.string.category_short_create,
     DemoCategory.DEV_TOOLS to R.string.category_short_dev_tools,
     DemoCategory.PLACE_AR to R.string.category_short_place_ar,
@@ -1054,25 +1114,20 @@ private val CHIP_CATEGORIES: List<Pair<String?, Int>> = listOf(
     DemoCategory.UNDERSTAND to R.string.category_short_understand,
 )
 
-/** The categories [CHIP_CATEGORIES] offers, minus the leading "All". */
-internal val CHIP_CATEGORY_KEYS: List<String> = CHIP_CATEGORIES.mapNotNull { it.first }
+/** The categories a section chip exists for. */
+internal val CHIP_CATEGORY_KEYS: List<String> = CHIP_LABELS.keys.toList()
 
+/**
+ * One chip per catalogue section, in the order the sections appear. Nothing is ever
+ * selected: a chip is a shortcut to a place in the list, and the list stays whole.
+ */
 @Composable
-private fun CategoryChipRow(
-    selected: String?,
-    onSelect: (String?) -> Unit,
+private fun SectionChipRow(
+    categories: List<String>,
+    onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    /** Offer the [WHATS_NEW_FILTER] chip, right after "All" — only while something is fresh. */
-    showWhatsNew: Boolean = false,
 ) {
-    val chips = remember(showWhatsNew) {
-        if (showWhatsNew) {
-            listOf(CHIP_CATEGORIES.first(), WHATS_NEW_FILTER to R.string.category_short_whats_new) +
-                CHIP_CATEGORIES.drop(1)
-        } else {
-            CHIP_CATEGORIES
-        }
-    }
+    val chips = categories.mapNotNull { category -> CHIP_LABELS[category]?.let { category to it } }
     val home = SceneViewTokens.Home
     // The row bleeds out of the grid's side inset and carries it as content
     // padding instead, so chips scroll to the screen edge and the last one keeps
@@ -1082,13 +1137,11 @@ private fun CategoryChipRow(
         contentPadding = PaddingValues(horizontal = home.contentPadding),
         horizontalArrangement = Arrangement.spacedBy(home.chipGap),
     ) {
-        rowItems(chips, key = { it.first ?: "all" }) { (category, labelRes) ->
-            CategoryChip(
+        rowItems(chips, key = { it.first }) { (category, labelRes) ->
+            SectionChip(
                 label = stringResource(labelRes),
-                selected = category == selected,
-                // The selected chip is its own off switch: tapping it again goes back to
-                // "All", so leaving a filter never means finding another chip (#4304).
-                onClick = { onSelect(category.takeUnless { it == selected }) },
+                onClick = { onSelect(category) },
+                modifier = Modifier.testTag(HomeTestTags.sectionChip(category)),
             )
         }
     }
@@ -1106,31 +1159,21 @@ internal fun Modifier.bleedHorizontal(inset: Dp): Modifier = layout { measurable
 }
 
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SectionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val dark = isSystemInDarkTheme()
     val colors = SceneViewTokens.HomeColor
     val home = SceneViewTokens.Home
-    val background = when {
-        selected && dark -> colors.chipSelectedBackgroundDark
-        selected -> colors.chipSelectedBackgroundLight
-        dark -> colors.chipBackgroundDark
-        else -> colors.chipBackgroundLight
-    }
-    val content = when {
-        selected && dark -> colors.chipSelectedTextDark
-        selected -> colors.chipSelectedTextLight
-        dark -> colors.chipTextDark
-        else -> colors.chipTextLight
-    }
+    val background = if (dark) colors.chipBackgroundDark else colors.chipBackgroundLight
+    val content = if (dark) colors.chipTextDark else colors.chipTextLight
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .height(home.chipRowHeight)
             .pressScale(interaction)
             .clickable(
                 interactionSource = interaction,
                 indication = ripple(),
-                role = Role.Tab,
+                role = Role.Button,
                 onClick = onClick,
             ),
         shape = RoundedCornerShape(SceneViewTokens.Radius.full),
@@ -1144,28 +1187,9 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
             Text(
                 text = label,
                 style = SceneViewTokens.Type.body,
-                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                 color = content,
                 maxLines = 1,
             )
-        }
-    }
-}
-
-/** The last row of a filtered list: back to the whole catalogue, [count] samples. */
-@Composable
-private fun ShowAllRow(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = SceneViewTokens.Space.sm),
-        contentAlignment = Alignment.Center,
-    ) {
-        TextButton(
-            onClick = onClick,
-            modifier = Modifier.testTag(HomeTestTags.SHOW_ALL),
-        ) {
-            Text(stringResource(R.string.home_show_all, count))
         }
     }
 }

@@ -69,13 +69,15 @@ python rerun-bridge.py --save out.rrd   # custom path
 
 In the Android demo, tap **Save & Share** while streaming. The bridge sends a `{"type":"control","cmd":"save_now"}` line over the same TCP socket; the sidecar flushes a `.rrd` and replies with `{"type":"control","ack":"saved","path":"…","viewerUrl":"…"}`. The app surfaces the path and URL in a dialog, ready to copy or share via the system share sheet.
 
-Re-host the `.rrd` on a public URL (Cloudflare R2, GitHub release asset, S3, gist) and open:
+Host the `.rrd` at a public https address that ends in `.rrd` and open:
 
 ```
 https://sceneview.github.io/rerun/?url=<encoded-public-url>
 ```
 
 …in any browser to view + scrub the recording. Powered by the Rerun web viewer.
+
+The page downloads the file from the browser, so its host has to allow cross-origin requests (CORS). A file in a public GitHub repository does, through its `raw.githubusercontent.com` link, and so does GitHub Pages; a GitHub release asset does not: GitHub sends no CORS header for it (checked 2026-10-13). A Cloudflare R2 or S3 bucket does once it has a CORS rule that allows `https://sceneview.github.io`. When the page cannot read the file, it says so on screen, with the likely causes.
 
 ## About
 

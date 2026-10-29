@@ -2,22 +2,24 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The Rerun AR Replay demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's
+/// The 3D Scan demo (`sceneview://demo/ar-rerun`), the iOS twin of Android's
 /// `ARRerunDemo`: record a room with ARKit and replay it in 3D — the camera's path and photos,
 /// the surfaces with their photos, the room's coloured points and the models placed in it.
 ///
-/// It opens on "Your sessions" (``RerunSessionsLanding``): Record your room, a sample session,
-/// Open file, and every session kept on this iPhone. Stopping a recording saves it and opens
-/// the very replay the sample plays, built from the user's own data. Share exports whichever
+/// It opens on "Your sessions" (``RerunSessionsLanding``): Start scanning, a sample session,
+/// Open file, and every session kept on this iPhone. Start scanning asks first what is scanned
+/// (``RerunScanScopePage``: an object, a room or an outdoor area), then records it. Stopping a
+/// recording saves it and opens the very replay the sample plays, built from the user's own data. Share exports whichever
 /// session is on screen to four open formats, made on the phone.
 ///
 /// The sample is the very pack Android ships (`rerun/showcase/`), read from the same files, so
 /// both apps replay it to the same figures.
 struct RerunShowcaseDemo: View {
-    enum Screen: Equatable { case landing, replay, record }
+    enum Screen: Equatable { case landing, choose, replay, record }
     enum Mode: Equatable { case scene, map, camera }
 
-    /// QA states for scripted captures: `-rerunState replay-map`. A replay state freezes the
+    /// QA states for scripted captures: `-rerunState replay-map`; `choose` and `live` take the
+    /// scope from `-rerunScope object|room|area` (else the one remembered). A replay state freezes the
     /// drift and the intro so a capture is deterministic, and parks the playhead at
     /// ``qaFraction``. With `-rerunImport <path>` the file goes through the real import first;
     /// a replay state then opens the imported session instead of the sample.
@@ -28,17 +30,20 @@ struct RerunShowcaseDemo: View {
         case replayMap = "replay-map"
         case replayCamera = "replay-camera"
         case replayExport = "replay-export"
+        case choose
         case live
     }
 
     static let qaFraction: Float = 0.62
     static let qaStateKey = "rerunState"
     static let qaImportKey = "rerunImport"
+    static let qaScopeKey = "rerunScope"
 
     static let intro = "Record a room with your iPhone and SceneView rebuilds it in 3D: the camera's path and "
         + "photos, the surfaces, the room's points and the models you placed. Stop, and the replay "
         + "opens. Share exports it to .rrd, .glb, .usdz and .ply, made on your iPhone."
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var screen: Screen
     @State private var mode: Mode
     @State private var session: RerunReplaySession?
@@ -53,6 +58,8 @@ struct RerunShowcaseDemo: View {
     @State private var exportPresented = false
     /// The replay the latest open asked for; an older load that lands late is dropped.
     @State private var openToken = UUID()
+    /// What the next scan captures: asked first, remembered (``RerunScanScopeStore``).
+    @State private var scanScope: RerunScanScope
     private let qa: QAState?
     /// `-rerunImport` runs once per launch, not on every visit.
     @MainActor private static var consumedQAImport = false
@@ -62,8 +69,11 @@ struct RerunShowcaseDemo: View {
     init() {
         let state = UserDefaults.standard.string(forKey: Self.qaStateKey).flatMap(QAState.init(rawValue:))
         qa = state
+        let qaScope = state == nil ? nil : UserDefaults.standard.string(forKey: Self.qaScopeKey)
+        _scanScope = State(initialValue: qaScope.map { RerunScanScope.from(key: $0) } ?? RerunScanScopeStore.last())
         switch state {
         case nil, .landing: _screen = State(initialValue: .landing)
+        case .choose: _screen = State(initialValue: .choose)
         case .live: _screen = State(initialValue: .record)
         default: _screen = State(initialValue: .replay)
         }
@@ -79,10 +89,11 @@ struct RerunShowcaseDemo: View {
     var body: some View {
         GeometryReader { proxy in
             DemoScaffold(
-                "Rerun AR Replay",
+                "3D Scan",
                 dock: dock,
                 accent: accent,
-                chromeMode: screen == .record ? .ar : .stage
+                // The chooser is a themed page: its pills take their own ground, as over a camera.
+                chromeMode: screen == .record || screen == .choose ? .ar : .stage
             ) {
                 stage(topInset: Self.topReserve(safeTop: proxy.safeAreaInsets.top),
                       bottomInset: Self.bottomReserve(safeBottom: proxy.safeAreaInsets.bottom))
@@ -96,7 +107,15 @@ struct RerunShowcaseDemo: View {
                 controls
             }
         }
+        // The host keeps a light status bar for camera and stage screens; the chooser's ground
+        // follows the appearance, so its status bar does too.
+        .themedPageStatusBar(screen == .choose)
         .task { await boot() }
+        // A replay interrupted by the system (Control Center, a call, the app switcher) plays on
+        // when the app is back; one the user paused stays paused.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { session?.resumeIfSuspended() } else { session?.suspend() }
+        }
         .onChange(of: inbox.pending) { _, pending in
             if pending != nil { Task { await importPending() } }
         }
@@ -136,7 +155,7 @@ struct RerunShowcaseDemo: View {
 
     private var caption: String {
         switch mode {
-        case .map: "Top-down map of the room"
+        case .map: session?.pack.scope == .area ? "Top-down map of the ground" : "Top-down map of the room"
         case .camera: "What the camera saw"
         case .scene: "Drag to orbit · pinch to zoom"
         }
@@ -152,14 +171,19 @@ struct RerunShowcaseDemo: View {
                 RerunSessionsLanding(
                     sessions: sessions, store: store, importing: importing, notice: notice,
                     topInset: topInset, bottomInset: bottomInset,
-                    onRecord: { show(.record) },
+                    onRecord: { show(.choose) },
                     onSample: { Task { await watchSample() } },
                     onOpenFile: { importerPresented = true },
                     onOpen: { stored in Task { await open(stored) } },
                     onDelete: delete
                 )
+            case .choose:
+                RerunScanScopePage(selected: $scanScope, topInset: topInset, bottomInset: bottomInset) {
+                    RerunScanScopeStore.remember(scanScope)
+                    show(.record)
+                }
             case .record:
-                RerunLiveCaptureView(onRecordingChange: { recording = $0 }) { capture in
+                RerunLiveCaptureView(scope: scanScope, onRecordingChange: { recording = $0 }) { capture in
                     Task { await finishCapture(capture) }
                 }
             case .replay:
@@ -217,6 +241,8 @@ struct RerunShowcaseDemo: View {
         switch screen {
         case .landing:
             return []
+        case .choose:
+            return [sessionsItem]
         case .record:
             // While recording, only Stop ends it: nothing in the dock can drop it by accident.
             return recording ? [] : [sessionsItem]
@@ -225,12 +251,14 @@ struct RerunShowcaseDemo: View {
                 DockItem(icon: "rotate.3d", label: "3D view", caption: "3D", selected: mode == .scene) {
                     if mode == .scene { recenterToken += 1 } else { select(.scene) }
                 },
-                DockItem(icon: "map", label: "Map view", caption: "Map", selected: mode == .map) { select(.map) },
+                // An object stands on a few square centimetres: no map of the ground (Android's mapsGround).
+                session?.pack.scope.mapsGround == false ? nil
+                    : DockItem(icon: "map", label: "Map view", caption: "Map", selected: mode == .map) { select(.map) },
                 DockItem(icon: "film", label: "Camera frames", caption: "Camera", selected: mode == .camera) {
                     select(.camera)
                 },
                 sessionsItem,
-            ]
+            ].compactMap { $0 }
         }
     }
 
@@ -377,7 +405,7 @@ struct RerunShowcaseDemo: View {
     }
 
     private func start(_ session: RerunReplaySession) {
-        guard let qa, qa != .live, qa != .landing else {
+        guard let qa, qa != .live, qa != .landing, qa != .choose else {
             session.playFromStart()
             return
         }
@@ -392,7 +420,7 @@ struct RerunShowcaseDemo: View {
     /// Stop in Record: the capture is kept as a session, then its replay opens.
     private func finishCapture(_ capture: RerunCapturePack) async {
         let store = store
-        let title = RerunSessionStore.recordingTitle(at: Date())
+        let title = RerunSessionStore.recordingTitle(at: Date(), scope: RerunScanScope.of(manifest: capture.manifest))
         let result = await Task.detached(priority: .userInitiated) {
             Result { try store.save(capture, title: title, source: .recorded) }
         }.value

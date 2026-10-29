@@ -81,6 +81,9 @@ internal object DeepLinkRouter {
      */
     val DEMO_ID_ALIASES: Map<String, String> = mapOf(
         "wall-placement" to "ar-placement",
+        // #4307 — `PlaneRendererV2` became the only plane renderer, so the demo that
+        // showed it off stopped being "V2" and is the Surfaces demo.
+        "ar-plane-renderer-v2" to "ar-surfaces",
         // #1444 — `movable-light` was merged into the consolidated `lighting` demo.
         "movable-light" to "lighting",
         // #2239 Batch 1 — Custom Geometry consolidation. The retired
@@ -108,12 +111,8 @@ internal object DeepLinkRouter {
         // carries an [ALIAS_INITIAL_TAB] entry. The deep links keep working.
         "camera-controls" to "camera-gestures",
         "gesture-editing" to "camera-gestures",
-        // #2239 Batch 1 — 2D in 3D consolidation. The retired `text`, `image`,
-        // `video`, and `billboard` demos merged into `two-d-in-three-d`.
-        // #3424 then rebuilt that demo from scratch around one annotated model
-        // and a set of `ViewNode` cards, so its four tabs are gone: all four
-        // aliases now land on the same (only) view and none of them carries an
-        // [ALIAS_INITIAL_TAB] entry. The deep links keep working.
+        // 2D in 3D — Inspect is the default; all four retired flat-content demos
+        // open its Media gallery through [ALIAS_INITIAL_TAB].
         "text" to "two-d-in-three-d",
         "image" to "two-d-in-three-d",
         "video" to "two-d-in-three-d",
@@ -127,10 +126,14 @@ internal object DeepLinkRouter {
         // `post-processing` stay on the lab — which no longer has tabs, so they
         // carry no [ALIAS_INITIAL_TAB] entry. Every one of the four deep links
         // still resolves, each to the half that now hosts its subject.
+        // #4603 then folded the lab itself into `lighting` (its reflections and
+        // frame switches sit under every rig), so `lighting-lab` and the two ids
+        // it had kept resolve there too — on the default rig, no tab pre-selected.
         "dynamic-sky" to "lighting",
         "environment" to "lighting",
-        "reflection-probes" to "lighting-lab",
-        "post-processing" to "lighting-lab",
+        "lighting-lab" to "lighting",
+        "reflection-probes" to "lighting",
+        "post-processing" to "lighting",
         // #2239 Batch 3 — the retired `animation` and `physics` demos merged into
         // `animation-physics`. #4083 then split the Physics tab back out as its own
         // `rolling-balls` demo, so `animation-physics` has no tabs any more and
@@ -164,9 +167,10 @@ internal object DeepLinkRouter {
         // reaches through the `rememberView` handle, so the fold moved a 181-line
         // card with no modes of its own under the card literally named "Lighting
         // Lab". Since #3496 fog is a switch on the lab's one bench rather than a
-        // mode, so the alias no longer pre-selects anything. `ARFogNode` keeps
-        // `FogNode` demonstrated in AR (`ar-fog`).
-        "fog" to "lighting-lab",
+        // mode, so the alias no longer pre-selects anything.
+        // Since #4603 that switch lives
+        // in `lighting`, so the alias follows it.
+        "fog" to "lighting",
         // #2239 catalogue regroup — `gesture-feedback-preview` merged into
         // `camera-gestures` as its third mode. The Gestures mode flips `isEditable`
         // and draws no affordance; the preview drew the affordance with no controls.
@@ -186,7 +190,8 @@ internal object DeepLinkRouter {
         // which node consumes the trackable — the classified `SceneMeshNode` or its raw
         // `StreetscapeGeometryNode` base. Samples step 0 then moved the Streetscape mode
         // to `ar-geospatial-anchors`: the raw Streetscape trackables sit with the Geospatial
-        // anchors, and `ar-scene-mesh` keeps the classified `SceneMeshNode` alone.
+        // anchors, and `ar-scene-mesh` kept the classified `SceneMeshNode` alone until
+        // wave 1 folded it back in as the Streetscape colour switch.
         "ar-streetscape" to "ar-geospatial-anchors",
         // Samples step 0 — consolidation before any redesign (samples audit, 2026-10-02).
         // Each retired card is a mode of the card that absorbed it; the mode is
@@ -205,6 +210,22 @@ internal object DeepLinkRouter {
         // `video-recording` became the shared Record action of `DemoScaffold`; its link
         // opens Cosmos with the Record pill shown ([ALIAS_OPENS_RECORD]).
         "video-recording" to "cosmos",
+        // AR catalogue clean-up, wave 1 (samples audit, 2026-10-17). Four AR cards left
+        // the catalogue; three old links open the sample that now carries their subject.
+        // The fourth, `ar-ml-object-label`, is NOT an alias: it stays a registered id,
+        // hidden from the catalogue (`FALLBACK_ONLY_DEMO_IDS`), because it is Point & Ask's
+        // on-device fallback on phones without AICore (#2648). Aliasing it to
+        // `point-and-ask` would send that fallback straight back to the screen that just
+        // said it cannot run here.
+        // AR Fog was a post-effect with no scene around it. `ARFogNode` stays in the SDK;
+        // the fog the card showed is the Fog switch of `lighting` (density and colour).
+        "ar-fog" to "lighting",
+        // Scene Geometry was the Streetscape mode with a second material. It is now that
+        // mode's "Colour buildings & terrain" switch, on by default ([ALIAS_INITIAL_TAB]).
+        "ar-scene-mesh" to "ar-geospatial-anchors",
+        // Depth Collider's balls bouncing off the real depth mesh are the "On your table"
+        // AR mode of Rolling Balls ([ALIAS_INITIAL_TAB]).
+        "ar-depth-collider" to "rolling-balls",
     )
 
     /**
@@ -236,15 +257,17 @@ internal object DeepLinkRouter {
      * tab instead of falling back to its default first tab (#2315).
      *
      * The index is 0-based and matches the order of the demo's segmented-button modes.
-     * Aliases that map to the default first tab (index 0 — e.g. `custom-mesh`, `collision`,
-     * `text`) or to a demo that has no tabs at all (`shape` since #3423; `image`, `video`
-     * and `billboard` since #3424; `gesture-editing` and `gesture-feedback-preview` since
-     * #3500; `environment`, `reflection-probes`, `post-processing` and `fog` since #3496)
-     * are intentionally omitted: they already land correctly, so an absent entry
-     * means "no pre-selection". `DeepLinkRouterTest` asserts every key is a known
+     * Aliases for the default mode or a demo without modes are omitted: an absent entry
+     * means "no pre-selection". The retired text/image/video/billboard ids all open Media,
+     * index 1 of 2D in 3D. `DeepLinkRouterTest` asserts every key is a known
      * [DEMO_ID_ALIASES] retired id, so this table cannot drift out of sync.
      */
     val ALIAS_INITIAL_TAB: Map<String, Int> = mapOf(
+        // two-d-in-three-d — [Inspect, Media].
+        "text" to 1,
+        "image" to 1,
+        "video" to 1,
+        "billboard" to 1,
         "wall-placement" to 1,
         // lighting — [Image, Studio, Sun] since #3496. `environment` is deliberately
         // absent: the Image rig is index 0, the rig the demo already opens on.
@@ -263,6 +286,8 @@ internal object DeepLinkRouter {
         // ar-geospatial-anchors — launch tab 2 is the Streetscape mode since samples
         // step 0 (tabs 0 and 1 stay Terrain and Rooftop inside the Anchors mode).
         "ar-streetscape" to 2,
+        // Wave 1 — Scene Geometry is the Streetscape mode with its colour switch on.
+        "ar-scene-mesh" to 2,
         // Samples step 0. ar-placement — launch tab 2 is the Free pose mode (tabs 0 and 1
         // stay the floor and wall placements inside the Place mode).
         "ar-pose" to 2,
@@ -270,8 +295,9 @@ internal object DeepLinkRouter {
         "placement-scene" to 3,
         // camera-gestures — [Camera, PiP].
         "secondary-camera" to 1,
-        // rolling-balls — [Balls, Pendulum].
+        // rolling-balls — [Balls, Pendulum, On your table].
         "double-pendulum" to 1,
+        "ar-depth-collider" to 2,
         // ar-rerun — [Rerun, Session MP4].
         "ar-record-playback" to 1,
         // ar-cloud-anchor — [Cloud anchors, Collaborative].
@@ -287,17 +313,20 @@ internal object DeepLinkRouter {
      * own demo only, so `?tab=spacetime` on any other demo is unrecognised.
      */
     val TAB_NAMES: Map<String, Map<String, Int>> = mapOf(
+        "two-d-in-three-d" to mapOf("inspect" to 0, "media" to 1),
         // cosmos — [Starlight, Spacetime], the Star scene's two views.
         "cosmos" to mapOf("starlight" to 0, "spacetime" to 1),
         // Samples step 0 — each consolidated card's modes, by the [DemoMode] key its pill uses.
         // ar-placement — `wall` is the wall placement inside Place, the token iOS uses too.
         "ar-placement" to mapOf("place" to 0, "wall" to 1, "free-pose" to 2, "one-call" to 3),
         "camera-gestures" to mapOf("camera" to 0, "pip" to 1),
-        "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1),
+        "rolling-balls" to mapOf("balls" to 0, "pendulum" to 1, "table" to 2),
         "ar-rerun" to mapOf("rerun" to 0, "session-mp4" to 1),
         "ar-cloud-anchor" to mapOf("cloud-anchors" to 0, "collaborative" to 1),
         "ar-geospatial-anchors" to mapOf("anchors" to 0, "terrain" to 0, "streetscape" to 2),
         "ar-xr" to mapOf("hands" to 0, "face" to 1),
+        // finger-drawing — [3D, AR] (#4082).
+        "finger-drawing" to mapOf("3d" to 0, "ar" to 1),
     )
 
     /**
@@ -317,6 +346,7 @@ internal object DeepLinkRouter {
      * opening on Streaming).
      */
     val TABBED_DEMOS: Set<String> = setOf(
+        "two-d-in-three-d", // DemoModeHost consumes Inspect / Media.
         "materials",
         "ar-placement",
         "model-viewer",
@@ -329,6 +359,7 @@ internal object DeepLinkRouter {
         "ar-rerun",
         "ar-cloud-anchor",
         "ar-xr",
+        "finger-drawing",
     )
 
     /**
@@ -349,7 +380,13 @@ internal object DeepLinkRouter {
     fun resolveLaunch(demoId: String?, rawId: String?, tabParam: String?): Launch {
         if (demoId == null) return Launch(null, null)
         val retiredWithoutMode = rawId != demoId && rawId in DEMO_ID_ALIASES && rawId !in ALIAS_INITIAL_TAB
-        val tab = if (retiredWithoutMode) null else resolveInitialTab(rawId, tabParam)
+        // A named tab belongs to the demo the link lands on, not to the retired id it came
+        // through: `video?tab=inspect` names a mode of `two-d-in-three-d`.
+        val tab = if (retiredWithoutMode) {
+            null
+        } else {
+            parseTabValue(tabParam, demoId) ?: resolveInitialTab(rawId, tabParam)
+        }
         if (tab != null) SPLIT_OUT_TABS[demoId to tab]?.let { return Launch(it, null) }
         return Launch(
             demoId = demoId,
@@ -500,14 +537,23 @@ internal object DeepLinkRouter {
      *
      * One extra carries every demo's vocabulary — Cloud Anchors resolves its ids with
      * `cloudAnchorScenarioOf`, Point & Ask with `askStepForQaOverride` — and this is the
-     * single place the gate lives: the id is returned **only when [qaMode] is on**. A
-     * pinned state makes a screen claim something that never happened (a hosted anchor
-     * code, a streamed answer), so unlike `qa_backdrop`, which only changes what is behind
-     * the scene, an intent extra alone must never be enough to reach it. Blank ids are
-     * dropped so a demo never has to distinguish `""` from absent. Never throws.
+     * single place the gate lives: the id is returned **only in a debug build with [qaMode]
+     * on**. A pinned state makes a screen claim something that never happened (a hosted
+     * anchor code, a streamed answer), so unlike `qa_backdrop`, which only changes what is
+     * behind the scene, an intent extra alone must never be enough to reach it — and
+     * `qa_mode` is itself an intent extra any app on the phone can send to the exported
+     * launcher activity, so on the store build the id is dropped whatever `qa_mode` says
+     * (#4555). Blank ids are dropped so a demo never has to distinguish `""` from absent.
+     * Never throws.
+     *
+     * @param debugBuild `BuildConfig.DEBUG`; a parameter so the release answer is tested.
      */
-    fun resolveQaState(qaMode: Boolean, raw: String?): String? {
-        if (!qaMode) return null
+    fun resolveQaState(
+        qaMode: Boolean,
+        raw: String?,
+        debugBuild: Boolean = BuildConfig.DEBUG,
+    ): String? {
+        if (!debugBuild || !qaMode) return null
         return raw?.trim()?.takeIf { it.isNotBlank() }
     }
 

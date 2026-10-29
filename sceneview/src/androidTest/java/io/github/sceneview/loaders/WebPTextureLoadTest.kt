@@ -1,6 +1,7 @@
 package io.github.sceneview.loaders
 
 import android.graphics.BitmapFactory
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.sceneview.render.RenderTestHarness
@@ -32,6 +33,7 @@ import java.nio.ByteOrder
 class WebPTextureLoadTest {
 
     companion object {
+        private const val MISSING_PROVIDER = "Missing texture provider"
         private lateinit var harness: RenderTestHarness
 
         @JvmStatic
@@ -92,6 +94,7 @@ class WebPTextureLoadTest {
     fun filament_loads_every_texture_of_the_transcoded_model() {
         val modelLoader = ModelLoader(harness.engine, context)
         try {
+            val skippedBefore = logcatCount(MISSING_PROVIDER)
             var model: io.github.sceneview.model.Model? = null
             harness.runOnMain {
                 // Goes through the production path, transcoding included.
@@ -99,12 +102,22 @@ class WebPTextureLoadTest {
             }
             val loaded = requireNotNull(model)
 
-            // Every resource is resolved: nothing is left waiting on a provider gltfio does not
-            // have. On the untranscoded asset this is where `image/webp` stalls the texture.
-            harness.runOnMain {
-                repeat(10) { modelLoader.updateLoad() }
-                assertEquals(1.0f, modelLoader.progress, 0.0001f)
+            // The PNG really decodes, which takes a few frames: pump them like the render loop.
+            var progress = 0f
+            val deadline = SystemClock.uptimeMillis() + 10_000
+            while (progress < 1f && SystemClock.uptimeMillis() < deadline) {
+                harness.runOnMain {
+                    modelLoader.updateLoad()
+                    progress = modelLoader.progress
+                }
+                if (progress < 1f) SystemClock.sleep(20)
             }
+            assertEquals(1.0f, progress, 0.0001f)
+            // A texture gltfio has no provider for is skipped and still counts as done, so the
+            // progress alone cannot tell: the decoder must not have been missing. On an untranscoded
+            // asset (`image/webp`), or a mimeType written `image\/png`, it is.
+            SystemClock.sleep(300) // logcat lags the native log
+            assertEquals("a texture was skipped", skippedBefore, logcatCount(MISSING_PROVIDER))
             assertTrue("the model must expose renderable entities", loaded.entities.isNotEmpty())
         } finally {
             harness.runOnMain { modelLoader.destroy() }
@@ -119,6 +132,10 @@ class WebPTextureLoadTest {
         assertEquals("image/png", json.getJSONArray("images").getJSONObject(0).getString("mimeType"))
         assertEquals(0, json.getJSONArray("textures").getJSONObject(0).getInt("source"))
     }
+
+    private fun logcatCount(marker: String): Int =
+        ProcessBuilder("logcat", "-d", "--pid=${android.os.Process.myPid()}").redirectErrorStream(true).start()
+            .inputStream.bufferedReader().useLines { lines -> lines.count { marker in it } }
 
     private fun parseGlb(buffer: ByteBuffer): Pair<JSONObject, ByteArray> {
         val glb = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)

@@ -1,6 +1,6 @@
 // @sceneId     ar-rerun
-// @title       Rerun AR Replay
-// @subtitle    Watch a real AR session rebuild itself in 3D
+// @title       3D Scan
+// @subtitle    Move around a space and watch it take shape in 3D
 // @category    ar
 // @section     devTools
 // @available   true

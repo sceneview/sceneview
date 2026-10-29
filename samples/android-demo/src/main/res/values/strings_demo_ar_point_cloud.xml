@@ -7,7 +7,18 @@
 <resources>
     <string name="demo_ar_point_cloud_title">Point Cloud</string>
     <string name="demo_ar_point_cloud_subtitle">See the points your camera tracks</string>
-    <string name="demo_ar_point_cloud_count">Tracking %1$d points</string>
-    <string name="demo_ar_point_cloud_move_hint">Move your device to detect feature points</string>
+    <plurals name="demo_ar_point_cloud_count">
+        <item quantity="one">%1$d point</item>
+        <item quantity="other">%1$d points</item>
+    </plurals>
+    <plurals name="demo_ar_point_cloud_count_sparse">
+        <item quantity="one">%1$d point · move slowly to build the cloud</item>
+        <item quantity="other">%1$d points · move slowly to build the cloud</item>
+    </plurals>
+    <string name="demo_ar_point_cloud_move_hint">Move slowly to build the cloud</string>
     <string name="demo_ar_point_cloud_move_hint_short">Still scanning — keep moving</string>
+    <string name="demo_ar_point_cloud_about">Every dot is a spot ARCore recognised in your room. Amber dots are what the camera sees right now; the cloud keeps everything it has seen, so walk around slowly and watch the room fill in.</string>
+    <string name="demo_ar_point_cloud_confident_only">Show only confident points</string>
+    <string name="demo_ar_point_cloud_confident_only_hint">Hides the points ARCore is still unsure about: fewer dots, less noise.</string>
+    <string name="demo_ar_point_cloud_start_over">Start over</string>
 </resources>

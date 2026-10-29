@@ -1,6 +1,5 @@
 package io.github.sceneview.demo.demos
 
-import io.github.sceneview.demo.telemetry.logOutboundLink
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -8,10 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.provider.Settings
-import android.speech.RecognizerIntent
 import android.util.Log
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -37,16 +33,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface as M3Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -83,6 +78,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.core.net.toUri
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
@@ -92,19 +89,28 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.ai.ASK_LOG_TAG
+import io.github.sceneview.demo.ai.ASK_STATE_LOG_TAG
+import io.github.sceneview.demo.ai.AskEngineStatus
+import io.github.sceneview.demo.ai.downloadPercent
+import io.github.sceneview.demo.ai.logKey
+import io.github.sceneview.demo.ai.logLine
+import io.github.sceneview.demo.ai.runAskRound
 import io.github.sceneview.demo.ai.AskCaptureOutcome
 import io.github.sceneview.demo.ai.AskCaptureSource
 import io.github.sceneview.demo.ai.AskEngine
 import io.github.sceneview.demo.ai.AskFailure
+import io.github.sceneview.demo.ai.AskAvailability
 import io.github.sceneview.demo.ai.AskFlow
 import io.github.sceneview.demo.ai.AskFrame
 import io.github.sceneview.demo.ai.AskRecovery
 import io.github.sceneview.demo.ai.AskStep
+import io.github.sceneview.demo.ai.AskUnavailableReason
 import io.github.sceneview.demo.ai.asFailure
 import io.github.sceneview.demo.ai.askStepForQaOverride
 import io.github.sceneview.demo.ai.captureAskFrame
@@ -112,21 +118,24 @@ import io.github.sceneview.demo.ai.rememberAskEngine
 import io.github.sceneview.demo.ai.toAvailability
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.QaCameraBackdrop
+import io.github.sceneview.demo.common.VoiceDictationButton
+import io.github.sceneview.demo.common.VoiceDictationListeningHint
 import io.github.sceneview.demo.common.placement.PivotedModelNode
-import io.github.sceneview.demo.common.putVoiceSilenceExtras
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
 import io.github.sceneview.demo.common.qaStateOverridesAllowed
 import io.github.sceneview.demo.common.rememberQaCameraBackdropActive
+import io.github.sceneview.demo.common.rememberVoiceDictation
 import io.github.sceneview.demo.demos.internal.ArPlacement
 import io.github.sceneview.demo.demos.internal.CardRequest
+import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.ProjectedPoint
 import io.github.sceneview.demo.demos.internal.SafeArea
 import io.github.sceneview.demo.demos.internal.ScreenProjection
 import io.github.sceneview.demo.demos.internal.layoutAnswerCards
-import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.rememberTexturesSettled
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.math.Position
@@ -137,10 +146,11 @@ import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberViewNodeManager
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -152,6 +162,9 @@ object PointAndAskTestTags {
     const val FAILURE_CARD = "point_and_ask_failure_card"
     const val FAILURE_ACTION = "point_and_ask_failure_action"
     const val DEBUG_FRAME = "point_and_ask_debug_frame"
+    const val UNAVAILABLE_CARD = "point_and_ask_unavailable_card"
+    const val AVAILABILITY_ACTION = "point_and_ask_availability_action"
+    const val FALLBACK_ACTION = "point_and_ask_fallback_action"
 }
 
 /**
@@ -292,11 +305,10 @@ private class AnswerPanel(
  * rather than reapplied from the original branch — that branch (`claude/point-and-ask-voice`,
  * tip `bc3ed0170`) forked 200+ commits back with no reachable merge-base by the time it was
  * revisited (#3083):
- *  - **Voice input** — an optional mic button on the question field launches the system
- *    speech recognizer (`ACTION_RECOGNIZE_SPEECH`) and appends the dictated text, the same
- *    zero-permission pattern `BugReportSheet` already shipped for its own dictation shortcut
- *    (#3292) — chosen over the original branch's raw `SpeechRecognizer` + runtime
- *    `RECORD_AUDIO` grant for less permission friction and one fewer failure mode to QA.
+ *  - **Voice input** — an optional mic button on the question field starts the shared
+ *    dictation (`rememberVoiceDictation`, #4618): the zero-permission system dialog
+ *    (`ACTION_RECOGNIZE_SPEECH`, #3292), reopened after each pause so one stays a sentence
+ *    rather than the end of it — still no `RECORD_AUDIO`, by design.
  *  - **Drop-3D mode** — long-press now drops whichever [PropSpec] is selected in the picker
  *    (`DROP_PROPS`), not always the shiba. Re-scoped to the three GLBs already bundled in the
  *    APK (shiba, fox, toy car) instead of the original branch's two new ~7 MB binary assets
@@ -336,9 +348,51 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     val qaStep = remember(qaStateId) { askStepForQaOverride(qaStateId) }
     val shownStep = qaStep ?: step
 
+    // Availability is probed, and RE-probed on demand (#2648). ML Kit's `UNAVAILABLE` also
+    // means "AICore has not fetched its configuration yet", and AICore's setup errors clear by
+    // themselves — so the unavailable card's "Check again" runs this again instead of the
+    // demo ruling once, at launch, for the life of the screen.
+    //
+    // A probe that finds AICore already DOWNLOADING attaches to that download: nobody used to
+    // collect its progress, so a Pixel fetching Gemini Nano in the background sat on
+    // "Downloading Gemini Nano…" with no number and no end — the likeliest shape of "never
+    // managed to make it work".
+    var availabilityJob by remember { mutableStateOf<Job?>(null) }
+    val followDownload: () -> Unit = {
+        availabilityJob?.cancel()
+        availabilityJob = scope.launch {
+            askEngine.download().collect {
+                flow.onAvailability(it.toAvailability(aicoreInstalled))
+                syncStep()
+            }
+        }
+    }
+    val probeAvailability: () -> Unit = {
+        availabilityJob?.cancel()
+        availabilityJob = scope.launch {
+            Log.i(ASK_STATE_LOG_TAG, "probe: checking Gemini Nano availability")
+            flow.onAvailability(AskAvailability.Checking)
+            syncStep()
+            val status = askEngine.status()
+            flow.onAvailability(status.toAvailability(aicoreInstalled))
+            syncStep()
+            if (status is AskEngineStatus.Downloading) {
+                Log.i(ASK_STATE_LOG_TAG, "AICore is already downloading Gemini Nano, following its progress")
+                askEngine.download().collect {
+                    flow.onAvailability(it.toAvailability(aicoreInstalled))
+                    syncStep()
+                }
+            }
+        }
+    }
     LaunchedEffect(askEngine) {
-        flow.onAvailability(askEngine.status().toAvailability())
-        syncStep()
+        probeAvailability()
+    }
+    // Every state the user can see, one logcat line each, in order — the phone proof reads
+    // `adb logcat -s PointAndAsk` and gets the same sequence the screen showed (#2648).
+    // Keyed on `logKey()`, not the step: a download tick or a streamed token is not a new state.
+    LaunchedEffect(shownStep.logKey()) {
+        Log.i(ASK_STATE_LOG_TAG, shownStep.logLine())
     }
 
     var isTracking by remember { mutableStateOf(false) }
@@ -465,27 +519,15 @@ fun PointAndAskDemo(onBack: () -> Unit) {
     // (see `askCaptureRegion`). Null before the first tap.
     var tapFocus by remember { mutableStateOf<Offset?>(null) }
 
-    // Voice input (#3083): the question field's optional mic button. Same zero-permission
-    // `ACTION_RECOGNIZE_SPEECH` intent `BugReportSheet` already ships for its own dictation
-    // shortcut (#3292) — the system recognizer app does the listening, this demo only reads
-    // back its result, so there is no RECORD_AUDIO grant to request or lose across rotation.
-    val speechAvailable = remember {
-        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(context.packageManager) != null
-    }
-    val voicePrompt = stringResource(R.string.demo_point_and_ask_voice_prompt)
-    val speechLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val spoken = result.data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-                ?.takeIf { it.isNotBlank() }
-            if (spoken != null) {
-                questionText = spoken
-            }
-        }
-    }
+    // Voice input (#3083, #4618): the question field's optional mic button. The shared
+    // dictation chains the zero-permission system dialog through pauses and replaces the
+    // field with what it hears.
+    val dictation = rememberVoiceDictation(
+        prompt = stringResource(R.string.demo_point_and_ask_voice_prompt),
+        text = questionText,
+        onTextChange = { questionText = it },
+        append = false,
+    )
 
     // -- One ask round -----------------------------------------------------------------
     // Keyed by `captureToken`, not by the state: two rounds in a row produce the same
@@ -626,7 +668,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             // placeholder shows. The next tap asks THIS question about the composited frame.
             // Not offered once the platform has said the model cannot run here (#4028): a
             // question nothing can answer is a dead end. Long-press drops below still work.
-            if (shownStep != AskStep.ModelUnsupported) {
+            if (shownStep !is AskStep.ModelUnsupported) {
                 // Voice input (#3083): the trailing mic launches the system speech recognizer and
                 // replaces the field with what it heard — hidden when the device has no recognizer
                 // to hand the intent to, same guard `BugReportSheet` uses (#3292).
@@ -636,28 +678,19 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     label = { Text(stringResource(R.string.demo_point_and_ask_question_label)) },
                     placeholder = { Text(defaultQuestion) },
                     singleLine = true,
-                    trailingIcon = if (speechAvailable) {
+                    trailingIcon = if (dictation.available) {
                         {
-                            IconButton(
-                                onClick = {
-                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                        putExtra(
-                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                                        )
-                                        putExtra(RecognizerIntent.EXTRA_PROMPT, voicePrompt)
-                                        putVoiceSilenceExtras()
-                                    }
-                                    runCatching { speechLauncher.launch(intent) }
-                                },
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Mic,
-                                    contentDescription =
-                                        stringResource(R.string.demo_point_and_ask_voice_cd),
-                                )
-                            }
+                            VoiceDictationButton(
+                                dictation = dictation,
+                                idleContentDescription =
+                                    stringResource(R.string.demo_point_and_ask_voice_cd),
+                            )
                         }
+                    } else {
+                        null
+                    },
+                    supportingText = if (dictation.listening) {
+                        { VoiceDictationListeningHint() }
                     } else {
                         null
                     },
@@ -799,61 +832,80 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                             style = MaterialTheme.typography.titleSmall,
                         )
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = {
-                            scope.launch {
-                                askEngine.download().collect {
-                                    flow.onAvailability(it.toAvailability())
-                                    syncStep()
-                                }
-                            }
-                        }) {
+                        Button(
+                            onClick = followDownload,
+                            modifier = Modifier.testTag(PointAndAskTestTags.AVAILABILITY_ACTION),
+                        ) {
                             Text(stringResource(R.string.demo_point_and_ask_download_cta))
                         }
                     }
 
                     is AskStep.ModelDownloading -> BottomCard {
+                        val percent = downloadPercent(current.bytesDownloaded, current.bytesToDownload)
+                        val meterDescription = stringResource(
+                            R.string.demo_point_and_ask_downloading_meter_cd,
+                            percent ?: 0,
+                        )
                         ProgressRow(
-                            current.bytesDownloaded
-                                ?.let { bytes ->
-                                    stringResource(
-                                        R.string.demo_point_and_ask_downloading_progress,
-                                        bytes / (1024 * 1024),
-                                    )
-                                }
-                                ?: stringResource(R.string.demo_point_and_ask_downloading),
+                            when {
+                                percent != null -> stringResource(
+                                    R.string.demo_point_and_ask_downloading_percent,
+                                    percent,
+                                    (current.bytesToDownload ?: 0L) / BYTES_PER_MB,
+                                )
+                                current.bytesDownloaded != null -> stringResource(
+                                    R.string.demo_point_and_ask_downloading_progress,
+                                    current.bytesDownloaded / BYTES_PER_MB,
+                                )
+                                else -> stringResource(R.string.demo_point_and_ask_downloading)
+                            },
+                        )
+                        if (percent != null) {
+                            Spacer(Modifier.height(SceneViewTokens.Space.sm))
+                            LinearProgressIndicator(
+                                progress = { percent / PERCENT_FLOAT },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics {
+                                        contentDescription = meterDescription
+                                    },
+                            )
+                        }
+                        Spacer(Modifier.height(SceneViewTokens.Space.xs))
+                        Text(
+                            text = stringResource(R.string.demo_point_and_ask_downloading_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
-                    // The ONLY card that says this device cannot run the demo — and it is
-                    // reached only from a platform report (`FeatureStatus`, a failed
-                    // download, or a terminal ML Kit code), never from a retry count (#3407).
-                    AskStep.ModelUnsupported -> BottomCard {
-                        Text(
-                            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        // Two different situations, said differently (#4028). Without AICore
-                        // there is nothing to fix from here, so no button. With AICore present
-                        // the one real lever is an AICore update, which ships through Google
-                        // Play — the app-info page this used to open enables nothing.
-                        Text(
-                            text = stringResource(
-                                if (aicoreInstalled) {
-                                    R.string.demo_point_and_ask_unavailable_body_aicore_present
-                                } else {
-                                    R.string.demo_point_and_ask_unavailable_body
-                                },
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        if (aicoreInstalled) {
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { context.openAicoreStoreListing() }) {
-                                Text(stringResource(R.string.demo_point_and_ask_action_aicore))
-                            }
+                    // A failed download is fixable — say why, and offer it again (#2648).
+                    is AskStep.ModelDownloadFailed -> BottomCard(
+                        testTag = PointAndAskTestTags.FAILURE_CARD,
+                    ) {
+                        ErrorHeadline(stringResource(current.failure.messageRes))
+                        Spacer(Modifier.height(SceneViewTokens.Space.sm))
+                        Button(
+                            onClick = followDownload,
+                            modifier = Modifier.testTag(PointAndAskTestTags.AVAILABILITY_ACTION),
+                        ) {
+                            Text(stringResource(R.string.demo_point_and_ask_action_retry_download))
                         }
                     }
+
+                    // The ONLY card that says Gemini Nano cannot answer here — reached only
+                    // from a platform report (`FeatureStatus`, a failed status check, or a
+                    // terminal ML Kit code), never from a retry count (#3407). It always names
+                    // the reason, always offers to check again (several reasons clear by
+                    // themselves), and offers the on-device fallback: no cloud, by design
+                    // (#2648).
+                    is AskStep.ModelUnsupported -> UnavailableCard(
+                        reason = current.reason,
+                        showAicoreUpdate = aicoreInstalled && current.reason.offersAicoreUpdate,
+                        onCheckAgain = probeAvailability,
+                        onOpenAicore = { context.openAicoreStoreListing() },
+                        onOpenFallback = { context.openObjectLabelsFallback() },
+                    )
 
                     // Ready and idle: the pill above carries the instruction, the viewfinder
                     // stays clear.
@@ -921,6 +973,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             // making the emulator indistinguishable from the device defect this fixes.
             if (qaBackdrop) QaCameraBackdrop(seed = "point-and-ask")
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize().onSizeChanged {
                     cardLayout.viewportWidth = it.width
                     cardLayout.viewportHeight = it.height
@@ -943,8 +996,8 @@ fun PointAndAskDemo(onBack: () -> Unit) {
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING
                     // Keep the camera world position fresh so every anchored answer card can
-                    // billboard toward the viewer (#3276) — same pattern as `ARMLObjectLabelDemo`'s
-                    // `cameraPosition`. The pose translation is the camera eye position in world
+                    // billboard toward the viewer (#3276) — same pattern as the ML Kit Object
+                    // Labels fallback's `cameraPosition`. The pose translation is the camera eye position in world
                     // space, all a billboard needs to orient toward.
                     val camPose = frame.camera.pose.position
                     cameraPosition[0] = camPose.x
@@ -1478,16 +1531,37 @@ private fun Context.openStorageSettings() {
 private const val AICORE_PACKAGE = "com.google.android.aicore"
 
 /**
+ * The on-device fallback when Gemini Nano cannot answer (#2648): the AR Object Labels demo,
+ * which names objects with ML Kit object detection — on-device too, and on every ARCore
+ * phone. Opened through the app's own `sceneview://demo/<id>` deep link, pinned to this
+ * package so no other app can claim it. Never a cloud model: that would need the user's
+ * explicit consent to send the camera frame off the phone, which this demo does not ask for.
+ */
+private fun Context.openObjectLabelsFallback() {
+    val intent = Intent(Intent.ACTION_VIEW, "sceneview://demo/$FALLBACK_DEMO_ID".toUri())
+        .setPackage(packageName)
+    Log.i(ASK_STATE_LOG_TAG, "fallback: opening $FALLBACK_DEMO_ID")
+    runCatching { startActivity(intent) }
+        .onFailure { Log.w(ASK_STATE_LOG_TAG, "fallback: could not open $FALLBACK_DEMO_ID", it) }
+}
+
+/** Demo id of the on-device fallback — must stay a registered id (`DeepLinkRouter`). */
+internal const val FALLBACK_DEMO_ID = "ar-ml-object-label"
+
+private const val BYTES_PER_MB = 1024L * 1024L
+
+private const val PERCENT_FLOAT = 100f
+
+/**
  * Runs one streamed [AskEngine.askStream] round-trip over [bitmap], reporting results through
  * [onEvent]: a non-null failure, else a non-null accumulated answer for each delta, else
  * `(null, null)` for "the stream completed". Takes ownership of [bitmap] (recycled when the
  * round ends).
  *
- * The throwable is classified rather than swallowed (#3343): the card names the actual cause,
- * and every failure is logged with its ML Kit error code. Interpreting those events — keeping
- * a partial answer, counting a run of failures, deciding whether the platform actually said
- * "unsupported" — is `AskFlow`'s job, not this function's, which is exactly why that logic is
- * unit-tested and this glue is not (#3407).
+ * The round itself — first-token watchdog, error classification, the one terminal event — is
+ * [runAskRound], unit-tested with a fake stream (#2648). Interpreting those events — keeping a
+ * partial answer, counting a run of failures, deciding whether the platform actually said
+ * "unsupported" — is `AskFlow`'s job (#3407). This is only the Android glue: logcat, bitmap.
  */
 private fun CoroutineScope.askAboutBitmap(
     bitmap: Bitmap,
@@ -1495,25 +1569,22 @@ private fun CoroutineScope.askAboutBitmap(
     question: String,
     onEvent: (failure: AskFailure?, text: String?) -> Unit,
 ) = launch {
-    var text = ""
+    var lastText = ""
     try {
-        askEngine.askStream(bitmap, question).collect { delta ->
-            text += delta
-            onEvent(null, text)
+        Log.i(ASK_STATE_LOG_TAG, "engine: prompt sent (${bitmap.width}x${bitmap.height} frame)")
+        runAskRound(
+            // Built inside the flow so an engine that throws on the call is classified too.
+            stream = flow { emitAll(askEngine.askStream(bitmap, question)) },
+            log = { message, error ->
+                if (error == null) Log.i(ASK_STATE_LOG_TAG, message) else Log.w(ASK_STATE_LOG_TAG, message, error)
+            },
+        ) { failure, text ->
+            if (failure == null && text == null && lastText.isBlank()) {
+                Log.w(ASK_LOG_TAG, "Gemini Nano completed the stream with no text (#3343).")
+            }
+            if (text != null) lastText = text
+            onEvent(failure, text)
         }
-        if (text.isBlank()) {
-            Log.w(ASK_LOG_TAG, "Gemini Nano completed the stream with no text (#3343).")
-        }
-        onEvent(null, null)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Throwable) {
-        // Throwable, not Exception: a minified build missing the ML Kit classes raises a
-        // NoClassDefFoundError, which is an Error — letting it escape would kill the
-        // coroutine scope silently and leave the demo wedged in `Thinking` (cf. #3188).
-        val failure = AskFailure.of(e)
-        Log.w(ASK_LOG_TAG, "Gemini Nano inference failed — classified as $failure (#3343).", e)
-        onEvent(failure, null)
     } finally {
         bitmap.recycle()
     }
@@ -1730,6 +1801,77 @@ private fun AskFailureCard(
             modifier = Modifier.testTag(PointAndAskTestTags.FAILURE_ACTION),
         ) {
             Text(stringResource(failure.recovery.labelRes))
+        }
+    }
+}
+
+/** Error icon + one line — the headline every failure card shares. */
+@Composable
+private fun ErrorHeadline(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Outlined.ErrorOutline,
+            contentDescription = stringResource(R.string.demo_point_and_ask_error_cd),
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(start = SceneViewTokens.Space.sm),
+        )
+    }
+}
+
+/**
+ * "Gemini Nano can't answer here" — with the reason, a way to check again, the AICore update
+ * when one can help, and the on-device fallback (#2648). Replaces a card that had a title, a
+ * generic sentence and, without AICore, no button at all: a dead end on exactly the phones
+ * whose state can change minutes later.
+ */
+@Composable
+private fun UnavailableCard(
+    reason: AskUnavailableReason,
+    showAicoreUpdate: Boolean,
+    onCheckAgain: () -> Unit,
+    onOpenAicore: () -> Unit,
+    onOpenFallback: () -> Unit,
+) {
+    BottomCard(testTag = PointAndAskTestTags.UNAVAILABLE_CARD) {
+        Text(
+            text = stringResource(R.string.demo_point_and_ask_unavailable_title),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(Modifier.height(SceneViewTokens.Space.xs))
+        Text(
+            text = stringResource(reason.messageRes),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(SceneViewTokens.Space.sm))
+        Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+            Button(
+                onClick = onCheckAgain,
+                modifier = Modifier.testTag(PointAndAskTestTags.AVAILABILITY_ACTION),
+            ) {
+                Text(stringResource(R.string.demo_point_and_ask_action_check_again))
+            }
+            if (showAicoreUpdate) {
+                TextButton(onClick = onOpenAicore) {
+                    Text(stringResource(R.string.demo_point_and_ask_action_aicore_short))
+                }
+            }
+        }
+        Spacer(Modifier.height(SceneViewTokens.Space.sm))
+        Text(
+            text = stringResource(R.string.demo_point_and_ask_fallback_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(
+            onClick = onOpenFallback,
+            modifier = Modifier.testTag(PointAndAskTestTags.FALLBACK_ACTION),
+        ) {
+            Text(stringResource(R.string.demo_point_and_ask_fallback_cta))
         }
     }
 }

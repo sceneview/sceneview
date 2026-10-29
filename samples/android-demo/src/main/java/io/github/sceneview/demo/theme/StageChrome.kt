@@ -42,6 +42,25 @@ class DebugPalette(
 )
 
 /**
+ * The colours of one Model Viewer showroom — see [SceneViewTokens.Showroom]. The studio only
+ * darkens outwards from the subject: [pool], [floor], [horizon], [top].
+ *
+ * All four are what reaches the screen (sRGB): the stage pre-compensates them for the tone
+ * mapper and for the studio lighting, so a token is the colour a capture reads back.
+ */
+@Immutable
+class ShowroomPalette(
+    /** `stage-studio-top`: the wall high above the subject, the top of the frame. */
+    val top: Color,
+    /** `stage-studio-horizon`: where the floor turns into the wall, with no line. */
+    val horizon: Color,
+    /** `stage-studio-floor`: the floor away from the subject, before the distance takes it. */
+    val floor: Color,
+    /** `stage-studio-pool`: the pool of light the subject stands in. */
+    val pool: Color,
+)
+
+/**
  * `DESIGN.md` — Themed stage (#4080): the ground a [io.github.sceneview.demo.DemoScaffold] stage
  * is drawn on, and the chrome that floats over it.
  *

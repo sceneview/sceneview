@@ -46,8 +46,8 @@ import io.github.sceneview.rememberEnvironment
  * landed (bounded — see [FirstFrameState.holdUntil]), so a render golden never
  * captures the fallback-lit frames. The loading cover does not wait for it.
  *
- * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.LightingLabDemo]'s
- * Sky / Environment / Reflections tabs) manage their own environment and must
+ * Demos whose *subject* is the environment ([io.github.sceneview.demo.demos.LightingDemo]'s
+ * Image rig and reflection probe) manage their own environment and must
  * NOT use this helper. AR demos use ARCore light estimation, not IBL, and
  * are likewise out of scope.
  */
@@ -99,7 +99,7 @@ const val MODEL_DEMO_HDR: String = "environments/studio_2k.hdr"
  * to read as materials rather than as flat colour.
  *
  * Demos whose *subject* is the environment
- * ([io.github.sceneview.demo.demos.LightingLabDemo]) pick their own HDRI on
+ * ([io.github.sceneview.demo.demos.LightingDemo]) pick their own HDRI on
  * purpose and must not use this.
  */
 const val MATERIALS_SHOWCASE_HDR: String = "environments/studio_warm_2k.hdr"

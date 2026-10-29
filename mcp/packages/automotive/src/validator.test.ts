@@ -61,6 +61,7 @@ describe("validateAutomotiveCode", () => {
   it("passes correct LightNode usage", () => {
     const result = validateAutomotiveCode(`
       LightNode(
+        type = LightManager.Type.DIRECTIONAL,
         apply = {
           intensity(80000f)
         }

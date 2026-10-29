@@ -38,7 +38,13 @@ curl -s -X POST "$BASE_URL/v1/events" \
 echo ""
 echo "==> Stats endpoint:"
 echo "    $BASE_URL/v1/stats"
-curl -s "$BASE_URL/v1/stats" | (command -v jq &>/dev/null && jq . || cat)
+# The read routes fail closed (401) without STATS_TOKEN — see DEPLOY.md.
+STATS_TOKEN="${STATS_TOKEN:-$(sed -n 's/^STATS_TOKEN=//p' .dev.vars 2>/dev/null || true)}"
+if [ -n "$STATS_TOKEN" ]; then
+  curl -s -H "Authorization: Bearer $STATS_TOKEN" "$BASE_URL/v1/stats" | (command -v jq &>/dev/null && jq . || cat)
+else
+  echo "    (skipped: put STATS_TOKEN=<any value> in .dev.vars, then restart wrangler dev)"
+fi
 
 echo ""
 echo "==> Worker running at $BASE_URL (PID $WRANGLER_PID)"

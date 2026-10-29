@@ -40,7 +40,7 @@ In your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  flutter_sceneview: ^4.39.0
+  flutter_sceneview: ^4.63.0
 ```
 
 This tracks the latest version **published to pub.dev**, which lags the SDK's

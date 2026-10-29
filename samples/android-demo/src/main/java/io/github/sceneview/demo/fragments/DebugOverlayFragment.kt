@@ -18,7 +18,8 @@ object DebugOverlayFragment : DemoFragment {
         icon = Icons.Filled.Speed,
         order = 15,
         addedIn = "4.0.1",
-        updatedIn = "4.48.0",
+        // #4479: the stress test runs its whole ramp, to 1,000 spheres.
+        updatedIn = "4.56.0",
         tags = setOf("debug", "fps", "stats", "performance", "overlay"),
     )
 

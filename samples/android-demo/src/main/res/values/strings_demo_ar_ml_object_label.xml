@@ -7,7 +7,7 @@
 <resources>
     <string name="demo_ar_ml_title">ML Kit Object Labels</string>
     <string name="demo_ar_ml_subtitle">Recognize objects and label them in space</string>
-    <string name="demo_ar_ml_explainer">ML Kit\'s bundled model classifies 5 broad categories (Home good, Fashion good, Food, Place, Plant) — indoors, most objects land on \"Home good\". That\'s expected, not a bug.</string>
+    <string name="demo_ar_ml_explainer">ML Kit\'s bundled model recognizes five broad categories: Home good, Fashion good, Food, Place, and Plant. Indoors, it usually labels objects as \"Home good\".</string>
     <string name="demo_ar_ml_status_warming">Warming up — waiting for camera image…</string>
     <!-- The ML Kit detector could not be created on this device (#4025). The AR scene keeps
          running; only the labelling is off. -->

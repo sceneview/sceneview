@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -108,10 +109,24 @@ fun Modifier.overMediaEdge(
     }
 }
 
+/**
+ * What a glass element paints under itself when nothing else says. Transparent where a band of
+ * scrim runs behind the chrome; `DemoScaffold` provides its scrim on a phone held sideways, where
+ * the bands keep to the system bars and the dock, so that every glass element floating over the
+ * scene there — the scaffold's and a demo's own — stands on its own piece of it.
+ */
+val LocalGlassGround = compositionLocalOf { Color.Transparent }
+
+/**
+ * [ground] is painted under the glass, inside the same shape. Glass is see-through and counts on
+ * a scrim behind it; where no band of scrim runs under the element — a phone held sideways — the
+ * element carries that scrim itself, cut to its own outline ([LocalGlassGround]).
+ */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(SceneViewTokens.Radius.full),
+    ground: Color = LocalGlassGround.current,
     content: @Composable () -> Unit,
 ) {
     val chrome = LocalStageChrome.current
@@ -119,6 +134,7 @@ fun GlassSurface(
         modifier = modifier
             .overMediaEdge(shape, chrome.edgeRing, chrome.edgeHalo)
             .clip(shape)
+            .background(ground)
             .background(chrome.glass),
         // Centred, not the Box default of top-start (#3835). A caller that raises the
         // surface's minimum size — `GlassActionPill` lifts a 36 dp pill to the 48 dp
@@ -145,6 +161,7 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    ground: Color = LocalGlassGround.current,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -171,6 +188,7 @@ fun GlassIconButton(
                 .size(SceneViewTokens.Glass.iconButtonSize)
                 .graphicsLayer { scaleX = scale; scaleY = scale },
             shape = CircleShape,
+            ground = ground,
         ) {
             Box(Modifier.size(SceneViewTokens.Glass.iconButtonSize), contentAlignment = Alignment.Center) {
                 Icon(
@@ -190,9 +208,10 @@ fun GlassIconButton(
 @Composable
 fun GlassPill(
     modifier: Modifier = Modifier,
+    ground: Color = LocalGlassGround.current,
     content: @Composable RowScope.() -> Unit,
 ) {
-    GlassSurface(modifier = modifier) {
+    GlassSurface(modifier = modifier, ground = ground) {
         Row(
             modifier = Modifier
                 .heightIn(min = SceneViewTokens.Glass.pillHeight)

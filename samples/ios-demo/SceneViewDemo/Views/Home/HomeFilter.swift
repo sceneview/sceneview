@@ -75,13 +75,79 @@ private extension HomeSearchEntry {
     }
 }
 
+/// Pure Home decisions, in the priority a demo is claimed: hero, Featured banners,
+/// then fresh ids. That is not the order on screen — the What's new row sits
+/// between the hero and Featured, as on Android. Mirrors Android's
+/// `HomeTopSections`; each group preserves order and owns an id once.
+struct HomeTopSections: Equatable {
+    let hero: [String]
+    let featured: [String]
+    let whatsNew: [String]
+    /// iOS's What's new row has no picture: its metadata describes all fresh demos,
+    /// even when every fresh picture has already been shown in an earlier group.
+    let freshCount: Int
+
+    init(hero: [String], featured: [String], fresh: [String]) {
+        var shown = Set<String>()
+        func notShownYet(_ ids: [String]) -> [String] {
+            ids.filter { shown.insert($0).inserted }
+        }
+        self.hero = notShownYet(hero)
+        self.featured = notShownYet(featured)
+        self.whatsNew = notShownYet(fresh)
+        self.freshCount = Set(fresh).count
+    }
+
+    func catalogue(_ entries: [HomeSearchEntry], selection: HomeSelection) -> [HomeSearchEntry] {
+        let matches = filterDemos(entries, section: selection.section, query: selection.query,
+                                  whatsNew: selection.whatsNew)
+        return selection.isFiltered ? matches : matches.filter { !featured.contains($0.id) }
+    }
+
+    func showsWhatsNew(searching: Bool) -> Bool { !searching && freshCount > 0 }
+}
+
+/// Chip and search state, with the same second-tap escape for every chip.
+struct HomeSelection: Equatable {
+    var section: DemoSection? = nil
+    var whatsNew = false
+    var query = ""
+
+    var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var isFiltered: Bool { section != nil || whatsNew || searching }
+
+    mutating func select(_ section: DemoSection?) {
+        self.section = !whatsNew && self.section == section ? nil : section
+        whatsNew = false
+    }
+
+    mutating func toggleWhatsNew() {
+        section = nil
+        whatsNew.toggle()
+    }
+
+    /// "Show all": the chip back to "All". The query is left alone — it is its
+    /// own filter, with its own "Clear".
+    mutating func showAll() {
+        section = nil
+        whatsNew = false
+    }
+
+    /// What "Show all N samples" names: the whole catalogue, banners included.
+    /// `nil` hides the button — under "All", and while searching (Android's
+    /// `activeCategory != null && !searching`).
+    func showAllCount(total: Int) -> Int? {
+        (section != nil || whatsNew) && !searching ? total : nil
+    }
+}
+
 /// Editorial choices of the Showcase home that are not a property of any one
 /// scene (#3907): the "Featured" group and the demos kept off the home list.
 enum HomeCatalogue {
     /// The "Featured" group under the hero, in priority order — the one list
     /// both platforms share since the samples audit (step 0, § 5): only cards
-    /// present and current on Android and iOS. Cosmos is the hero, Placement
-    /// the single AR entry, then Models, Rerun and Materials.
+    /// present and current on Android and iOS. HomeTopSections removes the
+    /// hero before these candidates become banners.
     static let featuredIds: [String] = [
         "cosmos",
         "ar-placement",
@@ -130,8 +196,9 @@ enum HomeCatalogue {
 /// notable rework (`// @updatedIn`), both read from this platform's history,
 /// and the verdict is computed against the running build's version. Nothing
 /// is hardcoded as "new": a declaration ages out on its own two minors
-/// later (`windowMinors`). A demo that is not available on iOS ("Coming soon") is never
-/// marked: there is nothing new to try.
+/// later (`windowMinors`). Declare the release the change will ship in, including
+/// the next version for work merged between releases. A demo that is not
+/// available on iOS ("Coming soon") is never marked: there is nothing new to try.
 enum DemoFreshness: Equatable {
     case new
     case updated
@@ -166,10 +233,9 @@ enum DemoFreshness: Equatable {
         return of(addedIn: item.addedIn, updatedIn: item.updatedIn, buildVersion: buildVersion)
     }
 
-    /// `true` when `version` parses and is not ahead of `buildVersion` — the
-    /// registry rule: work merged between two releases declares the version the
-    /// build already reports, never a guessed next one (a typo such as `4.15.0`
-    /// for `4.51.0`, or `5.0.0`, would pin a chip on a card for good).
+    /// `true` when `version` parses and is not ahead of `buildVersion`.
+    /// This validates the iOS registry against its `MARKETING_VERSION`; the
+    /// freshness comparison itself still treats a future version as recent.
     static func isDeclarable(_ version: String?, buildVersion: String) -> Bool {
         guard let declared = semVer(version), let build = semVer(buildVersion) else { return false }
         return declared.lexicographicallyPrecedes(build) || declared == build

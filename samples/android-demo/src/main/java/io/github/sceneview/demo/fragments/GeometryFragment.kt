@@ -18,7 +18,7 @@ object GeometryFragment : DemoFragment {
         icon = Icons.Filled.Category,
         order = 11,
         addedIn = "4.0.0",
-        updatedIn = "4.52.0",
+        updatedIn = "4.57.0",
         tags = setOf(
             "geometry", "cube", "sphere", "cylinder", "cone", "torus", "capsule", "plane", "primitive",
         ),

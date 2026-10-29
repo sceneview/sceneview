@@ -9,7 +9,7 @@ Get the demo app running on your device in under a minute.
 Clone the repo and run:
 
 ```bash
-git clone https://github.com/sceneview/sceneview.git
+git clone --filter=blob:none https://github.com/sceneview/sceneview.git
 cd sceneview
 ./tools/try-demo.sh
 ```
@@ -18,20 +18,14 @@ That's it. The script builds the demo app and installs it on your connected Andr
 
 !!! tip "Requirements"
     - Android device with **USB debugging** enabled
-    - **Java 17+** installed
+    - **JDK 21+** installed (the demo and the libraries it builds compile to Java 21)
     - **adb** on your PATH (comes with Android Studio)
     - Optional: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
       for JSON UI dumps and LF/CRLF-safe screenshots. **Not for installing** —
       see the warning below.
 
-### Try a specific platform demo
-
-```bash
-./tools/try-demo.sh --sample android-demo       # Full showcase (51 demos: 20 non-AR + 31 AR)
-./tools/try-demo.sh --sample android-tv-demo    # D-pad controlled TV viewer
-```
-
-Run `./tools/try-demo.sh --help` for the full list.
+The script targets the full `:samples:android-demo` showcase. Run
+`./tools/try-demo.sh --help` for its download option.
 
 ---
 
@@ -41,7 +35,7 @@ Run `./tools/try-demo.sh --help` for the full list.
 
 <div class="try-download-card">
 <h3>Android Demo</h3>
-<p>Full showcase: 3 tabs, 51 interactive demos, 48+ node types, animations, physics, post-processing.</p>
+<p>Full showcase: 3 tabs, 41 interactive demos, 48+ node types, animations, physics, post-processing.</p>
 <a href="https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk" class="md-button md-button--primary">
 Download APK
 </a>
@@ -137,7 +131,7 @@ Filament rendering engine, optimized for mobile
 
 ```bash
 # Clone
-git clone https://github.com/sceneview/sceneview.git
+git clone --filter=blob:none https://github.com/sceneview/sceneview.git
 cd sceneview
 
 # Build just the demo

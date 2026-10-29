@@ -52,7 +52,7 @@ import org.robolectric.annotation.GraphicsMode
  *    bottom edge, not a second clearance above it.
  *
  * Robolectric reports no window inset, so `safeDrawing` contributes 0 dp throughout. The card
- * renders in inspection mode, its resting pose, as in `ARCoachingOverlaySnapshotTest`.
+ * renders in inspection mode, its resting pose.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")

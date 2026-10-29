@@ -8,27 +8,56 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 ### Prerequisites
 
-- **JDK 17** (for Android/KMP modules)
-- **Android Studio** (latest stable recommended)
-- **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor)
-- **bash, python3 and curl** on the `PATH` — every demo and website build runs
-  `tools/fetch-assets.sh` (see [Assets](#assets)). On macOS they come with the
-  Command Line Tools (`xcode-select --install`); on Windows, build from WSL.
+- **JDK 21** for the root Gradle build. `sceneview`, `arsceneview` and the Android demos
+  it includes (`samples/android-demo`, `android-tv-demo`, `android-auto-demo`) compile to
+  Java 21 (`JavaVersion.VERSION_21`, `JvmTarget.JVM_21`, e.g. `sceneview/build.gradle`) and
+  declare no JVM toolchain, so the JDK that runs Gradle compiles them.
+  `sceneview-compose` and `samples/desktop-demo` declare `jvmToolchain(21)`: Gradle uses an
+  installed JDK 21, or downloads one through the foojay resolver in `settings.gradle`.
+  The Flutter plugin and demo and the React Native module are separate Gradle builds that
+  target Java 17 (`flutter/sceneview_flutter/android/build.gradle`,
+  `react-native/react-native-sceneview/android/build.gradle.kts`); CI builds the Flutter
+  job with JDK 17.
+- **Android Studio** with an Android Gradle Plugin 9.4 release (the build uses AGP 9.4.1,
+  `gradle/libs.versions.toml`)
+- **Xcode 16+** (for SceneViewSwift / iOS work only — Swift 6 and the iOS 18 floor).
+  CI builds with Xcode 26, falling back to the runner's default `Xcode.app`
+  (`.github/workflows/ios.yml:145-149`), plus a non-blocking Xcode 27 canary job; no job
+  tests Xcode 16.
+- **bash, python3 and curl** on the `PATH` for `tools/fetch-assets.sh`, which the Android,
+  TV and Auto demo builds and the iOS demo build run (see [Assets](#assets)). On macOS
+  they come with the Command Line Tools (`xcode-select --install`); on Windows, build
+  from WSL.
 - Optional but recommended: Google's [`android` CLI](https://developer.android.com/tools/agents/android-cli)
-  for agent-driven QA. Bootstrap in one shot:
-  ```bash
-  bash .claude/scripts/android-env-check.sh --fix
-  ```
-  This installs the binary to `~/.local/bin/android` and registers the SceneView
-  agent skill under `~/.android/cli/skills/xr/sceneview/`, so `android skills list`
-  exposes it to any AI agent on this host.
+  for agent-driven QA.
+
+#### Toolchain by task
+
+Only install what the part you work on needs.
+
+| You work on | You need | Source |
+|---|---|---|
+| Any Android module | Android SDK platform `platforms;android-37.0` (`compileSdk 37`) | `sceneview/build.gradle`, `arsceneview/build.gradle`, `samples/android-demo/build.gradle` |
+| Android demo **release** build | NDK `28.2.13676358` (strips native symbols) | `samples/android-demo/build.gradle` (`ndkVersion`) |
+| `:sceneview-core:allTests`, `sceneview-web` tests | Chrome or Chromium (Karma runs `useChromeHeadless()`) | `sceneview-core/build.gradle.kts:33`, `sceneview-web/build.gradle.kts:33` |
+| Flutter plugin and demo | Flutter 3.10.0 or newer; CI tests 3.41.6 | `flutter/sceneview_flutter/pubspec.yaml` (`environment`), `.github/workflows/ci.yml` (`flutter-demo` job) |
+| MCP server, web demo (`npx http-server`), React Native | Node.js 18 or newer; CI runs Node 20 | `mcp/package.json` (`engines`), `.github/workflows/ci.yml` (`web-desktop` job) |
+
+The demo app's Firebase setup is optional: the Google Services plugin is only applied
+when a `google-services.json` is present, so a fork builds without one
+(`samples/android-demo/build.gradle`).
 
 ### Clone and open
 
 ```bash
-git clone https://github.com/sceneview/sceneview.git
+git clone --filter=blob:none https://github.com/sceneview/sceneview.git
 cd sceneview
 ```
+
+`--filter=blob:none` downloads the full commit history but fetches file contents only
+for the commit you check out (older blobs arrive on demand, e.g. on `git log -p`). The
+repository's history carries large binaries, so this is much faster than a full clone.
+A plain `git clone` also works.
 
 Open the project in Android Studio. Gradle sync will pull all dependencies automatically.
 
@@ -39,15 +68,36 @@ git. They live in the `assets-v1` GitHub Release, listed with their sha256 in
 [`assets/manifest.json`](assets/manifest.json). After cloning, run once:
 
 ```bash
-bash tools/fetch-assets.sh
+bash tools/fetch-assets.sh --scope android
 ```
+
+`--scope android` fetches what the Android demo uses, about 55 MiB. `--scope ios` and
+`--scope tv` also pull the `android` scope (`needs` in the manifest): about 285 MiB and
+85 MiB. The Auto demo adds the `web` scope, about 465 MiB, so a root
+`./gradlew assembleDebug`, which builds every demo, downloads about 550 MiB. Without
+`--scope`, the script fetches every platform's assets, about 780 MiB (iOS and web models
+included).
+
+Some builds run the script themselves, so a plain build of them also works:
+
+- **Gradle**: the `fetchAssets` task runs before `preBuild` and before unit tests in
+  `samples/android-demo` (`--scope android`), `samples/android-tv-demo`
+  (`--scope tv --scope android`) and `samples/android-auto-demo`
+  (`--scope android --scope web`).
+- **Xcode**: the iOS demo's *Fetch assets* build phase runs `--scope ios` before Copy
+  Bundle Resources (`samples/ios-demo/SceneViewDemo.xcodeproj`).
+- **CI**: workflows call it through `.github/actions/fetch-assets`, the website deploy
+  (`docs.yml`) included, with `--scope web`.
+
+The Auto demo's build is the only local run that fetches `--scope web`
+(`website-static/models/platforms`, where its Car Concept lives). Nothing runs it locally
+for the website itself or for the web demo's splat test page (`--scope web-test`): run it
+by hand before serving them. The Flutter and React Native demos use no file from the manifest.
 
 Files are downloaded once into `~/.cache/sceneview-assets/` (shared by every clone and
 worktree, override with `SCENEVIEW_ASSETS_CACHE`), verified, then cloned (APFS / reflink)
-or copied into place. The Android and TV demo builds and the iOS demo's first build phase
-run the same script, so a plain build also works. `--scope android|ios|tv|web` limits
-the fetch, `--check` verifies what is in place. A sparse checkout must include `assets/`
-and `tools/`.
+or copied into place. `--scope android|ios|tv|web|web-test` limits the fetch, `--check`
+verifies what is in place. A sparse checkout must include `assets/` and `tools/`.
 
 To add or replace an asset, put the file at its path and run
 `bash tools/fetch-assets.sh --register <path>`: it updates the manifest and prints the
@@ -318,7 +368,7 @@ bullet(s), prefixed with a category tag:
 - **Short headline ([#1234](https://github.com/sceneview/sceneview/issues/1234)).** What changed and why.
 ```
 
-Recognised categories: `Added`, `Changed`, `Fixed`, `Removed`, `Tests`, `Docs`.
+Recognised categories: `Added`, `Changed`, `Fixed`, `Security`, `Performance`, `Removed`, `Tests`, `Docs`.
 Distinct filenames mean parallel PRs never conflict on the changelog. At release
 time `.claude/scripts/collate-changelog.sh` collates all fragments into a new
 `## vX.Y.Z` section. See [`changelog.d/README.md`](changelog.d/README.md) for
@@ -328,8 +378,8 @@ the full convention.
 as they should read in the release notes — every non-blank line must be a
 top-level `- ` bullet or an indented continuation of one, never a bare
 paragraph. `ci.yml`'s `changelog-lint` job runs
-`.claude/scripts/check-changelog-fragments.sh` on any PR touching
-`changelog.d/**` and fails on a malformed fragment; a paragraph fragment that
+`.claude/scripts/check-changelog-fragments.sh` on the fragments a PR adds or
+modifies (diffed against the merge base) and fails on a malformed one; a paragraph fragment that
 slips past this check would collate cleanly but produce zero highlights in the
 demo's "What's new" card, since it only recognises lines starting with `- `.
 
@@ -413,9 +463,9 @@ correct. Specifically:
   files runs the `android-library-render` job
   (`:sceneview:connectedDebugAndroidTest` on the emulator, #3216); a PR
   touching `samples/web-demo/**` or `sceneview-web/**` runs the advisory
-  `web-render` Playwright job. The demo screenshot and iOS legs are
-  push-to-main + nightly + `workflow_dispatch` only, and on a push each leg
-  runs only when its platform's paths changed. A docs-only PR matches none of
+  `web-render` Playwright job. The iOS leg is push-to-main + nightly +
+  `workflow_dispatch` only, and on a push each leg runs only when its
+  platform's paths changed. A docs-only PR matches none of
   the paths, so the workflow does not run at all.
 - The **`Path filter completed`** job (`changes-verdict` in `ci.yml`) runs
   on every PR whatever it touches, and it is the required check: it resolves
@@ -585,7 +635,7 @@ When adding a new material, pick a profile by deployment target and add an entry
 
 A material change can compile, pass unit tests, and still render wrong (the v4.16.x plane-renderer "white blob", #2224, is the canonical example — three "fixes" shipped before the real cause was found). Compile + unit tests are **not** a visual gate. This is the validated flow, refined while fixing #2224.
 
-**1 — Diagnose & iterate on the shader on a plain Mac, with no ARCore.** ARCore cannot run in an Android emulator on Apple Silicon (x86 needs TCG → ARCore watchdog-timeouts; arm64 has no ARCore camera bridge — see `feedback_arcore_emulator_mac_dead_end` / issue #1645, definitively closed). **But pure Filament rendering works perfectly on the standard arm64 emulator.** So isolate the shader: render the exact committed `.filamat` on a static, hand-built mesh in a **non-AR** `SceneView`, with no ARCore session — the pattern in [`PlaneGridPreviewDemo`](samples/android-demo/src/main/java/io/github/sceneview/demo/demos/PlaneGridPreviewDemo.kt) (debug-only, `adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.DemoHostActivity --es demo_id plane-grid-preview`). Mirror the AR render pipeline: pass `renderQuality = RenderQuality.Performance` (bloom/SSAO **off**, like `ARSceneView`) — the default `SceneView` keeps bloom on, which washes a translucent material into a uniform blob and hides the real output.
+**1 — Diagnose & iterate on the shader on a plain Mac, with no ARCore.** ARCore cannot run in an Android emulator on Apple Silicon (x86 needs TCG → ARCore watchdog-timeouts; arm64 has no ARCore camera bridge — see `feedback_arcore_emulator_mac_dead_end` / issue #1645, definitively closed). **But pure Filament rendering works perfectly on the standard arm64 emulator.** So isolate the shader: render the exact committed `.filamat` on a static, hand-built mesh in a **non-AR** `SceneView`, with no ARCore session — the pattern in [`PlaneGridPreviewDemo`](samples/android-demo/src/debug/java/io/github/sceneview/demo/demos/PlaneGridPreviewDemo.kt) (debug-only, `adb shell am start -n io.github.sceneview.demo.qa/io.github.sceneview.demo.DemoHostActivity --es demo_id plane-grid-preview`). Mirror the AR render pipeline: pass `renderQuality = RenderQuality.Performance` (bloom/SSAO **off**, like `ARSceneView`) — the default `SceneView` keeps bloom on, which washes a translucent material into a uniform blob and hides the real output.
 
 **2 — Pixel-measure, don't eyeball.** Capture `adb exec-out screencap -p`, convert to BMP (`sips -s format bmp`), parse pixels (no ImageMagick on most Macs). Over a known background you can read the actual composite. #2224's root cause was found this way: an unlit `blending: transparent` material that writes a straight (non-premultiplied) `baseColor.rgb` composites as `color + (1-α)·bg` (colour at full strength) instead of `lerp(bg, color, α)`, so capping `α` never reduces the colour. Fix: premultiply in the fragment — `material.baseColor.rgb = <color> * material.baseColor.a;`. A distinguishing test (render with two different `color` values and check the slope) tells premultiplied from straight-add unambiguously.
 

@@ -1,0 +1,7 @@
+{
+  "asset": {"version": "2.0"},
+  "extensionsUsed": ["EXT_texture_webp"],
+  "extensionsRequired": ["EXT_texture_webp"],
+  "images": [{"mimeType": "image/webp", "uri": "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="}],
+  "textures": [{"extensions": {"EXT_texture_webp": {"source": 0}}}]
+}

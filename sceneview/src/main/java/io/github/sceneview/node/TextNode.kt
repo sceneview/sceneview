@@ -15,23 +15,27 @@ import io.github.sceneview.math.Position
  * [BillboardNode] for camera-facing behaviour. The bitmap is re-rendered whenever [text],
  * [fontSize], [textColor], [backgroundColor], or [typeface] changes.
  *
+ * The label faces the camera **only** when it has a [cameraPositionProvider], and then as a full
+ * look-at — front toward the camera position, top toward world `+Y`: yaw and pitch, no roll. The
+ * semantics are [BillboardNode]'s, and [ViewNode]'s.
+ *
  * ### Basic usage
  * ```kotlin
- * SceneView(onFrame = { cameraPos = cameraNode.worldPosition }) {
+ * val cameraNode = rememberCameraNode(engine)
+ * SceneView(cameraNode = cameraNode) {
  *     TextNode(
- *         materialLoader = materialLoader,
  *         text = "Hello 3D!",
  *         fontSize = 48f,
  *         textColor = android.graphics.Color.WHITE,
  *         backgroundColor = 0xCC000000.toInt(),
  *         widthMeters = 0.6f,
  *         heightMeters = 0.2f,
- *         cameraPositionProvider = { cameraPos }
+ *         cameraPositionProvider = { cameraNode.worldPosition }
  *     )
  * }
  * ```
  *
- * ### Rich text with custom typeface
+ * ### Rich text with custom typeface (node class)
  * ```kotlin
  * TextNode(
  *     materialLoader = materialLoader,
@@ -44,7 +48,7 @@ import io.github.sceneview.math.Position
  *     heightMeters = 0.3f,
  *     bitmapWidth = 1024,
  *     bitmapHeight = 256,
- *     cameraPositionProvider = { cameraPos }
+ *     cameraPositionProvider = { cameraNode.worldPosition }
  * )
  * ```
  *
@@ -57,8 +61,9 @@ import io.github.sceneview.math.Position
  *                               custom font families. Default is [Typeface.DEFAULT_BOLD].
  * @param widthMeters            Width of the quad in world-space meters.
  * @param heightMeters           Height of the quad in world-space meters.
- * @param cameraPositionProvider Lambda invoked every frame to obtain the current camera world
- *                               position so the label can face the camera.
+ * @param cameraPositionProvider Initial value of [BillboardNode.cameraPositionProvider]: the camera
+ *                               world position to face, read every frame. `null` (default) leaves
+ *                               the orientation alone.
  * @param bitmapWidth            Resolution width of the rendered bitmap in pixels (default 512).
  * @param bitmapHeight           Resolution height of the rendered bitmap in pixels (default 128).
  */

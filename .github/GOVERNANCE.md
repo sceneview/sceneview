@@ -2,17 +2,19 @@
 
 ## Project Leadership
 
-**Founder & Lead Maintainer:** Thomas Gorisse — see [`@sceneview` org members](https://github.com/orgs/sceneview/people)
+**Creator & Maintainer:** Thomas Gorisse — see [`@sceneview` org members](https://github.com/orgs/sceneview/people)
+
+Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR
 
 ## Decision Making
 
-SceneView uses a benevolent dictator model. Major decisions are made by the lead maintainer with input from the community.
+SceneView uses a benevolent dictator model. Major decisions are made by the maintainer with input from the community.
 
 ### How Decisions Are Made
 
 1. **Features & Roadmap** — Discussed in GitHub Issues and Discord. The roadmap is published in [ROADMAP.md](../ROADMAP.md).
 2. **Code Changes** — All changes go through Pull Requests with code review.
-3. **Releases** — Managed by the lead maintainer following semantic versioning.
+3. **Releases** — Managed by the maintainer following semantic versioning.
 4. **Breaking Changes** — Announced in advance, documented in [MIGRATION.md](../MIGRATION.md).
 
 ## Contributing
@@ -33,8 +35,12 @@ All participants are expected to follow our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Funding
 
-SceneView is funded through:
-- [Open Collective](https://opencollective.com/sceneview)
-- [GitHub Sponsors](https://github.com/sponsors/sceneview)
+SceneView is funded through [Open Collective](https://opencollective.com/sceneview),
+or through [GitHub Sponsors](https://github.com/sponsors/sceneview). Its funds are held by
+Open Source Collective, the fiscal host, and every contribution and every expense is on
+the public ledger there.
 
-Funding supports development time, infrastructure, and community management.
+Funding pays for what the project consumes: build and test infrastructure, test devices,
+maintenance tooling and security work. A sponsorship is a contribution and a public
+thank-you. It gives no say in project decisions and no priority on issues or pull
+requests. See [SPONSORS.md](SPONSORS.md).

@@ -99,21 +99,29 @@ object DemoSettings {
      *  - Cloud Anchors: [io.github.sceneview.demo.demos.internal.cloudAnchorScenarioOf]
      *    (`placing`, `hosted`, `resolve_not_found`, …);
      *  - Point & Ask: [io.github.sceneview.demo.ai.askStepForQaOverride], ids listed in
-     *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …).
+     *    [io.github.sceneview.demo.ai.ASK_QA_STATE_IDS] (`ready`, `streaming`, `failed`, …);
+     *  - Home: [io.github.sceneview.demo.ui.home.HERO_STILL_QA_STATE] (`hero_still`), the
+     *    still its stage shows on a renderer Filament cannot run on (#4411);
+     *  - Pool in the garden: [io.github.sceneview.demo.demos.POOL_MINIATURE_QA_STATE]
+     *    (`pool_miniature`), the pool at a sixth of its size so it fits an indoor recording,
+     *    and [io.github.sceneview.demo.demos.POOL_PREVIEW_QA_STATE] (`pool_preview`), the
+     *    placed pool over the backdrop photo without an AR session, to judge its look.
      *
      * Set only through [io.github.sceneview.demo.DeepLinkRouter.resolveQaState], which
-     * returns `null` unless [qaMode] is on, and only read where
-     * [io.github.sceneview.demo.common.qaStateOverridesAllowed] is honoured — so a release
-     * build cannot be steered into a fake state by an intent, and toggling QA mode off from
-     * the sheet drops the pin at once.
+     * returns `null` unless this is a debug build with [qaMode] on, and only read where
+     * [io.github.sceneview.demo.common.qaStateOverridesAllowed] — the same two conditions —
+     * is honoured. So a release build cannot be steered into a fake state by an intent,
+     * whatever `qa_mode` says (#4555), and toggling QA mode off from the sheet drops the pin
+     * at once.
      */
     var qaDemoState: String? by mutableStateOf(null)
 
     /**
      * A SceneView scan file (`.svscan`) handed over by another app ("Open with" / Share), for the
-     * Rerun demo to read into "Your sessions" and replay. The demo clears it once read.
+     * Rerun demo to read into "Your sessions" and replay. Addressed to the one activity the
+     * intent reached, which clears it once read ([io.github.sceneview.demo.demos.RerunInbox]).
      */
-    var rerunInbox: android.net.Uri? by mutableStateOf(null)
+    var rerunInbox: io.github.sceneview.demo.demos.RerunInboxDelivery? by mutableStateOf(null)
 
     /**
      * Optional camera-to-model distance, in metres, the 3D demos should frame the model at
@@ -152,7 +160,7 @@ object DemoSettings {
      * Incremented once per `onSessionUpdated` callback (one ARCore frame each).
      *
      * This is the **deterministic timing signal** for frame-indexed screenshot
-     * regression — `ARPlaybackScreenshotTest` polls this counter and fires a
+     * regression — `ar-replay-qa.sh` and `ARReplayHarnessTest` poll this counter and fire a
      * capture exactly when the desired frame index is reached, instead of
      * `Thread.sleep(...)` against wall-clock (which drifts with emulator load —
      * see issue [#1050](https://github.com/sceneview/sceneview/issues/1050),

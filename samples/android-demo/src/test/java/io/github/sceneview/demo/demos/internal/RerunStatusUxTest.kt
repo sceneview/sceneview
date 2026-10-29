@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 /**
  * JVM tests for the Rerun Debug demo's on-screen copy (#3831): the demo used to open on
@@ -33,7 +34,7 @@ class RerunStatusUxTest {
 
     @Test
     fun `while connected the status counts what reached the computer`() {
-        val ux = rerunStatusUx(isConnected = true, eventsSent = 1204, eventsPerSecond = 10f)
+        val ux = rerunStatusUx(isConnected = true, eventsSent = 1204, eventsPerSecond = 10f, locale = Locale.US)
         assertTrue(ux.live)
         assertEquals("Streaming to your computer", ux.title)
         assertEquals("1,204 events sent · 10 per second", ux.detail)

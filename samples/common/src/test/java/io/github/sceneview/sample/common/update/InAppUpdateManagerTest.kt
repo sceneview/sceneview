@@ -1,6 +1,9 @@
 package io.github.sceneview.sample.common.update
 
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ResolveInfo
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
@@ -26,6 +29,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import java.util.concurrent.Executor
 
 /**
@@ -627,30 +631,153 @@ class InAppUpdateManagerTest {
         assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, manager.updateState)
     }
 
+    /** The "Update failed: …" lines the manager left in logcat. */
+    private fun failureLogs(): List<String> =
+        ShadowLog.getLogsForTag("InAppUpdate").map { it.msg }.filter { it.startsWith("Update failed") }
+
     @Test
-    fun `a failed download lands on FAILED, and retry starts a fresh flow`() {
+    fun `a failed download lands on FAILED, logs its error code, and opens the Play Store listing`() {
         resumeAndTapUpdate()
         fake.userAcceptsUpdate()
         fake.downloadStarts()
         fake.downloadFails()
         shadowOf(activity.mainLooper).idle()
         assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
+        val logs = failureLogs()
+        assertEquals(1, logs.size)
+        assertTrue(logs.single(), logs.single().contains("installErrorCode="))
 
-        // A resume while "Update failed · Retry" is up leaves it alone.
+        // A resume while "Update failed · Open Play Store" is up leaves it alone.
         manager.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
         assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
 
-        manager.retry()
-        assertEquals(InAppUpdateManager.UpdateState.PENDING, manager.updateState)
-        shadowOf(activity.mainLooper).idle()
-        assertTrue(fake.isConfirmationDialogVisible)
+        manager.openStoreListing()
 
-        fake.userAcceptsUpdate()
-        fake.downloadStarts()
-        fake.downloadCompletes()
+        // The Play Store app's listing of this very package; the failure is over.
+        val opened = shadowOf(activity).nextStartedActivity
+        assertEquals(Intent.ACTION_VIEW, opened.action)
+        assertEquals("market://details?id=${activity.packageName}", opened.dataString)
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
+    }
+
+    @Test
+    fun `without the Play Store app the listing opens on the web`() {
+        val app = RuntimeEnvironment.getApplication()
+        shadowOf(app).checkActivities(true)
+        val web = storeListingIntents(activity.packageName)[1]
+        shadowOf(app.packageManager).addResolveInfoForIntent(
+            web,
+            ResolveInfo().apply {
+                activityInfo = ActivityInfo().apply {
+                    packageName = "com.example.browser"
+                    name = "com.example.browser.Main"
+                }
+            },
+        )
+        resumeAndTapUpdate()
+        manager.onUpdateFlowResult(ActivityResult(RESULT_IN_APP_UPDATE_FAILED, null))
+
+        manager.openStoreListing()
+
+        val opened = shadowOf(activity).nextStartedActivity
+        assertEquals(
+            "https://play.google.com/store/apps/details?id=${activity.packageName}",
+            opened.dataString,
+        )
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, manager.updateState)
+    }
+
+    @Test
+    fun `openStoreListing is a no-op unless the update failed`() {
+        fake.setUpdateAvailable(42)
+        manager.checkForUpdate()
         shadowOf(activity.mainLooper).idle()
-        assertEquals(InAppUpdateManager.UpdateState.READY_TO_INSTALL, manager.updateState)
+
+        manager.openStoreListing()
+
+        assertNull(shadowOf(activity).nextStartedActivity)
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, manager.updateState)
+    }
+
+    // ---- The installer gate: Play can only update a build it installed ----
+
+    @Test
+    fun `only the Play Store counts as an installer Play can update`() {
+        assertTrue(isPlayInstaller("com.android.vending"))
+        assertFalse(isPlayInstaller(null)) // sideloaded APK
+        assertFalse(isPlayInstaller("com.google.android.packageinstaller"))
+        assertFalse(isPlayInstaller("com.android.shell")) // adb install
+        assertFalse(isPlayInstaller("com.amazon.venezia"))
+    }
+
+    @Test
+    fun `isInstalledByPlay reads the install source`() {
+        val app = RuntimeEnvironment.getApplication()
+        val packageManager = shadowOf(app.packageManager)
+        packageManager.setInstallSourceInfo(app.packageName, null, null)
+        assertFalse(isInstalledByPlay(app))
+        packageManager.setInstallSourceInfo(app.packageName, "com.android.vending", "com.android.vending")
+        assertTrue(isInstalledByPlay(app))
+    }
+
+    @Test
+    @Config(sdk = [29])
+    fun `isInstalledByPlay reads the installer package below API 30`() {
+        val app = RuntimeEnvironment.getApplication()
+        // Robolectric backs the (deprecated) public setter with the same store the getter reads.
+        @Suppress("DEPRECATION")
+        val packageManager = app.packageManager
+        packageManager.setInstallerPackageName(app.packageName, null)
+        assertFalse(isInstalledByPlay(app))
+        packageManager.setInstallerPackageName(app.packageName, "com.android.vending")
+        assertTrue(isInstalledByPlay(app))
+    }
+
+    @Test
+    fun `a build Play did not install is never offered the update, and Play is never asked`() {
+        val executor = CountingExecutor()
+        var asked = 0
+        val sideloaded = InAppUpdateManager(
+            activity,
+            { fake },
+            executor,
+            UpdateCheckThrottle(minIntervalMillis = 0L),
+            installedByPlayCheck = { asked++; false },
+        )
+        fake.setUpdateAvailable(42)
+
+        sideloaded.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+        sideloaded.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertEquals(InAppUpdateManager.UpdateState.IDLE, sideloaded.updateState)
+        assertEquals("no Play round-trip", 0, executor.runs)
+        assertEquals("the installer is read once", 1, asked)
+        sideloaded.startUpdate()
+        assertFalse(fake.isConfirmationDialogVisible)
+        sideloaded.destroy()
+    }
+
+    @Test
+    fun `a build Play installed is offered the update`() {
+        val executor = CountingExecutor()
+        val fromPlay = InAppUpdateManager(
+            activity,
+            { fake },
+            executor,
+            UpdateCheckThrottle(minIntervalMillis = 0L),
+            installedByPlayCheck = { true },
+        )
+        fake.setUpdateAvailable(42)
+
+        fromPlay.checkForUpdate()
+        shadowOf(activity.mainLooper).idle()
+
+        assertEquals(InAppUpdateManager.UpdateState.AVAILABLE, fromPlay.updateState)
+        assertEquals(1, executor.runs)
+        fromPlay.destroy()
     }
 
     @Test
@@ -673,6 +800,7 @@ class InAppUpdateManagerTest {
         resumeAndTapUpdate()
         manager.onUpdateFlowResult(ActivityResult(RESULT_IN_APP_UPDATE_FAILED, null))
         assertEquals(InAppUpdateManager.UpdateState.FAILED, manager.updateState)
+        assertEquals(listOf("Update failed: consent flow failed, resultCode=$RESULT_IN_APP_UPDATE_FAILED"), failureLogs())
     }
 
     @Test
@@ -719,6 +847,7 @@ class InAppUpdateManagerTest {
         recorded.startUpdate()
 
         assertEquals(InAppUpdateManager.UpdateState.FAILED, recorded.updateState)
+        assertEquals(listOf("Update failed: startUpdateFlowForResult returned false"), failureLogs())
         recorded.destroy()
     }
 

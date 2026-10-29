@@ -1,7 +1,7 @@
 # SceneView Desktop Demo
 
 Compose Desktop consumer of `sceneview-compose` `SceneViewer`. Filament is
-behind the façade (filament-kmp, offscreen → Skia). **JDK 22+**.
+behind the façade (filament-kmp, offscreen → Skia). **JDK 21+**.
 
 ```kotlin
 SceneViewer(model = ModelSource.Bytes(glb), modifier = Modifier.fillMaxSize())
@@ -13,7 +13,9 @@ SceneViewer(model = ModelSource.Bytes(glb), modifier = Modifier.fillMaxSize())
 ./gradlew :samples:desktop-demo:run
 ```
 
-`--enable-native-access=ALL-UNNAMED` is already set (FFM).
+Gradle picks a JDK 21 toolchain for the run (and downloads one into `~/.gradle/jdks`
+if none is installed). No JVM flag is needed: filament-kmp 0.7+ loads its natives
+through JNI.
 
 ## Attribution
 

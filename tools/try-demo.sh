@@ -3,13 +3,12 @@
 #  SceneView Demo — one-click installer
 #
 #  Usage:
-#    ./try-demo              # Build & install the demo app
-#    ./try-demo --download   # Download latest APK from GitHub Releases
-#    ./try-demo --sample ar-model-viewer   # Build & install a specific sample
+#    ./tools/try-demo.sh              # Build & install the Android demo app
+#    ./tools/try-demo.sh --download   # Download latest APK from GitHub Releases
 #
 #  Requirements:
 #    - Android device connected via USB/Wi-Fi with USB debugging ON
-#    - Java 17+ (for local build)
+#    - Java 21+ (for local build)
 #    - `adb` on PATH (comes with Android SDK platform-tools) — required.
 #    - Google's `android` CLI is OPTIONAL, and used only for JSON layouts and
 #      LF/CRLF-safe screenshots. NOT for installing: its `android run` has a
@@ -40,8 +39,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
-DEMO_MODULE=":samples:sceneview-demo"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEMO_MODULE=":samples:android-demo"
 # Two ids, one per mode. `--download` installs the GitHub Release APK, which
 # build-apks.yml builds with `-PdemoPlainDebug=true`: the plain public demo,
 # DEMO_PKG. A local build is a debug build without that flag, which installs as
@@ -220,58 +219,24 @@ launch_app() {
   echo ""
 }
 
-# ── Sample name → Gradle module mapping ──
-sample_to_module() {
-  local sample="$1"
-  case "$sample" in
-    demo|sceneview-demo)       echo ":samples:sceneview-demo" ;;
-    model-viewer)              echo ":samples:model-viewer" ;;
-    ar-model-viewer)           echo ":samples:ar-model-viewer" ;;
-    ar-augmented-image)        echo ":samples:ar-augmented-image" ;;
-    ar-cloud-anchor)           echo ":samples:ar-cloud-anchor" ;;
-    ar-point-cloud)            echo ":samples:ar-point-cloud" ;;
-    camera-manipulator)        echo ":samples:camera-manipulator" ;;
-    gltf-camera)               echo ":samples:gltf-camera" ;;
-    autopilot-demo)            echo ":samples:autopilot-demo" ;;
-    physics-demo)              echo ":samples:physics-demo" ;;
-    dynamic-sky)               echo ":samples:dynamic-sky" ;;
-    line-path)                 echo ":samples:line-path" ;;
-    text-labels)               echo ":samples:text-labels" ;;
-    reflection-probe)          echo ":samples:reflection-probe" ;;
-    post-processing)           echo ":samples:post-processing" ;;
-    *)
-      echo -e "${RED}Unknown sample: $sample${RESET}" >&2
-      echo "Available: demo, model-viewer, ar-model-viewer, camera-manipulator," >&2
-      echo "  gltf-camera, autopilot-demo, physics-demo, dynamic-sky, line-path," >&2
-      echo "  text-labels, reflection-probe, post-processing, ar-augmented-image," >&2
-      echo "  ar-cloud-anchor, ar-point-cloud" >&2
-      exit 1
-      ;;
-  esac
-}
-
 # ── Main ──
 banner
 
 MODE="build"
-SAMPLE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --download|-d)  MODE="download"; shift ;;
-    --sample|-s)    SAMPLE="$2"; shift 2 ;;
     --help|-h)
-      echo "Usage: ./try-demo [OPTIONS]"
+      echo "Usage: ./tools/try-demo.sh [OPTIONS]"
       echo ""
       echo "Options:"
       echo "  --download, -d          Download latest APK from GitHub Releases"
-      echo "  --sample, -s NAME       Build a specific sample (e.g. ar-model-viewer)"
       echo "  --help, -h              Show this help"
       echo ""
       echo "Examples:"
-      echo "  ./try-demo                          # Build & install the demo app"
-      echo "  ./try-demo --download               # Download pre-built APK"
-      echo "  ./try-demo --sample physics-demo    # Try the physics sample"
+      echo "  ./tools/try-demo.sh                 # Build & install the demo app"
+      echo "  ./tools/try-demo.sh --download      # Download pre-built APK"
       exit 0
       ;;
     *) echo -e "${RED}Unknown option: $1${RESET}"; exit 1 ;;
@@ -282,11 +247,6 @@ check_device
 
 if [[ "$MODE" == "download" ]]; then
   download_and_install
-elif [[ -n "$SAMPLE" ]]; then
-  module=$(sample_to_module "$SAMPLE")
-  # Derive package from sample name
-  sample_pkg="io.github.sceneview.sample.${SAMPLE//-/.}"
-  build_and_install "$module" "$sample_pkg" "${sample_pkg}.MainActivity"
 else
   build_and_install
 fi

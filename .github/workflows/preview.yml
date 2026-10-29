@@ -54,7 +54,7 @@ on:
         default: home,model-viewer
   pull_request:
     branches: [main]
-    types: [labeled, synchronize, reopened]
+    types: [labeled]
 
 # Concurrency is per JOB, not per workflow: adding `preview` and `preview-ios`
 # together fires two `labeled` events, and a workflow-level group let the

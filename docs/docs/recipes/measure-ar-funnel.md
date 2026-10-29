@@ -51,6 +51,12 @@ changes**, so it is already de-duplicated — no per-frame guard needed. The fir
 "tracking ready"; every non-`null` is a stall with a named cause.
 
 ```kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+
 @Composable
 fun ArScreen(funnel: ArFunnel) {
     val engine = rememberEngine()
@@ -58,6 +64,7 @@ fun ArScreen(funnel: ArFunnel) {
     val modelInstance = rememberModelInstance(modelLoader, "models/toy_car.glb")
 
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     var everTracked by remember { mutableStateOf(false) }
 
     ARSceneView(
@@ -66,6 +73,7 @@ fun ArScreen(funnel: ArFunnel) {
         modelLoader = modelLoader,
         planeRenderer = true,
         onSessionCreated = { funnel.log("ar_session_created") },
+        onSessionUpdated = { _, frame -> latestFrame = frame },
         onTrackingFailureChanged = { reason ->
             if (reason == null) {
                 // First null = the session reached a usable state. Later nulls are
@@ -77,17 +85,22 @@ fun ArScreen(funnel: ArFunnel) {
                 funnel.log("ar_tracking_lost", mapOf("reason" to reason.name))
             }
         },
-        onTouchEvent = { _, hitResult ->
-            // Your own tap handler — SceneView never places anything for you, so this
-            // is the only place that knows a placement happened.
-            if (anchor == null) {
-                hitResult?.createAnchorOrNull()?.let {
-                    anchor = it
-                    funnel.log("ar_first_placement")
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { event, node ->
+                // Your own tap handler — SceneView never places anything for you, so this
+                // is the only place that knows a placement happened. A confirmed tap on
+                // empty space, not a raw ACTION_UP that also ends every drag and pinch.
+                if (node == null && anchor == null) {
+                    latestFrame?.hitTest(event)
+                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                        ?.createAnchorOrNull()
+                        ?.let {
+                            anchor = it
+                            funnel.log("ar_first_placement")
+                        }
                 }
             }
-            false // let SceneView keep handling the gesture
-        },
+        ),
         onSessionFailure = { failure ->
             // Typed, so the label is stable across ARCore versions and you can route
             // "install ARCore" separately from "device not supported".

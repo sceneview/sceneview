@@ -148,6 +148,7 @@ internal object RrdStream {
         var position = HEADER_SIZE
         val chunks = ArrayList<RrdChunk>()
         while (position < bytes.count) {
+            if (endsInsideFooter(bytes, position)) return chunks
             val kind = bytes.u64(position)
             val length = bytes.u64(position + 8)
             position += MESSAGE_HEADER_SIZE
@@ -166,6 +167,18 @@ internal object RrdStream {
             }
         }
         return chunks
+    }
+
+    /**
+     * Whether the data stops inside the `End` message at [position] — the footer, written last. Every
+     * chunk comes before it, so such a file reads like one without footer. An `End` header is told
+     * from its first byte alone: the kind is `0`, and no other message's starts with a zero byte.
+     */
+    private fun endsInsideFooter(bytes: RrdBytes, position: Int): Boolean {
+        val left = bytes.count - position
+        if (left < MESSAGE_HEADER_SIZE) return bytes.u8(position) == 0
+        val length = bytes.u64(position + 8)
+        return bytes.u64(position) == KIND_END && length > left - MESSAGE_HEADER_SIZE
     }
 
     /**

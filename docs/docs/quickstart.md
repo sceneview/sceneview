@@ -12,9 +12,94 @@ description: "Set up SceneView in your Android project in 10 minutes. Add a 3D m
 
 ## Prerequisites
 
-- **Android Studio Ladybug** (2024.2.1) or newer
-- An Android device or emulator running **API 24+**
+- An Android Studio release that supports **Android Gradle Plugin 9.4** and **JDK 21**
+- An Android device or emulator running **API 24+** with OpenGL ES 3.0
 - Basic familiarity with Kotlin and Jetpack Compose
+
+## Requirements
+
+SceneView 4.63.0 sets these floors on the app that depends on it.
+
+| Setting | Value | Why |
+|---|---|---|
+| `compileSdk` | **37** | The published AARs declare `minCompileSdk=37`; `checkDebugAarMetadata` fails below it. |
+| `minSdk` | **24** or higher | The SDK's own `minSdk`. |
+| Android Gradle Plugin | **9.4.0** or newer | The first AGP that officially supports `compileSdk 37`. SceneView itself builds with AGP 9.4.1. |
+| Kotlin | **2.4** | SceneView is compiled with Kotlin 2.4.21 and depends on `kotlin-stdlib` 2.4.21. |
+| JVM target (Java and Kotlin) | **21** | SceneView and its `kotlin-math` dependency ship Java 21 bytecode with public `inline` functions. Any `Position`/`Float3` arithmetic inlines them, and Kotlin refuses to inline JVM 21 bytecode into a lower target. |
+| JDK | **21** or newer | Needed to compile Java at target 21. JVM unit tests that load SceneView classes also need a JDK 21 runtime. |
+
+In the app module's `build.gradle.kts`:
+
+```kotlin
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+android {
+    compileSdk = 37
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+    }
+}
+```
+
+### Permissions the SDK adds
+
+The `sceneview` library declares `INTERNET` (to load models from a URL) and `VIBRATE` (for
+haptic feedback); both merge into your app's manifest. They are normal permissions, granted at
+install time with no prompt. An app that does not want one removes it with
+`tools:node="remove"`:
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />
+</manifest>
+```
+
+`arsceneview` also declares `CAMERA`, so an AR app does not need to declare it again.
+
+### AR manifest
+
+`arsceneview` declares `com.google.ar.core` as `optional` in its own manifest. It leaves the
+camera features to the app.
+
+- **AR Optional** (the app also works without AR): declare the AR camera and the camera as
+  optional features. Without them, the `CAMERA` permission implies a required camera.
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+</manifest>
+```
+
+- **AR Required** (the app cannot run without ARCore): override the library's value with
+  `tools:replace`. Without it, the manifest merger fails.
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+    <application>
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required"
+            tools:replace="android:value" />
+    </application>
+</manifest>
+```
 
 ---
 
@@ -24,6 +109,8 @@ description: "Set up SceneView in your Android project in 10 minutes. Add a 3D m
 2. Choose the **Empty Activity** template (the one that generates a `ComponentActivity` with `setContent`).
 3. Set the minimum SDK to **API 24**.
 4. Finish the wizard and let Gradle sync.
+5. Apply the [Requirements](#requirements) above to the app module: `compileSdk = 37` and JVM
+   target 21.
 
 You should have a working Compose app that displays "Hello Android" or similar.
 
@@ -35,7 +122,7 @@ Open your **app-level** `build.gradle.kts` and add SceneView:
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:sceneview:4.52.0")
+    implementation("io.github.sceneview:sceneview:4.63.0")
 }
 ```
 

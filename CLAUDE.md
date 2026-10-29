@@ -9,8 +9,8 @@ API or fix the doc until it can.
 | Module | Purpose |
 |---|---|
 | `sceneview-core/` | KMP — collision, math, geometry, animation, physics |
-| `sceneview/` | Android 3D — `Scene`, `SceneScope`, node types (Filament) |
-| `arsceneview/` | Android AR — `ARScene`, ARCore |
+| `sceneview/` | Android 3D — `SceneView`, `SceneScope`, node types (Filament) |
+| `arsceneview/` | Android AR — `ARSceneView`, ARCore |
 | `sceneview-compose/` | Compose Multiplatform façade — viewer subset, no AR |
 | `sceneview-web/` | Kotlin/JS + Filament.js (WebGL2/WASM) |
 | `SceneViewSwift/` | Apple 3D+AR — RealityKit (iOS/macOS/visionOS) |

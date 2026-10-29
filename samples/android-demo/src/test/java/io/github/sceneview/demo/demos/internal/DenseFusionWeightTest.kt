@@ -57,6 +57,17 @@ class DenseFusionWeightTest {
     }
 
     @Test
+    fun `two once-seen voxels from different frames survive when compaction merges them`() {
+        val fusion = DenseFusion(maxPoints = 10, maxLevel = 1)
+        // The two frames alternate fine voxels, so level 1 merges every adjacent pair.
+        fusion.add(samples(FloatArray(4 * 3) { if (it % 3 == 0) (it / 3 * 2) * 0.02f + 0.001f else 0f }))
+        fusion.add(samples(FloatArray(4 * 3) { if (it % 3 == 0) (it / 3 * 2 + 1) * 0.02f + 0.001f else 0f }))
+
+        assertEquals(4, fusion.count)
+        assertEquals(4, fusion.cloud(minViews = DenseFusion.MIN_VIEWS).count)
+    }
+
+    @Test
     fun `a capped cloud keeps the whole room, thinner, not the corner scanned first`() {
         val fusion = DenseFusion()
         // 100 voxels along x, 10 cm apart, each seen by two frames.

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 /**
  * Pins the timeline of the Rerun demo's in-app 3D view (#3950): live by default, a scrub pauses
@@ -67,6 +68,27 @@ class ArDebugSessionTest {
     }
 
     @Test
+    fun `a session played without the 3D view counts where its cursor stands`() {
+        val session = ArDebugSession(tenSeconds())
+        // Nothing has drawn it yet: the timeline has no length to scrub.
+        assertEquals(0f, session.stats.duration, 0f)
+        session.scrubTo(4f)
+        session.count(session.trace.frameAt(session.time))
+
+        assertEquals(10f, session.stats.duration, 1e-3f)
+        assertEquals(4f, session.stats.time, 1e-3f)
+        // 2 cm every tenth of a second: 80 cm walked in four seconds.
+        assertEquals(0.8f, session.stats.pathMetres, 1e-3f)
+        assertTrue(session.stats.tracking)
+        assertEquals(null, session.stats.room)
+
+        session.scrubTo(9f)
+        session.count(session.trace.frameAt(session.time), points = 1234, floorY = 0f)
+        assertEquals(9f, session.stats.time, 1e-3f)
+        assertEquals(1234, session.stats.mapPoints)
+    }
+
+    @Test
     fun `a frame hitch does not jump the replay`() {
         val session = ArDebugSession(tenSeconds())
         session.scrubTo(1f)
@@ -108,9 +130,9 @@ class ArDebugSessionTest {
 
         assertEquals("0 m", ArDebugFormat.distance(0f))
         assertEquals("42 cm", ArDebugFormat.distance(0.42f))
-        assertEquals("14.2 m", ArDebugFormat.distance(14.236f))
-        assertEquals("1,234 m", ArDebugFormat.distance(1234.5f))
+        assertEquals("14.2 m", ArDebugFormat.distance(14.236f, Locale.US))
+        assertEquals("1,234 m", ArDebugFormat.distance(1234.5f, Locale.US))
 
-        assertEquals("3,812", ArDebugFormat.count(3812))
+        assertEquals("3,812", ArDebugFormat.count(3812, Locale.US))
     }
 }

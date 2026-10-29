@@ -8,10 +8,10 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 !!! tip "Looking for Android samples?"
     See [Samples](samples.md) for Jetpack Compose sample apps with source code.
 
-These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **34 demos** covering every category.
+These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **35 demos** covering every category.
 
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.52.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")
 ```
 
 All demo source files live in
@@ -35,7 +35,7 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 
 | Demo | Source | What it shows |
 |---|---|---|
-| Lighting | [`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift) | One card, three rigs: Image (HDR environments), Studio (key, fill, rim), Sun (time of day) |
+| Lighting | [`LightTypesDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightTypesDemo.swift) | One card, three rigs: Image (HDR environments, intensity, sky), Studio (key, fill, rim), Sun (time of day); a sunset reflection probe with a camera zone under every rig |
 
 ### Content
 
@@ -62,7 +62,6 @@ The iOS demo app organises all samples under six categories, mirroring the Andro
 | Custom Mesh | [`CustomMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/CustomMeshDemo.swift) | `MeshNode.fromVertices` — raw vertex data |
 | PBR Materials | [`MaterialsDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/MaterialsDemo.swift) | Full PBR material parameter explorer; an Occlusion mode hides entities behind an occluder plane ([`OcclusionMaterialDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/OcclusionMaterialDemo.swift)) |
 | Spatial Audio | [`SpatialAudioDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/SpatialAudioDemo.swift) | `SpatialAudioNode` — positional audio tied to scene entities |
-| Lighting Lab | [`LightingLabDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/LightingLabDemo.swift) | Environment intensity, sky, sunset reflection probe with a camera zone |
 | Shape Extrude | [`ShapeExtrudeDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ShapeExtrudeDemo.swift) | `ShapeNode` — extrude a 2D path into a 3D solid |
 | Debug Overlay | [`DebugOverlayDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/DebugOverlayDemo.swift) | Live FPS counter + sphere stress test |
 
@@ -87,7 +86,7 @@ not AR-session playback), which replaced the former AR Recording card.
 | AR People Occlusion | [`ARPeopleOcclusionDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARPeopleOcclusionDemo.swift) | The same bundled helmet and placement flow; toggle person occlusion without restarting tracking |
 | Body anchor tracking | [`ARBodyTrackerDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARBodyTrackerDemo.swift) | Follow a detected body anchor — anchor pose, not per-joint data |
 | AR Scene Mesh | [`ARSceneMeshDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/ARSceneMeshDemo.swift) | LiDAR scene reconstruction mesh |
-| Rerun AR Replay | [`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift) | Record a room, replay it in 3D, and export it to `.rrd`, `.glb`, `.usdz` and `.ply` |
+| 3D Scan | [`RerunShowcaseDemo.swift`](https://github.com/sceneview/sceneview/blob/main/samples/ios-demo/SceneViewDemo/Views/Demos/Rerun/RerunShowcaseDemo.swift) | Scan a space, replay it in 3D, and export it to `.rrd`, `.glb`, `.usdz` and `.ply` |
 
 ---
 

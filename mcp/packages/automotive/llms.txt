@@ -42,7 +42,7 @@
 
 ## Built on SceneView SDK
 
-- Android: `io.github.sceneview:sceneview:4.0.0` (Jetpack Compose + Filament)
+- Android: `io.github.sceneview:sceneview:4.53.0` (Jetpack Compose + Filament)
 - iOS: SceneViewSwift via SPM (SwiftUI + RealityKit)
 - Web: `sceneview-web` (Kotlin/JS + Filament.js)
 

@@ -62,6 +62,29 @@ describe("COLLISION_GUIDE", () => {
     expect(COLLISION_GUIDE).toContain("ARScene");
   });
 
+  it("taps a node through apply { onSingleTapConfirmed }, never by assigning onTouchEvent", () => {
+    expect(COLLISION_GUIDE).toContain("apply = {");
+    expect(COLLISION_GUIDE).toContain("onSingleTapConfirmed = { _ ->");
+    expect(COLLISION_GUIDE).not.toMatch(/onTouchEvent\s*=\s*\{\s*hitResult/);
+    expect(COLLISION_GUIDE).not.toContain("nodes are not touchable by default");
+  });
+
+  it("fills the AR tap-to-place example with a confirmed tap on empty space", () => {
+    const ar = COLLISION_GUIDE.slice(
+      COLLISION_GUIDE.indexOf("## AR Hit Testing"),
+      COLLISION_GUIDE.indexOf("## Collision Detection")
+    );
+    expect(ar).toContain("onSessionUpdated = { _, frame -> latestFrame = frame }");
+    expect(ar).toContain("onSingleTapConfirmed = { event, node ->");
+    expect(ar).toContain("if (node == null)");
+    expect(ar).toContain("?.createAnchorOrNull()");
+    expect(ar).toContain("AnchorNode(anchor = a)");
+    expect(ar).not.toContain("onTouchEvent = {");
+    expect(ar).toContain("import com.google.ar.core.Plane\n");
+    expect(ar).toContain("import io.github.sceneview.ar.arcore.createAnchorOrNull\n");
+    expect(ar).toContain("import io.github.sceneview.rememberOnGestureListener\n");
+  });
+
   it("contains KMP core collision primitives", () => {
     expect(COLLISION_GUIDE).toContain("Ray");
     expect(COLLISION_GUIDE).toContain("Box");

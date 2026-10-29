@@ -9,6 +9,9 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -41,7 +44,9 @@ class RerunCapturePack(val manifest: ByteArray, val log: ByteArray, val media: B
      */
     fun open(): OpenedCapture? {
         val parsed = ReplayManifest.parse(String(manifest)) ?: return null
-        val events = parseArDebugLog(String(log).lineSequence())
+        val events = parseArDebugLog(log).filter { event ->
+            event !is ArDebugEvent.Image || parsed.media.containsKey(event.path)
+        }
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         return OpenedCapture(trace, parsed, media)
     }
@@ -106,6 +111,11 @@ data class RerunStoredSession(
     val points: Int,
     val planes: Int,
     val photos: Int,
+    /**
+     * What was scanned (#4683): an object's scan has no floor plan and no room figures. A
+     * `session.json` written before it was kept, or by the iOS demo, reads as a room.
+     */
+    val scope: ScanScope = ScanScope.Room,
 ) {
     /** Pretty-printed with sorted keys, like the iOS encoder. */
     fun toJson(): String = pretty.encodeToString(
@@ -118,6 +128,7 @@ data class RerunStoredSession(
             put("photos", photos)
             put("planes", planes)
             put("points", points)
+            put("scope", scope.key)
             put("source", source.wireName)
             put("title", title)
         },
@@ -145,8 +156,12 @@ data class RerunStoredSession(
                 points = number("points")?.intOrNull ?: return null,
                 planes = number("planes")?.intOrNull ?: return null,
                 photos = number("photos")?.intOrNull ?: return null,
+                scope = scopeOf(string("scope")),
             )
         }
+
+        /** The scope kept under [key]; a room for none — a session kept before scopes were — or one unknown. */
+        fun scopeOf(key: String?): ScanScope = ScanScope.entries.firstOrNull { it.key == key } ?: ScanScope.Room
 
         /** ISO 8601 with an offset (`2026-09-28T12:32:05Z`), in epoch seconds; `null` otherwise. */
         fun epochSecondOf(iso: String): Long? = runCatching { OffsetDateTime.parse(iso).toEpochSecond() }.getOrNull()
@@ -164,6 +179,7 @@ data class RerunStoredSession(
             source: RerunSessionSource,
             createdAt: Long,
             id: String = UUID.randomUUID().toString().uppercase(),
+            scope: ScanScope = ScanScope.Room,
         ): RerunStoredSession? {
             val trace = capture.trace
             if (trace.isEmpty) return null
@@ -180,6 +196,7 @@ data class RerunStoredSession(
                 points = trace.pointCountAt(trace.duration, capture.manifest.dense?.count ?: 0),
                 planes = last.planes.size,
                 photos = trace.imageCount,
+                scope = scope,
             )
         }
 
@@ -226,6 +243,20 @@ class RerunSessionStore(val root: File) {
         .sortedByDescending { it.createdAt }
 
     /**
+     * Deletes the directories a save cut short left behind — capture files, maybe a model, but no
+     * `session.json` — which [list] never shows and nothing else would ever free. Only those
+     * untouched for [graceMillis], so a save under way (its `session.json` comes last) is spared.
+     * Returns how many went.
+     */
+    fun sweepOrphans(nowMillis: Long = System.currentTimeMillis(), graceMillis: Long = ORPHAN_GRACE_MS): Int =
+        root.listFiles { file -> file.isDirectory }.orEmpty()
+            .filter { dir -> !File(dir, INFO).isFile && nowMillis - dir.lastTouched() >= graceMillis }
+            .count { it.deleteRecursively() }
+
+    private fun File.lastTouched(): Long =
+        maxOf(lastModified(), listFiles().orEmpty().maxOfOrNull { it.lastModified() } ?: 0L)
+
+    /**
      * A dense scan kept before its `session.json` counted the dense cloud (it counted ARCore's
      * sparse map, capped at 12k, while the scan HUD showed the cloud): its points read again from
      * its manifest, so the list says what the scan and its replay say.
@@ -241,25 +272,76 @@ class RerunSessionStore(val root: File) {
      * Keeps [capture] as a new session. The capture files are written before `session.json`, so a
      * session only lists once it is whole.
      *
+     * [opened] is [capture] already opened — a scan just recorded is, for its result screen — so
+     * a long scan's log is not parsed a second time just to count its figures (#4815).
+     *
      * @throws RerunImportFailure.Unreadable when its manifest does not parse.
      * @throws RerunImportFailure.Empty when it holds nothing to replay.
+     * @throws java.io.IOException when a file cannot be written: the storage is full, or gone.
      */
     fun save(
         capture: RerunCapturePack,
         title: String,
         source: RerunSessionSource,
         nowMillis: Long = System.currentTimeMillis(),
+        model: RerunScanModel? = null,
+        scope: ScanScope = ScanScope.Room,
+        opened: OpenedCapture? = null,
     ): RerunStoredSession {
-        val opened = capture.open() ?: throw RerunImportFailure.Unreadable(title)
+        val opened = opened ?: capture.open() ?: throw RerunImportFailure.Unreadable(title)
         // Whole seconds: `session.json` stores ISO 8601, so what `save` returns equals what `list` reads.
-        val session = RerunStoredSession.of(opened, title, source, createdAt = nowMillis / MILLIS)
+        val session = RerunStoredSession.of(opened, title, source, createdAt = nowMillis / MILLIS, scope = scope)
             ?: throw RerunImportFailure.Empty(title)
         val dir = directoryOf(session.id)
         dir.mkdirs()
         for ((name, bytes) in capture.files()) writeAtomically(File(dir, name), bytes)
         opened.firstPhoto()?.let { runCatching { writeAtomically(File(dir, THUMBNAIL), it) } }
+        model?.let { writeModel(dir, it) }
         writeAtomically(File(dir, INFO), session.toJson().toByteArray())
         return session
+    }
+
+    /**
+     * Keeps [model] as session [id]'s result, next to its capture: `model.glb`, then `model.json`,
+     * so a model only reads back once it is whole. A model not [RerunScanModel.keptWithScan] is not kept.
+     *
+     * @throws IllegalStateException when the session is gone, or a file does not write.
+     */
+    fun saveModel(id: String, model: RerunScanModel) {
+        val dir = directoryOf(id)
+        check(File(dir, INFO).isFile) { "No session $id" }
+        writeModel(dir, model)
+    }
+
+    /**
+     * Session [id]'s result model; `null` when it has none — a scan kept before results were
+     * saved, or a save cut short — and the scan builds it again.
+     */
+    fun model(id: String): RerunScanModel? {
+        val dir = directoryOf(id)
+        return runCatching {
+            val info = File(dir, MODEL_INFO).takeIf { it.isFile }?.readText() ?: return null
+            val glb = File(dir, MODEL_GLB).takeIf { it.isFile }?.readBytes() ?: return null
+            RerunScanModel.parse(info, glb)
+        }.getOrNull()
+    }
+
+    /** Renames session [id] to [title] (trimmed); `null` when it is gone or [title] is blank. */
+    fun rename(id: String, title: String): RerunStoredSession? {
+        val name = title.trim().takeIf { it.isNotEmpty() } ?: return null
+        val info = File(directoryOf(id), INFO)
+        val session = runCatching { RerunStoredSession.parse(info.readText()) }.getOrNull() ?: return null
+        return session.copy(title = name).also { writeAtomically(info, it.toJson().toByteArray()) }
+    }
+
+    private fun writeModel(dir: File, model: RerunScanModel) {
+        // A fallback is shown, not kept: the next open tries the finished model again. Out of
+        // memory, the raw surface is kept: the same heap would only run out again.
+        if (!model.keptWithScan) return
+        // A stale `model.json` must never describe a new `model.glb` half-written next to it.
+        File(dir, MODEL_INFO).delete()
+        writeAtomically(File(dir, MODEL_GLB), model.glb)
+        writeAtomically(File(dir, MODEL_INFO), model.infoJson().toByteArray())
     }
 
     /** Session [id]'s capture; `null` when one of its three files is gone. */
@@ -286,14 +368,39 @@ class RerunSessionStore(val root: File) {
      * Reads a file the user opened — a scan file, named [fileName] — and keeps it as a new session
      * titled after the file. [readRrd] turns a `.rrd`'s bytes into a capture, or throws.
      *
+     * Idempotent (#4680): the same bytes opened again return the session they made the first time
+     * — as it stands now, renamed or not — instead of listing a second copy. The file's SHA-256 is
+     * kept beside the session ([SOURCE_HASH]), and two imports racing each other are serialised,
+     * so the second finds the first.
+     *
      * @throws RerunImportFailure
      */
-    @Suppress("ThrowsCount") // one throw per way a file fails, each renamed after the file
     fun import(
         fileName: String,
         bytes: ByteArray,
         readRrd: (ByteArray) -> RerunCapturePack,
         nowMillis: Long = System.currentTimeMillis(),
+    ): RerunStoredSession {
+        val hash = sha256Of(bytes)
+        return synchronized(IMPORT_LOCK) {
+            importedFrom(hash) ?: importNew(fileName, bytes, readRrd, nowMillis).also { session ->
+                // Written last: a session whose hash did not write still lists, it only dedupes less.
+                runCatching { writeAtomically(File(directoryOf(session.id), SOURCE_HASH), hash.toByteArray()) }
+            }
+        }
+    }
+
+    /** The kept session imported from a file whose SHA-256 is [hash]; `null` when there is none. */
+    fun importedFrom(hash: String): RerunStoredSession? = list().firstOrNull { session ->
+        runCatching { File(directoryOf(session.id), SOURCE_HASH).readText().trim() }.getOrNull() == hash
+    }
+
+    @Suppress("ThrowsCount") // one throw per way a file fails, each renamed after the file
+    private fun importNew(
+        fileName: String,
+        bytes: ByteArray,
+        readRrd: (ByteArray) -> RerunCapturePack,
+        nowMillis: Long,
     ): RerunStoredSession {
         val kind = RerunFileKind.of(fileName, bytes) ?: throw RerunImportFailure.Unsupported(fileName)
         val capture = when (kind) {
@@ -306,10 +413,14 @@ class RerunSessionStore(val root: File) {
                 throw RerunImportFailure.Unreadable(fileName).apply { initCause(other) }
             }
         }
-        val title = fileName.substringBeforeLast('.').trim().ifEmpty { "Opened session" }
+        // A scan file carries the title it was saved under (#4695): the file name lost its colons.
+        val title = (if (kind == RerunFileKind.Scan) RerunScanFile.titleOf(capture) else null)
+            ?: fileName.substringBeforeLast('.').trim().ifEmpty { "Opened session" }
         val source = if (kind == RerunFileKind.Scan) RerunSessionSource.Scan else RerunSessionSource.Rrd
         return try {
-            save(capture, title, source, nowMillis)
+            // A scan file says what it was a scan of; a recording from Rerun is a room.
+            val scope = if (kind == RerunFileKind.Scan) RerunScanFile.scopeOf(capture) else ScanScope.Room
+            save(capture, title, source, nowMillis, scope = scope)
         } catch (failure: RerunImportFailure.Empty) {
             throw RerunImportFailure.Empty(fileName).apply { initCause(failure) }
         } catch (failure: RerunImportFailure.Unreadable) {
@@ -322,14 +433,31 @@ class RerunSessionStore(val root: File) {
         partial.writeBytes(bytes)
         if (!partial.renameTo(target)) {
             partial.delete()
-            error("Could not write ${target.name}")
+            throw IOException("Could not write ${target.name}")
         }
     }
 
     companion object {
         const val INFO = "session.json"
         const val THUMBNAIL = "thumbnail.jpg"
+
+        /** The scan's result, [RerunScanModel]: its `.glb`, and what it is (written last). */
+        const val MODEL_GLB = "model.glb"
+        const val MODEL_INFO = "model.json"
+
+        /** An imported session's source file: the lowercase hex SHA-256 of its bytes. */
+        const val SOURCE_HASH = "source.sha256"
         private const val PARTIAL = ".partial"
+
+        /** Every store of the process imports one file at a time: two racing copies become one. */
+        private val IMPORT_LOCK = Any()
+
+        /** [bytes]' SHA-256, lowercase hex. */
+        fun sha256Of(bytes: ByteArray): String =
+            MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+        /** How long a directory without `session.json` is left alone: far longer than any save. */
+        const val ORPHAN_GRACE_MS = 60L * 60 * 1000
         private const val MILLIS = 1000L
     }
 }
@@ -378,9 +506,61 @@ object RerunScanFile {
 
     fun write(capture: RerunCapturePack): ByteArray = StoredZip.write(capture.files())
 
+    /** [capture] as a scan file, streamed into [sink]: the same bytes as [write]. */
+    fun write(capture: RerunCapturePack, sink: OutputStream) = StoredZip.write(capture.files(), sink)
+
     /** The capture in [bytes]; `null` when they are not a scan file or one of its files is missing. */
     fun read(bytes: ByteArray): RerunCapturePack? =
         StoredZip.read(bytes)?.let { files -> RerunCapturePack.of(files.toMap()) }
+
+    /**
+     * What [capture] was a scan of, as its manifest's top-level `scope` key says (#4683): a room
+     * for a file without one — every scan file written before the key was — or with one unknown.
+     */
+    fun scopeOf(capture: RerunCapturePack): ScanScope {
+        val root = runCatching { Json.parseToJsonElement(String(capture.manifest)) as? JsonObject }.getOrNull()
+        return RerunStoredSession.scopeOf((root?.get(SCOPE) as? JsonPrimitive)?.content)
+    }
+
+    /**
+     * [capture] with [scope] in its manifest, so an object scan shared as a file opens as one. The
+     * same capture, byte for byte, when the manifest already reads as [scope] — a room's file is
+     * unchanged. The rest of the manifest, keys this version does not know included, is kept.
+     */
+    fun withScope(capture: RerunCapturePack, scope: ScanScope): RerunCapturePack {
+        if (scopeOf(capture) == scope) return capture
+        val root = runCatching { Json.parseToJsonElement(String(capture.manifest)) as? JsonObject }.getOrNull()
+            ?: return capture
+        val manifest = JsonObject(root + (SCOPE to JsonPrimitive(scope.key)))
+        return RerunCapturePack(manifest.toString().toByteArray(), capture.log, capture.media)
+    }
+
+    /**
+     * The title [capture] was saved under, as its manifest's top-level `title` key says (#4695);
+     * `null` for a file without one — every scan file written before the key was — or a blank one.
+     */
+    fun titleOf(capture: RerunCapturePack): String? =
+        (manifestOf(capture)?.get(TITLE) as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.ifEmpty { null }
+
+    /**
+     * [capture] with [title] in its manifest, so the scan opens under the title it was shared with
+     * rather than its file name, whose colons were replaced. The same capture when the manifest
+     * already carries [title] or [title] is blank; every other key is kept.
+     */
+    fun withTitle(capture: RerunCapturePack, title: String): RerunCapturePack {
+        val name = title.trim()
+        if (name.isEmpty() || titleOf(capture) == name) return capture
+        val root = manifestOf(capture) ?: return capture
+        val manifest = JsonObject(root + (TITLE to JsonPrimitive(name)))
+        return RerunCapturePack(manifest.toString().toByteArray(), capture.log, capture.media)
+    }
+
+    /** [capture] as a file carries it: marked with its [scope] and its [title]. */
+    fun stamped(capture: RerunCapturePack, scope: ScanScope, title: String): RerunCapturePack =
+        withTitle(withScope(capture, scope), title)
+
+    private fun manifestOf(capture: RerunCapturePack): JsonObject? =
+        runCatching { Json.parseToJsonElement(String(capture.manifest)) as? JsonObject }.getOrNull()
 
     /** A zip whose first entry is the manifest: how both apps write a scan file. */
     fun looksLikeOne(head: ByteArray): Boolean {
@@ -392,6 +572,8 @@ object RerunScanFile {
 
     private const val ZIP_HEADER = 30
     private const val NAME_LENGTH_AT = 26
+    private const val SCOPE = "scope"
+    private const val TITLE = "title"
 }
 
 /**
@@ -412,8 +594,15 @@ internal object StoredZip {
     private const val END_RECORD = 22
     private const val MAX_COMMENT = 65_535
 
-    fun write(files: List<Pair<String, ByteArray>>): ByteArray {
-        val out = LittleEndianBuffer()
+    fun write(files: List<Pair<String, ByteArray>>): ByteArray =
+        ByteArrayOutputStream().also { write(files, it) }.toByteArray()
+
+    /**
+     * The same zip as [write], streamed into [sink]: a file or a share copy is written without
+     * the whole archive ever sitting in memory a second time (#4815).
+     */
+    fun write(files: List<Pair<String, ByteArray>>, sink: OutputStream) {
+        val out = LittleEndianBuffer(sink)
         val central = LittleEndianBuffer()
         for ((path, data) in files) {
             val name = path.toByteArray()
@@ -471,7 +660,7 @@ internal object StoredZip {
         out.u32(central.size.toLong())
         out.u32(centralOffset.toLong())
         out.u16(0)
-        return out.toByteArray()
+        sink.flush()
     }
 
     /** The files of a stored zip, in archive order; `null` when it is not one, or compresses. */
@@ -523,13 +712,19 @@ internal object StoredZip {
 
     private const val BYTE = 0xFF
 
-    private class LittleEndianBuffer {
-        private val out = ByteArrayOutputStream()
-        val size: Int get() = out.size()
+    /** Little-endian writes into [sink], counting what went in: a zip's offsets are byte counts. */
+    private class LittleEndianBuffer(private val sink: OutputStream = ByteArrayOutputStream()) {
+        var size: Int = 0
+            private set
+
+        private fun write(value: Int) {
+            sink.write(value)
+            size++
+        }
 
         fun u16(value: Int) {
-            out.write(value and BYTE)
-            out.write(value shr 8 and BYTE)
+            write(value and BYTE)
+            write(value shr 8 and BYTE)
         }
 
         fun u32(value: Long) {
@@ -537,8 +732,12 @@ internal object StoredZip {
             u16((value shr 16 and 0xFFFF).toInt())
         }
 
-        fun bytes(value: ByteArray) = out.write(value)
+        fun bytes(value: ByteArray) {
+            sink.write(value)
+            size += value.size
+        }
 
-        fun toByteArray(): ByteArray = out.toByteArray()
+        /** What went in; only for a buffer written into memory, the default sink. */
+        fun toByteArray(): ByteArray = (sink as ByteArrayOutputStream).toByteArray()
     }
 }

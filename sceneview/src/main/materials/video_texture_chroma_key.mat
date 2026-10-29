@@ -11,6 +11,12 @@ material {
     name : "ChromaKey Video Material",
     parameters : [
         {
+            // true when the node is drawn in a Filmic view (createARView), false for the
+            // createView default (PBR Neutral). Set by VideoNode / ViewNode from their view.
+            type : bool,
+            name : inverseFilmic
+        },
+        {
             // The texture displaying the frames of the video.
             type : samplerExternal,
             name : texture
@@ -28,6 +34,75 @@ material {
 }
 
 fragment {
+    // Inverse of the View's tone mapper, so the source colour displays as authored (#4595).
+    // createView grades with PBR Neutral (the default); createARView keeps Filmic, and the node
+    // sets `inverseFilmic` when it is drawn in such a view.
+    // ---- Inverse of ToneMapper.PBRNeutralToneMapper (Khronos PBR Neutral, #4595) ----
+    // Shared verbatim by splat.mat, video_texture*.mat and view_texture_*.mat
+    // (ToneMapInverseContractTest checks they stay identical).
+
+    // The forward curve's highlight compression at scene peak p: (new peak, desaturation).
+    vec2 pbrNeutralCompression(float p) {
+        float np = 1.0 - 0.0576 / (p - 0.52);
+        return vec2(np, 1.0 - 1.0 / (0.15 * (p - np) + 1.0));
+    }
+
+    // Undoes the toe offset the forward curve subtracts from every channel.
+    vec3 inversePbrNeutralToe(vec3 c) {
+        float m = min(c.r, min(c.g, c.b));
+        float offset = m < 0.04 ? sqrt(max(m, 0.0) / 6.25) - m : 0.04;
+        return c + offset;
+    }
+
+    // Display-linear colour -> scene-linear colour that PBR Neutral maps back onto it.
+    // Exact for every colour the curve can produce. The peak is capped at 0.99143 (252.8/255),
+    // whose inverse is 7.24, the value Filmic's inverse gives white: PBR Neutral's inverse is
+    // unbounded as the peak nears 1. A bright saturated colour (#FF0000) has no preimage, since
+    // the curve desaturates highlights: the scene peak is then bisected so the peak shortfall
+    // equals the unavoidable desaturation lift in display (gamma) space, red -> (235, 13, 13)
+    // instead of a pink (255, 212, 212).
+    vec3 inversePbrNeutral(vec3 o) {
+        float peak = max(o.r, max(o.g, o.b));
+        if (peak < 0.76) {
+            return inversePbrNeutralToe(o);
+        }
+        float np = min(peak, 0.99143);
+        float p = 0.0576 / (1.0 - np) + 0.52;
+        vec2 ng = pbrNeutralCompression(p);
+        vec3 c = (o - ng.x * ng.y) / (1.0 - ng.y) * (p / ng.x);
+        if (min(c.r, min(c.g, c.b)) >= -1e-4) {
+            return inversePbrNeutralToe(c);
+        }
+        float omin = max(min(o.r, min(o.g, o.b)), 0.0);
+        float encPeak = pow(peak, 1.0 / 2.2);
+        float encMin = pow(omin, 1.0 / 2.2);
+        float lo = 0.76;
+        float hi = p;
+        for (int i = 0; i < 12; i++) {
+            float mid = 0.5 * (lo + hi);
+            ng = pbrNeutralCompression(mid);
+            if (encPeak - pow(ng.x, 1.0 / 2.2) > pow(omin + ng.x * ng.y, 1.0 / 2.2) - encMin) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        p = 0.5 * (lo + hi);
+        ng = pbrNeutralCompression(p);
+        vec3 ratio = clamp((o - ng.x * ng.y) / (ng.x * (1.0 - ng.y)), 0.0, 1.0);
+        return inversePbrNeutralToe(ratio * p);
+    }
+
+    vec3 inverseViewTonemapSRGB(vec3 srgb) {
+        if (materialParams.inverseFilmic) {
+            return inverseTonemapSRGB(srgb);
+        }
+        vec3 s = clamp(srgb, 0.0, 1.0);
+        vec3 lin = mix(s * (1.0 / 12.92), pow((s + 0.055) * (1.0 / 1.055), vec3(2.4)),
+                step(vec3(0.04045), s));
+        return inversePbrNeutral(lin);
+    }
+
     vec3 desaturate(vec3 color, float amount) {
         // Convert color to grayscale using Luma formula:
         // https://en.wikipedia.org/wiki/Luma_%28video%29
@@ -50,7 +125,7 @@ fragment {
         float alpha = smoothstep(edge0, threshold, distance);
         color.rgb = desaturate(color.rgb, 1.0 - (alpha * alpha * alpha));
         material.baseColor.a = alpha;
-        material.baseColor.rgb = inverseTonemapSRGB(color.rgb);
+        material.baseColor.rgb = inverseViewTonemapSRGB(color.rgb);
         material.baseColor.rgb *= material.baseColor.a;
     }
 }

@@ -650,7 +650,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "get_collision_guide",
     description:
-      "Returns a comprehensive guide for collision detection, hit testing, and physics in SceneView — node tapping (onTouchEvent), AR surface hit testing (frame.hitTest), ray-box/ray-sphere intersection (KMP core), bounding boxes, and basic rigid body physics. Use this when a user asks about tapping 3D objects, collision detection, physics simulation, ray casting, or hit testing.",
+      "Returns a comprehensive guide for collision detection, hit testing, and physics in SceneView — node tapping (onSingleTapConfirmed), AR tap-to-place (frame.hitTest on a confirmed tap), ray-box/ray-sphere intersection (KMP core), bounding boxes, and basic rigid body physics. Use this when a user asks about tapping 3D objects, collision detection, physics simulation, ray casting, or hit testing.",
     inputSchema: {
       type: "object",
       properties: {},

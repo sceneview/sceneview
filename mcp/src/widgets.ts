@@ -827,7 +827,12 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
 
       function startWith(data, url) {
         if (viewer && typeof viewer.loadModel === "function") {
-          viewer.loadModel(url).then(function () { reveal(data); }).catch(fail);
+          viewer.loadModel(url).then(function () { reveal(data); }).catch(function (err) {
+            // sceneview.js rejects a load that a later loadModel() replaced with an
+            // AbortError: the later render() owns the viewer, so this is not a failure.
+            if (err && err.name === "AbortError") return;
+            fail(err);
+          });
           return;
         }
         SceneView.modelViewer(canvas, url, {
@@ -848,6 +853,8 @@ export const WIDGET_3D_VIEWER_HTML = `<!DOCTYPE html>
         rendered = data;
         pending = null;
         loader.hidden = true;
+        // An error an earlier payload left must not sit over the model that loaded.
+        errorEl.hidden = true;
         canvas.style.opacity = "1";
         if (data.autoRotate === false && viewer && viewer.setAutoRotate) {
           viewer.setAutoRotate(false);

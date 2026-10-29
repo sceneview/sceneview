@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
  * |---|---|---|
  * | Android | Filament, via the existing `SceneView { }` composable | implemented |
  * | iOS | RealityKit, via `SceneViewSwift` | implemented — needs a one-time app registration |
- * | Desktop (JVM) | Filament, via filament-kmp (offscreen → Skia). JDK 22+ | implemented |
+ * | Desktop (JVM) | Filament, via filament-kmp (offscreen → Skia). JDK 21+ | implemented |
  *
  * On a platform still marked *placeholder*, this composable draws a visible notice
  * naming the platform and the reason instead of rendering a scene. It does not throw,

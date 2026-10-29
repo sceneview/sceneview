@@ -168,12 +168,29 @@ class ArDebugTrace {
     private var depthTotals = IntArray(64)
     private var depthCount = 0
 
+    private var floorCellTimes = FloatArray(64)
+    private var floorCellKeys = LongArray(64)
+    private var floorCellCount = 0
+    private val floorCellSet = HashSet<Long>()
+
     /**
      * When set, every event that changed the trace is appended here as it was kept — the
      * confident, finite points only, a plane or an anchor only when it changed — so replaying
      * the journal into a fresh trace rebuilds this one exactly. A room scan keeps one to save.
      */
     var journal: MutableList<ArDebugEvent>? = null
+
+    /**
+     * An object scan's distance cutoff (#4683): set, the points further than it from the phone
+     * and the parts of planes away from the phone's path are never kept — nor journaled.
+     */
+    var cutoff: ScanCutoff? = null
+
+    /**
+     * A live scan's feature-point threshold, relaxed while a frame keeps nothing (#4717); `null`
+     * keeps [MIN_POINT_CONFIDENCE]. The journal holds the points kept, so a replay keeps them too.
+     */
+    var pointConfidence: AdaptiveConfidence? = null
 
     /** Bumped on every change, so a reader can tell "same trace" without comparing contents. */
     var version: Int = 0
@@ -237,6 +254,7 @@ class ArDebugTrace {
      * still would otherwise fill the cap in minutes.
      */
     fun addPose(nanos: Long, pose: DebugPose) {
+        cutoff?.follow(pose)
         journal?.add(ArDebugEvent.CameraPose(nanos, pose))
         val t = secondsOf(nanos)
         val last = poses.lastOrNull()
@@ -292,15 +310,31 @@ class ArDebugTrace {
      * given, so a point does not flicker as later views of it disagree by a shade.
      */
     // Low-confidence and non-finite points skip early.
-    @Suppress("LoopWithTooManyJumpStatements", "CyclomaticComplexMethod")
     fun addPoints(nanos: Long, positions: FloatArray, confidences: FloatArray? = null, colors: IntArray? = null) {
+        val kept = cutoff?.points(positions, confidences, colors)
+        if (kept == null) {
+            addPointsKept(nanos, positions, confidences, colors)
+        } else {
+            addPointsKept(nanos, kept.positions, kept.confidences, kept.colors)
+        }
+    }
+
+    @Suppress("LoopWithTooManyJumpStatements", "CyclomaticComplexMethod")
+    private fun addPointsKept(nanos: Long, positions: FloatArray, confidences: FloatArray?, colors: IntArray?) {
         val t = secondsOf(nanos)
         val count = positions.size / 3
         val seen = IntArray(count)
         var seenCount = 0
         val kept = journal?.let { PointJournal(count, colors != null) }
+        val adaptive = pointConfidence
+        val threshold = adaptive?.threshold ?: MIN_POINT_CONFIDENCE
+        var passed = 0
+        var passedAtBase = 0
         for (i in 0 until count) {
-            if (confidences != null && i < confidences.size && confidences[i] < MIN_POINT_CONFIDENCE) continue
+            val confidence = if (confidences != null && i < confidences.size) confidences[i] else 1f
+            if (confidence < threshold) continue
+            passed++
+            if (confidence >= MIN_POINT_CONFIDENCE) passedAtBase++
             val x = positions[i * 3]
             val y = positions[i * 3 + 1]
             val z = positions[i * 3 + 2]
@@ -339,19 +373,24 @@ class ArDebugTrace {
         observationTimes.add(t)
         observations.add(seen.copyOf(seenCount))
         kept?.let { journal?.add(it.event(nanos)) }
+        adaptive?.record(nanos, passed, passedAtBase)
         touch(t)
     }
 
     /** Adds a snapshot of plane [id]. An empty [polygon] records that the plane went away. */
     fun addPlane(nanos: Long, id: Int, kind: DebugPlaneKind, polygon: FloatArray) {
+        val kept = cutoff?.takeIf { polygon.isNotEmpty() }?.clip(polygon) ?: polygon
+        // A plane cut to nothing before it was ever kept is not one of this scan's.
+        if (kept.isEmpty() && polygon.isNotEmpty() && id !in planeHistory) return
         val t = secondsOf(nanos)
         val history = planeHistory.getOrPut(id) { mutableListOf() }
         val last = history.lastOrNull()?.second
-        if (last != null && last.kind == kind && last.polygon.contentEquals(polygon)) return
-        history.add(t to DebugPlane(id, kind, polygon))
-        journal?.add(ArDebugEvent.Plane(nanos, id, kind, polygon))
+        if (last != null && last.kind == kind && last.polygon.contentEquals(kept)) return
+        history.add(t to DebugPlane(id, kind, kept))
+        journal?.add(ArDebugEvent.Plane(nanos, id, kind, kept))
         touch(t)
     }
+
 
     /**
      * Every plane the session found, as it last stood with a boundary: a plane ARCore merged
@@ -385,8 +424,11 @@ class ArDebugTrace {
 
     /**
      * Records that the dense map (a `.svscan` v2's `dense/points.bin`) held [total] surfels at
-     * [nanos], [added] of them new and [kept] depth samples merged — what lets a replay reveal
-     * the cloud as it grew, since surfels keep the order they were found in.
+     * [nanos] — those the saved cloud keeps ([DenseFusion.points]) — with [added] voxels new and
+     * [kept] depth samples merged since the last call: what lets a replay reveal the cloud as it
+     * grew, since surfels keep the order they were found in. Scans recorded before the two
+     * figures were one counted every voxel held here, so their replay counter reaches the saved
+     * total early and stays there.
      */
     fun addDepthStats(nanos: Long, added: Int, kept: Int, total: Int) {
         val t = secondsOf(nanos)
@@ -401,6 +443,49 @@ class ArDebugTrace {
         journal?.add(ArDebugEvent.DepthStats(nanos, added, kept, total))
         touch(t)
     }
+
+    /**
+     * Records the floor cells ([CoverageGrid.key]-packed) a live scan's coverage found new at
+     * [nanos] (#4734): the one record of the floor covered that the live map, the replay and the
+     * result all read, so the three show the same m². A cell already recorded is skipped.
+     */
+    fun addFloorCells(nanos: Long, keys: LongArray) {
+        // Never back in time: a cell is kept, at the latest time already recorded at worst.
+        val at = secondsOf(nanos)
+        val t = if (floorCellCount > 0) maxOf(at, floorCellTimes[floorCellCount - 1]) else at
+        val fresh = keys.filter { floorCellSet.add(it) }
+        if (fresh.isEmpty()) return
+        if (floorCellCount + fresh.size > floorCellKeys.size) {
+            val size = maxOf(floorCellKeys.size * 2, floorCellCount + fresh.size)
+            floorCellKeys = floorCellKeys.copyOf(size)
+            floorCellTimes = floorCellTimes.copyOf(size)
+        }
+        for (key in fresh) {
+            floorCellTimes[floorCellCount] = t
+            floorCellKeys[floorCellCount] = key
+            floorCellCount++
+        }
+        journal?.add(ArDebugEvent.FloorCells(nanos, fresh.toLongArray()))
+        touch(t)
+    }
+
+    /**
+     * [addFloorCells] at [seconds] into the trace, for a caller that counts in seconds. Before the
+     * trace's first event there is no clock to stamp them on, and nothing is recorded.
+     */
+    fun addFloorCellsAt(seconds: Float, keys: LongArray) {
+        if (originNanos == Long.MIN_VALUE) return
+        addFloorCells(originNanos + (seconds.coerceAtLeast(0f) * NANOS_PER_SECOND).toLong(), keys)
+    }
+
+    /** Whether the scan recorded its floor coverage ([addFloorCells]); older scans did not. */
+    val hasFloorCells: Boolean get() = floorCellCount > 0
+
+    /** Floor cells recorded by [time]: the first that many of [floorCell] were covered by then. */
+    fun floorCellsAt(time: Float): Int = upperBound(floorCellTimes, floorCellCount, time)
+
+    /** Recorded floor cell [index], in the order the scan covered them. */
+    fun floorCell(index: Int): Long = floorCellKeys[index]
 
     /** Whether the trace says how its dense map grew ([addDepthStats]). */
     val hasDepthStats: Boolean get() = depthCount > 0
@@ -525,6 +610,8 @@ class ArDebugTrace {
     }
 
     companion object {
+        private const val NANOS_PER_SECOND = 1e9
+
         /** A pose closer than this to the last kept one does not extend the trail. */
         const val POSE_MIN_STEP_M = 0.005f
 

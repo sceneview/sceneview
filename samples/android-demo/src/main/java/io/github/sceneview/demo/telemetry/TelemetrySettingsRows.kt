@@ -115,7 +115,7 @@ private fun openAppNotificationSettings(context: android.content.Context) {
 
 /** An About row with a trailing switch; the whole row toggles (one touch target, one label). */
 @Composable
-private fun SettingsSwitchRow(
+internal fun SettingsSwitchRow(
     icon: ImageVector,
     title: String,
     supporting: String,

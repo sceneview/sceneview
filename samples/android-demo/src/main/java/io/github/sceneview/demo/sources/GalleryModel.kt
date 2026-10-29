@@ -43,8 +43,9 @@ data class GalleryThumbnail(
  * @param authorName human-readable creator, or `null` when the API omits it.
  * @param license    short human-readable license, e.g. `"CC BY 4.0"` / `"CC0"`.
  * @param sourceUrl  the model's page on the origin catalog. Recorded for credit
- *   only — the demo never opens an external viewer (it always renders through
- *   SceneView), so this is metadata, not a navigation target.
+ *   only — the demo renders through SceneView and never opens this page, so this is
+ *   metadata, not a navigation target. (The viewer's "Open in 3D AR Model Viewer"
+ *   action builds its own link from the Sketchfab uid, #4622.)
  */
 data class GalleryAttribution(
     val authorName: String? = null,

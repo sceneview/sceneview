@@ -79,6 +79,17 @@ describe("getDebugGuide", () => {
     expect(result).toContain("onTouchEvent");
   });
 
+  it("points AR tap-to-place at a confirmed tap, not at ACTION_UP", () => {
+    for (const category of ["gestures", "ar-not-working"] as const) {
+      const result = getDebugGuide(category);
+      expect(result).toContain(
+        "rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null)"
+      );
+      expect(result).not.toContain("Is `onTouchEvent` wired up?");
+      expect(result).not.toContain("passed to `onTouchEvent` is a scene-node hit");
+    }
+  });
+
   it("returns guide for ios", () => {
     const result = getDebugGuide("ios");
     expect(result).toContain("USDZ");

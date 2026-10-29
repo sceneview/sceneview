@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
  * Google's `FakeAppUpdateManager`, with [UpdatePromptController] deciding what is shown.
  *
  * Covers the behaviours the snackbar is built on — available → prompt, Update → waiting
- * in the same frame, downloading with its progress, downloaded → Restart, failed → Retry,
+ * in the same frame, downloading with its progress, downloaded → Restart, failed → Open Play Store,
  * dismissed → quiet for 24 h — plus the edges that would make it nag or go silent for good.
  */
 @RunWith(AndroidJUnit4::class)
@@ -148,7 +148,7 @@ class UpdatePromptControllerTest {
     }
 
     @Test
-    fun `a failed download offers Retry, and Retry starts over`() {
+    fun `a failed download offers the Play Store, which opens the listing and ends the failure`() {
         val prompt = newController()
         resumeWithUpdateAvailable()
         prompt.onAction(UpdatePrompt.Available)
@@ -160,9 +160,12 @@ class UpdatePromptControllerTest {
         assertEquals(UpdatePrompt.Failed, prompt.prompt)
 
         prompt.onAction(UpdatePrompt.Failed)
-        assertEquals(UpdatePrompt.Waiting, prompt.prompt)
-        idle()
-        assertTrue(fake.isConfirmationDialogVisible)
+        assertNull(prompt.prompt)
+        assertEquals(
+            "market://details?id=${activity.packageName}",
+            shadowOf(activity).nextStartedActivity.dataString,
+        )
+        assertEquals(0L, store.availableDismissedAtMillis)
     }
 
     @Test

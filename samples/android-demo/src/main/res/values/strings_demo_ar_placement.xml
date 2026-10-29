@@ -22,24 +22,30 @@
     <string name="ar_placement_cta_no_model">Pick a model first.</string>
 
     <!-- In-AR chrome. -->
-    <string name="ar_placement_change_model">Change model</string>
     <string name="ar_placement_catalogue_note">Bundled models work offline. Online models download when selected and appear once the download completes.</string>
 
     <!-- Automatic placement (plan §2.2) — the exact copy of the state machine. Shared by
          the AR View tab and the `ar-placement` demo through `TapToPlaceStatusOverlays`. -->
     <string name="ar_place_move_slowly">Move slowly to find a surface.</string>
-    <string name="ar_place_tracking_paused">Tracking paused. Move slowly.</string>
-    <string name="ar_place_try_brighter_area">Try a brighter area.</string>
+    <string name="ar_place_tracking_paused">Move slowly</string>
+    <string name="ar_place_tracking_paused_low_light">Move slowly. Try a brighter area.</string>
     <string name="ar_place_finding_placement">Finding your placement…</string>
     <string name="ar_place_gesture_hint">Drag to move. Pinch to resize. Twist to turn.</string>
     <string name="ar_place_keep_on_surface">Keep the object on a surface.</string>
     <string name="ar_place_no_surface_title">No surface found.</string>
     <string name="ar_place_no_surface_detail">Try a brighter area with a rug or visible floor detail.</string>
     <string name="ar_place_no_surface_detail_wall">Plain walls are harder to find. Try the wall-floor edge, or a wall with a frame or poster.</string>
-    <string name="ar_place_view_in_3d">View in 3D</string>
-    <string name="ar_place_keep_scanning">Keep scanning</string>
+    <!-- #4522: frames arrive, AR never starts, and the gyroscope delivers nothing. No button:
+         only a restart brings the sensor back. No "gyroscope", no "tracking" (DESIGN.md). The
+         remedy is the title: it is the line that stays in view when the card runs out of height. -->
+    <string name="ar_place_motion_sensor_title">Restart your phone</string>
+    <string name="ar_place_motion_sensor_detail">Its motion sensor isn\'t responding, and AR can\'t start without it.</string>
+    <string name="ar_place_view_in_3d">3D</string>
+    <!-- Where the button stands beside Back or Reset, "3D" alone would not say what it does. -->
+    <string name="ar_place_show_in_3d">Show in 3D</string>
+    <string name="ar_place_keep_scanning">Try again</string>
     <string name="ar_place_recovery_failed_title">Couldn\'t recover this placement.</string>
-    <string name="ar_place_scan_again">Scan again</string>
+    <string name="ar_place_scan_again">Try again</string>
     <string name="ar_place_camera_error_title">Camera couldn\'t start.</string>
     <string name="ar_place_try_again">Try again</string>
     <!-- Pinch read-out: "Actual size" only when the asset's size was measured (§2.3). -->
@@ -50,6 +56,8 @@
     <string name="ar_place_loading_model">Loading model…</string>
     <string name="ar_place_model_failed">Model couldn’t load.</string>
     <string name="ar_place_preview_size">Preview size</string>
+    <!-- Placement Scene: the product is placed at its real size, not the 0.3 m preview. -->
+    <string name="ar_place_real_size">Actual size</string>
     <!-- Closes every "View in 3D" preview sheet (PlacementPreviewSheet, #3884). -->
     <string name="ar_place_close_preview">Close preview</string>
 

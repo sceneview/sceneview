@@ -27,6 +27,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraNode
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
@@ -34,6 +35,7 @@ import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.demo.common.Axes3DNode
+import io.github.sceneview.demo.common.placement.PlacementAvailabilityOverlay
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
@@ -150,6 +152,7 @@ fun ARPoseDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -162,6 +165,8 @@ fun ARPoseDemo(onBack: () -> Unit) {
                     config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 },
                 onARCoreAvailability = { arCoreAvailability = it },
+                // The SDK's own card, kept off the mode pill and the dock (#4509).
+                arCoreAvailabilityOverlay = { PlacementAvailabilityOverlay(it) },
                 onSessionUpdated = { _, frame: Frame ->
                     cameraReady = true
                     isTracking = frame.camera.trackingState == TrackingState.TRACKING

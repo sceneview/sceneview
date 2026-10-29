@@ -1,4 +1,4 @@
-# Non-AR demo regression tests — pin the state machine, snapshot the controls
+# Non-AR demo regression tests — pin the state machine, screenshot the render
 
 > Audience: SceneView contributors (and Claude sessions) editing the 3D demos.
 > Goal: catch non-AR demo regressions on every commit without an emulator and
@@ -14,7 +14,7 @@ full demo composable in a pure-JVM test crashes trying to create the Filament
 ([`AR_TESTING.md`](AR_TESTING.md) layer 1), but they are slow (~9 min) and the
 SwiftShader CI crashes on Filament pixel readback.
 
-So the non-AR demos are regression-tested in **three layers**, two of which run in
+So the non-AR demos are regression-tested in **two layers**, the first of which runs in
 plain `./gradlew :samples:android-demo:testDebugUnitTest` — no device, no emulator.
 This is the issue [#880](https://github.com/sceneview/sceneview/issues/880) plan.
 
@@ -79,46 +79,7 @@ reference* those hand-written `animateTo` keyframes are checked against, and the
 demo sources its `BASE_RADIUS` / `DEFAULT_FOV_DEGREES` / slider ranges directly
 from `DemoMath` so the test and the demo can never silently drift apart.
 
-## Layer 2 — Roborazzi snapshot of the controls panel (runs in `testDebugUnitTest`)
-
-The `controls = { … }` lambda of a demo is extracted into a separate stateless
-`@Composable` taking an explicit state + callbacks. It doesn't touch `SceneView`,
-so Roborazzi (Robolectric + NATIVE graphics) can screenshot it in pure JVM.
-
-Reference implementation: `GeometryDemoControls` in
-[`GeometryDemo.kt`](src/main/java/io/github/sceneview/demo/demos/GeometryDemo.kt),
-tested by
-[`GeometryDemoControlsSnapshotTest`](src/test/java/io/github/sceneview/demo/demos/GeometryDemoControlsSnapshotTest.kt).
-Goldens land in [`src/test/snapshots/`](src/test/snapshots/).
-
-Generate the goldens (run once, after a deliberate UI change):
-
-```bash
-./gradlew :samples:android-demo:recordRoborazziDebug --tests "*ControlsSnapshotTest"
-```
-
-Verify against goldens (every CI run):
-
-```bash
-./gradlew :samples:android-demo:verifyRoborazziDebug
-```
-
-The goldens are a declared input of the test task (`build.gradle`,
-`roborazziGoldens`), so editing a PNG is enough to make Gradle re-run the
-comparison — no `--rerun` needed. Before #3034 they were not, and this exact
-command came back `UP-TO-DATE` / `BUILD SUCCESSFUL in 1s` on a golden mutated by
-8000 red pixels, having read no golden at all (#3029). If you ever see
-`verifyRoborazziDebug UP-TO-DATE` right after changing a golden, that wiring has
-rotted; the comparison did not happen.
-
-**Catches:** Material 3 layout drift, `FilterChip` / `Slider` / `Switch` state
-desync, accessibility labels, font-weight changes.
-
-To add snapshot coverage to another demo: extract its `controls` body into a
-stateless `<Demo>Controls(...)` composable (same as `GeometryDemoControls`), then
-add a `<Demo>ControlsSnapshotTest` modelled on `GeometryDemoControlsSnapshotTest`.
-
-## Layer 3 — device-backed rendering screenshots (`connectedDebugAndroidTest`)
+## Layer 2 — device-backed rendering screenshots (`connectedDebugAndroidTest`)
 
 For checks that need the actual Filament render (does the sphere visibly spin? does
 the IBL slider change scene brightness?), the 3D demos are screenshot-tested on a
@@ -144,11 +105,10 @@ rendering screenshots share that harness.
 | Layer | Command | Device? | Speed |
 |---|---|---|---|
 | 1 — state machine + registry | `:samples:android-demo:testDebugUnitTest` | no | fast |
-| 2 — controls snapshot | `:samples:android-demo:verifyRoborazziDebug` | no | fast |
-| 3 — render screenshot | `:samples:android-demo:connectedDebugAndroidTest` | yes (GPU) | slow |
+| 2 — render screenshot | `:samples:android-demo:connectedDebugAndroidTest` | yes (GPU) | slow |
 
-Layers 1 and 2 run on every CI gate (`unit-test` job in `ci.yml`). Layer 3 runs on
-the device-QA jobs only.
+Layer 1 runs on every CI gate (`unit-test` job in `ci.yml`). Layer 2 is a local
+check on the `Pixel_7a` AVD; no CI job runs it.
 
 ## Related
 

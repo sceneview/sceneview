@@ -134,7 +134,7 @@ class GeometryDirectBufferUploadTest {
 
     @Test
     fun `setVertices uploads position, tangent, uv and color through directFloatBuffer`() {
-        val body = extractFunctionBody("fun VertexBuffer.setVertices(")
+        val body = extractFunctionBody("fun VertexBuffer.uploadVertices(")
         // One directFloatBuffer( call per attribute stream the function can emit: position
         // (unconditional), tangent, uv, color.
         val callCount = Regex("""directFloatBuffer\(""").findAll(body).count()
@@ -148,7 +148,7 @@ class GeometryDirectBufferUploadTest {
 
     @Test
     fun `setIndices uploads through directIntBuffer`() {
-        val body = extractFunctionBody("fun IndexBuffer.setIndices(")
+        val body = extractFunctionBody("fun IndexBuffer.uploadIndices(")
         assertTrue(
             "setIndices must build the index stream through directIntBuffer.",
             body.contains("directIntBuffer("),

@@ -6,7 +6,7 @@
 > release. The source of truth is `gradle.properties` → `VERSION_NAME` — read
 > that, not this file, if they ever disagree.
 
-## Current: v4.52.0 stable (September 2026)
+## Current: v4.63.0 stable (September 2026)
 
 **AI-first SDK** — 9 platforms, MCP server on npm, Claude Code plugin marketplace, Rerun.io debug integration.
 
@@ -15,7 +15,7 @@
 | Android SDK (Filament + Compose) | **Stable** |
 | iOS / macOS / visionOS (RealityKit + SwiftUI) | Alpha |
 | Web (Filament.js + WebXR) | Alpha |
-| Desktop (Compose Desktop) | Alpha — `SceneViewer` renders through Filament via filament-kmp (JDK 22+) |
+| Desktop (Compose Desktop) | Alpha — `SceneViewer` renders through Filament via filament-kmp (JDK 21+) |
 | Android TV | Alpha |
 | Flutter bridge | Alpha ([`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev) |
 | React Native bridge | Alpha ([`@sceneview-sdk/react-native`](https://www.npmjs.com/package/@sceneview-sdk/react-native) on npm) |
@@ -25,7 +25,7 @@
 | Rerun.io debug integration | **Shipped** (Android + iOS + Python) |
 | Play Store demo app | Deployed |
 | App Store demo app | **Live** (`id6761329763`) |
-| GitHub Release | **v4.52.0 stable** |
+| GitHub Release | **v4.63.0 stable** |
 
 ### Completed since v4.0
 

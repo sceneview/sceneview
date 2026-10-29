@@ -9,6 +9,7 @@ import java.time.format.DateTimeParseException
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sqrt
 
 /*
@@ -318,20 +319,26 @@ fun formatClock(millis: Long): String {
     }
 }
 
-fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1_000_000_000 -> String.format(Locale.US, "%.1f GB", bytes / 1_000_000_000.0)
-    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-    bytes >= 1_000 -> String.format(Locale.US, "%.0f kB", bytes / 1_000.0)
-    else -> "$bytes B"
+/** "4.7 MB" in English units, with the phone's decimal separator ("4,7 MB" in French). */
+fun formatFileSize(bytes: Long, locale: Locale = Locale.getDefault()): String {
+    // Rounded first, unit chosen after: 999 999 bytes read "1.0 MB", never "1000 kB".
+    val kilobytes = (bytes / 1_000.0).roundToLong()
+    val megabyteTenths = (bytes / 100_000.0).roundToLong()
+    return when {
+        megabyteTenths >= 10_000 -> String.format(locale, "%.1f GB", bytes / 1_000_000_000.0)
+        kilobytes >= 1_000 -> String.format(locale, "%.1f MB", megabyteTenths / 10.0)
+        bytes >= 1_000 -> "$kilobytes kB"
+        else -> "$bytes B"
+    }
 }
 
-/** How far the phone moved: "35 cm" under a metre, "1.2 m" above. */
-fun formatDistance(meters: Float): String {
+/** How far the phone moved: "35 cm" under a metre, "1.2 m" above ("1,2 m" in French). */
+fun formatDistance(meters: Float, locale: Locale = Locale.getDefault()): String {
     val m = if (meters.isFinite()) meters.coerceAtLeast(0f) else 0f
-    return if (m < 1f) "${(m * 100).roundToInt()} cm" else String.format(Locale.US, "%.1f m", m)
+    return if (m < 1f) "${(m * 100).roundToInt()} cm" else String.format(locale, "%.1f m", m)
 }
 
-private fun formatCount(n: Int): String = String.format(Locale.US, "%,d", n)
+private fun formatCount(n: Int, locale: Locale): String = String.format(locale, "%,d", n)
 
 // ── What a recording contains ────────────────────────────────────────────────────────────
 
@@ -402,7 +409,7 @@ data class LiveStat(val value: String, val label: String)
 /**
  * The four numbers shown while recording and while replaying: camera frames captured, how
  * far the phone moved, surfaces found, and placements ([placementsLabel] is "Placed" while
- * recording, "Restored" on replay).
+ * recording, "Restored" on replay), with [locale]'s separators.
  */
 fun liveCaptureStats(
     frames: Int,
@@ -410,11 +417,12 @@ fun liveCaptureStats(
     surfaces: Int,
     placements: Int,
     placementsLabel: String = "Placed",
+    locale: Locale = Locale.getDefault(),
 ): List<LiveStat> = listOf(
-    LiveStat(formatCount(frames), if (frames == 1) "Frame" else "Frames"),
-    LiveStat(formatDistance(metersMoved), "Moved"),
-    LiveStat(formatCount(surfaces), if (surfaces == 1) "Surface" else "Surfaces"),
-    LiveStat(formatCount(placements), placementsLabel),
+    LiveStat(formatCount(frames, locale), if (frames == 1) "Frame" else "Frames"),
+    LiveStat(formatDistance(metersMoved, locale), "Moved"),
+    LiveStat(formatCount(surfaces, locale), if (surfaces == 1) "Surface" else "Surfaces"),
+    LiveStat(formatCount(placements, locale), placementsLabel),
 )
 
 // ── Take quality ─────────────────────────────────────────────────────────────────────────

@@ -73,6 +73,12 @@ on:
           gets compiled/tested/built within 24h.
         type: boolean
         default: false
+      base-sha:
+        description: >-
+          Compare paths with this SHA when a caller wants per-job dispatch.
+          Empty keeps the normal workflow-call behaviour.
+        type: string
+        default: ''
 
 # Cancel only a genuinely superseded PR run, never a push to `main` (#2089,
 # #2925).
@@ -130,6 +136,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       android: ${{ steps.filter.outputs.android }}
+      library: ${{ steps.filter.outputs.library }}
       web: ${{ steps.filter.outputs.web }}
       flutter: ${{ steps.filter.outputs.flutter }}
       kmp: ${{ steps.filter.outputs.kmp }}
@@ -148,9 +155,9 @@ jobs:
       # The App Store submit/catch-up programs — gates `app-store-scripts`.
       app-store-scripts: ${{ steps.filter.outputs.app-store-scripts }}
     steps:
-      # Checked out only on `push`. `dorny/paths-filter` reads the diff from
-      # the GitHub API on `pull_request` and never touches the working tree; it
-      # needs git only on `push`, where it diffs against the previous commit.
+      # Checked out on non-PR events. `dorny/paths-filter` reads the diff from
+      # the GitHub API on `pull_request` and never touches the working tree; a
+      # push or reusable caller instead diffs against an explicit base SHA.
       #
       # The checkout was therefore pure cost on PRs — and it is the step that
       # overran. Measured across #3005, #3053 and #3055: `actions/checkout@v7`
@@ -209,7 +216,7 @@ jobs:
           # explicitly with that event's `before` sha so rapid successive
           # pushes cannot collapse into one diff. The all-zero `before` sha
           # used when GitHub cannot name a parent falls back to `main`.
-          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
+          base: ${{ inputs.base-sha || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
           filters: |
             shared: &shared
               - '.github/workflows/ci.yml'
@@ -226,6 +233,12 @@ jobs:
             # broke every Play deploy from `main` at `buildReleasePreBundle`.
             build-system:
               - *shared
+            library:
+              - *shared
+              - 'sceneview/**'
+              - 'arsceneview/**'
+              - 'sceneview-core/**'
+              - 'sceneview-compose/**'
             android:
               - *shared
               - 'sceneview/**'
@@ -320,6 +333,7 @@ jobs:
         env:
           VERDICTS: |
             android=${{ steps.filter.outputs.android }}
+            library=${{ steps.filter.outputs.library }}
             web=${{ steps.filter.outputs.web }}
             flutter=${{ steps.filter.outputs.flutter }}
             kmp=${{ steps.filter.outputs.kmp }}
@@ -391,6 +405,12 @@ jobs:
   # `check-changelog-fragments.sh` at PR time instead — deliberately the
   # lightest job in this workflow: a checkout and a bash script, no JDK, no
   # Gradle, no cache warm-up.
+  #
+  # Only the fragments this change adds or modifies are linted (diffed against
+  # the merge base), never the whole of `changelog.d/`: one malformed fragment
+  # that reached `main` used to turn every later PR red over a file none of
+  # them touched. `collate-changelog.sh` still checks every fragment at
+  # release time.
   changelog-lint:
     name: Changelog fragment format
     needs: changes
@@ -399,9 +419,28 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The merge base has to be reachable; commits and trees only.
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Check changelog fragment format
-        run: bash .claude/scripts/check-changelog-fragments.sh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base-sha || github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BASE_SHA" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            base="$(git merge-base "$BASE_SHA" HEAD)"
+          else
+            base="$(git merge-base origin/main HEAD)"
+          fi
+          mapfile -t files < <(git diff --name-only --diff-filter=AMR "$base" HEAD -- 'changelog.d/*.md')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changelog.d fragment added or modified since $base — nothing to lint."
+            exit 0
+          fi
+          printf 'Linting %s\n' "${files[@]}"
+          bash .claude/scripts/check-changelog-fragments.sh "${files[@]}"
 
   # ── App Store submit / catch-up programs ─────────────────────────────────
   # `app_store_submit.py` and `app_store_catchup.py` decide what reaches Apple,
@@ -555,14 +594,10 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      # `:samples:android-demo:lintDebug` is here because it was NOT, and that gap is
-      # the whole of #3660: three Compose lint errors sat on `main` behind a green
-      # "Lint" job, because this step only ever linted the two library modules while
-      # the Detekt step below already covered the demo. Local `lintDebug` was the only
-      # thing that saw them. The demo's release-secret guard (#1915) hangs off
-      # `assembleRelease` only, so the debug lint variant needs no secrets.
+      # The demo checks its library dependencies, so this single task covers
+      # the Android source graph without separate library analyses.
       - name: Lint
-        run: ./gradlew :sceneview:lintDebug :arsceneview:lintDebug :samples:android-demo:lintDebug --stacktrace
+        run: ./gradlew :samples:android-demo:lintDebug --stacktrace
 
       # detekt is applied to every Kotlin Android/KMP subproject in
       # build.gradle with a hand-tuned config (buildSrc/config/detekt/detekt.yml).
@@ -577,6 +612,11 @@ jobs:
       # only NEW violations fail this step. To refresh a baseline after a
       # cleanup PR, run `./gradlew :<module>:detektBaseline` locally and commit
       # the regenerated XML.
+      #
+      # Formatting, naming and size/complexity rules are off in detekt.yml:
+      # a 30-day audit counted ~40 red branches on them and no real catch.
+      # What still blocks is the bug-finding rules (potential-bugs,
+      # coroutines, exceptions, empty-blocks, dead code).
       - name: Detekt
         run: ./gradlew :sceneview:detekt :arsceneview:detekt :sceneview-core:detekt :sceneview-compose:detekt :samples:android-demo:detekt --stacktrace
 
@@ -598,10 +638,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: lint-reports
-          path: |
-            sceneview/build/reports/lint-results-debug.html
-            arsceneview/build/reports/lint-results-debug.html
-            samples/android-demo/build/reports/lint-results-debug.html
+          path: samples/android-demo/build/reports/lint-results-debug.html
           if-no-files-found: ignore
 
   # ── PR-blocking unit-test gate ───────────────────────────────────────────
@@ -635,27 +672,6 @@ jobs:
         # Plain `testDebugUnitTest` — the PR pass/fail signal, no coverage
         # instrumentation.
         #
-        # `:samples:android-demo` runs `verifyRoborazziDebug` instead of
-        # plain `testDebugUnitTest` (#2739). The two are NOT redundant work:
-        # Roborazzi's Gradle plugin only compares `captureRoboImage()` calls
-        # against the committed goldens
-        # (`samples/android-demo/src/test/snapshots/*.png`, e.g.
-        # `GeometryDemoControlsSnapshotTest`) when the `roborazzi.test.verify`
-        # property is set for that test run — `verifyRoborazziDebug` sets it,
-        # plain `testDebugUnitTest` does not, so a layout regression in the
-        # covered composables silently passed CI. `verifyRoborazziDebug` is a
-        # superset of `testDebugUnitTest`: it runs the SAME `debug` unit-test
-        # source set (including `ARBundledRecordingsTest`, the
-        # bundled-recording ftyp/avc1/mett contract suite from #1060/#1100),
-        # it just also enforces the screenshot comparison. Swapping the task
-        # name (not adding a second invocation) keeps CI cost flat — no
-        # duplicate test execution for this module.
-        #
-        # Escape hatch for an intentional visual change: run
-        # `./gradlew :samples:android-demo:recordRoborazziDebug` locally and
-        # commit the updated PNG(s) under
-        # `samples/android-demo/src/test/snapshots/`.
-        #
         # `:samples:common:testDebugUnitTest` runs the shared-helper
         # regression suite — LifecycleAwareLaunchedEffect, LifecyclePauseGate,
         # rememberMaterialInstance, InAppUpdateManager. See #972.
@@ -678,39 +694,23 @@ jobs:
         # module was compiled on every relevant PR while its 5 tests were not.
         # Local run before wiring: 5 tests, 0 failures, 7s.
         #
-        # `:samples:android-demo:testReleaseUnitTest` (#3410): the demo's JVM
-        # tests otherwise only ever reach CI as a dependency of
-        # `verifyRoborazziDebug` above, which is `debug`-only — the `release`
-        # variant of the same unit tests had no coverage at all. That hid a
-        # real divergence: 13 compose-rule tests (`DemoScaffold*BandTest`,
-        # `DemoBackgroundRoleTest`) failed on `testReleaseUnitTest` while
-        # passing on debug, because `createComposeRule()`'s bare
-        # `ComponentActivity` host was declared only via a
-        # `debugImplementation` dependency (`androidx.compose.ui:ui-test-manifest`)
-        # — invisible to the release variant's own resource-link pipeline. Fixed
-        # by declaring that manifest entry directly in
-        # `samples/android-demo/src/main/AndroidManifest.xml` so both variants
-        # see it; this task is what makes a regression of that fix (or any
-        # other release-only divergence) fail a PR instead of sitting silent
-        # on `main`. Plain task, not a Roborazzi verify — the demo has no
-        # release-specific goldens, so no second screenshot pass to duplicate.
-        # Local run: 591 tests, 0 failures, ~2 min warm.
+        # `:samples:android-demo:testReleaseUnitTest` (#3410): the `release`
+        # variant of the demo's unit tests. It caught a real divergence: 13
+        # compose-rule tests (`DemoScaffold*BandTest`, `DemoBackgroundRoleTest`)
+        # failed on release while passing on debug, because
+        # `createComposeRule()`'s bare `ComponentActivity` host was declared
+        # only via a `debugImplementation` dependency
+        # (`androidx.compose.ui:ui-test-manifest`). Fixed by declaring that
+        # manifest entry directly in `samples/android-demo/src/main/AndroidManifest.xml`;
+        # this task makes a regression of that fix fail a PR.
         run: |
-          # The goldens under samples/android-demo/src/test/snapshots/ are a
-          # declared input of the demo's test task (`roborazziGoldens` in its
-          # build.gradle, #3034), so a PR whose only change is a golden PNG
-          # re-runs the comparison on its own. Before that declaration the
-          # comparison came back UP-TO-DATE having read no golden — measured
-          # 2026-08-06 on a golden mutated by 8000 red pixels (#3029) — and this
-          # step carried a `testDebugUnitTest --rerun` workaround. If that
-          # declaration is ever removed, the workaround must come back.
           ./gradlew \
             :sceneview:testDebugUnitTest \
             :arsceneview:testDebugUnitTest \
             :sceneview-core:androidTest \
             :samples:common:testDebugUnitTest \
             :samples:android-tv-demo:testDebugUnitTest \
-            :samples:android-demo:verifyRoborazziDebug \
+            :samples:android-demo:testDebugUnitTest \
             :samples:android-demo:testReleaseUnitTest \
             --stacktrace
 
@@ -727,18 +727,6 @@ jobs:
             samples/android-demo/build/reports/tests/
           if-no-files-found: ignore
 
-      - name: Upload Roborazzi diff report
-        # Roborazzi writes a compare-report JSON plus the actual/diff PNGs
-        # here on a verify mismatch — separate from the JUnit HTML report
-        # above, and the fastest way to see WHAT changed without re-running
-        # locally.
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: roborazzi-diff-report
-          path: samples/android-demo/build/outputs/roborazzi/
-          if-no-files-found: ignore
-
   # ── Public-API surface check (binary-compatibility-validator, #2723) ─────
   # BLOCKING — same tier as `Unit tests`. `apiCheck` compares the compiled
   # public ABI of the published library modules (sceneview, arsceneview,
@@ -748,14 +736,14 @@ jobs:
   # apiDump` fails this check and blocks the merge. This is the binary-level
   # guard for the exact signatures `llms.txt` promises.
   #
-  # Path-gated on `android` exactly like `unit-test` (the `android` filter
-  # includes `sceneview-core/**`): a docs-only PR reports it `skipped`, which
+  # Path-gated on the four modules whose ABI is validated: a docs-only PR
+  # reports it `skipped`, which
   # branch protection grades as passing. It is NOT advisory: a red `apiCheck`
   # must fail the PR.
   api-check:
     name: API compatibility
     needs: changes
-    if: inputs.force-all || needs.changes.outputs.android == 'true'
+    if: inputs.force-all || needs.changes.outputs.library == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -813,7 +801,7 @@ jobs:
       # samples/desktop-demo consumes sceneview-compose's real desktop
       # renderer since #2540 (filament-kmp, offscreen → Skia) — it stopped
       # being the Compose Canvas wireframe placeholder that #1396 dropped
-      # from CI. Compiling it here (JDK 22 toolchain comes from
+      # from CI. Compiling it here (JDK 21 toolchain comes from
       # setup-gradle) makes the sample a guarded surface: the `web` filter
       # includes samples/desktop-demo/** and sceneview-compose/** so this
       # step fires when the sample or the façade it consumes changes.

@@ -1,15 +1,21 @@
 import Foundation
 
-// A minimal Arrow IPC stream encoder for `.rrd` chunks: the handful of column types Rerun
-// components use, no nulls except where a struct needs them, no dictionaries, no
-// compression. Spec: https://arrow.apache.org/docs/format/Columnar.html (IPC streaming
+// A minimal Arrow IPC stream encoder for `.rrd` chunks and the footer's chunk index: the
+// handful of column types Rerun components and manifests use, nulls only where a struct or an
+// index column needs them, no dictionaries, no compression. Android's `RerunArrow.kt`. Spec: https://arrow.apache.org/docs/format/Columnar.html (IPC streaming
 // format, metadata version V5, flatbuffers `Schema.fbs` / `Message.fbs`).
 
 /// An Arrow logical type, restricted to what the `.rrd` writer emits.
 indirect enum RerunArrowType: Equatable, Sendable {
     case uint8
     case uint32
+    /// `uint64`: the footer's row counts, byte offsets and byte sizes.
+    case uint64
     case float32
+    /// `bool`, bit-packed: the footer's "is static" flags.
+    case bool
+    /// `int64`: Rerun's type for a sequence timeline (a blueprint's `blueprint` index).
+    case int64
     /// `duration[ns]`: Rerun's type for a duration timeline.
     case durationNanoseconds
     case fixedSizeBinary(Int)
@@ -43,6 +49,30 @@ struct RerunArrowArray: Sendable {
     /// A primitive array without nulls (`uint8`, `uint32`, `float32`, `duration`...).
     static func primitive<T: BitwiseCopyable>(_ values: [T]) -> RerunArrowArray {
         RerunArrowArray(length: values.count, buffers: [Data(), littleEndianData(values)])
+    }
+
+    /// `int64` (or `duration`) values where `nil` is an absent slot.
+    static func nullableInt64s(_ values: [Int64?]) -> RerunArrowArray {
+        let nulls = values.filter { $0 == nil }.count
+        let validity = nulls == 0 ? Data() : bits(values.map { $0 != nil })
+        return RerunArrowArray(
+            length: values.count,
+            nullCount: nulls,
+            buffers: [validity, littleEndianData(values.map { $0 ?? 0 })]
+        )
+    }
+
+    /// `bool` values, one bit each, least significant bit first.
+    static func bools(_ values: [Bool]) -> RerunArrowArray {
+        RerunArrowArray(length: values.count, buffers: [Data(), bits(values)])
+    }
+
+    private static func bits(_ values: [Bool]) -> Data {
+        var packed = Data(count: (values.count + 7) / 8)
+        for (index, value) in values.enumerated() where value {
+            packed[index / 8] |= 1 << (index % 8)
+        }
+        return packed
     }
 
     /// A primitive array where every slot is null.
@@ -126,11 +156,13 @@ enum RerunArrowIPC {
         }
         columns.forEach(flatten)
 
-        let schema = RerunFlatBuffer.Node.table([
+        var schemaSlots: [Int: RerunFlatBuffer.Slot] = [
             0: .int16(0), // Endianness.Little
             1: .node(.vector(fields.map(fieldTable))),
-            2: .node(.vector(keyValues(metadata))),
-        ])
+        ]
+        // As Android: the footer's record batch has no schema metadata, and then no slot.
+        if !metadata.isEmpty { schemaSlots[2] = .node(.vector(keyValues(metadata))) }
+        let schema = RerunFlatBuffer.Node.table(schemaSlots)
         var nodeBytes = Data()
         for node in nodes {
             appendLittleEndian(Int64(node.length), to: &nodeBytes)
@@ -193,6 +225,9 @@ enum RerunArrowIPC {
         switch type {
         case .uint8: return (2, .table([0: .int32(8), 1: .bool(false)]), []) // Int
         case .uint32: return (2, .table([0: .int32(32), 1: .bool(false)]), [])
+        case .uint64: return (2, .table([0: .int32(64), 1: .bool(false)]), [])
+        case .int64: return (2, .table([0: .int32(64), 1: .bool(true)]), [])
+        case .bool: return (6, .table([:]), [])
         case .float32: return (3, .table([0: .int16(1)]), []) // FloatingPoint SINGLE
         case .durationNanoseconds: return (18, .table([0: .int16(3)]), []) // Duration NANOSECOND
         case .fixedSizeBinary(let width): return (15, .table([0: .int32(Int32(width))]), [])

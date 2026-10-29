@@ -29,8 +29,8 @@ import io.github.sceneview.demo.DemoSettings
  *  - **QA mode.** [DemoSettings.qaMode] already pins every idle orbit and turntable
  *    in the demos so two captures of a scene agree; the chrome has to hold still for
  *    the same reason, or a screenshot lands mid-cascade.
- *  - **Inspection mode.** Android Studio `@Preview` and the Roborazzi snapshot tests
- *    compose one frame and capture it. An entrance animation that starts at alpha 0
+ *  - **Inspection mode.** Android Studio `@Preview` and the Robolectric tests
+ *    compose one frame and read it. An entrance animation that starts at alpha 0
  *    captures as a blank card.
  *
  * Read it through [LocalMotionEnabled] rather than calling this directly, so a

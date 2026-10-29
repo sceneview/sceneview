@@ -98,9 +98,9 @@ internal fun shouldAutoOpenWhatsNew(
  * derives what this install has not been shown yet.
  *
  * Asset I/O and preference writes both run off the main thread. Inspection mode
- * (previews, Roborazzi snapshots) short-circuits to empty for the same reason
- * the What's new card does: the goldens must not churn on every release, and a
- * snapshot environment should not depend on asset I/O.
+ * (previews, Robolectric tests) short-circuits to empty for the same reason
+ * the What's new card does: a preview must not churn on every release, and a
+ * test environment should not depend on asset I/O.
  */
 @Composable
 fun rememberWhatsNewSince(): WhatsNewSinceState {

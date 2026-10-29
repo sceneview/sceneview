@@ -13,11 +13,13 @@ import dev.romainguy.kotlin.math.normalize
 import io.github.sceneview.drainFramePipeline
 import io.github.sceneview.geometries.Plane
 import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.matchToneMapInverse
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.safeDestroyStream
 import io.github.sceneview.safeDestroyTexture
+import io.github.sceneview.whenBackendIdle
 
 /**
  * A [Node] that renders video from an Android [MediaPlayer] onto a flat plane in 3D space.
@@ -27,23 +29,12 @@ import io.github.sceneview.safeDestroyTexture
  *
  * Optionally supports chroma-key (green-screen) compositing via [chromaKeyColor].
  *
+ * In a `SceneView { }` block, declare it with the `VideoNode` composables: `VideoNode(videoPath = …)`
+ * prepares and owns the player, `VideoNode(player = …)` takes one from `rememberMediaPlayer`.
+ *
  * ```kotlin
  * SceneView {
- *     val player = remember {
- *         MediaPlayer().apply {
- *             setDataSource(context, videoUri)
- *             isLooping = true
- *             prepare()
- *             start()
- *         }
- *     }
- *     DisposableEffect(Unit) { onDispose { player.release() } }
- *
- *     VideoNode(
- *         materialLoader = materialLoader,
- *         player = player,
- *         position = Position(z = -2f)
- *     )
+ *     VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
  * }
  * ```
  *
@@ -108,6 +99,7 @@ open class VideoNode(
             val old = field
             field = value
             setMaterialInstanceAt(0, value)
+            value.matchToneMapInverse(collisionSystem?.view)
             // The external [texture] stays bound to [old] until the next frame: destroying [old]
             // immediately would free a MaterialInstance still GPU-referenced by [texture], the
             // exact `Invalid texture still bound to MaterialInstance` SIGABRT #1497 fixed for
@@ -154,11 +146,17 @@ open class VideoNode(
      * **seek** or a **frame-step** on a paused player produces exactly one new frame and leaves
      * `isPlaying` false throughout, so a parked scene kept showing the frame from before the seek.
      * [SurfaceFrameSignal] answers for those — every frame the surface receives, playing or not.
+     *
+     * A player starts, seeks and stops without telling this node, so this is registered as a
+     * provider and the scene asks on every tick (#3724).
      */
-    override val isFrameActive: Boolean
-        get() = frameSignal.isActive(
-            forcedActive = runCatching { player.isPlaying }.getOrDefault(false)
-        ) || super.isFrameActive
+    private fun isVideoFrameActive(): Boolean = frameSignal.isActive(
+        forcedActive = runCatching { player.isPlaying }.getOrDefault(false)
+    )
+
+    init {
+        addFrameActivityProvider(::isVideoFrameActive)
+    }
 
     private val onVideoSizeChanged = MediaPlayer.OnVideoSizeChangedListener { _, width, height ->
         if (size == null && width > 0 && height > 0) {
@@ -190,9 +188,13 @@ open class VideoNode(
      *
      * The sequence below therefore:
      * 1. destroys the [MaterialInstance] first (un-references the texture),
-     * 2. calls [Engine.drainFramePipeline] so any in-flight frame still holding the
-     *    MaterialInstance is flushed and the MI is actually reclaimed,
-     * 3. only then destroys the external [Texture] and [Stream].
+     * 2. waits for the backend to execute that destroy, so no in-flight frame still holds the
+     *    MaterialInstance — without blocking the main thread: polled once per frame through
+     *    `Engine.whenBackendIdle`, where an unbounded [Engine.drainFramePipeline] used to park it on
+     *    the whole backend backlog (field ANRs in `Fence.wait` at teardown),
+     * 3. only then destroys the external [Texture] and [Stream], and releases the [SurfaceTexture].
+     *
+     * On a thread without a [Looper] there is nothing to poll from: step 2 is the blocking drain.
      *
      * Must run on the main thread — all Filament JNI calls do.
      */
@@ -206,13 +208,22 @@ open class VideoNode(
         surfaceTexture.setOnFrameAvailableListener(null)
         surface.release()
         materialLoader.destroyMaterialInstance(mi)
-        // Flush the render pipeline so the just-destroyed MaterialInstance is reclaimed before
-        // its external texture is freed — otherwise Filament SIGABRTs ("Invalid texture still
-        // bound to MaterialInstance"). See KDoc above.
-        materialLoader.engine.drainFramePipeline()
-        materialLoader.engine.safeDestroyTexture(texture)
-        materialLoader.engine.safeDestroyStream(stream)
-        surfaceTexture.release()
+        // The just-destroyed MaterialInstance must be reclaimed by the backend before its
+        // external texture is freed — otherwise Filament SIGABRTs ("Invalid texture still bound
+        // to MaterialInstance"). See KDoc above.
+        val engine = materialLoader.engine
+        val releaseExternal = {
+            engine.safeDestroyTexture(texture)
+            engine.safeDestroyStream(stream)
+            surfaceTexture.release()
+        }
+        if (Looper.myLooper() == null) {
+            engine.drainFramePipeline()
+            releaseExternal()
+            return
+        }
+        // Engine already gone: it freed the texture and stream with it.
+        engine.whenBackendIdle(onEngineGone = { surfaceTexture.release() }) { releaseExternal() }
     }
 }
 

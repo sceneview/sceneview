@@ -117,8 +117,10 @@ bash "$GUARD" "$VERSION"
 
 # Canonical category order. "Changed" is the fallback bucket. `Performance` (#1844)
 # is dedicated to perf-only commits — splits them out of the noisy `Fixed` bucket so
-# release notes credit pure perf wins distinctly from behaviour fixes.
-CATEGORIES=(Added Changed Fixed Performance Removed Tests Docs)
+# release notes credit pure perf wins distinctly from behaviour fixes. `Security`
+# follows `Fixed`, as in Keep a Changelog: a dependency bump that patches a
+# vulnerability used to fall through to `Changed` because it had no bucket.
+CATEGORIES=(Added Changed Fixed Security Performance Removed Tests Docs)
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 for cat in "${CATEGORIES[@]}"; do : > "$TMP_DIR/$cat"; done
@@ -144,6 +146,7 @@ canonical_category() {
     case "$raw" in
         added|new)            echo "Added" ;;
         fixed|fix|bugfix)     echo "Fixed" ;;
+        security)             echo "Security" ;;
         performance|perf)     echo "Performance" ;;
         removed|remove)       echo "Removed" ;;
         tests|test)           echo "Tests" ;;

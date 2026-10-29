@@ -200,6 +200,9 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_picking_collision_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        // "Scene ready" waits for the studio IBL the shapes reflect (#4448).
+        sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         // One settings panel — the two sub-mode tabs are gone (#3329).
         controls = {
             Text(
@@ -242,7 +245,7 @@ fun PickingAndCollisionDemo(onBack: () -> Unit) {
                 environmentLoader = environmentLoader,
                 // Studio IBL (no skybox) — the demo keeps its dark stage while the shapes get
                 // something to reflect. Unlit-on-black had neither.
-                environment = rememberModelDemoEnvironment(environmentLoader),
+                environment = rememberModelDemoEnvironment(environmentLoader, firstFrame),
                 view = view,
                 collisionSystem = collisionSystem,
                 viewNodeWindowManager = windowManager,

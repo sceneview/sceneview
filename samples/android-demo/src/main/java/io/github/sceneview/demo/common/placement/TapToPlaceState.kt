@@ -77,6 +77,13 @@ class TapToPlaceState internal constructor() {
     var trackingFailureReason: TrackingFailureReason? by mutableStateOf(null)
         internal set
 
+    /**
+     * The phone's gyroscope delivers nothing, so this session will never track (#4522): the
+     * overlays show the restart message instead of "Getting ready". Written by the session.
+     */
+    var motionSensorSilent: Boolean by mutableStateOf(false)
+        internal set
+
     /** The controller's phase, mirrored change-only from the frame loop. */
     var phase: PlacementPhase by mutableStateOf(PlacementPhase.INITIALIZING)
         internal set
@@ -176,6 +183,8 @@ class TapToPlaceState internal constructor() {
         controller.dismiss()
         phase = controller.phase
         cameraReady = false
+        // The verdict belongs to the session that was measured, not to the next one (#4522).
+        motionSensorSilent = false
     }
 
     private fun detachPlacement() {

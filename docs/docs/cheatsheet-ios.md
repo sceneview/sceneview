@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.52.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")
 ```
 
 ```swift
@@ -180,19 +180,92 @@ struct AutomaticPlacement: View {
 - `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
   rejects stale tickets and invalid bounds, keeps the old entity until a successful
   replacement, and automatically requests placement when empty.
-- Nested meshes are selectable. Drag preserves the grab offset on valid geometry;
-  twist and pinch share the grounded pivot. `selection`, `invalidMovement` and `scale`
-  are observable. `move(by:)`, `rotate(by:)`, and `scale(to:)` provide accessible
-  alternatives; scale is limited to 25–400%. Tracking loss cancels gestures and hides
-  content until the existing anchor recovers. Empty-space taps deselect only.
+- Nested meshes are selectable. Drag preserves the grab offset on valid geometry and the
+  model eases toward the finger (18/s), so touch jitter is smoothed. A thrown drag glides on
+  (released faster than 150 px/s, decaying with τ = 0.35 s) and a flicked twist keeps spinning
+  (faster than 45°/s); any new touch stops both. Twist and pinch share the grounded pivot;
+  the pinch snaps to exactly 100% within ±4%, with one tick and an elastic rebound. A double
+  tap anywhere toggles between 100% and the user's own size over 260 ms. A first placement
+  grows in from 1%. `selection`, `invalidMovement` and `scale` are observable. `move(by:)`,
+  `rotate(by:)`, `scale(to:)` and `toggleScale()` provide accessible alternatives; scale is
+  limited to 25–400%. Tracking loss cancels gestures and hides content until the existing
+  anchor recovers. Empty-space taps deselect only.
+- `recenter()` brings the placed model back in front of the user: it glides (6/s) to where
+  the centre ray meets the floor, between half its reach and its reach ahead, keeping the side
+  the user sees: the twist from facing them is kept, a plane placement's own heading counting
+  as twist; the pinch is kept. A wall
+  model goes to the wall under the centre. It returns `false`, changing nothing, when nothing
+  is placed or no surface is in view. The behaviour and constants follow ARMV, the SceneView
+  Android AR model viewer app.
 - The host owns permission UI, asset errors, labels, recovery actions and haptics.
   No renderer mutation belongs in a detached/background task.
 
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
-examples; there is no automatic fallback to estimated-plane taps.
+examples. To show the model before a plane is detected, opt in to instant placement below.
 
+
+### Instant placement
+
+Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
+yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
+ARKit detects a plane. Opt in when the first seconds matter more than
+the first pose:
+
+```swift
+@StateObject private var placement = ARPlacementController(instantPlacement: true)
+
+var body: some View {
+    AutoPlacementScene(controller: placement)
+        .overlay(alignment: .bottom) {
+            if placement.trackingMethod == .approximate {
+                Text("Refining…")
+            }
+        }
+        .task {
+            let ticket = placement.selectModel()
+            do {
+                let model = try await ModelNode.load("khronos_toy_car")
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                _ = model.withGroundingShadow()
+                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            } catch {
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                // Present a model-load error and retry, as in the automatic placement example.
+            }
+        }
+}
+```
+
+- A detected plane places the model at once, as without instant placement. When none shows
+  up, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
+  surface ARKit knows at least 0.4 m below the phone, even out of view, else 1.3 m below it. It
+  sits in the centre ray's heading, 1.2–4 m ahead depending on its size as shown (1.2 m at the default 0.3 m
+  preview; a 2 m sofa at real-world size, `previewSize: nil`, sits 2.9 m away), and is never
+  in mid-air. A wall model waits for ARKit's estimate of the wall in view.
+- Ten times a second, the model's own screen position is cast again. An estimated surface there becomes the
+  target of a continuous ease (6/s, changes under 1 cm ignored, a snap under Reduce Motion)
+  that never blocks a gesture: a drag or a move takes over from it. A detected plane there (within 5 m) lands the model: it is
+  re-anchored to the `ARPlaneAnchor` and plays the `.placed` haptic. A floor model keeps its
+  rotation; a wall model re-faces the detected wall. Landing waits for pinch, twist or drag to
+  end. Each plane anchor gets 3 s to resolve, counted again from the end of such a gesture;
+  one that does not is a failure and backs off 0.1–0.8 s. After 6 failures the recovery is
+  abandoned: the model stays where it stands and no timer retries it. Only another plane
+  there, that plane growing by 25%, or the user moving the model (drag, glide, `move(by:)`,
+  `recenter()`) re-arms landing. The
+  model leaving the plane before its anchor resolves (a young plane's edge) drops the anchor
+  without counting a failure, unless it happens 3 times in a row on that plane. After
+  landing, the glide to the landing point goes on until a drag or a move is accepted.
+- `placement.trackingMethod` is `nil` before placement, `.approximate` while estimated, then
+  `.fullTracking`, and never goes back. `placement.result` stays `nil` while approximate.
+  Kotlin: `InstantPlacementPoint.TrackingMethod`
+  `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` / `FULL_TRACKING`.
+- While approximate, tap-select, drag (along the estimated floor, or onto a detected plane
+  under the finger), pinch, twist, `move(by:)` and `rotate(by:)` all work.
+- The coaching overlay coaches tracking only (`.tracking` goal) so it never covers the model.
+- Without `instantPlacement`, every placement starts as `.fullTracking`; behaviour is unchanged.
+- Needs a real device: the Simulator has no AR camera.
 
 ### Direct wall placement
 
@@ -237,6 +310,8 @@ ARSceneView(
         arView.scene.addAnchor(anchor.entity)
     }
 )
+.placementShadow(.contact(.floor, intensity: 0.6)) // procedural ContactShadowNode instead of
+                                                   // RealityKit's grounding shadow (.grounding, .none)
 .onSessionStarted { arView in }       // called when AR session begins
 .mainLight(.systemDefault)             // v4.3.0+ — see LightSlot (default 10 000-lux directional + shadow)
 .fillLight(.systemDefault)             // v4.3.0+ — Android-parity 3 000-lux fill on by default
@@ -365,6 +440,7 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
 | `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
+| `ContactShadowNode` | `ContactShadowNode.under(model)` · `model.withContactShadow()` · `ContactShadowNode(width:length:context:plane:)` | `context:` `.floor` / `.tableTop` / `.wall`, `intensity:`, `spread:` (1.6); procedural decal, needs no light, left out of framing, sizing and collision |
 
 ---
 
@@ -691,7 +767,7 @@ silent stub.
 | `Config.SemanticMode.ENABLED` + `Frame.semanticImage()` / `.semanticConfidenceImage()` / `.semanticLabelFraction(label)` (#1730, `ar-scene-semantics` demo) | ARKit has no equivalent per-pixel outdoor classifier — the closest primitive is `ARFrame.detectedBody.skeleton` (single-person joints, not pixel labels) | iOS-skip with doc warning. Apps that need semantic-aware placement on iOS must ship their own Vision/Core ML segmentation model; AR-engine integration is not on the SceneViewSwift roadmap. |
 | `SplatNode` / `SplatCloud` / `rememberSplatCloud` — 3D Gaussian Splatting (`splat-preview` demo, #2646) | No first-party RealityKit Gaussian-splat primitive; would need a custom Metal render path or a mesh-impostor approximation | iOS-skip — Android-only today, silently missing from every SceneViewSwift surface (#2768). Needs-decision on a future custom-Metal or impostor-mesh port. |
 | `CollaborativeTransport` / `CollaborativeSession` / `NearbyCollaborativeTransport` (`io.github.sceneview.ar.collaborative`, `ar-collaborative` demo) | ARCore has no native shared-AR session API (no `collaborationData`), so SceneView built a bespoke pluggable-transport + Cloud Anchor layer on top of Nearby Connections | **Not yet built on iOS.** ARKit's native `ARSession.collaborationData` (or RealityKit's `MultipeerConnectivityService`) would give iOS a *more* native path than Android's bespoke wire protocol — no custom transport abstraction needed. Tracked under the iOS-parity tracker (#2798, "Wave B"). |
-| `ar-ml-object-label` demo — ML Kit Object Detection over `Frame.cameraImage()` (see `ARMLObjectLabelDemo.kt`) | Apple ships no built-in generic object-detection model (unlike ML Kit's default on-device model) | iOS-skip — no demo port yet. The raw camera-image access this would need is already available (`ARFrame.capturedImage` — see the `Frame.cameraImage()` row above); a port would pair it with Vision + a bundled Core ML detector model. |
+| ML Kit Object Detection over `Frame.cameraImage()` (the Android demo `ar-ml-object-label`, no longer a catalogue card: Point & Ask's on-device fallback, see `ARMLObjectLabelDemo.kt`) | Apple ships no built-in generic object-detection model (unlike ML Kit's default on-device model) | iOS-skip — no demo port yet. The raw camera-image access this would need is already available (`ARFrame.capturedImage` — see the `Frame.cameraImage()` row above); a port would pair it with Vision + a bundled Core ML detector model. |
 
 ### AR Depth & Cloud Anchors — May 2026 sprint (#1813)
 
@@ -742,7 +818,7 @@ exposes have no iOS equivalent at all. Ported from the source of truth,
 |---|---|---|
 | Shadows on/off | via `View.setShadowingEnabled` | per-light via `DirectionalLightComponent.Shadow` |
 | SSAO on/off | via `View.ambientOcclusionOptions` | no public toggle — RealityKit auto-applies AO approximations |
-| Bloom on/off | via `View.bloomOptions` | no public toggle |
+| Bloom on/off | via `View.bloomOptions` | `.bloom(BloomOptions)` — iOS / macOS 26+ (no-op on iOS 18–25, macOS 15–25 and visionOS) |
 | MSAA | via `View.multiSampleAntiAliasingOptions` | not user-controllable |
 | HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
 | Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |

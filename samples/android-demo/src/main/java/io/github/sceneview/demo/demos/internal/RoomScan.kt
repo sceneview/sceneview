@@ -287,7 +287,7 @@ class KeyframeGate(
         const val MIN_STEP_M = 0.15f
         const val MIN_TURN_DEGREES = 10f
 
-        /** 300 photos of 240×320: about 5 MB of JPEG and 23 MB of thumbnails. */
+        /** Photo count bound; encoded byte and resolution limits live in [ScanPhotoPolicy]. */
         const val MAX_PHOTOS = 300
     }
 }
@@ -313,48 +313,100 @@ object ScanArchive {
     }
 }
 
-/** The figures the Record screen shows while scanning, read off the trace. */
-data class ScanFigures(
-    val points: Int,
-    val surfaces: Int,
-    val photos: Int,
-    /** Surfels of the dense depth map (Rerun v2 tier `depth`); `0` for a sparse scan. */
-    val dense: Int = 0,
-) {
-    companion object {
-        val Empty = ScanFigures(0, 0, 0)
-    }
-}
 
 /** Copy of the Record mode, pure so a test holds it to what the brief promised. */
 object ScanCopy {
-    /** The promise under the Record button, and in the sheet. */
-    const val PRIVACY = "Everything stays on your phone."
+    /** The promise under the Start button, and in the sheet. */
+    const val PRIVACY = "Saved on your phone. Nothing leaves it unless you share it."
 
-    const val IDLE_TITLE = "Scan your room in 3D"
-    const val IDLE_DETAIL = "Tap record, then walk the phone slowly around the room. $PRIVACY"
-    const val WAITING = "Move the phone slowly to find the room. Recording starts once it is found."
+    const val IDLE_TITLE = "3D Scan"
+    const val IDLE_DETAIL = "Move the phone slowly around a space. $PRIVACY"
+    const val WAITING = "Move slowly to get started."
 
-    // The landing, worded as the iOS demo's (#4068), "phone" for "iPhone".
-    const val LANDING_TITLE = "Scan a room in 3D"
-    const val LANDING_BODY = "Walk around with your phone. SceneView keeps the camera's path, its photos, " +
-        "the surfaces and the points, then replays the room in 3D."
+    // The landing (#4627): one name for the feature, "3D Scan", on every surface.
+    const val LANDING_TITLE = "3D Scan"
+    const val LANDING_BODY = "Move around a space and watch it take shape."
 
     /** The landing's one primary action. */
-    const val RECORD = "Record your room"
-    const val WATCH_SAMPLE = "Watch a sample session"
-    const val OPEN_FILE = "Open file"
-    const val SESSIONS_TITLE = "Your sessions"
+    const val RECORD = "Start scanning"
+    const val WATCH_SAMPLE = "See an example"
+    const val OPEN_FILE = "Open scan"
+    const val SESSIONS_TITLE = "Your scans"
     const val ON_THIS_PHONE = "On this phone"
-    const val SESSIONS_EMPTY_TITLE = "No sessions yet"
-    const val SESSIONS_EMPTY = "Rooms you record are kept here, on this phone, until you delete them. " +
+    const val SESSIONS_EMPTY_TITLE = "No scans yet"
+    const val SESSIONS_EMPTY = "Scans you make are kept here, on this phone, until you delete them. " +
         "You can also open a .svscan scan file."
-    const val OPENING_FILE = "Opening file…"
-    const val SHARE_SCAN = "Share scan file"
+    const val OPENING_FILE = "Opening scan…"
     const val DELETE = "Delete"
     const val DELETE_DETAIL = "It is removed from this phone. Files you already shared are not affected."
-    const val OPEN_FAILED = "This session could not be opened."
-    const val SAVE_FAILED = "Your scan could not be saved on this phone. It stays open until you leave."
+    const val OPEN_FAILED = "This scan could not be opened."
+    const val SAVE_FAILED = "Couldn't save your scan"
+    const val SAVE_FAILED_DETAIL = "Your scan is still here, not saved yet. Try again, or discard it."
+    const val SAVE_AS_FILE = "Save as file"
+    const val SAVING_FILE = "Preparing the file…"
+    const val SAVE_AS_FILE_FAILED = "The file could not be written either. Free up some space, then try again."
+
+    /**
+     * What the "Couldn't save" card says under its title: why the save failed and what to do,
+     * [scanBytes] being what the scan needs on the phone, [refusal] why a part scanned again did
+     * not line up (#4815). `null` — a failure not yet read — says what it always said.
+     */
+    fun saveFailedDetail(
+        failure: ScanSaveFailure?,
+        scanBytes: Long = 0L,
+        refusal: RescanRefusal? = null,
+    ): String = when (failure) {
+        ScanSaveFailure.Memory ->
+            "Your phone ran out of memory saving this long scan. It is still here: try again, " +
+                "or save it as a file to keep it."
+        ScanSaveFailure.Storage ->
+            "Your phone's storage is full" +
+                (if (scanBytes > 0) ": this scan needs about ${ScanSaveFailure.mb(scanBytes)}" else "") +
+                ". Free up some space, then try again. Your scan is still here."
+        ScanSaveFailure.Empty ->
+            "This scan caught no camera path, points or surfaces, so there is nothing to keep. " +
+                "Discard it and scan again."
+        ScanSaveFailure.Other ->
+            "Something went wrong saving this scan. It is still here: try again, or save it as a file."
+        ScanSaveFailure.Refused -> rescanRefusedDetail(refusal)
+        null -> SAVE_FAILED_DETAIL
+    }
+
+    /** The card's title: a part that did not line up was never a failed write. */
+    fun saveFailedTitle(failure: ScanSaveFailure?): String =
+        if (failure == ScanSaveFailure.Refused) RESCAN_REFUSED_TITLE else SAVE_FAILED
+
+    /**
+     * The card's main action: Try again, or — for a part that did not line up, which lines up
+     * no better a second time — Save as a separate scan.
+     */
+    fun saveFailedAction(failure: ScanSaveFailure?): String =
+        if (failure == ScanSaveFailure.Refused) SAVE_SEPARATE else TRY_AGAIN
+
+    /**
+     * Why a part scanned again (#4736) did not line up on its scan, [why] being what lining it up
+     * came to (`null`: the re-scan held no depth points), and what keeps it (#4815).
+     */
+    fun rescanRefusedDetail(why: RescanRefusal?): String {
+        val reason = when (why) {
+            RescanRefusal.TooLittleOverlap -> "too little of what you scanned before is in it"
+            RescanRefusal.NoFloor -> "it shows no floor to line it up on"
+            RescanRefusal.NoWalls -> "it shows no wall to line it up on"
+            RescanRefusal.Unconstrained -> "it shows too little of the walls around it to hold it in place"
+            RescanRefusal.Ambiguous -> "two places in your scan fit it equally well"
+            RescanRefusal.Contradicts -> "lined up, it would put surfaces where your scan saw open space"
+            RescanRefusal.NoNormals -> "your scan holds no surface directions to line it up on"
+            null -> "it holds no depth points to line up"
+        }
+        return "This part didn't line up with your scan: $reason. Save it as a separate scan to keep " +
+            "it, or discard it. Your scan stays as it was."
+    }
+
+    const val RESCAN_REFUSED_TITLE = "Couldn't line up this part"
+    const val SAVE_SEPARATE = "Save as a separate scan"
+
+    /** A save that failed after its capture screen was left (#4500): said on the landing. */
+    const val SAVE_FAILED_AWAY = "Couldn't save your last scan."
 
     /** `Delete "Room · Sep 28, 2:32 PM"?` */
     fun deleteTitle(title: String): String = "Delete “$title”?"
@@ -373,29 +425,229 @@ object ScanCopy {
         }
     }
 
-    /** A kept session's figures: `4.2 m · 3.8k points · 42 photos · 0:18`, as on iOS. */
-    fun figures(pathMetres: Float, points: Int, photos: Int, seconds: Float): String {
+    /**
+     * A kept session's figures: `4.2 m · 3.8k points · 42 photos · 0:18`, as on iOS. The path
+     * length takes the replay's units under [locale] (`13 ft 11 in` in US English), so the card
+     * and the replay it opens never disagree.
+     */
+    fun figures(
+        pathMetres: Float,
+        points: Int,
+        photos: Int,
+        seconds: Float,
+        locale: Locale = Locale.getDefault(),
+    ): String {
         val parts = mutableListOf(
-            ArDebugFormat.distance(pathMetres),
-            "${ArDebugFormat.compactCount(points)} ${label(points, "point", "points")}",
+            scanPathLength(pathMetres, locale),
+            "${ArDebugFormat.compactCount(points, locale)} ${label(points, "point", "points")}",
         )
-        if (photos > 0) parts += "${ArDebugFormat.count(photos)} ${label(photos, "photo", "photos")}"
+        if (photos > 0) parts += "${ArDebugFormat.count(photos, locale)} ${label(photos, "photo", "photos")}"
         if (seconds.isFinite() && seconds > 0f) parts += ArDebugFormat.clock(seconds)
         return parts.joinToString(" · ")
     }
-    const val STOP_HINT = "Tap to stop and open your scan in 3D"
-    const val FINISHING = "Building your scan…"
+
     const val LOADING = "Opening your scan…"
     const val REPLAY_TITLE = "Your scan"
-    const val SAMPLE_TITLE = "Recorded AR session"
-    const val FULL = "Photo limit reached — points and path keep recording."
+    const val SAMPLE_TITLE = "Example scan"
+    /**
+     * Said once, briefly, when the photos run out (#4717), and not again: past the limit the
+     * scan's points, their colours and its path still record, so nothing is left to warn about.
+     * Worded as news, not as a limit hit (#4807): "Photo limit reached" read as a fault.
+     */
+    const val FULL = "All photos taken — still scanning"
+
+    // The capture lifecycle (#4627): Scanning ⇄ Paused, Finish opens a review that Keep scanning
+    // leaves for the same capture; only Save scan ends it.
+    const val SCANNING = "Scanning"
+    const val PAUSED = "Paused"
+    const val PAUSE = "Pause"
+    const val RESUME = "Resume"
+    const val FINISH = "Finish"
+
+    /** The stop shutter's spoken name (#4807): it ends the capture and opens the review. */
+    const val FINISH_SCAN = "Finish scan"
+    const val COACH_SCANNING = "Move slowly sideways"
+    const val COACH_PAUSED = "Nothing is captured while paused."
+
+    // ScanCoach's lines (#4631): short, and said only while their cause holds.
+    const val COACH_SLOWER = "Move slower"
+    const val COACH_NOTHING_NEW = "Point at the floor or a wall, 1 to 3 m away"
+
+    /**
+     * Nothing passes the usual confidence on the surface in view, or only relaxed samples do
+     * (#4717): a plain wall, a tiled floor, a bright sky. Closer, the sensor has more to read.
+     */
+    const val COACH_LOW_TEXTURE = "Move closer — this surface has little texture"
+
+    // The dense map past its budget (#4629): said once while it merges, never as a limit.
+    const val ADJUSTING_DETAIL = "Adjusting detail for a larger space"
+    const val SCAN_FULL = "This scan is full. Save it to keep what you have."
+    const val TRACKING_LOST = "Scan paused. Point at an area you already scanned."
+    const val REVIEW_TITLE = "Review your scan"
+    const val REVIEW_DETAIL = "Keep scanning to add more, or save it on this phone."
+    const val EMPTY_TITLE = "Nothing captured yet"
+    const val EMPTY_DETAIL = "Move the phone slowly around the space, then tap stop again."
+    const val KEEP_SCANNING = "Keep scanning"
+    const val SAVE_SCAN = "Save scan"
+    const val SAVING = "Saving scan…"
+    const val TRY_AGAIN = "Try again"
+    const val DISCARD = "Discard"
+    const val CANCEL = "Cancel"
+    const val LEAVE_TITLE = "Leave this scan?"
+    const val LEAVE_DETAIL = "Save it on this phone, or discard what you captured."
+    const val LEAVE_EMPTY_DETAIL = "Nothing captured yet. Keep scanning, or discard it and leave."
+    const val DISCARD_TITLE = "Discard this scan?"
+    const val DISCARD_DETAIL = "It was never saved, so it can't be recovered."
+
+    /** The top line of the capture: `Scanning · 0:42`, `Paused · 0:42`. */
+    fun status(phase: ScanPhase, clock: String): String =
+        "${if (phase == ScanPhase.Scanning) SCANNING else PAUSED} · $clock"
+
+    // What the capture is doing, said in one word (#4540 live walls): working, paused, or stuck.
+    const val STUCK = "Stuck"
+
+    /** The top line of the capture from what it is doing: `Scanning · 0:42`, `Stuck · 0:42`. */
+    fun status(activity: ScanActivity, clock: String): String {
+        val word = when (activity) {
+            ScanActivity.Working -> SCANNING
+            ScanActivity.Paused -> PAUSED
+            ScanActivity.Stuck -> STUCK
+        }
+        return "$word · $clock"
+    }
+
+    /** The walls recognised so far, beside the points: `No walls yet`, `1 wall`, `3 walls`. */
+    fun wallsFound(walls: Int): String =
+        if (walls <= 0) WALLS_NONE else "$walls ${label(walls, "wall", "walls")}"
+
+    const val WALLS_NONE = "No walls yet"
+
+    /**
+     * A room whose walls close it, or whose gauge is full: the scan can end (#4540). "stop" is the
+     * red shutter that ends a capture (#4807); there is no Finish button to name any more.
+     */
+    const val ROOM_DONE = "Room complete — tap stop to finish"
+
+    /** A depth scan getting no usable depth: the true cause of a count stuck at zero. */
+    const val COACH_NO_DEPTH = "No depth yet — keep the lens clear and move slowly"
+
+    /** The same, once the scan has points: depth came, then stopped — never "yet". */
+    const val COACH_DEPTH_LOST = "Depth lost — keep the lens clear and move slowly"
+
+    /** Standing still with nothing new: the scan waits on the phone. */
+    const val COACH_STILL = "Move the phone to scan more"
+
+    /** A wall still missing while nothing new comes: plain walls give ARCore little to hold. */
+    const val COACH_BLANK_WALL = "Plain wall? Get closer, at an angle, with a corner in view"
+
+    /** Nothing new while a wall is missing, the phone looking at the floor or the ceiling. */
+    const val COACH_FACE_WALLS = "Raise the phone to the walls"
+
+    /** Before the first frame tracks: the scan starts by itself, as soon as AR is ready. */
+    const val STARTING = "Getting AR ready — the scan starts by itself"
+
+    /**
+     * The turn to the part of the room no wall was seen on yet ([ScanGuide.cue]). It names the
+     * dashed line the live view draws on the floor there, which nothing else explained (QA
+     * 2026-10-22, remark 4); behind the phone, that line is out of view.
+     */
+    fun turnHint(turn: ScanTurn): String = when (turn) {
+        ScanTurn.Left -> "Turn left — no wall yet at the dashed line"
+        ScanTurn.Right -> "Turn right — no wall yet at the dashed line"
+        ScanTurn.Behind -> "Turn around — no wall seen behind you yet"
+        ScanTurn.Ahead -> "Sweep ahead — no wall yet at the dashed line"
+    }
+
+    /**
+     * The phone faces a wall drawn only where the scan saw it ([io.github.sceneview.demo.demos.internal.WallExtent]):
+     * walking along it is what finishes it (QA 2026-10-22, remark 3).
+     */
+    const val WALL_TO_FINISH = "Walk along this wall to finish it"
+
+    /**
+     * The gauge, said aloud: `Room 72 % scanned`, the room's scan done so far
+     * ([ScanGuide.completion]), named so it is never read as the floor covered (#4734).
+     */
+    fun completion(share: Float): String = "Room ${(share.coerceIn(0f, 1f) * PERCENT).toInt()} % scanned"
+
+    private const val PERCENT = 100
+
+    // The next step of a room's scan, from the walls recognised so far (#4540 live walls).
+    const val WALLS_FIRST = "Point at a wall and sweep along it"
+    const val WALLS_NEXT = "Turn to the next wall"
+    const val WALLS_FOLLOW = "Follow the walls round the room"
+    const val WALLS_CLOSE = "Keep going round, then tap stop"
+
+    /** The guidance line of a room's scan once it can see walls: what to do next, in a few words. */
+    fun wallGuide(walls: Int): String = when {
+        walls <= 0 -> WALLS_FIRST
+        walls == 1 -> WALLS_NEXT
+        walls < ScanGuide.ROOM_WALLS -> WALLS_FOLLOW
+        else -> WALLS_CLOSE
+    }
+
+    /** The capture's one count, from zero and never against a cap: `124,300 points captured`. */
+    fun pointsCaptured(points: Int): String {
+        val n = points.coerceAtLeast(0)
+        return "${ArDebugFormat.count(n)} ${label(n, "point", "points")} captured"
+    }
+
+    /**
+     * The save in progress, with what it is doing (#4719): `Fusing 261k points…`, the capture's
+     * own count; [SAVING] when it has none to tell.
+     */
+    fun fusing(points: Int): String =
+        if (points <= 0) SAVING else "Fusing ${figure(points)} ${label(points, "point", "points")}…"
+
+    /** What the review says about the capture so far: `124,300 points · 42 photos · 0:42`. */
+    fun reviewFigures(points: Int, photos: Int, clock: String): String {
+        val parts = mutableListOf("${ArDebugFormat.count(points.coerceAtLeast(0))} ${label(points, "point", "points")}")
+        if (photos > 0) parts += "${ArDebugFormat.count(photos)} ${label(photos, "photo", "photos")}"
+        parts += clock
+        return parts.joinToString(" · ")
+    }
+
+    /**
+     * The one coaching line under the capture, or `null` when a card speaks instead. Tracking loss
+     * first, then a full map, then the photo limit while its one notice lasts ([photoLimitReached]
+     * is that notice, not the lasting state, #4717), then what the user can act on — a surface
+     * with no usable depth ([depthStarved], before texture: a starved depth gate looks like a
+     * blank surface, #4540), with too little texture ([lowTexture]), moving too fast — then the dense map's
+     * "Adjusting detail", then the [coach]'s "nothing new" (#4631) and "standing still", then the
+     * plain advice. "Nothing new" never shows while the scan's points keep rising
+     * ([pointsRising]): the scan adds to the room, and the top line says it is working. A scan
+     * that already [hasPoints] says its depth was lost, not that none came yet.
+     */
+    @Suppress("LongParameterList") // one flag per cause the line can speak of
+    fun coaching(
+        phase: ScanPhase,
+        trackingLost: Boolean,
+        photoLimitReached: Boolean,
+        detail: ScanDetail = ScanDetail.Fine,
+        coach: ScanCoach.Line? = null,
+        lowTexture: Boolean = false,
+        depthStarved: Boolean = false,
+        pointsRising: Boolean = false,
+        hasPoints: Boolean = false,
+    ): String? = when (phase) {
+        ScanPhase.Scanning -> when {
+            trackingLost -> TRACKING_LOST
+            detail == ScanDetail.Full -> SCAN_FULL
+            photoLimitReached -> FULL
+            depthStarved -> if (hasPoints) COACH_DEPTH_LOST else COACH_NO_DEPTH
+            lowTexture -> COACH_LOW_TEXTURE
+            coach == ScanCoach.Line.Slower -> COACH_SLOWER
+            detail == ScanDetail.Adjusting -> ADJUSTING_DETAIL
+            coach == ScanCoach.Line.NothingNew && !pointsRising -> COACH_NOTHING_NEW
+            coach == ScanCoach.Line.Still -> COACH_STILL
+            else -> COACH_SCANNING
+        }
+        ScanPhase.Paused -> COACH_PAUSED
+        else -> null
+    }
 
     /** `1` → `1 photo`, `12` → `12 photos`: the figure's label follows its value. */
     fun label(count: Int, one: String, many: String): String = if (count == 1) one else many
-
-    /** The HUD's tier, beside "Scanning": what this phone's scan really is (Rerun v2). */
-    const val TIER_DEPTH = "Depth scan"
-    const val TIER_SPARSE = "Sparse scan"
 
     /**
      * A figure of the Record screen, in full up to `9,999` and compact past it (`12k`), so three

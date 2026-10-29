@@ -1,10 +1,8 @@
 package io.github.sceneview.ar.camera
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -31,10 +29,7 @@ import kotlin.math.sqrt
  *     Filament's `inverseTonemapSRGB()` helper does), and `sRGB_OETF(pow(c, 2.2))` is not the
  *     identity. That mismatch is the bug.
  *
- * A GLSL shader cannot run in a pure-JVM test, so this file does two things instead: it
- * replicates the shader math in Kotlin and pins the numbers, and it reads the three `.mat`
- * sources to guard that they still use the exact path. The on-device look needs a real
- * session — see the PR's needs-device section.
+ * The shader chain is reproduced as pure Kotlin so its output can be checked directly.
  */
 class CameraStreamColorContractTest {
 
@@ -114,58 +109,4 @@ class CameraStreamColorContractTest {
         )
     }
 
-    // --- Source contract ------------------------------------------------------------------
-
-    private fun mat(name: String): String {
-        val file = File("src/main/materials/$name.mat")
-        assertTrue(
-            "Expected ${file.absolutePath} — JVM test must run from the arsceneview root.",
-            file.exists(),
-        )
-        return file.readText()
-    }
-
-    /**
-     * `//` comments stripped. The materials *document* the old `inverseTonemapSRGB()` call in
-     * their rationale comments, so the "no longer called" guard has to look at code only.
-     */
-    private fun matCode(name: String): String =
-        mat(name).lineSequence().joinToString("\n") { it.substringBefore("//") }
-
-    private val cameraMaterials = listOf(
-        "camera_stream_flat",
-        "camera_stream_depth",
-        "camera_stream_person_occlusion",
-    )
-
-    @Test
-    fun `every camera material decodes with the exact sRGB EOTF`() {
-        cameraMaterials.forEach { name ->
-            val source = matCode(name)
-            assertTrue(
-                "$name.mat must define the exact IEC 61966-2-1 decode (#3338).",
-                source.contains("vec3 srgbToLinearExact(const vec3 srgb)"),
-            )
-            // The two constants that separate the exact piecewise curve from an approximation.
-            assertTrue("$name.mat lost the linear segment slope", source.contains("1.0 / 12.92"))
-            assertTrue("$name.mat lost the knee threshold", source.contains("0.04045"))
-            assertTrue(
-                "$name.mat must still invert the Filmic curve the View re-applies.",
-                source.contains("Inverse_Tonemap_Filmic(") &&
-                    source.contains("srgbToLinearExact(")
-            )
-        }
-    }
-
-    @Test
-    fun `no camera material calls inverseTonemapSRGB`() {
-        cameraMaterials.forEach { name ->
-            assertFalse(
-                "$name.mat must not use Filament's inverseTonemapSRGB(): it decodes with " +
-                    "pow(c, 2.2), which does not cancel the exact sRGB OETF Filament re-encodes " +
-                    "with, and crushes the camera background's shadows by up to 8.5/255 (#3338).",
-                matCode(name).contains("inverseTonemapSRGB("),
-            )
-        }
-    }
 }

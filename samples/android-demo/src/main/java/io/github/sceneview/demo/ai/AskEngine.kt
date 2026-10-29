@@ -5,18 +5,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.google.mlkit.genai.common.DownloadStatus
-import com.google.mlkit.genai.common.FeatureStatus
 import com.google.mlkit.genai.prompt.Generation
 import com.google.mlkit.genai.prompt.GenerativeModel
 import com.google.mlkit.genai.prompt.ImagePart
 import com.google.mlkit.genai.prompt.TextPart
 import com.google.mlkit.genai.prompt.generateContentRequest
+import android.util.Log
 import io.github.sceneview.demo.DemoSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Availability of the on-device answer engine, as the demo UI sees it. */
 sealed interface AskEngineStatus {
@@ -26,11 +27,20 @@ sealed interface AskEngineStatus {
     /** Supported device, model not fetched yet — offer a download CTA. */
     data object Downloadable : AskEngineStatus
 
-    /** Model download in flight. [totalBytesDownloaded] is `null` until the first progress tick. */
-    data class Downloading(val totalBytesDownloaded: Long? = null) : AskEngineStatus
+    /**
+     * Model download in flight. [totalBytesDownloaded] is `null` until the first progress tick,
+     * [bytesToDownload] until ML Kit announces the size.
+     */
+    data class Downloading(
+        val totalBytesDownloaded: Long? = null,
+        val bytesToDownload: Long? = null,
+    ) : AskEngineStatus
 
-    /** Unsupported device — no AICore (every emulator, and phones below Pixel 8 class). */
-    data object Unavailable : AskEngineStatus
+    /** The download stopped with [failure] — retryable, not a device verdict (#2648). */
+    data class DownloadFailed(val failure: AskFailure) : AskEngineStatus
+
+    /** The platform says Gemini Nano cannot run here right now, and [reason] says why. */
+    data class Unavailable(val reason: AskUnavailableReason) : AskEngineStatus
 }
 
 /**
@@ -45,7 +55,11 @@ sealed interface AskEngineStatus {
 interface AskEngine {
     suspend fun status(): AskEngineStatus
 
-    /** Triggers the model download, re-emitting progress; ends on [AskEngineStatus.Ready] or [AskEngineStatus.Unavailable]. */
+    /**
+     * Triggers the model download — or attaches to one AICore already runs — re-emitting
+     * progress; ends on [AskEngineStatus.Ready], [AskEngineStatus.DownloadFailed] or
+     * [AskEngineStatus.Unavailable].
+     */
     fun download(): Flow<AskEngineStatus>
 
     /**
@@ -68,44 +82,81 @@ class GeminiNanoAskEngine : AskEngine {
         Generation.getClient()
     }
 
-    override suspend fun status(): AskEngineStatus = try {
-        when (val status = model.checkStatus()) {
-            FeatureStatus.AVAILABLE -> AskEngineStatus.Ready
-            FeatureStatus.DOWNLOADABLE -> AskEngineStatus.Downloadable
-            FeatureStatus.DOWNLOADING -> AskEngineStatus.Downloading()
-            else -> {
-                android.util.Log.i(ASK_ENGINE_LOG_TAG, "Gemini Nano feature status: $status")
-                AskEngineStatus.Unavailable
+    override suspend fun status(): AskEngineStatus {
+        val result = try {
+            withTimeoutOrNull(ASK_STATUS_TIMEOUT_MS) {
+                val featureStatus = model.checkStatus()
+                Log.i(ASK_STATE_LOG_TAG, "engine: checkStatus() returned FeatureStatus=$featureStatus")
+                askEngineStatusOfFeatureStatus(featureStatus)
+            } ?: AskEngineStatus.Unavailable(AskUnavailableReason.StatusCheckTimedOut).also {
+                Log.w(ASK_STATE_LOG_TAG, "engine: checkStatus() timed out after ${ASK_STATUS_TIMEOUT_MS}ms")
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            // AICore missing/broken surfaces as runtime exceptions on some devices, and a
+            // minified build missing the ML Kit classes as a NoClassDefFoundError (an Error, not
+            // an Exception). Either way the card must say *why* and offer to check again —
+            // the code is logged because the causes look alike on screen (#3188, #4028, #2648).
+            val code = AskFailure.errorCodeOf(e)
+            Log.w(ASK_STATE_LOG_TAG, "engine: checkStatus() threw, GenAI error code=$code", e)
+            AskEngineStatus.Unavailable(unavailableReasonOfErrorCode(code))
         }
-    } catch (e: Throwable) {
-        // AICore missing/broken surfaces as runtime exceptions on some devices, and a
-        // minified build missing the ML Kit classes as a NoClassDefFoundError (an Error, not
-        // an Exception). Same answer for the user either way: not available here. Leaving
-        // an Error uncaught would keep the demo's status `null` forever — a blank bottom
-        // edge instead of the "unavailable" banner (#3188).
-        if (e is kotlinx.coroutines.CancellationException) throw e
-        // Logged, because the two causes look identical on screen and are not the same bug:
-        // a device without AICore is expected, a shrunk build that lost ML Kit classes is a
-        // release defect (#4028).
-        android.util.Log.w(ASK_ENGINE_LOG_TAG, "Gemini Nano status check failed", e)
-        AskEngineStatus.Unavailable
+        Log.i(ASK_STATE_LOG_TAG, "engine: status=$result")
+        return result
     }
 
     override fun download(): Flow<AskEngineStatus> = flow {
+        Log.i(ASK_STATE_LOG_TAG, "engine: download() requested")
         emit(AskEngineStatus.Downloading())
+        var bytesToDownload: Long? = null
+        var terminal = false
         try {
             model.download().collect { downloadStatus ->
                 when (downloadStatus) {
+                    is DownloadStatus.DownloadStarted -> {
+                        bytesToDownload = downloadStatus.bytesToDownload.takeIf { it > 0L }
+                        Log.i(ASK_STATE_LOG_TAG, "engine: download started, bytesToDownload=$bytesToDownload")
+                        emit(AskEngineStatus.Downloading(0L, bytesToDownload))
+                    }
                     is DownloadStatus.DownloadProgress ->
-                        emit(AskEngineStatus.Downloading(downloadStatus.totalBytesDownloaded))
-                    is DownloadStatus.DownloadCompleted -> emit(AskEngineStatus.Ready)
-                    is DownloadStatus.DownloadFailed -> emit(AskEngineStatus.Unavailable)
-                    else -> Unit // DownloadStarted — the initial Downloading emit covers it.
+                        emit(AskEngineStatus.Downloading(downloadStatus.totalBytesDownloaded, bytesToDownload))
+                    is DownloadStatus.DownloadCompleted -> {
+                        Log.i(ASK_STATE_LOG_TAG, "engine: download completed")
+                        terminal = true
+                        emit(AskEngineStatus.Ready)
+                    }
+                    is DownloadStatus.DownloadFailed -> {
+                        terminal = true
+                        emit(downloadFailure(downloadStatus.e))
+                    }
+                    else -> Unit
                 }
             }
-        } catch (_: Exception) {
-            emit(AskEngineStatus.Unavailable)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            terminal = true
+            emit(downloadFailure(e))
+        }
+        // The flow ended without a verdict (attached to a download AICore finished on its
+        // own, or ML Kit simply completed the flow): ask the platform where things stand
+        // instead of leaving "Downloading…" up forever (#2648).
+        if (!terminal) {
+            Log.i(ASK_STATE_LOG_TAG, "engine: download flow ended without a verdict, re-checking status")
+            emit(status())
+        }
+    }
+
+    /** A download error is retryable unless its code is a platform "no" (#2648). */
+    private fun downloadFailure(e: Throwable): AskEngineStatus {
+        val code = AskFailure.errorCodeOf(e)
+        val failure = AskFailure.of(e)
+        Log.w(ASK_STATE_LOG_TAG, "engine: download failed, GenAI error code=$code -> $failure", e)
+        return when {
+            failure.isTerminal -> AskEngineStatus.Unavailable(failure.unavailableReason())
+            failure == AskFailure.Unknown -> AskEngineStatus.DownloadFailed(AskFailure.DownloadInterrupted)
+            else -> AskEngineStatus.DownloadFailed(failure)
         }
     }
 
@@ -164,11 +215,16 @@ class CannedAskEngine : AskEngine {
  * that does not come from a terminal inference error: both are the **platform** reporting
  * that this device cannot run the model. Nothing else in the demo may reach that state.
  */
-fun AskEngineStatus.toAvailability(): AskAvailability = when (this) {
+fun AskEngineStatus.toAvailability(aicoreInstalled: Boolean = true): AskAvailability = when (this) {
     AskEngineStatus.Ready -> AskAvailability.Ready
     AskEngineStatus.Downloadable -> AskAvailability.Downloadable
-    is AskEngineStatus.Downloading -> AskAvailability.Downloading(totalBytesDownloaded)
-    AskEngineStatus.Unavailable -> AskAvailability.Unsupported
+    is AskEngineStatus.Downloading -> AskAvailability.Downloading(totalBytesDownloaded, bytesToDownload)
+    is AskEngineStatus.DownloadFailed -> AskAvailability.DownloadFailed(failure)
+    // Without the AICore package nothing on this phone can ever run Gemini Nano, whatever
+    // ML Kit's reason — say that, and do not offer an AICore update that cannot exist.
+    is AskEngineStatus.Unavailable -> AskAvailability.Unsupported(
+        if (aicoreInstalled) reason else AskUnavailableReason.NoAicore,
+    )
 }
 
 /**
@@ -186,5 +242,3 @@ fun rememberAskEngine(): AskEngine {
     return engine
 }
 
-/** Logcat tag for the engine's availability failures (#4028). */
-private const val ASK_ENGINE_LOG_TAG = "AskEngine"

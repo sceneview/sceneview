@@ -1,6 +1,7 @@
 package io.github.sceneview.ar.collaborative
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -63,13 +64,44 @@ class CollaborativeWireFormatTest {
             translation = floatArrayOf(1f, 2f, 3f),
             quaternion = floatArrayOf(0f, 0f, 0f, 1f),
             scale = floatArrayOf(1f, 1f, 1f),
+            logicalClock = 7L,
         )
         assertEquals(
             "{\"type\":\"node\",\"peer\":\"p3\",\"node\":\"cube-1\",\"model\":\"cube\"," +
                 "\"translation\":[1.0,2.0,3.0],\"quaternion\":[0.0,0.0,0.0,1.0]," +
-                "\"scale\":[1.0,1.0,1.0]}\n",
+                "\"scale\":[1.0,1.0,1.0],\"clock\":7}\n",
             line,
         )
+    }
+
+    @Test
+    fun `remove emits canonical JSON line`() {
+        assertEquals(
+            "{\"type\":\"remove\",\"peer\":\"p3\",\"node\":\"cube-1\",\"clock\":8}\n",
+            CollaborativeWireFormat.remove("p3", "cube-1", 8L),
+        )
+    }
+
+    @Test
+    fun `node without a counter emits the line of a peer that predates it`() {
+        val t = floatArrayOf(1f, 2f, 3f)
+        val q = floatArrayOf(0f, 0f, 0f, 1f)
+        val scale = floatArrayOf(1f, 1f, 1f)
+        val legacy = PreClockWireFormat.node("p3", "cube-1", "cube", t, q, scale)
+        assertEquals(legacy, CollaborativeWireFormat.node("p3", "cube-1", "cube", t, q, scale))
+        assertEquals(legacy, CollaborativeWireFormat.node("p3", "cube-1", "cube", t, q, scale, 0L))
+        assertFalse(legacy.contains("clock"))
+    }
+
+    @Test
+    fun `remove rejects a missing counter at encode time`() {
+        var threw = false
+        try {
+            CollaborativeWireFormat.remove("p3", "cube-1", 0L)
+        } catch (_: IllegalArgumentException) {
+            threw = true
+        }
+        assertTrue(threw)
     }
 
     @Test
@@ -134,6 +166,7 @@ class CollaborativeWireFormatTest {
             translation = floatArrayOf(-1f, 0f, 5f),
             quaternion = floatArrayOf(0f, 0f, 0f, 1f),
             scale = floatArrayOf(2f, 2f, 2f),
+            logicalClock = 12L,
         )
         val msg = CollaborativeWireFormat.parse(line)
         assertTrue(msg is CollaborativeMessage.NodeState)
@@ -142,6 +175,118 @@ class CollaborativeWireFormatTest {
         assertEquals("robot", msg.modelKey)
         assertEquals(2f, msg.scale[0], 1e-6f)
         assertEquals(5f, msg.translation[2], 1e-6f)
+        assertEquals(12L, msg.logicalClock)
+    }
+
+    @Test
+    fun `remove round-trips`() {
+        val msg = CollaborativeWireFormat.parse(
+            CollaborativeWireFormat.remove("p", "n-7", 13L),
+        ) as CollaborativeMessage.NodeRemoval
+        assertEquals("p", msg.peerId)
+        assertEquals("n-7", msg.nodeKey)
+        assertEquals(13L, msg.logicalClock)
+    }
+
+    @Test
+    fun `a wall-clock sized counter round-trips`() {
+        val counter = 1_791_504_000_123L
+        val node = CollaborativeWireFormat.parse(
+            CollaborativeWireFormat.node(
+                "p", "n", "cube",
+                floatArrayOf(0f, 0f, 0f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+                counter,
+            ),
+        ) as CollaborativeMessage.NodeState
+        assertEquals(counter, node.logicalClock)
+        val removal = CollaborativeWireFormat.parse(
+            CollaborativeWireFormat.remove("p", "n", Long.MAX_VALUE),
+        ) as CollaborativeMessage.NodeRemoval
+        assertEquals(Long.MAX_VALUE, removal.logicalClock)
+    }
+
+    // ── Peers that predate `clock` and `remove` (#4384) ───────────────────
+    //
+    // PreClockWireFormat is the wire format as released up to 4.53.0. Both
+    // directions go through it: what such a peer sends, what it makes of the
+    // lines it now receives.
+
+    @Test
+    fun `a node line from an older peer parses with no counter`() {
+        val msg = CollaborativeWireFormat.parse(
+            PreClockWireFormat.node(
+                "old", "n", "cube",
+                floatArrayOf(4f, 5f, 6f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(1f, 1f, 1f),
+            ),
+        ) as CollaborativeMessage.NodeState
+        assertEquals(0L, msg.logicalClock)
+        assertEquals("old", msg.peerId)
+        assertEquals(5f, msg.translation[1], 0f)
+    }
+
+    @Test
+    fun `an older peer reads a node line that carries a counter`() {
+        val msg = PreClockWireFormat.parse(
+            CollaborativeWireFormat.node(
+                "new", "n-1", "robot",
+                floatArrayOf(4f, 5f, 6f), floatArrayOf(0f, 0f, 0f, 1f), floatArrayOf(2f, 2f, 2f),
+                1_791_504_000_123L,
+            ),
+        ) as CollaborativeMessage.NodeState
+        assertEquals("new", msg.peerId)
+        assertEquals("n-1", msg.nodeKey)
+        assertEquals("robot", msg.modelKey)
+        assertEquals(6f, msg.translation[2], 0f)
+        assertEquals(1f, msg.quaternion[3], 0f)
+        assertEquals(2f, msg.scale[0], 0f)
+    }
+
+    @Test
+    fun `an older peer ignores a remove line`() {
+        assertNull(PreClockWireFormat.parse(CollaborativeWireFormat.remove("new", "n-1", 9L)))
+    }
+
+    @Test
+    fun `every other line is unchanged for an older peer`() {
+        val t = floatArrayOf(1f, 2f, 3f)
+        val q = floatArrayOf(0f, 0f, 0f, 1f)
+        assertEquals(PreClockWireFormat.hello("p", "P"), CollaborativeWireFormat.hello("p", "P"))
+        assertEquals(PreClockWireFormat.bye("p"), CollaborativeWireFormat.bye("p"))
+        assertEquals(
+            PreClockWireFormat.anchor("p", "id", "room"),
+            CollaborativeWireFormat.anchor("p", "id", "room"),
+        )
+        assertEquals(
+            PreClockWireFormat.pose("p", 12L, t, q),
+            CollaborativeWireFormat.pose("p", 12L, t, q),
+        )
+    }
+
+    // ── Lines that cannot be ordered are dropped ──────────────────────────
+
+    private fun nodeLineWithClock(clock: String): String =
+        "{\"type\":\"node\",\"peer\":\"p\",\"node\":\"n\",\"model\":\"cube\"," +
+            "\"translation\":[0,0,0],\"quaternion\":[0,0,0,1],\"scale\":[1,1,1]," +
+            "\"clock\":$clock}"
+
+    @Test
+    fun `a node line with an unreadable counter is dropped, not read as no counter`() {
+        assertNotNull(CollaborativeWireFormat.parse(nodeLineWithClock("7")))
+        assertNull(CollaborativeWireFormat.parse(nodeLineWithClock("\"7\"")))
+        assertNull(CollaborativeWireFormat.parse(nodeLineWithClock("null")))
+        assertNull(CollaborativeWireFormat.parse(nodeLineWithClock("-3")))
+        // One digit past Long.MAX_VALUE.
+        assertNull(CollaborativeWireFormat.parse(nodeLineWithClock("92233720368547758070")))
+    }
+
+    @Test
+    fun `a remove line without a usable counter is dropped`() {
+        val head = "{\"type\":\"remove\",\"peer\":\"p\",\"node\":\"n\""
+        assertNotNull(CollaborativeWireFormat.parse("$head,\"clock\":1}"))
+        assertNull(CollaborativeWireFormat.parse("$head}"))
+        assertNull(CollaborativeWireFormat.parse("$head,\"clock\":0}"))
+        assertNull(CollaborativeWireFormat.parse("$head,\"clock\":-1}"))
+        assertNull(CollaborativeWireFormat.parse("{\"type\":\"remove\",\"peer\":\"p\",\"clock\":4}"))
     }
 
     @Test

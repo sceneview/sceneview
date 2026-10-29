@@ -106,7 +106,7 @@ describe("generateCarPaintShader", () => {
 
   it("lists SceneView 4.0.x as a dependency", () => {
     const { dependencies } = generateCarPaintShader();
-    expect(dependencies.some((d) => d.includes("sceneview:4.0"))).toBe(true);
+    expect(dependencies.some((d) => d.includes("sceneview:4.53.0"))).toBe(true);
   });
 
   it("description reflects the chosen finish and base color", () => {

@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strings for the `lighting` demo (registered by `LightingFragment.kt`).
 
-     Rebuilt from scratch in #3496: the screen is now the showcase half of the
-     lighting pair — three *rigs* (image-based, studio, sun) over the one stage
-     `LightingStage` that `lighting-lab` also lights. The retired `movable-light`
-     and `dynamic-sky` ids still deep-link here through
-     `DeepLinkRouter.DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`.
+     Rebuilt from scratch in #3496: three *rigs* (image-based, studio, sun) over
+     the one stage `LightingStage`. Since #4603 it also carries what `lighting-lab`
+     used to: reflections, contact shading, fog and the frame options. The retired
+     `lighting-lab`, `movable-light` and `dynamic-sky` ids still deep-link here
+     through `DeepLinkRouter.DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`.
 
      Android's resource merger fans every `res/values/*.xml` file in, so
      `R.string.demo_lighting_title` etc. stays globally resolvable (#1870). -->
 <resources>
     <string name="demo_lighting_title">Lighting</string>
-    <string name="demo_lighting_subtitle">Compare studio light, daylight and reflections</string>
-    <string name="demo_lighting">Lighting</string>
-    <string name="demo_lighting_desc">Image-based, three-point studio and dynamic sun lighting</string>
+    <string name="demo_lighting_subtitle">Studio light, daylight, reflections, fog and shading</string>
     <string name="demo_lighting_loading">Loading the stage…</string>
 
     <!-- Rig picker. Order matches the `LightingRig` enum, which `ALIAS_INITIAL_TAB` indexes. -->
@@ -33,12 +31,29 @@
     <string name="demo_lighting_environment">Environment</string>
     <string name="demo_lighting_rotation">Environment rotation</string>
     <string name="demo_lighting_rotation_hint">Filament turns the lighting, not the painted sky — hide the sky to rotate.</string>
+    <string name="demo_lighting_ibl_intensity">Environment intensity</string>
+    <string name="demo_lighting_sky">Draw the sky</string>
     <string name="demo_lighting_key_angle">Key angle</string>
     <string name="demo_lighting_key_intensity">Key intensity</string>
     <string name="demo_lighting_key_color">Key color</string>
     <string name="demo_lighting_fill">Fill light</string>
     <string name="demo_lighting_rim">Rim light</string>
+    <string name="demo_lighting_markers">Show the lights</string>
     <string name="demo_lighting_time_of_day">Time of day</string>
     <string name="demo_lighting_haze">Haze</string>
     <string name="demo_lighting_exposure">Exposure</string>
+
+    <!-- Sections shared by every rig (formerly the Lighting Lab bench). -->
+    <string name="demo_lighting_section_reflections">Reflections</string>
+    <string name="demo_lighting_section_frame">Frame</string>
+    <string name="demo_lighting_probe">Local reflections</string>
+    <string name="demo_lighting_probe_hint">A reflection probe swaps the reflections for a sunset while the camera is inside its area.</string>
+    <string name="demo_lighting_probe_zone">Reflection area</string>
+    <string name="demo_lighting_ssao">Contact shading</string>
+    <string name="demo_lighting_ssao_hint">Ambient occlusion darkens small creases and nearby surfaces.</string>
+    <string name="demo_lighting_fog">Fog</string>
+    <string name="demo_lighting_fog_density">Fog density</string>
+    <string name="demo_lighting_msaa">Smooth edges · geometry</string>
+    <string name="demo_lighting_fxaa">Smooth edges · image</string>
+    <string name="demo_lighting_dithering">Dithering</string>
 </resources>

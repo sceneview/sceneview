@@ -1,6 +1,6 @@
 ---
 title: SceneView — 3D & AR SDK for Android, iOS, Web, and more
-description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 9 platforms supported."
+description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 10 platforms supported."
 ---
 
 <div class="sv-hero" markdown>
@@ -31,12 +31,12 @@ description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences wit
 <div class="sv-stats" markdown>
 
 <div class="sv-stat">
-<span class="sv-stat-number">1.3K+</span>
+<span class="sv-stat-number">1,300+</span>
 <span class="sv-stat-label">GitHub Stars</span>
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">9</span>
+<span class="sv-stat-number">10</span>
 <span class="sv-stat-label">Platforms</span>
 </div>
 
@@ -46,7 +46,7 @@ description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences wit
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">v4.52.0</span>
+<span class="sv-stat-number">v4.63.0</span>
 <span class="sv-stat-label">Latest Release</span>
 </div>
 
@@ -62,7 +62,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Kotlin (Android)"
 
     ```kotlin
-    // build.gradle: implementation("io.github.sceneview:sceneview:4.52.0")
+    // build.gradle: implementation("io.github.sceneview:sceneview:4.63.0")
 
     SceneView(modifier = Modifier.fillMaxSize()) {
         val model = rememberModelInstance(modelLoader, "models/helmet.glb")
@@ -84,7 +84,7 @@ No boilerplate. No manual cleanup. Just declare what you want.
 === "Swift (iOS / macOS / visionOS)"
 
     ```swift
-    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.52.0")
+    // Package.swift: .package(url: "https://github.com/sceneview/sceneview", from: "4.63.0")
 
     SceneView { root in
         let model = try? await ModelNode.load("helmet.usdz")
@@ -191,7 +191,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:sceneview:4.52.0")
+        implementation("io.github.sceneview:sceneview:4.63.0")
     }
     ```
 
@@ -200,7 +200,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
     ```kotlin
     // build.gradle.kts
     dependencies {
-        implementation("io.github.sceneview:arsceneview:4.52.0")
+        implementation("io.github.sceneview:arsceneview:4.63.0")
     }
     ```
 
@@ -208,7 +208,7 @@ Rigid body physics with gravity, collisions, and restitution. Drop objects, boun
 
     ```swift
     // Package.swift or Xcode > Add Package Dependency
-    .package(url: "https://github.com/sceneview/sceneview", from: "4.52.0")
+    .package(url: "https://github.com/sceneview/sceneview", from: "4.63.0")
     ```
 
 === "Web"
@@ -322,25 +322,9 @@ Android uses Filament (high-performance C++ via JNI). Apple platforms use Realit
 
 ---
 
-## Trusted by developers worldwide
-
-<div class="sv-testimonials">
-<div class="sv-testimonial">
-<p>"SceneView made adding 3D to our Compose app trivial. What would have taken weeks with raw Filament took us an afternoon."</p>
-</div>
-<div class="sv-testimonial">
-<p>"The declarative API just makes sense. Coming from Compose, SceneView {} felt immediately natural."</p>
-</div>
-<div class="sv-testimonial">
-<p>"Finally an AR SDK that doesn't fight the framework. It's just Compose."</p>
-</div>
-</div>
-
----
-
 ## Samples & Showcase
 
-The demo apps ship with 48 interactive demos on Android and 45 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
+The demo apps ship with 41 interactive demos on Android and 35 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
 
 [:octicons-arrow-right-24: Android Samples](samples.md){ .md-button }
 [:octicons-arrow-right-24: Apple Samples](samples-ios.md){ .md-button }
@@ -370,7 +354,7 @@ lifecycle. See the [Migration Guide](migration.md) for the concept-by-concept ma
 
 ## Join the Community
 
-Join thousands of developers building 3D and AR experiences with SceneView.
+Start building 3D and AR experiences with SceneView.
 
 [Join Discord](https://discord.gg/UbNDDBTNqb){ .md-button }
 [Star on GitHub](https://github.com/sceneview/sceneview){ .md-button .md-button--primary }

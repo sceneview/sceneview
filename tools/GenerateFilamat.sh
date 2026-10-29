@@ -10,10 +10,10 @@
 # version than the runtime expected). See CLAUDE.md "Filament runtime ↔
 # .filamat ABI invariant" and CONTRIBUTING.md.
 #
-# Inventory (39 mats → 39 filamats), across THREE pinned toolchains:
+# Inventory (46 mats → 46 filamats), across THREE pinned toolchains:
 #   sceneview/src/main/materials/         (15) → sceneview/src/main/assets/materials/
-#   arsceneview/src/main/materials/        (9) → arsceneview/src/main/assets/materials/
-#   samples/android-demo/src/main/materials/ (11) → samples/android-demo/src/main/assets/materials/
+#   arsceneview/src/main/materials/        (8) → arsceneview/src/main/assets/materials/
+#   samples/android-demo/src/main/materials/ (19) → samples/android-demo/src/main/assets/materials/
 #   website-static/materials/              (3) → website-static/materials/     [filamentWebsite]
 #   sceneview-web/materials/               (1) → sceneview-web/materials/      [filamentWeb]
 #
@@ -31,8 +31,8 @@
 # fetch — both artifacts are committed and --check-diffed (#2646 P2).
 #
 # Usage:
-#   bash tools/GenerateFilamat.sh                 # regenerate all 39 filamats
-#   bash tools/GenerateFilamat.sh --check         # diff all 39 against committed blobs; exit 1 on drift
+#   bash tools/GenerateFilamat.sh                 # regenerate all 46 filamats
+#   bash tools/GenerateFilamat.sh --check         # diff all 46 against committed blobs; exit 1 on drift
 #   bash tools/GenerateFilamat.sh --mat <name>    # regenerate one (e.g. --mat opaque_colored)
 #   bash tools/GenerateFilamat.sh --ci-tolerant   # treat matc download failure as WARN, not FAIL
 #   bash tools/GenerateFilamat.sh --help
@@ -167,7 +167,6 @@ MATS=(
     "sceneview:view_texture_unlit:sceneview/src/main/materials/view_texture_unlit.mat:sceneview/src/main/assets/materials/view_texture_unlit.filamat:-p all -a all"
     "android-demo:studio_pbr:samples/android-demo/src/main/materials/studio_pbr.mat:samples/android-demo/src/main/assets/materials/studio_pbr.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:studio_glass:samples/android-demo/src/main/materials/studio_glass.mat:samples/android-demo/src/main/assets/materials/studio_glass.filamat:--optimize-size -p mobile -a opengl -a vulkan"
-    "android-demo:hero_terrain:samples/android-demo/src/main/materials/hero_terrain.mat:samples/android-demo/src/main/assets/materials/hero_terrain.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_sprite:samples/android-demo/src/main/materials/cosmos_sprite.mat:samples/android-demo/src/main/assets/materials/cosmos_sprite.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_ribbon:samples/android-demo/src/main/materials/cosmos_ribbon.mat:samples/android-demo/src/main/assets/materials/cosmos_ribbon.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_plasma:samples/android-demo/src/main/materials/cosmos_plasma.mat:samples/android-demo/src/main/assets/materials/cosmos_plasma.filamat:--optimize-size -p mobile -a opengl -a vulkan"
@@ -176,13 +175,21 @@ MATS=(
     "android-demo:cosmos_ring:samples/android-demo/src/main/materials/cosmos_ring.mat:samples/android-demo/src/main/assets/materials/cosmos_ring.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:cosmos_spacetime:samples/android-demo/src/main/materials/cosmos_spacetime.mat:samples/android-demo/src/main/assets/materials/cosmos_spacetime.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "android-demo:tray_wood:samples/android-demo/src/main/materials/tray_wood.mat:samples/android-demo/src/main/assets/materials/tray_wood.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:pool_water:samples/android-demo/src/main/materials/pool_water.mat:samples/android-demo/src/main/assets/materials/pool_water.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:pool_liner:samples/android-demo/src/main/materials/pool_liner.mat:samples/android-demo/src/main/assets/materials/pool_liner.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:pool_coping:samples/android-demo/src/main/materials/pool_coping.mat:samples/android-demo/src/main/assets/materials/pool_coping.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:pool_night_veil:samples/android-demo/src/main/materials/pool_night_veil.mat:samples/android-demo/src/main/assets/materials/pool_night_veil.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:showroom_floor:samples/android-demo/src/main/materials/showroom_floor.mat:samples/android-demo/src/main/assets/materials/showroom_floor.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:viewer_grid:samples/android-demo/src/main/materials/viewer_grid.mat:samples/android-demo/src/main/assets/materials/viewer_grid.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:ar_mesh_tint:samples/android-demo/src/main/materials/ar_mesh_tint.mat:samples/android-demo/src/main/assets/materials/ar_mesh_tint.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:scan_surfel:samples/android-demo/src/main/materials/scan_surfel.mat:samples/android-demo/src/main/assets/materials/scan_surfel.filamat:--optimize-size -p mobile -a opengl -a vulkan"
+    "android-demo:replay_grid:samples/android-demo/src/main/materials/replay_grid.mat:samples/android-demo/src/main/assets/materials/replay_grid.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_depth:arsceneview/src/main/materials/camera_stream_depth.mat:arsceneview/src/main/assets/materials/camera_stream_depth.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_person_occlusion:arsceneview/src/main/materials/camera_stream_person_occlusion.mat:arsceneview/src/main/assets/materials/camera_stream_person_occlusion.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:camera_stream_flat:arsceneview/src/main/materials/camera_stream_flat.mat:arsceneview/src/main/assets/materials/camera_stream_flat.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:face_mesh:arsceneview/src/main/materials/face_mesh.mat:arsceneview/src/main/assets/materials/face_mesh.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:face_mesh_occluder:arsceneview/src/main/materials/face_mesh_occluder.mat:arsceneview/src/main/assets/materials/face_mesh_occluder.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer:arsceneview/src/main/materials/plane_renderer.mat:arsceneview/src/main/assets/materials/plane_renderer.filamat:--optimize-size -p mobile -a opengl -a vulkan"
-    "arsceneview:plane_renderer_v2:arsceneview/src/main/materials/plane_renderer_v2.mat:arsceneview/src/main/assets/materials/plane_renderer_v2.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:plane_renderer_shadow:arsceneview/src/main/materials/plane_renderer_shadow.mat:arsceneview/src/main/assets/materials/plane_renderer_shadow.filamat:--optimize-size -p mobile -a opengl -a vulkan"
     "arsceneview:shadow_receiver:arsceneview/src/main/materials/shadow_receiver.mat:arsceneview/src/main/assets/materials/shadow_receiver.filamat:--optimize-size -p mobile -a opengl -a vulkan"
 )

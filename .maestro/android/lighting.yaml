@@ -7,12 +7,12 @@
 # mirror ALL_DEMOS in samples/android-demo .../DemoRegistry.kt; DEMO_NAME is
 # only a label for the screenshot file names and the log.
 #
-# Two live cards carry the subject since #3496: `lighting` (the showcase — three
-# rigs over one stage) and `lighting-lab` (the workbench — every knob on one
-# frame). The retired-id legs below are KEPT ON PURPOSE: they are what exercises
-# `DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`, and each one lands on the half that
+# One live card carries the subject since #4603: `lighting` — three rigs over one
+# stage, with the former `lighting-lab` reflection and frame switches under every
+# rig. The retired-id legs below are KEPT ON PURPOSE: they are what exercises
+# `DEMO_ID_ALIASES` + `ALIAS_INITIAL_TAB`, and each one lands on the screen that
 # now hosts its subject — `dynamic-sky` on the Sun rig of `lighting`,
-# `environment` on its Image rig, `fog` on the lab. Deleting a leg would delete
+# `environment` on its Image rig, `lighting-lab` and `fog` on its default. Deleting a leg would delete
 # the coverage, not the redundancy.
 appId: io.github.sceneview.demo.qa
 ---
@@ -30,12 +30,12 @@ appId: io.github.sceneview.demo.qa
     file: flows/demo.yaml
     env:
       DEMO_ID: lighting-lab
-      DEMO_NAME: Lighting Lab
+      DEMO_NAME: Lighting Lab Alias
 - runFlow:
     file: flows/demo.yaml
     env:
       DEMO_ID: fog
-      DEMO_NAME: Lighting Lab Fog
+      DEMO_NAME: Lighting Fog Alias
 - runFlow:
     file: flows/demo.yaml
     env:

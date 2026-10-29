@@ -2,6 +2,7 @@ package io.github.sceneview.environment
 
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.Skybox
+import com.google.android.filament.Texture
 import io.github.sceneview.loaders.EnvironmentLoader
 
 /**
@@ -46,4 +47,44 @@ data class Environment(
      * Array of 9 * 3 floats, or null on failure.
      */
     val sphericalHarmonics: List<Float>? = null
-)
+) {
+    /**
+     * The cubemaps [indirectLight] and [skybox] sample, when this environment was handed them.
+     *
+     * Filament frees neither with the object that samples it, so they are released here, by
+     * [destroy]. Held by identity and outside the constructor on purpose: a `copy()` shares the
+     * Filament handles of the environment it was made from without owning anything, so the
+     * environment to destroy is always the original, and destroying a copy never pulls a texture
+     * from under the original's indirect light.
+     *
+     * Not synchronized: like every Filament handle, an environment is built and destroyed on the
+     * main thread.
+     */
+    private val ownedTextures = mutableListOf<Texture>()
+
+    internal fun ownTextures(textures: Iterable<Texture>) {
+        textures.forEach { texture ->
+            if (ownedTextures.none { it === texture }) ownedTextures += texture
+        }
+    }
+
+    /**
+     * Destroys what this environment holds, in the one order Filament allows: the indirect light
+     * and the skybox first, then the textures they were sampling.
+     *
+     * The single implementation behind `Engine.safeDestroyEnvironment` and
+     * `EnvironmentLoader.destroyEnvironment`, so the two cannot drift apart. The textures are
+     * handed out once: a second call releases none, whichever of the two paths makes it.
+     */
+    internal fun destroy(
+        destroyIndirectLight: (IndirectLight) -> Unit,
+        destroySkybox: (Skybox) -> Unit,
+        destroyTexture: (Texture) -> Unit,
+    ) {
+        indirectLight?.let(destroyIndirectLight)
+        skybox?.let(destroySkybox)
+        val textures = ownedTextures.toList()
+        ownedTextures.clear()
+        textures.forEach(destroyTexture)
+    }
+}

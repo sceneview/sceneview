@@ -81,11 +81,16 @@ object Telemetry {
             override fun log(event: AnalyticsEvent) = delegate.log(event)
             override fun setUserProperty(property: UserProperty, value: String) =
                 delegate.setUserProperty(property, value)
+            override fun setCrashKey(key: CrashKey, value: String) = delegate.setCrashKey(key, value)
+            override fun recordNonFatal(throwable: Throwable) = delegate.recordNonFatal(throwable)
             override fun setCollectionEnabled(enabled: Boolean) = delegate.setCollectionEnabled(enabled)
             override fun resetData() = delegate.resetData()
         },
         isEnabled = { collecting },
     )
+
+    /** Home and Explore searches, deduplicated, into [analytics] as `search` events. */
+    val search: SearchLogger = SearchLogger { analytics.log(it) }
 
     /** How the next sample was reached; read (and reset) by the demo route when it opens. */
     var nextOpenSource: OpenSource = OpenSource.Other

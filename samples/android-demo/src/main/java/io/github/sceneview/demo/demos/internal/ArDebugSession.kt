@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -47,6 +48,22 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
 
     /** Counts for the chrome, refreshed a few times a second by the view — not every frame. */
     var stats: ArDebugStats by mutableStateOf(ArDebugStats.Empty)
+
+    /**
+     * Counts [frame] into [stats], the figures the timeline and the layer rows read. The 3D view
+     * does it while it draws; a screen that plays the session without the view has to as well,
+     * or they stand still on the last frame the view drew — on nothing, if it never drew one.
+     * [points] is what is drawn as points ([ArDebugStats.of]); a replay gives its [floorY], and
+     * the room its planes outline over it is named.
+     */
+    fun count(frame: ArDebugFrame, points: Int = frame.mapPointCount, floorY: Float? = null) {
+        val counted = ArDebugStats.of(frame, trace.duration, points)
+        // No room's area before two walls are seen (#4540): one wall and the floor named a room
+        // that was only the floor in front of it.
+        stats = if (floorY == null) counted else counted.copy(room = RoomMeasure.of(frame.planes, floorY)
+            ?.takeIf { PlaneWallSource.wallCount(livePlanesOf(frame), floorY) >= MIN_ROOM_WALLS }
+            ?.scanSummary(Locale.getDefault()))
+    }
 
     /**
      * A recorded session with no live head to catch up to (the bundled replay): reaching the end
@@ -130,6 +147,9 @@ class ArDebugSession(initial: ArDebugTrace = ArDebugTrace()) {
     companion object {
         private const val END_EPSILON_S = 0.05f
 
+        /** Walls seen before a room's area is named: one wall and a floor are not a room. */
+        const val MIN_ROOM_WALLS = 2
+
         /** How long a looping replay rests on its last frame before starting over. */
         const val LOOP_HOLD_S = 2.5f
     }
@@ -146,6 +166,12 @@ data class ArDebugStats(
     val tracking: Boolean,
     /** The room found so far, as a floor plan names it (`3.4 × 4.1 m · 14 m²`); `null` before one. */
     val room: String? = null,
+    /**
+     * How much floor, wall and ceiling ARCore has found, in m². Unlike [planes] — a count of
+     * ARCore's own objects, which falls from 4 to 1 when four patches of one floor merge — it
+     * says how much surface the scan holds.
+     */
+    val surfaceMetres2: Float = 0f,
 ) {
     companion object {
         val Empty = ArDebugStats(0f, 0f, 0f, 0, 0, 0, tracking = false)
@@ -162,7 +188,38 @@ data class ArDebugStats(
             planes = frame.planes.size,
             anchors = frame.anchors.size,
             tracking = frame.camera != null,
+            surfaceMetres2 = surfaceArea(frame.planes),
         )
+
+        /** The area [planes] cover between them, in m²: each plane's own polygon, summed. */
+        fun surfaceArea(planes: List<DebugPlane>): Float {
+            var total = 0f
+            for (plane in planes) total += polygonArea(plane.polygon)
+            return total
+        }
+
+        /**
+         * Area of a flat `[x,y,z, …]` polygon lying in any plane of space, in its own units
+         * squared (Newell's method). Fewer than three corners, or a non-finite one, is `0`.
+         */
+        fun polygonArea(polygon: FloatArray): Float {
+            val corners = polygon.size / 3
+            if (corners < MIN_CORNERS) return 0f
+            var nx = 0f
+            var ny = 0f
+            var nz = 0f
+            for (i in 0 until corners) {
+                val a = i * 3
+                val b = (i + 1) % corners * 3
+                nx += polygon[a + 1] * polygon[b + 2] - polygon[a + 2] * polygon[b + 1]
+                ny += polygon[a + 2] * polygon[b] - polygon[a] * polygon[b + 2]
+                nz += polygon[a] * polygon[b + 1] - polygon[a + 1] * polygon[b]
+            }
+            val area = sqrt(nx * nx + ny * ny + nz * nz) / 2f
+            return if (area.isFinite()) area else 0f
+        }
+
+        private const val MIN_CORNERS = 3
 
         /** Length of a flat `[x,y,z, …]` polyline, in its own units. */
         fun pathLength(path: FloatArray): Float {
@@ -178,7 +235,11 @@ data class ArDebugStats(
     }
 }
 
-/** Text of the 3D view's chrome. Plain functions, so the wording is testable. */
+/**
+ * Text of the 3D view's chrome. Plain functions, so the wording is testable. Words and units stay
+ * English; the figures take the phone's separators ("14,2 m" in French): [Locale.getDefault] unless
+ * the caller passes the locale it renders in.
+ */
 object ArDebugFormat {
     /** `72.4` → `1:12`. Negative and non-finite inputs read as zero. */
     fun clock(seconds: Float): String {
@@ -186,21 +247,30 @@ object ArDebugFormat {
         return String.format(Locale.US, "%d:%02d", total / 60, total % 60)
     }
 
-    /** `0.42` → `42 cm`, `14.236` → `14.2 m`. */
-    fun distance(metres: Float): String = when {
+    /** `0.42` → `42 cm`, `14.236` → `14.2 m` (`14,2 m` in French). */
+    fun distance(metres: Float, locale: Locale = Locale.getDefault()): String = when {
         !metres.isFinite() || metres <= 0f -> "0 m"
         metres < 1f -> "${(metres * 100).toInt()} cm"
-        metres < 100f -> String.format(Locale.US, "%.1f m", metres)
-        else -> String.format(Locale.US, "%,d m", metres.toInt())
+        metres < 100f -> String.format(locale, "%.1f m", metres)
+        else -> String.format(locale, "%,d m", metres.toInt())
     }
 
-    /** `3812` → `3,812`. */
-    fun count(value: Int): String = String.format(Locale.US, "%,d", value)
+    /** `0.42` → `0.4 m²`, `14.236` → `14 m²`: one decimal under ten, whole metres past it. */
+    fun area(metres2: Float, locale: Locale = Locale.getDefault()): String = when {
+        !metres2.isFinite() || metres2 <= 0f -> "0 m²"
+        metres2 < AREA_WHOLE_FROM_M2 -> String.format(locale, "%.1f m²", metres2)
+        else -> String.format(locale, "%,d m²", metres2.roundToInt())
+    }
 
-    /** For a narrow figure: `812` → `812`, `4_812` → `4.8k`, `12_400` → `12k`. */
-    fun compactCount(value: Int): String = when {
+    private const val AREA_WHOLE_FROM_M2 = 9.95f
+
+    /** `3812` → `3,812` (`3 812` in French). */
+    fun count(value: Int, locale: Locale = Locale.getDefault()): String = String.format(locale, "%,d", value)
+
+    /** For a narrow figure: `812` → `812`, `4_812` → `4.8k` (`4,8k` in French), `12_400` → `12k`. */
+    fun compactCount(value: Int, locale: Locale = Locale.getDefault()): String = when {
         value < 1_000 -> value.coerceAtLeast(0).toString()
-        value < 10_000 -> String.format(Locale.US, "%.1fk", (value / 100) / 10f)
+        value < 10_000 -> String.format(locale, "%.1fk", (value / 100) / 10f)
         else -> "${value / 1_000}k"
     }
 }

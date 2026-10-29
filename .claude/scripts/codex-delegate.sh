@@ -25,6 +25,27 @@
 #   unless --here is passed. Use --new-worktree to get a dedicated branch and
 #   worktree, which is the intended path for anything non-trivial.
 #
+#   `implement` BUILDS (since 2026-10-17, at Thomas's request). Plain
+#   workspace-write has no network and cannot write ~/.gradle, so Codex could
+#   neither resolve Maven nor run ./gradlew. It now runs under a Codex
+#   permission profile (`default_permissions`, see implement_permission_args)
+#   instead of `--sandbox workspace-write`:
+#     · outbound network ON;
+#     · writable: the worktree, $TMPDIR, a DEDICATED Gradle home
+#       (~/.gradle-codex), ~/.android, ~/.konan, ~/.m2/repository, the Kotlin
+#       daemon dir, Xcode DerivedData and the SwiftPM caches (those present);
+#     · ~/.gradle itself is NOT handed over: its gradle.properties carries the
+#       Maven Central, signing and Play upload secrets, and Gradle loads it into
+#       every build. The real dependency cache is shared READ-ONLY through
+#       GRADLE_RO_DEP_CACHE, so nothing already downloaded is fetched twice;
+#     · READ-DENIED, because network + read-anywhere is an exfiltration path:
+#       ~/Projects/ThomasGorisse (profile-private, keys), every other worktree's
+#       local.properties, ~/.gradle/gradle.properties, ~/.m2/settings.xml,
+#       ~/.npmrc, ~/.netrc, ~/.ssh, ~/.gnupg, ~/.config/gh, ~/.claude,
+#       ~/.claude.json, ~/.codex/auth.json, ~/.quota, ~/.wrangler;
+#     · the machine's credential variables (GH_TOKEN, …) scrubbed as for `qa`.
+#   danger-full-access is never used for `implement`.
+#
 #   `qa` is the one mode that runs UNSANDBOXED (--sandbox danger-full-access),
 #   because verifying an app means driving `adb`, `xcrun simctl`, Gradle,
 #   `xcodebuild` and screenshot capture — none of which survive a seatbelt.
@@ -162,6 +183,79 @@ EXTRA_ENV_ARGS=()
 # runs unsandboxed, and only `qa` strips them.
 QA_SCRUB="GH_TOKEN GITHUB_TOKEN GEMINI_API_KEY CLOUDFLARE_API_TOKEN \
 PLAY_SERVICE_ACCOUNT_JSON"
+
+# Sandbox arguments a subcommand may substitute for `--sandbox <mode>`. Empty
+# for every mode but `implement`, which runs under a permission profile (Codex
+# rejects `sandbox_mode` and `default_permissions` together).
+SANDBOX_ARGS=()
+
+# implement_permission_args <target-worktree>
+#   Fills SANDBOX_ARGS and EXTRA_ENV_ARGS so Codex can build in <target>:
+#   network on, build caches writable, secrets unreadable. Measured 2026-10-17
+#   on codex-cli 0.163.0 through `codex sandbox`: without this, `curl` to Maven
+#   Central exits 6 and `touch ~/.gradle/x` is denied; with it, both pass while
+#   profile-private, the main checkout's local.properties and
+#   ~/.gradle/gradle.properties all answer "Operation not permitted".
+implement_permission_args() {
+  local target="$1" p fs="" wt
+  local codex_gradle="${CODEX_DELEGATE_GRADLE_HOME:-$HOME/.gradle-codex}"
+  mkdir -p "$codex_gradle"
+
+  local writable=("$codex_gradle")
+  for p in "$HOME/.android" "$HOME/.konan" "$HOME/.m2/repository" \
+           "$HOME/Library/Application Support/kotlin" \
+           "$HOME/Library/Developer/Xcode/DerivedData" \
+           "$HOME/Library/Caches/org.swift.swiftpm" \
+           "$HOME/Library/org.swift.swiftpm"; do
+    [ -d "$p" ] && writable+=("$p")
+  done
+
+  local denied=("$HOME/Projects/ThomasGorisse" \
+    "$HOME/.gradle/gradle.properties" "$HOME/.m2/settings.xml" \
+    "$HOME/.npmrc" "$HOME/.netrc" "$HOME/.ssh" "$HOME/.gnupg" \
+    "$HOME/.config/gh" "$HOME/.claude" "$HOME/.claude.json" \
+    "$HOME/.codex/auth.json" "$HOME/.quota" "$HOME/.wrangler" \
+    "$HOME/Projects/ar-model-viewer/local.properties")
+  # Every local.properties of this repo's worktrees except the target's own,
+  # which provision_local_properties has reduced to sdk.dir. The main checkout
+  # is the first entry of `git worktree list`.
+  # The target's own file stays readable only while it carries no value but
+  # sdk.dir (--here or --dir on a checkout holding live keys gets it denied:
+  # its Gradle build may then fail, which beats a key next to an open network).
+  while IFS= read -r wt; do
+    [ -f "$wt/local.properties" ] || continue
+    if [ "$wt" = "$target" ] && ! awk -F= '
+        /^[[:space:]]*#/ || NF == 0 { next }
+        { k = $1; v = substr($0, index($0, "=") + 1)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+          if (k != "sdk.dir" && v != "") bad = 1 }
+        END { exit bad }' "$wt/local.properties"; then
+      info "Target local.properties holds values besides sdk.dir — read-denied to Codex"
+      denied+=("$wt/local.properties")
+    elif [ "$wt" != "$target" ]; then
+      denied+=("$wt/local.properties")
+    fi
+  done < <(git -C "$target" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+
+  for p in ${writable[@]+"${writable[@]}"} ${denied[@]+"${denied[@]}"}; do
+    case "$p" in *\"*|*\\*) die "Unsupported character in sandbox path: $p" 2 ;; esac
+  done
+  for p in "${writable[@]}"; do fs="$fs\"$p\"=\"write\","; done
+  for p in "${denied[@]}";   do fs="$fs\"$p\"=\"deny\","; done
+
+  SANDBOX_ARGS=(-c 'default_permissions="delegate-build"'
+                -c 'permissions.delegate-build.extends=":workspace"'
+                -c "permissions.delegate-build.filesystem={${fs%,}}"
+                -c 'permissions.delegate-build.network.enabled=true'
+                -c "shell_environment_policy.set={GRADLE_USER_HOME=\"$codex_gradle\",GRADLE_RO_DEP_CACHE=\"$HOME/.gradle/caches\"}")
+  # Codex does not pass these through from its own environment to the model's
+  # shell (measured 2026-10-17: both came out empty), hence the policy above;
+  # the env copy covers Gradle runs Codex starts outside a shell tool.
+  EXTRA_ENV_ARGS=(GRADLE_USER_HOME="$codex_gradle"
+                  GRADLE_RO_DEP_CACHE="$HOME/.gradle/caches")
+  for p in $QA_SCRUB; do EXTRA_ENV_ARGS=(-u "$p" ${EXTRA_ENV_ARGS[@]+"${EXTRA_ENV_ARGS[@]}"}); done
+  info "Sandbox: profile delegate-build (network on, ${#writable[@]} build cache(s) writable, ${#denied[@]} secret path(s) read-denied)"
+}
 
 # run_codex — for short, non-timed calls (login status).
 run_codex() {
@@ -313,6 +407,10 @@ invoke() {
   local log="$base.log" out="$base.out"
   local rc=0
 
+  # A permission profile (SANDBOX_ARGS) replaces --sandbox; Codex refuses both.
+  local sb=(--sandbox "$sandbox")
+  if [ ${#SANDBOX_ARGS[@]} -gt 0 ]; then sb=("${SANDBOX_ARGS[@]}"); sandbox="profile"; fi
+
   info "Codex → $label (sandbox=$sandbox, timeout=${tmo}s, cwd=$workdir)"
 
   # `timeout` execs a real binary, so the env scrub is inlined here rather than
@@ -320,7 +418,7 @@ invoke() {
   PATH="$CODEX_PATH_PREFIX:$PATH" timeout --foreground "$tmo" \
     env "${UNSET_ARGS[@]}" ${EXTRA_ENV_ARGS[@]+"${EXTRA_ENV_ARGS[@]}"} \
       "$CODEX_BIN" "$@" \
-      -C "$workdir" --sandbox "$sandbox" -o "$out" 2>&1 | tee "$log"
+      -C "$workdir" "${sb[@]}" -o "$out" 2>&1 | tee "$log"
   rc="${PIPESTATUS[0]}"
 
   [ "$rc" -eq 124 ] && die "Codex exceeded the ${tmo}s timeout. Log: $log" 4
@@ -509,6 +607,7 @@ case "$CMD" in
     if [ -z "$NEW_WT" ] && [ -z "$HERE" ] && [ "$TARGET_ROOT" = "$REPO_ROOT" ]; then
       die "implement refuses to write in the caller's own worktree without isolation. Use --new-worktree NAME, --dir PATH, or --here if concurrent writes are genuinely ruled out." 2
     fi
+    implement_permission_args "$TARGET_ROOT"
 
     printf '%s' "$PROMPT" | invoke "${LABEL:-implement}" workspace-write "${TIMEOUT:-1800}" "$TARGET" \
       exec ${CODEX_ARGS[@]+"${CODEX_ARGS[@]}"} -

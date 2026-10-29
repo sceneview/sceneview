@@ -1,4 +1,4 @@
-site_name: SceneView — 3D & AR SDK
+site_name: SceneView
 site_description: "Open-source 3D & AR SDK for Android and iOS. Compose-native scenes powered by Google Filament and ARCore on Android, SwiftUI and RealityKit on iOS. Drop-in SceneView{} and ARSceneView{} composables for model viewing, AR placement, physics, and immersive experiences."
 site_url: https://sceneview.github.io/
 repo_url: https://github.com/sceneview/sceneview
@@ -28,8 +28,8 @@ theme:
   font:
     text: Inter
     code: JetBrains Mono
-  icon:
-    logo: material/cube-outline
+  # The same mark as the home page's header (website-static/index.html, #i-logo).
+  logo: assets/images/logo-sceneview.svg
   features:
     - navigation.tabs
     - navigation.tabs.sticky
@@ -49,9 +49,10 @@ theme:
     - toc.follow
     - announce.dismiss
 
+# Eight top-level entries: each is a tab in the header, and sixteen overflowed it (the last
+# ones were cut off at 1440 px). Grouping keeps every page and every URL where it was.
 nav:
   - Home: index.md
-  - Try the Demo: try.md
   - Get Started:
     - Quickstart: quickstart.md
     - Quickstart (Apple): quickstart-ios.md
@@ -59,6 +60,7 @@ nav:
     - Quickstart (TV): quickstart-tv.md
     - Quickstart (Flutter): quickstart-flutter.md
     - Quickstart (React Native): quickstart-react-native.md
+    - Platforms: platforms.md
     - API Cheatsheet: cheatsheet.md
     - API Cheatsheet (Apple): cheatsheet-ios.md
     - Nodes Reference: nodes.md
@@ -72,7 +74,6 @@ nav:
       - Measure your AR funnel: recipes/measure-ar-funnel.md
     - FAQ: faq.md
     - Troubleshooting: troubleshooting.md
-  - Platforms: platforms.md
   - Guides:
     - Architecture: architecture.md
     - Compose Multiplatform: compose-multiplatform.md
@@ -102,12 +103,15 @@ nav:
     - API (3D — sceneview): https://github.com/sceneview/sceneview/tree/main/sceneview
     - API (AR — arsceneview): https://github.com/sceneview/sceneview/tree/main/arsceneview
     - llms.txt (AI-first reference): https://sceneview.github.io/llms.txt
-  - Samples: samples.md
-  - Samples (Apple): samples-ios.md
-  - Community: community.md
-  - Contribute: contributing.md
-  - Changelog: changelog.md
-  - Migration Guide: migration.md
+  - Samples:
+    - Samples: samples.md
+    - Samples (Apple): samples-ios.md
+    - Try the Demo: try.md
+  - Community:
+    - Community: community.md
+    - Contribute: contributing.md
+    - Changelog: changelog.md
+    - Migration Guide: migration.md
 
 # ONE `extra:` mapping — never two. YAML is last-key-wins: this file used to declare
 # `extra:` twice (analytics + feedback here, social/generator/version further down), so
@@ -115,6 +119,9 @@ nav:
 # site with NO `gtag/js` at all and no "Was this page helpful?" widget. The deployed
 # sceneview.github.io/docs/ had 0 instrumented pages out of 82. Add new keys HERE.
 extra:
+  # The header logo leads back to the site's home, as the home page's own logo does: the
+  # docs had no way back to sceneview.github.io but the browser's back button.
+  homepage: https://sceneview.github.io/
   analytics:
     provider: google
     # GA4 Property: SceneView Website | Stream ID: 14357002837

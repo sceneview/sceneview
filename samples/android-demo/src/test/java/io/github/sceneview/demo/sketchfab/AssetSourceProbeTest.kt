@@ -99,7 +99,7 @@ class AssetSourceProbeTest {
     fun `a resolved fallback reports Bundled before the parse finishes`() {
         // The origin is settled the moment the file is known, so the chip does NOT wait
         // for the parse to say so — #1465 is about never claiming *completion* early, and
-        // "Offline model" claims an origin, not a finished download.
+        // "Built-in model" claims an origin, not a finished download.
         assertEquals(
             AssetSourceState.Bundled,
             AssetSourceProbe.of(fallback("car"), hasApiKey = true, loaded = false),

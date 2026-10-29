@@ -97,7 +97,7 @@ import java.util.Locale
  */
 @Composable
 fun CustomGeometryDemo(onBack: () -> Unit) {
-    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): bypass the
+    // Inspection mode (Android Studio @Preview pane, Robolectric tests): bypass the
     // Filament-backed body BEFORE any rememberEngine() call — LayoutLib ships no .so files.
     if (LocalInspectionMode.current) {
         DemoPreviewPlaceholder(title = "Custom Geometry", onBack = onBack)
@@ -180,6 +180,7 @@ fun CustomGeometryDemo(onBack: () -> Unit) {
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         // The live proof that the mesh is generated, not loaded: the counts move with the
         // Segments slider, under the user's thumb.
         peekHeader = meshCountsLabel(parameters.segments),
@@ -323,7 +324,7 @@ private fun SceneScope.ProceduralKnot(
 }
 
 /**
- * Controls panel for [CustomGeometryDemo] — stateless, so a Roborazzi snapshot test can
+ * Controls panel for [CustomGeometryDemo] — stateless, so a Robolectric test can
  * capture it in pure JVM with no Filament Engine. Pattern from issue #880.
  *
  * @param segments Raw Segments slider position; [segmentCount] is the snapped value the mesh

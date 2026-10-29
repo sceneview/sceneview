@@ -74,7 +74,7 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-scrim-end` | rgba(0,0,0,0.90) | rgba(0,0,0,0.90) | Spatial Gallery media scrim end |
 | `glass-surface` | rgba(255,255,255,0.72) | rgba(255,255,255,0.05) | Floating Spatial Gallery controls |
 | `glass-border` | 1px rgba(255,255,255,0.08) | 1px rgba(255,255,255,0.08) | Floating control outline |
-| `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes |
+| `stage-background` | #0B0F16 | #0B0F16 | **Full-screen** 3D stage clear colour — the 3D fills the screen with no page around it, so the value is identical in both themes. The Model Viewer draws the themed studio (`stage-studio-*`) instead |
 | `stage-background-embedded` | #0B0F16 | #22293E | A 3D stage **embedded in a card** (home hero, card thumbnails). In dark it takes the elevated container value so the card keeps a visible background against the page; #0B0F16 there sits at 1.01:1 on `surface` and the card disappears |
 | `stage-lighting-floor` | #2A3346 | #2A3346 | Floor of the Lighting demo stage (Android `LightingStage.FLOOR_COLOR`, iOS `Stage.lightingFloor`): a blue-grey slate dark enough for a contact shadow, light enough to catch the key light. Fixed in both themes, like the stage |
 | `stage-tray-maple-early` | #E6CDA3 | #E6CDA3 | Pale earlywood of the Rolling Balls playing field (Android `TrayStage.MAPLE_EARLY`, procedural `tray_wood` grain): the lit ground every ball reads on. Fixed in both themes — the board is an object on the stage |
@@ -83,12 +83,26 @@ Glassmorphism adds depth and layering to surfaces that float over content (nav, 
 | `stage-tray-walnut-late` | #2E1B12 | #2E1B12 | Rings of the walnut frame and body (Android `TrayStage.WALNUT_LATE`): the dark edge that frames the pale field. Fixed in both themes |
 | `stage-tray-steel` | #D7DCE3 | #D7DCE3 | Chrome ball of the Rolling Balls demo (Android `TrayStage.STEEL_COLOR`, metallic, roughness 0.06): near-neutral so it mirrors the studio. Fixed in both themes |
 | `stage-tray-glass` | #BFE6EA | #BFE6EA | Glass marble of the Rolling Balls demo (Android `TrayStage.GLASS_COLOR`, full transmission, IOR 1.5): the aqua tint the light picks up through it, and its chip swatch. Fixed in both themes |
-| `stage-tray-rubber-1`…`-5` | #F2654B · #2E86F0 · #F5B029 · #2FBF8F · #9B5DE5 | same | Rubber balls of the Rolling Balls demo, in turn (Android `TrayStage.RUBBER_COLORS`, clear-coated): coral, azure, amber, mint, orchid — each holds on the maple and on the walnut. Fixed in both themes |
+| `stage-tray-rubber-1`…`-5` | #F2654B · #2E86F0 · #F5B029 · #2FBF8F · #9B5DE5 | same | Rubber balls of the Rolling Balls demo, in turn (Android `TrayStage.RUBBER_COLORS`, clear-coated): coral, azure, amber, mint, orchid — each holds on the maple and on the walnut. Fixed in both themes. Also the five paints of the Finger Drawing demo (#4082), where each holds on the light and on the dark stage |
 | `stage-pip-floor` | #E2E6EB | #161B22 | Floor of the iOS Secondary Camera (PiP) stage (iOS `Stage.pipFloor`; dark is Android's `StageSky.floor`). Light is a step under `surface-container-highest` so the ground reads against the backdrop (1.13:1 on `stage-pip-backdrop`, enough for a fill; the grid carries the edge) |
 | `stage-pip-grid` | #7A8494 | #5C6780 | Grid lines on `stage-pip-floor` (iOS `Stage.pipGrid`): 3.0:1 on the floor in both themes, where Android's `outline` / `outline-subtle` measured 1.18:1 / 2.18:1 |
 | `stage-pip-backdrop` | #F1F3F5 | #0B0F16 | Flat backdrop of the Secondary Camera stage (iOS `Stage.pipBackdrop`, = `surface-container-high` light / `stage-background` dark). The floor texture fades into exactly this colour at its rim, so no camera angle shows the floor's edge |
+| `stage-grid-minor` | rgba(92,103,128,0.45) | rgba(139,149,166,0.22) | Minor lines of the ground grid every 3D viewer of the demo app shares (Android `ViewerGroundGrid`, #4651): an endless metric grid on the floor, in powers of ten that follow the zoom, fading out with the distance like Blender's viewport grid. Light is `stage-pip-grid` dark's blue-grey, dark is `outline` dark; both at an alpha that keeps the floor the floor |
+| `stage-grid-major` | rgba(92,103,128,0.75) | rgba(139,149,166,0.45) | Major lines of that grid, every tenth minor line, 1.5 px wide: the lines that give the scale |
+| `stage-studio-top` | #CDD3DB | #0B0E13 | Top of the photo-studio wall behind a product on `/view` (`--vp-studio-top`, SceneView web `setStudio` `top`): the wall darkens upwards from the horizon, so the model stays the brightest thing in the frame |
+| `stage-studio-horizon` | #E7EAEF | #222833 | Where the studio wall meets the floor, with no line (`--vp-studio-horizon`, `setStudio` `horizon`). Also the canvas clear colour, so the stage does not change tone when the 3D takes over |
+| `stage-studio-floor` | #F2F4F7 | #2B323E | Studio floor away from the model (`--vp-studio-floor`, `setStudio` `floor`) |
+| `stage-studio-pool` | #FDFDFE | #3A4250 | Pool of light the model stands in (`--vp-studio-pool`, `setStudio` `pool`). The studio only darkens outwards: pool, floor, horizon, top |
+| `stage-studio-glass` | rgba(255,255,255,0.72) | rgba(255,255,255,0.14) | Pills and buttons over the studio picture (`--vp-studio-glass`). Their text is `on-surface`: at least 11.4:1 (light) / 6.1:1 (dark) over any of the four studio colours. `on-surface-variant` falls to 4.3:1 on the dark glass over the pool, so it stays off the glass |
+| `stage-studio-glass-ring` | rgba(30,50,86,0.14) | rgba(255,255,255,0.24) | Hairline of those pills, and the loading spinner's track (`--vp-studio-glass-ring`) |
+| `stage-studio-vignette` | 0.8 | 0.6 | Not a colour: the grey the studio's corners are multiplied by before tone mapping (`_STUDIO_THEMES` in `sceneview.js`) |
 | `ar-scrim` | rgba(0,0,0,0.94) | rgba(0,0,0,0.88) | AR coaching overlay ground, over the camera feed |
 | `ar-scrim-border` | 1px rgba(255,255,255,0.16) | 1px rgba(255,255,255,0.10) | AR coaching overlay hairline |
+| `ar-camera-dim` | rgba(0,0,0,0.55) | rgba(0,0,0,0.55) | Veil over the live camera under 3D Scan's coloured cloud: the cloud leads, what is not scanned yet still reads on the camera behind (Android `ArOverlay.cameraDim`) |
+| `ar-mesh-ground` | #1f8bff | #1f8bff | Ground drawn into the camera image — Streetscape terrain, plane markers (Android `ArOverlay.meshGround`, #4623). Not `primary`: #005bc1 sinks into a dim room and #a4c1ff turns to milk over a white wall |
+| `ar-mesh-structure` | #ff7a1a | #ff7a1a | What stands on the ground — buildings, walls (`ArOverlay.meshStructure`). Tinted into the camera image it reads #bd4e03 over mid-grey and #f2b316 over a white wall: a redder orange (#ff5a1f) turned plain red over a grey floor, which is most of a street. Blue against orange stays apart under every common colour-vision deficiency |
+| `ar-mesh-fill-alpha` | 0.6 | 0.6 | Not a colour: the opacity of a mesh overlay's fill (`ArOverlay.MESH_FILL_ALPHA`) |
+| `ar-points-settled` | #00e5ff | #00e5ff | A feature point ARCore is sure of; the confidence ramp runs `ar-mesh-ground` → this, fresh points are `warning` (`ArOverlay.pointsSettled`) |
 
 **The dark ramp is solved for ratio, not picked by eye.** Contrast ratio compresses at
 the dark end, where `(Y+0.05)` is dominated by the constant: against a `#0D1117` page a
@@ -116,18 +130,19 @@ the surface ramp above, not the M3 tonal ramp.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `chip-bg` | #f1f3f5 (`surface-container-high`) | #2C3546 | Unselected category chip |
-| `chip-text` | #3d4654 (`on-surface-dim`) | #a4abb7 | Unselected chip label |
-| `chip-selected-bg` | #1a1a2e (`on-surface`) | #f3f4f6 | Selected category chip |
-| `chip-selected-text` | #ffffff (`surface`) | #0D1117 | Selected chip label |
+| `chip-bg` | #f1f3f5 (`surface-container-high`) | #2C3546 | Section chip (Android Home) |
+| `chip-text` | #3d4654 (`on-surface-dim`) | #a4abb7 | Section chip label |
+| `chip-selected-bg` | #1a1a2e (`on-surface`) | #f3f4f6 | Selected filter chip (iOS Home, until it moves to section chips) |
+| `chip-selected-text` | #ffffff (`surface`) | #0D1117 | Selected filter chip label (iOS Home) |
 | `hero-title` | #ffffff | #ffffff | Hero headline — the hero is an image card that stays dark in both themes |
-| `hero-sky-top` | #0B0F16 | #0B0F16 | Home stage sky, top stop — the dusk gradient Compose paints behind the transparent live flight (#3948); one gradient in both themes, the hero stays dark |
-| `hero-sky-dusk` | #3B1D46 | #3B1D46 | Home stage sky, mid stop |
-| `hero-sky-horizon` | #E2734F | #E2734F | Home stage sky, horizon stop — also the flight's fog colour, so the far ridges dissolve into it |
-| `hero-sky-ground` | #2A1220 | #2A1220 | Home stage sky, below the horizon, under the terrain |
+| `hero-sky-top` | #0B0F16 | #0B0F16 | Home stage sky, top stop — the night gradient Compose paints behind the transparent night circuit (#3948) until its own sky dome lands; one gradient in both themes, the hero stays dark |
+| `hero-sky-dusk` | #161C2C | #161C2C | Home stage sky, mid stop |
+| `hero-sky-horizon` | #3F4D65 | #3F4D65 | Home stage sky, horizon stop — the circuit's haze (its fog colour in sRGB), so the dome lands on the colour already there |
+| `hero-sky-ground` | #1D2230 | #1D2230 | Home stage sky, below the horizon, under the wet grid |
 | `hero-subtitle` | rgba(255,255,255,0.80) | rgba(255,255,255,0.80) | Hero subtitle, max width 260dp |
 | `hero-pill-bg` | #ffffff | #ffffff | Hero CTA pill (44dp, `radius-full`) |
 | `hero-pill-text` | #1a1a2e | #1a1a2e | Hero CTA label |
+| `hero-pill-icon` | 18dp, `hero-pill-text` | 18dp, `hero-pill-text` | Arrow after the hero CTA label (`ArrowForward`, auto-mirrored), `hero-pill-icon-gap` 8dp (`space-sm`) |
 | `header-glass` | `surface` at 72 % over the list under it blurred `header-glass-blur` (24dp) | `surface` at 78 %, same blur | Sticky home header once the list scrolls under it (API 31+). The blurred copy is drawn over a `surface` ground, so no sharp title shows through: the rows read as colour moving behind frosted glass, never as an overlap. `on-surface` holds 8.7:1 (light) / 8.2:1 (dark) against the worst ground, `on-surface-variant` 4.9:1 / 4.2:1 (icons, 3:1 bar). The stage is a `TextureView`, so its frame is in the recorded copy too. iOS: the same `surface` veil over native Liquid Glass (`glassEffect(.regular)`) on iOS 26+, over `.ultraThinMaterial` below — bare glass let the row titles read through |
 | `header-overlay` | `surface` at 100 % | `surface` at 100 % | The same header below API 31 (no `RenderEffect`). Tried at the `glass-sheet` opacity: without a backdrop blur the card titles scrolling under the wordmark stay legible and read as an overlap bug, so without blur it stays opaque |
 | `card-glass` | `surface-container` (#ffffff) at 80 % over the card's own picture blurred 28dp — at 72 % a dark picture turned it a muddy grey | `surface-container` at 90 % (the `glass-sheet` value), same blur | Caption of a home card. Below API 31 (no `RenderEffect`) there is no blurred copy and the fill takes `glass-sheet` (88 % / 90 %) |
@@ -136,22 +151,30 @@ the surface ramp above, not the M3 tonal ramp.
 **Under the 3D header, the Home is a list of pictures.** The live header is the one
 showpiece; below it every demo is a card led by its own capture, and the capture is the
 card: no frame, no inset, no radius of its own. One vertical scroll, no carousel: the
-"Featured" banners, the "Browse online models" row, the category chips, then one group per
+"Featured" banners, the "Browse online models" row, the section chips, then one group per
 category.
 
 **Above the chips, a demo is pushed once.** The header pager, the "Featured" banners and
 the "What's new" row's picture are read in that order, and each only shows what the ones
-before it do not; a group left with nothing of its own is not drawn. The pager stays at two
-pages (Models, Cosmos) so the banners keep the other three featured demos: the banner is the
-card the Home is liked for. Under "All", a demo shown as a banner is not listed again in its
-category; a chip or a search is a query and lists every match. The "What's new" row
-opens the "What's new" sheet over the whole catalogue. It never selects the filter chip:
-a tap on a home row must not make the catalogue look smaller than it is.
+before it do not; a group left with nothing of its own is not drawn. The pager has four
+pages (Model Viewer, Cosmos, Real-World Scan, Rolling Balls — #4622): the flagship and
+Cosmos, then the two newest showpieces that are not Labs experiments, outside the common Featured list so the
+banners keep the other three featured demos: the banner is the card the Home is liked for.
+The flagship's page is titled after the screen it opens, "Model Viewer", not the catalogue's
+"Models", which read as a section. Each page's one action is the `hero-pill`: label, then a
+`hero-pill-icon` arrow `hero-pill-icon-gap` after it — a bare "Open" over the live stage read
+as a caption. iOS still shows one band titled "Models" with a bare "Open" (`HomeHero.swift`); that is a parity item. In the catalogue, a demo shown as a banner is not listed again
+in its category; a search is a query and lists every match. The "What's new" row
+opens the "What's new" sheet over the whole catalogue: a tap on a home row must not make
+the catalogue look smaller than it is.
 
-**A chip filter always shows its way out.** The selected chip is its own off switch (a
-second tap goes back to "All"), Back clears the filter before it leaves the app, and a
-filtered list ends on a "Show all N samples" text button that names the size of the
-whole catalogue.
+**The chips are a table of contents, not a filter (2026-10-17).** One chip per section, in
+the order the sections appear, none ever selected: a tap scrolls the list so that
+section's header sits right under the pinned header, and every sample stays listed. The
+filter they replaced hid the rest of the catalogue — the "this app only has these
+samples" reading #4304 had to patch with an off switch, a Back step and a "Show all"
+button — while search and the "What's new" row already cover the other ways in. Hidden
+while searching. iOS still filters; its move is a parity item.
 
 A card's ground is **ambient**: the colour of its own picture, taken down to a fixed
 luminance (`home-row-ambient`), so in dark every card is a deep version of its scene and
@@ -166,7 +189,7 @@ Two shapes, one recipe:
   `home-row-text-start`, where the picture is down to a tenth of its opacity.
 
 The title is `type-card` (17, semibold, `on-surface`), the subtitle `type-caption` regular
-(`on-surface-variant`), the "New" / "Updated" / status chips on their own line above the title (`home-badge`: 3dp vertical padding, 12dp icon, accent text on `surface-container` at 92%, measured 6.3:1 light / 7.3:1 dark; the line collapses to zero height when no chip draws, so plain rows keep their rhythm). "New" covers a demo whose `addedIn` is within the last two minors of the build, "Updated" one whose `updatedIn` is, and both expire on their own; a "What's new" row under the hero and a "What's new" filter chip appear only while at least one demo carries a marker. Each card is
+(`on-surface-variant`), the "New" / "Updated" / status chips on their own line above the title (`home-badge`: 3dp vertical padding, 12dp icon, accent text on `surface-container` at 92%, measured 6.3:1 light / 7.3:1 dark; the line collapses to zero height when no chip draws, so plain rows keep their rhythm). "New" covers a demo whose `addedIn` is within the last two minors of the build, "Updated" one whose `updatedIn` is, and both expire on their own; a "What's new" row under the hero appears only while at least one demo carries a marker. Each card is
 its own `home-row-radius` tile, `home-row-gap` from the next. No shadow, no outline, in
 either theme — the ambient tone carries it. A demo without a capture shows its glyph at
 `home-row-glyph` in the category accent, over the accent's own ambient tint washed with
@@ -180,6 +203,9 @@ never truncated; the card grows.
 | `home-row-media-fraction` | 0.5 | Width of the picture in a catalogue row, full height, edge to edge |
 | `home-row-dissolve` | 0.42 | Where the picture starts dissolving towards the text, as a fraction of its width; cosine ease to 0 at its edge |
 | `home-row-text-start` | 0.44 of the card | Leading edge of a row's text column; 16dp to the trailing edge, 14dp above and below, 4dp title to subtitle |
+| `home-row-whole` | The picture at its own aspect (5 : 4) and the row's height, against the leading edge; then `home-row-whole-melt`; then the text | The "What's new" row. Its picture stands for a demo the row does not name, so the card is shown whole on every width instead of cropped to half the row — on a tablet that crop kept the middle fifth of the card (#4351). A row its text makes taller widens the picture with it, up to `home-row-media-fraction` |
+| `home-row-whole-dissolve` | 0.84 | Where a whole picture starts giving way, as a fraction of its width: solid across the band a card holds its subject in, only the trailing margin fades — into the picture's own edge colour, which is itself already melting into the row |
+| `home-row-whole-melt` | 32dp (`space-xl`) | The strip after a whole picture: the picture's edge colour (the mean of its trailing pixel column, sampled, never a constant) carries on past the picture and melts into the row's tint. One cosine ease runs from `home-row-whole-dissolve` to the end of the strip, so most of the melt takes its room from the row, not from the picture — a fade held inside the picture's margin read as a hard band where a dark card meets a pale row. The text starts after the strip; `space-2xl` breaks the subtitle onto a second line at 411dp |
 | `home-banner-aspect` | 2 : 1 | A Featured banner's picture, full card width |
 | `home-banner-dissolve` | 0.55 | Where a banner's picture starts dissolving towards its caption, as a fraction of its height |
 | `home-banner-caption-overlap` | 28dp | How far the caption is pulled up into the banner's fade; 16dp across |
@@ -203,8 +229,12 @@ header that tints itself competes with the rows it introduces. Geometry:
 | `section-header-top-gap` | 24px (`space-lg`); 8px (`space-sm`) for the first one, right under the chips | Above a section header |
 | `section-header-bottom-gap` | 12px | Header to its group |
 
-A header is drawn only when more than one section is visible: with a single category
-filtered, the chip already names it.
+A header is drawn only when more than one section is visible: search results that all
+sit in one category get no lone header above them.
+
+**Back from anywhere lands where the list was.** Leaving the Home for a sample, the
+"Browse online models" gallery or another tab and coming back restores the list's scroll
+position: the tab host keeps each screen's saved state while another one is shown.
 
 **The picture card** (`DemoMediaCard`) is no longer on the Home; the Explore tab keeps it.
 A card is a square picture whose lower edge *melts* into a frosted caption: the caption's
@@ -249,6 +279,10 @@ so the eye lands on the one thing the screen is for.
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
 | `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
 | `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
+| `support-amount-height` | 64pt | One tip amount in the "Support SceneView" sheet (iOS, macOS) |
+| `sheet-width-mac` | 440pt | A compact sheet on macOS (support, prompts) |
+| `about-app-icon` | 40dp / 40pt, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon (App Store icon on iOS) of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
+| `about-app-divider-inset` | 72dp | Hairline start inset in that group (row padding + icon + gap) |
 
 - **The identity block is not a card.** A slab there is a second emphasised surface
   competing with the support card below it, which is exactly what the pre-#3564 screen
@@ -256,8 +290,58 @@ so the eye lands on the one thing the screen is for.
 - **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
   theme-independent — it is the product's identity, the same picture in light and dark,
   and its contrast is self-contained (light cube on `#0D2137`).
-- **Support is stated once and never pushed.** One card, on the About tab, above the
-  fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+- **Support is asked, never pushed.** One card, on the About tab, above the fold. No
+  launch prompt, no badge, no urgency copy. Apple only for now (iOS and macOS): the card
+  and one occasional prompt open the "Support SceneView" sheet — three one-time tips
+  through In-App Purchase (App Review refuses a donation link, guideline 3.1.1), one tap
+  per amount, a thank-you once it goes through, nothing unlocked. The prompt comes never
+  in the first two sessions, only when Home comes back after a sample, at most once
+  every 14 days, never over a demo or an AR session, with "Not now" and "Don't ask
+  again". The Android card keeps its own flow until the Play Billing version lands.
+- **Other apps are listed, not advertised.** "More apps built with SceneView" is a plain
+  group of rows directly under the support card: icon, name, one line on what the app
+  does for the person holding the phone, open-in-new. No tinted surface, no price, no
+  badge, no install button — the icons are the only colour, and a tap opens the Play
+  listing. On iOS the group sits under the support card too, drawn as the "Privacy & notifications" group is; it lists only apps that are
+  live on the App Store, with their App Store icon and name, and a tap opens the App
+  Store listing — never another store's.
+
+### Website Home (`website-static/index.html`)
+
+The home page reads its palette from `website-static/assets/tokens.css` (CSS custom
+properties, dark and light) and `assets/site.css` never writes a colour literal: a
+value that is missing gets a token there first. Three groups are **the same in both
+themes** because their ground does not change with the theme — the code card and the
+command boxes stay dark, the media tiles are photographs, and the sheet scrim sits
+over whatever page is behind it.
+
+**`.night`** (`tokens.css`): a block that is a night picture in both themes — the home
+hero's circuit scene and the header while it sits over it — carries the class and takes the
+**whole dark token set** (`--bg`, `--text`, `--accent`, the stage tokens…) whatever
+`data-theme` says, with `color-scheme: dark` so native controls follow. The light theme
+therefore does not re-light the scene: the picture ends on a clean edge and the page's
+light surfaces start under it. Inside a `.night` block, use the ordinary tokens; never
+reach for a dark literal to "force" the night.
+
+| Token | Value | Usage |
+|---|---|---|
+| `--code-strong` | #F3F5F9 | Selected code tab, hovered copy button — 17.5:1 on `--code-bg` (#0C1017) |
+| `--code-fg-2` | #B4BCCB | Copy icon at rest — 10.0:1 on `--code-bg` |
+| `--code-border` | #252D3B | Edge of the code card |
+| `--code-line` | #1F2633 | Rule between the tab strip, the code and the footer — decorative, never the only edge of a control |
+| `--code-hover` · `--code-hover-strong` | rgba(255,255,255,.04) · rgba(255,255,255,.08) | Hover wash on a tab · on the copy button |
+| `--code-ok` · `--code-alpha` | #5BD49A · #F5C66B | Platform status inside the card ("Stable" / "Alpha") — 10.3:1 and 12.0:1 on `--code-bg`. Outside the card, status uses the themed `--ok` / `--alpha` |
+| `--code-flash` | rgba(255,184,107,.35) | Wash on a code literal that just changed (`--syn-str` at 35%), fades to transparent |
+| `--media-bg` · `--media-void` | #07090D · #000 | Ground of a media tile · behind the galaxy photograph |
+| `--media-glow` | #1A2233 | Light pool at the top of the AR tile |
+| `--media-border` | #252D3B | Edge of a media tile |
+| `--media-fg` · `--media-fg-2` | #F3F5F9 · #B4BCCB | Title · caption and tag on a media tile — 18.3:1 and 10.4:1 on `--media-bg` |
+| `--media-accent` | #8AB4FF | Link on a media tile — 9.5:1 on `--media-bg` |
+| `--media-veil` · `--media-veil-0` | rgba(7,9,13,.94) · rgba(7,9,13,0) | Gradient under the caption so the text never sits on the picture |
+| `--media-dots` · `--media-ring` | rgba(138,180,255,.55) · rgba(243,245,249,.85) | Detected-plane dot grid · placement reticle in the AR tile |
+| `--media-chip` · `--media-chip-border` | rgba(28,34,48,.8) · rgba(255,255,255,.14) | Read-out chips in the AR tile |
+| `--scrim` | rgba(3,4,6,.6) | Behind the navigation sheet |
+| `--live` · `--live-halo` · `--live-halo-0` | #2FBF7A · rgba(47,191,122,.2) · rgba(47,191,122,0) | The dot next to "Live" on the 3D stage and its pulse. A dot only: the word beside it carries the state |
 
 ### Text
 
@@ -465,6 +549,7 @@ Nothing else animates.
 | `motion-fade` | `tween(300ms, FastOutSlowIn)` | Every opacity change — chrome toggle, menus |
 | `motion-handover` | `tween(150ms, FastOutSlowIn)` | The loading cover giving way to the first rendered frame — the scene is already there, so the veil leaves fast |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
+| `motion-focus` | `tween(600ms, ease-expressive)` | The camera re-framing as a demo's full screen opens or closes (#4558): the subject glides into the whole screen while the chrome fades, and back to the band the chrome leaves on the way out. Never a cut |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
 | `motion-coach-sweep` | 2800ms per sweep, eased both ways, across 22–78 % of the illustration | The phone of the AR coaching card sweeping over the surface it is looking for, lighting feature points behind it. Half speed and 60 % opacity while tracking is limited |
 | `motion-coach-resolve` | `spring(dampingRatio = 0.6, stiffness = 400)`, scale 0.6 → 1 | The "surface found" beat — the card leaves and a pill with a `primary` check springs in below centre, held 1s |
@@ -519,7 +604,7 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 | `chrome-scrim` | rgba(0,0,0,0.60) → transparent | Ground under the chrome bands |
 | `glass-icon-button` | 44dp visual, 48dp touch target | Back |
 | `glass-pill` | 36dp high, 14dp horizontal padding | Identity pill |
-| `mode-pill-container` | #1A1F28, opaque | A segmented mode switch over the scene (Cosmos "Starlight \| Spacetime"), in the `bottomOverlay` band |
+| `mode-pill-container` | #1A1F28, opaque | A segmented mode switch over the scene (Cosmos scene switch "Galaxy \| Star \| Burst \| Flow", and "Starlight \| Spacetime"), in the `bottomOverlay` band |
 | `mode-pill-outline` | 1dp #D1D2D4, opaque | Its edge: the container clears 3:1 on grounds of L ≥ 0.14, the outline on L ≤ 0.18 — every ground is covered |
 | `mode-pill-selected` / `on-mode-pill-selected` | #FFFFFF / #0B0F16 | The checked segment and its label (19.2:1) |
 | `on-mode-pill` | #FFFFFF | Unchecked labels (16.5:1 on the container) |
@@ -581,8 +666,27 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   top scrim fades with the chrome; the bottom one grows to the measured overlay
   band and outlives the fade, because a status pill or legend stays on screen
   after a scene tap has hidden the dock.
-- **There is no overflow menu.** Reset, Send feedback and QA mode live in the
-  settings sheet the dock's Controls item opens — one settings surface, not two.
+
+  **A phone held sideways (compact height) has no bands, only grounds.** 160dp
+  is more than a third of a 411dp window and 220dp more than half: together they
+  leave a strip of scene. Each scrim keeps to what it grounds. The top one is
+  whole behind the upper half of the status bar, where the clock and the battery
+  are drawn with nothing of their own, and eases out over `space-2xl` past the
+  bar — smoothstep, not a straight ramp, because a ramp that ended at the bar
+  drew a line across the picture. The bottom one is whole under the system bar
+  and the lower half of the dock, gone `space-lg` above the dock, and leaves
+  with the chrome. Everything glass that floats over the scene — the back button
+  and the title pill, a status pill, a demo's own pills — then carries
+  `chrome-scrim` itself, under its glass and cut to its own outline
+  (`LocalGlassGround`): same stack (scene, scrim, glass, glyph), same contrast,
+  on the chip instead of across the picture.
+- **The overflow menu is for a screen with no controls of its own (#4807).** Reset, Send
+  feedback and QA mode live in the settings sheet the dock's Controls item opens — one
+  settings surface, not two. A screen that owns the whole window and has nothing of its own
+  to tweak (3D Scan's live capture) passes `actionsMenu`: the same actions go in a standard
+  ⋮ menu (`glass-icon-button`, Material `DropdownMenu` on the app theme) at the end of the
+  identity row, and with no other dock item no dock is drawn — a Settings button that took
+  the bottom of the screen for two rows was reported again and again.
 - **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
   settings sheet exists to be watched through: drag a slider, look at what it did.
   - `sheet-peek`: it rests at **36 % of the window** (or hugs its controls when they
@@ -602,9 +706,37 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
     sharp image; 88 % leaves the scene as a silhouette.
   - **The dock fades out while a glass sheet is open.** Seen through the glass it
     read as a row of live buttons that were not there.
+  - **A snackbar is drawn above the sheet, never under it (#4019).** It floats
+    `space-md` above the dock at rest and `space-md` above the sheet's top edge while
+    the sheet is up, over the scene it reports on; it never climbs past the identity
+    row. Under the glass, "Demo reset" was a grey ghost across the sliders.
+  - **A snackbar rests above the demo's bottom stack, never across it (#4483).**
+    With the sheet closed, "the dock" above means whatever is highest at the bottom
+    of the scene: the demo's chips, status pill or Record pill when it has any, the
+    dock otherwise — and above those, the card a demo anchors over its own scene
+    (the AR placement screens' "No surface found" and coaching line), which reports
+    itself to the scaffold. The stack does not fade or move for a snackbar. The
+    `space-md` is kept by the snackbar's layout box; Material draws the container
+    12dp inside it, so the eye reads 28dp, over a stack exactly as over the dock.
   - The Model Viewer's Lighting sheet uses the same glass fill and no scrim.
     Browsing sheets (model picker, credits, what's new) stay opaque and modal — you
     read those, you do not watch something change behind them.
+
+### Cosmos Spacetime Sheet (Android demo)
+
+The rubber sheet of Cosmos › Star › Spacetime (`cosmos_spacetime.mat`). The scene is deep
+space in both themes, so light and dark share one value; the shader writes the inverse of the
+Filmic tone mapper, so these are the colours on screen.
+
+| Token | Light | Dark | Usage |
+|---|---|---|---|
+| `cosmos-sheet` | #1C2638 | #1C2638 | The lit sheet on the flat plane, before the key light's shading (the far wall of the star's well reaches 1.25×) |
+| `cosmos-sheet-grid` | #A4C1FF | #A4C1FF | A grid line at full glow (`primary`, dark): 0.8 core + 0.22 halo, 1.6× at the star's well, fading out (squared) from 2 to 11, inside the rim at 12 |
+
+- **The grid carries the curvature.** Lines are straight on the flat XZ plane, so the wells
+  bend them; a lit grey surface alone read as a flat disc (#4623).
+- **No sheet colour in the bloom.** Every channel stays under the tone mapper's white, so
+  the star alone blooms.
 
 ### Floating Dock (Android demo)
 
@@ -621,7 +753,19 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
 
 The dock replaces FABs and top app bars in demo screens; its Controls item opens the
 settings sheet. Show/hide uses `motion-spring`; tap on the scene toggles the chrome
-with `motion-fade`.
+with `motion-fade`. A demo's own overlays stay through that tap — a status pill or a
+capture button is not chrome — unless everything it lays over the scene *is* chrome (the
+3D Scan replay's timeline): it opts in with `overlaysFollowChrome`, and the tap gives
+the scene the whole window (#4379).
+
+- **A thin bar goes with the dock (#4379).** The bottom overlay slot ends 24dp above the
+  dock, so a card reads as stacked over it. A one-row bar that belongs *with* the dock —
+  a timeline, a scrubber — sinks by `dockGap - space-sm` and rests `space-sm` above it.
+- **A mode that is a developer tool stays off the screen (#4397).** The mode pill is for
+  two experiences of equal weight (Cosmos "Starlight | Spacetime"). When the second mode
+  is a tool the QA harness opens — 3D Scan's "Session MP4" — the host sets
+  `showSwitch = false`: no pill over the scene, no row in the settings sheet, and the
+  mode opens by deep link only (`?tab=<key>`).
 
 - **Every dock item is labelled.** An icon-only dock makes the user decode glyphs, and
   two actions in the same row can legitimately want the same picture — the viewer had
@@ -641,6 +785,58 @@ with `motion-fade`.
   under centred text (`SceneActionBar`).
 - **The caption is not the accessible name.** The content description stays the full
   phrase ("Demo settings"); only the visible caption is shortened ("Settings").
+
+#### Full screen (Android demo, #4558)
+
+Every scene screen built on `DemoScaffold` carries a full-screen control: a
+`glass-icon-button` (`Fullscreen` glyph, "Full screen") at the trailing end of the
+identity row, so it sits where the back button's mirror would be on every demo. One tap
+fades the identity row, the dock, both scene slots (`topOverlay`, `bottomOverlay`) and
+the settings sheet out with `motion-fade`, and hides the system bars (transient on swipe).
+The scene keeps the whole screen; nothing else is drawn but one `glass-icon-button`
+(`FullscreenExit`, "Exit full screen") on a `chrome-scrim` ground in the top trailing
+corner, inside the safe-drawing inset. That button and system Back both bring everything
+back. The control lives in the scaffold, never in a sample.
+
+The picture follows (#4558, design pass): the bands a demo frames its subject by ease to
+zero on `motion-focus` while the chrome fades, so the subject glides into the whole screen
+instead of staying where the chrome had left it, and glides back on the way out — to the
+same picture. Gestures keep working in both states and during the move. The chrome is
+hidden, not collapsed to a translucent strip nor made more transparent: hiding it gives the
+3D the whole screen, and the way back stays in the corner where the way in was.
+
+### Car Chrome (Android Auto demo)
+
+`samples/android-auto-demo` is shown on a car's screen while parked, touched at arm's
+length. Its chrome is Glass Chrome over Media — same `glass-surface`, `over-media-edge`,
+`on-glass`, `on-glass-muted` and `chrome-scrim`, theme-independent for the same reason —
+with tokens of its own:
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `car-touch-target` | `76dp` | Height of every tappable control. Never the 48dp phone target on a head unit |
+| `car-control-max-width` | `360dp` | A control stops growing here; on a 1920dp screen the row is centred, not stretched into banners |
+| `car-pip` | `8dp` | One step of a control's position indicator (`primary` when current) |
+| `car-action-width` | `132dp` | Width of the one accent control (Drive, Garage): `primary` fill, `on-primary` label |
+| `car-drive-pad` | `104dp` | Side of a held driving pad (steer left/right, brake, go) — a thumb finds it without looking |
+| `car-chrome-reference` | `800 x 480dp` | The head unit the chrome is laid out for. A bigger screen magnifies the whole chrome by `min(width / 800, height / 480)`, clamped to `1..1.75`: at 1920 x 1080 the title and labels are read from the same seat, further away |
+| `car-stage-floor` | #1B212B | Garage floor (apron and road) |
+| `car-stage-podium` | #39424F | Turntable top — lighter than the floor so the contact shadow reads |
+| `car-stage-marking` | #8E99AB | Lane dashes, edge line, pillar bands |
+| `car-stage-pillar` | #2A313C | Pillars around the floor: they give a low camera a horizon |
+
+- **One tap, one step.** A control cycles to its next choice; no picker, no list, no
+  slider, nothing that needs a second aimed touch.
+- **A control with a single choice is shown, not tappable** — its value in
+  `on-glass-muted`, no pips — so the row never changes shape between two cars.
+- **The 3D stage is the screen.** Chrome is one title block (top start) and one control
+  row (bottom), each on a `chrome-scrim` band; the car is lifted into the band between
+  them.
+- **Driving is held, not tapped.** In Drive the control row gives way to four pads:
+  steer under the left thumb, brake and go under the right, and the accent control (top
+  end) leaves. A pad acts while it is held and stops when the finger lifts.
+- **The stage is `stage-background` and the accent is the dark-scheme `primary`**, in
+  both themes: the garage is a night scene, and the accent is always read on it.
 
 ### Demo Scaffold (iOS demo)
 
@@ -837,10 +1033,30 @@ must read as one language: same `ar-scrim` ground, same `ar-scrim-border` hairli
 shadow shows through as a darker inner rectangle in dark mode. Padding `space-md`,
 children spaced `space-sm`.
 
+On a phone held sideways the band above the bottom chrome is too thin for a card with
+buttons: the card moves to the corner beside the centred dock and mode pill, and is never
+narrower there than `card-min-width` (192dp, the width at which its title and each button
+still hold on one line). With less room than that it stays above the chrome and scrolls.
+A card with a single action may take a narrower corner, down to the room its label needs:
+`action-label-min-width` (36dp per unit of font scale, the width at which "Try again" breaks
+at its space and each word stays whole) around the card's own margins.
+
+The cards the SDK draws itself (`ARCameraPermissionOverlay`, `ARCoreAvailabilityOverlay`)
+are one internal card, and the app places it by two numbers it does not own:
+`sdk-card-margin` (24dp, the margin that card keeps on every side) and
+`sdk-card-action-insets` (128dp, everything between the card's outer edge and its button's
+label, both sides: margin, card padding, button padding). They mirror the SDK; a test
+measures the SDK card and fails when they drift (`ArOverlaySdkCardTokensTest`, #4533).
+When its parent gets shorter that card gives up, in order: its **text** (which scrolls),
+the **gap** above its button, its own **padding** — and its button last, because the
+button is the only way out of the state the card explains.
+
 - **Theme-independent, like the coaching overlay, and for the same reason.** The ground is
   a camera frame. A demo card that used `surface` at 90% opacity — as the Cloud Anchors
   screen did before #3421 — is a near-white slab over the room in light mode and a
   near-black one in dark, neither contrasted against anything on purpose.
+- **Off the camera, the card takes the themed stage's card** (`overCamera = false`, Measure's
+  plan): `StageChrome.card` ground, `onCard` text (`onCardMuted` secondary), `edgeRing` hairline.
 - Title `type-card` in `on-ar-scrim`; body and captions `type-body` / `type-caption` in
   `on-ar-scrim-dim`.
 - **Codes are `font-mono` and shortened**, never wrapped prose. Show `first6…last4`; the
@@ -858,23 +1074,49 @@ children spaced `space-sm`.
   nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).
 - **One card at a time, and never doubled with a pill saying the same thing.** When a card
   explains the state, the coaching overlay stays silent.
+- **A capture has one record control, in one place (#4807).** The 72dp shutter (`danger`
+  disc, a stop square while recording) sits centred from the first frame to the last; Pause
+  is the secondary, a 56dp `ar-scrim` disc on its leading side that turns into a play glyph
+  while paused. Its stop opens the review. No Pause / Finish text buttons in its place: the
+  REC everyone knows must not vanish when recording starts. The live capture holds the
+  phone upright (portrait lock while it records), as dedicated scan apps do.
 - **Recording is `danger` red, and only recording.** The live dot of a capture card and
   the shutter disc use `danger` (#ea4335) — the camera-app convention — so a red dot over
   the camera always means "this is being recorded", never an error (#3831).
 
+### AR scene overlays
+
+Meshes drawn into the AR camera image — Streetscape terrain and buildings, plane markers —
+take the `ar-mesh-*` tokens and the demo's `ar_mesh_tint` material
+(`rememberArMeshTintInstance`), never a brand colour at some alpha (#4623). The AR view
+tone-maps with Filmic and the camera feed is pre-inverted to round-trip, so a bright wall
+sits above 1.0 in the buffer: a translucent overlay mixed with it comes out pastel
+(`primary` turned `#ced3e1`, the lilac `#e3dde9`). The tint multiplies the camera image by
+the colour and lays the colour down where the image is dark, so the hue holds on a white
+wall and in a dim corner and the room still reads through it. Ground is `ar-mesh-ground`,
+what stands on it `ar-mesh-structure`; faces are shaded by their angle so a building's
+form reads without lights. Check a new overlay colour over a white wall and a grey floor:
+Filmic's shoulder pushes warm hues towards yellow on the wall, its toe towards red on the
+floor, and the colour has to read as itself on both.
+
 ### AR Debug View (Android demo)
 
-The Rerun demo's in-app 3D view (#3950): what ARCore understood of the room, drawn by a
+The in-app 3D view (#3950) of the **3D Scan** demo (`ar-rerun`; renamed for a clearer
+name): what ARCore understood of the room, drawn by a
 second `SceneView` from a free third-person camera. The layout borrows from three
 references: **Polycam** (live camera with a small 3D preview, one tap to the full 3D
 inspection), the **Rerun viewer** (a dark spatial view with entity toggles over a
 timeline), and **Reality Composer** (planes and anchors drawn over the camera itself —
 the camera mode keeps `ARSceneView`'s own plane renderer).
 
-- **Two modes, one dock toggle.** *Camera*: the AR camera, with a portrait 3:4 picture-in-
-  picture of the 3D view under the status card (`radius-lg`, the glass edge of every
-  over-media element); tapping it opens *3D view*. *3D view*: the debug view full screen,
-  entity toggles on top, the timeline card at the bottom. Recenter is the dock's third item.
+- **The scene first (#4379).** The room or the camera keeps the screen — 70 % of the
+  window clear of chrome at rest in the replay. What is read once is a row of the settings
+  sheet, never a card over the scene: the layers and their figures, the room's size and
+  the computer stream's status. The replay has no picture-in-picture and no corner card:
+  the other view is one dock cell away.
+- **Two modes, one dock toggle.** *Camera*: the AR camera, bare. *3D view*: the debug view
+  full screen, entity toggles on top, the timeline card at the bottom. Recenter is the
+  dock's third item.
 - **The replay follows the theme; the camera does not (#4080).** Over the live camera the
   3D view is drawn on `Stage.background` with the AR overlay chrome, in both themes. The
   replay and the landing are views the app draws itself, so they take the **themed stage**
@@ -886,8 +1128,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
   (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
   instead of black; the one filled accent is the light scheme's `primary`; the status bar
-  keeps dark icons. The Rerun and Camera & Gestures demos opt in — every other stage is
-  media.
+  keeps dark icons. The 3D Scan and Camera & Gestures demos, and Measure's plan, opt in —
+  every other stage is media.
 - **Stage sky** (`StageSky`, #4089): the backdrop of a themed stage whose subjects stand on
   an open floor that the camera orbits. A flat skybox in the stage ground (the zenith) under
   Filament height fog in `surface-container` (the horizon): the fog covers the far floor and
@@ -896,14 +1138,19 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container-highest` in light, the `surface-dim` grounding plane in dark. Use it
   instead of a Compose gradient behind a transparent scene whenever the camera can tilt.
 - **Colour carries meaning, and only existing palette values carry it**
-  (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the trail runs the brand
-  ramp from `accent-deep` (oldest) to `tint-light` (now); the live frustum is `tint-light`;
+  (`SceneViewTokens.DebugView`, one palette per ground). *Dark*: the camera path runs one
+  blue, faint to strong (#4597): `#0D419D` (oldest) → `#3D7FD9` → `tint-light` (now); the live frustum is `tint-light`;
   what the camera sees *this second* is `warning`; everything seen so far is dim white;
   anchors are `success`; planes are a translucent fill with a solid outline, blue on floors
   and tables, lilac on walls; the origin gizmo follows X red / Y green / Z blue. *Light*: the
-  same meanings in the light scheme's values — the trail runs `tint-soft` → `tertiary` →
+  same meanings in the light scheme's values — the path runs `#BDD3FF` → `#3D7FD9` →
   `primary`, the frustum and floors take `primary`, walls `tertiary`, history points are
-  `on-surface` at 55 %, the grid `on-surface` at 8 % / 16 %.
+  `on-surface` at 55 %, the grid `on-surface` at 18 % / 40 %.
+- **The floor grid gives the room its scale** (#4040). A line every 25 cm, a major line every
+  metre, about one and two pixels wide; white at 16 % / 36 % on the dark ground, `on-surface`
+  at 18 % / 40 % on the light one. It is whole under the room and fades out over 3 m past its
+  corners (`replay_grid.mat`), the ground grid of Polycam or Reality Composer: readable at a
+  glance, never an edge, and always under the points, the path and the dimensions.
 - **Only the present glows.** On the dark ground the trail head, the live frustum, the live
   points and the anchors are pushed past 1.0 in linear light so bloom lifts them; history
   stays flat. The eye lands on "now" without a legend. On the light ground nothing glows —
@@ -919,23 +1166,65 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   into metres from the orbit distance (quantised, so a pinch does not rebuild every frame):
   a room seen from 8 m and a table seen from 50 cm both read.
 - **The camera frames itself until touched.** It eases to a three-quarter view of the
-  trail and planes as they grow; the first drag hands it to the user (drag orbits, two
-  fingers pan, pinch zooms); double-tap or Recenter hands it back.
-- **Timeline**: play/pause, the time, a scrubber, the length, and a *Live* chip in
-  `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
-- **Record mode is read from a metre away.** It is filmed over the user's shoulder, so the
-  scan's figures (points, surfaces, photos) are `type-display` white on the dark scrim, the
-  clock is `type-title`, and the only red is `danger` (the dot and the shutter). The 3D
-  card under them is the same view the replay opens on, growing as the phone moves, framed
-  to the scan with no intro. While recording the dock is empty: nothing may leave a scan
-  half-taken. The privacy line ("Everything stays on your phone.") ends the idle copy.
+  room as it grows; the first drag hands it to the user (drag orbits, two fingers pan,
+  pinch zooms); double-tap or Recenter hands it back.
+- **The room is fitted into the clear band (#4306).** The subject is the box of everything
+  drawn — path, planes, anchors and both point clouds, trimmed of stray points — and it is
+  fitted, corner by corner, into the **clear band** of the stage: the part the header above
+  and the timeline bar below leave free. The camera stands as far back as the fit asks
+  (tested up to a 20 × 9 m box, some 60 m away); the box is what ARCore reported, which can
+  over-read the room itself (#4328). The replay **measures** that band on screen
+  (`OrbitBand.between`), so it holds on any phone or font scale, and keeps the last band
+  it measured while a tap has the chrome hidden — the room does not jump; a view with
+  nothing to measure takes the band of its orientation. The camera is lowered, never
+  tilted, to centre the room in it. Left alone the view sways
+  ±14° about the side the room was scanned from — never a turntable, which ends behind a
+  wall. The *Map* is squared with the walls by the nearest quarter-turn. A gesture stops
+  at the room's edge: the eye stays outside the cloud and above the floor, a pinch out
+  stops at 1.6× the framed distance, a pan keeps its pivot in the room. Every automatic
+  move is eased and capped at 150°/s, by the shortest way round; the opening is one short
+  crane-in from the same side.
+- **The room in front, the tracking aids behind it (#4306).** The glows are held low
+  (trail head 2.0, live points and frustum 1.4), the history frusta are `primary` at 25 %
+  on dark and 30 % on light, the live points are 3 px. What the scan *produced* — the
+  photographed planes, the coloured cloud, the mesh — keeps its full strength.
+- **A phone on its side (#4306, #4379).** Under 500 dp of height the window has no row to
+  give above or under the room — provided it is wide enough for a 280 dp side card to
+  leave a stage beside it (`OrbitBand.halfWidthBeside`; a short *and* narrow window stays
+  stacked). The replay's timeline bar stands in the top corner, under the header's line,
+  280 dp wide; the room stays centred and is fitted clear of the bar, under the status bar
+  and `Space.lg` above the dock — its dimensions are written under its floor
+  (`OrbitBand.betweenSides`).
+- **Replay timeline: one bar, one touch target tall (#4379).** Play/pause, a filmstrip of
+  the recorded frames, the clock ("0:07 / 0:24"), on one `radius-lg` glass row `space-sm`
+  above the dock, as wide as an AR overlay card (480 dp at most). The strip is the
+  scrubber: the part still to come is dimmed, a playhead marks now; dragging pauses. A tap
+  on the stage hides it with the header and the dock, and another brings them back.
+- **Live 3D view timeline**: play/pause, the time, a scrubber, the length, and a *Live*
+  chip in `success` while the view follows the session. Scrubbing pauses; *Live* jumps back.
+- **The capture says one thing at a time (#4627).** One compact card on top: the red dot
+  (`danger`, muted while paused) and "Scanning · 0:42" in `type-title`, then "124,300 points
+  captured" in `type-body` — counted from zero, never shown against a cap. The 3D card under
+  it is the same view the replay opens on, growing as the phone moves, framed to the scan
+  with no intro. At the bottom, one coaching line in a scrim pill ("Move slowly sideways";
+  on a lost track "Scan paused. Point at an area you already scanned.") over two 48 dp
+  buttons: tonal Pause (Resume) and filled Finish. Finish opens a review card ("Review your
+  scan", the figures, tonal Keep scanning and filled Save scan) that returns to the same
+  capture; only Save scan builds it. A failed write stays as a card ("Couldn't save your
+  scan", Discard, Try again), never a toast; its Discard asks "Discard this scan?" first.
+  Back during a capture pauses it and asks Keep scanning, Save scan or Discard (`error`) —
+  only Keep scanning and Discard when nothing was captured; Keep scanning scans again. A lost
+  track stops the clock with the capture. While capturing the dock is empty; the Settings
+  button still shows over a capture today, and hiding it is the next step of #4627. The
+  privacy line ("Saved on your phone. Nothing leaves it unless you share it.") ends the idle
+  copy.
 - **One flow, like a capture app (Polycam, Scaniverse, Reality Composer), laid out as the
   iOS demo's (#4068).** The demo opens on a scrolling page on the themed stage's ground, max width
-  560 dp, clear of the header and the settings button: `type-display` "Scan a room in 3D"
-  over one muted line; the one primary action, "Record your room", a 96 dp `radius-lg` card
-  in `accent-progress` with the camera in a 56 dp well, "Everything stays on your phone."
-  under it and a chevron; then a row of two glass actions, "Watch a sample session"
-  (weighted) and "Open file". "Your sessions" (`type-card`, "On this phone" on the right)
+  560 dp, clear of the header and the settings button: `type-display` "3D Scan" over one
+  muted line, "Move around a space and watch it take shape."; the one primary action, "Start
+  scanning", a 96 dp `radius-lg` card in `accent-progress` with the camera in a 56 dp well,
+  the privacy line under it and a chevron; then a row of two glass actions, "See an example"
+  (weighted) and "Open scan". "Your scans" (`type-card`, "On this phone" on the right)
   lists glass `radius-md` cards: the first photo (64 dp, `radius-sm`), the title, "date ·
   source", then "path · points · photos · duration", and a ⋮ menu with "Share scan file" and
   "Delete" — Delete in the theme's `error` colour, confirmed by a dialog whose confirm is
@@ -947,6 +1236,59 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   is still pinned dark (#3907). Streaming to a computer is an
   advanced option in the sheet, under its own heading; its status card shows only once
   connected.
+- **Plan view: a page of figures, not a scene (#4540).** A scan's third view is a scrolling
+  page on the themed stage's ground, max width 560 dp like the landing: the dimensioned
+  plan in a glass `radius-md` card, the survey's table, what the scan lacks, then the two
+  shares. *Nothing reads under the header:* its pills float without a ground of their own,
+  so the page starts below them and is clipped there — text never scrolls behind a pill.
+  *The settings sheet is opaque here* (`surface-container`, no glass): over a table of
+  figures a glass sheet shows two texts at once. "Export 3D files" stands at the head of
+  the sheet, on screen as it opens. *On its side* the table scrolls beside the plan. Where the
+  header and the dock leave the height the flattest plan asks for (a tablet), the plan is
+  fitted whole to its card. A phone on its side leaves a strip: the plan keeps its size,
+  scrolls on its own and says so on its card — it is never squeezed to fit.
+  *The plan's labels stop growing at font scale 1.3:* they sit on a drawing to scale, where
+  a wall 1 m long has only so much room, and at ×2 they would cover the outline they
+  dimension. Every figure the plan carries is repeated in the table under it, which follows
+  the system font scale in full. *Marks:* a measured figure carries "±", an estimate "≈"
+  and no "±", an unseen wall is dashed and reads "not seen", a figure the scan cannot give
+  reads "not measured"; one note says what "≈" means and one that "±" is the scatter of the
+  scan, not an accuracy — the same marks and the same notes on the screen, in the PDF and
+  in the shared text.
+
+### Model Viewer Showroom (Android demo)
+
+Every model opens in a studio showroom (2026-10-14) instead of on the flat
+`stage-background`, where a car mirrored a grey softbox studio nobody could see over a
+black void. References: a **car configurator** (a car on a polished floor in a dark
+showroom), **Apple product pages** (an object on a white seamless) and **Sketchfab**'s
+studio scenes.
+
+- **A seamless cyclorama: the subject is the only edge.** The floor runs from
+  `stage-showroom-floor-center` under the subject to `-floor-rim` away from it, then height
+  fog in `stage-showroom-horizon` carries it into the backdrop, which darkens to
+  `stage-showroom-zenith` above. No horizon line at any orbit elevation, no clear colour.
+- **Two rooms, one per theme.** Light is a white photo studio, dark a charcoal showroom with
+  a pool of light under the subject. The glass chrome follows the theme too
+  (`themedStage`).
+- **The subject reflects the room it stands in.** The lighting map is the same studio
+  (`studio_showroom_{light,dark}_2k.hdr`, shared with the web viewer), so paint and glass
+  mirror the softboxes and the cove the user sees around them.
+- **Grounded.** A contact shadow under the footprint and SSAO; the polished zone under it
+  catches the studio's sheen and a faint planar mirror image of the subject's lower part,
+  as on the web viewer (Android: a second view at quarter resolution, refreshed every other
+  frame while the camera moves; off on low-RAM devices — screen-space reflections cost
+  ~360 ms a frame on a Pixel 4a). Away from
+  it the floor turns satin, so a low camera never sees the studio's light strips mirrored
+  across the bottom of the frame.
+- **Colours are the tokens.** PBR Neutral tone mapping (no hue shift: a red car stays its
+  red), and every stage colour is drawn pre-inverted through it. Picking another map in
+  the Lighting sheet shows that map with the previous look; "Showroom" is the sheet's first
+  entry and Reset lighting returns to it.
+- **Framed like a product shot.** A 40 mm lens; the pitch follows the subject's size, from
+  about 6.5° for a car (a low three-quarter) to 14.5° for a watch (tabletop); a light
+  vignette and a subtle bloom. The model settles onto the floor as it fades in; turntable
+  and gestures are unchanged.
 
 ### Tabs
 - Padding: 10px 20px

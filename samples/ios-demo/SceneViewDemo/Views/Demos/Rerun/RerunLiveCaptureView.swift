@@ -24,23 +24,28 @@ import SwiftUI
 /// the recording. Tapping a detected surface places a Shiba facing the camera, logged as
 /// an anchor while recording.
 struct RerunLiveCaptureView: View {
+    private let scope: RerunScanScope
     private let onFinish: (RerunCapturePack) -> Void
     private let onRecordingChange: (Bool) -> Void
-    @State private var model = RerunLiveCaptureModel()
+    @State private var model: RerunLiveCaptureModel
     @State private var isOnScreen = false
 
-    /// `onFinish` receives the capture when the user stops a recording that holds at least
-    /// one camera pose. `onRecordingChange` tells the host when a recording starts and when it
-    /// is over (saved or discarded), so it can put away whatever would end it by accident.
-    init(onRecordingChange: @escaping (Bool) -> Void = { _ in },
+    /// `scope` is what is scanned: it sets the recorder (``RerunScanScope/configuration``) and
+    /// the coaching. `onFinish` receives the capture when the user stops a recording that holds
+    /// at least one camera pose. `onRecordingChange` tells the host when a recording starts and
+    /// when it is over (saved or discarded), so it can put away whatever would end it by accident.
+    init(scope: RerunScanScope = .default,
+         onRecordingChange: @escaping (Bool) -> Void = { _ in },
          onFinish: @escaping (RerunCapturePack) -> Void) {
+        self.scope = scope
         self.onRecordingChange = onRecordingChange
         self.onFinish = onFinish
+        _model = State(initialValue: RerunLiveCaptureModel(scope: scope))
     }
 
     var body: some View {
         #if targetEnvironment(simulator)
-        RerunLiveCaptureSimulatorCard()
+        RerunLiveCaptureSimulatorCard(scope: scope)
         #else
         ZStack {
             if isOnScreen {
@@ -104,13 +109,20 @@ final class RerunLiveCaptureModel {
         case saving
     }
 
+    /// What is scanned: the recorder's settings and the coaching follow it.
+    let scope: RerunScanScope
     private(set) var phase: Phase = .idle
     /// The recorder's counters, refreshed at most four times a second.
     private(set) var stats = RerunCaptureRecorder.Stats()
     /// One line of guidance above the controls, `nil` for none.
-    private(set) var hint: String? = RerunLiveCaptureModel.idleHint
+    private(set) var hint: String?
 
-    static let idleHint = "Tap Record, then walk slowly around the room. Tap a surface to place a Shiba."
+    init(scope: RerunScanScope = .default) {
+        self.scope = scope
+        hint = RerunScanScopeCopy.idle(scope)
+    }
+
+    private var idleHint: String { RerunScanScopeCopy.idle(scope) }
 
     @ObservationIgnored private var recorder: RerunCaptureRecorder?
     @ObservationIgnored private var lastStatsRefresh: TimeInterval = -.infinity
@@ -144,7 +156,7 @@ final class RerunLiveCaptureModel {
             overlay.update(path: recorder.pathPositions, points: recorder.voxelPoints, planes: recorder.currentPlanes)
             hint = recorder.stats.isPhotoLimitReached
                 ? "Photo limit reached. The path and points keep recording."
-                : nil
+                : RerunScanScopeCopy.scanning(scope)
         }
     }
 
@@ -162,10 +174,10 @@ final class RerunLiveCaptureModel {
         for anchor in placed { anchor.removeFromParent() }
         placed.removeAll()
         overlay.clear()
-        recorder = RerunCaptureRecorder()
+        recorder = RerunCaptureRecorder(configuration: scope.configuration)
         stats = RerunCaptureRecorder.Stats()
         lastStatsRefresh = -.infinity
-        hint = nil
+        hint = RerunScanScopeCopy.scanning(scope)
         phase = .recording
         SceneViewHaptic.shared.medium()
     }
@@ -181,7 +193,7 @@ final class RerunLiveCaptureModel {
             guard let self, !Task.isCancelled else { return }
             self.phase = .idle
             if snapshot.hasContent {
-                self.hint = Self.idleHint
+                self.hint = self.idleHint
                 onFinish(pack)
             } else {
                 self.overlay.clear()
@@ -198,7 +210,7 @@ final class RerunLiveCaptureModel {
         recorder = nil
         phase = .idle
         stats = RerunCaptureRecorder.Stats()
-        hint = Self.idleHint
+        hint = idleHint
     }
 
     /// Places a Shiba at `position`, turned to face the camera, and logs it as an anchor
@@ -447,6 +459,9 @@ private struct CaptureReadout: View {
                     .font(CaptureTokens.clock)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
             }
+            Text(RerunScanScopeCopy.label(model.scope))
+                .font(CaptureTokens.clock)
+                .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
             Spacer(minLength: SceneViewTokens.Space.sm)
             Text(Self.clock(model.stats.duration))
                 .font(CaptureTokens.clock)
@@ -594,16 +609,20 @@ private struct CaptureHint: View {
 
 /// The simulator has no camera: say so, and point at the recorded replay instead.
 private struct RerunLiveCaptureSimulatorCard: View {
+    let scope: RerunScanScope
+
     var body: some View {
         ZStack {
             SceneViewTokens.Stage.background.ignoresSafeArea()
             VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
-                Image(systemName: "camera.fill")
-                    .font(SceneViewTokens.TypeScale.card)
+                Label(RerunScanScopeCopy.label(scope), systemImage: "camera.fill")
+                    .font(SceneViewTokens.TypeScale.captionSemibold)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrimDim)
-                    .accessibilityHidden(true)
                 Text("Recording needs an iPhone camera.")
                     .font(SceneViewTokens.TypeScale.card)
+                    .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
+                Text(RerunScanScopeCopy.how(scope))
+                    .font(SceneViewTokens.TypeScale.body)
                     .foregroundStyle(SceneViewTokens.ARChrome.onScrim)
                 Text("Go back to Sessions to watch the sample session, or open a scan file.")
                     .font(SceneViewTokens.TypeScale.body)

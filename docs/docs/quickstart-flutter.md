@@ -12,7 +12,7 @@ SceneView provides a Flutter plugin that bridges to native SceneView rendering o
 ```yaml
 # pubspec.yaml
 dependencies:
-  flutter_sceneview: ^4.39.0
+  flutter_sceneview: ^4.63.0
 ```
 
 ### iOS setup — one required Podfile line

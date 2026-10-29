@@ -45,17 +45,39 @@
   <style>
     /* ===== 3D VIEWER BY LINK =====
        Tokens come from styles.css (see DESIGN.md). The only page-local values are the
-       stage colours: DESIGN.md `stage-background-embedded` — #0B0F16 in light, #22293E in
-       dark, where #0B0F16 would sit at 1.01:1 on the page and the stage would vanish. */
+       stage's: DESIGN.md `stage-studio-*`. The model stands in a lit photo studio that
+       follows the theme (SceneView `setStudio`): a bright seamless backdrop in light, a
+       charcoal showroom in dark. The stage ground, the loading veil and the pills over
+       the picture take the studio's colours, and the horizon band is the canvas clear
+       colour, so nothing changes tone when the 3D takes over. */
     :root {
-      --vp-stage: #0b0f16;
+      --vp-studio-top: #cdd3db;
+      --vp-studio-horizon: #e7eaef;
+      --vp-studio-floor: #f2f4f7;
+      --vp-studio-pool: #fdfdfe;
+      --vp-studio-glass: rgba(255, 255, 255, 0.72);
+      --vp-studio-glass-ring: rgba(30, 50, 86, 0.14);
       --vp-radius-sm: 12px;
       --vp-radius-md: 16px;
       --vp-radius-xl: 28px;
       --vp-danger: #ea4335;
     }
     [data-theme="dark"] {
-      --vp-stage: #22293e;
+      --vp-studio-top: #0b0e13;
+      --vp-studio-horizon: #222833;
+      --vp-studio-floor: #2b323e;
+      --vp-studio-pool: #3a4250;
+      --vp-studio-glass: rgba(255, 255, 255, 0.14);
+      --vp-studio-glass-ring: rgba(255, 255, 255, 0.24);
+    }
+    .vp-stage, .vp-overlay {
+      /* The backdrop as the studio draws it: the wall darkening upwards from the
+         horizon, the floor below it, and the pool of light the model stands in. Shown
+         while the 3D starts and behind the veil. */
+      --vp-studio-ground:
+        radial-gradient(ellipse 62% 40% at 50% 64%, var(--vp-studio-pool), transparent),
+        linear-gradient(180deg, var(--vp-studio-top) 0%, var(--vp-studio-horizon) 30%,
+          var(--vp-studio-floor) 100%);
     }
 
     .vp-page {
@@ -156,14 +178,72 @@
     .vp-sample img {
       width: 100%;
       aspect-ratio: 1;
-      object-fit: cover;
-      background: var(--vp-stage);
+      object-fit: contain;
+      padding: 8%;
+      background: radial-gradient(circle at 50% 42%, var(--color-surface-container-lowest), var(--color-surface-container-high) 78%);
     }
     .vp-sample span {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
       padding: 10px 12px;
       font-size: 0.9rem;
       font-weight: 600;
+      line-height: 1.25;
     }
+    .vp-sample small {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--color-on-surface-variant);
+    }
+
+    .vp-catalogue-lead {
+      margin: -8px 0 16px;
+      font-size: 0.95rem;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-cats {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin: 0 -16px 8px;
+      padding: 4px 16px 8px;
+      scrollbar-width: none;
+    }
+    .vp-cats::-webkit-scrollbar { display: none; }
+    .vp-cat-chip {
+      flex-shrink: 0;
+      min-height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--color-outline-variant);
+      background: var(--color-surface-container-low);
+      color: var(--color-on-surface);
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .vp-cat-chip[aria-pressed="true"] {
+      background: var(--color-secondary-container);
+      border-color: transparent;
+      color: var(--color-on-secondary-container);
+    }
+    .vp-cat-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    .vp-cat-title {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin: 24px 0 12px;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+    .vp-cat-title span {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--color-on-surface-variant);
+    }
+    .vp-cat[hidden] { display: none; }
 
     .vp-format {
       margin-top: 40px;
@@ -192,7 +272,7 @@
       min-height: 300px;
       border-radius: var(--vp-radius-xl);
       overflow: hidden;
-      background: var(--vp-stage);
+      background: var(--vp-studio-ground);
       box-shadow: var(--shadow-card);
     }
     #vp-canvas {
@@ -201,7 +281,12 @@
       display: block;
       touch-action: none;
       cursor: grab;
+      /* The stage's backdrop shows until the studio has drawn the model: an unpainted
+         WebGL buffer is black, and must never show through the veil as it lifts. */
+      opacity: 0;
+      transition: opacity var(--duration-medium) var(--ease-expressive);
     }
+    #vp-canvas.is-drawn { opacity: 1; }
     #vp-canvas:active { cursor: grabbing; }
     .vp-overlay {
       position: absolute;
@@ -214,16 +299,23 @@
       gap: 12px;
       padding: 24px;
       text-align: center;
-      background: var(--vp-stage);
-      color: #ffffff;
+      background: var(--vp-studio-ground);
+      color: var(--color-on-surface);
     }
-    .vp-overlay p { color: rgba(255, 255, 255, 0.72); font-size: 0.95rem; max-width: 440px; }
+    /* The veil lifts once the model is dressed, as the studio's camera moves in. */
+    .vp-overlay.is-leaving {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--duration-medium) var(--ease-expressive);
+    }
+    .vp-overlay p { color: var(--color-on-surface-variant); font-size: 0.95rem; max-width: 440px; }
     .vp-overlay strong { font-size: 1.125rem; font-weight: 700; }
     .vp-overlay code {
       font-family: var(--font-mono);
       font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.72);
-      background: rgba(255, 255, 255, 0.08);
+      /* on-surface, not -variant: on the dark glass over the pool -variant is 4.3:1. */
+      color: var(--color-on-surface);
+      background: var(--vp-studio-glass);
       padding: 6px 10px;
       border-radius: 8px;
       max-width: 100%;
@@ -233,8 +325,8 @@
     .vp-spinner {
       width: 36px; height: 36px;
       border-radius: 50%;
-      border: 3px solid rgba(255, 255, 255, 0.2);
-      border-top-color: #ffffff;
+      border: 3px solid var(--vp-studio-glass-ring);
+      border-top-color: var(--color-on-surface);
       animation: vp-spin 800ms linear infinite;
     }
     @keyframes vp-spin { to { transform: rotate(360deg); } }
@@ -245,9 +337,9 @@
       z-index: 1;
       padding: 6px 12px;
       border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.14);
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
-      color: #ffffff;
+      background: var(--vp-studio-glass);
+      box-shadow: 0 0 0 1px var(--vp-studio-glass-ring);
+      color: var(--color-on-surface);
       font-size: 0.8rem;
       white-space: nowrap;
       pointer-events: none;
@@ -306,9 +398,9 @@
     }
     .vp-btn--tonal:hover { background: var(--color-surface-container-high); }
     .vp-btn--on-stage {
-      background: rgba(255, 255, 255, 0.14);
-      color: #ffffff;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.36);
+      background: var(--vp-studio-glass);
+      color: var(--color-on-surface);
+      box-shadow: 0 0 0 1px var(--color-outline);
     }
 
     .vp-ar-note {
@@ -378,6 +470,7 @@
       .vp-form { flex-direction: row; }
       .vp-form .vp-btn { flex-shrink: 0; }
       .vp-samples { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+      .vp-cats { flex-wrap: wrap; overflow-x: visible; margin: 0 0 8px; padding: 4px 0 8px; }
       .vp-actions { flex-direction: row; flex-wrap: wrap; }
       .vp-footnote { flex-direction: row; justify-content: space-between; align-items: center; }
     }
@@ -387,6 +480,7 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .vp-spinner { animation-duration: 2.4s; }
+      .vp-overlay.is-leaving { transition: none; }
       .vp-sample:hover, .vp-sample:active, .vp-btn:active { transform: none; }
     }
   </style>
@@ -467,17 +561,175 @@
           <span>Your browser loads the file straight from where it is hosted. Nothing is uploaded to SceneView.</span>
         </p>
 
-        <h2 class="vp-section-title">Or try a sample</h2>
-        <ul class="vp-samples">
-          <li><a class="vp-sample" data-sample="ToyCar.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FToyCar.glb">
-            <img src="/models/platforms/thumbnails/ToyCar.webp" alt="" width="256" height="256" loading="lazy"><span>Toy Car</span></a></li>
-          <li><a class="vp-sample" data-sample="SheenChair.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FSheenChair.glb">
-            <img src="/models/platforms/thumbnails/SheenChair.webp" alt="" width="256" height="256" loading="lazy"><span>Sheen Chair</span></a></li>
-          <li><a class="vp-sample" data-sample="ToonCat.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2FToonCat.glb">
-            <img src="/models/platforms/thumbnails/ToonCat.webp" alt="" width="256" height="256" loading="lazy"><span>Toon Cat</span></a></li>
-          <li><a class="vp-sample" data-sample="photorealistic_guitar.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fphotorealistic_guitar.glb">
-            <img src="/models/platforms/thumbnails/photorealistic_guitar.webp" alt="" width="256" height="256" loading="lazy"><span>Guitar</span></a></li>
-        </ul>
+        <h2 class="vp-section-title">Or open a real product</h2>
+        <p class="vp-catalogue-lead">61 real products, each at its real-world size — open one in 3D, then place it in your room in AR.</p>
+        <div class="vp-cats" role="group" aria-label="Filter the catalogue">
+          <button type="button" class="vp-cat-chip" data-cat="all" aria-pressed="true">All</button>
+          <button type="button" class="vp-cat-chip" data-cat="furniture" aria-pressed="false">Furniture</button>
+          <button type="button" class="vp-cat-chip" data-cat="cars" aria-pressed="false">Cars</button>
+          <button type="button" class="vp-cat-chip" data-cat="bikes" aria-pressed="false">Bikes &amp; scooters</button>
+          <button type="button" class="vp-cat-chip" data-cat="home" aria-pressed="false">Kitchen &amp; home</button>
+          <button type="button" class="vp-cat-chip" data-cat="tech" aria-pressed="false">Tech</button>
+          <button type="button" class="vp-cat-chip" data-cat="fashion" aria-pressed="false">Fashion, sport &amp; leisure</button>
+          <button type="button" class="vp-cat-chip" data-cat="history" aria-pressed="false">Space, museum &amp; sci-fi</button>
+        </div>
+        <section class="vp-cat" data-cat="furniture" aria-labelledby="vp-cat-furniture">
+          <h3 id="vp-cat-furniture" class="vp-cat-title">Furniture <span>11</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="ikea_nockeby_sofa.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fikea_nockeby_sofa.glb">
+              <img src="/models/platforms/thumbnails/ikea_nockeby_sofa.webp" alt="" width="256" height="256" loading="lazy"><span>IKEA NOCKEBY sofa<small>2.30 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ikea_kallax_shelf.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fikea_kallax_shelf.glb">
+              <img src="/models/platforms/thumbnails/ikea_kallax_shelf.webp" alt="" width="256" height="256" loading="lazy"><span>IKEA KALLAX shelf<small>1.47 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ikea_linnmon_alex_desk.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fikea_linnmon_alex_desk.glb">
+              <img src="/models/platforms/thumbnails/ikea_linnmon_alex_desk.webp" alt="" width="256" height="256" loading="lazy"><span>IKEA LINNMON / ALEX desk<small>1.50 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ikea_trensum_mirror.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fikea_trensum_mirror.glb">
+              <img src="/models/platforms/thumbnails/ikea_trensum_mirror.webp" alt="" width="256" height="256" loading="lazy"><span>IKEA TRENSUM mirror<small>33 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rivet_sloane_sofa.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frivet_sloane_sofa.glb">
+              <img src="/models/platforms/thumbnails/rivet_sloane_sofa.webp" alt="" width="256" height="256" loading="lazy"><span>Rivet Sloane sofa<small>2.14 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="stone_beam_dalton_sofa.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fstone_beam_dalton_sofa.glb">
+              <img src="/models/platforms/thumbnails/stone_beam_dalton_sofa.webp" alt="" width="256" height="256" loading="lazy"><span>Stone &amp; Beam Dalton sofa<small>2.37 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rivet_aiden_armchair.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frivet_aiden_armchair.glb">
+              <img src="/models/platforms/thumbnails/rivet_aiden_armchair.webp" alt="" width="256" height="256" loading="lazy"><span>Rivet Aiden armchair<small>93 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="wishbone_chair.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fwishbone_chair.glb">
+              <img src="/models/platforms/thumbnails/wishbone_chair.webp" alt="" width="256" height="256" loading="lazy"><span>Wishbone dining chair<small>74 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rivet_arc_floor_lamp.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frivet_arc_floor_lamp.glb">
+              <img src="/models/platforms/thumbnails/rivet_arc_floor_lamp.webp" alt="" width="256" height="256" loading="lazy"><span>Rivet arc floor lamp<small>1.93 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rivet_anne_desk.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frivet_anne_desk.glb">
+              <img src="/models/platforms/thumbnails/rivet_anne_desk.webp" alt="" width="256" height="256" loading="lazy"><span>Rivet Anne desk<small>1.57 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rivet_media_console.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frivet_media_console.glb">
+              <img src="/models/platforms/thumbnails/rivet_media_console.webp" alt="" width="256" height="256" loading="lazy"><span>Rivet media console<small>1.22 m</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="cars" aria-labelledby="vp-cat-cars">
+          <h3 id="vp-cat-cars" class="vp-cat-title">Cars <span>4</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="tesla_model_3.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ftesla_model_3.glb">
+              <img src="/models/platforms/thumbnails/tesla_model_3.webp" alt="" width="256" height="256" loading="lazy"><span>Tesla Model 3<small>4.69 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="peugeot_2008.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fpeugeot_2008.glb">
+              <img src="/models/platforms/thumbnails/peugeot_2008.webp" alt="" width="256" height="256" loading="lazy"><span>Peugeot 2008<small>4.30 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="mini_cooper_s.glb" data-front-yaw="180" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fmini_cooper_s.glb">
+              <img src="/models/platforms/thumbnails/mini_cooper_s.webp" alt="" width="256" height="256" loading="lazy"><span>MINI Cooper S<small>3.63 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="fiat_500_classic.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ffiat_500_classic.glb">
+              <img src="/models/platforms/thumbnails/fiat_500_classic.webp" alt="" width="256" height="256" loading="lazy"><span>Fiat 500 (classic)<small>2.97 m</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="bikes" aria-labelledby="vp-cat-bikes">
+          <h3 id="vp-cat-bikes" class="vp-cat-title">Bikes &amp; scooters <span>4</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="mongoose_tyax_mtb.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fmongoose_tyax_mtb.glb">
+              <img src="/models/platforms/thumbnails/mongoose_tyax_mtb.webp" alt="" width="256" height="256" loading="lazy"><span>Mongoose Tyax mountain bike<small>1.75 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="tier_escooter.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ftier_escooter.glb">
+              <img src="/models/platforms/thumbnails/tier_escooter.webp" alt="" width="256" height="256" loading="lazy"><span>TIER e-scooter<small>1.15 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="vespa_et3.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fvespa_et3.glb">
+              <img src="/models/platforms/thumbnails/vespa_et3.webp" alt="" width="256" height="256" loading="lazy"><span>Vespa Primavera ET3<small>1.69 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="city_bike.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fcity_bike.glb">
+              <img src="/models/platforms/thumbnails/city_bike.webp" alt="" width="256" height="256" loading="lazy"><span>City bike<small>1.75 m</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="home" aria-labelledby="vp-cat-home">
+          <h3 id="vp-cat-home" class="vp-cat-title">Kitchen &amp; home <span>6</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="kitchenaid_stand_mixer.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fkitchenaid_stand_mixer.glb">
+              <img src="/models/platforms/thumbnails/kitchenaid_stand_mixer.webp" alt="" width="256" height="256" loading="lazy"><span>KitchenAid stand mixer<small>39 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="smeg_toaster.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fsmeg_toaster.glb">
+              <img src="/models/platforms/thumbnails/smeg_toaster.webp" alt="" width="256" height="256" loading="lazy"><span>SMEG toaster<small>31 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="dyson_hot_cool_fan.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fdyson_hot_cool_fan.glb">
+              <img src="/models/platforms/thumbnails/dyson_hot_cool_fan.webp" alt="" width="256" height="256" loading="lazy"><span>Dyson Hot+Cool fan<small>63 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="amazonbasics_portable_ac.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Famazonbasics_portable_ac.glb">
+              <img src="/models/platforms/thumbnails/amazonbasics_portable_ac.webp" alt="" width="256" height="256" loading="lazy"><span>AmazonBasics portable AC<small>61 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="glass_kettle.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fglass_kettle.glb">
+              <img src="/models/platforms/thumbnails/glass_kettle.webp" alt="" width="256" height="256" loading="lazy"><span>Glass kettle<small>25 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="glass_door_fridge.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fglass_door_fridge.glb">
+              <img src="/models/platforms/thumbnails/glass_door_fridge.webp" alt="" width="256" height="256" loading="lazy"><span>Glass-door fridge<small>2.18 m</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="tech" aria-labelledby="vp-cat-tech">
+          <h3 id="vp-cat-tech" class="vp-cat-title">Tech <span>18</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="iphone_13_pro_max.glb" data-front-yaw="180" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fiphone_13_pro_max.glb">
+              <img src="/models/platforms/thumbnails/iphone_13_pro_max.webp" alt="" width="256" height="256" loading="lazy"><span>iPhone 13 Pro Max<small>16 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="galaxy_s21_ultra.glb" data-front-yaw="180" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fgalaxy_s21_ultra.glb">
+              <img src="/models/platforms/thumbnails/galaxy_s21_ultra.webp" alt="" width="256" height="256" loading="lazy"><span>Samsung Galaxy S21 Ultra<small>17 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="macbook_pro_13.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fmacbook_pro_13.glb">
+              <img src="/models/platforms/thumbnails/macbook_pro_13.webp" alt="" width="256" height="256" loading="lazy"><span>MacBook Pro 13&quot;<small>30 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ipad_mini_6.glb" data-front-yaw="180" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fipad_mini_6.glb">
+              <img src="/models/platforms/thumbnails/ipad_mini_6.webp" alt="" width="256" height="256" loading="lazy"><span>iPad mini 6<small>20 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="apple_watch_series_7.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fapple_watch_series_7.glb">
+              <img src="/models/platforms/thumbnails/apple_watch_series_7.webp" alt="" width="256" height="256" loading="lazy"><span>Apple Watch Series 7<small>4.5 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="airpods_pro.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fairpods_pro.glb">
+              <img src="/models/platforms/thumbnails/airpods_pro.webp" alt="" width="256" height="256" loading="lazy"><span>AirPods Pro<small>8.0 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="nintendo_switch_oled.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fnintendo_switch_oled.glb">
+              <img src="/models/platforms/thumbnails/nintendo_switch_oled.webp" alt="" width="256" height="256" loading="lazy"><span>Nintendo Switch OLED<small>24 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="xbox_wireless_controller.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fxbox_wireless_controller.glb">
+              <img src="/models/platforms/thumbnails/xbox_wireless_controller.webp" alt="" width="256" height="256" loading="lazy"><span>Xbox Wireless Controller<small>16 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="sony_mdr_7506.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fsony_mdr_7506.glb">
+              <img src="/models/platforms/thumbnails/sony_mdr_7506.webp" alt="" width="256" height="256" loading="lazy"><span>Sony MDR-7506 headphones<small>22 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="skullcandy_crusher.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fskullcandy_crusher.glb">
+              <img src="/models/platforms/thumbnails/skullcandy_crusher.webp" alt="" width="256" height="256" loading="lazy"><span>Skullcandy Crusher headphones<small>19 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="jbl_tour_one_m3_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fjbl_tour_one_m3_v2.glb">
+              <img src="/models/platforms/thumbnails/jbl_tour_one_m3_v2.webp" alt="" width="256" height="256" loading="lazy"><span>JBL Tour One M3 headphones<small>19 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="jbl_charge_speaker.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fjbl_charge_speaker.glb">
+              <img src="/models/platforms/thumbnails/jbl_charge_speaker.webp" alt="" width="256" height="256" loading="lazy"><span>JBL Charge speaker<small>18 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ue_boom_speaker.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fue_boom_speaker.glb">
+              <img src="/models/platforms/thumbnails/ue_boom_speaker.webp" alt="" width="256" height="256" loading="lazy"><span>Ultimate Ears BOOM speaker<small>26 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="gopro_hero_8.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fgopro_hero_8.glb">
+              <img src="/models/platforms/thumbnails/gopro_hero_8.webp" alt="" width="256" height="256" loading="lazy"><span>GoPro HERO8<small>6.6 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="canon_eos_rp_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fcanon_eos_rp_v2.glb">
+              <img src="/models/platforms/thumbnails/canon_eos_rp_v2.webp" alt="" width="256" height="256" loading="lazy"><span>Canon EOS RP camera<small>13 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="instax_mini_8.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Finstax_mini_8.glb">
+              <img src="/models/platforms/thumbnails/instax_mini_8.webp" alt="" width="256" height="256" loading="lazy"><span>Instax Mini 8 camera<small>12 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="dji_mavic_3_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fdji_mavic_3_v2.glb">
+              <img src="/models/platforms/thumbnails/dji_mavic_3_v2.webp" alt="" width="256" height="256" loading="lazy"><span>DJI Mavic 3 drone<small>35 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="desktop_3d_printer.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fdesktop_3d_printer.glb">
+              <img src="/models/platforms/thumbnails/desktop_3d_printer.webp" alt="" width="256" height="256" loading="lazy"><span>Desktop 3D printer<small>45 cm</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="fashion" aria-labelledby="vp-cat-fashion">
+          <h3 id="vp-cat-fashion" class="vp-cat-title">Fashion, sport &amp; leisure <span>11</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="air_jordan_1.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fair_jordan_1.glb">
+              <img src="/models/platforms/thumbnails/air_jordan_1.webp" alt="" width="256" height="256" loading="lazy"><span>Nike Air Jordan 1<small>30 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="nike_pegasus_36.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fnike_pegasus_36.glb">
+              <img src="/models/platforms/thumbnails/nike_pegasus_36.webp" alt="" width="256" height="256" loading="lazy"><span>Nike Air Zoom Pegasus 36<small>29 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="converse_chuck_taylor.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fconverse_chuck_taylor.glb">
+              <img src="/models/platforms/thumbnails/converse_chuck_taylor.webp" alt="" width="256" height="256" loading="lazy"><span>Converse Chuck Taylor<small>29 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="adidas_high_top.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fadidas_high_top.glb">
+              <img src="/models/platforms/thumbnails/adidas_high_top.webp" alt="" width="256" height="256" loading="lazy"><span>adidas high-top sneaker<small>30 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="reebok_fueltrain.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Freebok_fueltrain.glb">
+              <img src="/models/platforms/thumbnails/reebok_fueltrain.webp" alt="" width="256" height="256" loading="lazy"><span>Reebok FUELTRAIN<small>27 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="ugg_classic_tall.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fugg_classic_tall.glb">
+              <img src="/models/platforms/thumbnails/ugg_classic_tall.webp" alt="" width="256" height="256" loading="lazy"><span>UGG Classic Tall boot<small>33 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="jansport_backpack.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fjansport_backpack.glb">
+              <img src="/models/platforms/thumbnails/jansport_backpack.webp" alt="" width="256" height="256" loading="lazy"><span>JanSport backpack<small>44 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="rolex_watch_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Frolex_watch_v2.glb">
+              <img src="/models/platforms/thumbnails/rolex_watch_v2.webp" alt="" width="256" height="256" loading="lazy"><span>Rolex watch<small>7.5 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="moto_helmet_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fmoto_helmet_v2.glb">
+              <img src="/models/platforms/thumbnails/moto_helmet_v2.webp" alt="" width="256" height="256" loading="lazy"><span>Motorcycle helmet<small>33 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="tennis_racket.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ftennis_racket.glb">
+              <img src="/models/platforms/thumbnails/tennis_racket.webp" alt="" width="256" height="256" loading="lazy"><span>Tennis racket<small>69 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="photorealistic_guitar_v2.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fphotorealistic_guitar_v2.glb">
+              <img src="/models/platforms/thumbnails/photorealistic_guitar_v2.webp" alt="" width="256" height="256" loading="lazy"><span>Electric guitar<small>1 m</small></span></a></li>
+          </ul>
+        </section>
+        <section class="vp-cat" data-cat="history" aria-labelledby="vp-cat-history">
+          <h3 id="vp-cat-history" class="vp-cat-title">Space, museum &amp; sci-fi <span>7</span></h3>
+          <ul class="vp-samples">
+            <li><a class="vp-sample" data-sample="perseverance_rover.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fperseverance_rover.glb">
+              <img src="/models/platforms/thumbnails/perseverance_rover.webp" alt="" width="256" height="256" loading="lazy"><span>Perseverance Mars rover<small>3.11 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="bell_x1.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fbell_x1.glb">
+              <img src="/models/platforms/thumbnails/bell_x1.webp" alt="" width="256" height="256" loading="lazy"><span>Bell X-1 (1947)<small>10.41 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="triceratops_skeleton.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ftriceratops_skeleton.glb">
+              <img src="/models/platforms/thumbnails/triceratops_skeleton.webp" alt="" width="256" height="256" loading="lazy"><span>Triceratops skeleton<small>5.88 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="fangyi_bronze.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Ffangyi_bronze.glb">
+              <img src="/models/platforms/thumbnails/fangyi_bronze.webp" alt="" width="256" height="256" loading="lazy"><span>Fangyi bronze vessel<small>35 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="canon_at1.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fcanon_at1.glb">
+              <img src="/models/platforms/thumbnails/canon_at1.webp" alt="" width="256" height="256" loading="lazy"><span>Canon AT-1 (1977)<small>14 cm</small></span></a></li>
+            <li><a class="vp-sample" data-sample="citroen_h_van.glb" data-front-yaw="180" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fcitroen_h_van.glb">
+              <img src="/models/platforms/thumbnails/citroen_h_van.webp" alt="" width="256" height="256" loading="lazy"><span>Citroën H-style van<small>4.30 m</small></span></a></li>
+            <li><a class="vp-sample" data-sample="mech_drone.glb" href="?url=https%3A%2F%2Fsceneview.github.io%2Fmodels%2Fplatforms%2Fmech_drone.glb">
+              <img src="/models/platforms/thumbnails/mech_drone.webp" alt="" width="256" height="256" loading="lazy"><span>Mech drone (sci-fi)<small>60 cm</small></span></a></li>
+          </ul>
+        </section>
 
         <div class="vp-format">
           <strong>Share or generate a link</strong>
@@ -584,7 +836,7 @@
     'use strict';
 
     // Same pair /open/ loads: the site's Filament build and the sceneview.js viewer.
-    var VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.52.0'];
+    var VIEWER_SCRIPTS = ['/js/filament/filament.js', '/js/sceneview.js?v=4.63.0'];
     // The compiled SceneView KMP core, loaded ONLY to convert a .3mf into a GLB
     // (`sceneview.threeMfToGlb`), exactly as /open/ does. It never renders.
     var THREEMF_SCRIPT = '/js/sceneview-web.js?v=4.34.0';
@@ -654,12 +906,19 @@
       return base + q;
     }
 
-    // ── Theme-aware stage colour ──────────────────────────────────────
-    // DESIGN.md `stage-background-embedded`, in the linear space Filament clears with.
+    // ── Theme-aware stage ─────────────────────────────────────────────
+    // The studio follows the page theme: 'light' or 'dark' (SceneView setStudio()).
+    function stageStudio() {
+      return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    }
+    // DESIGN.md `stage-studio-horizon`, as displayed (sRGB), read from the stage's own
+    // CSS token. The studio paints the whole frame; the clear colour shows only before
+    // it is built, or under a cached script that predates it.
     function stageClearColor() {
-      return document.documentElement.getAttribute('data-theme') === 'dark'
-        ? [0.0160, 0.0222, 0.0482, 1.0]   // #22293E
-        : [0.0033, 0.0047, 0.0074, 1.0];  // #0B0F16
+      var hex = getComputedStyle(document.documentElement).getPropertyValue('--vp-studio-horizon');
+      var m = /#([0-9a-f]{6})/i.exec(hex || '');
+      var n = parseInt(m ? m[1] : 'f2f4f7', 16);
+      return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255, 1.0];
     }
 
     // ── Script loading ────────────────────────────────────────────────
@@ -942,6 +1201,17 @@
       var own = new URL('/models/platforms/' + file, location.origin).href;
       a.setAttribute('href', '?url=' + encodeURIComponent(own));
     });
+    // Category chips filter the catalogue in place; "All" shows every section.
+    var catChips = document.querySelectorAll('.vp-cat-chip');
+    Array.prototype.forEach.call(catChips, function (chip) {
+      chip.addEventListener('click', function () {
+        var cat = chip.getAttribute('data-cat');
+        Array.prototype.forEach.call(catChips, function (c) { c.setAttribute('aria-pressed', String(c === chip)); });
+        Array.prototype.forEach.call(document.querySelectorAll('.vp-cat'), function (sec) {
+          sec.hidden = cat !== 'all' && sec.getAttribute('data-cat') !== cat;
+        });
+      });
+    });
 
     $('vp-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -981,8 +1251,16 @@
     // The engine starts while the file downloads — the two are independent.
     var engineReady = loadViewerScripts()
       .then(function () {
-        return SceneView.create('vp-canvas', { autoRotate: true, backgroundColor: stageClearColor() });
+        // `studio` stages the model in a lit photo studio from the first frame; a cached
+        // script that predates it ignores the option and keeps the flat clear colour.
+        // A turntable is motion: a visitor who asks for less gets a still model to drag.
+        var still = typeof matchMedia === 'function'
+          && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        return SceneView.create('vp-canvas', {
+          autoRotate: !still, backgroundColor: stageClearColor(), studio: stageStudio()
+        });
       })
+      .then(function (viewer) { followTheme(viewer); return viewer; })
       .catch(function () { throw fail('engine'); });
     // Silence an unhandled rejection until the download settles and we await it.
     engineReady.catch(function () {});
@@ -1005,11 +1283,28 @@
       })
       .then(function (viewable) {
         return engineReady.then(function (viewer) {
-          return viewer.loadModel(viewable).catch(function () { throw fail('parse'); });
+          // Catalogue files modelled facing away from glTF's +Z say so on their tile, so
+          // the camera opens on their front three-quarter (a cached script ignores it).
+          var frontYaw = catalogueFrontYaw(modelUrl);
+          return viewer.loadModel(viewable, frontYaw ? { frontYaw: frontYaw } : undefined)
+            .catch(function () { throw fail('parse'); });
         });
       })
       .then(function (viewer) {
-        $('vp-loading').hidden = true;
+        // Lift the veil once the textures are on — the studio's camera starts its move-in
+        // then — so the first look is at the dressed model. A cached script without
+        // whenReady() lifts it at once, and a stuck texture cannot hold it past 4 s.
+        var dressed = typeof viewer.whenReady === 'function' ? viewer.whenReady() : null;
+        var cap = new Promise(function (resolve) { setTimeout(resolve, 4000); });
+        return Promise.race([dressed || Promise.resolve(), cap]).then(function () { return viewer; });
+      })
+      .then(function (viewer) {
+        // Two presented frames, so the canvas fades in over a drawn studio, never a blank buffer.
+        return framesDrawn(viewer, 2).then(function () { return viewer; });
+      })
+      .then(function (viewer) {
+        $('vp-canvas').classList.add('is-drawn');
+        hideLoading();
         onLoaded(viewer);
       })
       .catch(function (err) {
@@ -1017,14 +1312,46 @@
         showError(err, fileName, modelUrl.href);
       });
 
-    // ── Loaded: actions ───────────────────────────────────────────────
-    function onLoaded(viewer) {
-      // Follow the theme toggle live, so the stage matches the page in both themes.
+    function framesDrawn(viewer, count) {
+      if (typeof viewer.onFrame !== 'function') return Promise.resolve();
+      return new Promise(function (resolve) {
+        var seen = 0, off = null, done = function () { if (off) off(); resolve(); };
+        off = viewer.onFrame(function () { if (++seen >= count) done(); });
+        if (typeof viewer.requestRender === 'function') viewer.requestRender();
+        setTimeout(done, 1000);  // a hidden tab presents no frame: never hold the veil on it
+      });
+    }
+
+    // The front yaw a catalogue tile declares for its own file, or 0.
+    function catalogueFrontYaw(url) {
+      var m = url.hostname === 'sceneview.github.io' && /^\/models\/platforms\/([\w.-]+\.glb)$/.exec(url.pathname);
+      if (!m) return 0;
+      var tile = document.querySelector('.vp-sample[data-sample="' + m[1] + '"]');
+      var yaw = tile ? parseFloat(tile.getAttribute('data-front-yaw')) : NaN;
+      return isFinite(yaw) ? yaw : 0;
+    }
+
+    function hideLoading() {
+      var veil = $('vp-loading');
+      if (veil.hidden) return;
+      veil.classList.add('is-leaving');
+      setTimeout(function () {
+        veil.hidden = true;
+        veil.classList.remove('is-leaving');
+      }, 360);
+    }
+
+    // Follow the theme toggle live, so the stage matches the page in both themes.
+    function followTheme(viewer) {
       new MutationObserver(function () {
         var c = stageClearColor();
         viewer.setBackgroundColor(c[0], c[1], c[2], c[3]);
+        if (typeof viewer.setStudio === 'function') viewer.setStudio(stageStudio());
       }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
 
+    // ── Loaded: actions ───────────────────────────────────────────────
+    function onLoaded(viewer) {
       var hint = $('vp-hint');
       hint.textContent = ('ontouchstart' in window) ? 'Drag to orbit' : 'Drag to orbit · scroll to zoom';
       hint.hidden = false;

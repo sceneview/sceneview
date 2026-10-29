@@ -98,7 +98,9 @@ public constructor(
      * location. The underlying URL usually points at a `file://` path on the
      * dev machine which most browsers won't fetch from an HTTPS page — drop
      * the `.rrd` onto [`sceneview.github.io/rerun/`](https://sceneview.github.io/rerun/)
-     * to render it in-place, or re-host the file on a public URL first.
+     * to render it in-place, or host the file first at an https address whose
+     * host allows cross-origin requests (CORS) — the page reads it from the
+     * browser.
      */
     public data class ShareResult(
         public val success: Boolean,

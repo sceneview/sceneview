@@ -6,26 +6,89 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_measure_title">Measure</string>
-    <string name="demo_ar_measure_subtitle">Add two points, read the distance</string>
+    <string name="demo_ar_measure_subtitle">Distances, walls rising to their height, whole rooms</string>
+
+    <string name="demo_ar_measure_mode_distance">Distance</string>
+    <string name="demo_ar_measure_mode_wall">Wall</string>
+    <string name="demo_ar_measure_mode_room">Room</string>
 
     <string name="demo_ar_measure_hint_first">Aim at a surface, then Add point</string>
     <string name="demo_ar_measure_hint_second">Aim at the next point, then Add point</string>
-    <string name="demo_ar_measure_total">Chain: %1$s</string>
-    <string name="demo_ar_measure_perimeter">Perimeter: %1$s</string>
-    <string name="demo_ar_measure_last_segment">Last segment: %1$s</string>
-    <string name="demo_ar_measure_bounding_box">Bounding box  W %1$s · H %2$s · D %3$s</string>
+    <string name="demo_ar_measure_hint_chain">Add point continues this line, Done ends it</string>
+    <string name="demo_ar_measure_hint_new">Measure kept. Add point starts a new one</string>
+    <string name="demo_ar_measure_hint_wall_done">Wall kept. Door or window takes an opening off it, New measure starts another wall</string>
+    <string name="demo_ar_measure_hint_room_done">Room kept. Door or window takes an opening off its walls, New measure starts another room</string>
+    <string name="demo_ar_measure_hint_wall_find">Point the phone at the floor, then at a wall, to find the walls</string>
+    <string name="demo_ar_measure_hint_close">On the first point: tap to close the shape</string>
+    <string name="demo_ar_measure_hint_wall_first">Aim where the wall meets the floor, at one end</string>
+    <string name="demo_ar_measure_hint_wall_second">Now aim at the other end of the wall, on the floor</string>
+    <string name="demo_ar_measure_hint_wall_raise">Raise the phone to the top of the wall, then Set height</string>
+    <string name="demo_ar_measure_hint_room_first">Aim at a corner of the room, on the floor</string>
+    <string name="demo_ar_measure_hint_room_next">Follow the floor to the next corner</string>
+    <string name="demo_ar_measure_hint_room_close">Next corner, or back to the first one to close the room</string>
+    <string name="demo_ar_measure_hint_room_raise">Raise the phone to the ceiling, then Set height</string>
+    <string name="demo_ar_measure_hint_opening_first">Aim at one corner of the door or window, then Set corner</string>
+    <string name="demo_ar_measure_hint_opening_second">Now aim at the opposite corner, on the same wall, then Set corner</string>
+
+    <string name="demo_ar_measure_label_live">Measuring</string>
+    <string name="demo_ar_measure_label_segment">Last segment</string>
+    <string name="demo_ar_measure_label_width">Wall width</string>
+    <string name="demo_ar_measure_label_height_live">Wall height, following your aim</string>
+    <string name="demo_ar_measure_label_height">Wall height</string>
+    <string name="demo_ar_measure_label_ceiling_live">Ceiling height, following your aim</string>
+    <string name="demo_ar_measure_label_ceiling">Ceiling height</string>
+    <string name="demo_ar_measure_label_wall">Wall %1$d</string>
+    <string name="demo_ar_measure_number">Measure %1$d</string>
+    <string name="demo_ar_measure_total">Total %1$s</string>
+    <string name="demo_ar_measure_perimeter">Perimeter %1$s</string>
+    <string name="demo_ar_measure_area">Area %1$s</string>
+    <string name="demo_ar_measure_width">Width %1$s</string>
+    <string name="demo_ar_measure_floor">Floor %1$s</string>
+    <string name="demo_ar_measure_walls">Walls %1$s</string>
+    <string name="demo_ar_measure_volume">Volume %1$s</string>
+    <string name="demo_ar_measure_openings">Doors and windows %1$s</string>
+    <string name="demo_ar_measure_net">Net %1$s</string>
+    <string name="demo_ar_measure_label_net_walls">Net wall area</string>
+
+    <string name="demo_ar_measure_snap_point">Point</string>
+    <string name="demo_ar_measure_snap_corner">Corner</string>
+    <string name="demo_ar_measure_snap_edge">Edge</string>
+    <string name="demo_ar_measure_snap_vertical">Vertical</string>
+    <string name="demo_ar_measure_snap_level">Level</string>
+    <string name="demo_ar_measure_snap_square">Square corner</string>
+    <string name="demo_ar_measure_snap_close">Close</string>
+    <string name="demo_ar_measure_snap_wall">Wall foot</string>
+
+    <string name="demo_ar_measure_refusal_tracking">Tracking lost: move the phone slowly</string>
+    <string name="demo_ar_measure_refusal_no_surface">No surface here: aim at the floor or a wall</string>
+    <string name="demo_ar_measure_refusal_off_wall">Aim at the wall to read its height</string>
+    <string name="demo_ar_measure_refusal_anchor">Could not pin the point: try again</string>
+    <string name="demo_ar_measure_refusal_opening_off_wall">Aim at the wall to mark a corner</string>
+    <string name="demo_ar_measure_refusal_opening_small">Too close to the first corner: aim at the opposite one</string>
+    <string name="demo_ar_measure_refusal_no_plan">No floor between the corners: trace the room again</string>
+    <string name="demo_ar_measure_refusal_same_corner">Move to the next corner first</string>
+    <string name="demo_ar_measure_refusal_plan_room">Trace the room, close it and set its height first</string>
+    <string name="demo_ar_measure_refusal_plan_close">Close the room and set its height first</string>
+    <string name="demo_ar_measure_refusal_plan_height">Set the room height first</string>
 
     <string name="demo_ar_measure_action_add">Add point</string>
+    <string name="demo_ar_measure_action_set_height">Set height</string>
+    <string name="demo_ar_measure_action_close">Close shape</string>
+    <string name="demo_ar_measure_action_new">New measure</string>
+    <string name="demo_ar_measure_action_done">Done</string>
+    <string name="demo_ar_measure_action_undo">Undo</string>
+    <string name="demo_ar_measure_action_clear">Clear</string>
+    <string name="demo_ar_measure_action_share">Share</string>
+    <string name="demo_ar_measure_action_opening">Door or window</string>
+    <string name="demo_ar_measure_action_corner">Set corner</string>
+    <string name="demo_ar_measure_action_plan">Plan</string>
+    <string name="demo_ar_measure_plan_room">Measured room</string>
+    <string name="demo_ar_measure_plan_opening">Wall %1$s %2$s × %3$s</string>
     <string name="demo_ar_measure_target_ready">Measurement target ready</string>
     <string name="demo_ar_measure_target_searching">Aim at a measurable surface</string>
-    <string name="demo_ar_measure_action_undo">Undo</string>
-    <string name="demo_ar_measure_action_close">Close loop</string>
-    <string name="demo_ar_measure_action_open">Open loop</string>
-    <string name="demo_ar_measure_action_clear">Clear</string>
 
-    <string name="demo_ar_measure_description">Survey a real space — a workshop, a room, a piece of furniture — to size something you are about to build or 3D-print for it. Add point anchors the center target on a detected plane or on the depth map; consecutive points are joined by a labeled segment. Keep adding points for a chain, close the loop for a perimeter.</string>
-    <string name="demo_ar_measure_depth_toggle">Depth-map fallback</string>
-    <string name="demo_ar_measure_depth_supported">Lets you measure clutter, slopes and edges that never grow a plane.</string>
-    <string name="demo_ar_measure_depth_unsupported">Not supported on this device — planes and feature points only.</string>
-    <string name="demo_ar_measure_accuracy_notice">Accuracy: several centimeters on a phone without a ToF sensor, approaching one centimeter with ToF/LiDAR. Good enough to lay out a space (will it fit, how far apart, what is the clear height). Not a caliper — never use it for a fitting dimension on a printed part. See AR_MEASURE.md.</string>
+    <string name="demo_ar_measure_description">Measure a real space the way a tradesperson does. Distance chains points on any surface and closes shapes for their area. Wall takes the two ends of a wall on the floor, then raises it to your aim; Door or window then takes each opening off its area. Room traces the floor corner by corner, then raises every wall to the ceiling: floor area, perimeter, wall area and volume; Door or window takes each opening off the walls, and Plan draws the room to scale with its PDF. Share sends the numbers as text.</string>
+    <string name="demo_ar_measure_units">Units</string>
+    <string name="demo_ar_measure_units_metric">Metric</string>
+    <string name="demo_ar_measure_units_imperial">Imperial</string>
 </resources>

@@ -18,9 +18,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
@@ -31,15 +30,21 @@ import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.rememberArGuidanceState
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.ArAvailabilityStage
+import io.github.sceneview.demo.common.arSessionFailedUnexplained
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.demos.internal.rememberArMeshTintInstance
+import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.math.Size
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -89,6 +94,11 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     // it promises a scan under the SDK's "AR unavailable" card, forever.
     var arCoreAvailability by remember { mutableStateOf<ARCoreAvailability?>(null) }
 
+    // #4622: an ARCore session that failed. The SDK's "Couldn't start AR" card, with its
+    // "Try again", carries a session that could not be created (drawn on the stage ground by
+    // ArAvailabilityStage); the scaffold's card only takes a failure the SDK does not explain.
+    var arSessionFailed by remember { mutableStateOf(false) }
+
     var trackingFailureReason by remember { mutableStateOf<TrackingFailureReason?>(null) }
     var cameraReady by remember { mutableStateOf(false) }
     var isTracking by remember { mutableStateOf(false) }
@@ -102,13 +112,17 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
         trackingFailureReason = failure,
     )
 
-    // Marker cube material — allocated once so toggling recompositions never leak a fresh
-    // MaterialInstance. Semi-opaque amber so it reads against most real-world surfaces.
-    val markerMaterial = remember(materialLoader) {
-        materialLoader.createColorInstance(Color(0xFF_FF_B3_00))
-    }
+    // Marker cube material — allocated once so recompositions never leak a fresh
+    // MaterialInstance. `ar-mesh-ground`, tinting the camera image (#4623): the plane is the
+    // ground ARCore found, and the colour holds over a white floor as over a dark one.
+    val markerMaterial = rememberArMeshTintInstance(materialLoader, SceneViewTokens.ArOverlay.meshGround)
 
     DemoScaffold(
+        // The SDK's "Couldn't start AR" card keeps its in-place "Try again" (#4622); the
+        // scaffold's card, which has none, is only for a failure the SDK does not explain.
+        arSessionFailed = arSessionFailedUnexplained(arSessionFailed, arCoreAvailability),
+        // #3341: the SDK's "AR unavailable" card speaks alone while ARCore rules the device out.
+        arOverlaysEnabled = arCoreAvailability == null,
         title = stringResource(R.string.demo_ar_plane_node_title),
         onBack = onBack,
         // The on-screen pill already explains the demo; the only sheet content is the
@@ -121,27 +135,36 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
         // Live tracked-plane count + total ever detected, hosted by the scaffold's top
         // slot (#3237) so it shares one inset frame with the asset-source chip beside it.
         topOverlay = {
+            // Chrome over the camera feed: theme-independent glass tokens (DESIGN.md, Glass Chrome
+            // over Media), the same readout as AR Pose, never a copied black literal.
+            val readoutShape = MaterialTheme.shapes.large
             Surface(
-                color = Color.Black.copy(alpha = 0.7f),
-                contentColor = Color.White,
-                tonalElevation = 4.dp,
-                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.overMediaEdge(readoutShape),
+                color = SceneViewTokens.Glass.scrim,
+                contentColor = SceneViewTokens.Glass.onGlass,
+                shape = readoutShape,
             ) {
                 val tracked = arSession?.getAllTrackables(Plane::class.java)?.count {
                     it.trackingState == com.google.ar.core.TrackingState.TRACKING
                 } ?: 0
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = SceneViewTokens.Space.md,
+                        vertical = SceneViewTokens.Space.sm,
+                    ),
+                ) {
                     Text(
-                        text = if (tracked == 1) {
-                            "1 plane tracked"
-                        } else {
-                            "$tracked planes tracked"
-                        },
+                        text = pluralStringResource(R.plurals.demo_ar_plane_node_tracked, tracked, tracked),
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
-                        text = "$totalDetected detected since start",
+                        text = pluralStringResource(
+                            R.plurals.demo_ar_plane_node_detected,
+                            totalDetected,
+                            totalDetected,
+                        ),
                         style = MaterialTheme.typography.labelSmall,
+                        color = SceneViewTokens.Glass.onGlassMuted,
                     )
                 }
             }
@@ -158,7 +181,8 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 // #3341: on a device ARCore has ruled out, the flag this banner waits on
                 // never flips, so the banner would promise a scan under the SDK's "AR
                 // unavailable" card. Drop it and let the card carry reason and retry.
-                visible = noPlanesYet && arCoreAvailability == null && !guidance.isCoaching,
+                visible = noPlanesYet && arCoreAvailability == null && !arSessionFailed &&
+                    !guidance.isCoaching,
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -182,6 +206,8 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
+                onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -189,7 +215,13 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = true,
                 onSessionCreated = { session -> arSession = session },
-                onARCoreAvailability = { arCoreAvailability = it },
+                onARCoreAvailability = {
+                    arCoreAvailability = it
+                    // Back to null is a retry starting: a retry that works must not then land on
+                    // the scaffold's failure card.
+                    if (it == null) arSessionFailed = false
+                },
+                arCoreAvailabilityOverlay = { ArAvailabilityStage(it) },
                 onTrackingFailureChanged = { reason -> trackingFailureReason = reason },
                 onSessionUpdated = { _, frame ->
                     cameraReady = true

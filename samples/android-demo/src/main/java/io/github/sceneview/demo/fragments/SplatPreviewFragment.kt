@@ -21,6 +21,8 @@ object SplatPreviewFragment : DemoFragment {
         icon = Icons.Filled.FilterCenterFocus,
         order = 27,
         addedIn = "4.23.0",
+        // #4459: the scan opens framed and sorted in one step, under its loading cover.
+        updatedIn = "4.55.0",
         tags = setOf("splat", "gaussian", "radiance-field", "point-cloud", "scan", "spz", "ply"),
     )
 

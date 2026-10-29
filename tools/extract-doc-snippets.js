@@ -113,6 +113,7 @@ const PREAMBLE_IMPORTS = [
   "androidx.compose.ui.unit.Dp",
   "androidx.lifecycle.Lifecycle",
   "androidx.lifecycle.compose.LocalLifecycleOwner",
+  "androidx.lifecycle.repeatOnLifecycle",
   "com.google.android.filament.*",
   // llms.txt's ground-shadow snippets use the doc-established `FilamentBox`
   // alias to disambiguate from io.github.sceneview.collision.Box.
@@ -429,6 +430,8 @@ const CONTEXT_PRELUDE = [
   ["occlusionAvailable", "var occlusionAvailable = true"],
   ["context", "val context = LocalContext.current"],
   ["contentRoot", "val contentRoot = Node(engine)"],
+  // The open-topped hull of "Occluder meshes": the caller's own geometry.
+  ["hull", "val hull: io.github.sceneview.geometries.Geometry = TODO()"],
 ];
 
 function contextPrelude(bodyText) {

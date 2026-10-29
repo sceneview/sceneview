@@ -1,5 +1,6 @@
 package io.github.sceneview.haptic
 
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.media.AudioAttributes
 import android.os.Build
@@ -153,6 +154,8 @@ internal class SystemHapticEngine(
         vibrate(composition.compose())
     }
 
+    // `ids` are Composition.PRIMITIVE_* values; the interface types them as plain Int.
+    @SuppressLint("WrongConstant")
     override fun arePrimitivesSupported(ids: IntArray): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && ids.isNotEmpty() &&
             vibrator.areAllPrimitivesSupported(*ids)

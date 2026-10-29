@@ -3,11 +3,13 @@ package io.github.sceneview.demo.demos
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.demos.internal.DemoMath
+import io.github.sceneview.demo.ui.viewer.ShowroomMath
 import io.github.sceneview.math.Size
 import io.github.sceneview.verticalFovDegreesForFocalLength
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.asin
 import kotlin.math.tan
 
 /**
@@ -44,11 +46,27 @@ class ViewerHomeFramingTest {
 
     @Test
     fun `sideways the model spans the viewer's fill of the band's height`() {
-        val fov = verticalFovDegreesForFocalLength(28.0)
+        val fov = verticalFovDegreesForFocalLength(VIEWER_FOCAL_LENGTH_MM)
         val distance = framing(restingAspect = 866f / 141f).distance
         val depthAllowance = fox.z * DemoMath.DEPTH_ALLOWANCE
         val spanned = (fox.y / 2f) / ((distance - depthAllowance) * tan(Math.toRadians(fov) / 2.0).toFloat())
         assertEquals(DemoMath.VIEWER_FILL, spanned, 0.001f)
+    }
+
+    @Test
+    fun `a car is seen from lower than a watch`() {
+        // The showroom's product-shot pitch: a low three-quarter for a car, a tabletop view for
+        // something that fits in a hand. Sideways, nothing else lifts the eye.
+        fun elevation(extents: Size) = viewerHomeFraming(
+            extents = extents, viewportWidth = 0f, viewportHeight = 0f,
+            topInset = 0f, bottomInset = 0f, restingAspect = 2f,
+        ).let { Math.toDegrees(asin(it.eyeOffset.second / it.distance).toDouble()) }
+        val carSize = Size(1.8f, 1.55f, 4.3f)
+        val car = elevation(carSize)
+        val watch = elevation(Size(0.042f, 0.012f, 0.05f))
+        assertEquals(9.0, car, 0.01)
+        assertEquals(ShowroomMath.pitchDegrees(4.3f).toDouble(), car, 0.01)
+        assertTrue(car < watch)
     }
 
     @Test

@@ -154,7 +154,12 @@ export const COLLISION_GUIDE = `# SceneView Collision & Physics Guide
 
 ## Hit Testing (Tap on 3D Objects)
 
-SceneView supports hit testing via \`onTouchEvent\` on nodes. The \`hitResult\` gives you the exact 3D point where the user tapped.
+Every node is touchable by default (\`isTouchable = true\`); set \`isTouchable = false\` on decorations that must let taps through. A tap reaches your code in two ways:
+
+- **Per node** — assign \`onSingleTapConfirmed: (MotionEvent) -> Boolean\` in the node's \`apply = { }\` block. For the exact 3D point, \`onTouch = { motionEvent, hitResult -> … false }\` sees every raw event on that node with \`hitResult.getWorldPosition()\`; return \`false\`, because \`true\` hides the event from the gesture detector.
+- **Scene level** — \`onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> … })\` on \`SceneView\` / \`ARSceneView\`: \`node\` is the touchable node under the finger, or \`null\` for empty space.
+
+\`Node.onTouchEvent(e, hitResult)\` is an open function you override in a \`Node\` subclass, not a property you assign. The scene-level \`onTouchEvent\` parameter sees every raw \`MotionEvent\` first, and returning \`true\` from it hides the event from nodes and from the gesture detector — use the gesture listener for taps.
 
 ### Basic Node Tapping
 
@@ -166,22 +171,21 @@ fun TappableModelScreen() {
     val modelInstance = rememberModelInstance(modelLoader, "models/button.glb")
     var tapped by remember { mutableStateOf(false) }
 
-    SceneView(engine = engine) {
+    SceneView(engine = engine, modelLoader = modelLoader) {
         modelInstance?.let { instance ->
             ModelNode(
                 modelInstance = instance,
                 scaleToUnits = 0.5f,
-                centerOrigin = Position(y = -0.5f)
-            ) {
-                // Make node respond to touch
-                isTouchable = true
-                onTouchEvent = { hitResult, motionEvent ->
-                    if (motionEvent.action == MotionEvent.ACTION_DOWN) {
+                centerOrigin = Position(y = -0.5f),
+                // Node properties go in \`apply\`; the trailing { } lambda is for child nodes.
+                apply = {
+                    isTouchable = true // already the default, shown for clarity
+                    onSingleTapConfirmed = { _ ->
                         tapped = true
+                        true // handled
                     }
-                    true
                 }
-            }
+            )
         }
     }
 }
@@ -189,25 +193,51 @@ fun TappableModelScreen() {
 
 ## AR Hit Testing (Tap to Place)
 
-In AR, hit testing detects real-world surfaces:
+In AR, hit testing detects real-world surfaces: keep the latest ARCore \`Frame\` and hit-test it on a confirmed tap on empty space. Never place on a raw \`ACTION_UP\` in \`onTouchEvent\` — it also fires when a drag or a pinch ends.
 
 \`\`\`kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Config
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
+
 @Composable
 fun ARTapToPlaceScreen() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val modelInstance = rememberModelInstance(modelLoader, "models/chair.glb")
+    var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     ARSceneView(
         engine = engine,
-        sessionConfiguration = { session, config ->
+        modelLoader = modelLoader,
+        planeRenderer = true,
+        sessionConfiguration = { _, config ->
             config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
         },
-        onSessionUpdated = { session, frame ->
-            // frame.hitTest() gives real-world surface intersections
-        }
+        onSessionUpdated = { _, frame -> latestFrame = frame },
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { event, node ->
+                if (node == null) { // empty space, not the placed model
+                    // frame.hitTest() gives real-world surface intersections, nearest first
+                    latestFrame?.hitTest(event)
+                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                        ?.createAnchorOrNull()
+                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
+                        ?.let { anchor = it }
+                }
+            }
+        )
     ) {
-        // Place model at anchor when user taps
+        anchor?.let { a ->
+            AnchorNode(anchor = a) {
+                modelInstance?.let { ModelNode(modelInstance = it, scaleToUnits = 0.5f, isEditable = true) }
+            }
+        }
     }
 }
 \`\`\`
@@ -288,7 +318,7 @@ ModelNode(modelInstance = instance) {
 
 ## Tips
 
-1. **Use \`isTouchable = true\`** — nodes are not touchable by default
+1. **Taps go through \`onSingleTapConfirmed\`** — nodes are touchable by default; set \`isTouchable = false\` on decorations such as a reticle
 2. **AR hit test with \`frame.hitTest()\`** — returns surfaces sorted by distance
 3. **BoundingBox for broad-phase** — check box overlap before expensive ray tests
 4. **Physics is optional** — import \`sceneview-core\` separately from \`sceneview\`

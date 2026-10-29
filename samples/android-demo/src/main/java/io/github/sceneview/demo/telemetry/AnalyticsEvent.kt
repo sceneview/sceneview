@@ -8,8 +8,10 @@ package io.github.sceneview.demo.telemetry
  * Event and parameter names are snake_case and at most [MAX_NAME] characters, user-property
  * names at most [MAX_USER_PROPERTY_NAME] (GA4's limits); string values are cut to [MAX_VALUE]
  * characters by [params]. No event carries a model file, a pose, a camera
- * frame, free text typed by the user or anything else that could identify a person — the funnel
- * needs counts, not content.
+ * frame or anything else that could identify a person — the funnel needs counts, not content.
+ * The one piece of typed text is [Search]'s `search_term`, and only after [SearchTerm.normalize]
+ * has lowercased it, cut it to [SearchTerm.MAX_LENGTH] characters and redacted anything that
+ * looks like an email address, a link or a long number.
  * `sample_open`: `sample_id`, received `entry_id`, category slug, `source`, and optional umbrella `mode`.
  *
  * This is demo-app instrumentation. The SceneView SDK itself ships no telemetry
@@ -103,12 +105,32 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("result" to result.value)
     }
 
+    data class SupportPromptShown(val source: SupportPromptSource) : AnalyticsEvent("support_prompt_shown") {
+        override fun rawParams() = mapOf("source" to source.value)
+    }
+
+    data class SupportPromptResult(val result: SupportResult) : AnalyticsEvent("support_prompt_result") {
+        override fun rawParams() = mapOf("result" to result.value)
+    }
+
     data class PushOpened(val campaign: String, val sampleId: String) : AnalyticsEvent("push_opened") {
         override fun rawParams() = mapOf("campaign" to campaign, "sample_id" to sampleId)
     }
 
     data class SettingsChanged(val key: String, val value: String) : AnalyticsEvent("settings_changed") {
         override fun rawParams() = mapOf("key" to key, "value" to value)
+    }
+
+    /**
+     * A search the user settled on, as GA4's recommended `search` event so the term lands in the
+     * built-in "Search term" dimension. [term] comes out of [SearchTerm.normalize] (use
+     * [SearchLogger], never this constructor, from a screen); [resultBucket] is
+     * [SearchTerm.resultBucket].
+     */
+    data class Search(val term: String, val surface: SearchSurface, val resultBucket: String) :
+        AnalyticsEvent("search") {
+        override fun rawParams() =
+            mapOf("search_term" to term, "surface" to surface.value, "result_bucket" to resultBucket)
     }
 
     companion object {
@@ -176,6 +198,27 @@ enum class PromptResult(val value: String) {
     NotNow("not_now"),
 }
 
+/** How the support sheet was opened, for `support_prompt_shown.source`. */
+enum class SupportPromptSource(val value: String) {
+    Auto("auto"),
+    Settings("settings"),
+}
+
+/** The final answer for one display of the support sheet. */
+enum class SupportResult(val value: String) {
+    TierSmall("tier_small"),
+    TierMedium("tier_medium"),
+    TierLarge("tier_large"),
+    PurchaseCancelled("purchase_cancelled"),
+    PurchaseFailed("purchase_failed"),
+    NotNow("not_now"),
+    Never("never"),
+    Dismissed("dismissed");
+
+    internal val isCompletedPurchase: Boolean
+        get() = this == TierSmall || this == TierMedium || this == TierLarge
+}
+
 /** User properties, set once and updated when they change. Values are the strings listed. */
 enum class UserProperty(val key: String) {
     /** `true` | `false` | `unknown` — whether ARCore can run on this device. */
@@ -186,4 +229,22 @@ enum class UserProperty(val key: String) {
 
     /** `true` | `false` — the Notifications setting AND the system permission. */
     NotifEnabled("notif_enabled"),
+}
+
+/**
+ * Crash-report keys: what the device renders with, read once at launch. Device facts only —
+ * never anything about the user or what they opened.
+ */
+enum class CrashKey(val key: String) {
+    /** `GL_RENDERER`, for example `Adreno (TM) 740`; `none` when no ES 3 context exists. */
+    GlRenderer("gl_renderer"),
+
+    /** `GL_VERSION`. */
+    GlVersion("gl_version"),
+
+    /** The ABIs the device supports, preferred first, for example `x86_64,arm64-v8a`. */
+    Abi("abi"),
+
+    /** `live` | `still` — whether the home hero renders or shows its picture. */
+    HeroSurface("hero_surface"),
 }

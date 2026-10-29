@@ -10,14 +10,15 @@ on:
   # leg of this workflow; before #3216 it had no pre-merge run at all, so a
   # PR that added or broke an androidTest merged on a green that never
   # executed it, and the red surfaced on `main` attributed to whichever push
-  # came next. The demo screenshot and iOS jobs stay off PRs: they are
-  # advisory by design (`|| true` / `continue-on-error`), spin up a second
-  # emulator or a macOS Simulator, and their screenshots were rarely
-  # consulted by reviewers. Each of those jobs carries `if:
-  # github.event_name != 'pull_request'`. Fork PRs get no secrets, which is
+  # came next. The iOS job stays off PRs: it is advisory by design
+  # (`continue-on-error`), spins up a macOS Simulator, and its screenshots
+  # were rarely consulted by reviewers. It carries `if:
+  # github.event_name != 'pull_request'`. The demo screenshot, AR playback
+  # and demo render-golden emulator jobs were removed: 0 catches in 30 days,
+  # red on 13 of 24 nightlies. Fork PRs get no secrets, which is
   # fine — neither PR job needs any.
   #
-  # `push` to main — the five emulator/Simulator jobs (the web suite runs in
+  # `push` to main — the emulator/Simulator jobs (the web suite runs in
   # device-qa.yml on push, see `web-render`), strictly path-gated (#1311,
   # #1321): runs only when render-affecting source actually changes. SKIPPED
   # on doc-only, CI-only (`.github/**`), and `mcp/`-only merges — none of
@@ -72,6 +73,11 @@ on:
   # Invoked by nightly-ci.yml so the scheduled full-validation run reuses
   # this render-test definition rather than duplicating it. See #1324.
   workflow_call:
+    inputs:
+      base-sha:
+        description: Compare paths with this SHA and dispatch only changed legs.
+        type: string
+        default: ''
 
 # Cancellation is allowed on pull requests only (#2917, #3216).
 #
@@ -107,16 +113,19 @@ jobs:
   #     nothing (29 runner-minutes).
   #   - push: 29 of the 52 main runs touched no iOS path, yet each ran the
   #     macOS `ios-render` job (277 macOS runner-minutes); 23 touched no
-  #     Android path, yet each booted four emulators (489 runner-minutes).
+  #     Android path, yet each booted four emulators (489 runner-minutes; three of
+  #     those emulator jobs have since been removed).
   #
-  # Not evaluated on workflow_dispatch nor on the nightly `workflow_call`:
-  # there `changes` is skipped and every job runs, so the nightly still
-  # re-validates anything a filter below might have missed within 24 h.
+  # Direct dispatches compare the selected ref with `main`; scheduled callers
+  # pass the last successful nightly SHA. The nightly's own manual dispatch
+  # passes no SHA, so it still runs every leg.
   # Fail-open: if this job does not conclude `success`, every job runs, so a
   # broken filter can cost minutes but never skip a suite silently.
   changes:
     name: Detect changed paths
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: >-
+      ${{ github.event_name == 'pull_request' || github.event_name == 'push'
+      || github.event_name == 'workflow_dispatch' || inputs.base-sha != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -135,7 +144,7 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
+          base: ${{ inputs.base-sha || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
           filters: |
             shared: &shared
               - '.github/workflows/render-tests.yml'
@@ -260,402 +269,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-library-render-screenshots
+          retention-days: 7
           path: render-output/
-          if-no-files-found: ignore
-
-  # ── Android demo app screenshot capture ───────────────────────────────────
-  android-demo-screenshots:
-    name: Android demo app screenshots (emulator)
-    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    needs: changes
-    if: >-
-      ${{ github.event_name != 'pull_request' && !cancelled()
-      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v7
-      - name: Fetch binary assets (android)
-        uses: ./.github/actions/fetch-assets
-        with:
-          scopes: android
-
-      - uses: ./.github/actions/setup-gradle
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Build demo APK
-        env:
-          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
-        run: ./gradlew :samples:android-demo:assembleDebug --stacktrace
-
-      # Google's Android CLI — UI-tree JSON, LF/CRLF-safe screenshots, single
-      # entrypoint for install+launch. https://developer.android.com/tools/agents/android-cli
-      # Source: https://dl.google.com/android/cli (Google's official SDK CDN —
-      # same trust root as the SDK Manager, so a plain HTTPS fetch is sufficient).
-      - name: Install Android CLI
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          # --retry guards against cold-CDN flake on dl.google.com.
-          curl -fsSL --retry 3 --retry-delay 5 \
-            https://dl.google.com/android/cli/latest/linux_x86_64/android \
-            -o "$HOME/.local/bin/android"
-          chmod +x "$HOME/.local/bin/android"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          # `--version` accepts the first-run ToS prompt non-interactively.
-          # `--no-metrics` disables telemetry for every subsequent call.
-          "$HOME/.local/bin/android" --no-metrics --version
-
-      - name: Capture demo screenshots
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          script: |
-            # The ReactiveCircus action runs this `script:` in its own subshell;
-            # GitHub's $GITHUB_PATH augmentation does NOT propagate here, so we
-            # re-add ~/.local/bin explicitly.
-            export PATH="$HOME/.local/bin:$PATH"
-
-            # Block until the emulator finishes booting. The action waits for
-            # device-online but not for package-manager readiness — the install
-            # below would otherwise race the PM during cold boot. (This workflow
-            # installs with `adb`; it never calls `android run`, which has a
-            # measured install no-op — see #2990.)
-            #
-            # The `script:` block is executed line-by-line by the action via
-            # `sh -c <line>` (not `bash <script>`), so a multi-line `while … done`
-            # gets sliced — the `while` opens a syntax that never sees its `done`
-            # on the same invocation. The whole loop must live on ONE physical
-            # line. POSIX-only (dash): `[ … ]` + `=`, no `[[ … ]]`.
-            adb wait-for-device
-            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
-
-            # Install + launch atomically via the Android CLI. MUST live on a
-            # single physical line — see #1153: ReactiveCircus runs each line
-            # via `sh -c <line>`, so a trailing `\` becomes a literal argv
-            # token under POSIX `sh` and the second line ships standalone.
-            # The whole loop above (`attempts=0; while ...; done`) follows
-            # the same one-line rule and is documented at line 160-164.
-            android --no-metrics run --apks=samples/android-demo/build/outputs/apk/debug/android-demo-debug.apk --activity=io.github.sceneview.demo.qa/io.github.sceneview.demo.MainActivity || true
-            sleep 10
-
-            mkdir -p demo-screenshots
-            android --no-metrics screen capture --output demo-screenshots/01_demo_main.png
-
-            # Tab swipes still go through adb — `android` CLI has no input-event API.
-            adb shell input swipe 800 1500 200 1500 300
-            sleep 5
-            android --no-metrics screen capture --output demo-screenshots/02_demo_tab2.png
-
-            adb shell input swipe 800 1500 200 1500 300
-            sleep 5
-            android --no-metrics screen capture --output demo-screenshots/03_demo_tab3.png
-
-            adb shell input swipe 800 1500 200 1500 300
-            sleep 5
-            android --no-metrics screen capture --output demo-screenshots/04_demo_tab4.png
-
-      - name: Upload demo screenshots
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: android-demo-screenshots
-          path: demo-screenshots/
-          if-no-files-found: ignore
-
-  # ── Unified-demo render goldens ────────────────────────────────────────────
-  # #2323, #3551. Runs DemoRenderingScreenshotTest against the geometry its
-  # goldens are recorded at.
-  #
-  # Until #3551 this job passed no `profile:` at all, so the action created the
-  # system image's default AVD, which renders at 320x544. Every golden under
-  # `samples/android-demo/src/androidTest/assets/render-goldens/` is 1080x2304
-  # (a 1080x2400 frame minus the 96 px status bar the test crops), so every case
-  # died on `Size mismatch` before it read a single pixel — and the `|| true`
-  # plus `continue-on-error` reported that as green for months.
-  #
-  # The fix gives the emulator the goldens' geometry: `-skin 1080x2400` for the
-  # framebuffer, then `wm size` + `wm density 420` after boot to pin the logical
-  # display and the dp scale to the shared `Pixel_7a` AVD's, which is what the
-  # goldens are recorded on. Deliberately NOT an `avdmanager` `profile:`: the
-  # first attempt used `profile: pixel_8` and the runner's SDK answered `Error:
-  # No device found matching --device pixel_8` — the device catalogue on a
-  # hosted image is a moving target, and pinning the geometry directly depends
-  # on nothing that can rot out from under it. The script asserts the result
-  # rather than trusting it, so a future image that ignores these flags fails
-  # the step instead of quietly comparing nothing again.
-  #
-  # Rescaling or letter-boxing the capture inside the test was the alternative
-  # and was rejected: resampling invents pixels, and a 2 % fail budget cannot
-  # mean anything on top of an interpolation.
-  #
-  # What this leg's verdict is worth. The goldens are recorded on a hardware GPU
-  # (see `render-goldens/README.md`, which is the source of truth for the
-  # recording procedure); this leg renders on SwiftShader. Same geometry, same
-  # chrome, different rasterizer — so it catches, reliably: a demo that no
-  # longer launches, a viewport that never renders, a golden that is missing or
-  # degenerate, and chrome/layout drift (the class of breakage that made 9 of 10
-  # goldens stale in #3551). Its per-case pixel percentages are a lead, not a
-  # verdict: reproduce on the recording AVD before re-baselining anything.
-  # NEVER promote a capture pulled from this job's artifact into a golden.
-  #
-  # It therefore stays `continue-on-error: true` — advisory, like every other
-  # non-`android-library-render` leg here (CONTRIBUTING.md, "Heavy suites on
-  # main"). Advisory is not silent: the `Report render-golden results` step below
-  # writes the real executed/passed/failed counts to the job summary and
-  # annotates a shortfall, so "green" can no longer mean "compared nothing".
-  demo-render-goldens:
-    name: Unified-demo render goldens (emulator)
-    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    needs: changes
-    if: >-
-      ${{ github.event_name != 'pull_request' && !cancelled()
-      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v7
-      - name: Fetch binary assets (android)
-        uses: ./.github/actions/fetch-assets
-        with:
-          scopes: android
-
-      - uses: ./.github/actions/setup-gradle
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Build demo + androidTest APKs
-        run: ./gradlew :samples:android-demo:assembleDebug :samples:android-demo:assembleDebugAndroidTest --stacktrace
-
-      - name: Run unified-demo render screenshot tests
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          # Same image as the sibling emulator jobs. Tried `target: default`
-          # (AOSP) once to rule the Google apps out of the mid-suite emulator
-          # death: it dies at exactly the same case, so the image is not it.
-          target: google_apis
-          arch: x86_64
-          # The 320x544 default was also 13x fewer pixels to rasterize. At golden
-          # size SwiftShader has to software-rasterize a real phone framebuffer,
-          # and the previous run died with `adb: device offline` after three
-          # cases — the emulator process itself went away mid-suite, which is
-          # also why `demo-render-golden-captures` has never contained a file
-          # (the `adb pull` ran against a device that no longer existed). More
-          # RAM, more cores and a data partition big enough for 15 full-size
-          # PNGs are the headroom that run did not have.
-          #
-          # The death itself was the GPU mode, not the geometry: on
-          # `swiftshader_indirect` the emulator disappeared on the line that
-          # captured the Lighting Lab frame. `swangle_indirect` (below) runs all
-          # 15 cases (#3554), compared against their own CI-recorded goldens in
-          # `render-goldens-swangle/` — see that directory's README.
-          cores: 2
-          ram-size: 4096M
-          # `-skin 1080x2400`: the golden framebuffer. See the block comment above.
-          # `swangle_indirect` (ANGLE over SwiftShader-Vulkan) instead of
-          # `swiftshader_indirect`, which loses the emulator on the first live
-          # Filament viewport (#3554; measured in preview.yml, #4110).
-          emulator-options: -no-window -gpu swangle_indirect -no-snapshot -noaudio -no-boot-anim -skin 1080x2400 -partition-size 4096 -no-metrics
-          emulator-boot-timeout: 900
-          disable-animations: true
-          script: |
-            adb wait-for-device
-            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
-
-            # Pin the logical display and dp scale to the recording AVD's, then
-            # ASSERT it. `wm size`/`wm density` are what make this independent of
-            # whatever device catalogue the runner image happens to ship. The
-            # check is the point: comparing at the wrong geometry is exactly the
-            # failure that hid behind a green check for months (#3551), so it
-            # must break the step, not be discovered in an artifact later.
-            adb shell wm size 1080x2400
-            adb shell wm density 420
-            adb shell wm size; adb shell wm density
-            adb shell wm size | grep -q '1080x2400' || { echo "::error::emulator is not at golden geometry (1080x2400) — every comparison would die on Size mismatch"; exit 1; }
-
-            # Harvest as the suite runs, not after it. The emulator process has
-            # been dying part-way through this suite since long before #3551
-            # touched it (it died at case 3 at the old 320x544 size too, so the
-            # resolution is not the cause) — and a single `adb pull` at the end
-            # therefore ran against a device that no longer existed, which is
-            # why `demo-render-golden-captures` had never contained one file.
-            # A background pull loop plus a background logcat means whatever the
-            # run produced before it died is on disk and in the artifact, and the
-            # crash itself is diagnosable from the same artifact instead of
-            # needing another run to reproduce. Each of these lines is executed
-            # by the action via its own `sh -c`, so they must each be
-            # self-contained and stay on one physical line (see #1153).
-            mkdir -p render-goldens-output
-            nohup sh -c 'adb logcat -v time > render-goldens-output/logcat.txt 2>&1' > /dev/null 2>&1 &
-            nohup sh -c 'while true; do adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ > /dev/null 2>&1; sleep 20; done' > /dev/null 2>&1 &
-
-            # Pure-3D demos — no ARCore sideload needed.
-            #
-            # `softwareRenderer=true` declares what this runner is. Filament
-            # presents no frame at all on SwiftShader: every capture from this
-            # leg is the demo's own "The scene has not rendered a frame yet."
-            # card, which the suite was comparing against a golden and reporting
-            # as a 99.75 % render regression (#3551). With the flag, that one
-            # outcome becomes an explicit skip with a reason instead — a
-            # permanent red meaning "wrong hardware" only teaches people to stop
-            # reading the leg. It relaxes NO pixel comparison: a frame that does
-            # render is still held to its golden, so the day this job gets a
-            # hardware-GPU runner it starts gating for real with no edit here.
-            # `goldenSet=render-goldens-swangle` compares against goldens recorded
-            # on THIS profile; the hardware-GPU set stays for the local AVD (#3554).
-            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.render.DemoRenderingScreenshotTest -Pandroid.testInstrumentationRunnerArguments.softwareRenderer=true -Pandroid.testInstrumentationRunnerArguments.goldenSet=render-goldens-swangle --stacktrace || true
-
-            # One last pull for anything written after the loop's final pass,
-            # then stop the harvesters. The `[a]db` bracket matters: `pkill -f
-            # 'adb pull'` matches the `sh -c` line running it, so it killed
-            # itself and the step reported `exit code null` — a step that fails
-            # for a reason unrelated to the tests is the noise this job is
-            # trying to get rid of. `timeout` because if the device is gone,
-            # `adb wait-for-device` blocks forever.
-            pkill -f '[a]db pull' || true
-            timeout 30 adb wait-for-device || echo "::warning::emulator is gone after the suite — only the captures harvested mid-run are in the artifact"
-            timeout 120 adb pull /sdcard/Download/SceneView/test-captures/ render-goldens-output/ || true
-            pkill -f '[a]db logcat' || true
-            ls -R render-goldens-output || true
-
-      # The step that makes "advisory" stop meaning "unreadable". Reads AGP's
-      # JUnit XML — the same file the HTML report is generated from — and states
-      # how many of the suite's cases actually ran, passed and failed, with each
-      # failure's first message line. `|| true` upstream can hide a red build; it
-      # cannot hide this table.
-      - name: Report render-golden results
-        if: always()
-        run: |
-          python3 .github/scripts/summarize-android-test-results.py \
-            --results-dir samples/android-demo/build/outputs \
-            --source samples/android-demo/src/androidTest/java/io/github/sceneview/demo/render/DemoRenderingScreenshotTest.kt \
-            --title "Unified-demo render goldens" \
-            --captures-dir render-goldens-output \
-            --strict
-
-      - name: Upload render-golden captures
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: demo-render-golden-captures
-          path: render-goldens-output/
-          if-no-files-found: ignore
-
-      - name: Upload render test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: demo-render-golden-results
-          path: |
-            samples/android-demo/build/reports/androidTests/
-            samples/android-demo/build/outputs/androidTest-results/
-          if-no-files-found: ignore
-
-  # ── AR demo playback screenshot regression ────────────────────────────────
-  # Frame-indexed AR screenshot pipeline (#1050): replays the bundled ARCore
-  # recording through ARRecordPlaybackDemo and captures the rendered frame at
-  # fixed ARCore frame indices (f=30/60/120/180) for golden comparison.
-  #
-  # Non-blocking by design: until goldens are captured on this pinned emulator
-  # profile and committed under
-  # `samples/android-demo/src/androidTest/assets/ar-screenshot-goldens/`, the
-  # test `assumeTrue`-skips every comparison and uploads the first-run captures
-  # as an artifact. Once a maintainer pulls + reviews + commits those PNGs the
-  # job becomes a real regression gate. See that dir's README for the flow.
-  ar-demo-playback-screenshots:
-    name: AR demo playback screenshots (emulator)
-    # Advisory leg — push/nightly/dispatch only, never on a PR (#3216).
-    needs: changes
-    if: >-
-      ${{ github.event_name != 'pull_request' && !cancelled()
-      && (needs.changes.result != 'success' || needs.changes.outputs.android == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # AR emulator playback is inherently flaky (ARCore service init races,
-    # SwiftShader GPU timing). Keep non-blocking — it is NOT a required check.
-    continue-on-error: true
-
-    steps:
-      - uses: actions/checkout@v7
-      - name: Fetch binary assets (android)
-        uses: ./.github/actions/fetch-assets
-        with:
-          scopes: android
-
-      - uses: ./.github/actions/setup-gradle
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Build demo + androidTest APKs
-        env:
-          ARCORE_API_KEY: ${{ secrets.ARCORE_API_KEY }}
-        run: ./gradlew :samples:android-demo:assembleDebug :samples:android-demo:assembleDebugAndroidTest --stacktrace
-
-      - name: Run AR playback screenshot pipeline
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          # Pinned emulator profile (#1050 acceptance §4) — goldens MUST be
-          # captured against this exact config or GPU divergence flags false
-          # positives. Re-baseline only after pulling first-run captures from a
-          # run of this same profile.
-          api-level: 30
-          target: google_apis
-          arch: x86_64
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          script: |
-            adb wait-for-device
-            attempts=0; while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" != "1" ] && [ "$attempts" -lt 60 ]; do sleep 2; attempts=$((attempts + 1)); done
-
-            # ARCore playback still needs the ARCore runtime installed even
-            # though the camera feed comes from the bundled MP4. Sideload the
-            # official multi-arch APK — see samples/android-demo/AR_TESTING.md.
-            # `|| true`: a sideload failure just makes the test assumeTrue-skip.
-            ARCORE_VERSION=1.56.0
-            curl -L --retry 3 --retry-delay 5 -o /tmp/arcore.apk "https://github.com/google-ar/arcore-android-sdk/releases/download/${ARCORE_VERSION}/Google_Play_Services_for_AR_${ARCORE_VERSION}.apk" || true
-            adb install -r /tmp/arcore.apk || true
-
-            # Run only the frame-indexed AR screenshot test class.
-            ./gradlew :samples:android-demo:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.sceneview.demo.ar.ARPlaybackScreenshotTest --stacktrace || true
-
-            # Pull the captures the test wrote (first-run goldens, diffs, actuals).
-            mkdir -p ar-screenshot-output
-            adb pull /sdcard/Download/SceneView/test-captures/ ar-screenshot-output/ || true
-
-      - name: Upload AR screenshot captures
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ar-demo-playback-screenshots
-          path: ar-screenshot-output/
-          if-no-files-found: ignore
-
-      - name: Upload AR test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ar-demo-playback-results
-          path: samples/android-demo/build/reports/androidTests/
           if-no-files-found: ignore
 
   # ── iOS render tests ──────────────────────────────────────────────────────
@@ -773,14 +388,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ios-render-screenshots
+          retention-days: 7
           path: samples/ios-demo/ios-render-screenshots/
           if-no-files-found: ignore
 
       - name: Upload xcresult bundle
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: ios-xcresult
+          retention-days: 7
           path: samples/ios-demo/TestResults.xcresult
           if-no-files-found: ignore
 
@@ -838,6 +455,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: web-playwright-report
+          retention-days: 7
           path: samples/web-demo/playwright-report/
           if-no-files-found: ignore
 
@@ -846,5 +464,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: web-render-screenshots
+          retention-days: 7
           path: samples/web-demo/test-results/
           if-no-files-found: ignore

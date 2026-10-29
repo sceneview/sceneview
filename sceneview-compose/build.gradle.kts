@@ -13,7 +13,7 @@ plugins {
 // ── sceneview-compose ────────────────────────────────────────────────────────
 // A thin Compose Multiplatform façade over the per-platform renderers. One API,
 // several renderers: Android delegates to the Filament `SceneView { }`, iOS to
-// RealityKit through SceneViewSwift, desktop to filament-kmp on Maven (FFM, JDK 22+;
+// RealityKit through SceneViewSwift, desktop to filament-kmp on Maven (JNI, JDK 21+;
 // see docs/docs/desktop-filament.md).
 //
 // Scope is the VIEWER SUBSET only — see docs/docs/compose-multiplatform.md and
@@ -24,8 +24,13 @@ plugins {
 // root build) make a violation a reviewable diff rather than a silent leak.
 kotlin {
     explicitApi()
-    // Desktop filament-kmp is FFM (JDK 22+). Android still emits JVM 21 bytecode.
-    jvmToolchain(22)
+    // JDK 21 for both JVM targets. Android emits JVM 21 bytecode because it inlines from
+    // `:sceneview`, built for JVM 21. Desktop could go lower as far as filament-kmp is
+    // concerned (its JNI binding, 0.7.0+, is JDK 17 bytecode — #4423), but this module
+    // exposes `dev.romainguy:kotlin-math` as `api`, and kotlin-math 1.7.0+ ships JDK 21
+    // bytecode: a JDK 17 runtime throws UnsupportedClassVersionError on `Float3`. So 21
+    // is the real desktop floor until kotlin-math ships a lower JVM target.
+    jvmToolchain(21)
 
     // AGP 9's KMP Android target. It replaces `androidTarget()` + the separate
     // `android { }` block: namespace / compileSdk / minSdk are declared here, and
@@ -41,10 +46,11 @@ kotlin {
         }
     }
 
-    // Desktop/JVM. Filament via filament-kmp FFM — JDK 22+ at compile and run.
+    // Desktop/JVM. Filament via filament-kmp's JNI binding — JDK 21+ at compile and run
+    // (see the toolchain note above for why 21 and not 17).
     jvm("desktop") {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_22)
+            jvmTarget.set(JvmTarget.JVM_21)
         }
     }
 

@@ -36,7 +36,7 @@
     <string name="demo_occlusion_material_toggle">Occluder visible</string>
     <string name="demo_occlusion_material_status_visible">Occluder shown · a tinted plate covers the helmet</string>
     <string name="demo_occlusion_material_status_occluding">Occlusion material · invisible, still hides the helmet</string>
-    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON: a debug-tinted plate shows where the plane is. Toggle OFF: the same plane wears the occlusion material — invisible, but it still hides what is behind it.</string>
+    <string name="demo_occlusion_material_explainer">A plane sits between the camera and the helmet. Toggle ON to see its tinted plate. Toggle OFF to make the plane invisible while it still hides what is behind it.</string>
     <string name="demo_materials_preset_chrome">Polished chrome</string>
     <string name="demo_materials_preset_gold">Polished gold</string>
     <string name="demo_materials_preset_copper">Satin copper</string>

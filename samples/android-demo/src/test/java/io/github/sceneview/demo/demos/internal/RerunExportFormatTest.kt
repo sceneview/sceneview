@@ -5,19 +5,29 @@ import org.junit.Test
 
 class RerunExportFormatTest {
     @Test
-    fun `the sheet lists the three formats Android writes, in the iOS order`() {
-        assertEquals(listOf("rrd", "glb", "ply"), RerunExportFormat.entries.map { it.extension })
+    fun `the model comes first, then the scan's raw material`() {
+        assertEquals(listOf("glb", "ply", "svscan", "rrd"), RerunExportFormat.entries.map { it.extension })
     }
 
     @Test
-    fun `a file is named after the session's title`() {
-        assertEquals("room-sep-28-2-32-pm.glb", RerunExportFormat.Glb.fileName("Room · Sep 28, 2:32 PM"))
-        assertEquals("space.rrd", RerunExportFormat.Rrd.fileName("· · ·"))
+    fun `a file is named after the scan's title`() {
+        assertEquals("room-sep-28-2-32-pm.glb", RerunExportFormat.Model.fileName("Room · Sep 28, 2:32 PM"))
+        assertEquals("space.rrd", RerunExportFormat.Recording.fileName("· · ·"))
+        // The scan file keeps its title, as the landing's Share names it.
+        assertEquals("Room · Sep 28, 2-32 PM.svscan", RerunExportFormat.Scan.fileName("Room · Sep 28, 2:32 PM"))
     }
 
     @Test
-    fun `the share-all label counts the formats`() {
-        assertEquals("Share all three", RerunExportFormat.SHARE_ALL)
-        assertEquals(3, RerunExportFormat.entries.size)
+    fun `only the formats the source can make are offered`() {
+        assertEquals(RerunExportFormat.entries, RerunExportFormat.available(hasModel = true, hasCapture = true))
+        assertEquals(listOf(RerunExportFormat.Model), RerunExportFormat.available(hasModel = true, hasCapture = false))
+        // A recording without a result: its planes as a glTF scene, and the rest.
+        assertEquals(RerunExportFormat.entries, RerunExportFormat.available(hasModel = false, hasCapture = true))
+        assertEquals(emptyList<RerunExportFormat>(), RerunExportFormat.available(hasModel = false, hasCapture = false))
+    }
+
+    @Test
+    fun `the model is a glTF binary to a share sheet or a file picker`() {
+        assertEquals("model/gltf-binary", RerunExportFormat.Model.mimeType)
     }
 }

@@ -103,7 +103,7 @@ export const COMMON_ISSUES: CommonIssue[] = [
     cause:
       "Using `node.worldPosition = ...` instead of `AnchorNode`. ARCore remaps its coordinate system during tracking, and plain nodes don't compensate.",
     solution:
-      "Always use `AnchorNode(anchor = hitResult.createAnchor())` to place AR objects. Anchors automatically compensate for coordinate system changes.",
+      "Always place AR objects under `AnchorNode(anchor = anchor)`, with `anchor` from `createAnchorOrNull()` on an in-polygon ARCore plane hit (`latestFrame?.hitTest(event)` in `onSingleTapConfirmed`). Anchors automatically compensate for coordinate system changes.",
     category: "ar",
   },
   {

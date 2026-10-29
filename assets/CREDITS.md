@@ -12,13 +12,15 @@ Source of truth: [`assets/catalog.json`](catalog.json). This file is generated
 by [`.claude/scripts/generate-credits.py`](../.claude/scripts/generate-credits.py).
 Re-run the script after any catalog edit to keep both files in sync.
 
-Total models: **85** (plus 8 pending metadata, 8 pending license review).
+Total models: **144** (plus 6 pending metadata, 8 pending license review).
 
 ---
 
 ## Sketchfab
 
 - **[1995 Fiat Punto GT](https://sketchfab.com/3d-models/free-1995-fiat-punto-gt-48db6facb4b64e99b60f36b8c01185e1)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[adidas high-top sneaker](https://sketchfab.com/3d-models/sneakers-adidas-yellow-black-89b7408463b144d0bd157cc788dd496d)** by mr.pinoux — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[AirPods Pro](https://sketchfab.com/3d-models/airpods-pro-4478dddbfa244f6f9b93eebbd027a73b)** by JY_JY_ — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[An Animated Cat](https://sketchfab.com/3d-models/an-animated-cat-aec25699660043a29595f9572149d1e8)** by Evil_Katz — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Animated Bee Flying Landing Loop](https://sketchfab.com/3d-models/animated-bee-flying-landing-loop-a39c45911dab421da0de51672c7a8f62)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Animated Dog Sits Rolls Over Shake Paw](https://sketchfab.com/3d-models/animated-dog-sits-rolls-over-shake-paw-d9020159339145e6b9ecd5f3d830830f)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -30,34 +32,61 @@ Total models: **85** (plus 8 pending metadata, 8 pending license review).
 - **[Animated Swimming Great White Shark Loop](https://sketchfab.com/3d-models/animated-swimming-great-white-shark-loop-297ed35c6a5f43749b0ae189d991a3f1)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Animated Swimming Tropical Fish School Loop](https://sketchfab.com/3d-models/animated-swimming-tropical-fish-school-loop-62ccf83b35c744d7b5ffb7be80d4ea99)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Animated T-Rex Dinosaur Biting Attack Loop](https://sketchfab.com/3d-models/animated-t-rex-dinosaur-biting-attack-loop-5bbcadb7d9274843abb5ada35767dba1)** by LasquetiSpice — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Apple Watch Series 7](https://sketchfab.com/3d-models/apple-watch-series-7-free-watch-face-sdctm-cf15ecbf159f42a28df5e56bdfa666bb)** by SDC PERFORMANCE™️ — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[August 7, 2024 M5.2 Earthquake in California](https://sketchfab.com/3d-models/august-7-2024-m52-earthquake-in-california-9c38a08933154e128bb550246285f9e4)** by Kyle — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Baked Goods](https://sketchfab.com/3d-models/baked-goods-d1ae09e3cb8343bc8790b15928452906)** by Aullwen — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Black Dragon with Idle Animation](https://sketchfab.com/3d-models/black-dragon-with-idle-animation-fb0053a2e59b43868e934c239bf4eb36)** by Arturs J — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Canon AT-1 (1977)](https://sketchfab.com/3d-models/canon-at-1-retro-camera-9de66868d0f240e985da00c9480bfc82)** by AleixoAlonso — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Canon EOS RP Mirrorless Camera](https://sketchfab.com/3d-models/canon-eos-rp-mirrorless-camera-3d-model-cd470005397c48ec8b68bb8a4609ecd1)** by fahadratul — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Casio VL-Tone Keyboard](https://sketchfab.com/3d-models/keyboard-casio-vl-tone-be22fbe1ef0044f3bedc6e3edf459593)** by AleixoAlonso — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Choco Bunny](https://sketchfab.com/3d-models/choco-bunny-583deedf74ab4df4a3f102b123d3382e)** by Ergoni — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Citroën H-style van](https://sketchfab.com/3d-models/french-delivery-van-low-poly-model-a350a422d200485ea57778dc42139edc)** by Daniel Zhabotinsky — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[City bike](https://sketchfab.com/3d-models/bicycle-197dd882a69846e0825e80566996cbba)** by TheDrone — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Coffee Cart](https://sketchfab.com/3d-models/coffee-cart-1a97f872c1ac4a83a0132cd749d0b2a8)** by Outlier Spa — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Converse Chuck Taylor](https://sketchfab.com/3d-models/converse-free-bc791439d26f4dd9974819c168e12385)** by Yaroslav Karas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Car](https://sketchfab.com/3d-models/cyberpunk-car-b4301ff99d214d16a7a43708a5866bf0)** by 4d_Bob — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Character](https://sketchfab.com/3d-models/cyberpunk-character-019f4b3fd3c74ed0bc6c8dbe9cd50d51)** by Esk — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Cyberpunk Hovercar](https://sketchfab.com/3d-models/free-cyberpunk-hovercar-3205b1075bb44ffc826bce0c2a04d74c)** by Karol Miklas (modified by SceneView — display plinth removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[D.S.S. Harbinger Battle Cruiser](https://sketchfab.com/3d-models/dss-harbinger-battle-cruiser-474f62d00ed54212b37f93ce91569c53)** by Mike Pan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Desktop 3D printer](https://sketchfab.com/3d-models/3d-printer-0e825a8d48b14bee883a131fe029d4fc)** by Gregsterius — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[DJI Mavic 3 Cine](https://sketchfab.com/3d-models/mavic-3-cine-60d4a042a6eb4a1e944b1af2d4e9368b)** by aurumjuda747 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Dyson Hot+Cool fan](https://sketchfab.com/3d-models/dyson-hotcool-fan-f31f9a62d4f64d2293d3e3969a30737e)** by Mr. Max — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Elephant Animation Idle](https://sketchfab.com/3d-models/elephant-animation-idle-a8e7e10f005f4baab0a2f5079d759fcd)** by GremorySaiyan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Fangyi bronze vessel](https://asia.si.edu/object/F1930.54a-b/)** by Smithsonian National Museum of Asian Art — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Ferrari F40](https://sketchfab.com/3d-models/ferrari-f40-52a66c41cfcd4f999fb1b1c49bf24d70)** by Black Snow — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Fiat 500 (classic)](https://sketchfab.com/3d-models/fiat-500-4606659ff31142e3b8080f995514452f)** by Francesco Coldesina — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[FREE 1975 Porsche 911 (930) Turbo](https://sketchfab.com/3d-models/free-1975-porsche-911-930-turbo-8568d9d14a994b9cae59499f0dbed21e)** by Karol Miklas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Game Boy Classic](https://sketchfab.com/3d-models/game-boy-classic-0ae80019e6f046168923286d7e628f6f)** by JonhyOliver — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Glass kettle](https://sketchfab.com/3d-models/glass-kettle-3f646a36c0a142cfa451af70357f4235)** by Halil Kantarci — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[GoPro HERO8](https://sketchfab.com/3d-models/gopro-hero-8-3b38ac33b19d49d4b23b8125c6e1912b)** by Umezawa — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[IKEA KALLAX shelf](https://sketchfab.com/3d-models/kallax-shelf-e2d30124563947608a500df26f77b659)** by CN Entertainment — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[IKEA LINNMON / ALEX desk](https://sketchfab.com/3d-models/ikea-linnmonalex-desk-902aa1b8083741bdbc2b09e092c2b39a)** by janicezhao — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[IKEA NOCKEBY sofa](https://sketchfab.com/3d-models/sofa-ikea-nockeby-db5d6bbf7f34482ca1be89456fcc4070)** by Filipe.Soares — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[IKEA TRENSUM mirror](https://sketchfab.com/3d-models/mirror-ikea-trensum-258799ba04874be4a972b13eaf180fa0)** by YouniqueĪdeaStudio — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Instax Mini 8 camera](https://sketchfab.com/3d-models/instax-mini-8-instant-camera-606912cf09074dcbb35f6c4a3842d528)** by mariainggrid — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[iPad mini 6](https://sketchfab.com/3d-models/ipad-mini-6-2021-f363c2b1c74a462588db184bd4fb024e)** by DatSketch — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[iPhone 13 Pro Max](https://sketchfab.com/3d-models/apple-iphone-13-pro-max-4328dea00e47497dbeac73c556121bc9)** by DatSketch — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[JBL Tour One M3 Headphones](https://sketchfab.com/3d-models/jbl-tour-one-m3-black-45f0b3ccbee84492a05998d5daecff16)** by cubemodelex — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Kindred (League of Legends) - Rigged](https://sketchfab.com/3d-models/kindred-league-of-legends-rigged-06a32da82b0441c39950296315307400)** by maisth — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[KitchenAid stand mixer](https://sketchfab.com/3d-models/kitchenaid-stand-mixer-716dfa11eb8f4020833584a3c3d09d5d)** by MelissaVerdonck — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Koi Fish](https://sketchfab.com/3d-models/koi-fish-236859b809984f52b70c94fd040b9c59)** by 7PLUS — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Low Poly Night City Building Skyline](https://sketchfab.com/3d-models/low-poly-night-city-building-skyline-b0035b8713b048bb8ddf311ee67c28c8)** by 99.Miles — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Low Poly Tree Scene](https://sketchfab.com/3d-models/low-poly-tree-scene-free-89daa5e21f0d4f08a59dba0d566e88bd)** by mateustorresg (modified by SceneView — grass-tuft prims removed) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lowpoly Fruits & Vegetables](https://sketchfab.com/3d-models/lowpoly-fruits-vegetables-d3be8fed96eb48be88b47bbe8d2951e1)** by norgeotloic — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[MacBook Pro 13"](https://sketchfab.com/3d-models/macbook-pro-13-inch-2020-efab224280fd4c3993c808107f7c0b38)** by timblewee — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Mech drone (sci-fi)](https://sketchfab.com/3d-models/mech-drone-8d06874aac5246c59edb4adbe3606e0e)** by Willy Decarpentrie — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Medieval Fantasy Book](https://sketchfab.com/3d-models/medieval-fantasy-book-06d5a80a04fc4c5ab552759e9a97d91a)** by Pixel — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[MINI Cooper S](https://sketchfab.com/3d-models/mini-cooper-s-b262744901a04cda823f17289d1a4847)** by cenobyte — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Mongoose Tyax mountain bike](https://sketchfab.com/3d-models/mtb-mongoose-tyax-d5c7ab157aa84eb08e2deaee6165e764)** by Saushkin — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Monstera Deliciosa Potted Mid-Century Plant](https://sketchfab.com/3d-models/monstera-deliciosa-potted-mid-century-plant-1ab9bf841df04c07b1819be596327629)** by ChubbyPanda — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Mosquito in Amber](https://sketchfab.com/3d-models/mosquito-in-amber-53a61d58c09b4d2ab30e269aa3e22078)** by Loïc Norgeot — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Motorcycle Helmet](https://sketchfab.com/3d-models/moto-helmet-6c75ac1b13a047bd86742f37ce25adac)** by sayedgamal655 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Mushroom Potion](https://sketchfab.com/3d-models/mushroom-potion-731600a7ec984f06a7f8ea248850859a)** by Ergoni — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Nike Air Jordan](https://sketchfab.com/3d-models/nike-air-jordan-fd462c530d974f33a523d88a7562f1cf)** by Ar41k — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Nike Air Jordan 1](https://sketchfab.com/3d-models/air-jordan-1-a4b434181fbb48008ad460722fd53725)** by makoto — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Nike Air Zoom Pegasus 36](https://sketchfab.com/3d-models/nike-air-zoom-pegasus-36-00fd99e778c244c3bd3b65f99dad7cb2)** by quaz30 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Nintendo Switch OLED](https://sketchfab.com/3d-models/nintendo-switch-oled-model-9b8721e10a4f4a689fc4f72cdcee4b01)** by rtql8d — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Peugeot 2008](https://sketchfab.com/3d-models/2020-peugeot-2008-93efd164d3374295a8ac04c36e329429)** by David_Holiday — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Phoenix Bird](https://sketchfab.com/3d-models/phoenix-bird-844ba0cf144a413ea92c779f18912042)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Photorealistic Western Guitar](https://sketchfab.com/3d-models/photorealistic-western-guitar-f8d68a2c328345418db71b36f44168b9)** by Keandir — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[PlayStation 5 DualSense](https://sketchfab.com/3d-models/playstation-5-dualsense-878c1f882808477ab81c2fe86d5a3936)** by AHarmlessPotato — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -65,15 +94,24 @@ Total models: **85** (plus 8 pending metadata, 8 pending license review).
 - **[Robo Bun](https://sketchfab.com/3d-models/robo-bun-88b7c991fb1f40fd87af4141c923fecb)** by L.Carreon — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Rolex Luxury Watch](https://sketchfab.com/3d-models/rolex-watch-0fde5c5f56d841cda53ae4a01f66dfaf)** by sudo-self — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Rustic Fireplace](https://sketchfab.com/3d-models/rustic-fireplace-555ad0c9171e4e4191ad7aea96ab44dd)** by Thomas Thawer — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Samsung Galaxy S21 Ultra](https://sketchfab.com/3d-models/samsung-galaxy-s21-ultra-cd962832be7744efb6b37fe0ee2027e7)** by DatSketch — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[School Backpack](https://sketchfab.com/3d-models/school-backpack-524d7fc724094ead9f203ed06bae76e1)** by MadeByYeshe — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Shiba](https://sketchfab.com/3d-models/shiba-faef9fe5ace445e7b2989d1c1ece361c)** by zixisun51 — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Ship in Clouds](https://sketchfab.com/3d-models/ship-in-clouds-c475323dc7f24e26ba2009c08c8e1941)** by Bastien Genbrugge — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Skullcandy Crusher headphones](https://sketchfab.com/3d-models/headphones-skullcandy-crusher-wireless-4e902017e4624547b440da0a6658a689)** by Ankledot — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[SMEG toaster](https://sketchfab.com/3d-models/smeg-toaster-646838d76f204c83ae952e049f2948b1)** by The Fresh Lab — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sneaker Vibe](https://sketchfab.com/3d-models/sneaker-vibe-1e52862eb2634fa3b5c13bf9e261945b)** by vmmaniac — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Sony MDR-7506 headphones](https://sketchfab.com/3d-models/sony-mdr-7506-headphones-05735b74d3524f00b648231138122a28)** by AndreiVNK — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Star Wars Speeder Bike](https://sketchfab.com/3d-models/starwars-speeder-bike-free-download-1d0ea6fe43c1405b8d4b17722e166f6e)** by NORBERTO-3D — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Tennis racket](https://sketchfab.com/3d-models/tennis-racket-c314dcce06ba488ca624957f579b8196)** by Yanez Designs — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Tesla Cybertruck](https://sketchfab.com/3d-models/tesla-cybertruck-657e71b3e2ad468196668e9c9df708fb)** by hashikemu — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Tesla Model 3](https://sketchfab.com/3d-models/tesla-model-3-123c10f376ec4f18b93c73afc382808b)** by David_Holiday — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[TIER e-scooter](https://sketchfab.com/3d-models/tier-scooter-9479a6d3f1474971afde26b33fe96c55)** by Niilo Poutanen — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Toon Cat](https://sketchfab.com/3d-models/toon-cat-free-b2bd1ee7858444bda366110a2d960386)** by Omabuarts Studio — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Trumpet](https://sketchfab.com/3d-models/trumpet-3f2d4f5b962340b2933012e1bc634d88)** by Charlie Tinley — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Vespa Primavera ET3](https://sketchfab.com/3d-models/old-scooter-5e9b5072b2224ba982366490ad5f31d9)** by Nadia Ribitis — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Wall-E (Animated)](https://sketchfab.com/3d-models/wall-eanimated-a6758de2e5a04f9e821596592ef4279c)** by Zeckensack — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Xbox Wireless Controller](https://sketchfab.com/3d-models/xbox-inalambric-controller-black-29cc9624894a4f2cae7d2a675044db45)** by Chistodrako._. — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
 ## Khronos glTF Sample Assets
 
@@ -92,10 +130,12 @@ Total models: **85** (plus 8 pending metadata, 8 pending license review).
 - **[Flight Helmet](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/FlightHelmet)** by Gary Hsu (Microsoft) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Fox](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox)** by PixelMannen (model), tomkranis (rigging & animation), @AsoboStudio and @scurest (glTF conversion) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Glam Velvet Sofa](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/GlamVelvetSofa)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Glass-door fridge](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CommercialRefrigerator)** by Darmstadt Graphics Group GmbH; based on "Commercial Fridge" by Sean Thomas — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescence Lamp](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Iridescent Dish with Olives](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescentDishWithOlives)** by Wayfair, LLC (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Lantern](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern)** by Microsoft — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Materials Variants Shoe](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/MaterialsVariantsShoe)** by Shopify — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Night Circuit (Car Concept on a start grid)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept)** by Darmstadt Graphics Group GmbH (Eric Chadwick); set by SceneView — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 - **[Sheen Chair](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Sheen Chair (web demo)](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair)** by Wayfair, LLC (Eric Chadwick) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Sunglasses](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)** by Darmstadt Graphics Group GmbH (Eric Chadwick) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -106,15 +146,46 @@ Total models: **85** (plus 8 pending metadata, 8 pending license review).
 
 - **[Chinese Garden](https://polyhaven.com/a/chinese_garden)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[Night Sky (Dikhololo Night)](https://polyhaven.com/a/dikhololo_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Rooftop Night](https://polyhaven.com/a/rooftop_night)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Studio](https://polyhaven.com/a/christmas_photo_studio_07)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Studio Warm](https://polyhaven.com/a/studio_small_08)** by Sergej Majboroda — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 - **[The Sky Is On Fire](https://polyhaven.com/a/the_sky_is_on_fire)** by Greg Zaal — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ## Fab
 
 - **[A Red Car](https://www.fab.com/listings/c86be43c-3923-4c98-b752-40bedb121239)** by SerjogaSan — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 
+## Abo
+
+- **[AmazonBasics portable AC](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B07N6RTLP7.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Rivet Aiden armchair](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/7/B075X2WN27.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Rivet Anne desk](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/P/B07B7DL32P.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Rivet arc floor lamp](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B073772DH1.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Rivet media console](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/R/B084QWW4LR.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Rivet Sloane sofa](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/S/B072PZC1KS.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Stone & Beam Dalton sofa](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/1/B07HZ6HH61.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Wishbone dining chair](https://amazon-berkeley-objects.s3.amazonaws.com/3dmodels/original/B/B07QJ1X2QB.glb)** by Amazon.com — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Smithsonian
+
+- **[Bell X-1 (1947)](http://n2t.net/ark:/65665/nv99a205dd3-3969-43d2-971c-d3d3e6c6b1f2)** by Smithsonian National Air and Space Museum — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Triceratops skeleton](http://n2t.net/ark:/65665/305d36697-5158-4947-8d0b-521db04bae9b)** by Smithsonian National Museum of Natural History — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+
 ## Threejs
 
-- **[Soldier](https://github.com/mrdoob/three.js/blob/dev/examples/models/gltf/Soldier.glb)** by Tomás Laulhé (modified by Don McCurdy) — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+- **[Expressive Robot](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/RobotExpressive)** by Tomás Laulhé (Quaternius), modified by Don McCurdy — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
+
+## Google-Scanned-Objects
+
+- **[JanSport backpack](https://app.gazebosim.org/GoogleResearch/fuel/models/Jansport_School_Backpack_Blue_Streak)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[JBL Charge speaker](https://app.gazebosim.org/GoogleResearch/fuel/models/JBL_Charge_Speaker_portable_wireless_wired_Green)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Reebok FUELTRAIN](https://app.gazebosim.org/GoogleResearch/fuel/models/Reebok_FUELTRAIN)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[UGG Classic Tall boot](https://app.gazebosim.org/GoogleResearch/fuel/models/UGG_Classic_Tall_Womens_Boots_Chestnut_7)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+- **[Ultimate Ears BOOM speaker](https://app.gazebosim.org/GoogleResearch/fuel/models/Logitech_Ultimate_Ears_Boom_Wireless_Speaker_Night_Black)** by Google LLC — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+
+## Quaternius
+
+- **[Ranger](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html)** by Quaternius — [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 
 ---
 
@@ -136,7 +207,7 @@ Replace or remove before the next store publication:
 
 ---
 
-## Missing metadata (8 entries)
+## Missing metadata (6 entries)
 
 These entries in `catalog.json` lack at least one of `author`, `license`,
 `sourceUrl`, or use a license this script does not recognise. Fill in the
@@ -144,10 +215,8 @@ missing fields so they can be credited properly:
 
 - `khronos_duck` — missing: license `SCEA Shared Source License` unrecognised
 - `cozy_living_room` — missing: author
-- `rooftop_night` — missing: author, license, sourceUrl
-- `studio` — missing: author, license, sourceUrl
+- `perseverance_rover` — missing: license `NASA Media Usage Guidelines (no endorsement implied; insignia removed)` unrecognised
 - `sunset` — missing: author, license, sourceUrl
 - `outdoor_cloudy` — missing: author, license, sourceUrl
-- `studio_warm` — missing: author, license, sourceUrl
 - `autumn_field` — missing: author, license, sourceUrl
 

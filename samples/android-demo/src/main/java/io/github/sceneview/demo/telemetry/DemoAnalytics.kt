@@ -13,6 +13,20 @@ interface DemoAnalytics {
     fun setUserProperty(property: UserProperty, value: String)
 
     /**
+     * Attaches a fact about this device to the crash reports of this run, so a native abort
+     * that leaves no readable stack still says what it ran on (#4411). Nothing is sent by the
+     * call itself, and nothing at all while collection is off.
+     */
+    fun setCrashKey(key: CrashKey, value: String) = Unit
+
+    /**
+     * Files [throwable] with the crash reports as a problem the app survived (#4510) — an AR
+     * session that failed for a reason the funnel has no code for, or that never started
+     * tracking. Same switch as crash reports: nothing is recorded while collection is off.
+     */
+    fun recordNonFatal(throwable: Throwable) = Unit
+
+    /**
      * Turns usage statistics and crash reports on or off together (About → Privacy &
      * notifications). Re-applied at every launch.
      */
@@ -57,6 +71,16 @@ class GatedDemoAnalytics(
         runCatching { delegate.setUserProperty(property, value.take(USER_PROPERTY_MAX_VALUE)) }
     }
 
+    override fun setCrashKey(key: CrashKey, value: String) {
+        if (!isEnabled()) return
+        runCatching { delegate.setCrashKey(key, value.take(CRASH_KEY_MAX_VALUE)) }
+    }
+
+    override fun recordNonFatal(throwable: Throwable) {
+        if (!isEnabled()) return
+        runCatching { delegate.recordNonFatal(throwable) }
+    }
+
     override fun setCollectionEnabled(enabled: Boolean) {
         runCatching { delegate.setCollectionEnabled(enabled) }
     }
@@ -69,5 +93,8 @@ class GatedDemoAnalytics(
     private companion object {
         /** Firebase's cap on a user-property value. */
         const val USER_PROPERTY_MAX_VALUE = 36
+
+        /** A GL string is a line, not a document; Crashlytics itself stops at 1 024. */
+        const val CRASH_KEY_MAX_VALUE = 200
     }
 }

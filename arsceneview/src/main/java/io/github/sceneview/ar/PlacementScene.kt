@@ -123,10 +123,11 @@ import java.io.File
  *                              finding a surface. Default `false` — opt in for a guided first run.
  * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
  *                              to every detected plane so placed models cast a **contact shadow**
- *                              on the real floor instead of floating. Default `false`. Needs a
+ *                              on the real floor instead of floating. Default `true`, like
+ *                              [AutoPlacementScene] (it used to be `false`). Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
  *                              estimation provides one. The catchers attach **only while the
- *                              plane grid is not rendered** — the V1 plane renderer carries its
+ *                              plane grid is not rendered** — the plane renderer carries its
  *                              own coplanar shadow receiver on every tracked plane, so while the
  *                              grid shows, that receiver already catches the contact shadows and
  *                              spawning a second one would z-fight and double-darken them
@@ -171,7 +172,7 @@ fun PlacementScene(
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,
     fadePlaneOnFirstPlacement: Boolean = true,
     coaching: Boolean = false,
-    groundShadows: Boolean = false,
+    groundShadows: Boolean = true,
     playbackDataset: File? = null,
     sessionConfiguration: ((session: com.google.ar.core.Session, Config) -> Unit)? = null,
     // Appended at the end of the optional block rather than next to `coaching`, where it
@@ -201,6 +202,11 @@ fun PlacementScene(
     var isTracking by remember { mutableStateOf(false) }
     var anyPlaneTracked by remember { mutableStateOf(false) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    // A card of ARSceneView's is explaining why AR is not running — camera refused, ARCore
+    // missing. The coaching is silent meanwhile: it used to sit on "Getting ready" over that
+    // card for good, since a session that never starts never finds a surface (#4452).
+    var cameraDenied by remember { mutableStateOf(false) }
+    var arCoreUnavailable by remember { mutableStateOf(false) }
 
     // Live session — captured so `groundShadows` can enumerate detected planes for shadow
     // catchers. Only needed when that feature is on.
@@ -208,7 +214,7 @@ fun PlacementScene(
 
     // The plane grid guides discovery, then recedes once the first model is placed (Google AR
     // design guidance — don't keep the floor decorated after it has served its purpose). The
-    // grid also carries the V1 plane renderer's own shadow receiver, so this predicate and the
+    // grid also carries the plane renderer's own shadow receiver, so this predicate and the
     // ShadowReceiverPlane spawn below are mutually exclusive by construction — a plane is never
     // covered by two coplanar shadowMultiplier receivers at once (#2657).
     val placedCount by remember { derivedStateOf { controller.count } }
@@ -247,6 +253,8 @@ fun PlacementScene(
                 }
             },
             onTrackingFailureChanged = { reason -> if (coaching) trackingFailure = reason },
+            onARCoreAvailability = { arCoreUnavailable = it != null },
+            onCameraPermissionStateChanged = { cameraDenied = it != null },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { event: MotionEvent, node ->
                     // A tap on an existing scene node is a gesture on that node (drag / scale /
@@ -332,13 +340,17 @@ fun PlacementScene(
             // The card measures the safe area itself but cannot see the host's own bottom
             // chrome, drawn outside this composable (#3712 / #3735). Its own 16 dp gutter is
             // the default clearance, so only the excess is passed on.
+            val guidance = rememberArGuidanceState(
+                cameraReady = cameraReady,
+                isTracking = isTracking,
+                surfaceFound = anyPlaneTracked,
+                trackingFailureReason = trackingFailure,
+            )
             ARCoachingOverlay(
-                guidance = rememberArGuidanceState(
-                    cameraReady = cameraReady,
-                    isTracking = isTracking,
-                    surfaceFound = anyPlaneTracked,
-                    trackingFailureReason = trackingFailure,
-                ),
+                cue = if (cameraDenied || arCoreUnavailable) ArGuidanceCue.NONE else guidance.cue,
+                surface = guidance.surface,
+                hint = guidance.hint,
+                scanLingering = guidance.scanLingering,
                 contentPadding = PaddingValues(
                     bottom = (coachingBottomClearance - GUIDE_BOTTOM_CLEARANCE).coerceAtLeast(0.dp),
                 ),
@@ -348,7 +360,7 @@ fun PlacementScene(
 }
 
 /**
- * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the V1 plane
+ * Whether [PlacementScene] renders the plane-detection grid — and, crucially, the plane
  * renderer's OWN shadow receiver that ships with it (`plane_renderer_shadow.filamat`, a
  * `shadowMultiplier` quad on every tracked plane, `isShadowReceiver = true` by default).
  *
@@ -371,7 +383,7 @@ internal fun shouldRenderPlaneGrid(
  * ([ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]) per tracked plane.
  *
  * Defined as `groundShadows && !`[shouldRenderPlaneGrid] so the two are **mutually exclusive by
- * construction**: while the grid renders, its built-in V1 receiver is the single shadow receiver
+ * construction**: while the grid renders, its built-in receiver is the single shadow receiver
  * on the plane; once the grid is gone (either `planeRenderer = false`, or it faded after the
  * first placement), the catcher takes over as the single receiver. A plane is therefore never
  * covered by two coplanar `shadowMultiplier` receivers at once — the #2657 z-fight +

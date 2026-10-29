@@ -20,7 +20,7 @@ git clone https://github.com/sceneview/sceneview.git
 **`samples/android-demo/`** — Play Store ready, Material 3 Expressive
 
 3-tab showcase (**Showcase / AR View / About**) backed by an
-append-only demo registry of **51 demos**, grouped into five catalogue sections:
+append-only demo registry of **41 demos**, grouped into five catalogue sections:
 
 - **Showcase tab** (home): a featured hero, a **Featured** shelf of the flagship and
   most recently reworked demos in priority order, category filter chips and a grid of
@@ -102,7 +102,7 @@ npx http-server samples/web-demo/site -p 8080
 **`samples/desktop-demo/`** — Compose Desktop (`SceneViewer`)
 
 `sceneview-compose` `SceneViewer` on JVM. Filament via filament-kmp (offscreen →
-Skia). **JDK 22+**.
+Skia). **JDK 21+**.
 
 - Loads `Duck.glb` through `ModelSource.Bytes`
 - Drag to orbit, scroll to zoom

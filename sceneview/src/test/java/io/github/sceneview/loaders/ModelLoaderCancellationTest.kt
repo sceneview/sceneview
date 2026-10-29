@@ -12,8 +12,10 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.FileNotFoundException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -131,12 +133,12 @@ class ModelLoaderCancellationTest {
         }
 
     @Test
-    fun `destroyOnCancel frees a created model when resource loading is cancelled`() =
+    fun `destroyOnFailure frees a created model when resource loading is cancelled`() =
         runBlocking {
             val destroyed = mutableListOf<String>()
             val entered = CountDownLatch(1)
             val job = launch(Dispatchers.Default) {
-                destroyOnCancel("model", destroy = { destroyed += it }, dispatcher = main) {
+                destroyOnFailure("model", destroy = { destroyed += it }, dispatcher = main) {
                     entered.countDown()
                     delay(10_000)
                 }
@@ -148,9 +150,24 @@ class ModelLoaderCancellationTest {
         }
 
     @Test
-    fun `destroyOnCancel leaves a model alone when resource loading completes`() = runBlocking {
+    fun `destroyOnFailure frees a created model when resource loading fails`() = runBlocking {
+        // A `.bin` or texture that cannot be read, after the model was created and registered:
+        // no caller will ever hold the model, so nothing but this cleanup can free it.
         val destroyed = mutableListOf<String>()
-        destroyOnCancel("model", destroy = { destroyed += it }, dispatcher = main) { }
+        val failure = FileNotFoundException("missing.bin")
+        val thrown = runCatching {
+            destroyOnFailure<String, Unit>("model", destroy = { destroyed += it }, dispatcher = main) {
+                throw failure
+            }
+        }.exceptionOrNull()
+        assertSame("The failure still reaches the caller", failure, thrown)
+        assertEquals(listOf("model"), destroyed)
+    }
+
+    @Test
+    fun `destroyOnFailure leaves a model alone when resource loading completes`() = runBlocking {
+        val destroyed = mutableListOf<String>()
+        destroyOnFailure("model", destroy = { destroyed += it }, dispatcher = main) { }
         assertTrue(destroyed.isEmpty())
     }
 }

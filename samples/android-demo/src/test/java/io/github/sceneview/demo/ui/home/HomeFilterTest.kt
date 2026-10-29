@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-JVM tests for [filterDemos] — the category chip + search field logic
- * behind the home grid. No resources, no Compose, no Robolectric.
+ * Pure-JVM tests for [filterDemos] — the search field logic behind the home grid.
+ * No resources, no Compose, no Robolectric.
  */
 class HomeFilterTest {
 
@@ -24,80 +24,48 @@ class HomeFilterTest {
     private val all = listOf(fog, placement, viewer, lighting)
 
     @Test
-    fun `no category and blank query returns everything in editorial order`() {
-        assertEquals(listOf("model-viewer", "lighting", "ar-placement", "fog"), ids(filterDemos(all, null, "")))
-        assertEquals(listOf("model-viewer", "lighting", "ar-placement", "fog"), ids(filterDemos(all, null, "   ")))
-    }
-
-    @Test
-    fun `category narrows to that category only`() {
-        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, DemoCategory.CREATE, "")))
-        assertEquals(listOf("ar-placement"), ids(filterDemos(all, DemoCategory.PLACE_AR, "")))
-        assertTrue(filterDemos(all, DemoCategory.DEV_TOOLS, "").isEmpty())
+    fun `blank query returns everything in editorial order`() {
+        assertEquals(listOf("model-viewer", "lighting", "ar-placement", "fog"), ids(filterDemos(all, "")))
+        assertEquals(listOf("model-viewer", "lighting", "ar-placement", "fog"), ids(filterDemos(all, "   ")))
     }
 
     @Test
     fun `query matches title case-insensitively`() {
-        assertEquals(listOf("model-viewer"), ids(filterDemos(all, null, "VIEWER")))
+        assertEquals(listOf("model-viewer"), ids(filterDemos(all, "VIEWER")))
     }
 
     @Test
     fun `query matches subtitle`() {
-        assertEquals(listOf("ar-placement"), ids(filterDemos(all, null, "plane to place")))
+        assertEquals(listOf("ar-placement"), ids(filterDemos(all, "plane to place")))
     }
 
     @Test
     fun `query matches tags`() {
         // "hdr" appears only in the viewer's tags, nowhere in its copy.
-        assertEquals(listOf("model-viewer"), ids(filterDemos(all, null, "hdr")))
+        assertEquals(listOf("model-viewer"), ids(filterDemos(all, "hdr")))
         // "anchor" is a tag on the placement demo only.
-        assertEquals(listOf("ar-placement"), ids(filterDemos(all, null, "anchor")))
+        assertEquals(listOf("ar-placement"), ids(filterDemos(all, "anchor")))
         // Matching is by substring, so a short query can hit copy as well as
         // tags: "ar" finds the two `ar`-tagged demos AND "Line-ar" fog.
-        assertEquals(listOf("model-viewer", "ar-placement", "fog"), ids(filterDemos(all, null, "ar")))
+        assertEquals(listOf("model-viewer", "ar-placement", "fog"), ids(filterDemos(all, "ar")))
     }
 
     @Test
     fun `query matches category label`() {
         // Neither demo carries "record" in its title, subtitle or tags — the only
         // thing that can match it is the category label, which is the point.
-        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, null, "record")))
+        assertEquals(listOf("lighting", "fog"), ids(filterDemos(all, "record")))
     }
 
     @Test
     fun `every word of a multi-word query must match`() {
-        assertEquals(listOf("model-viewer"), ids(filterDemos(all, null, "gltf ar")))
-        assertTrue(filterDemos(all, null, "gltf fog").isEmpty())
-    }
-
-    @Test
-    fun `category and query combine`() {
-        assertEquals(listOf("fog"), ids(filterDemos(all, DemoCategory.CREATE, "height")))
-        assertTrue(filterDemos(all, DemoCategory.PLACE_AR, "height").isEmpty())
+        assertEquals(listOf("model-viewer"), ids(filterDemos(all, "gltf ar")))
+        assertTrue(filterDemos(all, "gltf fog").isEmpty())
     }
 
     @Test
     fun `no match yields an empty list, never a fallback`() {
-        assertTrue(filterDemos(all, null, "zzz-nothing").isEmpty())
-    }
-
-    @Test
-    fun `what's new keeps the fresh entries across categories, in editorial order`() {
-        val marked = listOf(fog.copy(fresh = true), placement, viewer.copy(fresh = true), lighting)
-        assertEquals(listOf("model-viewer", "fog"), ids(filterDemos(marked, WHATS_NEW_FILTER, "")))
-    }
-
-    @Test
-    fun `what's new combines with the query`() {
-        val marked = listOf(fog.copy(fresh = true), placement, viewer.copy(fresh = true), lighting)
-        assertEquals(listOf("fog"), ids(filterDemos(marked, WHATS_NEW_FILTER, "height")))
-        // "plane" only matches the placement demo, which is not fresh.
-        assertTrue(filterDemos(marked, WHATS_NEW_FILTER, "plane").isEmpty())
-    }
-
-    @Test
-    fun `what's new with nothing fresh is empty`() {
-        assertTrue(filterDemos(all, WHATS_NEW_FILTER, "").isEmpty())
+        assertTrue(filterDemos(all, "zzz-nothing").isEmpty())
     }
 
     private fun ids(entries: List<HomeSearchEntry>) = entries.map { it.id }

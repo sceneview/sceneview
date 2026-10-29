@@ -1,0 +1,158 @@
+// showroom_floor.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The floor of the model viewer's studio showroom. One large lit quad under
+//             the subject: a satin floor that carries the studio's light as a soft sheen,
+//             a pool of light under the subject that falls off towards the edges, and the
+//             screen-space ambient occlusion of the subject on both its diffuse and its sheen.
+//             The far floor is never seen as an edge: the view's height fog carries it into
+//             the backdrop colour well before the quad ends, so the floor and the backdrop
+//             read as one seamless cyclorama.
+// Used by:    samples/android-demo ModelViewerDemo (ShowroomStage) — nothing in the SDK.
+// Parameters:
+//   centerColor — float3, linear diffuse albedo right under the subject.
+//   rimColor    — float3, linear diffuse albedo far from it.
+//   poolRadius  — float, floor widths. Height of the virtual lamp the pool falls off from: the
+//                 pool is centerColor at the subject, about halfway to rimColor at
+//                 0.77 * poolRadius, and gone by about 3 * poolRadius.
+//   roughness   — float [0,1], gloss of the floor.
+//   reflectance — float [0,1], dielectric Fresnel at normal incidence (0.5 = 4 %).
+//   glossRadius — float, floor widths. Radius of the polished zone around the subject: the floor
+//                 reflects at full strength under the subject, half-way to rimSpecular at
+//                 glossRadius.
+//   rimSpecular — float [0,1], what is left of the floor's reflection far from the subject.
+//   reflection          — sampler2d, the subject's mirror image (ShowroomReflection): the
+//                         subject rendered from the eye mirrored under the floor, alpha =
+//                         coverage, linear and pre-exposed like this floor's own colour.
+//   reflectionMatrix    — mat4, floor model space -> that mirror render's clip space.
+//   reflectionFootprint — float4, the subject's footprint: half width, half depth (floor
+//                         widths), cos and sin of its yaw.
+//   reflectionEye       — float4, the eye: x and z (floor widths, from the subject's centre),
+//                         height above the floor (metres), and how far inside the footprint
+//                         the reflection fades out (floor widths).
+//   reflectionShape     — float4, strength (0 = off, no texture read), the height on the
+//                         subject at which its reflection has faded out (metres), and one
+//                         texel of the mirror image (1/width, 1/height).
+//   Distances are in the floor's model space — the unit quad, scaled to FLOOR_SIZE_RADII
+//   subject radii — but where a parameter says metres.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+//
+// Why a material and not a PlaneNode with a colour instance: the pool and the polished zone
+// are computed from the model-space position (the floor node sits under the subject's
+// centre), so they need no texture and no UVs — and the SDK's colour materials leave the
+// specular occlusion off.
+//
+// The pool profile is the inverse-cube falloff of a lamp at height `poolRadius` over a flat
+// floor, (1 + (d/h)^2)^-1.5 — the shape a real spotlight leaves on the ground, so it reads
+// as light rather than as a painted vignette.
+//
+// Why the reflection fades out (glossRadius, rimSpecular): a low camera sees the floor in
+// front of the subject at a grazing angle, where it mirrors the studio's bright light strips
+// — a hard white band across the bottom of the frame that has nothing to do with the
+// subject. Only the polished turntable under the subject keeps the full reflection; the rest
+// of the floor reads as satin. `specularFactor` scales the IBL's reflection; Filament only
+// keeps the dielectric F0 when `specularColorFactor` is written too, hence the neutral white
+// one.
+//
+// Why `specularAmbientOcclusion`: the IBL does not know the subject stands on the floor, so
+// right under a car the floor would still mirror the studio's overhead light — a bright sheen
+// where the body should block it. Simple specular occlusion derives the sheen's occlusion
+// from the screen-space ambient occlusion, so the sheen dies in the subject's shadow too.
+//
+// The subject's reflection is planar: ShowroomReflection renders the subject alone, from the
+// eye mirrored under the floor, into a small texture whenever the subject or the camera
+// moves, and the floor adds it after lighting (postLightingColor, "transparent" blending:
+// the mirror image covers the floor by its alpha). Like a real polished showroom floor seen
+// from a low camera, it mirrors the wheels and the sills and fades out a little higher up
+// the subject (reflectionShape.y), blurring as it fades; inside the footprint it gives way
+// to the contact shadow, so no underbody is ever mirrored. Post-lighting colour is added
+// before the fog, so the far reflection dissolves into the horizon with the floor.
+//
+// Why not screen-space reflections: Filament traces them for every pixel of the floor in a
+// pass of its own, and a ray that misses — most of them, over a floor — marches to the
+// view's maxDistance. Measured on a Pixel 4a (Adreno 618) with the Peugeot 2008: ~360 ms a
+// frame, and still 100 ms with the coarsest stride and a trace zone around the subject,
+// against 33 ms without. The planar mirror draws the subject a second time, at 40 % of the
+// view's size, and only when something moved.
+material {
+    "name" : "Showroom Floor",
+    "parameters" : [
+        { "type" : "float3", "name" : "centerColor" },
+        { "type" : "float3", "name" : "rimColor" },
+        { "type" : "float",  "name" : "poolRadius" },
+        { "type" : "float",  "name" : "roughness" },
+        { "type" : "float",  "name" : "reflectance" },
+        { "type" : "float",  "name" : "glossRadius" },
+        { "type" : "float",  "name" : "rimSpecular" },
+        { "type" : "sampler2d", "name" : "reflection", "format" : "float", "precision" : "medium" },
+        { "type" : "mat4",   "name" : "reflectionMatrix", "precision" : "high" },
+        { "type" : "float4", "name" : "reflectionFootprint", "precision" : "high" },
+        { "type" : "float4", "name" : "reflectionEye", "precision" : "high" },
+        { "type" : "float4", "name" : "reflectionShape" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "floorPosition" ],
+    "shadingModel" : "lit",
+    "blending" : "opaque",
+    "postLightingBlending" : "transparent",
+    "specularAmbientOcclusion" : "simple",
+    "doubleSided" : false
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        material.floorPosition = float4(getPosition().xyz, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        highp float h = max(materialParams.poolRadius, 1e-4);
+        highp float q = length(variable_floorPosition.xz) / h;
+        highp float k = 1.0 / (1.0 + q * q);
+        float pool = k * sqrt(k);
+
+        highp float g = length(variable_floorPosition.xz) / max(materialParams.glossRadius, 1e-4);
+        float gloss = 1.0 / (1.0 + g * g);
+
+        material.baseColor = float4(mix(materialParams.rimColor, materialParams.centerColor, pool), 1.0);
+        material.metallic = 0.0;
+        material.roughness = materialParams.roughness;
+        material.reflectance = materialParams.reflectance;
+        material.specularColorFactor = float3(1.0);
+        material.specularFactor = mix(materialParams.rimSpecular, 1.0, gloss);
+
+        // The subject's mirror image (see the header): where it covers the floor, and how much.
+        material.postLightingColor = float4(0.0);
+        float4 shape = materialParams.reflectionShape;
+        if (shape.x > 0.0) {
+            highp float4 clip = materialParams.reflectionMatrix * float4(variable_floorPosition.xyz, 1.0);
+            if (clip.w > 0.0) {
+                highp float2 uv = uvToRenderTargetUV(clip.xy / clip.w * 0.5 + 0.5);
+                highp float2 p = variable_floorPosition.xz;
+                highp float4 footprint = materialParams.reflectionFootprint;
+                // Into the subject's own frame, then the signed distance to its footprint.
+                highp float2 local = float2(footprint.z * p.x - footprint.w * p.y,
+                        footprint.w * p.x + footprint.z * p.y);
+                highp float2 outside = abs(local) - footprint.xy;
+                highp float edge = length(max(outside, 0.0)) + min(max(outside.x, outside.y), 0.0);
+                highp float4 eye = materialParams.reflectionEye;
+                highp float run = max(length(eye.xz - p), 1e-6);
+                // Height on the subject this floor point mirrors: the reflected ray climbs at
+                // the eye's slope from here to the footprint's outline.
+                float height = max(edge, 0.0) * eye.y / run;
+                float fade = min(1.0, height / max(shape.y, 1e-6));
+                float weight = shape.x * (1.0 - fade) * (1.0 - fade) * smoothstep(-eye.w, 0.0, edge);
+                if (weight > 0.0) {
+                    // Sharp where the subject meets the floor, softer as the image fades.
+                    float2 r = mix(0.5, 3.0, fade) * shape.zw;
+                    float4 c = textureLod(materialParams_reflection, uv, 0.0) * 0.4;
+                    c += textureLod(materialParams_reflection, uv + float2( r.x,  r.y), 0.0) * 0.15;
+                    c += textureLod(materialParams_reflection, uv + float2(-r.x,  r.y), 0.0) * 0.15;
+                    c += textureLod(materialParams_reflection, uv + float2( r.x, -r.y), 0.0) * 0.15;
+                    c += textureLod(materialParams_reflection, uv + float2(-r.x, -r.y), 0.0) * 0.15;
+                    material.postLightingColor = c * weight;
+                }
+            }
+        }
+    }
+}

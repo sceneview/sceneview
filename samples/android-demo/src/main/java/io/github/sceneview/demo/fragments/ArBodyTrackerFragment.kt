@@ -18,7 +18,7 @@ object ArBodyTrackerFragment : DemoFragment {
         icon = Icons.Filled.Accessibility,
         order = 38,
         addedIn = "4.14.0",
-        tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml"),
+        tags = setOf("ar", "body", "pose", "mediapipe", "skeleton", "ml", "squat", "fitness", "workout", "coach"),
     )
 
     @Composable

@@ -7,14 +7,17 @@ import simd
 /// in pure Swift: no Rerun SDK, no protobuf or Arrow library.
 ///
 /// Targets the `.rrd` format of Rerun **0.38.1** (`RRF2` framing, sorbet `0.1.3` chunks),
-/// uncompressed, without the optional footer — viewers read such a file with a full scan,
-/// the way they read a live stream. What the viewer shows, on the `time` timeline
-/// (seconds since the session started):
+/// uncompressed, opened by a default layout (``RerunRRDBlueprint``) and closed by the footer
+/// `rerun rrd verify` asks for (``RerunRRDFooter``): the same bytes as Android's
+/// `RerunRrdWriter`, the store source label aside (`SceneView iOS`). What the viewer shows,
+/// on the `time` timeline (seconds since the session started):
 ///
 /// - `world` — Y-up, right-handed (`ViewCoordinates` RUB), static.
 /// - `world/points` — the coloured map (`Points3D`), static.
+/// - `world/points/live` — timed camera sightings (`Points3D`), one row per observation.
+/// - `world/dense` — a v2 dense cloud, static Points3D with half-voxel radius.
 /// - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and
-///   each keyframe photo at its time (`EncodedImage`, JPEG or PNG).
+///   every recorded photo at its time (`EncodedImage`, JPEG or PNG).
 /// - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under
 ///   `world/camera`: a child of a pinhole lives in its 2D image space, and a child of the
 ///   moving camera would move with it.
@@ -22,6 +25,9 @@ import simd
 ///   the textured polygon (`Mesh3D`), static.
 /// - `world/anchors/<id>` — the pose (`Transform3D`) and a small labelled box
 ///   (`Boxes3D`), static.
+///
+/// The file opens on that layout: the room in 3D beside the camera's photos, instead of
+/// whatever views the viewer would guess.
 enum RerunRRDWriter {
     /// The Rerun release whose format this writer emits.
     static let rerunVersion: (major: UInt8, minor: UInt8, patch: UInt8) = (0, 38, 1)
@@ -32,29 +38,75 @@ enum RerunRRDWriter {
     /// The row ids' clock: TUIDs are deterministic, so they count from a fixed instant
     /// (2026-01-01T00:00:00Z) instead of the wall clock.
     static let tuidEpochNanos: UInt64 = 1_767_225_600_000_000_000
+    /// What the store info names as the recording's source.
+    static let storeSource = "SceneView iOS"
+    /// The 16-byte `MessageHeader` before every payload.
+    static let messageHeaderSize = 16
 
     enum Failure: Error, Equatable {
         case pointColorCountMismatch(points: Int, colors: Int)
+        case malformedDense
     }
 
+    /// The `.rrd` file for `scene`. One scene and one `recordingId` always give the same
+    /// bytes; `source` is only overridden by the tests that compare against Android's file.
     static func data(
         for scene: RerunExportScene,
         applicationId: String = "sceneview_ar_replay",
-        recordingId: UUID = UUID()
+        recordingId: UUID = UUID(),
+        source: String = storeSource
     ) throws -> Data {
         if !scene.pointColors.isEmpty, scene.pointColors.count != scene.points.count {
             throw Failure.pointColorCountMismatch(points: scene.points.count, colors: scene.pointColors.count)
         }
+        if let dense = scene.dense {
+            guard dense.positions.count == dense.colors.count, dense.voxelM.isFinite, dense.voxelM > 0,
+                  dense.positions.allSatisfy({ [$0.x, $0.y, $0.z].allSatisfy { $0.isFinite } }) else {
+                throw Failure.malformedDense
+            }
+        }
         var ids = RerunTuidSequence(recordingId: recordingId)
         let store = StoreIdentity(applicationId: applicationId, recordingId: recordingId.uuidString.lowercased())
+        let blueprint = StoreIdentity(
+            applicationId: applicationId, recordingId: RerunRRDBlueprint.storeId(recordingId), kind: 2
+        )
+        let chunks = chunks(for: scene)
+        let hasPhotos = chunks.contains { $0.components.contains { $0.fieldName == "EncodedImage:blob" } }
+        let footer = RerunRRDFooter()
 
         var out = Data()
         out.append(streamHeader())
-        appendMessage(kind: 1, payload: setStoreInfo(store, rowId: ids.next()), to: &out) // SetStoreInfo
-        for chunk in chunks(for: scene) {
-            appendMessage(kind: 2, payload: arrowMessage(chunk, store: store, ids: &ids), to: &out) // ArrowMsg
+        // The blueprint first, as the Rerun SDKs write it, so the viewer has the layout before data.
+        appendMessage(kind: 1, payload: setStoreInfo(blueprint, rowId: ids.next(), source: source), to: &out)
+        let layout = footer.manifest(storeId: encodedStoreId(blueprint))
+        for chunk in RerunRRDBlueprint.chunks(recordingId: recordingId, hasPhotos: hasPhotos) {
+            appendChunk(chunk, store: blueprint, ids: &ids, manifest: layout, to: &out)
         }
+        appendMessage(kind: 3, payload: blueprintActivation(blueprint), to: &out) // BlueprintActivationCommand
+        appendMessage(kind: 1, payload: setStoreInfo(store, rowId: ids.next(), source: source), to: &out)
+        let recording = footer.manifest(storeId: encodedStoreId(store))
+        for chunk in chunks {
+            appendChunk(chunk, store: store, ids: &ids, manifest: recording, to: &out)
+        }
+        // Last, and nothing above depends on it: a file cut before here still reads by full scan.
+        footer.append(to: &out)
         return out
+    }
+
+    /// Writes `chunk` as an `ArrowMsg` and records where it went in its store's `manifest`.
+    private static func appendChunk(
+        _ chunk: RerunChunk,
+        store: StoreIdentity,
+        ids: inout RerunTuidSequence,
+        manifest: RerunRRDFooter.Manifest,
+        to out: inout Data
+    ) {
+        let (message, chunkId, ipcSize) = arrowMessageParts(chunk, store: store, ids: &ids)
+        manifest.add(
+            chunk: chunk, chunkId: chunkId,
+            byteOffset: out.count + messageHeaderSize, byteSize: message.count, uncompressedSize: ipcSize
+        )
+        appendMessage(kind: 2, payload: message, to: &out)
     }
 
     // MARK: - Framing
@@ -73,14 +125,34 @@ enum RerunRRDWriter {
 
     struct StoreIdentity {
         var applicationId: String
+        /// The store's id: the recording's UUID, or the blueprint's derived one.
         var recordingId: String
+        /// `StoreKind`: 1 for a recording, 2 for a blueprint.
+        var kind: UInt64 = 1
     }
 
-    /// `rerun.common.v1alpha1.StoreId`: a recording (kind 1), its id and application.
+    /// `rerun.common.v1alpha1.StoreId`: a recording (kind 1) or a blueprint (2), its id and application.
     private static func writeStoreId(_ store: StoreIdentity, into proto: inout RerunProtobufWriter) {
-        proto.uint64(1, 1)
+        proto.uint64(1, store.kind)
         proto.string(2, store.recordingId)
         proto.message(3) { $0.string(1, store.applicationId) }
+    }
+
+    /// The `StoreId` message alone, as a footer manifest names its store.
+    static func encodedStoreId(_ store: StoreIdentity) -> Data {
+        var proto = RerunProtobufWriter()
+        writeStoreId(store, into: &proto)
+        return proto.data
+    }
+
+    /// `rerun.log_msg.v1alpha1.BlueprintActivationCommand`: `blueprint` becomes the
+    /// application's default (`make_default`), without overriding a layout the user saved
+    /// (`make_active` unset).
+    static func blueprintActivation(_ blueprint: StoreIdentity) -> Data {
+        var proto = RerunProtobufWriter()
+        proto.message(1) { writeStoreId(blueprint, into: &$0) }
+        proto.bool(3, true)
+        return proto.data
     }
 
     private static func writeTuid(_ tuid: RerunTuid, into proto: inout RerunProtobufWriter) {
@@ -89,14 +161,14 @@ enum RerunRRDWriter {
     }
 
     /// `rerun.log_msg.v1alpha1.SetStoreInfo`.
-    static func setStoreInfo(_ store: StoreIdentity, rowId: RerunTuid) -> Data {
+    static func setStoreInfo(_ store: StoreIdentity, rowId: RerunTuid, source sourceLabel: String = storeSource) -> Data {
         var proto = RerunProtobufWriter()
         proto.message(1) { writeTuid(rowId, into: &$0) }
         proto.message(2) { info in
             info.message(2) { writeStoreId(store, into: &$0) }
             info.message(5) { source in
                 source.uint64(1, 6) // STORE_SOURCE_KIND_OTHER: `extra` is a UTF-8 string.
-                source.message(2) { $0.string(1, "SceneView iOS") }
+                source.message(2) { $0.string(1, sourceLabel) }
             }
             info.message(6) { version in
                 let bits = UInt32(rerunVersion.major) | UInt32(rerunVersion.minor) << 8 | UInt32(rerunVersion.patch) << 16
@@ -108,6 +180,13 @@ enum RerunRRDWriter {
 
     /// `rerun.log_msg.v1alpha1.ArrowMsg` carrying one chunk as an uncompressed IPC stream.
     static func arrowMessage(_ chunk: RerunChunk, store: StoreIdentity, ids: inout RerunTuidSequence) -> Data {
+        arrowMessageParts(chunk, store: store, ids: &ids).message
+    }
+
+    /// The `ArrowMsg`, its chunk id and the size of its IPC stream: what a footer row needs.
+    private static func arrowMessageParts(
+        _ chunk: RerunChunk, store: StoreIdentity, ids: inout RerunTuidSequence
+    ) -> (message: Data, chunkId: RerunTuid, ipcSize: Int) {
         let chunkId = ids.next()
         let rowIds = (0..<chunk.rowCount).map { _ in ids.next() }
         let payload = chunk.arrowIPC(chunkId: chunkId, rowIds: rowIds)
@@ -120,7 +199,7 @@ enum RerunRRDWriter {
         proto.bytes(5, payload)
         proto.message(6) { writeTuid(chunkId, into: &$0) }
         proto.bool(7, chunk.times == nil)
-        return proto.data
+        return (proto.data, chunkId, payload.count)
     }
 
     // MARK: - Scene → chunks
@@ -146,6 +225,15 @@ enum RerunRRDWriter {
                 components.append(.colors("Points3D", [scene.pointColors.map { packedColor($0) }]))
             }
             chunks.append(RerunChunk(entityPath: "/world/points", components: components))
+            if let live = liveChunk(for: scene) { chunks.append(live) }
+        }
+
+        if let dense = scene.dense, !dense.positions.isEmpty {
+            chunks.append(RerunChunk(entityPath: "/world/dense", components: [
+                .vectors("Points3D", "positions", "Position3D", [flatten(dense.positions)], size: 3),
+                .floats("Points3D", "radii", "Radius", [[dense.voxelM / 2]]),
+                .colors("Points3D", [dense.colors.map { packedColor($0) }]),
+            ]))
         }
 
         chunks.append(contentsOf: cameraChunks(for: scene))
@@ -174,10 +262,25 @@ enum RerunRRDWriter {
         return chunks
     }
 
+    /// Invalid map indices and empty sightings are omitted, as in the Android writer.
+    private static func liveChunk(for scene: RerunExportScene) -> RerunChunk? {
+        let observations = scene.pointObservations.map { observation in
+            (time: observation.time, points: observation.points.compactMap { index in
+                scene.points.indices.contains(index) ? scene.points[index] : nil
+            })
+        }.filter { !$0.points.isEmpty }.sorted { $0.time < $1.time }
+        guard !observations.isEmpty else { return nil }
+        return RerunChunk(entityPath: "/world/points/live", times: observations.map { nanoseconds($0.time) }, components: [
+            .vectors("Points3D", "positions", "Position3D", observations.map { flatten($0.points) }, size: 3),
+            .floats("Points3D", "radii", "Radius", observations.map { _ in [0.008] }),
+            .colors("Points3D", observations.map { _ in [packedColor(SIMD3(0xF5, 0x9E, 0x0B))] }),
+        ])
+    }
+
     private static func cameraChunks(for scene: RerunExportScene) -> [RerunChunk] {
         var chunks: [RerunChunk] = []
         let path = scene.cameraPath.sorted { $0.time < $1.time }
-        let keyframes = scene.keyframes.sorted { $0.time < $1.time }
+        let keyframes = (scene.photos.isEmpty ? scene.keyframes : scene.photos).sorted { $0.time < $1.time }
 
         // Photos, re-encoded to JPEG when Rerun can't decode them (WebP).
         let photos = keyframes.compactMap { keyframe -> (time: Double, photo: RerunImageCodec.Photo)? in
@@ -195,8 +298,8 @@ enum RerunRRDWriter {
             ]))
         }
 
-        // The path's poses plus each keyframe's own pose, so the camera sits exactly where
-        // the photo was taken at that instant (on a tie, the later row — the keyframe — wins).
+        // The path's poses plus each photo's own pose, so the camera sits exactly where
+        // the photo was taken at that instant (on a tie, the later row — the photo — wins).
         let poses = (path.map { (time: $0.time, rank: 0, pose: $0) }
             + keyframes.map { (time: $0.time, rank: 1, pose: $0.pose) })
             .sorted { ($0.time, $0.rank) < ($1.time, $1.rank) }
@@ -276,8 +379,8 @@ enum RerunRRDWriter {
             .vectors("Mesh3D", "vertex_positions", "Position3D", [flatten(vertices)], size: 3),
             .vectors("Mesh3D", "vertex_texcoords", "Texcoord2D", [texcoords], size: 2),
             .u32Vectors("Mesh3D", "triangle_indices", "TriangleIndices", [triangles], size: 3),
-            .blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", [[pixels.rgb]]),
-            .imageFormat("Mesh3D", "albedo_texture_format", width: pixels.width, height: pixels.height),
+            .blobs("Mesh3D", "albedo_texture_buffer", "ImageBuffer", [[pixels.data]]),
+            .imageFormat("Mesh3D", "albedo_texture_format", width: pixels.width, height: pixels.height, rgba: pixels.channels == 4),
         ]
     }
 
@@ -320,12 +423,35 @@ enum RerunRRDWriter {
 
 // MARK: - Chunks
 
-/// One Rerun chunk: rows of components on one entity, on the `time` timeline or static.
+/// A timeline a chunk's rows are indexed on: its name and its Arrow type.
+enum RerunTimeline: Sendable, Hashable {
+    /// The recording's clock: a duration, in nanoseconds since the session started.
+    case time
+    /// A blueprint's own sequence, which Rerun's SDKs write as `0`.
+    case blueprint
+
+    var name: String {
+        switch self {
+        case .time: return RerunRRDWriter.timeline
+        case .blueprint: return RerunRRDBlueprint.timeline
+        }
+    }
+
+    var type: RerunArrowType {
+        switch self {
+        case .time: return .durationNanoseconds
+        case .blueprint: return .int64
+        }
+    }
+}
+
+/// One Rerun chunk: rows of components on one entity, on a timeline or static.
 struct RerunChunk {
     var entityPath: String
-    /// Nanoseconds on ``RerunRRDWriter/timeline``, one per row; `nil` for static data.
+    /// One index value per row on ``timeline`` (nanoseconds on `time`); `nil` for static data.
     var times: [Int64]?
     var components: [RerunComponentColumn]
+    var timeline: RerunTimeline = .time
 
     var rowCount: Int { times?.count ?? 1 }
 
@@ -348,11 +474,11 @@ struct RerunChunk {
         if let times {
             let sorted = zip(times, times.dropFirst()).allSatisfy { $0 <= $1 }
             fields.append(RerunArrowField(
-                name: RerunRRDWriter.timeline,
-                type: .durationNanoseconds,
+                name: timeline.name,
+                type: timeline.type,
                 nullable: true,
                 metadata: [
-                    "rerun:index_name": RerunRRDWriter.timeline,
+                    "rerun:index_name": timeline.name,
                     "rerun:is_sorted": sorted ? "true" : "false",
                     "rerun:kind": "index",
                 ]
@@ -378,6 +504,11 @@ struct RerunChunk {
 }
 
 /// One component column: a list per row, each list holding that row's instances.
+///
+/// `archetype` and `componentType` are short names in Rerun's `rerun.archetypes` and
+/// `rerun.components` (`Points3D`, `Color`), or full names when they hold a dot: a
+/// blueprint's columns live in `rerun.blueprint.archetypes` and mostly
+/// `rerun.blueprint.components`.
 struct RerunComponentColumn {
     var archetype: String
     var name: String
@@ -386,15 +517,24 @@ struct RerunComponentColumn {
     var item: RerunArrowField
     var array: RerunArrowArray
 
-    var fieldName: String { "\(archetype):\(name)" }
+    /// The archetype's full name (`rerun.archetypes.Points3D`).
+    var archetypeName: String { Self.qualified(archetype, "rerun.archetypes") }
+    /// The component type's full name (`rerun.components.Position3D`).
+    var componentTypeName: String { Self.qualified(componentType, "rerun.components") }
+
+    var fieldName: String { "\(archetype.split(separator: ".").last.map(String.init) ?? archetype):\(name)" }
 
     var field: RerunArrowField {
         RerunArrowField(name: fieldName, type: .list(item), nullable: true, metadata: [
-            "rerun:archetype": "rerun.archetypes.\(archetype)",
+            "rerun:archetype": archetypeName,
             "rerun:component": fieldName,
-            "rerun:component_type": "rerun.components.\(componentType)",
+            "rerun:component_type": componentTypeName,
             "rerun:kind": "data",
         ])
+    }
+
+    private static func qualified(_ name: String, _ namespace: String) -> String {
+        name.contains(".") ? name : "\(namespace).\(name)"
     }
 
     private init(_ archetype: String, _ name: String, _ componentType: String,
@@ -419,6 +559,12 @@ struct RerunComponentColumn {
              item: .item(.fixedSizeList(.item(.uint8, nullable: false), size), nullable: true),
              counts: rows.map { $0.count / size },
              values: .fixedSizeList(size: size, child: .primitive(rows.flatMap { $0 })))
+    }
+
+    /// `uint8` instances, one list per row: a blueprint's enums (container kind, panel state).
+    static func u8s(_ archetype: String, _ name: String, _ type: String, _ rows: [[UInt8]]) -> Self {
+        Self(archetype, name, type, item: .item(.uint8, nullable: true),
+             counts: rows.map(\.count), values: .primitive(rows.flatMap { $0 }))
     }
 
     static func u32Vectors(_ archetype: String, _ name: String, _ type: String, _ rows: [[UInt32]], size: Int) -> Self {
@@ -466,8 +612,8 @@ struct RerunComponentColumn {
                                   child: .fixedSizeList(size: 3, child: .primitive(RerunRRDWriter.flatten(strips.flatMap { $0 })))))
     }
 
-    /// One `ImageFormat` instance: RGB, 8 bits per channel (`pixel_format` null).
-    static func imageFormat(_ archetype: String, _ name: String, width: Int, height: Int) -> Self {
+    /// One `ImageFormat` instance: RGB or RGBA, 8 bits per channel (`pixel_format` null).
+    static func imageFormat(_ archetype: String, _ name: String, width: Int, height: Int, rgba: Bool = false) -> Self {
         let fields: [RerunArrowField] = [
             RerunArrowField(name: "width", type: .uint32, nullable: false),
             RerunArrowField(name: "height", type: .uint32, nullable: false),
@@ -479,7 +625,7 @@ struct RerunComponentColumn {
             .primitive([UInt32(width)]),
             .primitive([UInt32(height)]),
             .allNull(count: 1, byteWidth: 1),
-            .primitive([UInt8(2)]), // ColorModel.RGB
+            .primitive([UInt8(rgba ? 3 : 2)]), // ColorModel.RGBA / RGB
             .primitive([UInt8(6)]), // ChannelDatatype.U8
         ])
         return Self(archetype, name, "ImageFormat", item: .item(.structure(fields), nullable: true),
@@ -532,7 +678,7 @@ struct RerunTuidSequence {
 
 // MARK: - Images
 
-/// ImageIO helpers: photos Rerun can decode, and raw RGB texels for plane textures.
+/// ImageIO helpers: photos Rerun can decode, and raw RGB or RGBA texels for plane textures.
 enum RerunImageCodec {
     struct Photo {
         var data: Data
@@ -544,8 +690,10 @@ enum RerunImageCodec {
     struct Pixels {
         var width: Int
         var height: Int
-        /// Row-major RGB, 8 bits per channel, top row first.
-        var rgb: Data
+        /// Row-major straight RGB or RGBA, 8 bits per channel, top row first.
+        var data: Data
+        /// 3 for RGB, 4 for RGBA: alpha is kept only when a texel is not opaque.
+        var channels: Int
     }
 
     /// JPEG and PNG pass through; anything else ImageIO reads (WebP, HEIC) becomes JPEG,
@@ -593,20 +741,25 @@ enum RerunImageCodec {
             guard let context = CGContext(
                 data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
                 bytesPerRow: width * 4, space: space,
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
             ) else { return false }
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
         guard drawn else { return nil }
-        var rgb = Data(count: width * height * 3)
-        rgb.withUnsafeMutableBytes { (out: UnsafeMutableRawBufferPointer) in
+        // CoreGraphics draws premultiplied channels; Rerun and Android store straight alpha.
+        let channels = stride(from: 3, to: rgba.count, by: 4).contains { rgba[$0] != 255 } ? 4 : 3
+        var texels = Data(count: width * height * channels)
+        texels.withUnsafeMutableBytes { (out: UnsafeMutableRawBufferPointer) in
             for pixel in 0..<(width * height) {
-                out[pixel * 3] = rgba[pixel * 4]
-                out[pixel * 3 + 1] = rgba[pixel * 4 + 1]
-                out[pixel * 3 + 2] = rgba[pixel * 4 + 2]
+                let alpha = Int(rgba[pixel * 4 + 3])
+                for channel in 0..<3 {
+                    let value = Int(rgba[pixel * 4 + channel])
+                    out[pixel * channels + channel] = alpha == 0 ? 0 : UInt8(min(255, (value * 255 + alpha / 2) / alpha))
+                }
+                if channels == 4 { out[pixel * channels + 3] = UInt8(alpha) }
             }
         }
-        return Pixels(width: width, height: height, rgb: rgb)
+        return Pixels(width: width, height: height, data: texels, channels: channels)
     }
 }

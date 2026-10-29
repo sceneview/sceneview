@@ -50,10 +50,12 @@ describe("generateLightingDesign", () => {
     expect(code).toContain("Accent light");
   });
 
-  it("uses LightNode with named apply parameter", () => {
+  it("uses LightNode with its type and named apply parameter", () => {
     const code = generateLightingDesign({ lights: ["pendant"] });
     expect(code).toContain("LightNode(");
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
     expect(code).toContain("intensity(");
   });
 

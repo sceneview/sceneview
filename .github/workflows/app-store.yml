@@ -394,24 +394,26 @@ jobs:
           # above: this job sets `working-directory: samples/ios-demo`, so a
           # repo-root-relative path would not resolve (#1286).
           #
-          # Exit 75 = DEFERRED: an identified version holds App Store Connect's
-          # single non-live slot. (Not 2: python exits 2 when it cannot open the
-          # script, and that must stay red.) The program looks for that holder
+          # This step is green only when the release is with Apple: submitted
+          # now, or already WAITING_FOR_REVIEW / IN_REVIEW under this version.
+          #
+          # Exit 75 = DEFERRED: another, identified version holds App Store
+          # Connect's single non-live slot. The program looks for that holder
           # BEFORE creating a version record, so a release that has to wait
           # sends Apple no request it must refuse (no 409); its build is already
-          # on TestFlight from the step above, and an editable record (draft,
-          # withdrawn, rejected) is reused with this build attached rather than
-          # waited behind. The run summary names the holder. A deferral is not a broken release —
-          # app-store-catch-up.yml submits the latest release once the slot
-          # frees — so it is graded green with a notice. It used to be red, and a red run whose only
-          # remedy was "re-run later" is what left iOS days behind Android.
+          # on TestFlight from the step above. It is RED, on purpose: from
+          # 2026-09-29 to 2026-10-22 it was graded green on the promise that
+          # app-store-catch-up.yml would submit later, the catch-up never did
+          # (a ghost run made it believe a deploy was always running), and
+          # 4.59.0 and 4.60.0 sat green on TestFlight while the store sold
+          # 4.58.0. The red step says "not in review yet"; catch-up still owns
+          # the retry, no re-run needed.
           set +e
           $RUNNER_TEMP/asc-venv/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/app_store_submit.py"
           rc=$?
           set -e
           if [ "$rc" -eq 75 ]; then
-            echo "::notice::Submission deferred — app-store-catch-up.yml submits the latest release once App Store Connect's slot frees."
-            exit 0
+            echo "::error::iOS ${ASC_VERSION_STRING#v} was NOT submitted for review (deferred, see the error above). app-store-catch-up.yml submits it once App Store Connect's slot frees; no re-run needed."
           fi
           exit "$rc"
 
@@ -679,16 +681,15 @@ jobs:
           $RUNNER_TEMP/asc-venv/bin/pip install -r "$GITHUB_WORKSPACE/.github/workflows/requirements/app-store.txt" --quiet
           echo "Waiting 120s for Apple to process the build..."
           sleep 120
-          # Exit 75 = DEFERRED behind an identified macOS version holding the
-          # non-live slot: green with a notice. Unlike iOS, no catch-up workflow
-          # retries macOS; the program's notice gives the manual follow-up.
+          # Exit 75 = DEFERRED behind another, identified macOS version holding
+          # the non-live slot: red, as on iOS — the release is not in review.
+          # app-store-catch-up.yml retries macOS too since 2026-10-22.
           set +e
           $RUNNER_TEMP/asc-venv/bin/python3 "$GITHUB_WORKSPACE/.github/scripts/app_store_submit.py"
           rc=$?
           set -e
           if [ "$rc" -eq 75 ]; then
-            echo "::notice::macOS submission deferred — see the preceding notice for the manual follow-up; app-store-catch-up.yml covers iOS only."
-            exit 0
+            echo "::error::macOS ${ASC_VERSION_STRING#v} was NOT submitted for review (deferred, see the error above). app-store-catch-up.yml submits it once App Store Connect's slot frees; no re-run needed."
           fi
           exit "$rc"
 

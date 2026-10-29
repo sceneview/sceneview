@@ -1,8 +1,10 @@
 package io.github.sceneview.demo.demos.internal
 
+import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -22,6 +24,13 @@ import kotlin.math.sqrt
  * point and a line a line at any zoom — the Rerun viewer's look.
  */
 
+/**
+ * Where the floor grid fades out ([ArDebugGeometry.gridFade]): radii on the floor, in metres, from
+ * the room's centre ([centreX], [centreZ]) — whole inside [start], gone at [end]. What
+ * `replay_grid.mat`'s `fade` parameter is fed.
+ */
+data class GridFade(val centreX: Float, val centreZ: Float, val start: Float, val end: Float)
+
 /** A growable triangle list: xyz positions and triangle indices. */
 class DebugMesh(initialVertices: Int = 64) {
     var positions = FloatArray(initialVertices * 3)
@@ -39,6 +48,19 @@ class DebugMesh(initialVertices: Int = 64) {
     fun clear() {
         vertexCount = 0
         indexCount = 0
+    }
+
+    /** Makes this mesh a copy of [other] — positions, the texture coordinates it has, indices. */
+    fun set(other: DebugMesh) {
+        if (positions.size < other.vertexCount * 3) positions = FloatArray(other.vertexCount * 3)
+        other.positions.copyInto(positions, endIndex = other.vertexCount * 3)
+        val uvCount = min(other.uvs.size, other.vertexCount * 2)
+        if (uvs.size < other.vertexCount * 2) uvs = FloatArray(other.vertexCount * 2)
+        other.uvs.copyInto(uvs, endIndex = uvCount)
+        if (indices.size < other.indexCount) indices = IntArray(other.indexCount)
+        other.indices.copyInto(indices, endIndex = other.indexCount)
+        vertexCount = other.vertexCount
+        indexCount = other.indexCount
     }
 
     fun vertex(x: Float, y: Float, z: Float): Int {
@@ -121,9 +143,9 @@ enum class DebugLayer(val group: DebugGroup) {
     Trail6(DebugGroup.Trail),
     Trail7(DebugGroup.Trail),
     TrailHead(DebugGroup.Trail),
-    Keyframes(DebugGroup.Trail),
-    Frustum(DebugGroup.Trail),
-    FrustumFace(DebugGroup.Trail),
+    Keyframes(DebugGroup.Cameras),
+    Frustum(DebugGroup.Cameras),
+    FrustumFace(DebugGroup.Cameras),
     Anchors(DebugGroup.Anchors);
 
     companion object {
@@ -132,8 +154,12 @@ enum class DebugLayer(val group: DebugGroup) {
     }
 }
 
-/** What the legend toggles. [Stage] (grid, axes) is always on. */
-enum class DebugGroup { Stage, Trail, Points, Planes, Anchors }
+/**
+ * What the legend toggles. [Stage] (grid, axes) is always on. [Cameras] — the frusta the phone
+ * looked from, with their photos — is its own toggle, apart from the [Trail] line: a long
+ * recording stacks dozens of them over the room.
+ */
+enum class DebugGroup { Stage, Trail, Cameras, Points, Planes, Anchors }
 
 /**
  * Sizes, in screen pixels, turned into metres through [metresPerPixel] — the world size of one
@@ -148,14 +174,14 @@ data class ArDebugStyle(
         (pixels * metresPerPixel).coerceIn(minMetres, maxMetres)
 
     val mapPointRadius get() = px(2.4f, 0.004f, 0.05f)
-    val livePointRadius get() = px(3.8f, 0.006f, 0.07f)
+    val livePointRadius get() = px(3.0f, 0.006f, 0.07f)
     val trailRadius get() = px(2.2f * trailWeight, 0.004f * trailWeight, 0.05f * trailWeight)
     val trailHeadRadius get() = px(3.4f * trailWeight, 0.006f * trailWeight, 0.08f * trailWeight)
     val frustumEdge get() = px(1.3f, 0.002f, 0.03f)
     val keyframeEdge get() = px(0.9f, 0.0015f, 0.02f)
     val outlineHalfWidth get() = px(1.3f, 0.002f, 0.03f)
-    val gridMinorHalfWidth get() = px(0.55f, 0.001f, 0.015f)
-    val gridMajorHalfWidth get() = px(0.9f, 0.0015f, 0.025f)
+    val gridMinorHalfWidth get() = px(0.6f, 0.001f, 0.015f)
+    val gridMajorHalfWidth get() = px(1.2f, 0.002f, 0.03f)
     val axisRadius get() = px(1.6f, 0.003f, 0.04f)
     val anchorHalfWidth get() = px(1.8f, 0.003f, 0.04f)
 
@@ -584,30 +610,56 @@ object ArDebugGeometry {
         }
     }
 
-    /** Grid cell size: half a metre, a unit that reads as room scale. */
-    const val GRID_CELL_M = 0.5f
+    /** Grid cell size: a quarter of a metre — four minor squares to the metre (#4040). */
+    const val GRID_CELL_M = 0.25f
 
     /** Every n-th grid line is a major (1 m) line. */
-    const val GRID_MAJOR_EVERY = 2
+    const val GRID_MAJOR_EVERY = 4
+
+    /**
+     * Past the room's corners, how far the grid stays whole before it starts to fade: 2 m, so the
+     * grid reads as a floor the room stands on, not a mat under it (QA 2026-10-22: "too small").
+     */
+    const val GRID_FADE_START_M = 2f
+
+    /** Over how many metres the grid fades out, from whole to gone ([gridFade]). */
+    const val GRID_FADE_M = 6f
 
     /** Axis gizmo arm length at the session origin. */
     const val AXIS_LENGTH_M = 0.3f
 
     /**
-     * The floor grid at height [y], covering [bounds] (`[minX, _, minZ, maxX, _, maxZ]`) plus a
-     * metre of margin, snapped to [GRID_CELL_M] so it does not crawl as the bounds grow, and the
-     * RGB axis gizmo at the world origin — where the session started.
+     * Where the floor grid fades out round [bounds] (`[minX, _, minZ, maxX, _, maxZ]`). Whole up
+     * to a little past the room's corners, gone [GRID_FADE_M] further — the grid of Polycam or
+     * Reality Composer, which gives the room its scale and has no edge.
+     */
+    fun gridFade(bounds: FloatArray): GridFade {
+        val corner = hypot((bounds[3] - bounds[0]) / 2f, (bounds[5] - bounds[2]) / 2f)
+        val start = corner + GRID_FADE_START_M
+        return GridFade(
+            centreX = (bounds[0] + bounds[3]) / 2f,
+            centreZ = (bounds[2] + bounds[5]) / 2f,
+            start = start,
+            end = start + GRID_FADE_M,
+        )
+    }
+
+    /**
+     * The floor grid at height [y] round [bounds] (`[minX, _, minZ, maxX, _, maxZ]`): a line every
+     * [GRID_CELL_M], a major one every metre, out to where [gridFade] has faded it — on whole
+     * cells, so it does not crawl as the bounds grow — and the RGB axis gizmo at the world
+     * origin, where the session started.
      */
     fun buildStage(bounds: FloatArray, y: Float, style: ArDebugStyle, out: (DebugLayer) -> DebugMesh) {
         val cell = GRID_CELL_M
-        val margin = 1f
-        val minX = floor((bounds[0] - margin) / cell).toInt()
-        val maxX = ceil((bounds[3] + margin) / cell).toInt()
-        val minZ = floor((bounds[2] - margin) / cell).toInt()
-        val maxZ = ceil((bounds[5] + margin) / cell).toInt()
+        val fade = gridFade(bounds)
+        val minX = floor((fade.centreX - fade.end) / cell).toInt()
+        val maxX = ceil((fade.centreX + fade.end) / cell).toInt()
+        val minZ = floor((fade.centreZ - fade.end) / cell).toInt()
+        val maxZ = ceil((fade.centreZ + fade.end) / cell).toInt()
         val up = Vec3.Up
         for (i in minX..maxX) {
-            val major = i % GRID_MAJOR_EVERY == 0
+            val major = Math.floorMod(i, GRID_MAJOR_EVERY) == 0
             addRibbon(
                 out(if (major) DebugLayer.GridMajor else DebugLayer.GridMinor),
                 Vec3(i * cell, y, minZ * cell), Vec3(i * cell, y, maxZ * cell), up,
@@ -615,7 +667,7 @@ object ArDebugGeometry {
             )
         }
         for (k in minZ..maxZ) {
-            val major = k % GRID_MAJOR_EVERY == 0
+            val major = Math.floorMod(k, GRID_MAJOR_EVERY) == 0
             addRibbon(
                 out(if (major) DebugLayer.GridMajor else DebugLayer.GridMinor),
                 Vec3(minX * cell, y, k * cell), Vec3(maxX * cell, y, k * cell), up,
@@ -666,4 +718,102 @@ object ArDebugGeometry {
         for (anchor in frame.anchors) add(anchor.pose.x, anchor.pose.y, anchor.pose.z)
         return if (any) b else null
     }
+
+    /**
+     * Bounds of what a finished recording shows: [contentBounds], grown to the body of its point
+     * map and of its dense cloud ([dense], flat xyz). The clouds are measured by [robustBounds],
+     * so the room they draw is framed whole and a stray point a street away is not.
+     *
+     * The dense cloud is trimmed far less than the point map ([DENSE_TRIM]): it is already kept
+     * to what the depth sensor saw twice within a few metres, and a room's walls are its
+     * outermost points — the point map's trim cut the thinnest wall off the frame, and the room
+     * ran past the edge of the screen.
+     */
+    fun subjectBounds(frame: ArDebugFrame, dense: FloatArray? = null): FloatArray? {
+        val bodies = listOfNotNull(
+            frame.mapPoints?.let { robustBounds(it, ROBUST_TRIM) },
+            dense?.let { robustBounds(it, DENSE_TRIM) },
+        )
+        return bodies.fold(contentBounds(frame)) { bounds, body ->
+            bounds?.let { b ->
+                FloatArray(6) { if (it < 3) min(b[it], body[it]) else max(b[it], body[it]) }
+            } ?: body
+        }
+    }
+
+    /**
+     * The box holding the body of a point cloud ([positions], flat xyz): on each axis, from its
+     * [trim] quantile to the opposite one, read on at most [ROBUST_SAMPLES] points spread
+     * across the cloud. `null` under [ROBUST_MIN_POINTS] points — too few to tell a body from
+     * its strays.
+     */
+    fun robustBounds(positions: FloatArray, trim: Float = ROBUST_TRIM): FloatArray? {
+        val count = positions.size / 3
+        if (count < ROBUST_MIN_POINTS) return null
+        val samples = min(count, ROBUST_SAMPLES)
+        val axis = FloatArray(samples)
+        val out = FloatArray(6)
+        for (a in 0 until 3) {
+            for (i in 0 until samples) {
+                val index = (i.toLong() * count / samples).toInt()
+                axis[i] = positions[index * 3 + a]
+            }
+            axis.sort()
+            val cut = (samples * trim).toInt()
+            out[a] = axis[cut]
+            out[a + 3] = axis[samples - 1 - cut]
+        }
+        return out.takeIf { box -> box.all { it.isFinite() } }
+    }
+
+    /**
+     * The heading of a room's walls about +Y, in degrees within ±45: the direction its vertical
+     * [planes] run along, each weighing as much as it is long — walls a quarter-turn apart agree,
+     * which is what makes a room a rectangle. `null` when no wall is long enough to tell.
+     */
+    fun roomYawDegrees(planes: List<DebugPlane>): Float? {
+        var sumSin = 0.0
+        var sumCos = 0.0
+        for (plane in planes) {
+            val (dx, dz) = wallRun(plane) ?: continue
+            val length = sqrt(dx * dx + dz * dz)
+            // Four times the angle folds the wall's two directions and its neighbours' onto one.
+            val folded = 4.0 * atan2(dx.toDouble(), dz.toDouble())
+            sumSin += length * sin(folded)
+            sumCos += length * cos(folded)
+        }
+        if (sumSin == 0.0 && sumCos == 0.0) return null
+        return Math.toDegrees(atan2(sumSin, sumCos) / 4.0).toFloat()
+    }
+
+    /**
+     * The run of a wall seen from above — a segment, from one to the other of its two farthest
+     * vertices, as `(dx, dz)` — or `null` for a plane that is no wall, or too short to tell.
+     */
+    private fun wallRun(plane: DebugPlane): Pair<Float, Float>? {
+        if (plane.kind != DebugPlaneKind.Wall) return null
+        var best = 0f
+        var run: Pair<Float, Float>? = null
+        for (i in 0 until plane.vertexCount) for (j in i + 1 until plane.vertexCount) {
+            val x = plane.polygon[j * 3] - plane.polygon[i * 3]
+            val z = plane.polygon[j * 3 + 2] - plane.polygon[i * 3 + 2]
+            val length = x * x + z * z
+            if (length > best) {
+                best = length
+                run = x to z
+            }
+        }
+        return run?.takeIf { sqrt(best) >= ROOM_YAW_MIN_WALL_M }
+    }
+
+    /** The share of a cloud left out at each end of an axis by [robustBounds]. */
+    const val ROBUST_TRIM = 0.04f
+
+    /** The same for a dense cloud, which holds few strays: a wall is more than this of a room. */
+    const val DENSE_TRIM = 0.005f
+    const val ROBUST_SAMPLES = 4096
+    const val ROBUST_MIN_POINTS = 32
+
+    /** A wall shorter than this, seen from above, has no heading worth squaring a map with. */
+    const val ROOM_YAW_MIN_WALL_M = 0.5f
 }

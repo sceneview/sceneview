@@ -247,6 +247,8 @@ class LightEstimatorTest {
             f.exists(),
         )
         f.readText()
+            .replace(Regex("""/\*[\s\S]*?\*/|//[^\n]*"""), "")
+            .replace(Regex("""\s+"""), " ")
     }
 
     @Test
@@ -275,12 +277,7 @@ class LightEstimatorTest {
         //   1. the callback handed to `PixelBufferDescriptor` is the hoisted ref;
         //   2. that hoisted ref's body is a pure flag flip — it must NEVER close
         //      `arImages` again (the #1091 double-close regression).
-        val src = lightEstimatorSource
-        // Strip Kotlin line comments — the call site carries an inline comment
-        // between `null,` and `uploadCompletedCallback` explaining the #1102 hoist.
-        val codeOnly = src.lineSequence()
-            .map { it.substringBefore("//") }
-            .joinToString("\n")
+        val codeOnly = lightEstimatorSource
         assertTrue(
             "The `Texture.PixelBufferDescriptor` callback MUST be the hoisted " +
                 "`uploadCompletedCallback` (#1091 double-close fix + #1102 hoist).",

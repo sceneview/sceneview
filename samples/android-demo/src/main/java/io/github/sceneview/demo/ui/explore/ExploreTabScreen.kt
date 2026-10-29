@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import io.github.sceneview.demo.ui.LIST_BOTTOM_GUTTER
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -83,13 +84,18 @@ import io.github.sceneview.demo.sources.FeedKind
 import io.github.sceneview.demo.sources.GalleryModel
 import io.github.sceneview.demo.sources.ModelSource
 import io.github.sceneview.demo.sources.ModelSourceId
+import io.github.sceneview.demo.sources.ModelSourcesState
 import io.github.sceneview.demo.sources.rememberModelSources
 import io.github.sceneview.demo.ui.explore.components.FeaturedModelCard
 import io.github.sceneview.demo.ui.explore.components.SpatialHero
 import io.github.sceneview.demo.ui.home.DemoMediaCard
+import io.github.sceneview.demo.telemetry.SearchSurface
+import io.github.sceneview.demo.telemetry.SearchTerm
+import io.github.sceneview.demo.telemetry.Telemetry
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.demo.ui.demoToggleButtonColors
+import kotlinx.coroutines.delay
 
 /**
  * Curated 3D-model discovery feed — the demo app's Spatial Gallery home: a
@@ -98,21 +104,80 @@ import io.github.sceneview.demo.ui.demoToggleButtonColors
  *
  * The iOS `ExploreTab` still shows the previous layout; it catches up in the
  * iOS leg of the demo-app redesign plan.
+ *
+ * The first frame is cheap on purpose (#4622): the header and the loading stage
+ * show at once, while the sources are built off the main thread. The rails below
+ * the stage, whose demo previews take a long frame to decode on a cold process,
+ * wait for [enterSettled] — the screen's enter transition having finished — so
+ * that long frame never freezes the transition on an empty page.
  */
 @Composable
 fun ExploreTabScreen(
     curatedSamples: List<DemoEntry>,
     onSampleClick: (DemoEntry) -> Unit,
     onBack: () -> Unit = {},
+    enterSettled: Boolean = true,
 ) {
-    val scroll = rememberScrollState()
-    val recentSearches = rememberRecentSearches()
-
+    var showRails by remember { mutableStateOf(enterSettled) }
+    LaunchedEffect(enterSettled) {
+        if (enterSettled) showRails = true
+    }
     // Multi-source resilience (#2645): the tab browses whichever catalog the
     // user picks (Sketchfab | Icosa | Poly Haven), remembering the last choice.
     // A single degraded source never blanks the tab — the samples row + the
     // picker + the other sources stay usable.
     val sources = rememberModelSources()
+    if (sources == null) {
+        ExploreLoadingPage(onBack = onBack)
+    } else {
+        ExploreTabContent(
+            sources = sources,
+            showRails = showRails,
+            curatedSamples = curatedSamples,
+            onSampleClick = onSampleClick,
+            onBack = onBack,
+        )
+    }
+}
+
+/**
+ * What the gallery shows until its sources are built: the same header and the
+ * same loading stage as the loaded page, at the same place, so nothing moves
+ * when the content arrives.
+ */
+@Composable
+private fun ExploreLoadingPage(onBack: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                start = SceneViewTokens.Home.contentPadding,
+                end = SceneViewTokens.Home.contentPadding,
+            ),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
+    ) {
+        ExploreHeader(onBack = onBack)
+        ExploreStage(
+            hero = null,
+            feedsStatus = FeedsStatus.Loading,
+            sourceName = "",
+            sketchfabUnavailable = false,
+            onRetry = {},
+            onModelClick = {},
+        )
+    }
+}
+
+@Composable
+private fun ExploreTabContent(
+    sources: ModelSourcesState,
+    showRails: Boolean,
+    curatedSamples: List<DemoEntry>,
+    onSampleClick: (DemoEntry) -> Unit,
+    onBack: () -> Unit,
+) {
+    val scroll = rememberScrollState()
+    val recentSearches = rememberRecentSearches()
     val selectedSource = sources.selected
 
     var searchQuery by remember { mutableStateOf("") }
@@ -137,10 +202,13 @@ fun ExploreTabScreen(
 
     // Feeds keyed by the source's advertised [FeedKind]s (each source exposes
     // its own subset — Poly Haven has no "staff picks", for instance).
-    var feedsByKind by remember { mutableStateOf<Map<FeedKind, List<GalleryModel>>>(emptyMap()) }
+    // A reopened gallery starts on the feeds this source last returned (#4622),
+    // so its first frame already shows them; the effect below refreshes them.
+    val cachedFeeds = remember { exploreFeedCache.get(selectedSource.id, animatedOnly = false) }
+    var feedsByKind by remember { mutableStateOf(cachedFeeds?.feeds ?: emptyMap()) }
     // Loading → Ready / Empty / Failed (#3993). A stalled or failed load ends in
     // an error card with a retry instead of spinners that never stop.
-    var feedsStatus by remember { mutableStateOf(FeedsStatus.Loading) }
+    var feedsStatus by remember { mutableStateOf(cachedFeeds?.status ?: FeedsStatus.Loading) }
     var isRefreshing by remember { mutableStateOf(false) }
     // `true` once a feed/search request fails with HTTP 401/403 — the API key
     // is present but rejected (revoked, wrong scope, typo'd secret). Drives the
@@ -173,7 +241,15 @@ fun ExploreTabScreen(
 
     /** (Re)load the selected source's feeds on source switch, animated toggle, first composition, or pull-to-refresh. */
     LaunchedEffect(selectedSource.id, animatedOnly, refreshTick) {
-        feedsStatus = FeedsStatus.Loading
+        // Models this source already returned stay on screen while they refresh
+        // (#4622); only a source with nothing to show yet goes back to the spinner.
+        val cached = exploreFeedCache.get(selectedSource.id, animatedOnly)
+        if (cached != null) {
+            feedsByKind = cached.feeds
+            feedsStatus = cached.status
+        } else {
+            feedsStatus = FeedsStatus.Loading
+        }
         // Reset the Sketchfab "key rejected" banner before every (re)load so a
         // transient 401/403 that clears drops the banner instead of latching it.
         keyRejected = false
@@ -195,8 +271,10 @@ fun ExploreTabScreen(
                     limit = 10,
                 )
             }
-            feedsByKind = load.feeds
-            feedsStatus = load.status
+            exploreFeedCache.put(source.id, animatedOnly, load)
+            val settled = settleFeeds(shown = cached, fresh = load)
+            feedsByKind = settled.feeds
+            feedsStatus = settled.status
         } finally {
             // try/finally so isRefreshing always resets even if the coroutine
             // was cancelled mid-flight.
@@ -225,6 +303,17 @@ fun ExploreTabScreen(
         }
     }
 
+    // The `search` event for the query on screen: `null` results (failed) log as `error`.
+    // [Telemetry.search] drops the repeat when a tap follows the settle, but never lets an
+    // `error` hide the results a Retry of the same term brings.
+    fun logModelSearch() {
+        Telemetry.search.settled(
+            SearchSurface.Models,
+            activeSearchQuery,
+            searchResults?.size?.takeUnless { searchFailed },
+        )
+    }
+
     // Execute search when activeSearchQuery changes (#1239). `null` results
     // means "in flight"; an empty list means "0 hits"; non-empty means we
     // have results to render. CancellationException is re-thrown so the
@@ -235,7 +324,10 @@ fun ExploreTabScreen(
     // the animated chip has no effect on search results. Re-keys on the source
     // id so switching catalogs re-runs the query against the new one.
     LaunchedEffect(activeSearchQuery, selectedSource.id, searchRetryTick) {
-        if (activeSearchQuery.isBlank()) return@LaunchedEffect
+        if (activeSearchQuery.isBlank()) {
+            Telemetry.search.cleared(SearchSurface.Models)
+            return@LaunchedEffect
+        }
         searchResults = null  // signal loading
         searchFailed = false
         // Bounded by EXPLORE_FEED_TIMEOUT_MS like the feeds (#3993): a search that
@@ -254,12 +346,17 @@ fun ExploreTabScreen(
         }
         searchFailed = result !is FeedResult.Loaded
         searchResults = result.modelsOrEmpty
+        // `search`: counted once its results have stayed on screen for SETTLE_MS (or a result
+        // is opened), so the fragments a live search fires mid-typing never count.
+        delay(SearchTerm.SETTLE_MS)
+        logModelSearch()
     }
 
     val body = @Composable {
         ExploreBody(
             onBack = onBack,
             scroll = scroll,
+            showRails = showRails,
             sources = sources.sources,
             selectedSource = selectedSource,
             onSelectSource = onSelectSource,
@@ -295,7 +392,10 @@ fun ExploreTabScreen(
             onRetryFeeds = { refreshTick++ },
             searchFailed = searchFailed,
             onRetrySearch = { searchRetryTick++ },
-            onModelClick = { selectedModel = it },
+            onModelClick = {
+                if (activeSearchQuery.isNotBlank() && searchResults != null) logModelSearch()
+                selectedModel = it
+            },
         )
     }
 
@@ -333,6 +433,7 @@ fun ExploreTabScreen(
 private fun ExploreBody(
     onBack: () -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
+    showRails: Boolean,
     sources: List<ModelSource>,
     selectedSource: ModelSource,
     onSelectSource: (ModelSource) -> Unit,
@@ -377,41 +478,7 @@ private fun ExploreBody(
             ),
         verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg),
     ) {
-        // Home's header, glyph for glyph: `Home.headerHeight` tall from the top of
-        // the page, `Home.contentPadding` in, the back glyph in the slot Home gives
-        // its mark and the same gap before `type-title` — switching between the two
-        // screens leaves the title where it was. The 48 dp touch target overflows
-        // the 24 dp slot evenly, so the glyph sits on the content edge.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SceneViewTokens.Home.headerHeight),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier.size(SceneViewTokens.Home.markSize),
-                contentAlignment = Alignment.Center,
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.requiredSize(SceneViewTokens.Layout.touchTarget),
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.cd_back_button),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-            Spacer(Modifier.width(SceneViewTokens.Home.markGap))
-            Text(
-                text = stringResource(R.string.home_browse_title),
-                style = SceneViewTokens.Type.title,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        ExploreHeader(onBack = onBack)
         if (searchExpanded || isSearching) {
             SearchField(
                 value = searchQuery,
@@ -467,7 +534,9 @@ private fun ExploreBody(
             SketchfabDisabledBanner(keyRejected = true)
         }
 
-        if (isSearching) {
+        if (!showRails) {
+            // Nothing below the stage until the enter transition settles (#4622).
+        } else if (isSearching) {
             // Active search (#1239): render the results section, hide the feeds.
             // searchResults == null ⇒ still loading; empty ⇒ ran but 0 hits;
             // non-empty ⇒ render carousel.
@@ -631,7 +700,7 @@ private fun TrendingRail(
     if (models.isEmpty() && !loading) return
     CarouselSection(title = stringResource(R.string.explore_trending_in_3d)) {
         if (models.isEmpty()) {
-            LoadingIndicator(modifier = Modifier.size(SceneViewTokens.Space.lg))
+            TrendingRailPlaceholder()
         } else {
             val state = rememberLazyListState()
             LazyRow(
@@ -656,6 +725,39 @@ private fun TrendingRail(
         }
     }
 }
+
+/**
+ * The "Trending in 3D" rail while its feed loads (#4622): two empty tiles with
+ * the cards' own widths, ratio and corners, so the rail has its real shape from
+ * the first frame and nothing moves when the cards arrive.
+ */
+@Composable
+private fun TrendingRailPlaceholder() {
+    LazyRow(
+        modifier = Modifier.testTag(ExploreTestTags.RAIL_LOADING),
+        horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm),
+        contentPadding = PaddingValues(horizontal = SceneViewTokens.Space.xs),
+        userScrollEnabled = false,
+    ) {
+        items(TRENDING_PLACEHOLDER_TILES) { index ->
+            val width = if (index == 0) {
+                SceneViewTokens.Layout.heroStageHeight
+            } else {
+                SceneViewTokens.Layout.heroStageHeight - SceneViewTokens.Space.x3l
+            }
+            Box(
+                modifier = Modifier
+                    .width(width)
+                    .aspectRatio(SceneViewTokens.Layout.mediaAspect)
+                    .clip(RoundedCornerShape(SceneViewTokens.Radius.lg))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            )
+        }
+    }
+}
+
+/** Placeholder tiles in the loading "Trending in 3D" rail: the first card and a peek of the next. */
+private const val TRENDING_PLACEHOLDER_TILES = 2
 
 @Composable
 private fun CompactBrowseRail(
@@ -719,6 +821,9 @@ private fun CompactBrowseRail(
 }
 
 /** UI-test tags for the Explore tab's browse rail. */
+/** The gallery's feeds cache, for the life of the process (#4622). */
+private val exploreFeedCache = ExploreFeedCache<ModelSourceId, FeedKind, GalleryModel>()
+
 internal object ExploreTestTags {
     const val ANIMATED_FILTER = "explore_filter_animated"
 
@@ -727,6 +832,9 @@ internal object ExploreTestTags {
 
     /** The featured stage's spinner while the feeds load. */
     const val STAGE_LOADING = "explore_stage_loading"
+
+    /** The "Trending in 3D" placeholder tiles while the feeds load. */
+    const val RAIL_LOADING = "explore_rail_loading"
 
     /** Tag of the source picker button for [id]. */
     fun sourceOption(id: ModelSourceId): String = "explore_source_${id.slug}"
@@ -825,6 +933,48 @@ private fun SketchfabDisabledBanner(keyRejected: Boolean = false) {
                     Text(stringResource(R.string.explore_sketchfab_disabled_dismiss))
                 }
             },
+        )
+    }
+}
+
+/**
+ * The gallery's header, shared by the loaded page and its loading state.
+ */
+@Composable
+private fun ExploreHeader(onBack: () -> Unit) {
+    // Home's header, glyph for glyph: `Home.headerHeight` tall from the top of
+    // the page, `Home.contentPadding` in, the back glyph in the slot Home gives
+    // its mark and the same gap before `type-title` — switching between the two
+    // screens leaves the title where it was. The 48 dp touch target overflows
+    // the 24 dp slot evenly, so the glyph sits on the content edge.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(SceneViewTokens.Home.headerHeight),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(SceneViewTokens.Home.markSize),
+            contentAlignment = Alignment.Center,
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.requiredSize(SceneViewTokens.Layout.touchTarget),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.cd_back_button),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        Spacer(Modifier.width(SceneViewTokens.Home.markGap))
+        Text(
+            text = stringResource(R.string.home_browse_title),
+            style = SceneViewTokens.Type.title,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

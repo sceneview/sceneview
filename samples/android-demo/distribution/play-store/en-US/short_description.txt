@@ -1,1 +1,1 @@
-Nearly 50 live 3D and AR samples of the SceneView SDK, each with its code.
+Nearly 50 live 3D & AR samples for Jetpack Compose and ARCore, with source code

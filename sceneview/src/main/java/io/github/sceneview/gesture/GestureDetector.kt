@@ -2,6 +2,7 @@ package io.github.sceneview.gesture
 
 import android.content.Context
 import android.view.MotionEvent
+import androidx.annotation.RestrictTo
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.node.Node
@@ -76,6 +77,27 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
     internal var onDoubleTapCamera: ((MotionEvent) -> Unit)? = null
 
     private var lastTouchEvent: MotionEvent? = null
+
+    /** Drag / twist / pinch coasting after release — see [NodeEditingInertia]. */
+    private val editingInertia = NodeEditingInertia { listener }
+
+    /**
+     * `true` while a node edit is still coasting after the finger lifted. The render loop keeps
+     * ticking (and calling [advanceInertia]) for as long as this holds.
+     *
+     * Library plumbing between the gesture detector and the scene render loops.
+     */
+    @get:RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    val isCoasting: Boolean get() = editingInertia.isCoasting
+
+    /**
+     * Advances every node edit still coasting by one frame of [deltaSeconds]. Called once per
+     * frame by `SceneView` / `ARSceneView`; a no-op when nothing coasts.
+     */
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    fun advanceInertia(deltaSeconds: Float) {
+        if (editingInertia.isCoasting) editingInertia.advance(deltaSeconds)
+    }
 
     private data class PendingSingleTap(val down: MotionEvent, val node: Node?)
 
@@ -197,13 +219,20 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
                 super.onMoveBegin(detector, e).also {
                     moveBeginNode = touchedNode
                     moveInProgress = true
-                    touchedNode?.onMoveBegin(detector, e)
+                    // Finish any coast first: its deferred `…End` must not close the new edit.
+                    editingInertia.onMoveBegin(e)
+                    val accepted = touchedNode?.onMoveBegin(detector, e) == true
+                    // An overridden begin handler accepts without its delegate: own it then.
+                    editingInertia.moveOwner = (
+                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Move) ?: touchedNode
+                        ).takeIf { accepted }
                     listener?.onMoveBegin(detector, e, touchedNode)
                 }
 
             override fun onMove(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMove(detector, e).also {
                     if (moveInProgress) {
+                        editingInertia.onMoveSample(e)
                         moveBeginNode?.onMove(detector, e)
                         listener?.onMove(detector, e, moveBeginNode)
                     }
@@ -211,7 +240,10 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
 
             override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) =
                 super.onMoveEnd(detector, e).also {
-                    if (moveInProgress) {
+                    // A coasting drag ends later, once the node is at rest.
+                    if (moveInProgress &&
+                        !editingInertia.onMoveEnd(detector, e, moveBeginNode)
+                    ) {
                         moveBeginNode?.onMoveEnd(detector, e)
                         listener?.onMoveEnd(detector, e, moveBeginNode)
                     }
@@ -231,20 +263,29 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
                 super.onRotateBegin(detector, e).also {
                     rotateBeginNode = touchedNode
                     rotateInProgress = true
-                    touchedNode?.onRotateBegin(detector, e)
+                    // Finish any coast first: its deferred `…End` must not close the new edit.
+                    editingInertia.onRotateBegin(e)
+                    val accepted = touchedNode?.onRotateBegin(detector, e) == true
+                    // An overridden begin handler accepts without its delegate: own it then.
+                    editingInertia.rotateOwner = (
+                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Rotate) ?: touchedNode
+                        ).takeIf { accepted }
                     listener?.onRotateBegin(detector, e, touchedNode)
                 }
 
             override fun onRotate(detector: RotateGestureDetector, e: MotionEvent) =
                 super.onRotate(detector, e).also {
                     if (rotateInProgress) {
+                        editingInertia.onRotateSample(detector, e)
                         rotateBeginNode?.onRotate(detector, e)
                         listener?.onRotate(detector, e, rotateBeginNode)
                     }
                 }
 
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
-                if (rotateInProgress) {
+                if (rotateInProgress &&
+                    !editingInertia.onRotateEnd(detector, e, rotateBeginNode)
+                ) {
                     rotateBeginNode?.onRotateEnd(detector, e)
                     listener?.onRotateEnd(detector, e, rotateBeginNode)
                 }
@@ -263,20 +304,29 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
                 super.onScaleBegin(detector, e).also {
                     scaleBeginNode = touchedNode
                     scaleInProgress = true
-                    touchedNode?.onScaleBegin(detector, e)
+                    // Finish any coast first: its deferred `…End` must not close the new edit.
+                    editingInertia.onScaleBegin(e)
+                    val accepted = touchedNode?.onScaleBegin(detector, e) == true
+                    // An overridden begin handler accepts without its delegate: own it then.
+                    editingInertia.scaleOwner = (
+                        touchedNode?.gestureDelegate?.claimedNode(NodeEditingKind.Scale) ?: touchedNode
+                        ).takeIf { accepted }
                     listener?.onScaleBegin(detector, e, touchedNode)
                 }
 
             override fun onScale(detector: ScaleGestureDetector, e: MotionEvent) =
                 super.onScale(detector, e).also {
                     if (scaleInProgress) {
+                        editingInertia.onScaleSample(detector, e)
                         scaleBeginNode?.onScale(detector, e)
                         listener?.onScale(detector, e, scaleBeginNode)
                     }
                 }
 
             override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
-                if (scaleInProgress) {
+                if (scaleInProgress &&
+                    !editingInertia.onScaleEnd(detector, e, scaleBeginNode)
+                ) {
                     scaleBeginNode?.onScaleEnd(detector, e)
                     listener?.onScaleEnd(detector, e, scaleBeginNode)
                 }
@@ -297,6 +347,8 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         touchedNode = hitResult?.node
 
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // A finger on the screen stops whatever is still coasting from the last edit.
+            editingInertia.stopAll()
             currentDown?.recycle()
             currentDown = MotionEvent.obtain(event)
             currentDownNode = touchedNode

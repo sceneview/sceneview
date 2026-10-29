@@ -70,7 +70,7 @@ class DemoOrbitFramingTest {
 
     @Test
     fun theDemosThatInheritedTheStockPoseNowFillTheFrame() {
-        // LightingLab's first section and SecondaryCamera's main view both passed NO manipulator,
+        // The former LightingLab's first section and SecondaryCamera's main view both passed NO manipulator,
         // so they inherited the library's 2.78 m stock pose for a helmet normalised to 0.5 units.
         // Their siblings, which do pass a radius, framed the same helmet visibly larger.
         val stockPose = 2.7789f

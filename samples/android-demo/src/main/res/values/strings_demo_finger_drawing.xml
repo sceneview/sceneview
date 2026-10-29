@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `finger-drawing` demo (registered by `FingerDrawingFragment.kt`, #4082):
+     its 3D mode (`FingerDrawingDemo.kt`) and its AR mode (`FingerDrawingArDemo.kt`). -->
+<resources>
+    <string name="demo_finger_drawing_title">Finger Drawing</string>
+    <string name="demo_finger_drawing_subtitle">Paint in the air, then walk around it</string>
+    <string name="demo_finger_drawing_explainer">Each stroke is a tube generated in Kotlin from the path of your finger and drawn by a MeshNode. Draw, turn the stage with Orbit, then draw again from the new angle.</string>
+    <string name="demo_finger_drawing_ar_explainer">Each stroke is a tube generated in Kotlin and hung on an ARCore anchor an arm\'s reach in front of the phone. Hold your finger still and move the phone to draw through the room.</string>
+    <string name="demo_finger_drawing_draw_hint">Draw with one finger</string>
+    <string name="demo_finger_drawing_orbit_hint">Drag to look around your drawing</string>
+    <string name="demo_finger_drawing_ar_draw_hint">Draw with one finger, or hold it still and move the phone</string>
+    <string name="demo_finger_drawing_ar_tracking_hint">Move the phone slowly so it can find its place in the room</string>
+    <string name="demo_finger_drawing_ar_hidden_hint">Move the phone slowly to bring your drawing back</string>
+    <string name="demo_finger_drawing_orbit">Orbit</string>
+    <string name="demo_finger_drawing_undo">Undo</string>
+    <string name="demo_finger_drawing_clear">Clear</string>
+    <string name="demo_finger_drawing_clear_all">Clear all</string>
+    <string name="demo_finger_drawing_colour">Colour</string>
+    <string name="demo_finger_drawing_colour_coral">Coral</string>
+    <string name="demo_finger_drawing_colour_azure">Azure</string>
+    <string name="demo_finger_drawing_colour_amber">Amber</string>
+    <string name="demo_finger_drawing_colour_mint">Mint</string>
+    <string name="demo_finger_drawing_colour_orchid">Orchid</string>
+    <string name="demo_finger_drawing_thickness">Thickness</string>
+    <string name="demo_finger_drawing_thickness_value">%1$d dp</string>
+    <plurals name="demo_finger_drawing_strokes">
+        <item quantity="one">%1$d stroke</item>
+        <item quantity="other">%1$d strokes</item>
+    </plurals>
+</resources>

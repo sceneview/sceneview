@@ -51,11 +51,44 @@
   --code-accent: #8AB4FF;     /* 9.1:1 on code-bg — selected tab underline */
   --code-edge: #6B7791;       /* 4.2:1 on code-bg — control edges inside code */
   --syn-key: #C3A6FF; --syn-fn: #8AB4FF; --syn-str: #FFB86B; --syn-num: #5BD49A; --syn-com: #7F8A9C;
+  --code-strong: #F3F5F9;     /* 17.5:1 on code-bg — selected tab, hovered control */
+  --code-fg-2: #B4BCCB;       /* 10.0:1 on code-bg — copy icon at rest */
+  --code-border: #252D3B;     /* edge of the code card */
+  --code-line: #1F2633;       /* rule between tab strip, code and footer */
+  --code-hover: rgba(255, 255, 255, .04);
+  --code-hover-strong: rgba(255, 255, 255, .08);
+  --code-ok: #5BD49A;         /* 10.3:1 on code-bg — status Stable inside the card */
+  --code-alpha: #F5C66B;      /* 12.0:1 on code-bg — status Alpha inside the card */
+  --code-flash: rgba(255, 184, 107, .35);   /* syn-str wash on a literal that just changed */
+
+  /* ── Media tiles (photographic: dark in both themes) ──── */
+  --media-bg: #07090D;
+  --media-void: #000;         /* behind the galaxy photograph */
+  --media-glow: #1A2233;      /* light pool at the top of the AR tile */
+  --media-border: #252D3B;
+  --media-fg: #F3F5F9;        /* 18.3:1 on media-bg */
+  --media-fg-2: #B4BCCB;      /* 10.4:1 on media-bg */
+  --media-accent: #8AB4FF;    /* 9.5:1 on media-bg */
+  --media-veil: rgba(7, 9, 13, .94);        /* scrim under the caption, fades to veil-0 */
+  --media-veil-0: rgba(7, 9, 13, 0);
+  --media-dots: rgba(138, 180, 255, .55);   /* detected-plane dot grid */
+  --media-ring: rgba(243, 245, 249, .85);   /* placement reticle */
+  --media-chip: rgba(28, 34, 48, .8);
+  --media-chip-border: rgba(255, 255, 255, .14);
+
+  /* ── Overlays and state (same in both themes) ─────────── */
+  --scrim: rgba(3, 4, 6, .6);               /* behind the navigation sheet */
+  --live: #2FBF7A;                          /* "Live" dot; the label carries the state */
+  --live-halo: rgba(47, 191, 122, .2);
+  --live-halo-0: rgba(47, 191, 122, 0);
 }
 
-/* ── Dark (reference) ────────────────────────────────────── */
+/* ── Dark (reference) ──────────────────────────────────────
+ * .night: a block that is a night picture in both themes (the home hero, and the
+ * header while it sits over it) takes the dark set whatever the page's theme. */
 :root,
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+.night {
   color-scheme: dark;
   --bg: #07090D;
   --surface-1: #1C2230;   /* card            1.25:1 vs bg */

@@ -7,4 +7,12 @@
 <resources>
     <string name="demo_ar_plane_node_title">Plane Lifecycle</string>
     <string name="demo_ar_plane_node_subtitle">Watch surfaces appear and update</string>
+    <plurals name="demo_ar_plane_node_tracked">
+        <item quantity="one">%d plane tracked</item>
+        <item quantity="other">%d planes tracked</item>
+    </plurals>
+    <plurals name="demo_ar_plane_node_detected">
+        <item quantity="one">%d detected since start</item>
+        <item quantity="other">%d detected since start</item>
+    </plurals>
 </resources>

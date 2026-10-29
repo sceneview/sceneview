@@ -5,6 +5,114 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_ar_rerun_title">Rerun AR Replay</string>
-    <string name="demo_ar_rerun_subtitle">Watch a real AR session rebuild itself in 3D</string>
+    <!-- A tapped object of a scan's replay (#4485): its box, length × depth × height. -->
+    <string name="demo_ar_rerun_object_size">%1$s × %2$s × %3$s m</string>
+    <string name="demo_ar_rerun_object_size_caption">Length × depth × height</string>
+    <string name="demo_ar_rerun_object_size_description">Selected object: %1$s metres long, %2$s deep, %3$s high</string>
+    <!-- The tap found something no single box holds: a region running into its neighbours. -->
+    <string name="demo_ar_rerun_object_too_large">Too big for one box</string>
+    <string name="demo_ar_rerun_object_too_large_caption">Tap a single piece of furniture</string>
+    <string name="demo_ar_rerun_title">3D Scan</string>
+    <string name="demo_ar_rerun_subtitle">Move around a space and watch it take shape in 3D</string>
+    <!-- 3D Scan live view (#4628): it follows the phone; after a drag or pinch, this brings it back. -->
+    <string name="demo_ar_rerun_recenter">Back to your position</string>
+    <string name="demo_ar_rerun_recenter_description">Follow your position again</string>
+    <!-- The marker for the phone in the live view, read out by TalkBack. -->
+    <!-- A scan's floor plan (#4540): the room's survey and its dimensioned plan, opened from the
+         export sheet and shared as a PDF. -->
+    <string name="demo_ar_rerun_plan_export_title">Floor plan</string>
+    <string name="demo_ar_rerun_plan_export_detail">PDF or DXF · to scale, with areas and volume</string>
+    <!-- The export sheet's Floor plan row when the scan has no plan yet (#4714): why, in one line. -->
+    <string name="demo_ar_rerun_plan_export_no_walls">No plan yet: scan the walls to get one</string>
+    <string name="demo_ar_rerun_plan_export_no_depth">No plan: this scan has no depth</string>
+    <!-- The measure failed or did not end in time: the row says so instead of measuring for good. -->
+    <string name="demo_ar_rerun_plan_export_failed">Could not measure the room: open this sheet again to retry</string>
+    <string name="demo_ar_rerun_plan_about">The room measured from your scan: wall lengths, floor area, ceiling height and volume. Share it as a PDF to scale.</string>
+    <string name="demo_ar_rerun_plan_survey_title">Room survey</string>
+    <string name="demo_ar_rerun_plan_measuring">Measuring the room…</string>
+    <string name="demo_ar_rerun_plan_still_measuring">Still measuring the room…</string>
+    <!-- %1$s the scan's title, %2$s its date. -->
+    <string name="demo_ar_rerun_plan_heading">%1$s · %2$s</string>
+    <string name="demo_ar_rerun_plan_area">Floor area</string>
+    <string name="demo_ar_rerun_plan_dimensions">Length × width</string>
+    <string name="demo_ar_rerun_plan_perimeter">Perimeter</string>
+    <string name="demo_ar_rerun_plan_height">Ceiling height</string>
+    <!-- The floor area times the ceiling height. -->
+    <string name="demo_ar_rerun_plan_volume">Volume</string>
+    <!-- The rooms' table: each room's floor area and volume, then the plan's total. -->
+    <string name="demo_ar_rerun_plan_rooms">Rooms</string>
+    <!-- %1$d the room's number on the plan. -->
+    <string name="demo_ar_rerun_plan_room">Room %1$d</string>
+    <string name="demo_ar_rerun_plan_total">Total</string>
+    <string name="demo_ar_rerun_plan_span">Between facing walls</string>
+    <string name="demo_ar_rerun_plan_walls">Walls</string>
+    <!-- %1$s the wall's letter on the plan. -->
+    <string name="demo_ar_rerun_plan_wall">Wall %1$s</string>
+    <string name="demo_ar_rerun_plan_not_seen">not seen</string>
+    <string name="demo_ar_rerun_plan_not_measured">not measured</string>
+    <string name="demo_ar_rerun_plan_estimated">estimated</string>
+    <string name="demo_ar_rerun_plan_estimate_note">≈ and dashed walls are estimates: the scan did not see all of what that figure needs.</string>
+    <string name="demo_ar_rerun_plan_spread_note">± is the scatter of the scan, not an accuracy.</string>
+    <string name="demo_ar_rerun_plan_notice">Indicative plan — not a certified measurement.</string>
+    <string name="demo_ar_rerun_plan_made_with">Made with SceneView.</string>
+    <!-- %1$s the scale bar's length in metres. -->
+    <string name="demo_ar_rerun_plan_scale_bar">%1$s m</string>
+    <string name="demo_ar_rerun_plan_scale_bar_feet">%1$s ft</string>
+    <string name="demo_ar_rerun_plan_empty_title">No plan for this scan yet</string>
+    <string name="demo_ar_rerun_plan_gap_no_depth">This scan has no depth: scan the room again on a phone with a depth sensor.</string>
+    <string name="demo_ar_rerun_plan_gap_no_walls">Scan the walls from the floor up to above your head.</string>
+    <string name="demo_ar_rerun_plan_gap_wall_end">Walk along the wall to the corner.</string>
+    <string name="demo_ar_rerun_plan_gap_missing_wall">Scan the missing wall.</string>
+    <string name="demo_ar_rerun_plan_gap_oblique_wall">A wall of this room is not square to the others: the plan draws square corners only, so the area and the perimeter are estimates.</string>
+    <string name="demo_ar_rerun_plan_gap_ceiling">Raise the phone to the ceiling.</string>
+    <string name="demo_ar_rerun_plan_gap_unmeasured">The room could not be measured this time: go back and open the plan again.</string>
+    <string name="demo_ar_rerun_plan_legend_seen">Wall seen by the scan</string>
+    <string name="demo_ar_rerun_plan_legend_unseen">Not seen — estimate</string>
+    <string name="demo_ar_rerun_plan_scroll_hint">Scroll to see the whole plan, or hold the phone upright.</string>
+    <string name="demo_ar_rerun_plan_share_pdf">Share PDF</string>
+    <string name="demo_ar_rerun_plan_share_text">Share text</string>
+    <string name="demo_ar_rerun_plan_share_failed">The plan could not be written.</string>
+    <!-- %1$s the scan's title. -->
+    <string name="demo_ar_rerun_plan_pdf_file">%1$s plan.pdf</string>
+    <string name="demo_ar_rerun_plan_pdf_title">Floor plan</string>
+    <!-- %1$d the scale's denominator: 50 for 1:50. -->
+    <string name="demo_ar_rerun_plan_pdf_scale">Scale 1:%1$d when printed at 100%% (A4) · dimensions in metres</string>
+    <string name="demo_ar_rerun_plan_pdf_scale_feet">Scale 1:%1$d when printed at 100%% (A4) · dimensions in feet and inches</string>
+    <!-- %1$d the page, %2$d how many there are. -->
+    <string name="demo_ar_rerun_plan_pdf_page">Page %1$d of %2$d</string>
+    <string name="demo_ar_rerun_plan_pdf_walls_continued">Walls (continued)</string>
+    <string name="demo_ar_rerun_plan_content_description">Floor plan of the room</string>
+    <!-- Scene recognition: the name written over a box the scan recognized. -->
+    <string name="demo_ar_rerun_recognized_bed">Bed</string>
+    <string name="demo_ar_rerun_recognized_sofa">Sofa</string>
+    <string name="demo_ar_rerun_recognized_chair">Chair</string>
+    <string name="demo_ar_rerun_recognized_table">Table</string>
+    <string name="demo_ar_rerun_recognized_bench">Bench</string>
+    <string name="demo_ar_rerun_recognized_toilet">Toilet</string>
+    <string name="demo_ar_rerun_recognized_sink">Sink</string>
+    <string name="demo_ar_rerun_recognized_refrigerator">Fridge</string>
+    <string name="demo_ar_rerun_recognized_oven">Oven</string>
+    <string name="demo_ar_rerun_recognized_microwave">Microwave</string>
+    <string name="demo_ar_rerun_recognized_television">TV</string>
+    <string name="demo_ar_rerun_recognized_plant">Plant</string>
+    <string name="demo_ar_rerun_recognized_door">Door</string>
+    <string name="demo_ar_rerun_recognized_window">Window</string>
+    <!-- %1$s what was recognised (Sofa), %2$d how sure the scan is, in percent. -->
+    <string name="demo_ar_rerun_recognized_description">%1$s, recognized by the scan, %2$d%% sure</string>
+    <!-- Beside the name on a recognised part's label: how sure the scan is, in percent. -->
+    <string name="demo_ar_rerun_recognized_confidence">%1$d%%</string>
+    <!-- The furniture detector is downloaded the first time a replay recognizes a scan. %1$s is its size, e.g. "10 MB". -->
+    <string name="demo_ar_rerun_detector_downloading">Downloading the furniture detector (%1$s)…</string>
+    <string name="demo_ar_rerun_detector_downloading_caption">%1$d%% · downloaded once, then kept on this device</string>
+    <string name="demo_ar_rerun_detector_downloading_description">Downloading the furniture detector, %1$s</string>
+    <string name="demo_ar_rerun_detector_off">Furniture recognition is off</string>
+    <string name="demo_ar_rerun_detector_offline_caption">No connection to download its detector. Doors and windows are still found.</string>
+    <!-- The network works, but the server did not send the detector (an HTTP 404 or 5xx). -->
+    <string name="demo_ar_rerun_detector_unavailable_caption">Its detector is unavailable right now. Doors and windows are still found.</string>
+    <string name="demo_ar_rerun_detector_unusable_caption">Its detector could not be used. Doors and windows are still found.</string>
+    <!-- On mobile data the detector waits for the user's tap, as the HD pack does. -->
+    <string name="demo_ar_rerun_detector_metered">Furniture recognition needs its detector</string>
+    <string name="demo_ar_rerun_detector_metered_caption">On mobile data, nothing is downloaded until you ask. Doors and windows are already found.</string>
+    <!-- %1$s is the detector's size, e.g. "10 MB". -->
+    <string name="demo_ar_rerun_detector_download">Download (%1$s)</string>
 </resources>

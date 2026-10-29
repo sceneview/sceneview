@@ -3,11 +3,40 @@
 `ar-measure` in the demo app · [`ARMeasureDemo.kt`](src/main/java/io/github/sceneview/demo/demos/ARMeasureDemo.kt)
 · deep link `sceneview://demo/ar-measure`
 
-Aim the center target at each point and press **Add point**; read the distance between them in centimetres, on a label
-anchored in 3D at the midpoint of the segment. Keep adding points to build a chain, close the loop
-to get a perimeter, and read the bounding box of every point placed so far.
+Three modes behind one mode pill, built against Apple Measure, Google Measure and magicplan:
 
-**Add point** commits the displayed candidate without a second raycast. Tapping the camera never adds a point; Undo, Close loop and Clear remain in Settings.
+- **Distance** — aim the centre reticle and press **Add point**. The reticle snaps to points you
+  already placed, to the corners and edges of a detected plane, and to vertical and level guides
+  from the previous point. Each segment draws itself and carries a camera-facing length label.
+  Aim at the first point again to close the shape and read its area.
+- **Wall** — add the two ends of a wall where it meets the floor. The wall then rises with your
+  aim, a translucent surface whose top follows the phone; **Set height** locks it and reads
+  width, height and area. **Door or window** then marks an opening by two opposite corners on
+  the wall, and the readout adds what the openings take off and the net area left to cover.
+- **Room** — trace the floor corner by corner and close it on the first corner; every wall then
+  rises together to the ceiling: floor area, perimeter, ceiling height, wall area, volume. A
+  corner within 3° of square snaps to 90°, within 6° when ARCore tracks the next wall: a
+  vertical plane standing on the floor (its bottom within 30 cm), at least 1.5 m tall and 1.2 m
+  long, within 3° of square to the last wall, its foot within 20 cm of the corner. An open door
+  (a 0.93 m leaf included, even with ARCore's plane a few centimetres past each end), a
+  cupboard's side or a wall cupboard does not count: a wrong confirmation would square a corner
+  up to 6° off without a word, where a missed one only falls back to 3°. After a short wall (1 m or less) the few
+  centimetres of noise on its corners eat that 3° margin, so the corner often stays at 3°.
+  **Door or window** marks openings on any of its walls the same way, two opposite corners on
+  one wall, and the readout adds the openings and the net wall area; the floor area and the
+  volume do not change. **Plan** opens the room as 3D Scan's dimensioned plan, with its PDF and
+  text shares; with openings marked, a card under the plan names each one by the plan's wall
+  letter and reads the net wall area.
+
+**Add point** commits the displayed candidate without a second raycast; tapping the camera never
+adds a point. Undo steps back one action at a time (an opening's first corner, the last opening,
+a locked height, then the raised walls, then the closure, then a point). Share sends every figure
+as plain text. Units follow the language, as the room plan's do: feet and inches in US English,
+metres everywhere else. Settings switches them for the screen and its plan alike.
+
+In Wall and Room every point after the first is the camera ray's hit on the **floor plane of the
+first point**, not the raw hit test: aimed at the foot of a wall, the hit test lands on the wall a
+few centimetres up, the floor plane gives the corner.
 
 ## Why this demo exists
 
@@ -103,12 +132,13 @@ Each center-target candidate is resolved in a fixed preference order, which is a
    not grown a plane over.
 3. **The depth image directly**, via SceneView's `Frame.hitTestDepth(x, y)`. This is what
    makes a *cluttered* space measurable rather than just its flat floor: a sofa, a slope, the
-   lip of a workbench, where no plane will ever appear. Toggleable in the settings sheet, and
-   disabled automatically on devices that report no depth support.
+   lip of a workbench, where no plane will ever appear. Used whenever the device supports
+   ARCore depth and skipped on the others; no setting turns it off.
 4. **A raw feature point**, last resort and the noisiest of the four.
 
-The demo names the source of each point on screen ("Point 3 on depth map"), because a
-measuring tool that hides how it got its number is a measuring tool you cannot calibrate.
+Each aim keeps its source (`MeasureHitSource`), but the screen does not show it: the chip under the
+reticle names what the aim snapped to (point, corner, edge, vertical, level, square corner, wall
+foot, close) or why a tap would do nothing.
 
 ### Anchors, not positions
 
@@ -118,27 +148,20 @@ drift away from the marker the user is looking at. The demo re-reads every ancho
 every frame — but only pushes the result into Compose state when a point has actually moved
 more than 1 mm, so sub-millimetre tracking jitter does not recompose the scene at 60 Hz.
 
-### Bounding box caveat
-
-The `W · H · D` readout is axis-aligned to the **ARCore world frame**, not to the object.
-`+Y` is gravity-up, so `H` is a physically meaningful vertical extent. `X` and `Z`, though,
-are fixed at session start from wherever the device happened to be pointing — so `W` and `D`
-are extents along two arbitrary horizontal axes, not along the object's own edges. A table
-sitting at 45° to the session axes yields a box noticeably larger than the table. Start the
-session roughly square to what you are measuring.
-
-An object-aligned box would need a horizontal-plane PCA over the point set plus a convention
-for which side is "width"; that would become the thing the demo teaches, instead of AR
-measurement. It is left out on purpose.
-
 ## Testing
 
-The arithmetic behind every displayed number is a pure Kotlin file with no ARCore or Filament
-types, [`MeasureMath.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureMath.kt),
-covered by [`MeasureMathTest`](src/test/java/io/github/sceneview/demo/demos/internal/MeasureMathTest.kt):
+The arithmetic behind every displayed number is pure Kotlin with no ARCore or Filament types:
+[`MeasureMath.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureMath.kt) (distances),
+[`MeasureGeometry.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureGeometry.kt)
+(snapping, rising walls, areas, floor triangulation),
+[`MeasureBoard.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureBoard.kt) (the tap and
+undo flow), [`MeasureUnits.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureUnits.kt) and
+[`MeasureReport.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureReport.kt) (share text),
+covered by `MeasureMathTest` and `MeasureGeometryTest`; doors and windows, on a wall and on a
+room's walls, by `MeasureOpeningsTest` and `MeasureRoomOpeningsTest`:
 
 ```bash
-./gradlew :samples:android-demo:testDebugUnitTest --tests '*MeasureMathTest*'
+./gradlew :samples:android-demo:testDebugUnitTest --tests '*MeasureMathTest*' --tests '*MeasureGeometryTest*'
 ```
 
 This is not ceremony. A wrong distance formula renders a perfectly plausible centimetre label
@@ -172,6 +195,6 @@ setup.
 ## Related
 
 - `ar-placement` — automatically place a model on the first usable surface
-- `ar-depth-collider` — the depth mesh, rendered
+- `rolling-balls`, On your table mode — balls bouncing off the depth mesh
 - `ar-raw-depth-point-cloud` — what the depth sensor actually returns
 - [`AR_TESTING.md`](AR_TESTING.md) — running the AR demos on device and on the AR emulator

@@ -164,11 +164,38 @@ final class CosmosSpacetimeTests: XCTestCase {
         XCTAssertEqual(S.horizonDistances.count, 200)
         XCTAssertEqual(S.horizonDistances.last!, 6, accuracy: 1e-9)
         XCTAssertEqual(S.gridRadii.last!, 12, accuracy: 1e-4)
-        XCTAssertLessThan(S.vertexCount, Int(UInt16.max) + 1, "indices fit in 16 bits")
         // The horizon overlay repeats the rings out to the map's corners, and still fits.
         XCTAssertGreaterThanOrEqual(Double(S.gridRadii[CosmosSpacetimeFill.overlayRings - 1]), 4 * 2.0.squareRoot())
         XCTAssertLessThan(Double(S.gridRadii[CosmosSpacetimeFill.overlayRings - 2]), 4 * 2.0.squareRoot())
-        XCTAssertLessThan(S.vertexCount + CosmosSpacetimeFill.overlayCount, Int(UInt16.max) + 1)
+        // The grid's two copies reach the first ring past its fade: 32-bit indices.
+        XCTAssertGreaterThanOrEqual(Double(S.gridRadii[CosmosSpacetimeFill.gridRings - 1]), S.gridFadeEnd)
+        XCTAssertLessThan(Double(S.gridRadii[CosmosSpacetimeFill.gridRings - 2]), S.gridFadeEnd)
+        XCTAssertEqual(CosmosSpacetimeFill.totalCount,
+                       S.vertexCount + CosmosSpacetimeFill.overlayCount + 2 * CosmosSpacetimeFill.gridCount)
+    }
+
+    /// The grid is Android's (#4670): its colours, glow and line profile, value for value.
+    func testSheetGrid() {
+        XCTAssertEqual((S.baseColor * 255).rounded(.toNearestOrEven), SIMD3(0x1C, 0x26, 0x38))
+        XCTAssertEqual((S.gridColor * 255).rounded(.toNearestOrEven), SIMD3(0xA4, 0xC1, 0xFF))
+        XCTAssertEqual(S.gridGlow(0), 1.6, accuracy: 1e-12)
+        // The well's extra glow is gone by its radius; the fade is full until fadeStart.
+        XCTAssertEqual(S.gridGlow(S.gridFadeStart), 1 + S.gridWellGain * (1 - S.smoothstep(0, S.gridWellRadius, S.gridFadeStart)), accuracy: 1e-12)
+        XCTAssertLessThan(S.gridGlow(S.gridWellRadius), 1)
+        XCTAssertEqual(S.gridGlow(S.gridFadeEnd), 0, accuracy: 1e-12)
+        XCTAssertEqual(S.gridGlow(S.rim), 0, accuracy: 1e-12)
+        // A line at full legibility: core and halo on it, nothing 5 px away.
+        XCTAssertEqual(S.gridLine(pixels: 0, cellPixels: 40), 1.02, accuracy: 1e-12)
+        XCTAssertEqual(S.gridLine(pixels: 5, cellPixels: 40), 0, accuracy: 1e-12)
+        // Cells under 1 / 0.18 px are gone.
+        XCTAssertEqual(S.gridLine(pixels: 0, cellPixels: 5), 0, accuracy: 1e-12)
+        // The texture's levels: a 256-texel cell down to one texel, the last ones blank.
+        let levels = CosmosSpacetimeScene.gridLevels()
+        XCTAssertEqual(levels.map(\.width), [256, 128, 64, 32, 16, 8, 4, 2, 1])
+        // Premultiplied colour, alpha 1: the last level carries no colour.
+        XCTAssertEqual(levels[8].pixels.enumerated().filter { $0.offset % 4 != 3 }.map(\.element).max(), 0)
+        // Row 0 (v = 1) is the brightest glow; on it the line, at u = 0, outshines mid-cell.
+        XCTAssertGreaterThan(levels[0].pixels[0], levels[0].pixels[4 * 128])
     }
 
     // MARK: Horizon map

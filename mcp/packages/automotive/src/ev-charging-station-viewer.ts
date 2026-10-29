@@ -37,8 +37,8 @@ export interface EvChargingStationViewerOptions {
  *
  * The template mirrors the style of `generateCarConfigurator` and uses
  * current SceneView 3.6.x APIs: `rememberEngine`, `rememberModelLoader`,
- * `rememberModelInstance`, `ModelNode`, `LightNode` with the named `apply`
- * parameter, and (when ar=true) `ARScene`.
+ * `rememberModelInstance`, `ModelNode`, `LightNode` with its `type` and the
+ * named `apply` parameter, and (when ar=true) `ARSceneView`.
  */
 export function generateEvChargingStationViewer(
   options: EvChargingStationViewerOptions = {},
@@ -54,8 +54,10 @@ export function generateEvChargingStationViewer(
   const modelPath = `models/ev/${layout}_${connector}_station.glb`;
 
   const sceneImports = ar
-    ? `import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AnchorNode`
+    ? `import com.google.ar.core.Frame
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.node.AnchorNode
+import io.github.sceneview.rememberOnGestureListener`
     : `import io.github.sceneview.SceneView`;
 
   const sceneOpen = ar
@@ -63,20 +65,24 @@ import io.github.sceneview.ar.node.AnchorNode`
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 planeRenderer = true,
-                onTapAR = { hitResult ->
-                    if (!placed && modelInstance != null) {
-                        hitResult.createAnchor()
-                        placed = true
+                onSessionUpdated = { _, frame -> latestFrame = frame },
+                onGestureListener = rememberOnGestureListener(
+                    onSingleTapConfirmed = { e, _ ->
+                        // Hit-test the tap against the latest ARCore frame
+                        latestFrame?.hitTest(e)?.firstOrNull()?.let { hitResult ->
+                            if (!placed && modelInstance != null) {
+                                hitResult.createAnchor()
+                                placed = true
+                            }
+                        }
                     }
-                }
+                )
             ) {`
     : `SceneView(
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
-                collisionSystem = collisionSystem,
                 environment = environmentLoader.createHDREnvironment(
                     assetFileLocation = "environments/city_hdr.ktx"
                 )!!,
@@ -87,6 +93,8 @@ import io.github.sceneview.ar.node.AnchorNode`
 
   const arState = ar
     ? `    var placed by remember { mutableStateOf(false) }
+    // Latest ARCore frame — the tap handler hit-tests against it
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 `
     : "";
 
@@ -112,10 +120,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.google.android.filament.LightManager
 ${sceneImports}
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 ${environmentImport}import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
@@ -139,7 +147,6 @@ import io.github.sceneview.rememberModelLoader
 fun ${composableName}() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val collisionSystem = rememberCollisionSystem(engine)
 ${environmentLoader}
     val modelInstance = rememberModelInstance(modelLoader, "${modelPath}")
 
@@ -163,6 +170,7 @@ ${arState}
 
             // Ambient daylight key light.
             LightNode(
+                type = LightManager.Type.DIRECTIONAL,
                 apply = {
                     intensity(110_000f)
                     color(1.0f, 0.98f, 0.94f)
@@ -172,6 +180,7 @@ ${arState}
 
             // Fill light for the side panels and cables.
             LightNode(
+                type = LightManager.Type.DIRECTIONAL,
                 apply = {
                     intensity(35_000f)
                     color(0.85f, 0.9f, 1.0f)

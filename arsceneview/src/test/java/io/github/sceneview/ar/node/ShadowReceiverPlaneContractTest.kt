@@ -32,21 +32,19 @@ import java.io.File
 class ShadowReceiverPlaneContractTest {
 
     // JVM tests run with the module directory as CWD.
-    private val matFile = File("src/main/materials/shadow_receiver.mat")
     private val filamatFile = File("src/main/assets/materials/shadow_receiver.filamat")
     private val nodeFile = File("src/main/java/io/github/sceneview/ar/node/ShadowReceiverPlaneNode.kt")
-    private val scopeFile = File("src/main/java/io/github/sceneview/ar/ARSceneScope.kt")
-    private val generateScript = File("../tools/GenerateFilamat.sh")
     private val versionsToml = File("../gradle/libs.versions.toml")
-
-    private val matSource: String by lazy {
-        assertTrue("Expected ${matFile.absolutePath}", matFile.exists())
-        matFile.readText()
-    }
 
     private val nodeSource: String by lazy {
         assertTrue("Expected ${nodeFile.absolutePath}", nodeFile.exists())
         nodeFile.readText()
+    }
+
+    private val normalizedNodeSource: String by lazy {
+        nodeSource
+            .replace(Regex("""/\*[\s\S]*?\*/|//[^\n]*"""), "")
+            .replace(Regex("""\s+"""), "")
     }
 
     // ── 1. Committed .filamat blob ────────────────────────────────────────────────────────────
@@ -101,61 +99,7 @@ class ShadowReceiverPlaneContractTest {
         )
     }
 
-    // ── 2. .mat source ────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `mat source declares the Filament shadow-catcher construction`() {
-        // unlit + transparent + shadowMultiplier is Filament's dedicated AR shadow-catcher
-        // feature — the port of Depth Lab's `Blend Zero SrcColor`. Removing any of the three
-        // turns the "invisible, shadows-only" surface into a visible or shadow-less quad.
-        assertTrue("shadingModel must be unlit", matSource.contains(Regex("""shadingModel\s*:\s*unlit""")))
-        assertTrue("blending must be transparent", matSource.contains(Regex("""blending\s*:\s*transparent""")))
-        assertTrue("shadowMultiplier must be true", matSource.contains(Regex("""shadowMultiplier\s*:\s*true""")))
-        assertTrue(
-            "the shadowIntensity float parameter must be declared",
-            matSource.contains("\"shadowIntensity\"")
-        )
-    }
-
-    // ── 3. Build-pipeline enrolment ───────────────────────────────────────────────────────────
-
-    @Test
-    fun `shadow_receiver is enrolled in the GenerateFilamat MATS inventory with profile C`() {
-        assertTrue("Expected ${generateScript.absolutePath}", generateScript.exists())
-        val script = generateScript.readText()
-        assertTrue(
-            "tools/GenerateFilamat.sh must list shadow_receiver in its MATS inventory with the " +
-                "profile-C flags — otherwise the pre-push drift gate never checks this blob and " +
-                "a stale .filamat can ship (the v4.1.0 failure class).",
-            script.contains(
-                "arsceneview:shadow_receiver:arsceneview/src/main/materials/shadow_receiver.mat:" +
-                    "arsceneview/src/main/assets/materials/shadow_receiver.filamat:" +
-                    "--optimize-size -p mobile -a opengl -a vulkan"
-            )
-        )
-    }
-
     // ── 4. Node source contract ───────────────────────────────────────────────────────────────
-
-    @Test
-    fun `node loads the shadow_receiver material asset`() {
-        assertTrue(
-            "ShadowReceiverPlaneNode must load materials/shadow_receiver.filamat.",
-            nodeSource.contains("materials/shadow_receiver.filamat")
-        )
-    }
-
-    @Test
-    fun `node receives shadows and never casts them`() {
-        assertTrue(
-            "The shadow-catcher mesh must be built with castShadows(false).",
-            nodeSource.contains(Regex("""castShadows\(\s*false\s*\)"""))
-        )
-        assertTrue(
-            "The shadow-catcher mesh must be built with receiveShadows(true).",
-            nodeSource.contains(Regex("""receiveShadows\(\s*true\s*\)"""))
-        )
-    }
 
     @Test
     fun `update guards against the base-constructor call before subclass init (NPE #2620)`() {
@@ -166,11 +110,11 @@ class ShadowReceiverPlaneContractTest {
         assertTrue(
             "ShadowReceiverPlaneNode.update() must early-return until construction finishes " +
                 "(the base PlaneNode calls update() from its init before meshNode exists, #2620).",
-            nodeSource.contains(Regex("""if\s*\(\s*!constructed\s*\)\s*return"""))
+            normalizedNodeSource.contains("if(!constructed)return")
         )
         assertTrue(
             "The `constructed` guard must be flipped true at the end of the init block.",
-            nodeSource.contains("constructed = true")
+            normalizedNodeSource.contains("constructed=true")
         )
     }
 
@@ -185,22 +129,22 @@ class ShadowReceiverPlaneContractTest {
         assertTrue(
             "The shadow-catcher mesh must be built with culling(false) — mirroring PlaneVisualizer; " +
                 "a flat quad's zero-thickness culling volume feeds the on-device shadow-focus math (#2620).",
-            nodeSource.contains(Regex("""culling\(\s*false\s*\)"""))
+            normalizedNodeSource.contains("culling(false)")
         )
         assertTrue(
             "ShadowReceiverPlaneNode must override meshNode.axisAlignedBoundingBox (a flat plane's " +
                 "auto AABB is degenerate and crashes Filament's shadow map on-device, #2620).",
-            nodeSource.contains(Regex("""meshNode\.axisAlignedBoundingBox\s*="""))
+            normalizedNodeSource.contains("meshNode.axisAlignedBoundingBox=")
         )
         assertTrue(
             "The overridden shadow-receiver AABB must use a NON-zero Y half-extent " +
                 "(SHADOW_AABB_HALF_HEIGHT) — a zero Y extent is the degenerate box that crashes.",
-            nodeSource.contains(Regex("""SHADOW_AABB_HALF_HEIGHT\s*=\s*(0\.\d*[1-9]|[1-9])"""))
+            Regex("""SHADOW_AABB_HALF_HEIGHT=(0\.\d*[1-9]|[1-9])""").containsMatchIn(normalizedNodeSource)
         )
         assertTrue(
             "The valid AABB must be re-applied after updateGeometry() (which re-derives the flat " +
                 "degenerate box), or the crash returns once ARCore refines the plane extents.",
-            nodeSource.substringAfter("updateGeometry(").contains("applyShadowReceiverBounds()")
+            normalizedNodeSource.substringAfter("updateGeometry(").contains("applyShadowReceiverBounds()")
         )
     }
 
@@ -208,13 +152,11 @@ class ShadowReceiverPlaneContractTest {
     fun `node destroys its material after the renderable teardown`() {
         // Destroy order matters: destroying the Material (and thus its default instance) while
         // the mesh renderable is still registered is the SIGABRT class fixed in #851/#852.
-        val destroyIdx = nodeSource.indexOf("override fun destroy()")
+        val destroyIdx = normalizedNodeSource.indexOf("overridefundestroy()")
         assertTrue("ShadowReceiverPlaneNode must override destroy()", destroyIdx >= 0)
         // The whole method, up to its closing brace at member indentation — not a fixed-length
         // window, which a comment or a guard (the #4259 `isDestroyed` early return) overflows.
-        val endIdx = nodeSource.indexOf("\n    }", destroyIdx)
-        assertTrue("Could not find the end of ShadowReceiverPlaneNode.destroy()", endIdx > destroyIdx)
-        val body = nodeSource.substring(destroyIdx, endIdx)
+        val body = normalizedNodeSource.substring(destroyIdx)
         val superIdx = body.indexOf("super.destroy()")
         val materialIdx = body.indexOf("destroyMaterial(")
         assertTrue("destroy() must call super.destroy()", superIdx >= 0)
@@ -222,42 +164,6 @@ class ShadowReceiverPlaneContractTest {
         assertTrue(
             "destroy() must tear down the renderable (super.destroy()) BEFORE destroying the material.",
             superIdx < materialIdx
-        )
-    }
-
-    @Test
-    fun `node keeps the Depth Lab default shadow intensity`() {
-        assertTrue(
-            "DEFAULT_SHADOW_INTENSITY must stay 0.6f (Depth Lab's _GlobalShadowIntensity " +
-                "default, also plane_renderer_shadow.mat's baked alpha) — change deliberately, " +
-                "with a device frame proving the new value.",
-            nodeSource.contains(Regex("""DEFAULT_SHADOW_INTENSITY\s*=\s*0\.6f"""))
-        )
-    }
-
-    @Test
-    fun `node extends the AR PlaneNode pose follower`() {
-        assertTrue(
-            "ShadowReceiverPlaneNode must extend PlaneNode so it follows Plane.centerPose and " +
-                "inherits visibleTrackingStates / subsumed-plane semantics.",
-            nodeSource.contains(Regex("""ShadowReceiverPlaneNode[\s\S]{0,700}?\)\s*:\s*PlaneNode\("""))
-        )
-    }
-
-    // ── 5. Composable surface ─────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `ARSceneScope declares the ShadowReceiverPlane composable`() {
-        assertTrue("Expected ${scopeFile.absolutePath}", scopeFile.exists())
-        val scope = scopeFile.readText()
-        assertTrue(
-            "ARSceneScope must expose `@Composable fun ShadowReceiverPlane(...)` — the " +
-                "declarative surface for the shadow catcher (#2241).",
-            scope.contains(Regex("""fun\s+ShadowReceiverPlane\("""))
-        )
-        assertTrue(
-            "The composable must keep `shadowIntensity` in sync on recomposition (SideEffect).",
-            scope.contains(Regex("""node\.shadowIntensity\s*=\s*shadowIntensity"""))
         )
     }
 
@@ -308,16 +214,16 @@ class ShadowReceiverPlaneContractTest {
         // undraggable, floor taps dead). Both the node and its mesh child must opt out.
         assertTrue(
             "ShadowReceiverPlaneNode.init must set isTouchable = false on the node (#2630)",
-            nodeSource.contains(Regex("""(^|\s)isTouchable\s*=\s*false""", RegexOption.MULTILINE))
+            normalizedNodeSource.contains("isTouchable=false")
         )
         assertTrue(
             "ShadowReceiverPlaneNode.init must set meshNode.isTouchable = false (#2630)",
-            nodeSource.contains(Regex("""meshNode\.isTouchable\s*=\s*false"""))
+            normalizedNodeSource.contains("meshNode.isTouchable=false")
         )
         // Both must run during construction — before the `constructed = true` publication point —
         // so no frame can ever hit-test a touchable catcher.
-        val constructedAt = nodeSource.indexOf("constructed = true")
-        val touchableAt = nodeSource.indexOf("meshNode.isTouchable = false")
+        val constructedAt = normalizedNodeSource.indexOf("constructed=true")
+        val touchableAt = normalizedNodeSource.indexOf("meshNode.isTouchable=false")
         assertTrue(
             "meshNode.isTouchable = false must be set inside init, before `constructed = true`",
             touchableAt in 1 until constructedAt

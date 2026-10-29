@@ -38,10 +38,11 @@ collation script can group it:
 ```
 
 Recognised categories (case-insensitive): `Added`, `Changed`, `Fixed`,
-`Removed`, `Tests`, `Docs`, `Performance` (#1844). If the tag line is omitted the
-entry is filed under `Changed`. Use `Performance` for pure perf wins (no behaviour
-change, no bug fix) — that's the distinction between this bucket and `Fixed` or
-`Changed`.
+`Security`, `Removed`, `Tests`, `Docs`, `Performance` (#1844). If the tag line is
+omitted the entry is filed under `Changed`. Use `Performance` for pure perf wins (no
+behaviour change, no bug fix) — that's the distinction between this bucket and
+`Fixed` or `Changed`. Use `Security` for a fix to a vulnerability, including a
+dependency bump that patches a published advisory.
 
 **The Android demo app's "What's new" sheet shows only entries written for its
 users** (#3992): a headline that opens with `Demo app:` (or `Android demo`,

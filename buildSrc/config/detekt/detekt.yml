@@ -6,36 +6,27 @@
 # threshold -> allowedComplexity / allowedLines, UnusedPrivateMember split into
 # UnusedPrivateClass / UnusedPrivateFunction / UnusedPrivateProperty).
 # See #1740.
+#
+# WHAT DETEKT IS FOR HERE
+# -----------------------
+# Detekt runs to catch likely bugs — the `potential-bugs`, `coroutines`,
+# `exceptions`, `empty-blocks` and `performance` rule sets, plus the dead-code
+# rules in `style` (unused private members, unused imports). The 30-day audit
+# that ended on 2026-10-19 counted ~40 red branches and zero real catches, all
+# on formatting, naming and size/complexity thresholds (MaxLineLength alone 19
+# times). Those rules are off: they cost a CI round-trip and caught nothing.
+# Do not re-enable one without a bug it would have caught.
 
 complexity:
-  LongParameterList:
-    # Compose functions and Filament builders legitimately have many parameters
-    allowedFunctionParameters: 12
-    allowedConstructorParameters: 12
-    ignoreAnnotated:
-      - 'Composable'
-  TooManyFunctions:
-    # Node types and scope objects expose many public functions by design
-    allowedFunctionsPerFile: 25
-    allowedFunctionsPerClass: 25
-    allowedFunctionsPerInterface: 25
-    allowedFunctionsPerObject: 25
-    allowedFunctionsPerEnum: 25
-  LargeClass:
-    allowedLines: 800
-  CyclomaticComplexMethod:
-    allowedComplexity: 25
-    # AR scene composables handle many states (tracking, failure, UI) in one function by design.
-    ignoreAnnotated:
-      - 'Composable'
-  LongMethod:
-    # Compose scene-root composables (SceneView, ARSceneView) legitimately
-    # exceed the 60-line Java-style default — they expose dozens of named
-    # parameters with KDoc and orchestrate the scene lifecycle in a single
-    # builder-pattern function. Exempt @Composable functions so SDK
-    # consumers writing their own scene roots aren't blocked by detekt either.
-    ignoreAnnotated:
-      - 'Composable'
+  # Size and complexity thresholds (LongMethod, CyclomaticComplexMethod,
+  # LongParameterList, TooManyFunctions, LargeClass, ComplexCondition,
+  # NestedBlockDepth, ...) — none of them is a bug signal.
+  active: false
+
+naming:
+  # Naming conventions (MatchingDeclarationName, TopLevelPropertyNaming,
+  # VariableNaming, FunctionNaming, ...) — pure style.
+  active: false
 
 style:
   MagicNumber:
@@ -49,23 +40,29 @@ style:
   UnusedPrivateProperty:
     active: true
     allowedNames: '_.*|serialVersionUID|ignored|expected'
+  # Pure formatting / shape rules — off (see the header).
   MaxLineLength:
-    maxLineLength: 120
-    excludeCommentStatements: true
-  WildcardImport:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  MayBeConstant:
     active: false
   ReturnCount:
-    max: 5
+    active: false
+  ThrowsCount:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  ProtectedMemberInFinalClass:
+    active: false
+  UtilityClassWithPublicConstructor:
+    active: false
+  WildcardImport:
+    active: false
   ForbiddenComment:
     active: false
-
-naming:
-  FunctionNaming:
-    # Compose functions are PascalCase by convention
-    ignoreAnnotated:
-      - 'Composable'
-  TopLevelPropertyNaming:
-    constantPattern: '[A-Z][A-Za-z0-9_]*'
 
 potential-bugs:
   HasPlatformType:

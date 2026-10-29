@@ -14,23 +14,32 @@
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:arsceneview:4.52.0")
+    implementation("io.github.sceneview:arsceneview:4.63.0")
 }
 ```
 
 ### AndroidManifest permissions
 
+`arsceneview` already declares the `CAMERA` permission and marks ARCore as optional. An app
+that also works without AR only declares the camera features as optional:
+`<uses-feature android:name="android.hardware.camera.ar" android:required="false" />` and
+`<uses-feature android:name="android.hardware.camera" android:required="false" />`.
+This codelab builds an AR Required app: it overrides the library's value with
+`tools:replace`, without which the manifest merger fails.
+
 ```xml
-<uses-permission android:name="android.permission.CAMERA" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-<uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
 
-<application>
-    <!-- Required for ARCore -->
-    <meta-data
-        android:name="com.google.ar.core"
-        android:value="required" />
-</application>
+    <application>
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required"
+            tools:replace="android:value" />
+    </application>
+</manifest>
 ```
 
 ### Runtime camera permission

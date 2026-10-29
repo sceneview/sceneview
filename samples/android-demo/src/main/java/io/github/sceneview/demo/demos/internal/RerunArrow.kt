@@ -7,8 +7,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /*
- * A minimal Arrow IPC stream encoder for `.rrd` chunks: the handful of column types Rerun
- * components use, no nulls except where a struct needs them, no dictionaries, no compression.
+ * A minimal Arrow IPC stream encoder for `.rrd` chunks and the footer's chunk index: the handful
+ * of column types Rerun components and manifests use, nulls only where a struct or an index
+ * column needs them, no dictionaries, no compression.
  * Spec: https://arrow.apache.org/docs/format/Columnar.html (IPC streaming format, metadata
  * version V5, flatbuffers `Schema.fbs` / `Message.fbs`). The iOS demo's `RerunRRDArrow.swift`.
  */
@@ -17,7 +18,16 @@ import java.nio.ByteOrder
 internal sealed class RerunArrowType {
     data object UInt8 : RerunArrowType()
     data object UInt32 : RerunArrowType()
+
+    /** `uint64`: the footer's row counts, byte offsets and byte sizes. */
+    data object UInt64 : RerunArrowType()
     data object Float32 : RerunArrowType()
+
+    /** `bool`, bit-packed: the footer's "is static" flags. */
+    data object Bool : RerunArrowType()
+
+    /** `int64`: Rerun's type for a sequence timeline (a blueprint's `blueprint` index). */
+    data object Int64 : RerunArrowType()
 
     /** `duration[ns]`: Rerun's type for a duration timeline. */
     data object DurationNanoseconds : RerunArrowType()
@@ -66,6 +76,17 @@ internal class RerunArrowArray(
         fun int64s(values: LongArray) =
             RerunArrowArray(values.size, listOf(NONE, le(values.size * 8) { b -> values.forEach { b.putLong(it) } }))
 
+        /** `int64` (or `duration`) values where `null` is an absent slot. */
+        fun nullableInt64s(values: List<Long?>): RerunArrowArray {
+            val nulls = values.count { it == null }
+            val validity = if (nulls == 0) NONE else bits(values.size) { values[it] != null }
+            val data = le(values.size * 8) { b -> values.forEach { b.putLong(it ?: 0L) } }
+            return RerunArrowArray(values.size, listOf(validity, data), nullCount = nulls)
+        }
+
+        /** `bool` values, one bit each, least significant bit first. */
+        fun bools(values: List<Boolean>) = RerunArrowArray(values.size, listOf(NONE, bits(values.size) { values[it] }))
+
         /** A primitive array where every slot is null. */
         fun allNull(count: Int, byteWidth: Int) =
             RerunArrowArray(count, listOf(ByteArray((count + 7) / 8), ByteArray(count * byteWidth)), nullCount = count)
@@ -99,6 +120,14 @@ internal class RerunArrowArray(
         fun structure(length: Int, children: List<RerunArrowArray>) = RerunArrowArray(length, listOf(NONE), children)
 
         private fun int32s(values: IntArray) = le(values.size * 4) { b -> values.forEach { b.putInt(it) } }
+
+        private inline fun bits(count: Int, set: (Int) -> Boolean): ByteArray {
+            val packed = ByteArray((count + 7) / 8)
+            for (i in 0 until count) {
+                if (set(i)) packed[i / 8] = (packed[i / 8].toInt() or (1 shl (i % 8))).toByte()
+            }
+            return packed
+        }
 
         private inline fun le(size: Int, fill: (ByteBuffer) -> Unit): ByteArray {
             val buffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
@@ -146,13 +175,12 @@ internal object RerunArrowIpc {
         }
         columns.forEach(::flatten)
 
-        val schema = Node.Table(
-            mapOf(
-                0 to Slot.I16(0), // Endianness.Little
-                1 to Slot.Child(Node.Vector(fields.map(::fieldTable))),
-                2 to Slot.Child(Node.Vector(keyValues(metadata))),
-            ),
+        val schemaSlots = linkedMapOf<Int, Slot>(
+            0 to Slot.I16(0), // Endianness.Little
+            1 to Slot.Child(Node.Vector(fields.map(::fieldTable))),
         )
+        if (metadata.isNotEmpty()) schemaSlots[2] = Slot.Child(Node.Vector(keyValues(metadata)))
+        val schema = Node.Table(schemaSlots)
         val recordBatch = Node.Table(
             mapOf(
                 0 to Slot.I64(rowCount.toLong()),
@@ -203,9 +231,12 @@ internal object RerunArrowIpc {
     private fun typeDescription(type: RerunArrowType): Triple<Int, Node, List<RerunArrowField>> = when (type) {
         RerunArrowType.UInt8 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(8), 1 to Slot.Bool(false))), emptyList())
         RerunArrowType.UInt32 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(32), 1 to Slot.Bool(false))), emptyList())
+        RerunArrowType.UInt64 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(64), 1 to Slot.Bool(false))), emptyList())
+        RerunArrowType.Int64 -> Triple(2, Node.Table(mapOf(0 to Slot.I32(64), 1 to Slot.Bool(true))), emptyList())
         RerunArrowType.Float32 -> Triple(3, Node.Table(mapOf(0 to Slot.I16(1))), emptyList()) // SINGLE
         RerunArrowType.DurationNanoseconds -> Triple(18, Node.Table(mapOf(0 to Slot.I16(3))), emptyList())
         RerunArrowType.Utf8 -> Triple(5, Node.Table(emptyMap()), emptyList())
+        RerunArrowType.Bool -> Triple(6, Node.Table(emptyMap()), emptyList())
         is RerunArrowType.FixedSizeBinary -> Triple(15, Node.Table(mapOf(0 to Slot.I32(type.width))), emptyList())
         is RerunArrowType.ListOf -> Triple(12, Node.Table(emptyMap()), listOf(type.item))
         is RerunArrowType.FixedSizeList -> Triple(16, Node.Table(mapOf(0 to Slot.I32(type.size))), listOf(type.item))

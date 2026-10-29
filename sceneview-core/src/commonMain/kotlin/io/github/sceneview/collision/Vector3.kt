@@ -61,32 +61,8 @@ class Vector3 {
         set(0f, 0f, 0f)
     }
 
-    internal fun setOne() {
-        set(1f, 1f, 1f)
-    }
-
-    internal fun setForward() {
-        set(0f, 0f, -1f)
-    }
-
-    internal fun setBack() {
-        set(0f, 0f, 1f)
-    }
-
     internal fun setUp() {
         set(0f, 1f, 0f)
-    }
-
-    internal fun setDown() {
-        set(0f, -1f, 0f)
-    }
-
-    internal fun setRight() {
-        set(1f, 0f, 0f)
-    }
-
-    internal fun setLeft() {
-        set(-1f, 0f, 0f)
     }
 
     /** Returns the squared length (magnitude) of this vector. Cheaper than [length] — avoids the square root. */

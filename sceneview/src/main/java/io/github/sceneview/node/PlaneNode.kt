@@ -105,5 +105,7 @@ open class PlaneNode private constructor(
         center: Position = geometry.center,
         normal: Direction = geometry.normal,
         uvScale: UvScale = geometry.uvScale,
-    ) = setGeometry(geometry.update(engine, size, center, normal, uvScale))
+    ) {
+        geometry.update(engine, size, center, normal, uvScale)
+    }
 }

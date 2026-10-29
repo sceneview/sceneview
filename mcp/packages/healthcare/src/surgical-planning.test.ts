@@ -115,9 +115,11 @@ describe("generateSurgicalPlanning", () => {
     expect(lightCount).toBeGreaterThanOrEqual(3);
   });
 
-  it("includes LightNode with named apply parameter", () => {
+  it("includes LightNode with its type and named apply parameter", () => {
     const code = generateSurgicalPlanning({ surgeryType: "orthopedic" });
     expect(code).toContain("apply = {");
+    expect(code).toContain("type = LightManager.Type.");
+    expect(code).toContain("import com.google.android.filament.LightManager");
   });
 
   it("handles null modelInstance", () => {

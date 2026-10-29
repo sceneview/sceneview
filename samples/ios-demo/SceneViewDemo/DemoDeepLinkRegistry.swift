@@ -97,9 +97,11 @@ enum DemoDeepLinkRegistry {
         // old deep link alive. `physics` (RealityKit cubes) became the Rolling
         // Balls tray, like Android's `DeepLinkRouter` alias.
         "physics": "rolling-balls",
-        // `reflection-probes` became the Lighting Lab, like Android's
-        // `DeepLinkRouter` alias (#3496).
-        "reflection-probes": "lighting-lab",
+        // `reflection-probes` became the Lighting Lab (#3496), and #4603 folded
+        // the lab into Lighting — its reflections sit under every rig — so both
+        // ids land there, on the default rig, like Android's `DeepLinkRouter`.
+        "lighting-lab": "lighting",
+        "reflection-probes": "lighting",
 
         // Samples audit, step 0 (48 → 34 cards): every absorbed iOS card
         // keeps its link and opens the card that absorbed it, on the mode

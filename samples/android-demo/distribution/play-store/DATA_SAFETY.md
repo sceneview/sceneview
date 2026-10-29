@@ -46,13 +46,14 @@ and crash reports, the OS permission or the demo itself for the rest).
 | Personal info > User IDs | Optional | Analytics | ARCore's own user ID while AR runs (the app has no accounts) |
 | Photos and videos > Videos | Optional | App functionality | Camera data ARCore sends to host/resolve Cloud Anchors and for Geospatial localization; marked for automatic deletion |
 | App activity > App interactions | Optional | Analytics | Firebase Analytics events |
+| App activity > In-app search history | Optional | Analytics | The `search` event's `search_term`: lowercased, cut to 50 characters, emails, links and long or phone-like numbers redacted on the device |
 | App info and performance > Crash logs | Optional | Analytics, App functionality | Crashlytics |
 | App info and performance > Diagnostics | Optional | Analytics, App functionality | Crashlytics, ARCore |
 | Device or other IDs | Required | App functionality, Analytics, Developer communications | Firebase app instance ID, installation ID, FCM token |
 
 **Not collected:** name, email, phone, address, other personal info, financial info,
 health, messages, photos, audio, files, calendar, contacts, web browsing, installed apps,
-search history, other user-generated content. **No advertising ID**: the merged manifest
+other user-generated content. **No advertising ID**: the merged manifest
 must not carry `com.google.android.gms.permission.AD_ID` (firebase-analytics adds it;
 remove it with `tools:node="remove"`) and must set
 `google_analytics_adid_collection_enabled=false`, so the *Advertising ID* declaration in

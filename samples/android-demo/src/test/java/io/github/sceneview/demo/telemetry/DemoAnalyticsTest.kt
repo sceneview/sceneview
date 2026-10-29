@@ -22,6 +22,14 @@ class DemoAnalyticsTest {
         override fun setUserProperty(property: UserProperty, value: String) {
             properties[property] = value
         }
+        val crashKeys = mutableMapOf<CrashKey, String>()
+        override fun setCrashKey(key: CrashKey, value: String) {
+            crashKeys[key] = value
+        }
+        val nonFatals = mutableListOf<Throwable>()
+        override fun recordNonFatal(throwable: Throwable) {
+            nonFatals += throwable
+        }
         override fun setCollectionEnabled(enabled: Boolean) {
             collection += enabled
         }
@@ -46,6 +54,26 @@ class DemoAnalyticsTest {
     }
 
     @Test
+    fun `crash keys follow the same switch, and are cut to a line`() {
+        analytics.setCrashKey(CrashKey.GlRenderer, "Google SwiftShader")
+        analytics.setCrashKey(CrashKey.GlVersion, "v".repeat(900))
+        enabled = false
+        analytics.setCrashKey(CrashKey.Abi, "x86_64")
+        assertEquals("Google SwiftShader", recorder.crashKeys[CrashKey.GlRenderer])
+        assertEquals(200, recorder.crashKeys.getValue(CrashKey.GlVersion).length)
+        assertEquals(setOf(CrashKey.GlRenderer, CrashKey.GlVersion), recorder.crashKeys.keys)
+    }
+
+    @Test
+    fun `problems the app survived follow the same switch as crash reports`() {
+        val kept = IllegalStateException("kept")
+        analytics.recordNonFatal(kept)
+        enabled = false
+        analytics.recordNonFatal(IllegalStateException("dropped"))
+        assertEquals(listOf<Throwable>(kept), recorder.nonFatals)
+    }
+
+    @Test
     fun `the opt-out itself always reaches the sink`() {
         enabled = false
         analytics.setCollectionEnabled(false)
@@ -60,12 +88,16 @@ class DemoAnalyticsTest {
             object : DemoAnalytics {
                 override fun log(event: AnalyticsEvent) = error("boom")
                 override fun setUserProperty(property: UserProperty, value: String) = error("boom")
+                override fun setCrashKey(key: CrashKey, value: String) = error("boom")
+                override fun recordNonFatal(throwable: Throwable) = error("boom")
                 override fun setCollectionEnabled(enabled: Boolean) = error("boom")
                 override fun resetData() = error("boom")
             },
         ) { true }
         throwing.log(AnalyticsEvent.PushPromptShown)
         throwing.setUserProperty(UserProperty.NotifEnabled, "true")
+        throwing.setCrashKey(CrashKey.HeroSurface, "still")
+        throwing.recordNonFatal(IllegalStateException("from the AR frame loop"))
         throwing.setCollectionEnabled(false)
         throwing.resetData()
     }
@@ -123,6 +155,8 @@ class DemoAnalyticsTest {
                 ("push_opened" to mapOf("campaign" to "launch", "sample_id" to "cosmos")),
             AnalyticsEvent.SettingsChanged("analytics", "false") to
                 ("settings_changed" to mapOf("key" to "analytics", "value" to "false")),
+            AnalyticsEvent.Search("damaged helmet", SearchSurface.Models, "2-5") to
+                ("search" to mapOf("search_term" to "damaged helmet", "surface" to "models", "result_bucket" to "2-5")),
         )
         cases.forEach { (event, expected) ->
             assertEquals(expected.first, event.name)

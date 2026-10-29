@@ -7,8 +7,6 @@
 <resources>
     <string name="demo_splat_preview_title">Real-World Scan</string>
     <string name="demo_splat_preview_subtitle">A tree stump and its raccoons, scanned with a phone</string>
-    <string name="demo_splat_preview">Real-World Scan</string>
-    <string name="demo_splat_preview_desc">Open a real phone capture: three raccoons on a tree stump, rebuilt from 233 808 coloured points</string>
     <string name="demo_splat_preview_loading">Opening the scan…</string>
 
     <!-- Controls sheet -->

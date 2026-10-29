@@ -29,12 +29,19 @@ curl -X POST http://localhost:8787/v1/events \
   -H "Content-Type: application/json" \
   -d '{"timestamp":"2026-04-12T10:00:00Z","event":"init","client":"test","clientVersion":"1.0","mcpVersion":"4.0.0-rc.1","tier":"free"}'
 
-# 4. Check stats
-curl http://localhost:8787/v1/stats
+# 4. Check stats (needs STATS_TOKEN in .dev.vars, see below)
+curl -H "Authorization: Bearer dev-token" http://localhost:8787/v1/stats
 ```
 
 The `[dev]` section in `wrangler.toml` pins the local server to port 8787 over HTTP.
-No `STATS_TOKEN` is needed locally unless you explicitly set one via `wrangler secret put`.
+The read routes fail closed, locally too: without `STATS_TOKEN` they refuse every
+request with `401`.
+For local work, put a throwaway value in `.dev.vars` (gitignored), which `wrangler dev`
+loads automatically:
+
+```bash
+echo 'STATS_TOKEN=dev-token' > .dev.vars
+```
 
 ---
 
@@ -69,7 +76,11 @@ This creates the `events` table + indexes.
 
 ## Step 4 — Deploy
 
+Set `STATS_TOKEN` first (see [Required secret — STATS_TOKEN](#required-secret--stats_token)):
+without it the read routes refuse every request with `401`. Ingestion works either way.
+
 ```bash
+wrangler secret put STATS_TOKEN
 wrangler deploy
 ```
 
@@ -104,29 +115,36 @@ curl -X POST https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/events \
   -d '{"timestamp":"2026-04-12T10:00:00Z","event":"init","client":"test","clientVersion":"1.0","mcpVersion":"4.0.0-rc.1","tier":"free"}'
 
 # Check stats
-curl https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/stats
+curl -H "Authorization: Bearer $STATS_TOKEN" \
+  https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/stats
 ```
 
-## Optional secret — STATS_TOKEN
+## Required secret — STATS_TOKEN
 
-To protect `GET /v1/stats` with a bearer token:
+Every read route — `/v1/stats`, `/v1/timeseries`, `/v1/top-clients`, `/v1/funnel` and
+`/v1/export` — requires a bearer token:
 
 ```bash
 wrangler secret put STATS_TOKEN
 ```
 
-When set, all requests to `/v1/stats` must include the header:
+Requests must include the header:
 
 ```
 Authorization: Bearer <your-token>
 ```
 
-Requests without a valid token receive `401 {"error":"unauthorized"}`.
+- Missing or wrong token → `401 {"error":"unauthorized"}` with `WWW-Authenticate: Bearer`.
+  The token is compared in constant time. The scheme name is case-insensitive
+  (`bearer <token>` works too).
+- `STATS_TOKEN` not configured → the same `401` for every request, with or without a
+  token. The read routes fail closed, and a caller cannot tell a missing secret from a
+  wrong token. The worker logs `STATS_TOKEN is not configured` once per isolate, not
+  once per request, so callers cannot flood the logs (`wrangler tail` shows it).
 
-If `STATS_TOKEN` is not configured, the endpoint remains open — useful for local dev
-(`wrangler dev`) without any extra setup.
-
-**In production, always set STATS_TOKEN** to prevent public access to usage statistics.
+The read routes send no CORS headers, so a web page on another origin cannot read them
+from a visitor's browser. Only the ingestion routes (`/v1/events`, `/v1/batch`) and
+`/health` answer with `Access-Control-Allow-Origin: *`. Ingestion never needs the token.
 
 ## Endpoints
 
@@ -135,7 +153,29 @@ If `STATS_TOKEN` is not configured, the endpoint remains open — useful for loc
 | GET | `/health` | Health check |
 | POST | `/v1/events` | Single event ingestion |
 | POST | `/v1/batch` | Batch ingestion (up to 50 events) |
-| GET | `/v1/stats` | Last 24h aggregated stats |
+| GET | `/v1/stats` | Aggregated stats (bearer token) |
+| GET | `/v1/timeseries` | Daily series (bearer token) |
+| GET | `/v1/top-clients` | Most active clients (bearer token) |
+| GET | `/v1/funnel` | Usage funnel (bearer token) |
+| GET | `/v1/export` | Event CSV without `install_id` (bearer token) — see below |
+
+### `/v1/export`
+
+`GET /v1/export?days=7&event_type=tool` returns up to 10,000 events from the last 1–30 days
+(default 7) as CSV, with the columns
+`timestamp,event,client,client_ver,mcp_ver,tier,tool,bot_likelihood`.
+
+`client`, `tool` and the version strings come from the public ingestion routes. A field
+that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading
+apostrophe (`'=1+1`), so a spreadsheet shows it as text instead of running it as a
+formula. Strip the apostrophe if you load the CSV into something other than a spreadsheet.
+
+The export does not include `install_id`, raw or hashed. Its rows are close to unique
+(millisecond timestamp, client, versions, tool), so two exports with overlapping windows
+share rows: a per-install value in them, even a hash salted per export, could be chained
+from one file to the next. Counts of distinct installs come from the aggregate routes,
+which compute them inside the worker: `unique_installs` in `/v1/stats` and
+`/v1/top-clients`, and the stages of `/v1/funnel`.
 
 ## Rate limits
 
@@ -145,21 +185,12 @@ If `STATS_TOKEN` is not configured, the endpoint remains open — useful for loc
 
 The `TELEMETRY_ENDPOINT` in `mcp/src/telemetry.ts` is already set to `https://sceneview-telemetry.mcp-tools-lab.workers.dev/v1/events`.
 
-## Dashboard
+## Dashboards
 
-A standalone HTML dashboard (`dashboard.html`) provides a visual stats overview.
+No dashboard ships in this repository. A dashboard, a Grafana JSON datasource or any
+other client of the read routes must:
 
-**To use:**
-1. Open `dashboard.html` in your browser (file:// protocol works locally)
-2. On first load, the dashboard prompts for:
-   - **API base URL** (e.g., `https://sceneview-telemetry.mcp-tools-lab.workers.dev`)
-   - **Bearer token** (your `STATS_TOKEN` value, if set)
-3. Credentials are stored in the browser's localStorage and persisted between sessions
-4. The dashboard auto-refreshes every 60 seconds and works offline once loaded
-
-**Features:**
-- 24-hour event totals (inits vs tool calls vs unique clients)
-- Top 20 tools by call count
-- MCP versions in use
-- Light/dark mode toggle
-- Local-first design (no analytics on the dashboard itself)
+1. send `Authorization: Bearer <STATS_TOKEN>` on every request;
+2. fetch server-side, or through a same-origin proxy. The read routes send no CORS
+   headers, so a page opened from `file://` or from another origin cannot call them from
+   the browser.

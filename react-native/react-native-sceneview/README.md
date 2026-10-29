@@ -63,7 +63,7 @@ pod 'SceneViewSwift',
     :podspec => 'https://raw.githubusercontent.com/sceneview/sceneview/main/SceneViewSwift.podspec'
 
 # Released consumers — pinned to a tag (v4.28.0 or newer)
-pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git', :tag => 'v4.39.0'
+pod 'SceneViewSwift', :git => 'https://github.com/sceneview/sceneview.git', :tag => 'v4.60.0'
 
 # In-repo consumers — resolve from a local checkout
 pod 'SceneViewSwift', :path => '<repo-root>'

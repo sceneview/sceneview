@@ -133,12 +133,13 @@
 		</dict>
 		<dict>
 			<!--
-				A room recorded with the Rerun demo: the app's own scan file, and the
-				Rerun recording it exports. Both open in the Rerun demo, which keeps
-				them as one of "Your sessions" (`RerunInbox`), not in the 3D viewer.
+				A 3D scan of a room recorded with the Rerun demo: the app's own scan
+				file, and the Rerun recording it exports. Both open in the Rerun demo,
+				which keeps them as one of "Your sessions" (`RerunInbox`), not in the
+				3D viewer.
 			-->
 			<key>CFBundleTypeName</key>
-			<string>Room Scan</string>
+			<string>3D Scan</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -282,14 +283,14 @@
 		</dict>
 		<dict>
 			<!--
-				SceneView's room scan (`RerunScanFile`): a stored zip of the recorder's
+				SceneView's 3D scan (`RerunScanFile`): a stored zip of the recorder's
 				three files. Conforms to `public.data`, not `public.zip-archive`, so
 				Files opens it in the app instead of unpacking it.
 			-->
 			<key>UTTypeIdentifier</key>
 			<string>io.github.sceneview.scan</string>
 			<key>UTTypeDescription</key>
-			<string>SceneView Room Scan</string>
+			<string>SceneView 3D Scan</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

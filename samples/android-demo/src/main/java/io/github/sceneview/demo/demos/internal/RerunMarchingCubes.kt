@@ -73,8 +73,15 @@ object RerunMarchingCubes {
     /** Pieces smaller than this are sensor noise, floaters, not the room. */
     const val MIN_COMPONENT_TRIANGLES = 500
 
-    /** 1.5 M triangles: ~54 MB of vertices and indices, the most a phone renders at ease. */
-    const val MAX_TRIANGLES = 1_500_000
+    /**
+     * 1 M triangles: ~26 MB of vertices and indices, held three times while the result opens (the
+     * mesh, its `.glb`, the renderer's copy) next to the TSDF's 48 MB — what a Pixel 4a-class
+     * phone's heap takes. A full 48 MB TSDF meshes to about this much, so a room is rarely cut.
+     */
+    const val MAX_TRIANGLES = 1_000_000
+
+    /** The coarsest cell [extractWhole] meshes at, in voxels: 4 × 2.5 cm, a room's 10 cm. */
+    const val MAX_STRIDE = 4
 
     /** A voxel no colour reached. */
     const val NO_COLOR = 0xFF9E9E9E.toInt()
@@ -82,7 +89,10 @@ object RerunMarchingCubes {
     /**
      * The surface of [tsdf]. Cells with a corner of weight under [minWeight] are skipped (never
      * observed or observed too little). Connected pieces of fewer than [minComponentTriangles]
-     * triangles are dropped; extraction stops at [maxTriangles]. [progress] gets the share done.
+     * triangles are dropped; extraction stops at [maxTriangles]. [stride] meshes cells of that
+     * many voxels a side (1, 2 or 4, a divisor of the block), sampling the field every [stride]
+     * voxels: about a quarter of the triangles per doubling, the same surface. [progress] gets
+     * the share done.
      */
     @Suppress("CyclomaticComplexMethod", "LongMethod", "NestedBlockDepth", "LoopWithTooManyJumpStatements")
     fun extract(
@@ -90,8 +100,10 @@ object RerunMarchingCubes {
         minWeight: Float = DEFAULT_MIN_WEIGHT,
         minComponentTriangles: Int = MIN_COMPONENT_TRIANGLES,
         maxTriangles: Int = MAX_TRIANGLES,
+        stride: Int = 1,
         progress: (Float) -> Unit = {},
     ): MeshExtraction {
+        require(stride > 0 && RerunTsdf.BLOCK % stride == 0) { "stride $stride" }
         val out = Builder()
         val cache = BlockCache(tsdf)
         val coord = IntArray(3)
@@ -106,14 +118,14 @@ object RerunMarchingCubes {
             if (block % PROGRESS_BLOCKS == 0) progress(PROGRESS_MC * block / blocks.coerceAtLeast(1))
             tsdf.blockCoord(block, coord)
             cache.load(coord[0], coord[1], coord[2])
-            for (lz in 0 until RerunTsdf.BLOCK) {
-                for (ly in 0 until RerunTsdf.BLOCK) {
-                    cells@ for (lx in 0 until RerunTsdf.BLOCK) {
+            for (lz in 0 until RerunTsdf.BLOCK step stride) {
+                for (ly in 0 until RerunTsdf.BLOCK step stride) {
+                    cells@ for (lx in 0 until RerunTsdf.BLOCK step stride) {
                         var cube = 0
                         for (c in 0 until 8) {
-                            val x = lx + CORNER_X[c]
-                            val y = ly + CORNER_Y[c]
-                            val z = lz + CORNER_Z[c]
+                            val x = lx + CORNER_X[c] * stride
+                            val y = ly + CORNER_Y[c] * stride
+                            val z = lz + CORNER_Z[c] * stride
                             if (cache.weight(x, y, z) < minWeight) continue@cells
                             val v = cache.sdf(x, y, z)
                             value[c] = v
@@ -155,6 +167,35 @@ object RerunMarchingCubes {
         val (mesh, dropped) = out.build(minComponentTriangles)
         progress(1f)
         return MeshExtraction(mesh, raw, dropped, capped)
+    }
+
+    /**
+     * [extract], whole (#4719). Blocks are meshed in the order they were scanned, so when
+     * [maxTriangles] cut an extraction short it was the walls scanned last that went missing,
+     * and a noisy room's rough surfaces reach the cap. Cut short, it meshes again with cells
+     * twice as coarse, up to [MAX_STRIDE] voxels: the whole room a little smoother, never half of it.
+     */
+    fun extractWhole(
+        tsdf: RerunTsdf,
+        minWeight: Float = DEFAULT_MIN_WEIGHT,
+        maxTriangles: Int = MAX_TRIANGLES,
+        progress: (Float) -> Unit = {},
+    ): MeshExtraction {
+        var done = 0f
+        // A retry starts its progress over: the bar holds where it was until it catches up.
+        val monotone: (Float) -> Unit = { share ->
+            if (share > done) {
+                done = share
+                progress(share)
+            }
+        }
+        var stride = 1
+        var extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
+        while (extraction.capped && stride < MAX_STRIDE) {
+            stride *= 2
+            extraction = extract(tsdf, minWeight, maxTriangles = maxTriangles, stride = stride, progress = monotone)
+        }
+        return extraction
     }
 
     /** The field around one block: its 8³ voxels and a one-voxel rim of its neighbours'. */

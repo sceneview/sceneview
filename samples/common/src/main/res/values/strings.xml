@@ -8,6 +8,6 @@
     <string name="sample_update_ready">Update ready</string>
     <string name="sample_update_restart">Restart</string>
     <string name="sample_update_failed">Update failed</string>
-    <string name="sample_update_retry">Retry</string>
+    <string name="sample_update_open_store">Open Play Store</string>
     <string name="sample_update_dismiss">Dismiss</string>
 </resources>

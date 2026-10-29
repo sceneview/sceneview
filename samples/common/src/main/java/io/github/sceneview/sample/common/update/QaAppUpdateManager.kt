@@ -29,8 +29,8 @@ import com.google.android.play.core.appupdate.testing.FakeAppUpdateManager
  * - [Scenario.CANCEL] — the first consent modal is cancelled (`RESULT_CANCELED`, delivered
  *   through the same entry point as the real activity result) → back to "Update available";
  *   the next tap is accepted and runs the download above.
- * - [Scenario.FAIL] — the first download fails part-way → "Update failed · Retry"; the retry
- *   runs the download above.
+ * - [Scenario.FAIL] — the first download fails part-way → "Update failed · Open Play Store",
+ *   whose action opens the app's Play Store listing.
  *
  * **Process-scoped** ([forProcess]): the fake plays Play, and Play outlives an activity. A
  * recreated activity builds a new [InAppUpdateManager] on the same fake, whose first check

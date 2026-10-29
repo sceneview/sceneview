@@ -161,6 +161,11 @@ dependencies {
     // Unit tests (JVM — no device required)
     testImplementation 'junit:junit:4.13.2'
     testImplementation libs.robolectric
+    // Compose layout assertions on the JVM, via Robolectric — no emulator. For
+    // ARCoreAvailabilityOverlayLayoutTest: the public overlay cards are measured in the
+    // parents a host may give them (#4509).
+    testImplementation platform(libs.androidx.compose.bom)
+    testImplementation libs.androidx.compose.ui.test.junit4
     // `NearbyCollaborativeTransport` references `compileOnly` Nearby types, so the
     // test classpath needs them on `testCompileOnly` for the file to compile under
     // `testDebugUnitTest`. The unit tests themselves exercise only the SDK-free

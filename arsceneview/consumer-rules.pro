@@ -21,3 +21,18 @@
 -keep class com.google.android.gms.location.** { *; }
 -keep class com.google.android.gms.common.api.** { *; }
 -keep class com.google.android.gms.tasks.** { *; }
+
+# Nearby Connections — `compileOnly` (see build.gradle). Only the optional
+# `io.github.sceneview.ar.collaborative.NearbyCollaborativeTransport` references
+# these types, and apps that never use it don't have them on their classpath.
+# When an app's keep rules reach that class (e.g. `-keep class
+# io.github.sceneview.** { *; }`), R8 aborts `minifyReleaseWithR8` with
+# "Missing class com.google.android.gms.nearby…". The three Play Services
+# classes below come with Nearby too and are referenced by the same transport;
+# this list is exactly R8's generated missing_rules.txt for an app that depends
+# on arsceneview alone. Apps that use the transport add
+# `implementation(libs.play.services.nearby)` and are unaffected.
+-dontwarn com.google.android.gms.nearby.**
+-dontwarn com.google.android.gms.common.api.Status
+-dontwarn com.google.android.gms.tasks.OnFailureListener
+-dontwarn com.google.android.gms.tasks.Task

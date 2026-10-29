@@ -16,9 +16,10 @@
 # the release PR (#3614) ran against the real collated CHANGELOG.md — three
 # weeks after the fragments themselves were reviewable.
 #
-# This script runs on every PR that touches `changelog.d/**` (wired into
-# `.github/workflows/ci.yml`'s `changelog-lint` job) so a paragraph fragment
-# is caught at the PR that adds it, not at release time. It also runs at the
+# `.github/workflows/ci.yml`'s `changelog-lint` job runs it on the fragments
+# a PR adds or modifies (passed as arguments, diffed against the merge base)
+# so a paragraph fragment is caught at the PR that adds it, not at release
+# time — and a bad fragment already on `main` cannot red unrelated PRs. It also runs at the
 # top of `collate-changelog.sh` itself, since that script can be invoked
 # directly and must not silently collate malformed input either.
 #

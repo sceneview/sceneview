@@ -56,8 +56,8 @@ internal val ARCoachingSamples = listOf(
 
 /**
  * A full phone screen of the coaching card over a camera stand-in — the visual-QA surface for
- * the overlay. It needs no ARCore session and no Filament, so it renders in `@Preview`, in the
- * Roborazzi goldens and in the debug-only `ARCoachingPreviewActivity` on an emulator.
+ * the overlay. It needs no ARCore session and no Filament, so it renders in `@Preview`, in
+ * Robolectric tests and in the debug-only `ARCoachingPreviewActivity` on an emulator.
  *
  * @param backdrop a camera frame stand-in; `null` paints a flat mid-grey feed.
  * @param showLabel draws the sample name in the top corner, for a gallery read at a glance.

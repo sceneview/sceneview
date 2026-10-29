@@ -1,10 +1,17 @@
 package io.github.sceneview.demo
 
+import android.content.res.Resources
+import android.util.LruCache
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.imageResource
 
 /**
  * Captured preview images for the home grid, keyed by [DemoEntry.id].
@@ -28,37 +35,38 @@ object DemoPreviews {
         "rolling-balls" to PreviewPair(R.drawable.preview_rolling_balls_light, R.drawable.preview_rolling_balls_dark),
         "ar-body-tracker" to PreviewPair(R.drawable.preview_ar_body_tracker_light, R.drawable.preview_ar_body_tracker_dark),
         "ar-cloud-anchor" to PreviewPair(R.drawable.preview_ar_cloud_anchor_light, R.drawable.preview_ar_cloud_anchor_dark),
-        "ar-depth-collider" to PreviewPair(R.drawable.preview_ar_depth_collider_light, R.drawable.preview_ar_depth_collider_dark),
         "ar-depth-occlusion" to PreviewPair(R.drawable.preview_ar_depth_occlusion_light, R.drawable.preview_ar_depth_occlusion_dark),
         "ar-depth-of-field" to PreviewPair(R.drawable.preview_ar_depth_of_field_light, R.drawable.preview_ar_depth_of_field_dark),
         "ar-depth-visualization" to PreviewPair(R.drawable.preview_ar_depth_visualization_light, R.drawable.preview_ar_depth_visualization_dark),
         "ar-face" to PreviewPair(R.drawable.preview_ar_face_light, R.drawable.preview_ar_face_dark),
-        "ar-fog" to PreviewPair(R.drawable.preview_ar_fog_light, R.drawable.preview_ar_fog_dark),
         "ar-geospatial-anchors" to PreviewPair(R.drawable.preview_ar_geospatial_anchors_light, R.drawable.preview_ar_geospatial_anchors_dark),
         // The Hands mode is the card's first mode, so its capture stands for the card.
         "ar-xr" to PreviewPair(R.drawable.preview_ar_hand_tracking_light, R.drawable.preview_ar_hand_tracking_dark),
         "ar-image" to PreviewPair(R.drawable.preview_ar_image_light, R.drawable.preview_ar_image_dark),
         "ar-image-stabilization" to PreviewPair(R.drawable.preview_ar_image_stabilization_light, R.drawable.preview_ar_image_stabilization_dark),
         "ar-measure" to PreviewPair(R.drawable.preview_ar_measure_light, R.drawable.preview_ar_measure_dark),
-        "ar-ml-object-label" to PreviewPair(R.drawable.preview_ar_ml_object_label_light, R.drawable.preview_ar_ml_object_label_dark),
         "ar-orbital" to PreviewPair(R.drawable.preview_ar_orbital_light, R.drawable.preview_ar_orbital_dark),
         "ar-people-occlusion" to PreviewPair(R.drawable.preview_ar_people_occlusion_light, R.drawable.preview_ar_people_occlusion_dark),
         "ar-placement" to PreviewPair(R.drawable.preview_ar_placement_light, R.drawable.preview_ar_placement_dark),
         "ar-plane-node" to PreviewPair(R.drawable.preview_ar_plane_node_light, R.drawable.preview_ar_plane_node_dark),
-        "ar-plane-renderer-v2" to PreviewPair(R.drawable.preview_ar_plane_renderer_v2_light, R.drawable.preview_ar_plane_renderer_v2_dark),
+        "ar-surfaces" to PreviewPair(R.drawable.preview_ar_surfaces_light, R.drawable.preview_ar_surfaces_dark),
         "ar-point-cloud" to PreviewPair(R.drawable.preview_ar_point_cloud_light, R.drawable.preview_ar_point_cloud_dark),
+        // The placed pool of the `pool_preview` QA state: the AR session cannot run on the emulator (#2754).
+        "ar-pool" to PreviewPair(R.drawable.preview_ar_pool_light, R.drawable.preview_ar_pool_dark),
         "ar-raw-depth-point-cloud" to PreviewPair(R.drawable.preview_ar_raw_depth_point_cloud_light, R.drawable.preview_ar_raw_depth_point_cloud_dark),
         "ar-rerun" to PreviewPair(R.drawable.preview_ar_rerun_light, R.drawable.preview_ar_rerun_dark),
-        "ar-scene-mesh" to PreviewPair(R.drawable.preview_ar_scene_mesh_light, R.drawable.preview_ar_scene_mesh_dark),
         "ar-scene-semantics" to PreviewPair(R.drawable.preview_ar_scene_semantics_light, R.drawable.preview_ar_scene_semantics_dark),
         "ar-splat-room" to PreviewPair(R.drawable.preview_ar_splat_room_light, R.drawable.preview_ar_splat_room_dark),
         "camera-gestures" to PreviewPair(R.drawable.preview_camera_gestures_light, R.drawable.preview_camera_gestures_dark),
         "contact-shadow-preview" to PreviewPair(R.drawable.preview_contact_shadow_preview_light, R.drawable.preview_contact_shadow_preview_dark),
         "custom-geometry" to PreviewPair(R.drawable.preview_custom_geometry_light, R.drawable.preview_custom_geometry_dark),
         "debug-overlay" to PreviewPair(R.drawable.preview_debug_overlay_light, R.drawable.preview_debug_overlay_dark),
+        "finger-drawing" to PreviewPair(
+            R.drawable.preview_finger_drawing_light,
+            R.drawable.preview_finger_drawing_dark,
+        ),
         "geometry" to PreviewPair(R.drawable.preview_geometry_light, R.drawable.preview_geometry_dark),
         "lighting" to PreviewPair(R.drawable.preview_lighting_light, R.drawable.preview_lighting_dark),
-        "lighting-lab" to PreviewPair(R.drawable.preview_lighting_lab_light, R.drawable.preview_lighting_lab_dark),
         "lines-paths" to PreviewPair(R.drawable.preview_lines_paths_light, R.drawable.preview_lines_paths_dark),
         "materials" to PreviewPair(R.drawable.preview_materials_light, R.drawable.preview_materials_dark),
         "model-viewer" to PreviewPair(R.drawable.preview_model_viewer_light, R.drawable.preview_model_viewer_dark),
@@ -74,12 +82,43 @@ object DemoPreviews {
     @DrawableRes
     fun resourceFor(id: String, dark: Boolean = false): Int? =
         previews[id]?.let { if (dark) it.dark else it.light }
+
+    /**
+     * The pictures already decoded, most recently drawn last (#4461).
+     *
+     * `painterResource` keeps a picture only as long as the card that asked for it: the
+     * platform's own drawable cache holds weak references, so by the time a demo is closed
+     * the list behind it has lost every picture and decodes them again, on the main thread,
+     * in the one frame that starts the exit transition (about 8 ms a card on a Pixel 4a).
+     * Holding the last few screens of pictures here makes coming back to a list free.
+     *
+     * Bounded by size, not by count: [PREVIEW_CACHE_BYTES] is about sixteen 800x640 captures.
+     */
+    private val decoded = object : LruCache<Int, ImageBitmap>(PREVIEW_CACHE_BYTES) {
+        override fun sizeOf(key: Int, value: ImageBitmap): Int = value.asAndroidBitmap().allocationByteCount
+    }
+
+    /** The picture for [res], decoded once and kept while the cache has room for it. */
+    internal fun bitmap(resources: Resources, @DrawableRes res: Int): ImageBitmap =
+        decoded[res] ?: ImageBitmap.imageResource(resources, res).also { decoded.put(res, it) }
+
+    /** Lets go of every decoded picture; the next card to need one decodes it again. */
+    fun trimMemory() = decoded.evictAll()
+
+    private const val PREVIEW_CACHE_BYTES = 32 * 1024 * 1024
 }
 
 /**
  * The captured preview for this demo in the current colour scheme, or `null`
  * when the pipeline has not produced one — callers draw the icon tile instead.
+ *
+ * [dark] picks the capture explicitly. A surface that is dark in both themes — the
+ * home hero band over the live stage — passes `true`, so its white copy never sits
+ * on a light-theme still (#4622).
  */
 @Composable
-fun DemoEntry.previewPainter(): Painter? =
-    DemoPreviews.resourceFor(id, dark = isSystemInDarkTheme())?.let { painterResource(it) }
+fun DemoEntry.previewPainter(dark: Boolean = isSystemInDarkTheme()): Painter? =
+    DemoPreviews.resourceFor(id, dark = dark)?.let { res ->
+        val resources = LocalContext.current.resources
+        remember(res, resources) { BitmapPainter(DemoPreviews.bitmap(resources, res)) }
+    }

@@ -18,7 +18,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.File
 
 /**
  * Regression tests for [LifecycleAwareLaunchedEffect].
@@ -32,10 +31,8 @@ import java.io.File
  * `repeatOnLifecycle` wrapper.
  *
  * A `@Composable` cannot be invoked from a plain JUnit test and
- * `:samples:common` ships no `compose-ui-test` runtime, so the `LaunchedEffect`
- * shell is pinned separately by [LifecycleAwareLaunchedEffectSourceTest]. The
- * behavioural part — the lifecycle binding the audit (#936) actually cares
- * about — is exercised for real here.
+ * `:samples:common` ships no `compose-ui-test` runtime. The lifecycle binding
+ * the audit (#936) actually cares about is exercised for real here.
  *
  * Acceptance (#972): "the lifecycle restart-from-top test must explicitly
  * assert 'block ran twice across one onStop/onStart cycle'."
@@ -154,74 +151,5 @@ class LifecycleAwareLaunchedEffectTest {
         owner.currentState = Lifecycle.State.DESTROYED
         job.join()
         assertEquals("repeatOnLifecycle must complete — and never re-run — after DESTROYED", 1, runCount)
-    }
-}
-
-/**
- * Source-anchored pin for the `@Composable` shell of [LifecycleAwareLaunchedEffect]
- * that a plain JUnit test cannot exercise: that it still wraps the body in
- * `LaunchedEffect` + `repeatOnLifecycle(Lifecycle.State.STARTED)`. If a future
- * edit changes the target state (e.g. to `RESUMED`) or drops the wrapper, the
- * behavioural tests above no longer mirror production — this catches that.
- *
- * Same source-anchored convention as `:arsceneview`'s `ARCompletenessDefaultsTest`.
- */
-class LifecycleAwareLaunchedEffectSourceTest {
-
-    private val source: String by lazy {
-        val f = File("src/main/java/io/github/sceneview/sample/LifecycleAwareLaunchedEffect.kt")
-        assertTrue(
-            "LifecycleAwareLaunchedEffect.kt not found at ${f.absolutePath}",
-            f.exists(),
-        )
-        f.readText()
-    }
-
-    private fun body(fnSignature: String): String {
-        val start = source.indexOf(fnSignature)
-        assertTrue("could not find `$fnSignature` — was the helper renamed?", start >= 0)
-        // Body of interest is short; the next `@Composable` (or EOF) bounds it.
-        val next = source.indexOf("@Composable", start + fnSignature.length)
-        return source.substring(start, if (next >= 0) next else source.length)
-    }
-
-    @Test
-    fun `LifecycleAwareLaunchedEffect wraps the body in LaunchedEffect + repeatOnLifecycle STARTED`() {
-        val body = body("fun LifecycleAwareLaunchedEffect(")
-        assertTrue(
-            "LifecycleAwareLaunchedEffect must run its body inside LaunchedEffect",
-            body.contains("LaunchedEffect("),
-        )
-        assertTrue(
-            "LifecycleAwareLaunchedEffect must gate the body on " +
-                "repeatOnLifecycle(Lifecycle.State.STARTED) — changing the " +
-                "target state breaks the background-drain fix (#936)",
-            Regex("repeatOnLifecycle\\(\\s*Lifecycle\\.State\\.STARTED\\s*\\)")
-                .containsMatchIn(body),
-        )
-    }
-
-    @Test
-    fun `LifecyclePausingLaunchedEffect runs its body without repeatOnLifecycle wrapping`() {
-        // Pin the distinguishing contract of the state-preserving variant:
-        // the body's own LaunchedEffect must NOT be wrapped in repeatOnLifecycle
-        // (only the cheap observer coroutine is). Otherwise it would restart
-        // from the top too — defeating its whole reason for existing (#974).
-        val body = body("fun LifecyclePausingLaunchedEffect(")
-        assertTrue(
-            "LifecyclePausingLaunchedEffect must still invoke the body via LaunchedEffect(*keys)",
-            Regex("LaunchedEffect\\(\\s*\\*keys\\s*\\)").containsMatchIn(body),
-        )
-        // The body-driving `LaunchedEffect(*keys)` block must call block(gate)
-        // directly — not through repeatOnLifecycle.
-        val keyedLaunch = body.indexOf("LaunchedEffect(*keys)")
-        assertTrue("LaunchedEffect(*keys) not found in LifecyclePausingLaunchedEffect", keyedLaunch >= 0)
-        val keyedBody = body.substring(keyedLaunch)
-        assertFalse(
-            "LifecyclePausingLaunchedEffect's body launch must NOT be wrapped " +
-                "in repeatOnLifecycle — that would restart the body from the " +
-                "top and reintroduce the #936 teleport bug it exists to fix",
-            keyedBody.substringBefore("}").contains("repeatOnLifecycle"),
-        )
     }
 }

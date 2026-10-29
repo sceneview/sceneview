@@ -18,41 +18,25 @@ data class HomeSearchEntry(
     val categoryLabel: String,
     val tags: Set<String>,
     val order: Int,
-    /** Marked "New" or "Updated" for this build — what the [WHATS_NEW_FILTER] chip keeps. */
-    val fresh: Boolean = false,
 )
 
 /**
- * The "What's new" chip's key, passed where a category key goes. Not a
- * `DemoCategory`: it selects across categories, by freshness.
- */
-const val WHATS_NEW_FILTER: String = "whats-new"
-
-/**
- * Pure filter behind the home screen's category chips and search field.
+ * Pure filter behind the home screen's search field.
  *
- * - [category] `null` means "All"; [WHATS_NEW_FILTER] keeps the
- *   [HomeSearchEntry.fresh] entries, whatever their category; otherwise only
- *   entries whose [HomeSearchEntry.category] equals it survive.
  * - [query] is trimmed and split on whitespace; every word must match
  *   (case-insensitively) somewhere in title, subtitle, category label or tags.
  *   A blank query matches everything.
  * - The result keeps the input's editorial [HomeSearchEntry.order].
+ *
+ * The category chips do not filter: they scroll to their section
+ * ([homeSectionStarts]), so nothing but a query ever cuts the catalogue down.
  */
 fun filterDemos(
     entries: List<HomeSearchEntry>,
-    category: String?,
     query: String,
 ): List<HomeSearchEntry> {
     val words = query.trim().lowercase().split(WHITESPACE).filter { it.isNotEmpty() }
     return entries
-        .filter { entry ->
-            when (category) {
-                null -> true
-                WHATS_NEW_FILTER -> entry.fresh
-                else -> entry.category == category
-            }
-        }
         .filter { entry -> words.all { word -> entry.matches(word) } }
         .sortedBy { it.order }
 }

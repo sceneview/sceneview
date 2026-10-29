@@ -74,7 +74,7 @@ object SampleAssets {
             displayName = "Fantasy Butterfly",
             author = "lunequinox",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 0.25f,
             hasBakedAnimation = true,
             category = "solar",
@@ -159,7 +159,7 @@ object SampleAssets {
             displayName = "Skovfogedegen Oak",
             author = "rigsters",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 2.30f,
             hasBakedAnimation = false,
             category = "gallery",
@@ -173,7 +173,7 @@ object SampleAssets {
             displayName = "Retro TV Robot",
             author = "ArtsByKev",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 1.30f,
             hasBakedAnimation = true,
             category = "animation",
@@ -184,7 +184,7 @@ object SampleAssets {
             displayName = "Catfish Mech",
             author = "jungle_jim",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 1.45f,
             hasBakedAnimation = true,
             category = "animation",
@@ -227,7 +227,7 @@ object SampleAssets {
             displayName = "Oak Trees",
             author = "bumstrum",
             licenseUrl = "https://creativecommons.org/licenses/by/4.0/",
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 2.00f,
             hasBakedAnimation = false,
             category = "park",
@@ -293,7 +293,7 @@ object SampleAssets {
         // Table" → the chair. Distinctness is still the hard guarantee (pinned by
         // `SampleAssetsTest`); resemblance is now true for four of six. The two
         // that remain shape-class-only are "Potted Monstera" (`shiba`, a compact
-        // ground mass) and "Picture Frame" (`threejs_soldier`, the upright
+        // ground mass) and "Picture Frame" (`quaternius_ranger`, the upright
         // silhouette) — neither has a plausible bundled counterpart, and adding
         // one for its own sake would be binary the APK does not need. #2960
         // tracks the same mismatch class on the iOS registry, which is untouched
@@ -377,7 +377,7 @@ object SampleAssets {
             // wall-hung frame reads closest to. It ships baked animation clips,
             // but `hasBakedAnimation = false` describes the STREAMED Sketchfab
             // model, and no demo asks a fallback to play: it renders at rest.
-            fallbackBundledPath = "models/threejs_soldier.glb",
+            fallbackBundledPath = "models/quaternius_ranger.glb",
             scaleToUnits = 0.40f,
             hasBakedAnimation = false,
             category = "ar_placement",

@@ -342,6 +342,12 @@ enum class PlacementCard {
 
     /** "Camera couldn't start." — *Try again*. */
     CAMERA_ERROR,
+
+    /**
+     * "Restart your phone" — "Its motion sensor isn't responding, and AR can't start without
+     * it." No button: nothing the app can do starts a session whose gyroscope is silent (#4522).
+     */
+    MOTION_SENSOR_SILENT,
 }
 
 /**
@@ -417,8 +423,18 @@ fun placementCoaching(
     }
 }
 
-/** Which help card the phase shows, or `null` — the pill and the card never coexist. */
-fun placementCard(phase: PlacementPhase): PlacementCard? = when (phase) {
+/**
+ * Which help card the phase shows, or `null` — the pill and the card never coexist.
+ *
+ * [motionSensorSilent] outranks the phase: the session it describes never leaves
+ * [PlacementPhase.INITIALIZING], and no other card's action can help it.
+ */
+fun placementCard(phase: PlacementPhase, motionSensorSilent: Boolean = false): PlacementCard? = when {
+    motionSensorSilent -> PlacementCard.MOTION_SENSOR_SILENT
+    else -> phaseCard(phase)
+}
+
+private fun phaseCard(phase: PlacementPhase): PlacementCard? = when (phase) {
     PlacementPhase.NO_SURFACE -> PlacementCard.NO_SURFACE
     PlacementPhase.RECOVERY_FAILED -> PlacementCard.RECOVERY_FAILED
     PlacementPhase.CAMERA_ERROR -> PlacementCard.CAMERA_ERROR

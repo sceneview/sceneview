@@ -21,6 +21,16 @@ import SwiftUI
 // again a hair above the sheet, draws the map with premultiplied alpha. Where the map says the
 // light is hidden (visibility v) it covers the sheet's shade b with the ambient-only shade b₀:
 // b·v + b₀·(1 − v) is Android's per-pixel shade exactly, below the 1.25 ceiling.
+//
+// The glowing grid (#4623, Android's `cosmos_spacetime.mat` since #4670) is two more parts of
+// the mesh, the rings out to the grid's fade again a hair above the overlay, drawn additively:
+// one carries the lines of constant x, the other those of constant z. Their `u` is the world
+// coordinate in cells, on a repeating texture whose columns are a line's cross-section; their
+// `v` is the line's glow at that vertex — the well's gain, the fade to the rim and a world's
+// shadow, which a fragment of Android's reads per pixel. The texture's mip levels are drawn
+// one by one, a line 1.3 px of core and 5 px of halo wide at each level, and fade out on the
+// levels where a cell spans under ~6 px: that is Android's `fwidth` antialiasing and its
+// "fade instead of aliasing", chosen by the sampler's mip level instead of a derivative.
 
 /// A sphere over the sheet that shades it: the ray from a vertex towards the light passing
 /// within `2 radius` of `center` dims it, fully within `0.4 radius`.
@@ -50,6 +60,15 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         return CosmosSpacetime.gridRadii.firstIndex { $0 >= corner }! + 1
     }()
     static var overlayCount: Int { overlayRings * CosmosSpacetime.gridSectors }
+    /// The grid's vertices, per axis: the rings out to the first past the grid's fade end.
+    static let gridRings: Int = {
+        CosmosSpacetime.gridRadii.firstIndex { Double($0) >= CosmosSpacetime.gridFadeEnd }! + 1
+    }()
+    static var gridCount: Int { gridRings * CosmosSpacetime.gridSectors }
+    /// Every vertex of the mesh: the sheet, the overlay, then the x lines' and the z lines'.
+    static var totalCount: Int { CosmosSpacetime.vertexCount + overlayCount + 2 * gridCount }
+    /// How far the grid sits above the sheet: over the overlay.
+    static let gridLift: Float = 0.004
     /// How far the overlay sits above the sheet, so the depth test never ties.
     static let overlayLift: Float = 0.002
     /// The horizon map's `u, v` at (x, z). Texel (i, j) is at x, z = `horizonTexel` i, j, and
@@ -75,6 +94,8 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
     /// Ambient occlusion and the spot. The star's horizon is the overlay's, per fragment.
     private let occlusion: UnsafeMutablePointer<Float>
     private let spot: UnsafeMutablePointer<Float>
+    /// The grid's glow before a world's shadow, over `gridGlowMax`: `CosmosSpacetime.gridGlow`.
+    private let gridGlow: UnsafeMutablePointer<Float>
     private let raw: UnsafeMutablePointer<Float>
     private let gx: UnsafeMutablePointer<Float>
     private let gz: UnsafeMutablePointer<Float>
@@ -101,10 +122,10 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         x = make(); z = make(); height = make(); brightness = make()
         window = make(); windowX = make(); windowZ = make()
         starRaw = make(); starGx = make(); starGz = make()
-        occlusion = make(); spot = make()
+        occlusion = make(); spot = make(); gridGlow = make()
         raw = make(); gx = make(); gz = make()
         buffers = [x, z, height, brightness, window, windowX, windowZ, starRaw, starGx, starGz,
-                   occlusion, spot, raw, gx, gz]
+                   occlusion, spot, gridGlow, raw, gx, gz]
         scratch = (0..<Self.workers).map { _ in
             let p = UnsafeMutablePointer<Float>.allocate(capacity: Self.chunk * 5)
             p.initialize(repeating: 0, count: Self.chunk * 5)
@@ -136,6 +157,7 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                 starGz[k] = Float(slope * pz)
                 occlusion[k] = Float(S.ambientOcclusion(rd))
                 spot[k] = Float(S.spot(rd))
+                gridGlow[k] = Float(S.gridGlow(rd) / S.gridGlowMax)
             }
         }
     }
@@ -147,7 +169,8 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
 
     /// Fills the sheet for `time`, `weight` and `lift`, shaded by `casters` and `ring`, and
     /// writes the interleaved vertices (x, y, z, u, v) into `out` when given: the sheet's
-    /// `count`, then the overlay's `overlayCount`, whose `u, v` address the horizon map.
+    /// `count`, then the overlay's `overlayCount`, whose `u, v` address the horizon map, then
+    /// the grid's x and z lines, `gridCount` each: `u` in cells, `v` the line's glow.
     func fill(time: Double, weight: Double, lift: Double, casters: [CosmosSpacetimeCaster],
               ring: CosmosSpacetimeRing?, into out: UnsafeMutablePointer<Float>?) {
         let field = CosmosSpacetime.Field(time: time, weight: weight)
@@ -224,13 +247,19 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
         let table = Self.ringTable
         let ringDot = ring.map { simd_dot($0.normal, light) } ?? 0
         let ringLit = ring != nil && abs(ringDot) > 1e-4
+        let shadowFloor = Float(S.gridShadowFloor), cells = Float(1 / S.gridSpacing)
+        let glowOffset = CosmosSpacetimeScene.gridGlowOffset
         for k in 0..<n {
             let i = s + k
             let gxi = gxp[k], gzi = gzp[k]
             let ndl = (light.y - gxi * light.x - gzi * light.z) / (gxi * gxi + gzi * gzi + 1).squareRoot()
             let lambert = max(0, (ndl + wrap) / (1 + wrap))
+            // A world's shadow dims the grid's lines too, lit side or not. The rings' banded
+            // shadow is left off the grid: its bands change the glow (`v`) faster than a cell,
+            // which raises the texture's mip level and smears the lines.
             var shadow: Float = 1
-            if lambert > 0 {
+            var gridShadow: Float = 1
+            do {
                 let p = SIMD3(x[i], h[k], z[i])
                 for caster in casters where caster.alpha > 0 {
                     let oc = caster.center - p
@@ -241,6 +270,7 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                     let f = Self.smoothstep(0.4 * caster.radius, reach, miss.squareRoot())
                     shadow *= 1 - caster.alpha * (1 - f)
                 }
+                gridShadow = shadow
                 if ringLit, let ring {
                     let t = simd_dot(ring.center - p, ring.normal) / ringDot
                     if t > 0 {
@@ -270,6 +300,15 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                     q[3] = uv.x
                     q[4] = uv.y
                 }
+                if i < Self.gridCount {
+                    let glow = glowOffset + (1 - glowOffset) * gridGlow[i] * (shadowFloor + (1 - shadowFloor) * gridShadow)
+                    let gridX = out + 5 * (count + Self.overlayCount + i)
+                    let gridZ = gridX + 5 * Self.gridCount
+                    gridX[0] = x[i]; gridX[1] = h[k] + Self.gridLift; gridX[2] = z[i]
+                    gridX[3] = x[i] * cells; gridX[4] = glow
+                    gridZ[0] = x[i]; gridZ[1] = h[k] + Self.gridLift; gridZ[2] = z[i]
+                    gridZ[3] = z[i] * cells; gridZ[4] = glow
+                }
             }
         }
     }
@@ -281,15 +320,19 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
 
     static var sheetIndexCount: Int { CosmosSpacetime.triangleCount * 3 }
     static var overlayIndexCount: Int { 6 * (overlayRings - 1) * CosmosSpacetime.gridSectors }
+    /// Both axes' lines.
+    static var gridIndexCount: Int { 2 * 6 * (gridRings - 1) * CosmosSpacetime.gridSectors }
 
     /// The sheet's triangles, ring-major: (a, b, c) and (b, d, c) face up; then the overlay's,
-    /// over its own copy of the inner rings.
+    /// over its own copy of the inner rings; then the grid's x and z lines', over theirs.
     static func writeIndices(_ raw: UnsafeMutableRawBufferPointer) {
-        let indices = raw.bindMemory(to: UInt16.self)
+        let indices = raw.bindMemory(to: UInt32.self)
         let sectors = CosmosSpacetime.gridSectors
         let base = CosmosSpacetime.vertexCount
+        let grid = base + overlayCount
         var o = 0
-        let runs = [(rings: CosmosSpacetime.gridRadii.count, first: 0), (rings: overlayRings, first: base)]
+        let runs = [(rings: CosmosSpacetime.gridRadii.count, first: 0), (rings: overlayRings, first: base),
+                    (rings: gridRings, first: grid), (rings: gridRings, first: grid + gridCount)]
         for run in runs {
             for i in 0..<(run.rings - 1) {
                 for j in 0..<sectors {
@@ -297,8 +340,8 @@ final class CosmosSpacetimeFill: @unchecked Sendable {
                     let b = run.first + i * sectors + (j + 1) % sectors
                     let c = a + sectors
                     let d = b + sectors
-                    indices[o] = UInt16(a); indices[o + 1] = UInt16(b); indices[o + 2] = UInt16(c)
-                    indices[o + 3] = UInt16(b); indices[o + 4] = UInt16(d); indices[o + 5] = UInt16(c)
+                    indices[o] = UInt32(a); indices[o + 1] = UInt32(b); indices[o + 2] = UInt32(c)
+                    indices[o + 3] = UInt32(b); indices[o + 4] = UInt32(d); indices[o + 5] = UInt32(c)
                     o += 6
                 }
             }
@@ -318,6 +361,8 @@ final class CosmosSpacetimeScene {
     /// the well's depth, Android's `mix(1, horizon, well)`.
     private var overlayMaterial: UnlitMaterial
     private var overlayOpacity: Float = -1
+    /// The grid's material: additive, its tint the sheet's opacity.
+    private var gridMaterial: UnlitMaterial
     private let fill: CosmosSpacetimeFill
     /// Two staging buffers: one is filled while the other's copy to the mesh is in flight.
     private let staging: [MTLBuffer]
@@ -367,22 +412,27 @@ final class CosmosSpacetimeScene {
         descriptor.blendMode = .alpha
         descriptor.applyPostProcessToneMap = false
         let program = await UnlitMaterial.Program(descriptor: descriptor)
+        var additive = UnlitMaterial.Program.Descriptor()
+        additive.blendMode = .add
+        additive.applyPostProcessToneMap = false
+        let gridProgram = await UnlitMaterial.Program(descriptor: additive)
+        let grid = try await Self.gridTexture()
         var textures: [CosmosSpacetime.Body: TextureResource] = [:]
         for body in smallBodies {
             let image = await Task.detached(priority: .userInitiated) { CosmosSpacetimeLook.bake(body) }.value
             textures[body] = try await GlowEntity.texture(image)
         }
         return try await CosmosSpacetimeScene(fill: fill, ramp: ramp, overlay: overlay, program: program,
-                                              textures: textures)
+                                              grid: grid, gridProgram: gridProgram, textures: textures)
     }
 
     private init(fill: CosmosSpacetimeFill, ramp: TextureResource, overlay: TextureResource,
-                 program: UnlitMaterial.Program,
+                 program: UnlitMaterial.Program, grid: TextureResource, gridProgram: UnlitMaterial.Program,
                  textures: [CosmosSpacetime.Body: TextureResource]) async throws {
         guard let metal = GlowMetal.shared else { throw GlowEntity.GlowError.noMetal }
         self.fill = fill
         let stride = 5 * MemoryLayout<Float>.stride
-        let vertexCount = fill.count + CosmosSpacetimeFill.overlayCount
+        let vertexCount = CosmosSpacetimeFill.totalCount
         let length = vertexCount * stride
         staging = try (0..<2).map { _ in
             guard let buffer = metal.device.makeBuffer(length: length, options: .storageModeShared) else {
@@ -391,7 +441,8 @@ final class CosmosSpacetimeScene {
             return buffer
         }
         let sheetIndices = CosmosSpacetimeFill.sheetIndexCount
-        let indexCount = sheetIndices + CosmosSpacetimeFill.overlayIndexCount
+        let overlayIndices = CosmosSpacetimeFill.overlayIndexCount
+        let indexCount = sheetIndices + overlayIndices + CosmosSpacetimeFill.gridIndexCount
         let descriptor = LowLevelMesh.Descriptor(
             vertexCapacity: vertexCount,
             vertexAttributes: [
@@ -400,7 +451,7 @@ final class CosmosSpacetimeScene {
             ],
             vertexLayouts: [.init(bufferIndex: 0, bufferStride: stride)],
             indexCapacity: indexCount,
-            indexType: .uint16
+            indexType: .uint32
         )
         let mesh = try LowLevelMesh(descriptor: descriptor)
         mesh.withUnsafeMutableIndices { CosmosSpacetimeFill.writeIndices($0) }
@@ -408,9 +459,12 @@ final class CosmosSpacetimeScene {
         let bounds = BoundingBox(min: SIMD3(-rim, -4, -rim), max: SIMD3(rim, 4, rim))
         mesh.parts.replaceAll([
             LowLevelMesh.Part(indexCount: sheetIndices, topology: .triangle, materialIndex: 0, bounds: bounds),
-            LowLevelMesh.Part(indexOffset: sheetIndices * MemoryLayout<UInt16>.stride,
-                              indexCount: CosmosSpacetimeFill.overlayIndexCount, topology: .triangle,
+            LowLevelMesh.Part(indexOffset: sheetIndices * MemoryLayout<UInt32>.stride,
+                              indexCount: overlayIndices, topology: .triangle,
                               materialIndex: 1, bounds: bounds),
+            LowLevelMesh.Part(indexOffset: (sheetIndices + overlayIndices) * MemoryLayout<UInt32>.stride,
+                              indexCount: CosmosSpacetimeFill.gridIndexCount, topology: .triangle,
+                              materialIndex: 2, bounds: bounds),
         ])
         self.mesh = mesh
 
@@ -426,7 +480,16 @@ final class CosmosSpacetimeScene {
         overlayMaterial.writesDepth = false
         overlayMaterial.faceCulling = .none
         self.overlayMaterial = overlayMaterial
-        let sheet = ModelEntity(mesh: try await MeshResource(from: mesh), materials: [material, overlayMaterial])
+        // Additive, past the tone map, drawn last and writing no depth; the sheet's fade dims it
+        // through the tint.
+        var gridMaterial = UnlitMaterial(program: gridProgram)
+        gridMaterial.color = .init(tint: .white, texture: .init(grid, sampler: Self.gridSampler))
+        gridMaterial.blending = .transparent(opacity: .init(floatLiteral: 1))
+        gridMaterial.writesDepth = false
+        gridMaterial.faceCulling = .none
+        self.gridMaterial = gridMaterial
+        let sheet = ModelEntity(mesh: try await MeshResource(from: mesh),
+                                materials: [material, overlayMaterial, gridMaterial])
         sheet.name = "cosmos-spacetime-sheet"
         // Nothing to show until the first fill has landed.
         sheet.isEnabled = false
@@ -489,7 +552,7 @@ final class CosmosSpacetimeScene {
         let target = staging[index]
         let fill = fill
         // The staging buffer is not drawn from while it is filled: `uploading[index]` is clear.
-        nonisolated(unsafe) let out = target.contents().bindMemory(to: Float.self, capacity: (fill.count + CosmosSpacetimeFill.overlayCount) * 5)
+        nonisolated(unsafe) let out = target.contents().bindMemory(to: Float.self, capacity: CosmosSpacetimeFill.totalCount * 5)
         Task { @MainActor [weak self] in
             let seconds = await Task.detached(priority: .userInitiated) { () -> Double in
                 let id = OSSignpostID(log: Self.signposts)
@@ -553,7 +616,8 @@ final class CosmosSpacetimeScene {
         sheet.isEnabled = uploaded && stepped > 0
         sheetMaterial.blending = stepped >= 1 ? .opaque : .transparent(opacity: .init(floatLiteral: stepped))
         overlayMaterial.blending = .transparent(opacity: .init(floatLiteral: hidden))
-        sheet.model?.materials = [sheetMaterial, overlayMaterial]
+        gridMaterial.color.tint = GlowEntity.linearTint(CGFloat(stepped))
+        sheet.model?.materials = [sheetMaterial, overlayMaterial, gridMaterial]
     }
 
     private func setAlpha(_ alpha: Float, planet index: Int) {
@@ -596,6 +660,88 @@ final class CosmosSpacetimeScene {
         }
         return image
     }
+
+    /// The grid's texture: `gridTextureSize` texels a cell across (u, repeating) by the glow,
+    /// 0 to `gridGlowMax` from RealityKit's `v` `gridGlowOffset` to 1 (clamped). Each mip level
+    /// is drawn on its own, a line `gridCorePixels` + `gridHaloPixels` texels wide, so the line
+    /// keeps its pixel width on screen and fades where a cell gets too small to read. Drawn
+    /// additively: the grid adds light.
+    /// Square: a taller glow axis would let a shadow's edge, where the glow changes fast, raise
+    /// the mip level and smear the lines.
+    nonisolated static let gridTextureSize = 256
+    /// Where the glow's zero sits on `v`: every level down to 16 rows has rows below it, all
+    /// black, so the clamp at the grid's faded edge reads nothing instead of a level's first row.
+    nonisolated static let gridGlowOffset: Float = 1.0 / 16
+
+    nonisolated static func gridLevels() -> [GlowImage] {
+        typealias S = CosmosSpacetime
+        let color = SIMD3<Float>(S.linear(S.gridColor))
+        var levels: [GlowImage] = []
+        var n = gridTextureSize
+        while n >= 1 {
+            var image = GlowImage(width: n, height: n, cell: n)
+            // A texel's coverage, averaged over eight samples across it.
+            let profile: [Float] = (0..<n).map { i in
+                var sum = 0.0
+                for k in 0..<8 {
+                    let at = (Double(i) + (Double(k) + 0.5) / 8) / Double(n)
+                    let gap = abs(at - at.rounded())
+                    sum += S.gridLine(pixels: gap * Double(n), cellPixels: Double(n))
+                }
+                return Float(sum / 8)
+            }
+            for j in 0..<image.height {
+                // Row j is at RealityKit's v = 1 − (j + ½) / height: its v runs up from the last row.
+                let v = 1 - (Float(j) + 0.5) / Float(image.height)
+                let glow = Float(S.gridGlowMax) * max(0, (v - gridGlowOffset) / (1 - gridGlowOffset))
+                for i in 0..<n {
+                    image.set(i, j, color * profile[i] * glow, alpha: 1)
+                }
+            }
+            levels.append(image)
+            n /= 2
+        }
+        return levels
+    }
+
+    private static func gridTexture() async throws -> TextureResource {
+        guard let metal = GlowMetal.shared else { throw GlowEntity.GlowError.noMetal }
+        let levels = await Task.detached(priority: .userInitiated) { gridLevels() }.value
+        let staging = try levels.map { try GlowStaging($0, device: metal.device) }
+        guard let commandBuffer = metal.queue.makeCommandBuffer() else { throw GlowEntity.GlowError.noMetal }
+        let descriptor = LowLevelTexture.Descriptor(
+            pixelFormat: .rgba16Float,
+            width: gridTextureSize,
+            height: gridTextureSize,
+            mipmapLevelCount: levels.count,
+            textureUsage: [.shaderRead]
+        )
+        let texture = try LowLevelTexture(descriptor: descriptor)
+        let target = texture.replace(using: commandBuffer)
+        guard let blit = commandBuffer.makeBlitCommandEncoder() else { throw GlowEntity.GlowError.noMetal }
+        for (level, image) in levels.enumerated() {
+            blit.copy(from: staging[level].buffer, sourceOffset: 0, sourceBytesPerRow: image.width * 8,
+                      sourceBytesPerImage: image.width * image.height * 8,
+                      sourceSize: MTLSize(width: image.width, height: image.height, depth: 1),
+                      to: target, destinationSlice: 0, destinationLevel: level,
+                      destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        }
+        blit.endEncoding()
+        commandBuffer.commit()
+        return try await TextureResource(from: texture)
+    }
+
+    /// Trilinear, repeating across the lines and clamped along the glow; no anisotropy, so the
+    /// level follows the cell's size on screen as Android's `fwidth` does.
+    private static let gridSampler: MaterialParameters.Texture.Sampler = {
+        let descriptor = MTLSamplerDescriptor()
+        descriptor.minFilter = .linear
+        descriptor.magFilter = .linear
+        descriptor.mipFilter = .linear
+        descriptor.sAddressMode = .repeat
+        descriptor.tAddressMode = .clampToEdge
+        return .init(descriptor)
+    }()
 
     private static let sampler: MaterialParameters.Texture.Sampler = {
         let descriptor = MTLSamplerDescriptor()

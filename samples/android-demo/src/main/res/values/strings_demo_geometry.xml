@@ -7,8 +7,6 @@
 <resources>
     <string name="demo_geometry_title">Geometry Primitives</string>
     <string name="demo_geometry_subtitle">Show, hide and restyle the seven built-in shapes</string>
-    <string name="demo_geometry">Geometry Nodes</string>
-    <string name="demo_geometry_desc">The seven built-in primitives: cube, sphere, cylinder, cone, torus, capsule and plane</string>
 
     <!-- Shape chips over the scene: one switch per primitive. -->
     <string name="demo_geometry_shape_cube">Cube</string>
@@ -23,7 +21,9 @@
     <string name="demo_geometry_animate">Animate</string>
     <string name="demo_geometry_recenter">Recenter</string>
 
-    <!-- Settings sheet: the material every shape shares. -->
+    <!-- Settings sheet: each shape in its own finish, or one material for all. -->
+    <string name="demo_geometry_finish_studio">Studio finishes</string>
+    <string name="demo_geometry_finish_uniform">One material</string>
     <string name="demo_geometry_metallic">Metallic</string>
     <string name="demo_geometry_roughness">Roughness</string>
 </resources>

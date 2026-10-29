@@ -56,10 +56,6 @@ tighten to catch sub-pixel regressions.
 
 ## Where goldens are recorded
 
-**This section is the source of truth for the recording procedure; the
-`demo-render-goldens` comment in `.github/workflows/render-tests.yml` defers to
-it.**
-
 Every golden in this directory is recorded on the shared `Pixel_7a` AVD
 (`emulator-5554`, created by `.claude/scripts/setup-ar-emulator.sh`): **1080x2400
 @ 420 dpi, light mode, hardware GPU**. The test crops the top 96 px of status
@@ -69,28 +65,15 @@ is not a hypothetical, it is what the CI leg did for months (#3551).
 
 ## CI
 
-`demo-render-goldens` in `.github/workflows/render-tests.yml` runs this suite on
-every push to `main`, nightly and on dispatch, on an emulator pinned to the same
-1080x2400 @ 420 dpi geometry as the recording AVD (`-skin 1080x2400` plus
-`wm size` / `wm density`, asserted in the step so a wrong geometry fails loudly).
-It renders with `-gpu swangle_indirect`, a software rasteriser, so it does **not**
-compare against this directory: it passes `goldenSet=render-goldens-swangle` and
-is held to the goldens in `../render-goldens-swangle/`, recorded on that same CI
-profile (#3554). See that directory's README for how they are recorded and which
-cases are left out.
-
-- **Never promote a capture from that job's artifact into this directory.** The
-  software rasteriser and the recording GPU do not agree pixel-for-pixel; a
-  baseline recorded from CI would fail on every real device. The reverse holds too.
-- The job is **advisory** (`continue-on-error`), but its step is strict: a failed
-  case, a run with no results or fewer cases than declared turns the job red.
-
-The job writes its real executed/passed/failed/skipped counts to the run's step summary,
-so "the leg was green" and "the leg compared something" are separate, visible
-facts.
+No CI job runs this suite. The `demo-render-goldens` leg of
+`.github/workflows/render-tests.yml` ran it on a software rasteriser against a
+separate `render-goldens-swangle/` set; it was removed with that set after a
+30-day audit counted zero catches and 13 red nightlies out of 24. This
+directory is a local tool: run it on the `Pixel_7a` AVD before and after a
+rendering change.
 
 The `sceneview` library's own render tests are a different story: they
 `assumeTrue`-skip on SwiftShader because Filament's `readPixels` crashes there
 (see the `@Ignore` blocks in `sceneview/src/androidTest/.../render/`). This suite
 does not use `readPixels` — it screenshots the composited frame through
-UiAutomator — which is why it runs on CI at all.
+UiAutomator.

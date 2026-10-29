@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS demo: a model picked while its sheet closes lands at the right size ([#4317](https://github.com/sceneview/sceneview/pull/4317)).** The Model Viewer's entrance flight could start from a fit measured while the Models picker was still sliding away, and leave a wide model framed for half the screen. The entrance now waits for the sheet to settle, and a sheet that moves under a flight lands it at once. The demo sheets inset the scene only where they sit on the bottom edge: iPhone, and iPad from iPadOS 27.

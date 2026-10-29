@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.demos.internal.CloudAnchorScenario
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -26,8 +27,8 @@ import io.github.sceneview.demo.theme.SceneViewTokens
  *
  * Same shim as [ForcedTrackingFailure], for the same reason and with the same rules:
  * a `mutableStateOf`-backed singleton whose `null` is the normal case, read by the demo
- * with `?:`, and a menu that returns immediately unless [DemoSettings.qaMode] is on so no
- * end user ever meets it.
+ * with `?:`, and a menu that returns immediately unless [qaStateOverridesAllowed] (a debug
+ * build with [DemoSettings.qaMode] on) so no end user ever meets it.
  *
  * What it buys that a forced *tracking failure* does not: Cloud Anchor states cannot be
  * staged. "Hosting…", "Hosted", "No anchor for that code" each need a live Google Cloud
@@ -46,23 +47,32 @@ object ForcedCloudAnchorScenario {
 }
 
 /**
- * `true` when a QA state override may be honoured at all.
+ * `true` when a QA state override may be honoured at all: a debug build with QA mode on.
  *
  * Both ingresses go through this. A forced state makes the screen *lie* — it shows a code
  * that was never hosted — so it is gated on QA mode exactly like the rest of the debug
- * surface, and an intent extra alone is never enough.
+ * surface, and an intent extra alone is never enough. QA mode is not enough on its own
+ * either: `--ez qa_mode true` reaches the store build too (it only freezes animations
+ * there), so a release build never honours an override (#4555).
+ *
+ * @param qaMode [DemoSettings.qaMode].
+ * @param debugBuild `BuildConfig.DEBUG`; a parameter so the release answer is tested.
  */
-fun qaStateOverridesAllowed(): Boolean = DemoSettings.qaMode
+fun qaStateOverridesAllowed(
+    qaMode: Boolean = DemoSettings.qaMode,
+    debugBuild: Boolean = BuildConfig.DEBUG,
+): Boolean = debugBuild && qaMode
 
 /**
  * The QA radio list that pins [ForcedCloudAnchorScenario.override].
  *
  * Rendered from the demo's `controls` block, next to [ForceTrackingFailureMenu]. Hidden
- * entirely outside QA mode.
+ * entirely unless [qaStateOverridesAllowed]: on a release build in QA mode its choices would
+ * be filtered out anyway, so the store build never shows it (#4555).
  */
 @Composable
 fun ForceCloudAnchorScenarioMenu(modifier: Modifier = Modifier) {
-    if (!DemoSettings.qaMode) return
+    if (!qaStateOverridesAllowed()) return
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(

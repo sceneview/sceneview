@@ -226,23 +226,39 @@ fun SmoothFollowDemo() {
 ## 5. AR Animation — Animated Model on Anchor
 
 \`\`\`kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
+
 @Composable
 fun ARAnimatedModel() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val modelInstance = rememberModelInstance(modelLoader, "models/dancing_character.glb")
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     ARSceneView(
         engine = engine,
         modelLoader = modelLoader,
         planeRenderer = true,
-        onTouchEvent = { event, hitResult ->
-            if (event.action == MotionEvent.ACTION_UP && hitResult != null) {
-                anchor = hitResult.createAnchor()
+        onSessionUpdated = { _, frame -> latestFrame = frame },
+        // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
+        // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { event, node ->
+                if (node == null) { // empty space, not the placed model
+                    latestFrame?.hitTest(event)
+                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                        ?.createAnchorOrNull()
+                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
+                        ?.let { anchor = it }
+                }
             }
-            true
-        }
+        )
     ) {
         anchor?.let { a ->
             AnchorNode(anchor = a) {
@@ -356,24 +372,39 @@ fun CustomGestureScreen() {
 The most common AR gesture — tap a detected plane to place a model.
 
 \`\`\`kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
+
 @Composable
 fun TapToPlaceAR() {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
     val modelInstance = rememberModelInstance(modelLoader, "models/furniture.glb")
     var anchor by remember { mutableStateOf<Anchor?>(null) }
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     ARSceneView(
         engine = engine,
         modelLoader = modelLoader,
         planeRenderer = true,
-        onTouchEvent = { event, hitResult ->
-            if (event.action == MotionEvent.ACTION_UP && hitResult != null) {
-                // Create an anchor at the tap location on the AR plane
-                anchor = hitResult.createAnchor()
+        onSessionUpdated = { _, frame -> latestFrame = frame },
+        // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
+        // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
+        onGestureListener = rememberOnGestureListener(
+            onSingleTapConfirmed = { event, node ->
+                if (node == null) { // empty space, not the placed model
+                    latestFrame?.hitTest(event)
+                        ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                        ?.createAnchorOrNull()
+                        // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
+                        ?.let { anchor = it }
+                }
             }
-            true
-        }
+        )
     ) {
         anchor?.let { a ->
             AnchorNode(anchor = a) {
@@ -482,7 +513,8 @@ fun MultiModelSelectionScreen() {
                 scaleToUnits = 0.5f,
                 position = Position(-1f, 0f, 0f),
                 isEditable = true,
-                onTap = { selectedModel = "chair" }
+                // Per-node tap: Node.onSingleTapConfirmed is (MotionEvent) -> Boolean
+                apply = { onSingleTapConfirmed = { selectedModel = "chair"; true } }
             )
         }
         table?.let { instance ->
@@ -491,7 +523,7 @@ fun MultiModelSelectionScreen() {
                 scaleToUnits = 0.5f,
                 position = Position(1f, 0f, 0f),
                 isEditable = true,
-                onTap = { selectedModel = "table" }
+                apply = { onSingleTapConfirmed = { selectedModel = "table"; true } }
             )
         }
     }
@@ -533,10 +565,10 @@ fun SurfaceCursorAR() {
 
 1. **\`isEditable = true\`** — one-liner for pinch/drag/tap on any ModelNode.
 2. **\`onTouchEvent\`** — full MotionEvent access for custom gesture logic.
-3. **AR tap-to-place** — use \`hitResult.createAnchor()\` in \`onTouchEvent\` with \`ACTION_UP\`.
+3. **AR tap-to-place** — in \`onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\`, hit-test the latest ARCore \`Frame\` (from \`onSessionUpdated\`) and call \`createAnchorOrNull()\` on the in-polygon plane hit. Never place on a raw \`ACTION_UP\` in \`onTouchEvent\`: it also fires at the end of every drag and pinch, and returning \`true\` there swallows the editable model's gestures. Swapping the \`anchor\` state disposes the old \`AnchorNode\`, which detaches its anchor.
 4. **Custom rotation/scale** — track touch deltas or use \`ScaleGestureDetector\`.
 5. **HitResultNode** — AR surface cursor that follows the center of the screen.
-6. **Multi-model** — use \`onTap\` callback per ModelNode for selection.
+6. **Multi-model** — set \`onSingleTapConfirmed\` per ModelNode (in \`apply\`) for selection, or use \`rememberOnGestureListener(onSingleTapConfirmed = { e, node -> })\` on the scene.
 `;
 
 // ─── Performance Tips ────────────────────────────────────────────────────────
@@ -741,7 +773,11 @@ LightNode(
 )
 
 // Use small HDR environments
-val environment = rememberEnvironment(engine, "environments/sky_2k.hdr")
+val environmentLoader = rememberEnvironmentLoader(engine)
+val environment = rememberEnvironment(environmentLoader) {
+    environmentLoader.createHDREnvironment("environments/sky_2k.hdr")
+        ?: createEnvironment(environmentLoader)
+}
 // NOT: sky_4k.hdr or sky_8k.hdr (wastes GPU memory on mobile)
 \`\`\`
 
@@ -753,11 +789,17 @@ val environment = rememberEnvironment(engine, "environments/sky_2k.hdr")
 ## 6. Post-Processing
 
 \`\`\`kotlin
-// Disable post-processing for simpler scenes (saves ~2ms per frame)
+// Lighter preset: shadows, SSAO and bloom off, dynamic resolution on
 SceneView(
     engine = engine,
-    postProcessing = false // skips bloom, SSAO, tone mapping
-) {
+    renderQuality = RenderQuality.Performance
+) { /* ... */ }
+
+// Or disable post-processing entirely on the Filament View (no bloom, SSAO, tone mapping, FXAA)
+val view = rememberView(engine) {
+    createView(engine).apply { isPostProcessingEnabled = false }
+}
+SceneView(engine = engine, view = view) {
     // Simpler rendering, better FPS
 }
 \`\`\`
@@ -808,5 +850,5 @@ For detailed GPU profiling:
 4. **Frustum culling** — break scenes into multiple nodes for automatic culling.
 5. **Instancing** — reuse the same \`modelInstance\` for repeated objects.
 6. **Profile** — use Systrace or AGI to find real bottlenecks, don't guess.
-7. **Post-processing** — disable what you don't need (\`postProcessing = false\`).
+7. **Post-processing** — disable what you don't need (\`renderQuality = RenderQuality.Performance\`, or \`view.isPostProcessingEnabled = false\`).
 `;

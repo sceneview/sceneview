@@ -109,7 +109,22 @@ final class DemoScreenRecording: ObservableObject {
 
 /// The Record rows of the settings sheet: start or stop, then share or save
 /// the last clip.
+///
+/// A demo whose scene is wired to a ``SceneRecorder`` (``DemoSceneCapture``) gets
+/// *Take photo* and *Record video* — the scene alone, no chrome — instead.
 struct DemoRecordRows: View {
+    @Environment(\.demoSceneCapture) private var capture
+
+    var body: some View {
+        if let capture {
+            DemoCaptureRows(capture: capture)
+        } else {
+            DemoScreenRecordRows()
+        }
+    }
+}
+
+private struct DemoScreenRecordRows: View {
     @ObservedObject private var recording = DemoScreenRecording.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.analyticsSampleId) private var analyticsSampleId
@@ -165,6 +180,18 @@ struct DemoRecordRows: View {
 /// The stop control the identity row carries while a recording runs: the
 /// sheet that started it is closed, and the scene is what is being filmed.
 struct DemoRecordingStopButton: View {
+    @Environment(\.demoSceneCapture) private var capture
+
+    var body: some View {
+        if let capture {
+            DemoCaptureStopPill(capture: capture)
+        } else {
+            DemoScreenRecordingStopButton()
+        }
+    }
+}
+
+private struct DemoScreenRecordingStopButton: View {
     @ObservedObject private var recording = DemoScreenRecording.shared
 
     var body: some View {

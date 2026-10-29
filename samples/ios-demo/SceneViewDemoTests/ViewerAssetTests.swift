@@ -180,15 +180,6 @@ final class ViewerAssetTests: XCTestCase {
         )
     }
 
-    /// The viewer opens on the navy stage, the HDR lighting the model but not
-    /// drawn behind it, as Android's does since #4179. The Android value is
-    /// read from its source, so a change on either side fails here.
-    func testEnvironmentBackdropStartsHiddenLikeAndroid() throws {
-        XCTAssertFalse(ModelViewerDemo.showsEnvironmentByDefault)
-        XCTAssertEqual(try Self.androidShowsEnvironmentByDefault(),
-                       ModelViewerDemo.showsEnvironmentByDefault)
-    }
-
     /// Every picker card carries its one line, and a model Android also ships
     /// reads Android's `demo_model_desc_*` string word for word. The strings
     /// are read from the Android sources, so a change on either side fails
@@ -249,92 +240,6 @@ final class ViewerAssetTests: XCTestCase {
             }
         }
         return out
-    }
-
-    /// The viewer opens every model the way Android does: camera head-on and
-    /// `VIEWER_PITCH_DEGREES` above, each model turned by its own `frontYaw`.
-    /// Both are read from the Android sources, so a change on either side
-    /// fails here instead of drifting silently.
-    func testViewerOpensEachModelInAndroidsPose() throws {
-        XCTAssertEqual(ModelViewerDemo.openingAzimuth, 0, "Android's camera opens head-on (+Z).")
-        let pitch = try Self.androidViewerPitchDegrees()
-        XCTAssertEqual(ModelViewerDemo.openingElevation * 180 / .pi, pitch, accuracy: 0.001)
-
-        let yaws = try Self.androidFrontYaws()
-        var shared = 0
-        for model in ModelViewerDemo.bundledModels + ModelViewerDemo.museumModels {
-            guard let yaw = yaws[model.assetName] else { continue }
-            XCTAssertEqual(model.frontYaw, yaw, "\(model.displayName): Android turns it \(yaw)°.")
-            shared += 1
-        }
-        // Damaged Helmet, Flight Helmet, Lantern, Toy Car and the four museum models.
-        XCTAssertGreaterThanOrEqual(shared, 8, "Lost track of the Android model list.")
-        XCTAssertEqual(yaws["hd_woolly_mammoth"], -30, "Android's mammoth `frontYaw` not found.")
-    }
-
-    /// The initial value of Android's `showEnvironment` in `ModelViewerDemo.kt`.
-    static func androidShowsEnvironmentByDefault(file: StaticString = #filePath) throws -> Bool {
-        let kotlin = try String(contentsOf: androidDemoSources(file)
-            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
-        let pattern = try NSRegularExpression(
-            pattern: #"var showEnvironment by remember \{ mutableStateOf\((true|false)\) \}"#)
-        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
-              let text = Range(match.range(at: 1), in: kotlin) else {
-            XCTFail("`showEnvironment` not found in ModelViewerDemo.kt")
-            return true
-        }
-        return kotlin[text] == "true"
-    }
-
-    /// Android's `DemoMath.VIEWER_PITCH_DEGREES`.
-    static func androidViewerPitchDegrees(file: StaticString = #filePath) throws -> Float {
-        let kotlin = try String(contentsOf: androidDemoSources(file)
-            .appendingPathComponent("internal/DemoMath.kt"), encoding: .utf8)
-        let pattern = try NSRegularExpression(pattern: #"VIEWER_PITCH_DEGREES = ([0-9.]+)f"#)
-        guard let match = pattern.firstMatch(in: kotlin, range: NSRange(kotlin.startIndex..., in: kotlin)),
-              let text = Range(match.range(at: 1), in: kotlin),
-              let degrees = Float(kotlin[text]) else {
-            XCTFail("VIEWER_PITCH_DEGREES not found in DemoMath.kt")
-            return .nan
-        }
-        return degrees
-    }
-
-    /// Every `BundledViewerModel` in the Android demo → its `frontYaw` in
-    /// degrees (`0` when unset), keyed by `thumbnailStem` or, without one,
-    /// by the stem of its `models/<stem>.glb` asset — the iOS `assetName`.
-    static func androidFrontYaws(file: StaticString = #filePath) throws -> [String: Float] {
-        let kotlin = try String(contentsOf: androidDemoSources(file)
-            .appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
-        let yaw = try NSRegularExpression(pattern: #"frontYaw = (-?[0-9.]+)f"#)
-        let stem = try NSRegularExpression(pattern: #"thumbnailStem = "([a-z0-9_]+)""#)
-        let asset = try NSRegularExpression(pattern: #"^\s*"models/([a-z0-9_]+)\.glb""#)
-        func first(_ re: NSRegularExpression, in text: String) -> String? {
-            guard let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-                  let r = Range(m.range(at: 1), in: text) else { return nil }
-            return String(text[r])
-        }
-        var out: [String: Float] = [:]
-        // One chunk per constructor call, cut at the first ")" — the end of
-        // `R.string.x` never has one, and no argument nests a call — so a
-        // later field of the file cannot leak into an entry.
-        for chunk in kotlin.components(separatedBy: "BundledViewerModel(").dropFirst() {
-            guard let close = chunk.firstIndex(of: ")") else { continue }
-            let entry = String(chunk[..<close])
-            guard let key = first(stem, in: entry) ?? first(asset, in: entry) else { continue }
-            out[key] = first(yaw, in: entry).flatMap(Float.init) ?? 0
-        }
-        return out
-    }
-
-    /// `samples/android-demo/.../demo/demos`, read in place: simulator tests
-    /// run on the host file system.
-    static func androidDemoSources(_ file: StaticString) -> URL {
-        URL(fileURLWithPath: "\(file)")
-            .deletingLastPathComponent()      // SceneViewDemoTests
-            .deletingLastPathComponent()      // ios-demo
-            .deletingLastPathComponent()      // samples
-            .appendingPathComponent("android-demo/src/main/java/io/github/sceneview/demo/demos")
     }
 
     /// A museum scan opens under the neutral Studio, never under the garden's

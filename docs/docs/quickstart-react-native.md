@@ -149,8 +149,8 @@ interface ModelNode {
   src: string;           // glTF/GLB path
   position?: [number, number, number];
   rotation?: [number, number, number];
-  scale?: number;
-  animation?: boolean;
+  scale?: number | [number, number, number];
+  animation?: string;    // animation name to auto-play
 }
 
 interface TapEvent {

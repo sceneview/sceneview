@@ -120,6 +120,16 @@ describe("3D viewer widget HTML", () => {
       "if (!isThreeMfUrl && isKnownGltf) return Promise.resolve(url);"
     );
   });
+
+  it("treats a load a later render() replaced as no error (#4566)", () => {
+    const html = WIDGET_3D_VIEWER_HTML;
+    // sceneview.js rejects a superseded loadModel() with an AbortError: a theme
+    // change or a new payload mid-load must not paint the error card.
+    expect(html).toContain('if (err && err.name === "AbortError") return;');
+    // A model that loads clears whatever error an earlier payload left.
+    const reveal = html.slice(html.indexOf("function reveal("), html.indexOf("function fail("));
+    expect(reveal).toContain("errorEl.hidden = true;");
+  });
 });
 
 describe("Open in AR action", () => {

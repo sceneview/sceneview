@@ -29,8 +29,15 @@ import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.ProvideStatusBarIcons
 import io.github.sceneview.demo.fragments.GeneratedDemos
+import io.github.sceneview.demo.labs.Labs
+import io.github.sceneview.demo.support.SupportBilling
+import io.github.sceneview.demo.support.SupportPrompt
+import io.github.sceneview.demo.support.SupportSheet
+import io.github.sceneview.demo.support.SupportSheetMode
+import io.github.sceneview.demo.labs.LabsGateBody
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -59,11 +66,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
+import io.github.sceneview.demo.feedback.ArTrackingHistory
 import io.github.sceneview.demo.feedback.BugReportSheet
 import io.github.sceneview.demo.feedback.CurrentRootScreen
 import io.github.sceneview.demo.feedback.FeedbackOpenRequest
@@ -135,11 +144,20 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && savedInstanceState == null) {
             Telemetry.applyDebugConsent(this, intent?.getStringExtra("telemetry_consent"))
         }
+        // Support SceneView: count the cold start for the interstitial's "never before the
+        // third session" rule, and consume any contribution Play confirmed while we were away.
+        if (savedInstanceState == null) SupportPrompt.onSessionStart()
+        SupportBilling.connect(this)
+        // `--es support_qa prompt|thanks|pending` (debug builds only): show the interstitial
+        // now, optionally in its after-purchase state, so captures need no real purchase.
+        if (BuildConfig.DEBUG && savedInstanceState == null) applySupportQa(intent?.getStringExtra("support_qa"))
         // Usage statistics + push (demo app only). A no-op in a build without a Firebase config,
         // and Firebase itself only starts once the consent allows it (telemetry/Telemetry.kt).
         Telemetry.ensureInit(this)
         // Clean up any feedback recording stranded in the cache by a prior run.
         sweepStaleFeedbackMedia(this)
+        // Keep the AR tracking lines for the bug report past the log buffer (#4529).
+        ArTrackingHistory.start()
         // HD pack: queue the Wi-Fi-only download of the demo's full-resolution models. A no-op
         // once they are on the device or after the user removed them in About. Off the main
         // thread: it reads the bundled manifest and checks the files on disk.
@@ -189,8 +207,8 @@ class MainActivity : ComponentActivity() {
         DemoSettings.qaMode = intent?.getBooleanExtra("qa_mode", false) ?: false
         DemoSettings.qaBackdrop = resolveQaBackdrop(intent)
         // Optional id of a visual state a demo should pin itself to (#3421, #3455). One extra
-        // for every demo's vocabulary (Cloud Anchors, Point & Ask). Only honoured in QA mode
-        // — a forced state makes a demo show something that never happened.
+        // for every demo's vocabulary (Cloud Anchors, Point & Ask). Only honoured by a debug
+        // build in QA mode — a forced state makes a demo show something that never happened.
         DemoSettings.qaDemoState = resolveQaDemoState(intent)
         // Optional path to an ARCore playback fixture (.mp4). Confined to the app's own
         // external-files dir so a malicious deep link can't probe arbitrary device paths
@@ -257,11 +275,12 @@ class MainActivity : ComponentActivity() {
      * cloud project and a second device), Point & Ask cards (AICore). Each demo owns its
      * own ids; see [DemoSettings.qaDemoState].
      *
-     * Gated on `qa_mode` by [DeepLinkRouter.resolveQaState], deliberately: unlike the camera
-     * backdrop, which only changes what is *behind* the scene, this changes what the demo
-     * *claims*, so it must never be reachable from an ordinary launch. Reads
-     * [DemoSettings.qaMode] rather than the extra again so the gate and the flag it guards
-     * cannot disagree. Tracks the latest intent like the other QA extras.
+     * Gated on a debug build with `qa_mode` on by [DeepLinkRouter.resolveQaState],
+     * deliberately: unlike the camera backdrop, which only changes what is *behind* the
+     * scene, this changes what the demo *claims*, so it must never be reachable from an
+     * ordinary launch — nor from the store build, where any app can send `qa_mode` (#4555).
+     * Reads [DemoSettings.qaMode] rather than the extra again so the gate and the flag it
+     * guards cannot disagree. Tracks the latest intent like the other QA extras.
      */
     private fun resolveQaDemoState(intent: Intent?): String? =
         DeepLinkRouter.resolveQaState(DemoSettings.qaMode, intent?.getStringExtra("qa_state"))
@@ -356,7 +375,7 @@ class MainActivity : ComponentActivity() {
                 io.github.sceneview.demo.demos.RerunInbox.accepts(this@MainActivity, uri)
             }
             if (isScan) {
-                DemoSettings.rerunInbox = uri
+                io.github.sceneview.demo.demos.RerunInbox.post(this@MainActivity, uri)
                 pendingDemoId.value = DeepLinkRouter.validate(io.github.sceneview.demo.demos.RerunInbox.DEMO_ID)
                 return@launch
             }
@@ -552,7 +571,7 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
         if (!hasHome) {
             navController.navigate("list") { popUpTo(navController.graph.id) { inclusive = true } }
         }
-        navController.navigate("demo/$id") { popUpTo("list") }
+        navController.navigate("demo/$id")
         activity?.consumePendingPushDemo()
     }
 
@@ -683,10 +702,9 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             )
             reportScope.launch {
                 val screenshot = activity?.let { captureBugReportScreenshot(it) }
-                bugReport = PendingBugReport(
-                    info = captureBugReportInfo(context, screen),
-                    screenshot = screenshot,
-                )
+                // Two `logcat` runs, each waited for: not on the main thread.
+                val info = withContext(Dispatchers.IO) { captureBugReportInfo(context, screen) }
+                bugReport = PendingBugReport(info = info, screenshot = screenshot)
             }
         }
 
@@ -722,7 +740,12 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     }
 }
 
-/** Pushes a deep-linked demo above Home so leaving it disposes all destination-scoped work. */
+/**
+ * Opens a deep-linked demo directly above Home, so leaving it disposes all destination-scoped
+ * work. A link that arrives while another demo is open replaces that demo (#4502): Back
+ * returns to Home, exactly as after a cold start by the same link, never to the demo the link
+ * interrupted. A link to the demo already open replaces it too, so its `?tab=` is read again.
+ */
 @Composable
 internal fun PendingDemoNavigation(
     navController: NavHostController,
@@ -731,7 +754,7 @@ internal fun PendingDemoNavigation(
 ) {
     LaunchedEffect(pendingId) {
         val id = pendingId ?: return@LaunchedEffect
-        navController.navigate("demo/$id")
+        navController.navigate("demo/$id") { popUpTo("list") }
         onConsumed()
     }
 }
@@ -754,6 +777,45 @@ internal fun PendingDemoNavigation(
  */
 @Composable
 fun DemoRouter(id: String, onBack: () -> Unit) {
+    val entry = ALL_DEMOS.find { it.id == id }
+    // A Labs demo with Labs off for this install (a shared deep link, an old shortcut) opens
+    // the Labs explainer instead; joining or switching Labs on there opens the demo in place.
+    if (entry?.isLabs == true && !Labs.enabled) {
+        LabsGateScreen(title = stringResource(entry.titleRes), onBack = onBack)
+        return
+    }
+    if (entry?.opensCameraOnEntry == true) {
+        ArDemoPermissionGate(
+            title = stringResource(entry.titleRes),
+            onBack = onBack,
+        ) {
+            RoutedDemo(id = id, onBack = onBack)
+        }
+        return
+    }
+    RoutedDemo(id = id, onBack = onBack)
+}
+
+/** The Labs explainer standing in for a Labs demo: no scene, no dock, the page background. */
+@Composable
+private fun LabsGateScreen(title: String, onBack: () -> Unit) {
+    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
+    if (showSupportSheet) {
+        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
+    }
+    DemoScaffold(title = title, onBack = onBack, dockHidden = true, themedStage = true, hasScene = false) {
+        LabsGateBody(
+            access = Labs.access,
+            labsDemos = rememberLabsDemos(),
+            onJoinClick = { FeedbackOpenRequest.request() },
+            onEnabledChange = Labs::setEnabled,
+            onSupportClick = { showSupportSheet = true },
+        )
+    }
+}
+
+@Composable
+private fun RoutedDemo(id: String, onBack: () -> Unit) {
     val matched = GeneratedDemos.Screen(id = id, onBack = onBack)
     if (!matched) {
         check(!BuildConfig.DEBUG) {
@@ -809,6 +871,29 @@ fun PlaceholderDemo(id: String, onBack: () -> Unit) {
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/** Debug QA ingress for the Support sheet — see the `support_qa` extra in [MainActivity.onCreate]. */
+private fun applySupportQa(value: String?) {
+    when (value) {
+        "prompt" -> SupportPrompt.forceShow()
+        "ready" -> {
+            SupportBilling.qaPrices = mapOf(
+                "support_small" to "$2.99",
+                "support_medium" to "$9.99",
+                "support_large" to "$24.99",
+            )
+            SupportPrompt.forceShow()
+        }
+        "thanks" -> {
+            SupportPrompt.forceShow()
+            SupportBilling.forceOutcome(SupportBilling.Outcome.Thanks)
+        }
+        "pending" -> {
+            SupportPrompt.forceShow()
+            SupportBilling.forceOutcome(SupportBilling.Outcome.Pending)
         }
     }
 }

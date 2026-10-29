@@ -86,8 +86,12 @@ class HdPackStoreTest {
         // The ids iOS matches 1:1 — renaming one orphans the other platform's entry.
         assertEquals(
             listOf("flight-helmet", "apollo11-exterior", "apollo11-interior", "woolly-mammoth", "perseverance"),
-            parsed.assets.map { it.id },
+            parsed.assets.take(5).map { it.id },
         )
+        // The real-product catalogue (#4560) follows, Android only for now, every file in metres.
+        val catalogue = parsed.assets.drop(5)
+        assertTrue("the catalogue is missing", catalogue.size >= 60)
+        catalogue.forEach { assertEquals("${it.id} is not in metres", 1f, it.scale) }
         // The Smithsonian Apollo scans are authored in centimetres.
         assertEquals(0.01f, parsed.asset("apollo11-exterior")!!.scale)
         assertEquals(0.01f, parsed.asset("apollo11-interior")!!.scale)

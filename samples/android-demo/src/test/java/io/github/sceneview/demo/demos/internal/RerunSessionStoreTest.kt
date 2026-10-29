@@ -140,6 +140,30 @@ class RerunSessionStoreTest {
     }
 
     @Test
+    fun `a session keeps what was scanned, and one kept before reads as a room`() {
+        val store = RerunSessionStore(folder.newFolder("scoped"))
+        val vase = store.save(bundled(), "Object · Oct 19", RerunSessionSource.Recorded, scope = ScanScope.Object)
+        assertEquals(ScanScope.Object, vase.scope)
+        assertEquals(ScanScope.Object, store.list().single().scope)
+        assertTrue(File(store.directoryOf(vase.id), "session.json").readText().contains("\"scope\": \"object\""))
+        // A rename keeps it.
+        assertEquals(ScanScope.Object, store.rename(vase.id, "Vase")!!.scope)
+        assertEquals(ScanScope.Object, store.list().single().scope)
+
+        // A session.json from before #4683 — or the iOS demo's — has no scope: it is a room.
+        val old = """{"id":"A","title":"t","createdAt":"2026-09-28T12:32:05Z","source":"recorded",""" +
+            """"duration":1,"pathMetres":1,"points":1,"planes":1,"photos":1}"""
+        assertEquals(ScanScope.Room, RerunStoredSession.parse(old)!!.scope)
+        // A scope a later build adds reads as a room too, rather than not at all.
+        val later = old.replace("\"photos\":1}", "\"photos\":1,\"scope\":\"garden\"}")
+        assertEquals(ScanScope.Room, RerunStoredSession.parse(later)!!.scope)
+        for (scope in ScanScope.entries) {
+            val session = RerunStoredSession.parse(old)!!.copy(scope = scope)
+            assertEquals(session, RerunStoredSession.parse(session.toJson()))
+        }
+    }
+
+    @Test
     fun `a session json missing a key, or from nowhere, does not read`() {
         assertNull(RerunStoredSession.parse("""{"id":"A","title":"t","source":"recorded"}"""))
         assertNull(RerunStoredSession.parse("not json"))
@@ -214,6 +238,131 @@ class RerunSessionStoreTest {
             store.import("bad.rrd", "RRF2".toByteArray(), readRrd = { error("boom") })
         }
         assertEquals(1, store.list().size)
+    }
+
+    @Test
+    fun `an object scan shared as a file opens as an object, and an old file as a room (#4683)`() {
+        val noRrd: (ByteArray) -> RerunCapturePack = { fail("not a .rrd"); error("") }
+        val shareRoot = folder.newFolder("share")
+        for (photos in listOf(true, false)) {
+            val sent = RerunShareCopy.write(bundled(), "Mug", shareRoot, photos, ScanScope.Object)
+            val store = RerunSessionStore(folder.newFolder("object-$photos"))
+            val opened = store.import(sent.name, sent.readBytes(), noRrd)
+            assertEquals(ScanScope.Object, opened.scope)
+            assertEquals(ScanScope.Object, store.list().single().scope)
+            // Shared on again from the phone it was opened on, it is still an object.
+            val again = RerunShareCopy.write(store.capture(opened.id)!!, opened.title, shareRoot, photos, opened.scope)
+            val other = RerunSessionStore(folder.newFolder("again-$photos"))
+            assertEquals(ScanScope.Object, other.import(again.name, again.readBytes(), noRrd).scope)
+        }
+
+        // A room's file is the stored capture with only its title added, and opens as a room.
+        val room = RerunShareCopy.write(bundled(), "Kitchen", shareRoot, true, ScanScope.Room)
+        assertArrayEquals(RerunScanFile.write(RerunScanFile.withTitle(bundled(), "Kitchen")), room.readBytes())
+        val rooms = RerunSessionStore(folder.newFolder("rooms"))
+        assertEquals(ScanScope.Room, rooms.import(room.name, room.readBytes(), noRrd).scope)
+        // A file written before the key — or with one this version does not know — opens as a room.
+        val unknown = RerunCapturePack(
+            String(bundled().manifest).replaceFirst("{", "{\"scope\":\"galaxy\",").toByteArray(),
+            bundled().log,
+            bundled().media,
+        )
+        assertEquals(ScanScope.Room, RerunScanFile.scopeOf(bundled()))
+        assertEquals(ScanScope.Room, RerunScanFile.scopeOf(unknown))
+        assertEquals(ScanScope.Object, RerunScanFile.scopeOf(RerunScanFile.withScope(unknown, ScanScope.Object)))
+    }
+
+    @Test
+    fun `a scan file opens under the title it was saved with, colons included (#4695)`() {
+        val noRrd: (ByteArray) -> RerunCapturePack = { fail("not a .rrd"); error("") }
+        val title = "Object · Oct 19, 12:16 PM"
+        val shareRoot = folder.newFolder("share")
+        for (photos in listOf(true, false)) {
+            // The share flow: the file name loses the colon, the title inside keeps it.
+            val sent = RerunShareCopy.write(bundled(), title, shareRoot, photos, ScanScope.Object)
+            assertEquals("Object · Oct 19, 12-16 PM.svscan", sent.name)
+            val store = RerunSessionStore(folder.newFolder("share-$photos"))
+            val opened = store.import(sent.name, sent.readBytes(), noRrd)
+            assertEquals(title, opened.title)
+            assertEquals(ScanScope.Object, opened.scope)
+            assertEquals(title, store.list().single().title)
+        }
+        // The export sheet's "Original scan" writes the same stamped capture.
+        val exported = RerunScanFile.write(RerunScanFile.stamped(bundled(), ScanScope.Room, "Room · Oct 19, 9:05 AM"))
+        val exportStore = RerunSessionStore(folder.newFolder("export"))
+        val reopened = exportStore.import("Room · Oct 19, 9-05 AM.svscan", exported, noRrd)
+        assertEquals("Room · Oct 19, 9:05 AM", reopened.title)
+        // Stamping twice with the same title changes nothing; every other key survives.
+        val stamped = RerunScanFile.withTitle(bundled(), title)
+        assertTrue(stamped === RerunScanFile.withTitle(stamped, title))
+        val before = kotlinx.serialization.json.Json.parseToJsonElement(String(bundled().manifest))
+            as kotlinx.serialization.json.JsonObject
+        val after = kotlinx.serialization.json.Json.parseToJsonElement(String(stamped.manifest))
+            as kotlinx.serialization.json.JsonObject
+        assertEquals(before, kotlinx.serialization.json.JsonObject(after - "title"))
+
+        // A file written before the key, or with a blank or non-string one, keeps its file name.
+        val old = RerunSessionStore(folder.newFolder("old"))
+        assertNull(RerunScanFile.titleOf(bundled()))
+        assertEquals("kitchen", old.import("kitchen.svscan", RerunScanFile.write(bundled()), noRrd).title)
+        for ((index, value) in listOf("\"  \"", "42").withIndex()) {
+            val odd = RerunCapturePack(
+                String(bundled().manifest).replaceFirst("{", "{\"title\":$value,").toByteArray(),
+                bundled().log,
+                bundled().media,
+            )
+            assertNull(RerunScanFile.titleOf(odd))
+            val into = RerunSessionStore(folder.newFolder("odd-$index"))
+            assertEquals("odd scan", into.import("odd scan.svscan", RerunScanFile.write(odd), noRrd).title)
+        }
+    }
+
+    @Test
+    fun `the same file opened twice is one session, a different file is another (#4680)`() {
+        val store = RerunSessionStore(folder.newFolder("sessions"))
+        val noRrd: (ByteArray) -> RerunCapturePack = { fail("not a .rrd"); error("") }
+        val file = RerunScanFile.write(bundled())
+
+        val first = store.import("Example scan.svscan", file, noRrd, nowMillis = 1_000L)
+        val renamed = store.rename(first.id, "Kitchen")!!
+        // Same bytes, another name, later: it opens the session the first import made, as it is now.
+        val again = store.import("Example scan (1).svscan", file.copyOf(), noRrd, nowMillis = 9_000L)
+        assertEquals(renamed, again)
+        assertEquals(listOf(renamed), store.list())
+
+        // One byte different is another file.
+        val pack = bundled()
+        val other = RerunScanFile.write(RerunCapturePack(pack.manifest, pack.log + '\n'.code.toByte(), pack.media))
+        val second = store.import("Example scan.svscan", other, noRrd, nowMillis = 2_000L)
+        assertFalse(second.id == first.id)
+        assertEquals(2, store.list().size)
+
+        // Deleted, it imports anew.
+        store.delete(first.id)
+        val back = store.import("Example scan.svscan", file, noRrd)
+        assertFalse(back.id == first.id)
+        assertEquals(2, store.list().size)
+    }
+
+    @Test
+    fun `two imports of one file racing each other keep one session (#4680)`() {
+        val root = folder.newFolder("sessions")
+        val noRrd: (ByteArray) -> RerunCapturePack = { error("not a .rrd") }
+        val file = RerunScanFile.write(bundled())
+        // Two stores on one directory, as two activities each hold one.
+        val stores = listOf(RerunSessionStore(root), RerunSessionStore(root))
+        val start = java.util.concurrent.CountDownLatch(1)
+        val ids = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val threads = stores.map { store ->
+            Thread {
+                start.await()
+                ids += store.import("Example scan.svscan", file, noRrd).id
+            }.apply { start() }
+        }
+        start.countDown()
+        threads.forEach { it.join() }
+        assertEquals(1, ids.toSet().size)
+        assertEquals(1, RerunSessionStore(root).list().size)
     }
 
     private inline fun <reified T : Throwable> assertThrows(block: () -> Unit) {

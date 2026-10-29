@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.52.0)
+  Source of truth: /llms.txt  (SceneView 4.63.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.52.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.63.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -28,7 +28,7 @@
 ## Reference
 
 - [Full API reference](https://sceneview.github.io/llms.txt): this file — setup, composables, every node type, threading rules, recipes
-- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~12 kB, when the full file will not fit
+- [Compact overview](https://sceneview.github.io/llms-full.txt): the same ground in ~13 kB, when the full file will not fit
 - [Generated API docs — 3D](https://sceneview.github.io/api/sceneview/latest/sceneview/): Dokka output for `sceneview`
 - [Generated API docs — AR](https://sceneview.github.io/api/sceneview/latest/arsceneview/): Dokka output for `arsceneview`
 
@@ -73,6 +73,7 @@ fun SceneView(
     autoCenterContent: Boolean = true,   // library-level auto-center — see note below
     autoFitContent: Boolean = false,     // auto-frame camera to content — see "Auto-fit camera framing"
     framingPadding: Float = DEFAULT_FRAMING_PADDING,   // 0.15 — air around auto-fit content, additive fraction (NOT iOS's multiplier)
+    contentPadding: PaddingValues = PaddingValues(0.dp),   // area a panel covers — see "Content padding"
     renderer: Renderer = rememberRenderer(engine),
     scene: Scene = rememberScene(engine),
     environment: Environment = rememberEnvironment(environmentLoader, isOpaque = isOpaque),
@@ -82,7 +83,7 @@ fun SceneView(
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
@@ -92,7 +93,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -203,8 +204,7 @@ fun ARSceneView(
     updateMode: Config.UpdateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE,
     focusMode: Config.FocusMode = Config.FocusMode.AUTO,
     sessionConfiguration: ((session: Session, Config) -> Unit)? = null,  // Escape hatch — runs AFTER all typed params above.
-    planeRenderer: Boolean = true,
-    planeRendererVersion: PlaneRendererBase.Version = PlaneRendererBase.Version.V1,  // v4.16.1: V1 restored as default — V2 (#2203) shipped briefly as default in v4.16.0 but visual output did not match design intent on real devices. V2 stays available as experimental opt-in (`Version.V2`) while it's polished.
+    planeRenderer: Boolean = true,  // The one plane renderer (#4307): dots on floors, dashes on walls, rings on ceilings. false FADES the surfaces out; detection, hit tests and gestures keep working.
     sceneUnderstanding: SceneUnderstanding? = null,  // v4.10.0+ — grouped occlusion/lighting/physics/planeVisualization (#1767, RealityKit parity). null = use the individual flags.
     cameraStream: ARCameraStream? = rememberARCameraStream(materialLoader),
     view: View = rememberARView(engine),
@@ -228,19 +228,54 @@ fun ARSceneView(
     onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,  // A requested capability was silently downgraded — see "ARConfigDowngrade" (#2096).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
-    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,
+    lifecycle: Lifecycle = LocalLifecycleOwner.current.lifecycle,   // inside a NavHost with transitions pass rememberHostLifecycle() — see the note below
+    cameraPermissionOverlay: (@Composable BoxScope.(ARCameraPermissionState) -> Unit)? = { ARCameraPermissionOverlay(it) },   // Built-in "Camera access needed" card; null draws nothing.
+    arCoreAvailabilityOverlay: (@Composable BoxScope.(ARCoreAvailabilityState) -> Unit)? = { ARCoreAvailabilityOverlay(it) },  // Built-in "ARCore missing / couldn't start AR" card; null draws nothing.
+    onARCoreAvailability: ((availability: ARCoreAvailability?) -> Unit)? = null,   // Non-null = ARCore cannot serve the session; null = it can again.
+    onCameraPermissionStateChanged: ((state: ARCameraPermissionState?) -> Unit)? = null,  // Non-null = session held back until the camera is granted (same instance the overlay gets: permanentlyDenied, request(), openSettings()); null = granted, AR starting. Hide your own loading chrome while non-null, or it covers the card (#4452). Not called once the scene leaves composition.
     content: (@Composable ARSceneScope.() -> Unit)? = null
 )
 ```
 
+**Note — the display stays on while `ARSceneView` is composed (#4392).** An AR session is used
+without touching the screen, so the composable sets `keepScreenOn` on its host view and hands
+the previous value back when it leaves the composition. Nothing to add in app code; a 3D
+`SceneView` leaves the display timeout alone.
+
+**Note — AR screen inside a `NavHost`: pass `lifecycle = rememberHostLifecycle()`.** By default
+`ARSceneView` follows `LocalLifecycleOwner`, which inside a `NavHost` is the destination: it leaves
+`RESUMED` when the exit transition *starts*, so the camera stops and its last image stays frozen on
+screen for the whole transition. `rememberHostLifecycle()` (opt-in, `io.github.sceneview.ar`)
+returns the host ACTIVITY's lifecycle: the session runs while the composable is in the
+composition and the activity is resumed, pauses when the activity pauses, and is closed on
+disposal. Do not add your own `session.pause()` on navigation.
+
+```kotlin
+@Composable
+fun ArDestination() {   // the content of a NavHost `composable("ar") { ArDestination() }`
+    ARSceneView(
+        modifier = Modifier.fillMaxSize(),
+        lifecycle = rememberHostLifecycle(),
+    )
+}
+```
+
+Keep the default where the host keeps the AR screen composed but not visible (a `ViewPager2`
+page, a screen under a full-screen `dialog()` destination): with `rememberHostLifecycle()` the
+camera would stay on there. Two `ARSceneView`s resumed at once share the single camera: the one
+that resumed last runs, the other keeps its last frame and gets the camera back when the newer
+one is disposed, paused or fails to resume. Known limit: on a predictive back gesture from one AR
+screen to another, the screen under the finger is frozen until the gesture ends.
+
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -407,27 +442,47 @@ ARSceneView(
 
 When `sceneUnderstanding` is non-null, its four flags override the individual ones on every recomposition. When null, the individual flags retain their pre-#1767 defaults verbatim.
 
-### Plane rendering — V1 default (proven) + V2 opt-in experimental (#2203)
+### Plane rendering — one renderer, one mark per surface type (#4307)
 
-Two plane-renderer implementations ship side-by-side, selectable via the `planeRendererVersion` parameter on `ARSceneView` (and on the legacy `ARScene` alias). **V1 is the default** — flat polygon textured with a procedural soft grid, battle-tested. **V2 is opt-in experimental**: v4.16.0 briefly shipped V2 as the default but on-device QA showed the visual output not matching the design intent (washed-out grid sheet on real surfaces, missing the promised HDR reflection + relief). v4.16.1 reverted the default to V1 while V2 is polished. The V2 code remains in the codebase for early adopters who want to help shape the redesign.
+`ARSceneView(planeRenderer = true)` (the default) draws every surface ARCore tracks with a field of soft, world-anchored marks, and **the mark says what the surface is** (`Plane.type`):
+
+| `Plane.type`                 | role             | mark                                   |
+|------------------------------|------------------|----------------------------------------|
+| `HORIZONTAL_UPWARD_FACING`   | floor, table     | round white dots, the strongest        |
+| `VERTICAL`                   | wall             | upright blue dashes on staggered rows  |
+| `HORIZONTAL_DOWNWARD_FACING` | ceiling          | hollow warm rings, the quietest        |
+
+Shape differs as well as colour, so a wall reads as a wall in a dark room, in daylight and for a colour-blind user; a soft dark halo around every mark (material parameter `contrast`, 0.80 by default) keeps it readable over a white wall or a sunlit floor. A new surface is revealed by a front sweeping out from its centre; the floor under the centre of the screen is highlighted (it is the reticle); marks fade at the surface's edges and with distance. Small slivers are not drawn until they grow (walls under 0.40 m × 0.20 m, horizontals under 0.20 m × 0.10 m), and planes subsumed by a larger one are skipped.
+
+There is no second renderer and no version switch. Since 4.57.0 `planeRendererVersion` is **deprecated and ignored** (both values draw with `PlaneRenderer`): omit it. `PlaneRendererV2` and `PlaneVisualizerV2` are deprecated aliases of `PlaneRenderer` and `PlaneVisualizer`, and `PlaneRendererBase` is deprecated: write the new names. The textured grid is gone: `PlaneRenderer.planeTexture` is a deprecated 1 × 1 placeholder that nothing samples, `MATERIAL_TEXTURE` and `MATERIAL_COLOR` are no longer material parameters (tint with `MATERIAL_GRID_TINT`), and `maxHitTestPerSecond` is now `maxUpdatesPerSecond`.
+
+**After placement — fade the surfaces, keep the object editable.** `planeRenderer = false` fades the surfaces out; plane *detection* keeps running, so an editable `AnchorNode` still drags, twists, pinches and re-anchors exactly as before:
 
 ```kotlin
-ARSceneView(
-    modifier = Modifier.fillMaxSize(),
-    // Default is V1 — this line is redundant, shown for clarity.
-    planeRendererVersion = PlaneRendererBase.Version.V1,
-) { /* ... */ }
+var anchor by remember { mutableStateOf<Anchor?>(null) }
+var moving by remember { mutableStateOf(false) }
 
-// Opt in to the experimental V2:
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
-    planeRendererVersion = PlaneRendererBase.Version.V2,
-) { /* ... */ }
+    planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL,
+    // Surfaces while scanning, and again for the length of a drag.
+    planeRenderer = anchor == null || moving,
+    onGestureListener = rememberOnGestureListener(
+        onMoveBegin = { _, _, node -> if (node != null) moving = true },
+        onMoveEnd = { _, _, _ -> moving = false },
+    ),
+) {
+    anchor?.let { placed ->
+        AnchorNode(anchor = placed, apply = { isEditable = true }) {
+            // ModelNode(...) — drag moves it along the surfaces, twist turns it, pinch scales it.
+        }
+    }
+}
 ```
 
-The V2 path (depth-driven mesh + PBR + HDR cubemap reflection + type-aware shading + scan-in) is implemented but its visual output does not yet match a polished AR product. See [#2203](https://github.com/sceneview/sceneview/issues/2203) for the umbrella + research notes (`.claude/plans/v2-references-study.md`, `v2-google-ar-catalog.md`, `v2-non-google-catalog.md` — the comparative study of how Google ARCore Depth Lab, Apple ARKit / RoomPlan, Niantic Lightship, Snap Lens Studio handle plane visualization). The honest finding: the industry minimizes plane decoration in favour of *making virtual content respect the real geometry*. The V2 redesign will likely follow that path rather than pushing PBR onto the plane itself.
+Never remove the node, drop `isEditable` or tear the session down to "hide the planes": that is what freezes the placed object. Occluding virtual content behind real geometry is a separate topic (depth occlusion, `sceneUnderstanding`), not something the plane marks do.
 
-Showcase demo: `sceneview://demo/ar-plane-renderer-v2` (live V1 ↔ V2 toggle) — kept so contributors can see the current V2 state and compare against V1.
+Showcase demo: `sceneview://demo/ar-surfaces` (the retired `ar-plane-renderer-v2` id still resolves to it).
 
 ### ARFogNode — environment-aware AR fog (v4.10.0+, #1717)
 
@@ -560,6 +615,31 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**
@@ -786,6 +866,7 @@ import io.github.sceneview.geometries.Plane // the geometry defaults, not com.go
     fontSize: Float = 48f,
     textColor: Int = android.graphics.Color.WHITE,
     backgroundColor: Int = 0xCC000000.toInt(),
+    typeface: android.graphics.Typeface = android.graphics.Typeface.DEFAULT_BOLD,
     widthMeters: Float = 0.6f,
     heightMeters: Float = 0.2f,
     position: Position = Position(x = 0f),
@@ -795,7 +876,15 @@ import io.github.sceneview.geometries.Plane // the geometry defaults, not com.go
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
-Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `position`, `scale` update on recomposition.
+Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `typeface`, `position`, `scale` and
+`cameraPositionProvider` update on recomposition. `widthMeters` and `heightMeters` are read
+**once**, when the node is created — a later value is ignored. The label is drawn into a
+512 × 128 px bitmap; for another resolution build the node class yourself
+(`io.github.sceneview.node.TextNode(…, bitmapWidth, bitmapHeight)`).
+`typeface` takes any `android.graphics.Typeface`, e.g. `Typeface.create("serif", Typeface.ITALIC)`.
+The label turns toward the camera **only** when `cameraPositionProvider` is given
+(`cameraPositionProvider = { cameraNode.worldPosition }`); without one it keeps the orientation
+of its parent. There is no `rotation` parameter. See "Facing the camera" below.
 
 ### BillboardNode — always-facing-camera sprite
 ```kotlin
@@ -810,6 +899,26 @@ Reactive: `text`, `fontSize`, `textColor`, `backgroundColor`, `position`, `scale
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 ```
+Reactive: `position`, `scale` and `cameraPositionProvider` update on recomposition; a new `bitmap`
+rebuilds the node. Without a `cameraPositionProvider` it is a plain image quad that keeps its parent's orientation.
+
+#### Facing the camera — `cameraPositionProvider` on `BillboardNode`, `TextNode` and `ViewNode`
+One parameter, one meaning on the three: `cameraPositionProvider: (() -> Position)? = null`.
+- `null` (default): the node does not turn. Nothing faces the camera unless you ask.
+- Set: a **full look-at**. The front of the quad points at the position you return and its top
+  edge stays toward world `+Y` — yaw and pitch, never roll. Pass
+  `{ cameraNode.worldPosition }` with the `cameraNode` you gave `SceneView`.
+- Yaw only (an upright sign): level the reported position with the node,
+  `{ cameraNode.worldPosition.copy(y = signHeight) }`.
+- Parallel to the screen (a card off the view axis that must stay a rectangle, where facing the
+  eye shows a parallelogram): report a point offset from the node the way the camera is offset
+  from what it looks at, `{ node.worldPosition + (cameraNode.worldPosition - target) }`.
+- It follows the camera, the node **and its parent**: a label on a turntable keeps facing you.
+- Reactive: swap it or set it to `null` on recomposition, or through the node's
+  `cameraPositionProvider` property. `null` stops the turning and leaves the node as last turned.
+- While it is set the node owns its orientation: a `rotation` or `quaternion` written by hand is
+  overwritten. Set the provider through the parameter, not inside `apply`.
+- Free while nothing moves: it does not keep a `FrameRatePolicy.OnDemand` scene awake.
 
 ### SplatNode — 3D Gaussian Splatting (radiance-field captures) (#2646)
 Renders a `SplatCloud` (the KMP data model: flat `positions`/`scales`/`rotations`/`colors`/`opacities`
@@ -854,29 +963,33 @@ current Niantic format) are all read, in pure Kotlin on every target.
 **Web (#2646 P2):** the same rendering ships in `sceneview-web` (Kotlin/JS + Filament.js, WebGL2).
 Plain JS: `viewer.addSplatNode(url)` (`.ply` / `.spz`) → `Promise<NodeHandle>`. Kotlin/JS:
 `SceneView.addSplatNode(url, onLoaded = …)` or `addSplatNode(splatCloud)` for an already-parsed
-cloud. The web still draws isotropic billboards (anisotropic port: #4046); the painter's sort re-runs on camera motion automatically (the web
-node feeds it the live camera position). iOS is tracked separately under #2646.
+cloud. Splats are oriented ellipses with the Android projection (#4046) and display the stored
+colour on the bundle's Filmic view; a cloud holds at most 2^24 splats (above that the promise
+rejects / `onError` fires with the limit in the message). The painter's sort re-runs on camera
+motion automatically (the web node feeds it the live camera position). iOS is tracked
+separately under #2646.
 
 ### VideoNode — video on 3D plane
 ```kotlin
-// Simple — asset path (recommended):
+// Simple — a path or a URL (recommended):
 @ExperimentalSceneViewApi
 @Composable fun VideoNode(
-    videoPath: String,              // e.g. "videos/promo.mp4"
-    autoPlay: Boolean = true,
-    isLooping: Boolean = true,
+    videoPath: String,              // "videos/promo.mp4" (assets), or https:// file:// content://
+    autoPlay: Boolean = true,       // reactive: true plays, false pauses
+    isLooping: Boolean = true,      // reactive
     chromaKeyColor: Int? = null,
     size: Size? = null,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
     scale: Scale = Scale(1f),
+    onError: ((Exception) -> Unit)? = null,   // missing file, unsupported codec, broken stream
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
 
 // Advanced — bring your own MediaPlayer:
 @Composable fun VideoNode(
-    player: MediaPlayer,
+    player: MediaPlayer,   // already prepared
     chromaKeyColor: Int? = null,
     size: Size? = null,    // null = auto-sized from video aspect ratio
     position: Position = Position(x = 0f),
@@ -885,23 +998,58 @@ node feeds it the live camera position). iOS is tracked separately under #2646.
     apply: VideoNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null
 )
+
+// The player both overloads are built on:
+@ExperimentalSceneViewApi
+@Composable fun rememberMediaPlayer(
+    fileLocation: String,           // assets path, or a location with a scheme
+    isLooping: Boolean = true,
+    autoPlay: Boolean = true
+): MediaPlayerState
+
+sealed interface MediaPlayerState {
+    data object Preparing : MediaPlayerState
+    class Ready(val player: MediaPlayer) : MediaPlayerState
+    class Failed(val cause: Exception) : MediaPlayerState   // FileNotFoundException, MediaPlayerException(what, extra), …
+}
 ```
+
+The video is prepared off the main thread (`prepareAsync`), never during composition. The node
+appears once the video is prepared; until then, and if it fails, `VideoNode(videoPath)` emits
+nothing — pass `onError` to hear about a failure (called once, on the main thread; also logged
+once under the `MediaPlayerState` tag). The player is released when the location changes and when
+the call leaves the composition: never release it yourself, never keep it past that point.
 
 Usage (simple):
 ```kotlin
+var videoError by remember { mutableStateOf<Exception?>(null) }
+
 SceneView {
-    VideoNode(videoPath = "videos/promo.mp4", position = Position(z = -2f))
+    VideoNode(
+        videoPath = "videos/promo.mp4",
+        position = Position(z = -2f),
+        onError = { cause -> videoError = cause }   // render your own message from this state
+    )
 }
 ```
 
-Usage (advanced — custom MediaPlayer):
+Usage (a placeholder while it prepares, a fallback when it fails):
 ```kotlin
-val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
-
-SceneView(...) {
-    player?.let { VideoNode(player = it, position = Position(z = -2f)) }
+@Composable
+fun PromoVideo(loadingStill: Bitmap, unavailableStill: Bitmap) {
+    SceneView {
+        when (val video = rememberMediaPlayer("https://example.com/promo.mp4")) {
+            is MediaPlayerState.Ready -> VideoNode(player = video.player, position = Position(z = -2f))
+            is MediaPlayerState.Failed -> ImageNode(bitmap = unavailableStill, position = Position(z = -2f))
+            MediaPlayerState.Preparing -> ImageNode(bitmap = loadingStill, position = Position(z = -2f))
+        }
+    }
 }
 ```
+
+Never call the blocking `MediaPlayer.prepare()` or `MediaPlayer.create(…)` inside `remember { }`:
+both parse the file on the main thread, during composition. A streamed URL needs the
+`android.permission.INTERNET` permission.
 
 ### ViewNode — Compose UI in 3D
 **Requires `viewNodeWindowManager` on the parent `SceneView`.**
@@ -912,11 +1060,19 @@ SceneView(...) {
     invertFrontFaceWinding: Boolean = false,
     position: Position = Position(x = 0f),
     rotation: Rotation = Rotation(x = 0f),
+    scale: Scale = Scale(1f),              // the quad is 1 m per 250 px of content at scale 1
+    isVisible: Boolean = true,
+    cameraPositionProvider: (() -> Position)? = null,  // set = the quad faces this position
     apply: ViewNode.() -> Unit = {},
     content: (@Composable NodeScope.() -> Unit)? = null,
     viewContent: @Composable () -> Unit    // the Compose UI to render
 )
 ```
+Reactive: `position`, `rotation`, `scale`, `isVisible`, `cameraPositionProvider` and `viewContent`
+update on recomposition. `unlit` and `invertFrontFaceWinding` are read **once**, when the node is
+created, and `apply` runs once at the same moment. `rotation` is ignored while
+`cameraPositionProvider` is set and applies again when it goes back to `null` — same semantics as
+`BillboardNode` and `TextNode`, see "Facing the camera" above.
 
 Usage:
 ```kotlin
@@ -1043,6 +1199,19 @@ Changing `points` or `radius` **without changing the point count** re-uploads in
 tube already owns, so animating a path frame by frame is affordable. Changing the count rebuilds
 them — keep sample counts constant across curve types if you switch shapes at runtime.
 
+That rule holds for every geometry node (`SphereNode`, `PathNode`, `ShapeNode`, `GeometryNode`, …):
+an update that keeps the vertex count, the per-submesh index counts and the attribute layout
+(normals / UVs / colours present or not) rewrites the existing buffers; anything else — more
+`slices`, one more path point, a shape gaining a `color` — allocates new buffers, re-points every
+node bound to that `Geometry` and destroys the old ones right after. Both are safe; only the second
+allocates. Both go through the same one-upload-in-flight rule (see "Custom geometry" threading
+below): a rebuild asked for while the previous upload is still with Filament waits for it, and
+until it goes out `vertexBuffer`, `indexBuffer`, `primitivesOffsets` and `boundingBox` keep
+describing the buffers still on screen — `vertices` and `primitivesIndices` are already the new
+ones. A `Geometry` passed to several `GeometryNode`s is shared: one `geometry.update(...)`
+updates them all, and it is destroyed with the last node bound to it. An update with no vertex, or
+a path with fewer than 2 points, throws `IllegalArgumentException`.
+
 ### MeshNode — custom geometry
 ```kotlin
 @Composable fun MeshNode(
@@ -1060,6 +1229,8 @@ Build the buffers with `Geometry.Builder`, which takes plain `Geometry.Vertex(po
 SceneView(...) {
     val vertices = remember(resolution) { myGenerator(resolution) }   // List<Geometry.Vertex>
     // Key the Geometry on the vertex COUNT, not on the values: same count = same buffers.
+    // MeshNode borrows the buffers and is NOT re-pointed if an update replaces them, so a
+    // count change must build a new Geometry (as here). Prefer GeometryNode otherwise.
     val geometry = remember(engine, resolution) {
         Geometry.Builder(RenderableManager.PrimitiveType.TRIANGLES)
             .vertices(vertices)
@@ -1068,7 +1239,8 @@ SceneView(...) {
     }
     // Animate by rewriting the existing buffers — no reallocation, no leak.
     SideEffect { geometry.update(engine, vertices) }
-    // MeshNode does NOT own buffers it was handed: free them yourself.
+    // MeshNode does NOT own buffers it was handed: free them yourself. Destruction is
+    // immediate, so declare this BEFORE the MeshNode — it is then disposed after it.
     DisposableEffect(geometry) { onDispose { engine.safeDestroyGeometry(geometry) } }
 
     MeshNode(
@@ -1080,7 +1252,21 @@ SceneView(...) {
     )
 }
 ```
-Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+Vertices are pure data and can be generated on any thread; `Geometry.Builder.build` / `Geometry.update` are Filament JNI calls and must run on the **main thread**. `Geometry.update` is safe to call every frame, even while no frame is being presented, whether or not the update changes the vertex or index count: a geometry keeps one upload in flight — a rewrite of its buffers or a rebuild of them — and only the latest state set while Filament has not consumed it (the raw `VertexBuffer.setVertices` / `IndexBuffer.setIndices` extensions have no such bound). The upload in flight is not recalled, so after two updates before a frame, that frame may show the first and the next one the latest. To change vertices and indices together, pass both to one `update(engine, vertices, primitivesIndices)` — they are uploaded together; `setVertices` then `setPrimitivesIndices` are two updates and can show one frame of new vertices on old indices. The lists are copied during the call, so a `MutableList` can be reused afterwards. Pass `PrimitiveType.LINES` with an edge index list to draw the same vertices as a wireframe. Full worked example: `CustomGeometryDemo.kt` (a runtime-generated torus knot with live segment / twist / ripple controls).
+
+When the topology changes at runtime, hand the `Geometry` to a `GeometryNode` instead of lending its buffers to a `MeshNode`: the node owns it, follows every `geometry.update(...)` — buffer rebuilds included — and destroys it for you.
+```kotlin
+val material = materialLoader.createColorInstance(Color.Red)
+val sphere = Sphere.Builder().stacks(8).slices(8).build(engine)   // one submesh per stack
+val striped = GeometryNode(
+    engine = engine,
+    geometry = sphere,                         // owned by the nodes bound to it from here on
+    materialInstances = List(sphere.primitivesOffsets.size) { material },  // one per submesh…
+)
+val merged = GeometryNode(engine, sphere, materialInstance = material)     // …or one for all
+sphere.update(engine, stacks = 32, slices = 32)   // rebuilds the buffers, re-points both nodes
+```
+`GeometryNode`'s primary constructor takes `mergePrimitives: Boolean` (last parameter): `false` draws the geometry's natural submeshes with one material each, `true` draws every submesh as a single primitive with one material — the single-`materialInstance` constructor sets it for you. Those are the two supported layouts; any other `primitivesOffsets` throws `IllegalArgumentException`. Adding a submesh on a natural-layout node rebuilds its Filament renderable (new submeshes take the last material; a skinning buffer or `InstanceBuffer` set outside `builderApply` is not carried over). `RenderableNode.setGeometry(other)` destroys the geometry it replaces once no other node uses it.
 
 ### ShapeNode — 2D polygon shape
 ```kotlin
@@ -1280,11 +1466,22 @@ model grows in from 55 % over 260 ms and shrinks away on tracking loss (opaque g
 cannot fade).
 `placement.hasCameraFrame` is true from the first camera frame, tracked or not — key a
 "starting camera" cover on it, not on `INITIALIZING`.
+`placement.floorHeight` is the lowest tracked upward plane's world Y (`null` until one is
+tracked): content placed on a table that must stand on the floor drops by
+`floorHeight - pose.ty()`.
 
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
 while rotating/scaling, and constrains dragging to supported plane geometry. Its
 0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
-trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base.
+trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base by default;
+set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
+1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
+tracked camera's world height in metres (`null` until it tracks).
+For content that must stay at real size (furniture, a pool, a shed), set
+`placement.allowsScaling = false` — `remember { AutoPlacementState().apply { allowsScaling = false } }`:
+the pinch, the double-tap and `scaleTo` stop resizing it, drag and twist still move and turn
+it, and an object already resized animates back to 100 % (Quick Look's
+`allowsContentScaling = false`, Scene Viewer's `resizable=false`).
 
 For asynchronous selection, call `placement.selectModel()` before loading and attach
 only while `placement.acceptsAsset(ticket)` is true. Keep the previous rendered model
@@ -1293,7 +1490,11 @@ until its replacement succeeds. Observe `placement.phase`; use `requestPlacement
 removes the wrapper-owned anchor without restarting the camera. Interruption freezes
 manipulation and recovers the existing placement; it does not arm a new request.
 `onARCoreAvailability`, `onTrackingFailureChanged`, and `onSessionFailed` expose
-capability, tracking, and camera failures. Copy, permissions and asset selection belong
+capability, tracking, and camera failures. A refused camera is explained by
+`ARSceneView`'s own card and the wrappers silence their coaching while it is up; on a
+bare `ARSceneView`, `onCameraPermissionStateChanged` is the matching signal (non-null
+while the session waits for the camera) — hide your own loading chrome on it. Copy,
+permissions and asset selection belong
 to the app. Semantic AR haptics ship in the SDK and are **opt-in**: add
 `ARHapticFeedback(placement)` next to the scene (Swift: `.arHapticFeedback(controller)`)
 — see *Haptic Feedback › Semantic AR events*. A pinch snaps to exactly 100 % within
@@ -1322,7 +1523,7 @@ Author wall models with **+Y up and +Z front** (or supply `assetRotation`).
 `AutoPlacementModel` puts the bounding box's back and bottom at the contact pivot and
 faces its front toward the camera side of the wall, even if the detected normal points
 away. Drag projects the grab offset into the destination wall and validates its polygon;
-twist rotates in the wall plane; pinch preserves contact at 25–400% of the base size.
+twist rotates in the wall plane; pinch preserves contact within `scaleRange` (25–400% of the base size by default).
 The anchor frame retains the Android surface convention: +Y is the wall normal and
 −Z points up. `directWallPose(point, normal, towardViewer)` is an additive pure helper
 returning the authored +Y-up/+Z-front frame at the exact wall point; it requires a finite
@@ -1409,7 +1610,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -1846,9 +2047,11 @@ floor; use `ContactShadow` when you need grounding that survives any light direc
 a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
 catching a real shadow while a wall gets a procedural one.
 
-Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
-`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
-light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+Platform matrix: **iOS** — mirrored by SceneViewSwift's `ContactShadowNode` (same
+`ContactShadowContext` presets, `intensity` 0–1, horizontal or vertical quad;
+`ContactShadowNode.under(model)` / `ModelNode.withContactShadow()` fit it to a model), and in AR
+by `ARSceneView.placementShadow(.contact(...))`; RealityKit's `GroundingShadowComponent` stays
+the AR default. **Web** — coming soon. Non-AR preview
 demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
@@ -1868,7 +2071,7 @@ The extension calls `Frame.acquireDepthImage16Bits()` and **must not** be invoke
 from a background coroutine. See also: `DepthMeshNode` (depth → renderable mesh)
 and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. The iOS counterpart is `ARView.raycast(from:allowing:.any)` — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. The iOS counterpart is `ARView.raycast(from:allowing:.any)` — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 data class DepthHitResult(
@@ -1980,7 +2183,7 @@ On a phone where `Session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)` is `
 depth from a monocular network: it runs a `MonocularDepthEstimator` on the CPU camera image,
 off the render thread, and scales the network's relative inverse depth to metres with a
 robust fit `1/z = s·d + t` on ARCore's own plane samples and feature points. The runtime
-lives in a separate module, `arsceneview-depth-ml` (LiteRT 2.1.5, in the repo, not yet on
+lives in a separate module, `arsceneview-depth-ml` (LiteRT 2.3.0, in the repo, not yet on
 Maven Central): `DepthAnythingV2Estimator` runs Depth Anything V2 **Small** (Apache-2.0;
 Base/Large/Giant are CC-BY-NC — never ship them). `arsceneview` itself never depends on
 LiteRT. iOS has the same pipeline (`ARDepthFrame.Source.ml`, see the SceneViewSwift section).
@@ -2069,7 +2272,8 @@ it came from: unproject with `frame.cameraPose`, never the current pose.
 
 Cost: a one-time **27.7 MB** download into `noBackupFilesDir/sceneview-depth-ml/`, checked
 against its SHA-256 (concurrent loads share one download). LiteRT native code per ABI:
-arm64-v8a ≈ 8 MB, x86_64 ≈ 10.7 MB, armeabi-v7a 3.5 MB (CPU only); an AAB serves one ABI.
+arm64-v8a ≈ 9.4 MB, x86_64 ≈ 12.2 MB, armeabi-v7a ≈ 6.3 MB (GPU accelerator included);
+an AAB serves one ABI.
 The network input is **518×686** (H×W, the whole CPU image stretched), output 518×686
 inverse depth. Inference runs at ≤ 5 Hz on one worker thread, halves at thermal MODERATE,
 pauses at SEVERE and skips frames while the camera holds still; expect each map to be
@@ -2147,6 +2351,23 @@ fun Frame.semanticLabelFraction(label: SemanticLabel): Float   // 0f..1f — pix
 // first frame after resume or while paused. The standard ARCore entry-point for ML Kit / OpenCV
 // pipelines. (#1733)
 fun Frame.cameraImage(): Image?
+
+// Detector output -> camera CPU image pixel, the pixel `camera.imageIntrinsics` describes.
+// Feed it the size of the unrotated CPU image and the clockwise rotation handed to the vision
+// API (ML Kit reports in the rotated image). Pure Kotlin, safe to keep while the detector runs.
+// To place a result: capture camera.pose + camera.imageIntrinsics with the image, cast a world
+// ray from that pose through detectorPixelToImagePixel(x, y), then
+// frame.hitTest(origin, 0, direction, 0) on any later frame.
+class CameraImageSize(val width: Int, val height: Int)          // image pixels, never a view size
+class CameraImagePoint(val x: Float, val y: Float)              // value equality
+class DetectorImageMapping(
+    val imageSize: CameraImageSize,                             // unrotated CPU image
+    val inputRotationDegrees: Int,                              // 0, 90, 180 or 270
+) {
+    val detectorWidth: Int                                      // rotated output width
+    val detectorHeight: Int
+    fun detectorPixelToImagePixel(x: Float, y: Float): CameraImagePoint
+}
 
 // ArCoreApk — suspend-friendly availability check (the sync variant can ANR briefly).
 suspend fun ArCoreApk.awaitAvailability(context: Context): ArCoreApk.Availability
@@ -2366,7 +2587,7 @@ must run on the AR frame / GL-main thread. The composable handles this for you (
 `node.latestSnapshot` consumers from a background coroutine. See also: `Frame.hitTestDepth`
 (raycast against the same depth image) and `rememberDepthCollider` (depth → physics collider).
 
-**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent is `ARMeshAnchor` via `ARWorldTrackingConfiguration.sceneReconstruction = .mesh` (LiDAR-only). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthMesh(
@@ -2468,7 +2689,7 @@ Thin physics wrapper over `DepthMeshNode` (#1739) — same edge-discontinuity cu
 triangles across depth jumps. See also: `DepthMeshNode` (the underlying renderable mesh) and
 `Frame.hitTestDepth` (single-ray raycast against the same depth image).
 
-**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
+**Cross-platform:** Android-only. iOS equivalent rebuilds `CollisionComponent`s per `ARMeshAnchor` (LiDAR-only, requires Scene Reconstruction). SceneViewSwift: pass `ARSessionConfiguration(sceneReconstruction: .mesh)` to `ARSceneView`, or call `SceneReconstructionNode.enableReconstruction(in:)` on a bare `ARView` (see "iOS: ARSceneView (low-level / manual placement)") — see [cheatsheet-ios.md "AR Depth & Cloud Anchors"](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md) (#1813). Web tracked in #1778.
 
 ```kotlin
 @Composable fun ARSceneScope.rememberDepthCollider(
@@ -2717,6 +2938,47 @@ instead.
 Sample: `ARPeopleOcclusionDemo` (Android demo registry id `ar-people-occlusion`) — place a
 model, walk a person in front of it; a HUD shows the live `PERSON`-pixel fraction.
 
+### Occluder meshes — content dug into the real ground or cut into a wall
+
+An occluder mesh is geometry you model yourself with `materialLoader.createOcclusionInstance()`
+— not the real-world mesh ARKit reconstructs for its occlusion. It writes depth and no colour.
+In AR, set `ARCameraStream.isOccluderMeshEnabled = true` so the camera feed is drawn **first**:
+the mesh then shows the camera image through it and hides only the virtual content behind it.
+Without the flag the feed is drawn last, at the far plane, and the mesh leaves a black hole.
+
+For content below the ground (a pool, a pit, a trench), wrap it in an open-topped **hull**
+just outside its walls. Every line of sight that enters the ground outside the opening meets
+the hull first, so the real ground stays on screen there; through the opening, the content
+shows.
+
+```kotlin
+import io.github.sceneview.ar.camera.ARCameraStream
+
+val cameraStream = rememberARCameraStream(materialLoader) {
+    createARCameraStream(materialLoader).apply { isOccluderMeshEnabled = true }
+}
+val occluder = remember(materialLoader) { materialLoader.createOcclusionInstance() }
+// In the ARSceneView content, under the same anchor as the dug-in content:
+MeshNode(
+    primitiveType = RenderableManager.PrimitiveType.TRIANGLES,
+    vertexBuffer = hull.vertexBuffer, indexBuffer = hull.indexBuffer,
+    materialInstance = occluder,
+    apply = {
+        setPriority(ARCameraStream.OCCLUDER_PRIORITY) // after the feed, before the content
+        isTouchable = false                           // taps reach the ground behind it
+    },
+)
+```
+
+Leave `isDepthOcclusionEnabled` off for content below the ground: ARCore's depth is the ground
+surface, which is in front of everything dug under it, so it would hide the content. Depth and
+people occlusion already draw the feed first, so the flag changes nothing while either is on.
+Cost: one full-screen overdraw. Pair it with `allowsScaling = false` (see *Automatic
+placement*) when the size is the point.
+
+Sample: `ARPoolDemo` (Android demo registry id `ar-pool`) — an in-ground pool at real size,
+dug into the lawn.
+
 ### AugmentedImageNode — image tracking
 ```kotlin
 @Composable fun AugmentedImageNode(
@@ -2866,7 +3128,7 @@ DisposableEffect(cloudAnchorId) { onDispose { resolveFuture.cancel() } }
 
 **Privacy disclosure (required).** ARCore Cloud Anchors upload feature points from the user's surroundings to Google. Surface a clear in-app disclosure and link to the ARCore data policy (https://developers.google.com/ar/data-privacy) before hosting.
 
-**Cross-platform:** iOS ships the **Future + cancel-on-dispose lifecycle** as `SceneViewSwift.CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)`, each returning a cancellable `CloudAnchorFuture` — cancel it from SwiftUI `.onDisappear` (the analogue of Android's `DisposableEffect { onDispose { future.cancel() } }`), #1859. To keep the core library dependency-free, the actual `GARSession.hostCloudAnchor` round-trip (Google's `arcore-ios-sdk` Swift Package) is supplied by the app through the `operation` closure; `CloudAnchorFuture` owns only the portable, single-fire cancellation gate (never fires after `cancel()`/dealloc). See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](docs/docs/cheatsheet-ios.md) (#1813). Web has no Cloud Anchor runtime.
+**Cross-platform:** iOS ships the **Future + cancel-on-dispose lifecycle** as `SceneViewSwift.CloudAnchorNode.host(ttlDays:completion:operation:)` / `.resolve(cloudAnchorId:completion:operation:)`, each returning a cancellable `CloudAnchorFuture` — cancel it from SwiftUI `.onDisappear` (the analogue of Android's `DisposableEffect { onDispose { future.cancel() } }`), #1859. To keep the core library dependency-free, the actual `GARSession.hostCloudAnchor` round-trip (Google's `arcore-ios-sdk` Swift Package) is supplied by the app through the `operation` closure; `CloudAnchorFuture` owns only the portable, single-fire cancellation gate (never fires after `cancel()`/dealloc). See [cheatsheet-ios.md "AR Depth & Cloud Anchors"](https://github.com/sceneview/sceneview/blob/main/docs/docs/cheatsheet-ios.md) (#1813). Web has no Cloud Anchor runtime.
 
 ### CloudAnchorRegistry — local persistence helper for hosted Cloud Anchor IDs
 
@@ -2940,7 +3202,7 @@ val hub = LoopbackCollaborativeTransport.LoopbackHub()
 val transport = hub.join("my-peer-id")               // join one per simulated device
 
 // Orchestrator over CloudAnchorNode + the transport. Mirrors RerunBridge:
-// supervisor IO scope, CONFLATED outbox, lifecycle-bound remember* helper.
+// supervisor IO scope, non-blocking outbox, lifecycle-bound remember* helper.
 @Composable fun rememberCollaborativeSession(
     transport: CollaborativeTransport,
     displayName: String = transport.localPeerId,
@@ -2962,9 +3224,11 @@ class CollaborativeSession {
     fun resolve(engine: Engine, session: Session, cloudAnchorId: String,
                 onResolved: ((node: CloudAnchorNode?) -> Unit)? = null)
     fun onFrame(frame: Frame)                         // call from onSessionUpdated — broadcasts camera pose
+    fun broadcastLocalPose(relativePose: Pose)        // same rate limit as onFrame — for non-ARCore hosts
     fun placeNode(nodeKey: String, modelKey: String,
                   translation: FloatArray, quaternion: FloatArray,
                   scale: FloatArray = floatArrayOf(1f, 1f, 1f))
+    fun removeNode(nodeKey: String)                   // removes it on every peer; no-op if the key is not placed
 }
 ```
 
@@ -2986,9 +3250,9 @@ fun MultiplayerARScreen() {
 }
 ```
 
-- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. All transforms are in the shared anchor's local space so they are comparable across devices.
-- **Conflict policy** — last-writer-wins per node key (`PlacedNode`); stale (out-of-order) poses are dropped by epoch.
-- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`placeNode` are non-blocking (conflated channel) so they are safe in the AR render callback. All merge work runs on a supervisor IO scope.
+- **Wire format** — `CollaborativeWireFormat`: JSON-lines (`hello` / `anchor` / `pose` / `node` / `remove` / `bye`), pure Kotlin, zero new runtime deps, fully unit-tested. A `node` line ends with a `clock` counter and a `remove` line carries one. Peers up to 4.53.0 interoperate both ways: they ignore `clock` and drop `remove` lines as an unknown type, and their `node` lines, which have no `clock`, are applied in arrival order. All transforms are in the shared anchor's local space so they are comparable across devices.
+- **Conflict policy** — a node key holds one `PlacedNode`, the last write to that key, and "last" is the same on every device: each `placeNode` / `removeNode` carries a per-key counter, set above every counter the writer has seen for that key and never below its wall clock in milliseconds, and equal counters are settled by the greater peer id. Two peers writing the *same* key at the same moment end on the same node whatever order the lines arrive in. `placeNode` on an existing key moves that node, including one a peer placed. `removeNode(nodeKey)` removes a node on every peer, whoever placed it: a placement written before the removal and delivered after it does not bring the node back, and a later `placeNode` places it again. Limits: nodes placed before a device joined are not re-sent to it; with peers up to 4.53.0 in the session, their writes apply in arrival order and they ignore removals; only the `MAX_NODES` most recent removals are remembered. Stale (out-of-order) poses are dropped by epoch.
+- **Threading** — `host`/`resolve` are main-thread only (ARCore + Filament JNI). `onFrame`/`broadcastLocalPose`/`placeNode`/`removeNode` never block, so they are safe in the AR render callback. Camera poses are limited to `poseRateHz` for `onFrame` and `broadcastLocalPose` alike: the first goes out at once, then one per interval, and the newest pose held back is sent when the interval ends — the pose a device stops on always arrives (`poseRateHz = 0` sends every pose). A placement or removal, the anchor id and the hello are never dropped by a later line of another kind. All merge work runs on a supervisor IO scope, one message at a time, in arrival order.
 - **Privacy** — the shared anchor is an ARCore Cloud Anchor; the same disclosure requirement as `CloudAnchorNode.host` applies (feature points uploaded to Google).
 
 - **Production transport — `NearbyCollaborativeTransport`** (`io.github.sceneview.ar.collaborative`). A real peer-to-peer `CollaborativeTransport` backed by Google's Nearby Connections API — offline, same-room, no backend, no API keys. Uses the `P2P_CLUSTER` strategy (every device advertises *and* discovers, so N peers form one mesh) and frames messages as the same JSON-lines wire format. `LoopbackCollaborativeTransport` stays the unit-test / single-device transport; this is the cross-device one. Play Services Nearby is a `compileOnly` dependency of `arsceneview` (same pattern as `androidx.xr.arcore`) — an app that uses this class adds `implementation("com.google.android.gms:play-services-nearby:19.3.0")` itself, and must request the nearby-device runtime permissions (`NearbyCollaborativeTransport.REQUIRED_PERMISSIONS_API_31_PLUS` / `REQUIRED_PERMISSIONS_PRE_API_31`) before `start()`.
@@ -3302,7 +3566,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: the **Streetscape** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
+Demo: the **Streetscape** mode of the `ar-geospatial-anchors` card (`samples/android-demo/.../ARSceneGeometryDemo.kt`), with its "Colour buildings & terrain" switch off. Setup guide (Cloud project + API key): `samples/android-demo/ARCORE_CLOUD_SETUP.md`.
 
 ### SceneMeshNode — classified building / terrain mesh (ARKit ARMeshAnchor parity)
 
@@ -3342,7 +3606,7 @@ ARSceneView(...) {
 }
 ```
 
-Demo: the **Mesh** mode of `samples/android-demo/.../ARSceneGeometryDemo.kt` (the `ar-scene-mesh` card, "Scene Geometry"). Its Streetscape mode renders the same trackables through the raw `StreetscapeGeometryNode`, so the two are one screen away from each other.
+Demo: the **Streetscape** mode of the `ar-geospatial-anchors` card (`samples/android-demo/.../ARSceneGeometryDemo.kt`), with its "Colour buildings & terrain" switch on (the default). Turning the switch off renders the same trackables through the raw `StreetscapeGeometryNode`, so the two are one tap away from each other.
 
 ### Geospatial Depth — extend environment depth accuracy to ~65 m
 
@@ -3538,6 +3802,17 @@ node.animatePositions(...)
 node.animateRotations(...)
 ```
 
+`rotation` and `worldRotation` use one Euler convention: degrees, ZYX order. Each getter reads
+`toEulerAngles()` of `quaternion` / `worldQuaternion` and each setter writes
+`Quaternion.fromEuler(value)`, so a node with no parent reads the same angles through both, and
+`node.worldRotation = node.worldRotation` leaves it where it is. Y is the middle angle and stays
+within ±90°: a 120° yaw reads `Rotation(180f, 60f, 180f)`, the same orientation. To read a heading,
+compare orientations or interpolate, use `quaternion` / `worldQuaternion`.
+
+Through 4.53.0 the `worldRotation` getter used another convention (YXZ, yaw sign negated, Y within
+±180°): `rotation = Rotation(y = 30f)` read `worldRotation.y == -30f`. Code that negated
+`worldRotation.y` to compensate must drop the negation.
+
 ### Editable nodes — Sceneform `TransformableNode` parity
 
 SceneView's gesture-editing API is the direct replacement for Sceneform's
@@ -3574,6 +3849,13 @@ Key facts an AI codegen pass must get right:
 - These are plain `Node` properties, not composable parameters — to change them
   reactively after creation, re-push them from a `LaunchedEffect` keyed on the new
   values (the `apply` block runs only once at node creation).
+- A flick **coasts** after release (`Node.editingInertia`, default `Inertia.Default`): a
+  drag keeps sliding along the surface it was dragged on and stops where that surface ends
+  (an AR object stays on its plane), a twist keeps turning, a pinch keeps growing until
+  `editableScaleRange`. `onMoveEnd` / `onRotateEnd` / `onScaleEnd` and the editing
+  listeners' `onEditingEnd` fire **once the node is at rest**, so an `AnchorNode` re-anchors
+  where the coast ended. `editingInertia = Inertia.None` stops the node dead on release; a
+  new touch always stops a coast.
 
 The `camera-gestures` demo in `samples/android-demo` is the canonical end-to-end
 example. Its dock's **Move** item flips `isEditable` on whichever subject currently has
@@ -3661,6 +3943,33 @@ val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
 A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
+### rememberModelLoadState (composable, progress + error)
+```kotlin
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+sealed interface ModelLoadState {
+    data class Loading(val progress: ModelLoadProgress) : ModelLoadState
+    data class Ready(val instance: ModelInstance) : ModelLoadState   // textures final, unless none progressed for 10 s (logged)
+    data class Failed(val error: Throwable) : ModelLoadState
+}
+```
+For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+```kotlin
+when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
+    is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })
+    is ModelLoadState.Ready -> SceneView(modelLoader = modelLoader) { ModelNode(modelInstance = state.instance) }
+    is ModelLoadState.Failed -> Text(
+        if (state.error is UnsupportedGltfExtensionException) "Unsupported model format" else "Could not load"
+    )
+}
+```
+Same ownership as `rememberModelInstance`: the composable destroys the `Model` when the location changes or on leave-composition. Unlike it, a location change goes back to `Loading`.
+
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
@@ -3682,11 +3991,38 @@ class ModelLoader(engine: Engine, context: Context) {
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
+
+    // Returns once every texture is final (or after 10 s without texture progress, logged); throws on failure (never null)
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {}   // called on the main thread
+    ): ModelInstance
+
+    companion object {
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String>   // what gltfio can honour in extensionsRequired
+        fun getFolderPath(baseFileName: String, resourceFileName: String): String
+    }
 }
+
+data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fraction 0..1, monotonic
+    enum class Stage { Reading, Creating, Textures }
+}
+class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
 
-**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
-before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** in the `suspend`/`Async` loaders, file reading, WebP/3MF conversion and the `extensionsRequired` scan run off the main thread; the synchronous `createModel*` methods run that conversion and scan on the calling thread (the main one), so prefer the async loaders for such files. Either way, only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
+
+**Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
+
+**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.72.1 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
+
+**WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
+embedded ones in the model itself, separate `.webp` files beside a `.gltf` once the resolver has read
+them (one that cannot be decoded is logged by name and left untextured). Only the URIs the glTF
+declares as WebP images are converted, never a buffer, and at most 256 images per model, embedded
+and external together: the rest keep WebP, are not decoded, and are reported in one log line.
 The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.
@@ -3845,10 +4181,42 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 
     fun createEnvironment(
         indirectLight: IndirectLight? = null,
-        skybox: Skybox? = null
+        skybox: Skybox? = null,
+        sphericalHarmonics: FloatArray? = null
     ): Environment
 }
 ```
+
+The cubemaps behind an environment belong to it. Filament frees neither with the `IndirectLight` or
+`Skybox` that samples it, so `EnvironmentLoader.destroyEnvironment` and
+`Engine.safeDestroyEnvironment` release them after the light and the skybox — which is what every
+`remember*Environment` helper calls on disposal and on a key change. Every loader factory (KTX and
+HDR), `createEnvironment(environmentLoader)` and `createAREnvironment` hand their cubemaps over for
+you.
+
+Building the `IndirectLight` from a `KTX1Loader` bundle yourself? Pass the bundle's cubemap in
+`textures`, or one cubemap stays on the GPU each time the environment is rebuilt:
+
+```kotlin
+import com.google.android.filament.utils.KTX1Loader
+import io.github.sceneview.utils.readBuffer
+
+val environment = rememberEnvironment(engine) {
+    val bundle = KTX1Loader.createIndirectLight(
+        engine,
+        context.assets.readBuffer("environments/studio_ibl.ktx"),
+    )
+    createEnvironment(
+        engine = engine,
+        indirectLight = bundle.indirectLight,
+        // Ownership moves to the environment: destroyed with it, after the light.
+        textures = listOfNotNull(bundle.cubemap),
+    )
+}
+```
+
+`environment.copy(skybox = other)` shares the Filament handles and owns no texture: destroy the
+environment it was copied from, never the copy.
 
 ---
 
@@ -3857,7 +4225,7 @@ class EnvironmentLoader(engine: Engine, context: Context) {
 All `remember*` helpers create and memoize Filament objects, destroying them on disposal.
 Most are default parameter values in `SceneView`/`ARSceneView` — call them explicitly only when sharing resources or customizing.
 
-**Ownership on key change:** the keyed async loaders (`rememberModelInstance`, `rememberEnvironment(key = …)`, `rememberHDREnvironment`, `rememberKTXEnvironment`) also destroy the **previously produced** object when their key/path changes — a path swap (e.g. a gallery or HDR slider) frees the old GPU resources automatically. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
+**Ownership on key change:** the keyed async loaders destroy the **previously produced** object automatically. `rememberHDREnvironment` and `rememberKTXEnvironment` retain that previous environment while its replacement loads, then publish the complete skybox + indirect-light pair together and destroy the replaced resources; rapid changes cancel or discard superseded results, so the latest request wins without a black frame. They return `null` only during the first load (or if that initial load fails); a failed replacement keeps the current environment. `rememberModelInstance` still returns `null` for a new path while it loads. Never keep a reference to a swapped-out `ModelInstance`/`Environment`; re-read the helper's return value instead. For objects you manage yourself, use the imperative loaders (`loadModelInstanceAsync`, `createHDREnvironment`) and call `destroyModel`/`destroyEnvironment` when done. `destroyModel` is safe at any point of a load, including while the textures are still decoding: it cancels that model's pending texture load first, so no app-side `resourceLoader.asyncCancelLoad()` is needed.
 
 | Helper | Returns | Purpose |
 |--------|---------|---------|
@@ -3869,23 +4237,26 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberEnvironment(environmentLoader, isOpaque)` | `Environment` | IBL + skybox environment |
 | `rememberEnvironment(environmentLoader) { ... }` | `Environment` | Custom environment from lambda |
 | `rememberEnvironment(environmentLoader, key = hdrPath) { ... }` | `Environment` | Pass `key` when the factory depends on a changing value (e.g. an HDR path from a slider) — the lambda is otherwise memoised once and the skybox never swaps |
-| `rememberHDREnvironment(environmentLoader, "env.hdr")` | `Environment?` | `@ExperimentalSceneViewApi` — async HDR load from assets, `null` while loading; previous environment destroyed when the path changes |
-| `rememberKTXEnvironment(environmentLoader, iblAssetFile, skyboxAssetFile)` | `Environment?` | `@ExperimentalSceneViewApi` — async pre-filtered KTX1 IBL/skybox load, `null` while loading; previous environment destroyed when the paths change |
+| `rememberHDREnvironment(environmentLoader, "env.hdr")` | `Environment?` | `@ExperimentalSceneViewApi` — async HDR load from assets; `null` only on the initial load, then retains the current environment until a path replacement is fully ready |
+| `rememberKTXEnvironment(environmentLoader, iblAssetFile, skyboxAssetFile)` | `Environment?` | `@ExperimentalSceneViewApi` — async pre-filtered KTX1 IBL/skybox load; retains the current environment until both replacement resources are ready |
 | `rememberCameraNode(engine) { ... }` | `CameraNode` | Custom camera with apply block |
 | `rememberMainLightNode(engine) { ... }` | `LightNode` | Primary directional light (key) with apply block — shadows ON by default; apply block is reactive (re-runs on recomposition, so Compose-state-driven intensity/direction/color update live) |
 | `rememberFillLightNode(engine) { ... }` | `LightNode` | Soft fill light opposite the main light — lifts shadows so models don't look flat; apply block is reactive (same as `rememberMainLightNode`) |
-| `rememberCameraManipulator(orbitRadius, targetPosition?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius` and `targetPosition`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. See "Camera" |
+| `rememberCameraManipulator(orbitRadius, targetPosition?, inertia?)` | `CameraManipulator?` | Orbit/pan/zoom camera controller, distance-first (recommended): the camera starts `orbitRadius` metres from the target along the default 3/4 viewing angle — `orbitRadius = 2.78f` is the stock framing. Keyed on `orbitRadius` and `targetPosition`: a new value rebuilds the manipulator and `SceneView` glides the camera there (~0.6 s) instead of cutting — derive the radius once, don't animate it. Optional `inertia` (default `Inertia.Default`; `Inertia.None` = no coast). See "Camera" |
 | `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
-| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
-| `rememberView(engine)` | `View` | Filament view (one per viewport) |
+| `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
+| `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
 | `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
 | `rememberScene(engine)` | `Scene` | Filament scene graph |
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
-| `rememberMediaPlayer(context, assetFileLocation)` | `MediaPlayer?` | Auto-lifecycle video player (null while loading) |
+| `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -3989,6 +4360,38 @@ override fun update(deltaTime: Float) {          // already ticked every frame
 ``` Note that with an ORBIT manipulator the zoom is centred on the orbit pivot,
 not anchored under the finger: Filament's `OrbitManipulator::scroll` moves the eye along the gaze
 and ignores `x`/`y`.
+
+### Gesture inertia
+
+Every gesture that moves something coasts after the finger lifts, like a list fling: camera
+orbit, pan and pinch-zoom, and the drag / twist / pinch of an editable node (AR objects
+included). The release velocity is measured over the last 100 ms of the gesture (zero if the
+finger rested 40 ms before lifting), then decays exponentially with a 0.35 s time constant,
+integrated exactly so the coast is the same at any frame rate. A slow, deliberate drag stops
+where it is left; a new touch stops any coast on the spot; a pinch coast stops at the zoom or
+scale limit.
+
+```kotlin
+// Default: the camera coasts.
+SceneView(cameraManipulator = rememberCameraManipulator(orbitRadius = 3f))
+// A camera that stops dead on release.
+SceneView(cameraManipulator = rememberCameraManipulator(orbitRadius = 3f, inertia = Inertia.None))
+// A longer, floatier coast.
+SceneView(
+    cameraManipulator = rememberCameraManipulator(
+        orbitRadius = 3f,
+        inertia = Inertia(timeConstantSeconds = 0.6f),
+    )
+)
+```
+
+- `inertia` is applied to the stock `CameraGestureDetector.DefaultCameraManipulator` (also
+  settable as its `inertia` property); changing it does not rebuild the manipulator. A custom
+  manipulator gets `stopInertia()` on every touch-down (default no-op) and owns its own coast.
+- Node editing reads `Node.editingInertia` on the node that owns the edit — see "Editable nodes".
+- `InertiaTracker` (`sceneview-core`, package `io.github.sceneview.gesture`) is the shared
+  maths: `addSample` the cumulative position, `release` on finger up, `advance(dt, out)` per
+  frame.
 
 ### How far `orbitHomePosition` actually puts the camera
 
@@ -4097,6 +4500,221 @@ SceneView(onFrame = { fitState.maybeFit(cameraNode, contentRoot) }) { }
 `autoFitContent` defaults to `false` (callers that position the camera explicitly keep
 control). iOS already auto-frames from `visualBounds` (#1026 / #1391).
 
+### Content padding — keep the subject in the area a panel leaves free
+
+`SceneView(contentPadding = …)` (#4310) declares the part of the surface that something
+drawn above it covers — a bottom sheet, a side panel, a title bar. The visible rectangle
+becomes the camera's viewport: the optical centre moves to its centre and the lens field
+of view spans it. The surface is **not** resized (the scene still draws under the panel),
+the camera pose and the user's orbit are **not** touched, and pixels stay square. The
+mapping is linear in the padding, so animating the padding with the panel's own curve
+makes the subject follow the panel.
+
+```kotlin
+import androidx.compose.animation.core.animateDpAsState
+
+var sheetOpen by remember { mutableStateOf(false) }
+// The subject stays centred in what the sheet leaves free, and follows it as it slides.
+val covered by animateDpAsState(if (sheetOpen) 320.dp else 0.dp)
+SceneView(contentPadding = PaddingValues(bottom = covered)) { }
+
+// Imperative form, in pixels of the surface (what the composable sets for you):
+cameraNode.contentPadding = ViewportPadding(bottom = 1200f)
+```
+
+Rules:
+
+- **Picking follows the padding.** `Camera.viewToRay` / `viewToWorld` / `worldToView` and
+  `View.screenToRay` go through the projection that is drawn (lens × scaling × shift),
+  so a touch on the shifted subject hits it. Filament's own `getProjectionMatrix` /
+  `getCullingProjectionMatrix` leave `setScaling` / `setShift` out — read
+  `Camera.renderedProjectionTransform` / `renderedCullingProjectionTransform` instead.
+- **The subject gets smaller** by `visibleHeight / height`: the padding centres, it does
+  not re-pose. When the bounds are known, win the size back with a fit (below) at the
+  visible area's aspect — `CameraNode.getViewPortAspect()` returns it once a padding is set.
+- **A tenth of the view always stays visible.** Two opposite edges that add up to more
+  than 90 % of the surface are both reduced in proportion — a sheet dragged over the
+  whole view leaves a small picture, never a degenerate projection. Negative and
+  non-finite values read as `0`.
+- **Left at its default, the parameter writes nothing**: a `cameraNode.contentPadding`
+  you set by hand is kept. Once the parameter is non-zero it owns the value, follows it
+  back down to zero, and resets it when the camera leaves the `SceneView`.
+- **Your own projection is kept across a padding — not across a resize.** A padding
+  rebuilds the default lens only. After `setProjection(fov, …)` the field of view, near,
+  far and direction you set are kept (the aspect follows the visible area only if you
+  passed the viewport's own); an orthographic, lens or custom projection is left exactly
+  as set and only scaled and shifted. `updateProjection()` hands the camera back to the
+  default lens, and `SceneView` calls it whenever the view changes size (first layout,
+  rotation, split-screen) — as it did before `contentPadding` existed. Set your
+  projection again after a resize.
+- With `autoFitContent = true` the fit runs again when the padding changes, once it has
+  stopped moving.
+- A camera whose `setScaling` / `setShift` you drive yourself is left alone until a
+  padding is set on it.
+- **Not in AR.** `ARSceneView` takes no content padding and `ARCameraNode.contentPadding`
+  ignores what is written to it: the AR projection is the device camera's and has to
+  stay aligned with the camera feed.
+- **Recording captures the padded picture.** `SurfaceMirrorer` (and the recorder built on
+  it) mirrors the view as drawn — subject shifted and scaled, at the surface's size.
+- iOS twin: `.contentInsets(_:)` on SceneViewSwift's `SceneView` (#4317), in points, with
+  the same contract and the same 10 % floor.
+
+### Fit to bounds — frame a box under a given angle
+
+`fitDistanceForBounds` answers "how far" for a subject that may turn. `fitCameraToBounds`
+(#4310) fits the box **as seen from one direction**, corner by corner, and also answers
+"aimed where" — after a perspective projection the centre of a box is not the centre of
+its picture. The box needs no model behind it: a board, a room or a solar system declares
+the volume worth framing as an `Aabb`.
+
+```kotlin
+// Pure maths, JVM-testable. `direction` runs from the camera towards the subject.
+// Returns `CameraFit(eye, target)` — `distance` is the orbit radius — or null when the
+// bounds are empty / non-finite.
+fun fitCameraToBounds(
+    bounds: Aabb,
+    direction: Position = Position(0f, 0f, -1f),
+    verticalFovDegrees: Double, aspect: Double,
+    widthFill: Float = DEFAULT_FRAMING_FILL,    // 0.8 — share of the half-width the box may span
+    heightFill: Float = DEFAULT_FRAMING_FILL
+): CameraFit?
+```
+
+Usage:
+
+```kotlin
+val board = Aabb(center = Position(0f, -0.5f, 0f), halfExtent = Position(0.9f, 0.1f, 0.9f))
+
+// On a camera: its own lens, its current look direction, the visible area's aspect.
+// Main thread — reads/writes Filament state.
+cameraNode.fitToBounds(board)?.let { cameraNode.frame(it) }
+
+// With an orbit manipulator, hand the fit to the manipulator instead of posing the camera:
+val fit = checkNotNull(
+    fitCameraToBounds(
+        bounds = board,
+        direction = Position(0f, -0.64f, -0.77f),   // looking 40° down
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = 0.8
+    )
+)
+val manipulator = rememberCameraManipulator(orbitHomePosition = fit.eye, targetPosition = fit.target)
+```
+
+On the axis that binds, the projected box spans exactly `±widthFill` (or `±heightFill`)
+of the half-view; on the other it is centred and spans less. The camera is assumed
+upright (world `+Y` up); looking straight down, "right" is world `+X`.
+
+### Cinematic camera — shots, transitions, paths, reveal, tour (`io.github.sceneview.camera`)
+
+Camera *moves* as a cinematographer calls them, pure Kotlin and JVM-tested (#4631). A
+`CameraShot` is an orbit around a target — azimuth from `+Z` towards `+X`, elevation above
+the horizon, distance — not an eye position, so two shots of one subject interpolate on an
+arc *around* it, never through it. Every move is a function of time: the same shot lands at
+30, 60 or 120 Hz, and a stalled frame advances by at most 50 ms (runs long, never jumps).
+
+```kotlin
+import io.github.sceneview.camera.*
+
+val home = CameraShot(target = Position(0f, 0.8f, 0f), azimuthDegrees = 35f, elevationDegrees = 32f, distance = 4f)
+val plan = home.copy(elevationDegrees = 84f)          // same room, seen as a floor plan
+val eye = home.eye                                     // derived; CameraShot.lookingAt(eye, target) inverts it
+
+// One animator owns the camera. Wrap any gesture manipulator with it: while a move plays the
+// camera is the animator's; the first touch interrupts and the gesture takes over without a cut.
+val animator = remember { CameraAnimator(initial = home) }
+SceneView(
+    cameraManipulator = rememberCinematicCameraManipulator(animator, inner = rememberCameraManipulator(orbitRadius = 4f)),
+) { … }
+
+LaunchedEffect(model) { animator.play(CameraPath.reveal(home)) }   // the entrance: high, wide, 75° round, cranes onto home in 2.8 s
+Button(onClick = { animator.flyTo(plan) }) { Text("Plan") }        // 700 ms, ease-expressive, no cut
+Button(onClick = { animator.play(CameraPath.tour(home)) }) { Text("Tour") }   // one slow lap, 18 s, loops seamlessly
+Button(onClick = { animator.flyTo(otherRoom) })                     // another subject: pulls back at mid-flight (fly-over), lands exactly
+```
+
+- `CameraTransition(from, to, durationSeconds, easing = CameraEasing.Expressive, flyOver = 0.5f)`
+  and the pure `cameraTransition(from, to, progress)` for a scroll or slider. `flyOver` adds
+  that share of the targets' separation to the distance at mid-flight (sine bump, exact ends);
+  `0f` is a straight carry. `CameraEasing.Expressive` is DESIGN.md's `cubic-bezier(0.2, 0, 0, 1)`.
+- `CameraPath(keyframes, easing, shortestArc = true, loop = false)` — Catmull-Rom over the
+  orbit parameters: the camera passes each `CameraKeyframe(shot, seconds)` on time with
+  continuous velocity across it. `shortestArc` unwraps azimuths the short way; a full turn is
+  spelled `azimuthDegrees + 360f` with it off. Builders: `reveal(home)`, `tour(around, turns)`,
+  `through(shots, secondsPerShot)`. A looping path's azimuth keeps counting (`home + 720°` on
+  lap two); `CameraShot.normalizeDegrees` wraps it for display.
+- `CameraAnimator`: `play(path, onFinished)`, `flyTo(to, durationSeconds = 0.7f)` from
+  wherever the camera is, `snapTo`, `advance(dt): CameraShot`, `interrupt(): CameraShotVelocity`.
+  Without a `SceneView`, drive it yourself: `cameraNode.transform = animator.advance(dt).transform()`.
+- Hand-off: an inner manipulator that implements `CameraShotSink` gets `takeOver(shot, velocity)`
+  on the first touch and carries on at that speed; any other manipulator (the default orbit one
+  included) gets a 350 ms glide from the move's last frame onto its own pose.
+
+**Pose keyframes — `CameraPosePath` and `CameraPathPlayer`.** Where `CameraPath` keys orbit
+parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quaternion)`), so a
+move can be a straight line through space — a travelling, a dolly — not only an arc round a
+subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
+pure function of time: the same time always gives the same pose, which is what a scrubber and
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
+
+```kotlin
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
+val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), restart(), seekTo(s), speed, loop
+SceneView(
+    cameraNode = cameraNode,
+    cameraManipulator = null,                          // the path owns the camera
+    frameRatePolicy = FrameRatePolicy.Continuous(),
+    onFrame = { nanos -> cameraNode.applyPose(player.advanceFrame(nanos)) },
+) { … }
+Slider(value = player.progress, onValueChange = { player.seekTo(it * player.durationSeconds) })
+```
+
+- `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
+  pathEasing = null, lookAt = null, up = +Y, loop = false)`: positions are `Linear` or `CatmullRom`
+  (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
+  leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
+- Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, at most 1000 turns, at least 6 keys per turn; loops seamlessly on any
+  number of turns, each lap of 1.5 turns starting where the last one ended), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
+- `CameraPathPlayer` owns the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
+  Compose state) and the count of whole laps played; `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
+  120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
+  clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
+  from the old one's. The player keeps a whole lap count and the time within the lap, so a
+  `CameraPath.tour(turns = 1.5f)` or an `orbit(turns = 1.5f)` carries on lap after lap with no
+  jump at the seam and is as exact after a week as on its first lap; other timelines are sampled
+  within the lap. On such a fractional path `pose` equals `timeline.poseAt(seconds)` on the first
+  lap only (lap two of 1.5 turns is half a turn on). `seconds` and `progress` stay within the lap,
+  `seekTo` keeps the lap (`seekTo(durationSeconds)` shows the end of the current lap), turning
+  `loop` off keeps the lap, a new timeline with another turn count applies its turn to the laps
+  played (the camera can jump), and `restart()` — or `play()` on a finished player — goes back to
+  lap 0 at time 0. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  target)` and `CameraShot.toPose()` build one.
+
+`CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,
+these are time-driven. Pick the animator when the move has a beginning and an end.
+
 ---
 
 ## Gestures
@@ -4168,6 +4786,74 @@ SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // Textur
 
 ---
 
+## Capture the scene — photo and MP4 (SceneRecorder, no MediaProjection)
+
+`SceneRecorder` (`io.github.sceneview.capture.SceneRecorder`) turns a `SceneView` or `ARSceneView` into a **shareable photo or video of exactly what the scene renders** — in AR, the camera feed and the virtual content composited. Never your Compose UI, no MediaProjection consent dialog, no `mediaProjection` foreground service. Built on `SurfaceMirrorer` (below), which stays available for custom encoders.
+
+```kotlin
+import io.github.sceneview.capture.VideoSettings
+import io.github.sceneview.capture.rememberSceneRecorder
+
+@Composable
+fun CapturableARScreen() {
+    val recorder = rememberSceneRecorder()
+    val scope = rememberCoroutineScope()
+
+    ARSceneView(  // or SceneView(...) — same parameter
+        modifier = Modifier.fillMaxSize(),
+        surfaceMirrorer = recorder.surfaceMirrorer,
+    ) { /* nodes */ }
+
+    // Photo: full-resolution PixelCopy of the scene, JPEG (default) or PNG.
+    Button(onClick = { scope.launch { val file: File? = recorder.savePhoto() } }) { Text("Photo") }
+
+    // Video: H.264 MP4, 1080p at 30 fps by default, optional mic, optional time limit.
+    Button(onClick = {
+        if (recorder.isRecording) {
+            recorder.stopRecording()                       // -> SceneRecording? (file, size, duration)
+        } else {
+            recorder.startRecording(settings = VideoSettings(recordAudio = true, maxDurationMillis = 30_000))
+        }
+    }) { Text(if (recorder.isRecording) "Stop ${recorder.elapsedMillis / 1000}s" else "Record") }
+}
+```
+
+Key facts:
+- **Photo** — `suspend fun takePhoto(): Bitmap?` (view-sized, full resolution) and `suspend fun savePhoto(file: File? = null, format: PhotoFormat = JPEG, quality: Int = 95): File?`. `PixelCopy` of the `SurfaceView` (the GPU buffer: camera feed included, Compose views over it excluded), `TextureView.getBitmap()` for a texture-view scene. `null` before the first frame. Main-safe suspend functions.
+- **Video** — `startRecording(file = newCaptureFile("mp4"), settings = VideoSettings()): Boolean`, `stopRecording(): SceneRecording?`. Main thread. The video keeps the view's aspect ratio inside a `maxLongEdge × maxShortEdge` box (default 1920 × 1080) turned like the view, edges aligned for H.264; when the encoder refuses that size it steps down through 1080p, 720p, 540p, 360p, never above the requested box. It is a second render of the scene, not a screen copy: a small view still records at 1080p.
+- **Microphone** — `VideoSettings(recordAudio = true)` records AAC mono when the app holds `RECORD_AUDIO` at start; without it, or when another app holds the microphone, the video is recorded silent and `SceneRecording.hasAudio` is `false` (the recorder never asks for the permission).
+- **Time limit** — `VideoSettings(maxDurationMillis = …)`: the recording stops by itself and `SceneRecording.reachedMaxDuration` is `true`. `onRecordingFinished: (SceneRecording?) -> Unit` fires on every stop, manual or automatic (`null` = nothing usable was written; see `lastError`).
+- **Automatic stops** — a recording also ends, file finalised and `onRecordingFinished` called, when the scene feeding it leaves composition or stops using `recorder.surfaceMirrorer`, and — with `rememberSceneRecorder()` — when the screen reaches `Lifecycle.Event.ON_STOP` (background, screen off): the scene stops rendering there. `rememberSceneRecorder(lifecycle = …)` picks another lifecycle.
+- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (GPU compositing through an `ImageReader`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
+- **Compose state** — `isRecording`, `elapsedMillis` (ticks every 250 ms), `lastRecording`, `lastError`, `overlay`, `onRecordingFinished` are snapshot state.
+- **Files** — `newCaptureFile(extension)` = `getExternalFilesDir(null)/captures/scene_<timestamp>.<ext>`, or `filesDir/captures/` without external files storage (no storage permission). Share through your `FileProvider`.
+- `rememberSceneRecorder()` releases the recorder (and stops a running recording) when it leaves composition. Outside Compose: `SceneRecorder(context)`, then `release()`.
+
+### Lower level: SurfaceMirrorer
+
+`SurfaceMirrorer` (`io.github.sceneview.utils.SurfaceMirrorer`, #2626) copies every rendered frame GPU-side onto additional `Surface`s — what `SceneRecorder` uses for video. Pass `rememberSurfaceMirrorer()` to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then attach your own encoder surface (a `MediaCodec`, an RTMP streamer, a second display):
+
+```kotlin
+fun startStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.startMirroring(encoderSurface, width = 1280, height = 720)  // any thread, JNI-free
+}
+
+fun stopStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.stopMirroring(encoderSurface)  // main thread, before stopping the encoder
+}
+```
+
+Key facts:
+- `startMirroring(surface, left = 0, bottom = 0, width = null, height = null)` — `width`/`height` are the destination rectangle on the surface; `null` defaults to the scene view's size. The frame is letterboxed to preserve aspect ratio. A scene that rendered on demand and went idle is woken for the new mirror.
+- `stopMirroring(surface)` — idempotent; a surface is identified by instance. Main thread (Filament rule).
+- Multiple surfaces can be mirrored at once (e.g. recorder + live preview/RTMP encoder).
+- The mirror copy runs only while frames render — pausing the lifecycle pauses the feed.
+- Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SceneRecorder` / `SurfaceMirrorer` record the *rendered* scene — the shareable video with virtual content composited.
+
+Sample: the Android demo app's `DemoScaffold` "Take photo" and "Record video" actions (`samples/android-demo/.../recording/SceneCapture.kt`: watermark, open and share), shown on `cosmos` and on AR `finger-drawing`; the retired `video-recording` id opens them.
+
+---
+
 ## Android Advanced APIs
 
 ### SceneRenderer
@@ -4183,7 +4869,7 @@ class SceneRenderer(engine: Engine, view: View, renderer: Renderer) {
 
     fun attachToSurfaceView(surfaceView: SurfaceView, isOpaque: Boolean, context: Context, display: Display, onTouch: ((MotionEvent) -> Unit)? = null)
     fun attachToTextureView(textureView: TextureView, isOpaque: Boolean, context: Context, display: Display, onTouch: ((MotionEvent) -> Unit)? = null)
-    fun renderFrame(frameTimeNanos: Long, onBeforeRender: () -> Unit)
+    fun renderFrame(frameTimeNanos: Long, shouldPresent: (() -> Boolean)? = null, onBeforeRender: () -> Unit): Boolean  // true when a frame reached the surface
     fun applyResize(width: Int, height: Int)
     fun destroy()
 }
@@ -4273,6 +4959,9 @@ interface ARPermissionHandler {
 
 // Production implementation backed by ComponentActivity:
 class ActivityARPermissionHandler(activity: ComponentActivity) : ARPermissionHandler
+// ARScene builds its own handler when `permissionHandler` is left out: one registration per
+// AR view, released with it. Build one yourself only if you must — this constructor registers
+// under one activity-wide key that is never unregistered, so keep AT MOST ONE per activity.
 ```
 
 ---
@@ -4373,6 +5062,20 @@ millisToSeconds(millis: Long): Float
 frameCount(durationSeconds: Float, frameRate: Int): Int
 ```
 
+Light cues — brightness curves for animated lights and emissive surfaces. Each is a pure
+function of time returning a level, `0` (dark) to `1` (full): multiply a light's intensity or a
+material's `emissiveStrength` by it in `SceneView(onFrame = …)`. No state, no allocation, so a
+paused clock holds the picture and a test can assert any frame:
+
+```kotlin notest API-shape listing — function-signature reference notation, not statements
+LightCues.ignition(seconds: Float, startSeconds: Float = 0f, durationSeconds: Float = 0.8f, seed: Int = 0): Float  // neon striking: 0, flickers, then 1
+LightCues.fadeIn(seconds: Float, startSeconds: Float = 0f, durationSeconds: Float = 0.6f, easing: (Float) -> Float = Easing.EaseOut): Float
+LightCues.breathe(seconds: Float, periodSeconds: Float = 3f, floor: Float = 0.6f): Float  // slow pulse between floor and 1
+LightCues.blink(seconds: Float, periodSeconds: Float = 1f, duty: Float = 0.5f, softness: Float = 0.06f): Float  // beacon, hazard light
+LightCues.flash(seconds: Float, periodSeconds: Float, offsetSeconds: Float = 0f, attackSeconds: Float = 0.05f, releaseSeconds: Float = 0.35f): Float  // 0 except a brief flash; add it to a base level
+LightCues.glitch(seconds: Float, everySeconds: Float = 6f, lengthSeconds: Float = 0.22f, depth: Float = 0.15f, seed: Int = 0): Float  // 1 except a short stutter
+```
+
 ### Geometry generators
 
 `io.github.sceneview.geometries` — pure functions returning `GeometryData(vertices, indices)`:
@@ -4466,7 +5169,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.52.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.63.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -4491,7 +5194,7 @@ the host factory — it draws a visible "not available yet" notice until registe
 |---|---|---|
 | Android | Filament, delegates to `SceneView { }` | Implemented |
 | iOS | RealityKit via `SceneViewSwift` | Implemented — needs a one-time app registration, see below |
-| Desktop (JVM) | Filament via Maven filament-kmp (offscreen → Skia). JDK 22+ | Implemented |
+| Desktop (JVM) | Filament via Maven filament-kmp (offscreen → Skia). JDK 21+ | Implemented |
 
 **iOS requires one registration call.** A KMP module cannot depend on a Swift Package, so
 the app supplies the renderer:
@@ -4671,7 +5374,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.52.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.63.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -4986,6 +5689,15 @@ optional (default `1`); `a < 1` makes the canvas see-through so the page behind 
 (`sv.setBackgroundColor(0, 0, 0, 0)` = transparent canvas). Default `#333443`. A skybox
 covers the background.
 
+Tone mapping: the Kotlin/JS bundle (`sceneview-web.js`) and the hand-written website viewer
+(`website-static/js/sceneview.js`) grade with Filmic. Android's `SceneFactories.createView`
+grades with PBR Neutral, which keeps base colours as authored; Filament's JavaScript bindings
+expose no PBR Neutral tone mapper, so the web keeps Filmic and shows light, pastel base colours
+a little paler than Android does. Web primitives take linear colours (`createBox` etc. write
+`baseColorFactor` as given): convert an sRGB hex first, or it renders pastel.
+Neither grades the background: both show the colour they are given (hand-written viewer:
+sRGB 0-1, default `#333C57`), and a transparent canvas leaves the page behind it untouched.
+
 Screen-point picking (`sv.hitTest(x, y)`, #2024 P5c): coordinates are canvas
 pixels ((0,0) = top-left). The point is unprojected through the live camera
 into a world ray and tested against every node's real bounds (models and
@@ -5297,7 +6009,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.52.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -5460,7 +6172,9 @@ SceneView { root in root.addChild(hero.entity) }
 > `DEFAULT_FRAMING_PADDING = 0.15f` (documented above under Camera framing). It is a
 > *fraction* where iOS's `framingMargin` is a *multiplier*: `margin == 1 + padding`,
 > so iOS `1.15` is Android `0.15`, and tangent is iOS `1.0` / Android `0.0`. Never
-> port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Android's
+> port the literal across — `framingPadding = 1.15f` is 2.15× the distance. Do not
+> confuse it with `contentPadding` (#4310), which is the area a panel covers, in dp —
+> its iOS twin is `.contentInsets(_:)` (#4317), in points. Android's
 > demo host additionally accepts a `camera_distance` intent extra, but that is a
 > sample-app knob, not the library API. **Web follows the iOS convention**:
 > `sv.fitToModels(margin)` (v4.27.0+, #2946) takes the same multiplier, clamped to
@@ -5602,10 +6316,11 @@ View modifiers (chainable):
 .onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
 .onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
 .onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
+.placementShadow(_ style: ARPlacementShadow) -> ARSceneView  // shadow given to onTapOnPlane content: .grounding (default — GroundingShadowComponent), .contact(ContactShadowContext = .floor, intensity: Float? = nil) (procedural ContactShadowNode, retuned live), .none. Overrides `groundingShadows`
 ```
 
 `PlaneDetectionMode` values: `.none`, `.horizontal`, `.vertical`, `.both`
@@ -5613,7 +6328,7 @@ View modifiers (chainable):
 `cameraExposure` notes:
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
-- Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- Implemented via `ARView.renderCallbacks.postProcess`.
 - It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
 
 `onSessionError` notes (v4.39.0+):
@@ -5717,6 +6432,7 @@ public struct ModelNode: @unchecked Sendable {
     // Misc
     public func enableCollision()
     public func withGroundingShadow() -> ModelNode           // iOS 18+ / visionOS 2+
+    public func withContactShadow(_ context: ContactShadowContext = .floor, intensity: Float? = nil, spread: Float = 1.6) -> ModelNode  // procedural pool at the lowest point — call after scaleToUnits / centerOrigin
     public mutating func onTap(_ handler: @escaping () -> Void) -> ModelNode
 }
 ```
@@ -5949,6 +6665,43 @@ public enum GeometryMaterial: @unchecked Sendable {
 }
 ```
 
+#### ContactShadowNode — procedural contact shadow (Android `ContactShadowNode` parity)
+
+```swift
+public enum ContactShadowContext: String, CaseIterable, Sendable { case floor, wall, tableTop }
+// intensity / center / radius / softness — same values as Android's presets
+
+public struct ContactShadowNode: @unchecked Sendable {
+    public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
+    public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
+    public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
+    public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
+                plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
+    public var context: ContactShadowContext  // live
+    public var intensity: Float               // live, clamped 0...1
+    public var size: SIMD2<Float>
+    public static func under(_ model: Entity, context: ContactShadowContext = .floor,
+                             intensity: Float? = nil, spread: Float = 1.6) -> ContactShadowNode
+    public func fit(under model: Entity, spread: Float = 1.6)
+}
+```
+
+- `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  `centerOrigin`; call `fit(under:)` again if the model changes size.
+- Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
+
 #### AnchorNode — AR world anchors (iOS only)
 
 ```swift
@@ -6173,6 +6926,30 @@ extension Entity {
     public func enabled(_ isEnabled: Bool) -> Self
 }
 ```
+
+---
+
+### SceneRecorder on iOS — photo and MP4 of the scene, no SwiftUI chrome
+
+Same API shape as Android's `SceneRecorder` (#4821). Attach it to a `SceneView` or `ARSceneView` (AR: camera feed included) with `.sceneRecorder(_:)`; it captures the rendered scene only, never the SwiftUI views around it. Use `ARRecorder` (ReplayKit) when you want the whole screen.
+
+```swift
+@StateObject private var recorder = SceneRecorder()
+
+SceneView { root in /* ... */ }
+    .sceneRecorder(recorder)
+
+let image = await recorder.takePhoto()                         // full-resolution UIImage
+let file = await recorder.savePhoto(format: .png)              // Documents/captures/scene_<stamp>.png
+recorder.startRecording(settings: VideoSettings(recordAudio: true, maxDuration: 60))
+let clip = await recorder.stopRecording()                      // SceneRecording? (url, width, height, duration)
+```
+
+- `VideoSettings` defaults: H.264 MP4 inside 1920 x 1080 (aspect kept, even edges), 30 fps, 12 Mbit/s, no audio, no limit. A box beyond H.264 level 5.2 (4096 per edge, 4096 x 2304 frame) steps down through 1080p, 720p, 540p, 360p. The size is fixed at start: a view turned mid-recording is letterboxed, not stretched (the even-edge rounding, under 1 % of aspect, is filled). The video is never longer than `maxDuration`: frames past it are refused.
+- `recordAudio` needs microphone permission (`NSMicrophoneUsageDescription`), never requested by the recorder; without it the video is silent. The app's audio session is not reconfigured by the capture session; a category that can already record is activated, never deactivated or switched. Otherwise it is switched to `.playAndRecord` (mixing with other audio) for the recording, then put back unless the app changed the category in the meantime; it is deactivated first with `.notifyOthersOnDeactivation` only when it was inactive before (another app playing over a non-mixing category), so the app's own sound is never cut. If the switch fails, nothing is activated and the video is silent. Two recorders using the microphone at the same time share the app's one audio session: the first recording to end hands it back, so the other recording loses its audio from then on. One recorder serves one scene at a time; a scene it left takes it back only once the other scene lets it go. `hasAudio` is `true` only when a microphone sample was written.
+- `@Published` state: `isAttached`, `isRecording`, `elapsedTime` (4 Hz), `lastRecording`, `lastError`. `onRecordingFinished` fires on every stop, including `maxDuration` (`reachedMaxDuration == true`); `nil` when no frame was written.
+- `overlay = CaptureOverlay { context, size in ... }` draws a watermark on every photo and video frame (top-left origin, capture pixels), never on the live view.
+- A recording finishes when its view leaves the window or the app goes to the background; the recorder attaches again when the view comes back.
 
 ---
 

@@ -8,12 +8,13 @@ plugins {
 }
 
 kotlin {
-    // filament-kmp (via sceneview-compose desktop) is FFM — JDK 22+.
-    jvmToolchain(22)
+    // JDK 21: the desktop floor of sceneview-compose (see its build file — filament-kmp's
+    // JNI binding needs 17, kotlin-math's JDK 21 bytecode sets the floor, #4423).
+    jvmToolchain(21)
 
     jvm("desktop") {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_22)
+            jvmTarget.set(JvmTarget.JVM_21)
         }
     }
 
@@ -47,9 +48,11 @@ compose.resources {
 compose.desktop {
     application {
         mainClass = "io.github.sceneview.desktop.MainKt"
-        jvmArgs += "--enable-native-access=ALL-UNNAMED"
+        // No `--enable-native-access=ALL-UNNAMED`: filament-kmp 0.7+ loads its natives
+        // through JNI, not FFM, and the app runs on the JDK 21 below, which needs no
+        // opt-in for `System.load` (JDK 24+ only warns about it).
         javaHome = javaToolchains.launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(22))
+            languageVersion.set(JavaLanguageVersion.of(21))
         }.get().metadata.installationPath.asFile.absolutePath
 
         nativeDistributions {

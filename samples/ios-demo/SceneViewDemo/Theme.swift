@@ -86,6 +86,29 @@ enum SceneViewTheme {
 /// can move between the spec, the Android code and this file without a lookup
 /// table. Never hardcode a colour or a size in demo UI: add the token here.
 enum SceneViewTokens {
+    /// `DESIGN.md` "Themed stage" — Android's `StageChrome.Light` / `StageChrome.Media`, picked by
+    /// the colour scheme: the pages 3D Scan draws itself (the scope chooser) follow the theme.
+    /// *Light*: ground `surface-dim`, glass `surface-container` at 88 %, text `on-surface` and
+    /// `on-surface-dim`, the light scheme's `primary` as the one filled accent. *Dark*: the
+    /// `Stage.background` ground, `glass-surface` at Android's 14 % (no material under it here),
+    /// white text, `accent-progress` on `on-accent-progress`.
+    enum ThemedStage {
+        static let ground = Color(light: Color(red: 0xF1 / 255, green: 0xF3 / 255, blue: 0xF5 / 255),
+                                  dark: Stage.background)
+        static let glass = Color(light: Color.white.opacity(0xE0 / 255), dark: Color.white.opacity(0x24 / 255))
+        static let onGlass = Color(light: Color(red: 0x1A / 255, green: 0x1A / 255, blue: 0x2E / 255), dark: .white)
+        static let onGlassMuted = Color(light: Color(red: 0x3D / 255, green: 0x46 / 255, blue: 0x54 / 255),
+                                        dark: Color.white.opacity(0.72))
+        static let accent = Color(light: Color(red: 0x00, green: 0x5B / 255, blue: 0xC1 / 255),
+                                  dark: ARChrome.accentProgress)
+        static let onAccent = Color(light: .white, dark: Color(red: 0x00, green: 0x2F / 255, blue: 0x64 / 255))
+        /// An unselected card's edge and an unselected icon well: `on-glass` at 12 % and 8 %.
+        static let edgeAlpha: Double = 0.12
+        static let wellAlpha: Double = 0.08
+        static let selectedBorder: CGFloat = 2
+        static let unselectedBorder: CGFloat = 1
+    }
+
     /// Model-viewer stage, deliberately identical in light and dark themes (`#0B0F16`).
     enum Stage {
         static let background = Color(red: 0x0B / 255, green: 0x0F / 255, blue: 0x16 / 255)
@@ -652,6 +675,17 @@ enum SceneViewTokens {
         static let stageShadowWidth: CGFloat = 132
         /// Height of that shadow — a flat ellipse the mark hovers above.
         static let stageShadowHeight: CGFloat = 18
+        /// `about-app-icon` — the App Store icon of a row in the "More apps
+        /// built with SceneView" group, clipped to `radius-xs`. Half the
+        /// identity mark: these are other products, named but not featured.
+        static let appIcon: CGFloat = 40
+        /// The 1 pt `outline-subtle` hairline around that icon: it draws the
+        /// edge of a dark icon on the dark card.
+        static let appIconHairline: CGFloat = 1
+        /// Horizontal inset of an About row card, and the gap between its
+        /// leading tile and its text — the values `AboutCard` lays out with,
+        /// so a row of the "More apps" group lines up with the cards under it.
+        static let rowInset: CGFloat = 14
     }
 
     /// The SceneView mark as a 3D object (`mark-color` in `DESIGN.md`).
@@ -765,6 +799,10 @@ enum SceneViewTokens {
         static let viewerEnvironmentTile: CGFloat = 72
         static let viewerAnimationButton: CGFloat = 48
         static let selectedOutlineWidth: CGFloat = 2
+        /// `support-amount-height` — one tip amount in the "Support SceneView" sheet.
+        static let supportAmountHeight: CGFloat = 64
+        /// `sheet-width-mac` — a compact sheet on macOS (support, prompts).
+        static let sheetWidthMac: CGFloat = 440
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
         /// `hero-stage-height` — the Explore hero stage.

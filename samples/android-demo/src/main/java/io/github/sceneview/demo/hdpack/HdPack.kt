@@ -72,7 +72,10 @@ object HdPack {
     private const val MAX_ATTEMPTS = 8
     private const val KEY_ONLY = "only"
 
-    /** What the Wi-Fi prefetch fetches on its own. Every other model waits for its pill's tap. */
+    /**
+     * What the Wi-Fi prefetch fetches on its own, at launch. A catalogue model without a stand-in
+     * is fetched on Wi-Fi when it is picked ([fetchOnWifi]); every other one waits for its pill.
+     */
     val PREFETCH_IDS: Set<String> = setOf("flight-helmet")
 
     private val _loaded = MutableStateFlow<HdPackStore?>(null)
@@ -119,17 +122,35 @@ object HdPack {
     }
 
     /**
-     * The user's "Download now" — any network. With [assetId], that one model only (a second tap
-     * while it is queued keeps the job already there); without, every missing file.
+     * A catalogue model with no bundled stand-in was picked: fetch its own file on Wi-Fi, the
+     * way [schedulePrefetch] fetches the Flight Helmet. Until that file is in, the stage only
+     * shows the card's still render, which a pinch, a drag or "Spin scene" cannot move — the QA
+     * pass of 2026-10-16 read that as zoom and spin being broken. Never on mobile data: there the
+     * job waits for Wi-Fi and the pill still offers "Download now", size first. Nothing is queued
+     * after the user removed the pack, nor when the file is in or its job already exists.
      */
-    fun downloadNow(context: Context, assetId: String? = null) {
+    fun fetchOnWifi(context: Context, assetId: String) {
+        val store = store(context) ?: return
+        val asset = store.manifest.asset(assetId) ?: return
+        if (removedByUser.value || store.isReady(setOf(asset.id))) return
+        enqueue(context, assetWorkName(assetId), NetworkType.UNMETERED, ExistingWorkPolicy.KEEP, setOf(assetId))
+    }
+
+    /**
+     * The user's "Download now" — any network. With [assetId], that one model only (a second tap
+     * while it is queued keeps the job already there, unless that job is [fetchOnWifi]'s, parked
+     * on Wi-Fi: [replaceWifiWait] swaps it for one that runs on any network); without, every
+     * missing file.
+     */
+    fun downloadNow(context: Context, assetId: String? = null, replaceWifiWait: Boolean = false) {
         val store = store(context) ?: return
         // One model's pill fetches that model and nothing more: it does not turn the Wi-Fi
         // prefetch back on after the user removed the pack. Only the whole-pack download does.
         if (assetId == null) setRemoved(context, false)
         if (assetId != null && store.manifest.asset(assetId) != null) {
             val name = assetWorkName(assetId)
-            enqueue(context, name, NetworkType.CONNECTED, ExistingWorkPolicy.KEEP, setOf(assetId))
+            val policy = if (replaceWifiWait) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+            enqueue(context, name, NetworkType.CONNECTED, policy, setOf(assetId))
         } else {
             val all = store.manifest.assets.mapTo(mutableSetOf()) { it.id }
             enqueue(context, ALL_WORK, NetworkType.CONNECTED, ExistingWorkPolicy.REPLACE, all)

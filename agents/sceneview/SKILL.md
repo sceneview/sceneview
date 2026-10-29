@@ -30,11 +30,11 @@ metadata:
 SceneView is a declarative 3D and AR SDK. One mental model across every platform:
 
 - **Android** — `SceneView { … }` (3D) and `ARSceneView { … }` (AR) composables.
-  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.52.0` and
-  `io.github.sceneview:arsceneview:4.52.0`.
+  Filament renderer. Artifacts: `io.github.sceneview:sceneview:4.63.0` and
+  `io.github.sceneview:arsceneview:4.63.0`.
 - **Apple (iOS / macOS / visionOS)** — `SceneView { }` and `ARSceneView { }` SwiftUI
   views from the [`sceneview`](https://github.com/sceneview/sceneview) monorepo
-  via Swift Package Manager (tag `4.52.0`). RealityKit renderer.
+  via Swift Package Manager (tag `4.63.0`). RealityKit renderer.
 - **Compose Multiplatform** — `SceneViewer(…)`, one composable from `commonMain`
   (`io.github.sceneview:sceneview-compose`, **unreleased**). *Viewer subset only* — model,
   orbit camera, key light, environment, tap. **No AR, no custom materials, no
@@ -352,8 +352,15 @@ When the user asks for a SceneView feature:
 4. **Use the `remember*` helpers** at the top of the composable. Never call
    raw constructors for `Engine` / `ModelLoader`.
 5. **Handle the `null` from `rememberModelInstance`** with `?.let { … }`.
-6. **For AR**, remind the user about `Manifest.permission.CAMERA` and the
-   `com.google.ar.core` `<meta-data>` entry.
+6. **For AR**, `arsceneview` already declares `Manifest.permission.CAMERA`
+   and the `com.google.ar.core` `<meta-data>` as `optional`. An AR Optional
+   app declares
+   `<uses-feature android:name="android.hardware.camera.ar" android:required="false" />`
+   and
+   `<uses-feature android:name="android.hardware.camera" android:required="false" />`.
+   An AR Required app overrides the `<meta-data>` with
+   `tools:replace="android:value"` (see `llms.txt` § *Setup*); without it the
+   manifest merger fails.
 7. **If the user pastes 2.x / 3.x code**, point them at
    [`docs/docs/migration.md`](https://github.com/sceneview/sceneview/blob/main/docs/docs/migration.md)
    and the local [`references/migration.md`](./references/migration.md).

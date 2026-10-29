@@ -104,9 +104,9 @@ SceneView(engine = engine, modelLoader = modelLoader) {
 | 2.x | 3.0 replacement |
 |-----|-----------------|
 | \`TransformableNode\` | Set \`isEditable = true\` on \`ModelNode\` |
-| \`PlacementNode\` | \`AnchorNode(anchor = hitResult.createAnchor())\` + \`HitResultNode\` |
+| \`PlacementNode\` | \`HitResultNode\` cursor + \`AnchorNode(anchor = anchor)\` (anchor from \`createAnchorOrNull()\` on a tapped plane hit) |
 | \`ViewRenderable\` | \`ViewNode\` with a \`@Composable\` content lambda |
-| \`AnchorNode()\` (no-arg) | \`AnchorNode(anchor = hitResult.createAnchor())\` |
+| \`AnchorNode()\` (no-arg) | \`AnchorNode(anchor = anchor)\` (anchor from \`createAnchorOrNull()\` on a tapped plane hit) |
 
 **TransformableNode:**
 \`\`\`kotlin
@@ -207,7 +207,7 @@ ARSceneView(
 
 | 2.x pattern | 3.0 |
 |-------------|-----|
-| \`node.worldPosition = hitResult.hitPose.position\` | \`AnchorNode(anchor = hitResult.createAnchor())\` |
+| \`node.worldPosition = hitResult.hitPose.position\` | \`AnchorNode(anchor = anchor)\`, \`anchor = hitResult.createAnchorOrNull()\` |
 
 Plain nodes whose \`worldPosition\` is set manually will drift when ARCore remaps its coordinate system. \`AnchorNode\` compensates automatically.
 
@@ -244,11 +244,11 @@ SceneView(
 - [ ] Replace \`TransformableNode\` → \`isEditable = true\`
 - [ ] Replace \`PlacementNode\` → \`AnchorNode\` + \`HitResultNode\`
 - [ ] Replace \`ViewRenderable\` → \`ViewNode\` with Compose lambda
-- [ ] Fix \`LightNode { … }\` → \`LightNode(apply = { … })\`
+- [ ] Fix \`LightNode { … }\` → \`LightNode(type = LightManager.Type.POINT, apply = { … })\` (\`type\` is required)
 - [ ] Remove manual \`engine.destroy()\` calls
 - [ ] Replace manual \`worldPosition\` in AR → \`AnchorNode\`
 - [ ] Replace \`ArFragment\` → \`ARSceneView()\` composable
-- [ ] Replace \`onTapArPlane\` → \`onTouchEvent\`
+- [ ] Replace \`onTapArPlane\` → \`rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })\` + \`latestFrame?.hitTest(event)\`
 - [ ] Replace \`setRenderable\` → \`ModelNode(modelInstance = ...)\`
 - [ ] Replace \`setParent\` → nest composable nodes inside parent
 - [ ] Move all Filament calls to main thread (no Dispatchers.IO)
@@ -276,7 +276,7 @@ SceneView(
 | 2.x | 3.0 |
 |-----|-----|
 | \`ArFragment\` in XML layout | \`ARSceneView()\` composable |
-| \`arFragment.setOnTapArPlaneListener\` | \`ARSceneView(onTouchEvent = { … })\` |
+| \`arFragment.setOnTapArPlaneListener\` | \`ARSceneView(onGestureListener = rememberOnGestureListener(onSingleTapConfirmed = { event, node -> … }))\` |
 | \`arFragment.arSceneView\` | Direct access via composable params |
 
 ---

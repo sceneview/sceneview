@@ -43,11 +43,11 @@ JSON-lines over TCP. Two channels on the same socket:
 
 ## Save & share
 
-Run sidecar with `--save` to write a shareable `.rrd` instead of spawning the live viewer. The Android app's `RerunBridge.requestSaveAndShare(callback)` triggers a flush via the control channel and surfaces the resulting path + viewer URL in a dialog. Re-host the `.rrd` and open `https://sceneview.github.io/rerun/?url=<encoded>` to view in any browser.
+Run sidecar with `--save` to write a shareable `.rrd` instead of spawning the live viewer. The Android app's `RerunBridge.requestSaveAndShare(callback)` triggers a flush via the control channel and surfaces the resulting path + viewer URL in a dialog. Host the `.rrd` at an https address that ends in `.rrd` and open `https://sceneview.github.io/rerun/?url=<encoded>` to view in any browser. The host has to allow cross-origin requests (CORS): a public GitHub repository's `raw.githubusercontent.com` link and GitHub Pages do, a GitHub release asset does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule that allows `https://sceneview.github.io`.
 
 ## Built on SceneView SDK
 
-- Android: `io.github.sceneview:arsceneview:4.0.0` (Compose + ARCore)
+- Android: `io.github.sceneview:arsceneview:4.53.0` (Compose + ARCore)
 - iOS: SceneViewSwift ARSceneView (SwiftUI + ARKit)
 
 ## Links

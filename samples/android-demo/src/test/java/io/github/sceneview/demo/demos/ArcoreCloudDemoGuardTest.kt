@@ -33,7 +33,8 @@ import java.io.File
  * still discovered", which catches a marker that stopped matching without
  * caring how the demos are packed into files. #3463 packed two more together
  * (`ar-scene-mesh` + `ar-streetscape` → `ARSceneGeometryDemo.kt`), and the
- * guard was unmoved, which is the property it was rewritten for.
+ * guard was unmoved, which is the property it was rewritten for. The file now holds the
+ * Streetscape mode of `ar-geospatial-anchors` alone (wave 1 of the AR catalogue clean-up).
  */
 class ArcoreCloudDemoGuardTest {
 
@@ -63,8 +64,9 @@ class ArcoreCloudDemoGuardTest {
             "ARCloudAnchorDemo.kt",
             "ARGeospatialAnchorsDemo.kt",
             // #3463 merged `ar-scene-mesh` + `ar-streetscape` into this one file, the
-            // same way #2239 merged the two geospatial-anchor demos above. Both Cloud
-            // capabilities are still here — as two modes of one file.
+            // same way #2239 merged the two geospatial-anchor demos above. Since the
+            // AR catalogue clean-up, wave 1, it is the Streetscape mode, with the
+            // classified mesh as a switch — still a Geospatial Cloud session.
             "ARSceneGeometryDemo.kt",
         )
         val discovered = cloudDemos.map { it.name }.toSet()

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the 3D Scan result and its export sheet (`RerunModelUi.kt`,
+     `RerunExportSheet.kt`). Android's resource merger fans every
+     `res/values/*.xml` file in, so these resolve globally like the rest (#1870). -->
+<resources>
+    <!-- Result screen -->
+    <string name="scan_result_saved">Saved on this phone</string>
+    <string name="scan_result_rename">Rename the scan</string>
+    <string name="scan_result_rename_title">Rename scan</string>
+    <string name="scan_result_rename_field">Name</string>
+    <string name="scan_result_rename_save">Save</string>
+    <string name="scan_result_cancel">Cancel</string>
+    <string name="scan_result_creating">Creating your model…</string>
+    <string name="scan_result_partial">Only part of the surface could be built</string>
+    <string name="scan_result_failed">Couldn\'t build a model from this scan. Scan slowly, 1–3 m from the surfaces.</string>
+    <string name="scan_result_hint">Drag to turn · Pinch to zoom.</string>
+    <string name="scan_result_3d">3D</string>
+    <string name="scan_result_3d_label">Show the model in 3D</string>
+    <string name="scan_result_plan">Plan</string>
+    <string name="scan_result_plan_label">Show the floor plan</string>
+    <string name="scan_result_tour">Tour</string>
+    <string name="scan_result_tour_stop">Stop tour</string>
+    <string name="scan_result_tour_label">Fly the camera around the scan</string>
+    <!-- Live coverage map (#4631) -->
+    <string name="scan_coverage_area">%1$s covered</string>
+    <!-- The result's ground legend (#4719, #4734): the live map's and the replay's own figure -->
+    <string name="scan_coverage_floor">%1$s of floor covered</string>
+    <string name="scan_coverage_label">Scan map: %1$s of floor covered. The hatched part is still to scan.</string>
+    <!-- Map to complete, the live map opened (#4718) -->
+    <string name="scan_coverage_title">Map to complete</string>
+    <string name="scan_coverage_covered">Covered · %1$s</string>
+    <string name="scan_coverage_missing">Still to scan</string>
+    <string name="scan_coverage_you">You</string>
+    <string name="scan_coverage_hint">Walk to the hatched areas to fill them in.</string>
+    <string name="scan_coverage_expand">Open the map</string>
+    <string name="scan_coverage_collapse">Close the map</string>
+    <!-- The live 3D map of a room's scan, sharing the screen with the camera -->
+    <string name="scan_live_map_area">%1$s covered · hatched: still to scan</string>
+    <string name="scan_live_map_swap_camera">Make the camera bigger</string>
+    <string name="scan_live_map_swap_map">Make the map bigger</string>
+    <string name="scan_result_replay">Replay</string>
+    <string name="scan_result_replay_label">Replay the recording</string>
+    <string name="scan_result_export">Export</string>
+    <string name="scan_result_export_label">Export the scan</string>
+    <string name="scan_result_about">Your scan as one 3D model, kept on this phone with the recording. Export it as a GLB for Blender, three.js or any 3D viewer.</string>
+
+    <!-- Export sheet -->
+    <string name="scan_export_title">Export scan</string>
+    <string name="scan_export_model">3D model</string>
+    <string name="scan_export_model_format">GLB</string>
+    <string name="scan_export_save">Save file</string>
+    <string name="scan_export_share">Share</string>
+    <string name="scan_export_more">More formats</string>
+    <string name="scan_export_points">Coloured points — PLY</string>
+    <string name="scan_export_scan">Original scan — SVSCAN</string>
+    <string name="scan_export_recording">Recording — RRD</string>
+    <string name="scan_export_preparing">Preparing file…</string>
+    <string name="scan_export_failed">Couldn\'t create this file</string>
+    <!-- The model's row once its file is written, when it is not the light copy as planned (#4334). -->
+    <string name="scan_export_out_of_memory">Not enough memory to create this file</string>
+    <string name="scan_export_model_whole">Full detail: not enough memory to lighten it</string>
+    <string name="scan_export_model_heavy">Lightened, but still larger than planned</string>
+    <string name="scan_export_retry">Try again</string>
+    <string name="scan_export_saved">File saved</string>
+    <string name="scan_export_privacy">Everything stays on your phone until you save or share it.</string>
+
+    <!-- Parts to scan again (#4736): the result's list of what the scan missed. -->
+    <plurals name="scan_rescan_count">
+        <item quantity="one">%d part to scan again</item>
+        <item quantity="other">%d parts to scan again</item>
+    </plurals>
+    <string name="scan_rescan_title">Parts to scan again</string>
+    <string name="scan_rescan_missing_wall">Missing wall</string>
+    <string name="scan_rescan_floor_hole">Hole in the floor</string>
+    <string name="scan_rescan_low_density">Sparse area</string>
+    <string name="scan_rescan_action">Re-scan this part</string>
+    <string name="scan_rescan_unavailable">Each part is framed in amber on the model and the plan. Scanning one part on its own is not available yet: scan the room again to fill them in.</string>
+    <string name="scan_rescan_close">Close</string>
+    <!-- Re-scanning one part (#4736): the live guide, and the copy of the scan it completes. -->
+    <string name="scan_rescan_how">Each part is framed in amber on the model. Scan one again and it is added to a copy of this scan; this one stays as it is.</string>
+    <string name="scan_rescan_lining_up">Point at a part you scanned before so this lines up.</string>
+    <string name="scan_rescan_fill">Fill the amber frame: %1$d%%</string>
+    <string name="scan_rescan_covered">This part is covered. Save to add it to your scan.</string>
+    <string name="scan_rescan_refused">Couldn\'t line up this part with your scan.</string>
+    <string name="scan_rescan_merged_title">%1$s, completed</string>
+    <string name="scan_rescan_part_title">%1$s · part</string>
+</resources>

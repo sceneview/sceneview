@@ -6,7 +6,12 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_people_occlusion_title">People Occlusion</string>
-    <string name="demo_ar_people_occlusion_subtitle">Real people hide virtual objects</string>
-    <string name="ar_people_comparison">People in front of the helmet hide it when occlusion is on. ARCore Scene Semantics works outdoors; indoor people may not be detected.</string>
-    <string name="ar_people_requirement">Requires ARCore Scene Semantics and Depth API.</string>
+    <string name="demo_ar_people_occlusion_subtitle">A person walking in front hides the model</string>
+    <string name="ar_people_comparison">Have someone walk between your phone and the helmet: wherever ARCore sees a person, the helmet is hidden. It needs a phone with ARCore Scene Semantics and Depth. Scene Semantics is trained on outdoor scenes, so indoors, or with only a hand in view, it often finds nobody and the helmet stays in front.</string>
+    <string name="ar_people_requirement">People Occlusion needs ARCore Scene Semantics and the Depth API, and this phone does not offer both. Depth Occlusion works on more phones.</string>
+    <!-- Live status over the camera (#4649): what the occlusion is doing right now. -->
+    <string name="ar_people_status_off">Occlusion off: the helmet draws over everyone</string>
+    <string name="ar_people_status_starting">Starting people detection…</string>
+    <string name="ar_people_status_searching">No person in view. Ask someone to step in front of the helmet. Works best outdoors</string>
+    <string name="ar_people_status_detected">Person detected: they hide the helmet where they stand in front of it</string>
 </resources>

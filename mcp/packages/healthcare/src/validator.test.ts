@@ -61,6 +61,7 @@ describe("validateMedicalCode", () => {
   it("passes correct LightNode usage", () => {
     const result = validateMedicalCode(`
       LightNode(
+        type = LightManager.Type.DIRECTIONAL,
         apply = {
           intensity(80000f)
         }

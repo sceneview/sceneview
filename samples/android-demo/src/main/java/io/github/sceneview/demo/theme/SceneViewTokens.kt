@@ -24,14 +24,61 @@ import androidx.compose.ui.unit.sp
  * the translation it is.
  *
  * An immutable object fits these application-wide constants better than a
- * CompositionLocal: none of the source tokens varies with theme or composition.
+ * CompositionLocal: none of the source tokens varies with composition. The few that differ
+ * between light and dark ([Showroom], [DebugView]) are pairs of constants, and the screen
+ * that draws them picks one from the theme it is in.
  */
 @Immutable
 object SceneViewTokens {
-    /** Model-viewer stage, deliberately identical in light and dark themes. */
+    /**
+     * `stage-background`: the clear colour of a full-screen 3D stage, deliberately identical in
+     * light and dark themes. The Model Viewer draws a themed [Showroom] instead.
+     */
     object Stage {
         val background = Color(0xFF0B0F16)
     }
+
+    /**
+     * `DESIGN.md` — the studio showroom (`stage-studio-*`), shared with the web viewer's `/view`
+     * studio: the room the Model Viewer stands every model in. A seamless cyclorama — the pool of
+     * light under the subject, the floor carried into the horizon by the distance, the wall
+     * darkening towards the top — so the subject is the only thing with an edge.
+     *
+     * [Light] is a white photo studio (Apple product pages, Sketchfab's light scenes); [Dark]
+     * is a charcoal car showroom. The studio's lighting map (`studio_showroom_{light,dark}_2k.hdr`,
+     * the web viewer's too) is the same room, so what the subject reflects is what the viewer
+     * sees around it.
+     */
+    object Showroom {
+        /** White studio: a near-white pool, the wall a step greyer towards the top. */
+        val Light = ShowroomPalette(
+            top = Color(0xFFCDD3DB),
+            horizon = Color(0xFFE7EAEF),
+            floor = Color(0xFFF2F4F7),
+            pool = Color(0xFFFDFDFE),
+        )
+
+        /** Charcoal showroom: a blue-grey pool of light, the room falling to near-black above. */
+        val Dark = ShowroomPalette(
+            top = Color(0xFF0B0E13),
+            horizon = Color(0xFF222833),
+            floor = Color(0xFF2B323E),
+            pool = Color(0xFF3A4250),
+        )
+    }
+
+    /**
+     * `DESIGN.md` — `stage-grid-minor` / `stage-grid-major`: the ground grid every 3D viewer of
+     * the demo shares (#4651, `ViewerGroundGrid`). Colour and alpha both: the grid is drawn over
+     * the floor, never instead of it.
+     */
+    object ViewerGrid {
+        val LightMinor = Color(0x735C6780)
+        val LightMajor = Color(0xBF5C6780)
+        val DarkMinor = Color(0x388B95A6)
+        val DarkMajor = Color(0x738B95A6)
+    }
+
     /** `DESIGN.md` — Spatial Gallery overlay colours. */
     object SpatialGalleryColor {
         val stageScrimStart = Color.Transparent
@@ -270,16 +317,16 @@ object SceneViewTokens {
         val heroFieldEmbeddedDark = Color(0xFF232A39)
 
         /**
-         * `hero-sky-*` — the dusk Compose paints behind the transparent home stage
-         * (#3948), top to bottom. The 3D flight is rendered over this gradient with no
-         * skybox of its own, so the sky is one gradient in both themes: [heroSkyTop] is
-         * the `stage-background` value, [heroSkyHorizon] is also the scene's fog colour,
-         * which is what lets the far ridges dissolve into it.
+         * `hero-sky-*` — the night Compose paints behind the transparent home stage
+         * (#3948), top to bottom: what shows until the night circuit's own sky dome has
+         * landed, and on a device that shows the still. One gradient in both themes:
+         * [heroSkyTop] is the `stage-background` value, [heroSkyHorizon] is the scene's
+         * haze (its fog colour, in sRGB), so the dome lands on the colour already there.
          */
         val heroSkyTop = Color(0xFF0B0F16)
-        val heroSkyDusk = Color(0xFF3B1D46)
-        val heroSkyHorizon = Color(0xFFE2734F)
-        val heroSkyGround = Color(0xFF2A1220)
+        val heroSkyDusk = Color(0xFF161C2C)
+        val heroSkyHorizon = Color(0xFF3F4D65)
+        val heroSkyGround = Color(0xFF1D2230)
 
         val chipBackgroundLight = Color(0xFFF1F3F5)
         /**
@@ -360,6 +407,13 @@ object SceneViewTokens {
         val heroSubtitleMaxWidth = 260.dp
         val heroPillHeight = 44.dp
         val heroPillPaddingHorizontal = 18.dp
+        /**
+         * The arrow after the hero pill's label (#4622): the pill is the page's one action,
+         * and a bare word on a busy live stage read as a caption, not a button.
+         */
+        val heroPillIconSize = 18.dp
+        /** Gap between the hero pill's label and its arrow — `space-sm`. */
+        val heroPillIconGap = 8.dp
         val heroTopGap = 8.dp
         val chipRowTopGap = 28.dp
         val chipRowHeight = 40.dp
@@ -439,6 +493,22 @@ object SceneViewTokens {
          */
         const val rowTextStartFraction = 0.44f
 
+        /**
+         * `home-row-whole-dissolve` — the same, for a row that shows its picture whole
+         * (the "What's new" row): the picture stays solid across the band a card holds its
+         * subject in and only its trailing margin dissolves, into its own edge colour.
+         */
+        const val rowWholeDissolveStart = 0.84f
+
+        /**
+         * `home-row-whole-melt` — the strip after a whole picture (`space-xl`) over which
+         * the picture's own edge colour carries on and melts into the row's tint. One
+         * ease runs from `home-row-whole-dissolve` to the end of the strip; the text
+         * starts after it. `space-2xl` breaks the row's subtitle onto a second line on a
+         * 411 dp phone.
+         */
+        val rowWholeMelt = 32.dp
+
         /** Row text insets: `space-md` at the trailing edge, 14 dp above and below. */
         val rowTextPaddingEnd = 16.dp
         val rowTextPaddingVertical = 14.dp
@@ -495,6 +565,13 @@ object SceneViewTokens {
         val rowAffordance = 16.dp
         /** Inset of a row divider, so it starts under the label, not under the icon. */
         val dividerInset = 48.dp
+        /**
+         * Launcher icon of an app in the "More apps" group, clipped to `radius-xs`.
+         * Half the identity mark: these are other products, named but not featured.
+         */
+        val appIcon = 40.dp
+        /** [dividerInset] for a row led by an [appIcon]: row padding + icon + gap. */
+        val appDividerInset = 72.dp
     }
 
     /** `DESIGN.md` — Spring motion: `spring(dampingRatio 0.85, stiffness 450)`, one spring for press, sheets, dock. */
@@ -518,6 +595,14 @@ object SceneViewTokens {
         val scrimLight = Color(0xF0000000)
         val scrimDark = Color(0xE0000000)
         val onScrim = Color(0xFFFFFFFF)
+
+        /**
+         * `ar-camera-dim` — the veil over the live camera under 3D Scan's coloured cloud
+         * (#4628): dark enough that the cloud's own colours lead, light enough that what is
+         * not scanned yet still reads on the camera behind and guides the next move. Black
+         * at 55 % in both themes: the ground is the camera, not a `surface`.
+         */
+        val cameraDim = Color(0x8C000000)
 
         /**
          * `on-ar-scrim-dim` — secondary text on an AR overlay (labels, captions, the
@@ -567,8 +652,69 @@ object SceneViewTokens {
          */
         val accentRecord = Color(0xFFEA4335)
 
+        /**
+         * `ar-mesh-ground` — the ground ARCore found (Streetscape terrain, a floor plane
+         * marker) drawn **into** the camera image (#4623). A saturated azure rather than the
+         * brand `primary`: #005bc1 sinks into a dim room and the dark-scheme #a4c1ff turns to
+         * milk once blended over a white wall. Theme-independent, like every accent here —
+         * the ground is the camera. Paired with [meshStructure], blue against orange: the one
+         * hue pair that stays apart under every common colour-vision deficiency.
+         */
+        val meshGround = Color(0xFF1F8BFF)
+
+        /**
+         * `ar-mesh-structure` — what stands on the ground (Streetscape buildings, walls), drawn
+         * into the camera image (#4623). Saturated orange, the complement of [meshGround]. Filmic
+         * pushes it red over mid-grey and amber over a white wall; this hue sits in the middle.
+         */
+        val meshStructure = Color(0xFFFF7A1A)
+
+        /**
+         * `ar-mesh-fill-alpha` — the strength of a mesh overlay's tint (#4623): strong enough
+         * that the colour leads on a bright wall, light enough that the room still reads.
+         */
+        const val MESH_FILL_ALPHA = 0.6f
+
+        /**
+         * `ar-points-settled` — a feature point ARCore is confident about (#4623). Vivid cyan;
+         * the low end of the confidence ramp is [meshGround], the fresh end `warning`.
+         */
+        val pointsSettled = Color(0xFF00E5FF)
+
         /** Widest a coaching pill may grow — a long line stays one readable column. */
         val maxWidth = 480.dp
+
+        /**
+         * `card-min-width` — narrowest a decision card may be when it moves into the corner
+         * beside the bottom chrome on a phone held sideways (#4509). Its title and each of
+         * its buttons still hold on one line at this width; with less room than this the
+         * card stays above the chrome instead.
+         */
+        val cardMinWidth = 192.dp
+
+        /**
+         * `action-label-min-width` — the least room a card's action label is given, per unit
+         * of font scale (#4509). "Try again" breaks at its space and each word stays whole at
+         * this width; with less, the label would break inside a word, so the card is not moved
+         * into a corner that narrow.
+         */
+        val actionLabelMinWidth = 36.dp
+
+        /**
+         * `sdk-card-margin` — the margin the SDK's own AR cards (`ARCameraPermissionOverlay`,
+         * `ARCoreAvailabilityOverlay`) keep around themselves, on every side (#4533). Not a
+         * spacing this app chooses: a measurement of the SDK card, which the app needs to
+         * place that card beside its chrome. `ArOverlaySdkCardTokensTest` measures the card
+         * and fails when the SDK moves away from this value.
+         */
+        val sdkCardMargin = 24.dp
+
+        /**
+         * `sdk-card-action-insets` — everything the SDK's AR card puts on either side of its
+         * action's label, both sides together: [sdkCardMargin], 20 dp of card padding and
+         * 20 dp of button padding, twice (#4533). Measured by the same test.
+         */
+        val sdkCardActionInsets = 128.dp
     }
 
     /**
@@ -598,7 +744,7 @@ object SceneViewTokens {
      * Two palettes, one per ground (#4080). [Dark] is drawn on [Stage.background] — the live
      * camera's picture-in-picture, and the replay in dark theme. [Light] is drawn on the light
      * stage the replay takes in light theme (`surface-dim`, see [StageChrome.Light]). Every
-     * colour is an existing palette value — the brand ramp for the trail, `warning` for what the
+     * colour is an existing palette value — one blue, faint to strong, for the trail, `warning` for what the
      * camera sees right now, `success` for anchors, the axis convention X red / Y green / Z blue.
      * The `glow` factors multiply a colour past 1.0 in linear light so bloom picks it up: only the
      * few "live" elements glow, so the eye lands on the present. On the light ground nothing
@@ -608,21 +754,23 @@ object SceneViewTokens {
     object DebugView {
         /** On the dark stage. */
         val Dark = DebugPalette(
-            // Trail, oldest → newest: `accent-deep` → `tint-soft` → `tint-light`.
-            trailOld = Color(0xFF5A32A3),
-            trailMid = Color(0xFFD2A8FF),
+            // Trail, oldest → newest, one blue faint to strong (#4597): `gradient-hero-alt`'s
+            // `#0D419D` → `mark-color` body `#3D7FD9` → `primary` (dark) `#A4C1FF`.
+            trailOld = Color(0xFF0D419D),
+            trailMid = Color(0xFF3D7FD9),
             trailNew = Color(0xFFA4C1FF),
-            trailHeadGlow = 2.6f,
+            // Glows are held low (#4306): the room is the result, the tracking aids stand behind it.
+            trailHeadGlow = 2.0f,
             // The live camera frustum, and the fainter history frusta left every 60 cm.
             frustum = Color(0xFFA4C1FF),
-            frustumGlow = 1.8f,
-            frustumFace = Color(0x33A4C1FF),
-            keyframe = Color(0x59A4C1FF),
+            frustumGlow = 1.4f,
+            frustumFace = Color(0x24A4C1FF),
+            keyframe = Color(0x40A4C1FF),
             // Map points: everything seen so far, dim white — the room emerges as a cloud.
             mapPoint = Color(0x8CFFFFFF),
             // Live points: what the camera sees this second — `warning`, glowing.
             livePoint = Color(0xFFF59E0B),
-            livePointGlow = 2.0f,
+            livePointGlow = 1.4f,
             // Planes: translucent fill + solid outline, by orientation.
             floorFill = Color(0x29A4C1FF),
             floorOutline = Color(0xD9A4C1FF),
@@ -633,9 +781,9 @@ object SceneViewTokens {
             // Anchors — `success`: something the user placed and that holds.
             anchor = Color(0xFF16A34A),
             anchorGlow = 1.6f,
-            // Floor grid: 0.5 m minor, 1 m major, white at 7 % / 14 %.
-            gridMinor = Color(0x12FFFFFF),
-            gridMajor = Color(0x24FFFFFF),
+            // Floor grid (#4040): 25 cm minor, 1 m major, white at 16 % / 36 %, fading out round the room.
+            gridMinor = Color(0x29FFFFFF),
+            gridMajor = Color(0x5CFFFFFF),
             // Origin gizmo: X `danger`, Y `success`, Z `primary` (dark value).
             axisX = Color(0xFFEA4335),
             axisY = Color(0xFF16A34A),
@@ -644,20 +792,21 @@ object SceneViewTokens {
 
         /**
          * On the light stage: the same meanings in the light scheme's values. The trail runs
-         * `tint-soft` → `tertiary` → `primary` (the oldest is now the palest, as it is the
+         * one blue, `#BDD3FF` → `#3D7FD9` → `primary` (the oldest is the palest, as it is the
          * dimmest on the dark stage); the frustum and the floor planes take `primary`, the walls
          * `tertiary`; history points are `on-surface` at 55 %; the grid is `on-surface` at
-         * 8 % / 16 %.
+         * 18 % / 40 % (#4040).
          */
         val Light = DebugPalette(
-            trailOld = Color(0xFFD2A8FF),
-            trailMid = Color(0xFF6446CD),
+            // One blue, faint to strong (#4597): `mark-color` lid → body → `primary`.
+            trailOld = Color(0xFFBDD3FF),
+            trailMid = Color(0xFF3D7FD9),
             trailNew = Color(0xFF005BC1),
             trailHeadGlow = 1f,
             frustum = Color(0xFF005BC1),
             frustumGlow = 1f,
-            frustumFace = Color(0x29005BC1),
-            keyframe = Color(0x66005BC1),
+            frustumFace = Color(0x1F005BC1),
+            keyframe = Color(0x4D005BC1),
             mapPoint = Color(0x8C1A1A2E),
             livePoint = Color(0xFFF59E0B),
             livePointGlow = 1f,
@@ -669,12 +818,20 @@ object SceneViewTokens {
             otherOutline = Color(0x991A1A2E),
             anchor = Color(0xFF16A34A),
             anchorGlow = 1f,
-            gridMinor = Color(0x141A1A2E),
-            gridMajor = Color(0x291A1A2E),
+            gridMinor = Color(0x2E1A1A2E),
+            gridMajor = Color(0x661A1A2E),
             axisX = Color(0xFFEA4335),
             axisY = Color(0xFF16A34A),
             axisZ = Color(0xFF005BC1),
         )
+
+        /**
+         * A phone on its side (#4306, #4379): under [compactStageHeight] the window has no height
+         * to give a row above or under the room. The replay's timeline bar stands in the top
+         * corner, [compactCardWidth] wide, and the room keeps the middle.
+         */
+        val compactStageHeight = 500.dp
+        val compactCardWidth = 280.dp
 
         /** Picture-in-picture over the camera: portrait 3:4, like the phone it shows. */
         val pipWidth = 128.dp
@@ -751,6 +908,14 @@ object SceneViewTokens {
         fun <T> fade(): TweenSpec<T> = tween(
             durationMillis = fadeMillis,
             easing = FastOutSlowInEasing,
+        )
+
+        /** `motion-focus`: the camera re-framing as full screen opens or closes (#4558). */
+        const val focusMillis = 600
+
+        fun <T> focus(): TweenSpec<T> = tween(
+            durationMillis = focusMillis,
+            easing = Ease.expressive,
         )
     }
 

@@ -22,7 +22,7 @@ class DeferredModelDestroyTest {
     private val log = Collections.synchronizedList(mutableListOf<String>())
     private val registry = Collections.synchronizedList(mutableListOf<String>())
     private val asyncLoad = AsyncLoadSlot<String>(
-        beginLoad = {},
+        beginLoad = { true },
         cancelLoad = { log += "cancel($it)" },
         finishLoad = { log += "detach" },
     )

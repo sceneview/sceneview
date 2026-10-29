@@ -154,7 +154,7 @@ class DenseCloudTest {
         val blue = 0xFF0000FF.toInt()
         val positions = floatArrayOf(0.001f, 0.001f, 0.001f, 0.011f, 0.009f, 0.005f)
         val stats = fusion.add(samples(positions, intArrayOf(red, blue)))
-        assertEquals(DenseFuseStats(added = 1, kept = 2, total = 1), stats)
+        assertEquals(DenseFuseStats(added = 1, kept = 2, total = 1, confirmed = 0), stats)
         val cloud = fusion.cloud()
         assertEquals(1, cloud.count)
         assertEquals(0.006f, cloud.positions[0], 1e-6f)
@@ -170,7 +170,7 @@ class DenseCloudTest {
 
     @Test
     fun `the map is capped, keeps insertion order, and survives rehashing`() {
-        val capped = DenseFusion(maxPoints = 3)
+        val capped = DenseFusion(maxPoints = 3, maxLevel = 0)
         val line = FloatArray(30) { if (it % 3 == 0) it / 3 * 0.1f else 0f }
         val stats = capped.add(samples(line, IntArray(10) { COLOR }))
         assertEquals(3, stats.added)

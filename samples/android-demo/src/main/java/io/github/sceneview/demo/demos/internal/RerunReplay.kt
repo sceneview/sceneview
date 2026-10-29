@@ -262,12 +262,16 @@ fun filmstripFrames(count: Int, slots: Int): IntArray {
  * down onto the session as it starts to play — the home hero's entrance, for a room.
  */
 object ReplayIntro {
-    const val DURATION_S = 2.8f
+    const val DURATION_S = 2.4f
 
-    /** How much further out, higher and turned the shot starts than where it lands. */
-    const val DISTANCE_FACTOR = 2.3f
-    const val START_ELEVATION = 68f
-    const val TURN_DEGREES = -75f
+    /**
+     * How much further out, higher and turned the shot starts than where it lands: a short crane
+     * that keeps the room whole and readable from its first frame — further out it opens on a
+     * speck, further round it opens on the room's back.
+     */
+    const val DISTANCE_FACTOR = 1.35f
+    const val START_ELEVATION = 54f
+    const val TURN_DEGREES = -38f
 
     /** Where the entrance starts, for a shot landing on [home]. */
     fun startFor(home: OrbitPose): OrbitPose = home.copy(

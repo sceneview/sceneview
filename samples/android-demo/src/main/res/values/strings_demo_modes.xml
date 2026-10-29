@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Mode labels of the consolidated cards (samples step 0), drawn by the shared
-     `DemoModePill`. Each mode was a card of its own before; its old id still opens it
+     `DemoModePill`. Some modes were cards of their own before; their old ids still open them
      through `DeepLinkRouter`. Keep them one or two words: the pill sits over the scene. -->
 <resources>
     <string name="demo_mode_place">Place</string>
@@ -10,7 +10,9 @@
     <string name="demo_mode_pip">PiP</string>
     <string name="demo_mode_balls">Balls</string>
     <string name="demo_mode_pendulum">Pendulum</string>
-    <string name="demo_mode_rerun">Rerun</string>
+    <string name="demo_mode_table">On your table</string>
+    <!-- The demo's own name (`demo_ar_rerun_title`), written as it is everywhere else. -->
+    <string name="demo_mode_rerun">3D Scan</string>
     <string name="demo_mode_session_mp4">Session MP4</string>
     <string name="demo_mode_cloud_anchors">Cloud anchors</string>
     <string name="demo_mode_collaborative">Collaborative</string>
@@ -18,4 +20,8 @@
     <string name="demo_mode_streetscape">Streetscape</string>
     <string name="demo_mode_hands">Hands</string>
     <string name="demo_mode_face">Face</string>
+    <string name="demo_mode_inspect">Inspect</string>
+    <string name="demo_mode_media">Media</string>
+    <string name="demo_mode_3d">3D</string>
+    <string name="demo_mode_ar">AR</string>
 </resources>

@@ -19,22 +19,28 @@ import io.github.sceneview.ar.AutoPlacementScene
 import io.github.sceneview.ar.PlacementPhase
 import io.github.sceneview.ar.rememberArGuidanceState
 import io.github.sceneview.ar.rememberAutoPlacementState
+import io.github.sceneview.demo.common.CatalogueProductPill
+import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.rememberCatalogueProduct
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 
-/** The additive automatic-placement convenience API, using the shared 0.3 m Toy Car preview. */
+/**
+ * The additive automatic-placement convenience API, placing a real product at its real size:
+ * the KitchenAid stand mixer from the catalogue (#4560), on a table or on the floor.
+ */
 @Composable
 fun PlacementSceneDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
-    val instance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+    val product = rememberCatalogueProduct(modelLoader, CatalogueProducts.KITCHENAID_STAND_MIXER)
+    val instance = product.instance
     val state = rememberAutoPlacementState()
     // AutoPlacementScene draws the coaching card itself (coaching = true, the default); this
     // only tells the demo when to keep its own pill quiet, from the same tracking reason.
@@ -46,8 +52,10 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_placement_scene_title),
         onBack = onBack,
         bottomOverlay = {
+            // Until the product is in, its pill names it and narrates the download.
+            CatalogueProductPill(product)
             val message = when {
-                instance == null -> R.string.ar_place_loading_model
+                instance == null -> if (product.needsPill) null else R.string.ar_place_loading_model
                 guidance.isCoaching -> null
                 state.phase == PlacementPhase.SCANNING -> R.string.ar_place_move_slowly
                 state.phase == PlacementPhase.NO_SURFACE -> R.string.ar_place_no_surface_title
@@ -60,7 +68,7 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             DemoStatusBanner(text = message?.let { stringResource(it) }, tone = DemoStatusTone.Guidance)
         },
         controls = {
-            Text(stringResource(R.string.ar_place_preview_size))
+            Text(stringResource(R.string.ar_place_real_size))
             TextButton(onClick = { state.resetPlacement(SystemClock.uptimeMillis()) }) {
                 Text(stringResource(R.string.ar_dock_reset_label))
             }
@@ -82,7 +90,11 @@ fun PlacementSceneDemo(onBack: () -> Unit) {
             playbackDataset = playback,
             onTrackingFailureChanged = { trackingFailure = it },
         ) { placement ->
-            instance?.let { AutoPlacementModel(placement, state, it) }
+            instance?.let {
+                // Real size, not the API's 0.3 m preview: a mixer reads as a mixer next to the
+                // user's own kitchen counter.
+                AutoPlacementModel(placement, state, it, scaleToUnits = product.realSizeMetres)
+            }
         }
     }
 }

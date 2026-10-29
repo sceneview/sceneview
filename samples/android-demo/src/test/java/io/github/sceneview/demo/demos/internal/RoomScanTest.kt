@@ -1,14 +1,17 @@
 package io.github.sceneview.demo.demos.internal
 
+import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -20,6 +23,19 @@ import kotlin.math.sin
  * steps a live scan takes and checks what the replay would open on.
  */
 class RoomScanTest {
+    // The copy under test is the English one, whatever the machine running it says.
+    private val locale = Locale.getDefault()
+
+    @Before
+    fun englishLocale() {
+        Locale.setDefault(Locale.US)
+    }
+
+    @After
+    fun restoreLocale() {
+        Locale.setDefault(locale)
+    }
+
 
     // ── Colour ────────────────────────────────────────────────────────────────
 
@@ -193,7 +209,7 @@ class RoomScanTest {
 
     @Test
     fun `the copy says the scan stays on the phone`() {
-        assertEquals("Everything stays on your phone.", ScanCopy.PRIVACY)
+        assertEquals("Saved on your phone. Nothing leaves it unless you share it.", ScanCopy.PRIVACY)
         assertTrue(ScanCopy.IDLE_DETAIL.endsWith(ScanCopy.PRIVACY))
     }
 
@@ -209,10 +225,13 @@ class RoomScanTest {
 
     @Test
     fun `a kept session's figures read like the iOS card's`() {
-        assertEquals("4.2 m · 3.8k points · 42 photos · 0:18", ScanCopy.figures(4.23f, 3_812, 42, 18.4f))
-        assertEquals("42 cm · 1 point · 1 photo · 1:05", ScanCopy.figures(0.42f, 1, 1, 65f))
+        assertEquals("4.2 m · 3.8k points · 42 photos · 0:18", ScanCopy.figures(4.23f, 3_812, 42, 18.4f, Locale.UK))
+        assertEquals("42 cm · 1 point · 1 photo · 1:05", ScanCopy.figures(0.42f, 1, 1, 65f, Locale.UK))
         // No photos and no length: the figures say only what the session has.
-        assertEquals("0 m · 0 points", ScanCopy.figures(Float.NaN, 0, 0, Float.NaN))
+        assertEquals("0 m · 0 points", ScanCopy.figures(Float.NaN, 0, 0, Float.NaN, Locale.UK))
+        // US English: the path in the replay's feet and inches, the rest unchanged.
+        assertEquals("13 ft 11 in · 3.8k points · 42 photos · 0:18", ScanCopy.figures(4.23f, 3_812, 42, 18.4f, Locale.US))
+        assertEquals("4,2 m · 3,8k points · 42 photos · 0:18", ScanCopy.figures(4.23f, 3_812, 42, 18.4f, Locale.FRANCE))
     }
 
     @Test

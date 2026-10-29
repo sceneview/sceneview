@@ -207,7 +207,7 @@ viewModelScope.launch(Dispatchers.IO) {
 
 ### ARCore Threading
 - \`Session.update()\` must run on the main thread (SceneView handles this via \`onSessionUpdated\`).
-- \`hitResult.createAnchor()\` is safe on the main thread (called from \`onTouchEvent\` which runs on main).
+- \`createAnchorOrNull()\` on an ARCore hit from \`frame.hitTest(event)\` is safe on the main thread (gesture callbacks such as \`onSingleTapConfirmed\` run on main).
 - Cloud anchor hosting/resolving is async — SceneView's \`CloudAnchorNode\` handles the callbacks correctly.
 `;
 
@@ -246,7 +246,7 @@ export const TROUBLESHOOTING_GUIDE = `# SceneView Troubleshooting Guide
 1. \`rememberModelInstance\` returns null while loading — are you null-checking it?
 2. Is the model path correct? Assets go in \`src/main/assets/models/\`
 3. Is \`scaleToUnits\` too small or too large? Try \`1.0f\`
-4. Is there a light in the scene? Add a directional light: \`LightNode(apply = { intensity(100_000.0f); direction(0f, -1f, 0f) })\`
+4. Is there a light in the scene? Add a directional light: \`LightNode(type = LightManager.Type.DIRECTIONAL, apply = { intensity(100_000.0f); direction(0f, -1f, 0f) })\`
 5. Is the camera pointing at the model? Default camera is at origin looking -Z
 
 ### AR Camera Feed Shows but No Planes Detected
@@ -258,7 +258,7 @@ export const TROUBLESHOOTING_GUIDE = `# SceneView Troubleshooting Guide
 
 ### "ARCore not installed" on Device
 **Fix:**
-- Ensure \`<meta-data android:name="com.google.ar.core" android:value="required" />\` is in manifest
+- Ensure \`<meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />\` is in manifest (with \`xmlns:tools\` on \`<manifest>\`: arsceneview declares "optional", so the merge fails without the override)
 - Install Google Play Services for AR from Play Store
 - Some emulators don't support ARCore — test on a real device
 
@@ -280,7 +280,7 @@ export const TROUBLESHOOTING_GUIDE = `# SceneView Troubleshooting Guide
 - Reduce model polygon count (< 100K triangles)
 - Use KTX2 compressed textures (1024x1024 max)
 - Avoid per-frame allocations in \`onFrame\` callbacks
-- Disable post-processing if not needed: \`SceneView(postProcessing = false)\`
+- Lighten or disable post-processing if not needed: \`SceneView(renderQuality = RenderQuality.Performance)\`, or \`view.isPostProcessingEnabled = false\` on the Filament \`View\`
 - Profile with Android GPU Inspector
 
 ### High Memory Usage
@@ -470,7 +470,8 @@ dependencies {
         <!-- Required: tells Play Store this app needs ARCore -->
         <!-- Use "required" to block installs on non-AR devices -->
         <!-- Use "optional" to allow install but degrade gracefully -->
-        <meta-data android:name="com.google.ar.core" android:value="required" />
+        <!-- arsceneview declares "optional": overriding it needs xmlns:tools="http://schemas.android.com/tools" on <manifest> -->
+        <meta-data android:name="com.google.ar.core" android:value="required" tools:replace="android:value" />
 
         <!-- Required ONLY for Cloud Anchors / Geospatial / Streetscape.
              Inject via manifestPlaceholders in app/build.gradle (read from
@@ -574,18 +575,34 @@ ARSceneView(
 
 ### Tap-to-Place with Anchor
 \`\`\`kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+// …plus androidx.compose.runtime.* and the io.github.sceneview entry points (ARSceneView, rememberEngine, …)
+
 var anchor by remember { mutableStateOf<Anchor?>(null) }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
 ARSceneView(
     engine = engine,
     modelLoader = modelLoader,
     planeRenderer = true,
-    onTouchEvent = { event, hitResult ->
-        if (event.action == MotionEvent.ACTION_UP && hitResult != null) {
-            anchor = hitResult.createAnchor()
+    onSessionUpdated = { _, frame -> latestFrame = frame },
+    // A confirmed single tap, never a raw ACTION_UP: the end of a drag or a pinch on the
+    // placed model must not move it. Leaving onTouchEvent unset keeps the model's gestures.
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { event, node ->
+            if (node == null) { // empty space, not the placed model
+                latestFrame?.hitTest(event)
+                    ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                    ?.createAnchorOrNull()
+                    // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
+                    ?.let { anchor = it }
+            }
         }
-        true
-    }
+    )
 ) {
     anchor?.let { a ->
         AnchorNode(anchor = a) {

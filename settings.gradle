@@ -13,12 +13,11 @@ pluginManagement {
 }
 
 plugins {
-    // `sceneview-compose` and `samples:desktop-demo` pin `jvmToolchain(22)`:
-    // filament-kmp's desktop binding is FFM and its jar is class-file 66.
-    // Gradle detects an installed JDK 22 first (CI installs one through
-    // .github/actions/setup-gradle, so nothing is downloaded there) and only
-    // falls back to this resolver when none is found, provisioning it into
-    // ~/.gradle/jdks — so a machine with JDK 21 alone still configures.
+    // `sceneview-compose` and `samples:desktop-demo` pin `jvmToolchain(21)`, the
+    // repo's default JDK (#4423: filament-kmp 0.7+ is JNI, no longer JDK 22 FFM).
+    // Gradle detects an installed JDK 21 first (CI's setup-gradle installs it, so
+    // nothing is downloaded there) and only falls back to this resolver when none
+    // is found, provisioning it into ~/.gradle/jdks.
     id "org.gradle.toolchains.foojay-resolver-convention" version "1.0.0"
 }
 
@@ -50,6 +49,7 @@ project(":snippets-check").projectDir = file("tools/snippets-check")
 include ":samples:common"
 include ":samples:android-demo"         // Android (Play Store)
 include ":samples:android-tv-demo"      // Android TV
+include ":samples:android-auto-demo"    // Android Auto (parked app)
 include ":samples:desktop-demo"         // Desktop (Windows/macOS/Linux)
 // Web demo: samples/web-demo/ — plain static-site (HTML + inline JS +
 //   self-hosted sceneview.js); NOT a Gradle module. Its dead Kotlin/JS

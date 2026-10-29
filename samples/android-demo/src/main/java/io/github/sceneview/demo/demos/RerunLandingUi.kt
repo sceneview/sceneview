@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.demos
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,19 +54,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.sceneview.demo.LocalDemoBottomChromeCover
+import io.github.sceneview.demo.R
 import io.github.sceneview.demo.SETTINGS_FAB_RESERVED_SPACE
-import io.github.sceneview.demo.demos.internal.DollhouseCopy
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -77,7 +88,7 @@ import io.github.sceneview.demo.theme.StageChrome
  * The Rerun demo's landing, laid out as the iOS demo's (#4068) and the capture apps it answers to
  * (Polycam, Scaniverse, Reality Composer): what the demo does in one line, one primary action —
  * record your own room — the sample and "Open file" one tap away, and the sessions kept on this
- * phone as cards, each opening its replay, with View in AR, Share and Delete behind its menu.
+ * phone as cards, each opening its replay, with Place, Share and Delete behind its menu.
  */
 
 /** What the landing shows around the sessions list: an error to read, or a file being opened. */
@@ -86,6 +97,8 @@ internal class RerunLandingState(
     val sessions: List<LandingSession>?,
     val notice: String?,
     val openingFile: Boolean,
+    /** A scan still being saved after its capture screen was left (#4500): it is listed when done. */
+    val savingScan: Boolean = false,
 )
 
 /** What the landing's controls do. */
@@ -94,7 +107,6 @@ internal class RerunLandingActions(
     val onWatchSample: () -> Unit,
     val onOpenFile: () -> Unit,
     val onOpen: (LandingSession) -> Unit,
-    val onShare: (LandingSession) -> Unit,
     /** Stands the session on a table in AR, as a dollhouse (#4075). */
     val onViewInAr: (LandingSession) -> Unit,
     val onDelete: (LandingSession) -> Unit,
@@ -125,15 +137,13 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(top = HeaderClearance, bottom = SETTINGS_FAB_RESERVED_SPACE)
+                .rerunPageScroll()
                 .padding(horizontal = Space.md),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = PageMaxWidth)
+                    .widthIn(max = RerunPageMaxWidth)
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(Space.md),
             ) {
@@ -163,7 +173,7 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
                 // What happened to the file just opened: under the button that opened it, not
                 // inside the list of sessions.
                 state.notice?.let { NoticeCard(it, onDismiss = actions.onDismissNotice) }
-                if (state.openingFile) OpeningCard()
+                if (state.openingFile) OpeningCard(ScanCopy.OPENING_FILE)
                 SessionsSection(state, actions)
             }
         }
@@ -171,7 +181,7 @@ private fun LandingPage(state: RerunLandingState, actions: RerunLandingActions) 
 }
 
 /**
- * The landing's primary action: the camera in its well, "Record your room" and the privacy
+ * The landing's primary action: the camera in its well, "Start scanning" and the privacy
  * promise under it, on the accent fill.
  */
 @Composable
@@ -231,10 +241,15 @@ private fun GlassAction(icon: ImageVector, label: String, onClick: () -> Unit, m
     }
 }
 
-/** "Your sessions": the notice, the file being opened, then the cards — or the empty state. */
+/** "Your scans": the notice, the file being opened, then the cards — or the empty state. */
 @Composable
 private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActions) {
     var confirming by remember { mutableStateOf<LandingSession?>(null) }
+    var sharing by remember { mutableStateOf<LandingSession?>(null) }
+    val context = LocalContext.current
+    // A scan copy handed to Android earlier stays in the cache for the app that reads it; the
+    // next visit to 3D Scan removes it, so no photo of a room outlives its share.
+    LaunchedEffect(Unit) { discardSharedScan(context) }
     val sessions = state.sessions
     Column(verticalArrangement = Arrangement.spacedBy(Space.sm)) {
         Row {
@@ -251,19 +266,25 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                 )
             }
         }
+        // The scan saving behind (#4500) heads the list it is about to join.
+        if (state.savingScan) OpeningCard(ScanCopy.SAVING, testTag = SAVING_SCAN_TAG)
         when {
             sessions == null -> Unit
-            sessions.isEmpty() -> EmptySessions()
+            sessions.isEmpty() && !state.savingScan -> EmptySessions()
+            sessions.isEmpty() -> Unit
             else -> sessions.forEach { session ->
                 SessionCard(
                     session = session,
                     onOpen = { actions.onOpen(session) },
-                    onShare = { actions.onShare(session) },
+                    onShare = { sharing = session },
                     onViewInAr = { actions.onViewInAr(session) },
                     onDelete = { confirming = session },
                 )
             }
         }
+    }
+    sharing?.let { session ->
+        RerunShareSheet(session.info, onDismiss = { sharing = null })
     }
     confirming?.let { session ->
         val destructive = MaterialTheme.colorScheme.error
@@ -275,6 +296,8 @@ private fun SessionsSection(state: RerunLandingState, actions: RerunLandingActio
                 TextButton(
                     onClick = {
                         confirming = null
+                        // A copy shared earlier goes with the scan it was made from.
+                        discardSharedScan(context)
                         actions.onDelete(session)
                     },
                 ) { Text(ScanCopy.DELETE, color = destructive) }
@@ -289,20 +312,24 @@ private fun NoticeCard(text: String, onDismiss: () -> Unit) {
     LandingCard(background = ArOverlay.accentRecord.copy(alpha = NOTICE_ALPHA), testTag = NOTICE_TAG) {
         Text(text = text, style = Type.body.copy(color = stage.onGlass), modifier = Modifier.weight(1f))
         IconButton(onClick = onDismiss) {
-            Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = stage.onGlassMuted)
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.scan_close),
+                tint = stage.onGlassMuted,
+            )
         }
     }
 }
 
 @Composable
-private fun OpeningCard() {
-    LandingCard(background = stage.glass, testTag = OPENING_TAG) {
+private fun OpeningCard(text: String, testTag: String = OPENING_TAG) {
+    LandingCard(background = stage.glass, testTag = testTag) {
         CircularProgressIndicator(
             modifier = Modifier.size(ProgressSize),
             color = stage.accent,
             strokeWidth = ProgressStroke,
         )
-        Text(text = ScanCopy.OPENING_FILE, style = Type.body.copy(color = stage.onGlass))
+        Text(text = text, style = Type.body.copy(color = stage.onGlass))
     }
 }
 
@@ -356,7 +383,7 @@ private fun EmptySessions() {
 
 /**
  * A kept session: its first photo, its title, when and where it came from, and its figures —
- * opening its replay on a tap, with View in AR (#4075), Share and Delete behind the menu.
+ * opening its replay on a tap, with Place (#4075), Share and Delete behind the menu.
  */
 @Composable
 private fun SessionCard(
@@ -368,7 +395,10 @@ private fun SessionCard(
 ) {
     val info = session.info
     val origin = remember(info) { sessionOrigin(info) }
-    val figures = remember(info) { ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration) }
+    val locale = LocalLocale.current.platformLocale
+    val figures = remember(info, locale) {
+        ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration, locale)
+    }
     var menu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
@@ -381,21 +411,7 @@ private fun SessionCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.md),
     ) {
-        Box(
-            modifier = Modifier
-                .size(ThumbnailSize)
-                .clip(RoundedCornerShape(Radius.sm))
-                .background(stage.ground),
-        ) {
-            session.thumbnail?.let {
-                Image(
-                    bitmap = it,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(ThumbnailSize),
-                )
-            }
-        }
+        SessionThumbnail(session)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs / 2)) {
             Text(
                 text = info.title,
@@ -422,7 +438,7 @@ private fun SessionCard(
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(
-                    text = { Text(DollhouseCopy.VIEW_IN_AR) },
+                    text = { Text(stringResource(R.string.scan_place)) },
                     leadingIcon = { Icon(Icons.Outlined.ViewInAr, contentDescription = null) },
                     onClick = {
                         menu = false
@@ -431,7 +447,7 @@ private fun SessionCard(
                     modifier = Modifier.testTag(SESSION_VIEW_IN_AR_TAG),
                 )
                 DropdownMenuItem(
-                    text = { Text(ScanCopy.SHARE_SCAN) },
+                    text = { Text(stringResource(R.string.scan_share)) },
                     leadingIcon = { Icon(Icons.Outlined.Share, contentDescription = null) },
                     onClick = {
                         menu = false
@@ -452,13 +468,96 @@ private fun SessionCard(
     }
 }
 
+/**
+ * A kept session's thumbnail: its first photo; for a scan kept without photos, its points seen
+ * from above on the accent's tonal well, the path walked over them (#4680); the 3D Scan glyph on
+ * that same well when there is nothing to draw. Never an empty square.
+ */
+@Composable
+private fun SessionThumbnail(session: LandingSession) {
+    val photo = session.thumbnail
+    val footprint = session.footprint
+    val chrome = stage
+    Box(
+        modifier = Modifier
+            .size(ThumbnailSize)
+            .clip(RoundedCornerShape(Radius.sm))
+            .background(if (photo != null) chrome.ground else chrome.accent.copy(alpha = WELL_ALPHA)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            photo != null -> Image(
+                bitmap = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(ThumbnailSize),
+            )
+            footprint != null -> Canvas(modifier = Modifier.size(ThumbnailSize)) {
+                val side = size.minDimension
+                val dot = FootprintDot.toPx()
+                val points = footprint.points
+                var i = 0
+                while (i < points.size) {
+                    drawRect(
+                        color = chrome.accent.copy(alpha = FOOTPRINT_POINT_ALPHA),
+                        topLeft = Offset(points[i] * side - dot / 2, points[i + 1] * side - dot / 2),
+                        size = Size(dot, dot),
+                    )
+                    i += 2
+                }
+                val path = footprint.path
+                if (path.size >= 4) {
+                    val line = Path().apply {
+                        moveTo(path[0] * side, path[1] * side)
+                        var j = 2
+                        while (j < path.size) {
+                            lineTo(path[j] * side, path[j + 1] * side)
+                            j += 2
+                        }
+                    }
+                    drawPath(line, color = chrome.onGlass, style = Stroke(width = FootprintPath.toPx()))
+                }
+            }
+            else -> Icon(
+                Icons.Outlined.ViewInAr,
+                contentDescription = null,
+                tint = chrome.accent,
+                modifier = Modifier.size(Space.lg),
+            )
+        }
+    }
+}
+
 /** The demo header's row — back button and title — which the page scrolls under. */
-private val HeaderClearance = SceneViewTokens.Layout.touchTarget + Space.md * 2
-private val PageMaxWidth = 560.dp
+/** What the header's pills take at the top of a Room Scan page: the landing's and the plan's. */
+internal val RerunHeaderClearance = SceneViewTokens.Layout.touchTarget + Space.md * 2
+
+/**
+ * A 3D Scan page's scroll (#4535): its viewport starts under the status bar and the header, so
+ * what scrolls up is cut at the header's bottom edge instead of passing under the title and the
+ * clock. The bottom stays inside the scroll: the last row scrolls clear of the settings button.
+ */
+@Composable
+internal fun Modifier.rerunPageScroll(): Modifier = this
+    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+    .padding(top = RerunHeaderClearance)
+    .verticalScroll(rememberScrollState())
+    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+    // The list ends a gutter above everything the scaffold floats at the bottom — the mode pill
+    // and the settings button — so its last row scrolls clear.
+    .padding(bottom = maxOf(SETTINGS_FAB_RESERVED_SPACE, LocalDemoBottomChromeCover.current) + Space.md)
+
+/** The widest a Room Scan page of text is laid out: the landing's and the plan's. */
+internal val RerunPageMaxWidth = 560.dp
 private val RecordCardHeight = Space.x4l
 private val RecordWellSize = 56.dp
 private val GlassActionHeight = 56.dp
 private val ThumbnailSize = Space.x3l
+
+/** A point of a footprint thumbnail, and the path walked over them (#4680). */
+private val FootprintDot = 1.5.dp
+private val FootprintPath = 1.5.dp
+private const val FOOTPRINT_POINT_ALPHA = 0.7f
 private val ProgressSize = 20.dp
 private val ProgressStroke = 2.dp
 private val DASH = 6.dp
@@ -476,3 +575,4 @@ internal const val SESSION_VIEW_IN_AR_TAG = "ar_rerun_session_view_in_ar"
 internal const val RECORD_ROOM_TAG = "ar_rerun_record_room"
 internal const val NOTICE_TAG = "ar_rerun_notice"
 internal const val OPENING_TAG = "ar_rerun_opening"
+internal const val SAVING_SCAN_TAG = "ar_rerun_saving_scan"

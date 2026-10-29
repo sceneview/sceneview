@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the `ar-pool` demo (registered by `ArPoolFragment.kt`). Android's resource
+     merger fans every `res/values/*.xml` file in, so `R.string.demo_ar_pool_title` etc.
+     remains globally resolvable. Adding a new demo never needs to touch this file or
+     `strings.xml` — see #1870. -->
+<resources>
+
+    <string name="demo_ar_pool_title">Pool in the garden</string>
+    <string name="demo_ar_pool_subtitle">A real-size pool dug into your lawn</string>
+
+    <!-- Sheet intro: what the user sees and what to do. -->
+    <string name="ar_pool_intro">An in-ground pool at real size, cut into the ground in front of you. Point at a lawn or a floor, then drag it into place and twist to turn it. Only the opening is drawn: the ground around it stays real.</string>
+    <!-- Gesture hint shown once, after the pool lands. -->
+    <string name="ar_pool_hint">Drag to move. Twist to turn. The pool stays at real size.</string>
+
+    <string name="ar_pool_size">Size</string>
+    <!-- One size option: length × width, in whole metres. -->
+    <string name="ar_pool_size_option">%1$d × %2$d m</string>
+    <!-- Status pill once placed: length × width, then the shallow and deep end depths. -->
+    <string name="ar_pool_dimensions">%1$d × %2$d m · %3$.1f–%4$.1f m deep</string>
+    <!-- QA only: the pool is drawn at a sixth of its size to fit an indoor recording. -->
+    <string name="ar_pool_dimensions_miniature">%1$s · shown at 1:6</string>
+
+    <string name="ar_pool_liner">Liner</string>
+    <string name="ar_pool_liner_white">White</string>
+    <string name="ar_pool_liner_sand">Sand</string>
+    <string name="ar_pool_liner_gray">Light gray</string>
+    <string name="ar_pool_liner_blue">Blue</string>
+    <!-- Accessible name of the dock button that cycles the liner color. -->
+    <string name="ar_pool_liner_label">Liner color: %1$s</string>
+
+    <!-- Dock caption (one word) and accessible name of the night toggle: the garden goes
+         dark and the two underwater lamps light the pool. -->
+    <string name="ar_pool_night">Night</string>
+    <string name="ar_pool_night_label">Night, pool lights on</string>
+    <string name="ar_pool_night_switch">Night, with the pool lights on</string>
+
+</resources>

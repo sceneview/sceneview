@@ -10,6 +10,7 @@ import com.google.android.filament.Engine
 import com.google.ar.core.*
 import io.github.sceneview.ar.*
 import io.github.sceneview.ar.camera.ARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.rememberOnGestureListener
@@ -54,6 +55,7 @@ internal fun FeaturePlacementScene(
         }
     }
     ARSceneView(
+        lifecycle = rememberHostLifecycle(),
         modifier = modifier.onSizeChanged { viewport = it },
         engine = engine, modelLoader = modelLoader, materialLoader = materialLoader,
         cameraStream = cameraStream, playbackDataset = playbackDataset,

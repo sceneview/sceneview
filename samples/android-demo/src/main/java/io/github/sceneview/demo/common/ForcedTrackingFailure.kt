@@ -36,9 +36,10 @@ import io.github.sceneview.demo.DemoSettings
  * value instead of the real one.
  *
  * **Visibility:** the [ForceTrackingFailureMenu] composable hides itself unless
- * [DemoSettings.qaMode] is on, so end users never see the menu by accident.
- * Long-press the demo's peek-chip to enable QA mode (see [DemoScaffold]) or
- * launch with `--ez qa_mode true`.
+ * this is a debug build with [DemoSettings.qaMode] on ([qaStateOverridesAllowed]),
+ * so end users never see the menu. In a debug build, long-press the demo's
+ * peek-chip to enable QA mode (see [DemoScaffold]) or launch with
+ * `--ez qa_mode true`.
  *
  * **Wiring a demo:** in the demo's tracking-failure observer, prefer the
  * forced value when it is set:
@@ -73,15 +74,18 @@ object ForcedTrackingFailure {
  * Includes a "Clear" button to release the override and go back to the real
  * ARCore-reported reason.
  *
- * Renders nothing unless [DemoSettings.qaMode] is on, so end users never see
- * it. Drop the call site inside a demo's `DemoScaffold` `controls = { ... }`
- * block — the section places its own header.
+ * Renders nothing unless [qaStateOverridesAllowed] — a debug build with
+ * [DemoSettings.qaMode] on — so end users never see it, even after turning QA
+ * mode on from the settings sheet of the store build (#4555). This menu is the
+ * only writer of [ForcedTrackingFailure.override], so a release build never
+ * shows a forced failure. Drop the call site inside a demo's `DemoScaffold`
+ * `controls = { ... }` block — the section places its own header.
  *
  * @param modifier Optional [Modifier] applied to the outer [Column].
  */
 @Composable
 fun ForceTrackingFailureMenu(modifier: Modifier = Modifier) {
-    if (!DemoSettings.qaMode) return
+    if (!qaStateOverridesAllowed()) return
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(

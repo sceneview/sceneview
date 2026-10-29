@@ -24,7 +24,8 @@ name: Device QA
 #     main, path-gated — and per leg: the `changes` job runs the web leg only
 #     for a web path and the android/ar legs only for an Android path), OR
 #   - manually via workflow_dispatch (vet a feature branch / pre-tag), OR
-#   - reused via workflow_call (nightly-ci.yml safety net).
+#   - reused via workflow_call when its leg changed since the last green
+#     nightly (nightly-ci.yml safety net).
 #
 # Each leg invokes `device-qa.sh --platform=<p> --ci`: in `--ci` mode a
 # skipped platform (missing toolchain) is a FAILURE, so a silently-degraded
@@ -48,8 +49,8 @@ name: Device QA
 #
 # Exception (#2343, #4149): when the store keys are injected, qa-keys.sh
 # deletes the keyless artifact and `qa-android-demos.sh` rebuilds a KEYED APK
-# on the emulator runner. Both emulator legs therefore run setup-gradle (JDK 22
-# for the `jvmToolchain(22)` modules) and budget 45 min for the rebuild.
+# on the emulator runner. Both emulator legs therefore run setup-gradle (the
+# JDK 21 every module's toolchain uses) and budget 45 min for the rebuild.
 #
 # RELEASE-GATE POLICY FOR continue-on-error LEGS (#1651)
 # ------------------------------------------------------
@@ -76,8 +77,8 @@ name: Device QA
 #
 #   web      — Playwright on ubuntu-latest. Cheap, always feasible. Per-push.
 #              BLOCKING (not continue-on-error).
-#   android  — Maestro on a KVM-accelerated emulator (ubuntu-latest). Heavy
-#              but feasible on GitHub-hosted runners. Per-push. ADVISORY.
+#   android  — Maestro on a KVM-accelerated emulator (ubuntu-latest).
+#              Nightly/manual only. ADVISORY.
 #   ar       — ARCore replay harness on the KVM emulator (ubuntu-latest).
 #              Per-push. ADVISORY.
 #   ios      — Maestro on an iOS Simulator (#2803). NIGHTLY + release-checkpoint
@@ -125,6 +126,11 @@ on:
   # Reused by nightly-ci.yml so the scheduled full-validation run exercises
   # the device-QA legs too — see #1324.
   workflow_call:
+    inputs:
+      base-sha:
+        description: Compare paths with this SHA and dispatch only changed legs.
+        type: string
+        default: ''
 
 # A Device QA run is ~50 min (emulator + Maestro). Every run gets its own
 # concurrency group, keyed on `github.run_id`, so no run ever cancels another.
@@ -159,13 +165,15 @@ jobs:
   # touched no web path, painting `main` red for a Playwright flake the commit
   # could not have caused.
   #
-  # Same pattern as render-tests.yml's `changes` job. Skipped on
-  # workflow_dispatch and on the nightly `workflow_call`, where every leg
-  # runs. Fail-open: if this job does not conclude `success`, every leg runs,
-  # so a broken filter can cost minutes but never skip a leg silently.
+  # Same pattern as render-tests.yml's `changes` job. Direct dispatches compare
+  # the selected ref with `main`; scheduled callers pass the last successful
+  # nightly SHA. A caller that passes no SHA runs every leg. Fail-open: if this
+  # job does not conclude `success`, every leg runs.
   changes:
     name: Detect changed paths
-    if: github.event_name == 'push'
+    if: >-
+      ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      || inputs.base-sha != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -179,7 +187,7 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          base: ${{ github.event.before != '0000000000000000000000000000000000000000' && github.event.before || 'main' }}
+          base: ${{ inputs.base-sha || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
           filters: |
             shared: &shared
               - '.github/workflows/device-qa.yml'
@@ -245,6 +253,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-qa-report-web
+          retention-days: 7
           path: |
             device-qa-report.json
             device-qa-artifacts/
@@ -284,6 +293,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-demo-debug-apk
+          retention-days: 3
           # qa-android-demos.sh expects the APK at this exact path and skips
           # its own build when it is present — the emulator jobs restore the
           # artifact into this directory before invoking device-qa.sh.
@@ -309,7 +319,7 @@ jobs:
     # Explicit, not the implicit `success()`: that one also requires every
     # ANCESTOR to have succeeded, and `changes` is skipped on dispatch and on
     # the nightly — the implicit check would skip this leg exactly there.
-    if: ${{ !cancelled() && needs.build-android-apk.result == 'success' }}
+    if: ${{ github.event_name != 'push' && !cancelled() && needs.build-android-apk.result == 'success' }}
     # 45 min, same as the `ar` leg: with the store keys set, the keyed Gradle
     # rebuild (#2343) runs before the emulator boot and the Maestro flow, and a
     # cold cache must not get the job cancelled (continue-on-error does not
@@ -330,10 +340,10 @@ jobs:
       # The prebuilt artifact is keyless, so with the store secrets injected
       # below qa-keys.sh deletes it and qa-android-demos.sh rebuilds a KEYED
       # APK on this runner (#2343): this leg runs Gradle after all. Without
-      # this step the hosted runner has no JDK 22, and the `jvmToolchain(22)`
-      # of sceneview-compose / desktop-demo fails configuration before the
-      # first Maestro flow ("Cannot find a Java installation ...
-      # languageVersion=22", run 36486590219). Same setup as the `ar` leg.
+      # this step the hosted runner lacks the JDK the toolchains pin (22 then,
+      # 21 since #4423), and configuration failed before the first Maestro
+      # flow ("Cannot find a Java installation ... languageVersion=22", run
+      # 36486590219). Same setup as the `ar` leg.
       - uses: ./.github/actions/setup-gradle
 
       - uses: actions/setup-node@v7
@@ -418,6 +428,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-qa-report-android
+          retention-days: 7
           path: |
             device-qa-report.json
             device-qa-artifacts/
@@ -510,6 +521,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-qa-report-ar
+          retention-days: 7
           path: |
             device-qa-report.json
             device-qa-artifacts/
@@ -604,6 +616,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: device-qa-report-ios
+          retention-days: 7
           path: |
             device-qa-report.json
             device-qa-artifacts/

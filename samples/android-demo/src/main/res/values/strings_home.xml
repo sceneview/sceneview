@@ -11,8 +11,6 @@
     <string name="home_whats_new">What\'s new</string>
 
     <!-- Hero — routes to demo/model-viewer -->
-    <string name="home_hero_title">Model Viewer</string>
-    <string name="home_hero_subtitle">Any glTF, HDR lighting, one tap to AR</string>
     <string name="home_hero_open">Open</string>
     <!-- Featured pager, "What's new" page (#3566 / #3567). The title takes a
          major.minor such as "4.35"; the subtitle takes the number of samples
@@ -24,17 +22,13 @@
         <item quantity="other">%1$d samples are new or updated \u2014 tap to see which</item>
     </plurals>
 
-    <!-- Category filter chips (short labels). One per DemoCategory key, in
-         DEMO_CATEGORIES order; the long form is the section header the chip
-         filters down to. -->
-    <string name="category_short_all">All</string>
+    <!-- Section chips (short labels). One per DemoCategory key; a tap scrolls the
+         catalogue to that section, whose header carries the long form. -->
     <string name="category_short_view_3d">View 3D</string>
     <string name="category_short_place_ar">Place in AR</string>
     <string name="category_short_dev_tools">Dev tools</string>
     <string name="category_short_create">Create</string>
     <string name="category_short_understand">Understand</string>
-    <!-- The filter chip that keeps only the samples marked New or Updated. Same label on iOS. -->
-    <string name="category_short_whats_new">What\'s new</string>
 
     <!-- Grid -->
     <!-- Header of the shelf right under the hero: the samples we push, in priority order. -->
@@ -48,9 +42,6 @@
         <item quantity="one">%1$d new or updated since %2$s</item>
         <item quantity="other">%1$d new or updated since %2$s</item>
     </plurals>
-    <!-- Ends a list filtered by a chip: clears the filter. %1$d is the size of the whole
-         catalogue. -->
-    <string name="home_show_all">Show all %1$d samples</string>
     <string name="home_empty_query">No demo matches \'%1$s\'</string>
     <string name="home_clear">Clear</string>
 </resources>

@@ -472,6 +472,11 @@ struct RerunCaptureRecorder: Sendable {
         var planeInterval: TimeInterval = 0.5
         var planeMinChange: Float = 0.02
         var maxDuration: TimeInterval = 300
+        /// Feature points and planes further than this from the phone are left out
+        /// (``RerunScanCutoff``): an object scan's arm's length. `nil` keeps everything.
+        var farM: Float? = nil
+        /// The manifest's top-level `scope` key (``RerunScanScope``); `nil` writes none, as a room.
+        var scopeKey: String? = nil
     }
 
     /// What the recording screen shows while recording.
@@ -525,9 +530,11 @@ struct RerunCaptureRecorder: Sendable {
     private var planeIds: [UUID: Int] = [:]
     private var livePlanes: [UUID: RerunCapturePlane] = [:]
     private var nextAnchorId = 1
+    private var cutoff: RerunScanCutoff?
 
     init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
+        cutoff = configuration.farM.map(RerunScanCutoff.init(farM:))
     }
 
     /// The capture reached ``Configuration/maxDuration``; frames are ignored from here on.
@@ -560,6 +567,7 @@ struct RerunCaptureRecorder: Sendable {
         let orientation = RerunCaptureMath.orientation(of: pose)
 
         if frame.isTrackingNormal, position.x.isFinite, position.y.isFinite, position.z.isFinite {
+            cutoff?.follow(position)
             addPose(t: t, position: position, orientation: orientation, force: false)
             addKeyframeIfDue(frame, t: t, time: time, position: position, orientation: orientation)
             if time - lastPointsTime >= configuration.pointInterval {
@@ -651,6 +659,7 @@ struct RerunCaptureRecorder: Sendable {
                 let p = all[i]
                 i += stride
                 guard p.x.isFinite, p.y.isFinite, p.z.isFinite,
+                      cutoff?.keeps(p) ?? true,
                       let pixel = projector.project(p),
                       let c = color(pixel) else { continue }
                 positions.append(p)
@@ -680,6 +689,7 @@ struct RerunCaptureRecorder: Sendable {
         var changed: [(id: Int, plane: RerunCapturePlane)] = []
         for var plane in planes {
             plane.polygon = plane.polygon.filter { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite }
+            if let cutoff { plane.polygon = cutoff.clip(plane.polygon) }
             guard plane.polygon.count >= 3 else { continue }
             seen.insert(plane.identifier)
             if let last = livePlanes[plane.identifier],
@@ -766,6 +776,7 @@ struct RerunCaptureRecorder: Sendable {
     private func manifestJSON() -> String {
         typealias J = RerunCaptureJSON
         var s = "{"
+        if let scope = configuration.scopeKey { s += "\"scope\":\"\(scope)\"," }
         if let lens = photoLens {
             s += "\"intrinsics\":{\"width\":\(lens.width),\"height\":\(lens.height)"
             s += ",\"fx\":\(J.number(lens.fx, 2)),\"fy\":\(J.number(lens.fy, 2))"

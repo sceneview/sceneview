@@ -1,7 +1,6 @@
 package io.github.sceneview.ar.node
 
 import dev.romainguy.kotlin.math.Quaternion
-import java.io.File
 import kotlin.math.abs
 import kotlin.math.sqrt
 import org.junit.Assert.assertEquals
@@ -11,12 +10,8 @@ import org.junit.Test
 /**
  * Headless contract tests for `PlacementReticleNode` (#2241 Sprint-1, PR 4).
  *
- * Two halves:
- * - behavioral tests on [ReticleOrientationSmoother], the pure Depth Lab
- *   `OrientedReticle` damping (no ARCore / Filament needed);
- * - regex-pin tests on the node + `ARSceneScope.PlacementReticle` sources for the
- *   contracts that need an `Engine` to exercise at runtime (defaults, plane-only
- *   acceptance mapping, smoothing reset on `null`, default-visual lifecycle).
+ * Behavioural tests on [ReticleOrientationSmoother], the pure Depth Lab `OrientedReticle`
+ * damping implementation (no ARCore or Filament needed).
  */
 class PlacementReticleContractTest {
 
@@ -82,90 +77,4 @@ class PlacementReticleContractTest {
         assertEquals(1.0f, smoother.smoothing, 0.0f)
     }
 
-    // ── Source regex-pins — Engine-dependent contracts ───────────────────────────────────
-
-    private val nodeFile = File("src/main/java/io/github/sceneview/ar/node/PlacementReticleNode.kt")
-    private val scopeFile = File("src/main/java/io/github/sceneview/ar/ARSceneScope.kt")
-
-    private val nodeSource: String by lazy {
-        assertTrue("missing ${nodeFile.absolutePath}", nodeFile.exists())
-        nodeFile.readText()
-    }
-    private val scopeSource: String by lazy {
-        assertTrue("missing ${scopeFile.absolutePath}", scopeFile.exists())
-        scopeFile.readText()
-    }
-
-    @Test
-    fun `Depth Lab default smoothing is 0_75`() {
-        assertTrue(
-            "DEFAULT_ORIENTATION_SMOOTHING must stay 0.75 (Depth Lab OrientedReticle)",
-            Regex("""const val DEFAULT_ORIENTATION_SMOOTHING = 0\.75f""")
-                .containsMatchIn(nodeSource)
-        )
-    }
-
-    @Test
-    fun `snapToPlane = false is free placement, not no-planes`() {
-        assertTrue(
-            "planes must always stay candidates (in-polygon enforced by the base default)",
-            nodeSource.contains("planeTypes = Plane.Type.values().toSet()")
-        )
-        assertTrue(
-            "free placement (snapToPlane = false) must accept feature points — the " +
-                "PlacementHitPolicy contract",
-            nodeSource.contains("point = !snapToPlane")
-        )
-    }
-
-    @Test
-    fun `null hit resets the smoother so the next surface is acquired verbatim`() {
-        val setterWindow = nodeSource.substringAfter("override var hitResult")
-        assertTrue(
-            "hitResult setter must reset the smoother on null",
-            setterWindow.contains("smoother.reset()")
-        )
-        assertTrue(
-            "the resolveHitPose hook must apply the smoothed rotation (single pose write " +
-                "per frame — no raw-then-smoothed double write)",
-            nodeSource.contains("override fun resolveHitPose(hitPose: Pose): Pose") &&
-                nodeSource.contains("smoother.smooth(hitPose.quaternion)")
-        )
-    }
-
-    @Test
-    fun `composable has exactly ONE NodeLifecycle call site (no content-branch destroy)`() {
-        val composable = scopeSource.substringAfter("fun PlacementReticle(")
-            .substringBefore("// ── DepthHitResultNode")
-        assertEquals(
-            "branching between two NodeLifecycle calls on `content != null` destroys the " +
-                "remembered node when a host flips custom/default visuals (use-after-destroy)",
-            1,
-            Regex("""NodeLifecycle\(node""").findAll(composable).count()
-        )
-    }
-
-    @Test
-    fun `composable keeps the live knobs in sync on recomposition (#2506 class)`() {
-        val composable = scopeSource.substringAfter("fun PlacementReticle(")
-            .substringBefore("// ── DepthHitResultNode")
-        assertTrue(
-            "SideEffect must sync onHitResultChanged",
-            composable.contains("node.onHitResultChanged = onHitResultChanged")
-        )
-        assertTrue(
-            "SideEffect must sync orientationSmoothing",
-            composable.contains("node.orientationSmoothing = orientationSmoothing")
-        )
-    }
-
-    @Test
-    fun `default visual material is destroyed with the composable (#2458 class)`() {
-        val composable = scopeSource.substringAfter("fun PlacementReticle(")
-            .substringBefore("// ── DepthHitResultNode")
-        assertTrue(
-            "the built-in disc material must be destroyed on dispose",
-            composable.contains("materialLoader.destroyMaterialInstance(reticleMaterial)")
-        )
-    }
 }

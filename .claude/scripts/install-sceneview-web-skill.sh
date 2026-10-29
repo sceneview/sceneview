@@ -62,7 +62,7 @@ case "$action" in
         echo "[install-sceneview-web-skill] note: 'sceneview-web' not visible in \`android skills list\` output — run it manually to confirm"
       fi
     else
-      echo "[install-sceneview-web-skill] note: the \`android\` CLI is not installed yet — run android-env-check.sh --fix to install it"
+      echo "[install-sceneview-web-skill] note: the \`android\` CLI is not installed yet — install it from https://developer.android.com/tools/agents/android-cli"
     fi
     ;;
   uninstall)

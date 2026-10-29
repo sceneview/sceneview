@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.52.0)
+  Source of truth: /llms.txt  (SceneView 4.63.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.52.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.63.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -41,30 +41,19 @@ Box(Modifier.fillMaxSize()) {
 
 Parameters: `backdrop: Brush? = null`, `profile: CinematicCameraProfile = Default`, `contentRadius = 0.75f` (frames any model with `scaleToUnits = 1f`; content is auto-centred), `parallax = 0.4f`. No gestures on the 3D (the list keeps every touch); it stops drawing off screen and does not turn by itself with system animations off. Copy-paste prompt for an AI assistant: `docs/prompts/cinematic-hero.md`.
 
-### Record the scene to MP4 (in-app, no MediaProjection)
+### Capture the scene — photo and MP4 (in-app, no MediaProjection)
 
 ```kotlin
-val surfaceMirrorer = rememberSurfaceMirrorer()
-SceneView(surfaceMirrorer = surfaceMirrorer, ...)  // or ARSceneView — records camera feed + virtual content
+val recorder = rememberSceneRecorder()
+ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer, ...)  // or SceneView — camera feed + virtual content
 
-// Start: point a MediaRecorder's input surface at the scene.
-val recorder = MediaRecorder(context).apply {
-    setVideoSource(MediaRecorder.VideoSource.SURFACE)
-    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-    setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-    setVideoSize(1280, 720)
-    setOutputFile(outputFile.absolutePath)
-    prepare()
-}
-surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)
-recorder.start()
-
-// Stop:
-surfaceMirrorer.stopMirroring(recorder.surface)
-recorder.stop(); recorder.release()
+scope.launch { recorder.savePhoto() }                                  // full-res JPEG, File?
+recorder.startRecording(settings = VideoSettings(maxDurationMillis = 60_000))  // 1080p30 MP4
+recorder.stopRecording()                                              // SceneRecording?
+recorder.overlay = CaptureOverlay { canvas, w, h -> /* watermark */ }
 ```
 
-No consent dialog, no foreground service, no UI in the frame. Full guide: "Record the scene to MP4 — Surface mirroring".
+No consent dialog, no foreground service, no UI in the frame. Full guide: "Capture the scene — photo and MP4".
 
 ### Show a 3D model with orbit camera
 
@@ -309,45 +298,36 @@ fun ComposeIn3D() {
 
 ### Billboard a `ViewNode` card at the camera
 
-`ViewNode` has no billboard flag — `BillboardNode`'s per-frame `lookTowards` is on
-`ImageNode`, not on it. Solve the yaw yourself and pass it as `rotation`, which keeps the
-orientation declarative and unit-testable. Yaw only: a card that also pitched toward a
-camera looking down leans backwards, and a wall of leaning labels reads as a bug.
+Pass `cameraPositionProvider`, the same parameter `BillboardNode` and `TextNode` take. The card
+then faces the camera — yaw and pitch, no roll — and follows an orbiting camera, a moving card
+and a rotating parent by itself. No `onFrame`, no state, no trigonometry.
 
 ```kotlin
-import kotlin.math.atan2
-
 val windowManager = rememberViewNodeManager()
 val cameraNode = rememberCameraNode(engine)
-var eye by remember { mutableStateOf(Position(0f, 0.3f, 2f)) }
-
-// atan2(x, z) — a heading measured from +Z toward +X, which is the frame Rotation(y = …)
-// turns in. NOT the usual atan2(y, x).
-fun facingYaw(card: Position, camera: Position): Float {
-    val dx = camera.x - card.x
-    val dz = camera.z - card.z
-    if (dx * dx + dz * dz < 1e-4f) return 0f      // camera sitting on the card: atan2(0,0)
-    return Math.toDegrees(atan2(dx.toDouble(), dz.toDouble())).toFloat()
-}
 
 SceneView(
     engine = engine,
     cameraNode = cameraNode,
     viewNodeWindowManager = windowManager,
-    onFrame = { eye = cameraNode.worldPosition },   // the user can orbit
 ) {
-    val card = Position(0f, 0.4f, 0f)
     ViewNode(
         windowManager = windowManager,
-        position = card,
-        rotation = Rotation(y = facingYaw(card, eye)),
+        position = Position(0f, 0.4f, 0f),
         scale = Scale(0.12f),
+        cameraPositionProvider = { cameraNode.worldPosition },
     ) { Card(Modifier.size(300.dp, 156.dp)) { Text("Visor") } }
 }
 ```
 
-Under a rotating parent, subtract the parent's yaw — the value you pass is a **local**
-rotation, so the card has to undo the parent's turn before adding its own heading.
+Yaw only — an upright card that never leans back under a camera looking down: report the camera
+levelled with the card, `cameraPositionProvider = { cameraNode.worldPosition.copy(y = 0.4f) }`.
+To stop facing, pass `null`: `rotation` applies again.
+
+Parallel to the screen — a card beside the model, off the view axis, faces the eye at an angle to
+the screen and reads as a parallelogram. To keep it a rectangle, report a point offset from the
+card the way the camera is offset from its orbit target (`card` is the node kept from `apply`):
+`cameraPositionProvider = { card.worldPosition + (cameraNode.worldPosition - target) }`.
 
 ### Draw a `ViewNode` on top of everything
 
@@ -357,35 +337,38 @@ the model. Priority alone does not defeat a depth test; depth alone leaves two o
 cards resolving in submission order.
 
 `SceneScope.ViewNode`'s `apply` lambda runs **once**, at construction, and the composable
-never hands the node back — so read a reactive toggle through a `State` from inside a
-per-frame hook, and compare against the last applied value so it costs two JNI calls per
-*change*, not per frame.
+never hands the node back — so keep the node it receives and apply the toggle from an effect
+keyed on both. It costs two JNI calls per *change* and no per-frame hook: a node-level
+`onFrame` is a standing request to keep rendering, so it would stop an idle scene from parking.
 
 ```kotlin
 val windowManager = rememberViewNodeManager()
-var alwaysOnTop by remember { mutableStateOf(false) }
-val onTop = rememberUpdatedState(alwaysOnTop)
+var alwaysOnTop by remember { mutableStateOf(true) }
+var card by remember { mutableStateOf<ViewNode?>(null) }
+
+LaunchedEffect(card, alwaysOnTop) {
+    card?.let {
+        it.materialInstance.setDepthCulling(!alwaysOnTop)
+        it.setPriority(if (alwaysOnTop) PRIORITY_LAST else PRIORITY_DEFAULT)
+        it.requestRender()             // an on-demand scene will not redraw by itself
+    }
+}
 
 ViewNode(
     windowManager = windowManager,
-    unlit = true,                      // a label that dims in shadow is a legibility bug
-    apply = {
-        isTouchForwardingEnabled = false   // decorative: never steal a camera drag
-        var applied: Boolean? = null
-        onFrame = {
-            val wanted = onTop.value
-            if (applied != wanted) {
-                applied = wanted
-                materialInstance.setDepthCulling(!wanted)
-                setPriority(if (wanted) PRIORITY_LAST else PRIORITY_DEFAULT)
-            }
-        }
-    },
+    apply = { card = this },
 ) { Card { Text("Always readable") } }
 ```
 
-Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`), with the
-arithmetic in `CalloutLayout` and pinned by `CalloutLayoutTest`.
+Drawing last is visual only: picking still returns the nearest collider, so an interactive
+card drawn over the model has to be looked up in `collisionSystem.hitTest(event)` before the
+geometry behind it.
+
+Both recipes are live in `TwoDInThreeDDemo.kt` (demo id `two-d-in-three-d`, Inspect mode), each
+behind a switch: "Always on top", and "Face camera", which passes the provider — the
+parallel-to-the-screen one, the card sits beside the rocket — or `null`. With it off the card
+keeps the `rotation` it was given when its part was picked, and turns away as you orbit or spin
+the rocket.
 
 ### Animated model with play/pause
 
@@ -424,6 +407,53 @@ fun MultiModelScene() {
     }
 }
 ```
+
+### Render a model thumbnail to a Bitmap (no visible view)
+
+```kotlin
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import io.github.sceneview.snapshot.ModelSnapshot
+import io.github.sceneview.snapshot.ModelSnapshotOptions
+import io.github.sceneview.snapshot.ModelThumbnailState
+import io.github.sceneview.snapshot.rememberModelSnapshot
+import io.github.sceneview.snapshot.rememberModelThumbnail
+
+// A library grid: every cell asks at once, the snapshot renders them one after the other.
+val paths = listOf("models/helmet.glb", "models/chair.glb", "models/lamp.glb")
+val engine = rememberEngine()
+val snapshot = rememberModelSnapshot(engine)          // one per screen: one queue, one cache
+LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
+    items(paths) { path ->
+        when (val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)) {
+            is ModelThumbnailState.Ready -> Image(thumbnail.bitmap, contentDescription = null)
+            is ModelThumbnailState.Failed -> Text("No preview")   // reason: thumbnail.reason
+            ModelThumbnailState.Loading -> CircularProgressIndicator()
+        }
+    }
+}
+
+// Without Compose: a suspend call, from any coroutine (a ViewModel's, a worker's).
+suspend fun shareImages(snapshot: ModelSnapshot): List<Bitmap?> = listOf(
+    snapshot.snapshot("models/helmet.glb", width = 512),   // null when it failed: the reason is logged
+    snapshot.snapshot(
+        "models/helmet.glb", width = 512,
+        options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
+    ),
+)
+```
+
+- **Experimental**: the whole API is `@ExperimentalSceneViewApi` — add `@OptIn(ExperimentalSceneViewApi::class)` where you call it.
+- **Framing is automatic**: the model's bounding box is fitted whole into the picture, `padding` (default 8 %) of the frame on each side, seen from `yawDegrees`/`pitchDegrees` (default 30°/20°: three-quarter, slightly from above) through a `focalLength` lens (default 40 mm). Nothing to measure.
+- **Transparent background**: an immutable `ARGB_8888` bitmap, premultiplied alpha — composite it on any card.
+- **Explicit failures**: a model that cannot be loaded, an empty or non-finite bounding box, positions quantized with `KHR_mesh_quantization` (gltfio reports their box un-dequantized, ~32767× too large), a fully transparent image or a timeout (the GPU backend executing nothing for 30 s, or an executed frame never reaching the image — a merely slow backend only delays it) give `Failed(reason)` in Compose and `null` from `snapshot()`, logged under the `ModelSnapshot` tag and never cached. A failed cell is not retried until its file, size or options change.
+- **One at a time, at a model load's cost**: requests queue on the main thread (Filament's JNI calls stay there) and render one model at a time, so twenty requests never load together. Each still costs the main thread what loading that model into a scene costs — creating the asset (~130–150 ms) and finalising its textures (up to ~0.5 s in one frame, measured on an arm64 emulator with 2–5 MB GLBs): a grid of textured models drops frames while it fills. Each step waits, suspended and never blocking, for the GPU backend to execute what the previous one queued, so a slow backend (shader compilation on a cold emulator) delays the thumbnails without ever stalling the main thread on a full command stream. Pass the scene's `modelLoader` to `rememberModelSnapshot` to skip building a second loader (~0.6 s, built by the first request in a main-thread turn of its own). The renderer, view, lights and environment are made once and reused.
+- **Cache**: results are kept in an LRU of `maxCacheBytes` (default 32 MB, `0` disables it); `cached(...)` reads it without rendering, `clearCache()` empties it. A cache hit costs nothing. An image captured while its textures were still decoding (after a 10 s timeout), or of a model whose glTF could not be read a second time to check its extensions (an `http(s)` URL with `FileCache.enabled = false` — then no remote thumbnail is ever cached — or whose download could not be written to disk; a file changed in between; a warning is logged), is returned but not cached. The cache is keyed by the `fileLocation` string, size and options, not by the file's content: a model replaced at the same location keeps its old thumbnail until `clearCache()` or a new location.
+- **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes: a render in flight stops at its next step (its model load is cancelled) and it, like every queued request, gets `null` / `Failed`; Filament objects are freed once that render has let go and the GPU is done with them.
+- Lighting is the SDK's default key + fill and a neutral IBL, so thumbnails match a default `SceneView`. Skinned models are drawn in their bind pose; the first animation frame is not applied.
+- **Tested on arm64 emulators only**: process death observed once on an x86_64 API 30 SwiftShader emulator, undiagnosed.
+- **A shared `modelLoader` must outlive the snapshot**: destroy the snapshot first (`rememberModelSnapshot` declared after `rememberModelLoader`). `modelLoader.clear()` (or `destroy()`) while a thumbnail renders destroys that thumbnail's model too: the render notices before its next call on the model and the request fails (`null`, `ModelThumbnailState.Failed`), no crash; later requests load again. A request made once the loader is destroyed fails the same way; destroying the loader while a request is still reading its file is not covered.
 
 ### Interactive model with tap and gesture
 
@@ -680,6 +710,171 @@ from the URL — fine for a quick preview, but never ship it (the Tripo URL expi
 generation; bundle the file or re-host it yourself). Prefer `search_models` (free, Sketchfab) before
 generating — generation consumes the user's own Tripo credits.
 
+### Scan a room and replay it later
+
+A tenant keeps how the room looked on the day they moved in. `ARRecorder` writes the walk
+(camera, motion, surfaces) to one MP4; `playbackDataset` plays it back as a live AR session,
+today or next year. The file is the record: keep it, and pass it again on any later launch.
+
+```kotlin
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.recording.rememberARRecorder
+import java.io.File
+
+@Composable
+fun RoomMemory(folder: File) {
+    val recorder = rememberARRecorder()
+    var replay by remember { mutableStateOf<File?>(null) } // null = the live camera
+
+    Box(Modifier.fillMaxSize()) {
+        // A session reads its source once: key() rebuilds it when the file changes.
+        key(replay) {
+            ARSceneView(
+                modifier = Modifier.fillMaxSize(),
+                playbackDataset = replay,
+                onSessionUpdated = { session, _ -> recorder.recordFrame(session) }
+            )
+        }
+        Row(Modifier.align(Alignment.BottomCenter)) {
+            Button(onClick = { recorder.start(File(folder, "living-room.mp4")) }) { Text("Scan") }
+            Button(onClick = { replay = recorder.stop() }) { Text("Replay") }
+        }
+    }
+}
+```
+
+What the SDK does not do: rebuild the room as a 3D model you can orbit. The demo's orbit view
+(path, photos, floor, points) is sample code — copy
+[`ArDebugView.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ArDebugView.kt)
+and [`RerunReplayScene.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/RerunReplayScene.kt).
+iOS: `ARRecorder` records a video of the walk only (see the iOS section above) — no replay.
+
+### Measure how much floor a room scan has seen
+
+`Plane.polygon` is the outline of each surface ARCore finds; the floor is the lowest level one.
+Summing the outlines gives the floor the phone has actually seen, in m². It is an estimate: it
+grows as the user walks, furniture hides floor, and two patches that overlap count twice until
+ARCore merges them. Never present it as a surveyed figure.
+
+```kotlin
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.polygon
+import io.github.sceneview.ar.arcore.subsumedBy
+import kotlin.math.abs
+
+/** Surface of one detected patch, in m², from its outline (x, z pairs). */
+fun Plane.area(): Float {
+    val outline = polygon
+    val corners = outline.limit() / 2
+    var twice = 0f
+    for (i in 0 until corners) {
+        val j = (i + 1) % corners
+        twice += outline[2 * i] * outline[2 * j + 1] - outline[2 * j] * outline[2 * i + 1]
+    }
+    return abs(twice) / 2f
+}
+
+@Composable
+fun FloorArea() {
+    var squareMetres by remember { mutableFloatStateOf(0f) }
+
+    Box(Modifier.fillMaxSize()) {
+        ARSceneView(
+            modifier = Modifier.fillMaxSize(),
+            onSessionUpdated = { session, _ ->
+                val level = session.getAllTrackables(Plane::class.java).filter {
+                    it.trackingState == TrackingState.TRACKING && it.subsumedBy == null &&
+                        it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+                }
+                // The floor is the lowest level surface; a table or a bed sits higher.
+                val floorY = level.minOfOrNull { it.centerPose.ty() } ?: 0f
+                squareMetres = level.filter { it.centerPose.ty() < floorY + 0.2f }
+                    .sumOf { it.area().toDouble() }.toFloat()
+            }
+        )
+        Text("%.1f m² of floor seen".format(squareMetres), Modifier.align(Alignment.BottomCenter))
+    }
+}
+```
+
+For a replayed recording, `rememberARRecordInterpreter()` gives `interpretation.planeAreaMeters2`
+without any of this — but it counts every surface found, walls and tables included. The demo's
+`Room 3.9 × 3.8 m · 15 m²` line is a different figure: the rectangle around the floor and walls,
+squared to the walls. It is sample code
+([`RoomMeasure.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt)),
+and it over-reads on large or open spaces (#4328).
+
+### Draw a room's outline from a scan
+
+The same `Plane.polygon`, moved to the ground with `centerPose`, is the floor's outline in
+metres: draw it, or hand the corners to whatever makes the listing. No plan file (PDF, SVG, DXF)
+is exported by the SDK or the demo — the demo exports `.rrd`, `.glb` and `.ply`.
+
+```kotlin
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.arcore.polygon
+
+/** The corners of one floor patch on the ground, in metres: x across, y deep. */
+fun Plane.outline(): List<Offset> {
+    val local = polygon
+    return List(local.limit() / 2) { i ->
+        val world = centerPose.transformPoint(floatArrayOf(local[2 * i], 0f, local[2 * i + 1]))
+        Offset(world[0], world[2])
+    }
+}
+
+@Composable
+fun RoomOutline() {
+    var outline by remember { mutableStateOf(emptyList<Offset>()) }
+    val ink = MaterialTheme.colorScheme.onSurface
+
+    Column(Modifier.fillMaxSize()) {
+        ARSceneView(
+            modifier = Modifier.weight(1f),
+            onSessionUpdated = { session, _ ->
+                // The biggest level surface the phone has found is the floor.
+                session.getAllTrackables(Plane::class.java)
+                    .filter {
+                        it.trackingState == TrackingState.TRACKING &&
+                            it.type == Plane.Type.HORIZONTAL_UPWARD_FACING
+                    }
+                    .maxByOrNull { it.extentX * it.extentZ }
+                    ?.let { outline = it.outline() }
+            }
+        )
+        Canvas(Modifier.fillMaxWidth().height(240.dp)) {
+            if (outline.size < 3) return@Canvas
+            val left = outline.minOf { it.x }
+            val top = outline.minOf { it.y }
+            val pixelsPerMetre = minOf(
+                size.width / (outline.maxOf { it.x } - left),
+                size.height / (outline.maxOf { it.y } - top)
+            )
+            val path = Path()
+            outline.forEachIndexed { i, corner ->
+                val x = (corner.x - left) * pixelsPerMetre
+                val y = (corner.y - top) * pixelsPerMetre
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(path, ink, style = Stroke(width = 2.dp.toPx()))
+        }
+    }
+}
+```
+
+The outline is what the phone saw of the floor, so it is ragged where furniture stands. For a
+rectangle squared to the walls with its two lengths written along the sides, the way the demo
+draws it, copy `RoomMeasure` and `MeasureDrawing` from
+[`RoomMeasure.kt`](https://github.com/sceneview/sceneview/blob/main/samples/android-demo/src/main/java/io/github/sceneview/demo/demos/internal/RoomMeasure.kt).
+
 ---
 
 <!-- BEGIN GENERATED DEMOS — DO NOT EDIT — run samples/android-demo/scripts/collate-demos.sh -->
@@ -695,20 +890,20 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 ### Create & record
 
 - `cosmos` — Cosmos. Watch a galaxy, a star and particle storms glow.
-- `lighting-lab` — Lighting Lab. See how light and reflections shape a model.
 - `materials` — Materials. Compare metal, glass, fabric and glow.
-- `lighting` — Lighting. Compare studio light, daylight and reflections.
+- `lighting` — Lighting. Studio light, daylight, reflections, fog and shading.
 - `custom-geometry` — Custom Geometry. A knot generated vertex by vertex.
 - `lines-paths` — Lines & Paths. Follow animated curves and paths.
+- `finger-drawing` — Finger Drawing. Paint in the air, then walk around it.
 - `spatial-audio` — Spatial Audio. Positional sound that pans as you orbit.
-- `two-d-in-three-d` — 2D in 3D. Interact with a card attached to a 3D model.
+- `two-d-in-three-d` — 2D in 3D. Live UI, text, images and video in a 3D scene.
 - `contact-shadow-preview` — Contact Shadow Preview. Compare objects with and without a contact shadow.
-- `geometry` — Geometry Primitives. Cube, sphere, cylinder and plane primitives.
+- `geometry` — Geometry Primitives. Show, hide and restyle the seven built-in shapes.
 
 ### Developer tools
 
-- `ar-rerun` — Rerun AR Replay. Watch a real AR session rebuild itself in 3D.
-- `debug-overlay` — Debug Overlay. Find the node budget for smooth 3D rendering on your device.
+- `ar-rerun` — 3D Scan. Move around a space and watch it take shape in 3D.
+- `debug-overlay` — Performance Test. Find the node budget for smooth 3D rendering on your device.
 
 ### Place in AR
 
@@ -717,9 +912,10 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `ar-orbital` — Orbital AR. Catch four flyers circling you in AR.
 - `ar-geospatial-anchors` — Geospatial Anchors. Place objects at outdoor locations.
 - `ar-cloud-anchor` — Cloud Anchors. Persistent anchors shared across devices.
-- `ar-measure` — Measure. Add two points, read the distance.
+- `ar-pool` — Pool in the garden. A real-size pool dug into your lawn.
+- `ar-measure` — Measure. Distances, walls rising to their height, whole rooms.
 - `ar-plane-node` — Plane Lifecycle. Watch surfaces appear and update.
-- `ar-plane-renderer-v2` — Plane Renderer V2. Soft dots show each surface your phone finds.
+- `ar-surfaces` — Surfaces. Dots on floors, dashes on walls, rings on ceilings.
 
 ### View in 3D
 
@@ -727,27 +923,26 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `animation-physics` — Animation. Play character animations under cinematic camera shots.
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
+- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 
 ### Understand the world
 
 - `ar-face` — Augmented Faces. Face mesh tracking with 3D overlays.
-- `ar-people-occlusion` — People Occlusion. Real people hide virtual objects.
+- `ar-people-occlusion` — People Occlusion. A person walking in front hides the model.
 - `ar-depth-occlusion` — Depth Occlusion. Real-world depth hides virtual objects.
 - `point-and-ask` — Point & Ask. On-device Gemini Nano explains the AR scene.
-- `ar-body-tracker` — AR Body Tracker. Follow a person with a live skeleton.
+- `ar-body-tracker` — Squat Coach. Counts your squats out loud and tells you when to go lower.
 - `ar-scene-semantics` — Scene Semantics. Recognize parts of the outdoor scene.
 - `ar-depth-visualization` — Depth Visualization. False-color depth map blended with camera.
 - `ar-image` — Image Tracking. Detect and track reference images.
-- `ar-depth-collider` — Depth Collider. Virtual balls bounce off the real floor.
-- `ar-fog` — AR Fog. Distance fog over real and virtual geometry.
-- `ar-depth-of-field` — AR Depth of Field. Tap to focus, real-world bokeh blur.
+- `ar-depth-of-field` — Portrait focus. Keep the sneaker sharp, blur the room behind it.
 - `ar-point-cloud` — Point Cloud. See the points your camera tracks.
 - `ar-raw-depth-point-cloud` — Raw Depth Point Cloud. Explore the shape of your surroundings.
 - `ar-ml-object-label` — ML Kit Object Labels. Recognize objects and label them in space.
-- `ar-image-stabilization` — Image Stabilization. Electronic stabilization of the AR feed.
-- `ar-scene-mesh` — Scene Geometry. Explore the shape of nearby buildings.
+- `ar-image-stabilization` — Image Stabilization. Steadies the camera feed. The difference is subtle.
 - `ar-xr` — Android XR (preview). Hand skeleton and face mesh on Android XR headsets.
 
 <!-- END GENERATED DEMOS -->

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scan_result_finishing">Finishing your model…</string>
+    <string name="scan_result_finishing_again">Shown as scanned: finishing your model again…</string>
+    <string name="scan_result_raw_memory">Shown as scanned: finishing this model needs more memory than this phone has.</string>
+    <string name="scan_result_raw_memory_retry">Shown as scanned: the phone ran short of memory. Open the scan again to finish it.</string>
+    <string name="scan_result_finished">Your model is finished.</string>
+    <string name="scan_result_raw_unfinished">Shown as scanned: the model couldn\'t be finished. Open the scan again to retry.</string>
+    <!-- End of a scan: how to finish the model (#4630). Times from the reconstruction benchmark. -->
+    <string name="scan_finish_method_title">Finish your model</string>
+    <string name="scan_finish_method_body">Choose how the scan becomes a model.</string>
+    <string name="scan_finish_method_fused">As scanned</string>
+    <string name="scan_finish_method_fused_detail">The surface as it was fused while scanning. Quickest to finish.</string>
+    <string name="scan_finish_method_filled">Filled</string>
+    <string name="scan_finish_method_filled_detail">Closes small gaps, for far fewer holes. Takes about 2 to 10 times as long to finish, and may miss a little more at the edges of what was seen.</string>
+    <string name="scan_finish_method_filled_unavailable">Not available: this scan didn\'t keep the surface points it needs.</string>
+    <!-- Filled within its 40 MB: on a coarser grid when the scan is big, or not at all. -->
+    <string name="scan_finish_method_filled_half">This scan is too big to fill in full detail: it fills at half the detail, so small things come out softer.</string>
+    <string name="scan_finish_method_filled_quarter">This scan is too big to fill in full detail: it fills at a quarter of the detail, so small things come out much softer.</string>
+    <string name="scan_finish_method_filled_too_big">Not available: this scan is too big to fill in the phone\'s memory.</string>
+    <string name="scan_finish_method_finish">Finish model</string>
+</resources>

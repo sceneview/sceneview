@@ -3,9 +3,13 @@ package io.github.sceneview.demo.common.placement
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 
 /**
  * The decision layer of the **one** AR placement flow
@@ -141,3 +145,59 @@ fun rememberPlacementFlowState(
     val phase = rememberSaveable { mutableStateOf(initialPhase) }
     return remember { PlacementFlowState(phase) }
 }
+
+/**
+ * What the Place mode of the `ar-placement` card keeps while the user is in one of its other
+ * modes, Free pose or One call (#4531).
+ *
+ * `DemoModeHost` disposes a mode's demo when another one is selected, so before this the
+ * Place demo came back as if opened for the first time: on the chooser, with the catalogue's
+ * first row armed. Tapping "Place" in the mode selector read as "back to the model picker",
+ * not as the mode switch the selector looks like. The card's host now holds this outside the
+ * modes, and the Place demo reopens on its camera with the model and the surface it had.
+ *
+ * The chooser stays the first screen of a fresh visit ([PlacementFlowPhase.CHOOSING]) and is
+ * still one tap away from the camera: Back, or the dock's Models action for the picker sheet.
+ */
+@Stable
+class PlaceModeMemory(
+    modelId: String? = null,
+    wallMode: Boolean = false,
+    visitedOtherMode: Boolean = false,
+) {
+    /** The picker row the Place demo had armed, `null` until it has been shown once. */
+    var modelId: String? by mutableStateOf(modelId)
+
+    /** The surface the Place demo was on: the floor, or the wall (`?tab=wall`). */
+    var wallMode: Boolean by mutableStateOf(wallMode)
+
+    /** Whether the user has been in another mode of the card since it opened. */
+    var visitedOtherMode: Boolean by mutableStateOf(visitedOtherMode)
+
+    /** The phase the Place demo opens on: the camera when the user is switching back to it. */
+    fun openingPhase(): PlacementFlowPhase = placeModeOpeningPhase(visitedOtherMode)
+
+    companion object {
+        val Saver: Saver<PlaceModeMemory, Any> = listSaver(
+            save = { listOf(it.modelId, it.wallMode, it.visitedOtherMode) },
+            restore = {
+                PlaceModeMemory(
+                    modelId = it[0] as String?,
+                    wallMode = it[1] as Boolean,
+                    visitedOtherMode = it[2] as Boolean,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * Pure rule behind [PlaceModeMemory.openingPhase]: a first visit opens on the chooser, a
+ * switch back from Free pose or One call opens on the camera with the model already armed.
+ */
+fun placeModeOpeningPhase(visitedOtherMode: Boolean): PlacementFlowPhase =
+    if (visitedOtherMode) PlacementFlowPhase.PLACING else PlacementFlowPhase.CHOOSING
+
+/** The row the Place demo arms: a handoff first, then what it had before a mode switch. */
+fun placeModeArmedId(handoffId: String?, rememberedId: String?, defaultId: String): String =
+    handoffId ?: rememberedId ?: defaultId

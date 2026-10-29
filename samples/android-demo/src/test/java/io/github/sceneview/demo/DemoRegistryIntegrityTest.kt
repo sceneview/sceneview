@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 import io.github.sceneview.demo.ui.home.CHIP_CATEGORY_KEYS
 import io.github.sceneview.demo.ui.home.FEATURED_IDS
 import io.github.sceneview.demo.ui.home.FEATURED_PAGER_IDS
@@ -271,10 +272,47 @@ class DemoRegistryIntegrityTest {
     }
 
     @Test
+    fun `2D in 3D exposes Inspect and Media on one searchable card`() {
+        val demo = ALL_DEMOS.single { it.id == "two-d-in-three-d" }
+        assertTrue(demo.tags.containsAll(setOf("picking", "material", "text", "image", "video", "billboard")))
+        assertEquals(listOf("inspect", "media"), TwoDInThreeDFragment.modes.map { it.key })
+        assertEquals(listOf(R.string.demo_mode_inspect, R.string.demo_mode_media),
+            TwoDInThreeDFragment.modes.map { it.labelRes })
+        assertEquals(mapOf("inspect" to 0, "media" to 1), DeepLinkRouter.TAB_NAMES[demo.id])
+        assertTrue(demo.id in DeepLinkRouter.TABBED_DEMOS)
+        for (alias in listOf("text", "image", "video", "billboard")) {
+            assertFalse(ALL_DEMOS.any { it.id == alias })
+            assertEquals(demo.id, DeepLinkRouter.validate(alias, ALL_DEMOS))
+            assertEquals(1, DeepLinkRouter.ALIAS_INITIAL_TAB[alias])
+        }
+    }
+
+    @Test
     fun `the fragment template id never ships`() {
         // `fragments/README.md` documents a copy-paste template registered as
         // `my-demo`; the collator rejects it and so does this.
         assertFalse("'my-demo' is the template id and must not be registered", ALL_DEMOS.any { it.id == "my-demo" })
+    }
+
+    /**
+     * #4139: the route asks for the camera before an AR demo composes — except the demos
+     * whose first screen needs none, which gate their camera screens themselves. Pinned by
+     * id: gating one of these again locks a replay, a chooser or a static pose behind a
+     * permission it never uses; a new AR demo is gated unless it is added here on purpose.
+     */
+    @Test
+    fun `every AR demo asks for the camera on entry, except the four that open without one`() {
+        val arDemos = ALL_DEMOS.filter { it.isArDemo }
+        assertEquals(
+            setOf("ar-placement", "ar-rerun", "ar-splat-room", "ar-xr"),
+            arDemos.filterNot { it.opensCameraOnEntry }.map { it.id }.toSet(),
+        )
+        assertTrue("the AR demos behind the route gate", arDemos.count { it.opensCameraOnEntry } > 0)
+        assertEquals(
+            "a demo that is not AR never asks for the camera on entry",
+            emptyList<String>(),
+            ALL_DEMOS.filter { !it.isArDemo && it.opensCameraOnEntry }.map { it.id },
+        )
     }
 
     @Test

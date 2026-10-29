@@ -1,7 +1,10 @@
 package io.github.sceneview.demo.demos
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -11,43 +14,47 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.Engine
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
-import com.google.android.filament.Skybox
 import com.google.android.filament.ToneMapper
-import com.google.android.filament.utils.KTX1Loader
-import io.github.sceneview.DEFAULT_IBL_INTENSITY
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneScope
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
 import io.github.sceneview.collision.Box as CollisionBox
 import io.github.sceneview.collision.Vector3
-import io.github.sceneview.demo.demos.internal.ArDebugFraming
+import io.github.sceneview.demo.LocalDemoChromeBottomWidth
+import io.github.sceneview.demo.LocalDemoChromeTopInset
+import io.github.sceneview.demo.LocalDemoFullScreen
+import io.github.sceneview.demo.LocalDemoSceneRestingCover
+import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.ArDebugGeometry
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
 import io.github.sceneview.demo.demos.internal.DebugLayer
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
+import io.github.sceneview.demo.demos.internal.DollhouseFraming
+import io.github.sceneview.demo.demos.internal.DollhouseOpening
 import io.github.sceneview.demo.demos.internal.DollhouseRoom
+import io.github.sceneview.demo.demos.internal.dollhouseSideBand
+import io.github.sceneview.demo.demos.internal.FramingInsets
 import io.github.sceneview.demo.demos.internal.PlaneLayering
 import io.github.sceneview.demo.demos.internal.RoomDollhouse
+import io.github.sceneview.demo.isDemoCompactHeight
 import io.github.sceneview.demo.theme.DebugPalette
 import io.github.sceneview.demo.theme.LocalStageChrome
-import io.github.sceneview.environment.Environment
+import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.material.setColor
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
-import io.github.sceneview.math.colorOf
-import io.github.sceneview.math.toLinearSpace
-import io.github.sceneview.rememberEnvironment
 import io.github.sceneview.rememberRenderer
 import io.github.sceneview.rememberView
-import io.github.sceneview.utils.readBuffer
 
 /*
  * The dollhouse of #4075, drawn: the room a Rerun recording kept, through the replay's own
@@ -101,21 +108,64 @@ internal class DollhouseLayers(
     media: RerunReplayMedia,
     private val room: DollhouseRoom,
     dense: ReplayDenseLayer?,
-    palette: DebugPalette,
-    base: Color,
+    private var palette: DebugPalette,
+    private var base: Color,
 ) {
     /** The scan's dense cloud, cut open, is the room itself, in the colours the camera saw. */
     private val hasDense = dense != null
     private val replay = ReplayLayers(engine, materialLoader, media, dense = dense)
-    private val materials = ArrayList<MaterialInstance>()
+    private val tints = ArrayList<Tint>()
 
-    private fun node(color: Color, priority: Int, twoSided: Boolean = color.alpha >= 1f): DebugLayerNode {
-        val material = materialLoader.createUnlitColorInstance(color).also {
-            // Walls and the path are seen from both sides.
-            if (twoSided) it.setCullingMode(Material.CullingMode.NONE)
-            materials += it
+    /**
+     * A flat layer and the colour it takes [of] a palette and a plinth base. [twoSided] `null`
+     * follows the colour: a solid one is seen from both sides — walls, the path — a see-through
+     * one from its front only.
+     */
+    private class Tint(
+        val node: DebugLayerNode,
+        var material: MaterialInstance,
+        var color: Color,
+        val twoSided: Boolean?,
+        val of: (DebugPalette, Color) -> Color,
+    )
+
+    private fun material(color: Color, twoSided: Boolean?): MaterialInstance =
+        materialLoader.createUnlitColorInstance(color).also {
+            if (twoSided ?: color.isSolid) it.setCullingMode(Material.CullingMode.NONE)
         }
-        return DebugLayerNode(engine, material, priority)
+
+    private fun node(priority: Int, twoSided: Boolean? = null, color: (DebugPalette, Color) -> Color): DebugLayerNode {
+        val first = color(palette, base)
+        val material = material(first, twoSided)
+        return DebugLayerNode(engine, material, priority).also { tints += Tint(it, material, first, twoSided, color) }
+    }
+
+    /**
+     * The flat layers in [palette]'s colours over a plinth of [base]: what a theme switch changes,
+     * on the nodes the scene already draws. The replay's layers — the room's photos and points,
+     * and every texture — are the camera's own colours and are left alone, where a set of layers
+     * per palette built and destroyed all of them on every theme switch (#4330).
+     */
+    fun paint(palette: DebugPalette, base: Color) {
+        if (palette == this.palette && base == this.base) return
+        this.palette = palette
+        this.base = base
+        for (tint in tints) {
+            val color = tint.of(palette, base)
+            if (color == tint.color) continue
+            if (color.isSolid == tint.color.isSolid) {
+                tint.material.setColor(color)
+            } else {
+                // Solid on one stage, see-through on the other (the plinth is): the unlit colour
+                // is another material then. The node takes the new instance before the old one
+                // goes, so no frame draws with a destroyed one.
+                val old = tint.material
+                tint.material = material(color, tint.twoSided)
+                tint.node.materialInstance = tint.material
+                materialLoader.destroyMaterialInstance(old)
+            }
+            tint.color = color
+        }
     }
 
     /**
@@ -124,24 +174,26 @@ internal class DollhouseLayers(
      * one flat colour each read as a model's.
      */
     private val flat: Map<DebugLayer, DebugLayerNode> = mapOf(
-        DebugLayer.PlaneFloor to node(solid(base, palette.floorFill), FILL_PRIORITY),
-        DebugLayer.PlaneWall to node(solid(base, palette.wallFill), FILL_PRIORITY),
-        DebugLayer.PlaneOther to node(solid(base, palette.otherFill), FILL_PRIORITY),
-        DebugLayer.OutlineFloor to node(palette.floorOutline, OUTLINE_PRIORITY),
-        DebugLayer.OutlineWall to node(palette.wallOutline, OUTLINE_PRIORITY),
-        DebugLayer.OutlineOther to node(palette.otherOutline, OUTLINE_PRIORITY),
+        DebugLayer.PlaneFloor to node(FILL_PRIORITY) { palette, base -> solid(base, palette.floorFill) },
+        DebugLayer.PlaneWall to node(FILL_PRIORITY) { palette, base -> solid(base, palette.wallFill) },
+        DebugLayer.PlaneOther to node(FILL_PRIORITY) { palette, base -> solid(base, palette.otherFill) },
+        DebugLayer.OutlineFloor to node(OUTLINE_PRIORITY) { palette, _ -> palette.floorOutline },
+        DebugLayer.OutlineWall to node(OUTLINE_PRIORITY) { palette, _ -> palette.wallOutline },
+        DebugLayer.OutlineOther to node(OUTLINE_PRIORITY) { palette, _ -> palette.otherOutline },
     )
-    private val trail = node(palette.trailNew, TRAIL_PRIORITY)
-    private val plinth = node(base, BASE_PRIORITY, twoSided = true)
+    private val trail = node(TRAIL_PRIORITY) { palette, _ -> palette.trailNew }
+    private val plinth = node(BASE_PRIORITY, twoSided = true) { _, base -> base }
 
     /** The plinth's edge, a shade darker than its top, so it reads as a solid base. */
-    private val plinthEdge = node(lerp(base, Color.Black, EDGE_SHADE), BASE_PRIORITY, twoSided = true)
+    private val plinthEdge =
+        node(BASE_PRIORITY, twoSided = true) { _, base -> lerp(base, Color.Black, EDGE_SHADE) }
 
     /**
      * The contact shadow on the table: rings of faint black around the plinth's foot, overlapping
      * towards it, so the miniature sits on the table rather than floating over the camera feed.
      */
-    private val shadow = node(Color.Black.copy(alpha = SHADOW_ALPHA), SHADOW_PRIORITY, twoSided = true)
+    private val shadow =
+        node(SHADOW_PRIORITY, twoSided = true) { _, _ -> Color.Black.copy(alpha = SHADOW_ALPHA) }
 
     /** Every node, none of them pickable: a touch lands on [DollhouseModel]'s box instead. */
     val nodes: List<DebugLayerNode> =
@@ -225,8 +277,8 @@ internal class DollhouseLayers(
     /** Materials and textures, once the nodes are gone. */
     fun destroy() {
         replay.destroy()
-        materials.forEach(materialLoader::destroyMaterialInstance)
-        materials.clear()
+        tints.forEach { materialLoader.destroyMaterialInstance(it.material) }
+        tints.clear()
     }
 
     private companion object {
@@ -249,6 +301,9 @@ internal class DollhouseLayers(
 
         /** The least a fill without a photo shows of its own tint over the plinth. */
         const val SOLID_MIX = 0.72f
+
+        /** Drawn with the opaque unlit material, as [MaterialLoader.createUnlitColorInstance] picks it. */
+        val Color.isSolid: Boolean get() = alpha >= 1f
 
         /** [fill] as an opaque colour: its tint laid over [base] at its own alpha, or more. */
         fun solid(base: Color, fill: Color): Color =
@@ -281,11 +336,15 @@ internal fun SceneScope.DollhouseModel(
     plinth: Boolean = true,
 ) {
     // Remembered before the node, so Compose releases it after the node destroyed the layers.
-    val layers = remember(engine, materialLoader, build, room, palette, base) {
+    // Not keyed on the palette or the base: a theme switch repaints the layers in place (#4330).
+    val layers = remember(engine, materialLoader, build, room) {
         DollhouseLayers(engine, materialLoader, build.media, room, build.dense, palette, base)
     }
     DisposableEffect(layers) { onDispose { layers.destroy() } }
-    SideEffect { layers.sync(styleScale, showPath, plinth) }
+    SideEffect {
+        layers.paint(palette, base)
+        layers.sync(styleScale, showPath, plinth)
+    }
     val fit = room.fit
     // On the table the plinth's foot stands on it; at real size the room's floor is the floor.
     val floor = if (plinth) {
@@ -331,32 +390,79 @@ internal fun DollhousePreview(
     modifier: Modifier = Modifier,
     onShown: () -> Unit = {},
 ) {
-    val context = LocalContext.current
     val chrome = LocalStageChrome.current
     val shown = rememberUpdatedState(onShown)
     val colorGrading = remember(engine) {
         ColorGrading.Builder().toneMapper(ToneMapper.Linear()).build(engine)
     }
     DisposableEffect(colorGrading) { onDispose { engine.destroyColorGrading(colorGrading) } }
-    val environment = rememberEnvironment(engine, key = chrome.ground) {
-        val stage = colorOf(chrome.ground).toLinearSpace()
-        Environment(
-            indirectLight = KTX1Loader.createIndirectLight(
-                engine,
-                context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-            ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-            skybox = Skybox.Builder().color(stage.x, stage.y, stage.z, 1f).build(engine),
-        )
-    }
+    val environment = rememberStageEnvironment(engine, chrome.ground)
     val view = rememberView(engine)
     val renderer = rememberRenderer(engine)
     val fit = room.fit
-    // The room as it stands here: centred on the origin, its floor at 0.
-    val bounds = remember(fit) {
-        floatArrayOf(-fit.width / 2f, 0f, -fit.depth / 2f, fit.width / 2f, fit.height, fit.depth / 2f)
+    // The room as it stands here: centred on the origin, on its plinth, the plinth's foot at 0.
+    val bounds = remember(fit) { RoomDollhouse.previewBounds(fit) }
+    val framing = remember(bounds, orbit) {
+        DollhouseFraming(bounds, PREVIEW_ELEVATION, orbit.verticalFovDegrees)
     }
-    val frames = remember { IntArray(2) }
-    Box(modifier.background(chrome.ground)) {
+    // One opening per room and per camera: another room is veiled until its own framing is drawn.
+    val opening = remember(bounds, orbit) { DollhouseOpening() }
+    // Before the first frame, not on it: the tone mapping is part of the first picture. Effects
+    // run when the composition is applied, ahead of the frame that draws it.
+    DisposableEffect(view, colorGrading) {
+        view.configureForDebug(colorGrading)
+        onDispose { }
+    }
+    BoxWithConstraints(modifier.background(chrome.ground)) {
+        // What the chrome leaves of this view at rest — under the recording's chip, above the dock
+        // and the sheet's peek, between the window's safe sides — less a gutter: the room opens
+        // whole in there (#4492). The camera is aimed for it; the surface keeps the whole view, so
+        // the stage's ground still runs under the glass and a drag pans at the speed it always did.
+        //
+        // A phone held sideways has no such band: the chip and the dock stack up the middle of a
+        // view barely taller than they are. There the chip stands in the top end corner and the
+        // room is framed in the band beside the chrome, at the start (#4527). In full screen
+        // nothing covers the view: the room takes the window's safe area.
+        val direction = LocalLayoutDirection.current
+        val safe = WindowInsets.safeDrawing.asPaddingValues()
+        val cover = when {
+            !isDemoCompactHeight() -> demoContentPadding(
+                cover = LocalDemoSceneRestingCover.current,
+                sceneHeight = maxHeight,
+                left = safe.calculateLeftPadding(direction),
+                right = safe.calculateRightPadding(direction),
+            )
+            LocalDemoFullScreen.current -> safe
+            else -> dollhouseSideBand(
+                width = maxWidth,
+                safeLeft = safe.calculateLeftPadding(direction),
+                safeRight = safe.calculateRightPadding(direction),
+                safeTop = safe.calculateTopPadding(),
+                safeBottom = safe.calculateBottomPadding(),
+                identityRow = LocalDemoChromeTopInset.current,
+                bottomChromeWidth = LocalDemoChromeBottomWidth.current,
+                cornerCard = DOLLHOUSE_CORNER_CARD_WIDTH,
+                cornerMargin = SceneViewTokens.Space.md,
+                startIsLeft = direction == LayoutDirection.Ltr,
+            )
+        }
+        val gutter = SceneViewTokens.Space.md
+        val insets = FramingInsets(
+            left = (cover.calculateLeftPadding(direction) + gutter) / maxWidth,
+            top = (cover.calculateTopPadding() + gutter) / maxHeight,
+            right = (cover.calculateRightPadding(direction) + gutter) / maxWidth,
+            bottom = (cover.calculateBottomPadding() + gutter) / maxHeight,
+        )
+        // The view's shape from its constraints, not from the camera's viewport: the surface
+        // reports its size after the composition, and the first frame is aimed from here.
+        val aspect = constraints.maxWidth.toFloat() / constraints.maxHeight.coerceAtLeast(1)
+        val home = rememberUpdatedState {
+            framing.home(orbit.home.azimuthDegrees, aspect, insets)
+        }
+        // SceneView draws with the pose the camera holds, then calls onFrame: the camera is put on
+        // the room's framing here, before the first frame and whenever the chrome moves, and again
+        // after each frame for the next one (DollhouseOpening).
+        SideEffect { opening.aim(orbit, home.value()) }
         SceneView(
             modifier = Modifier.matchParentSize(),
             surfaceType = SurfaceType.TextureSurface,
@@ -371,20 +477,10 @@ internal fun DollhousePreview(
             environment = environment,
             cameraManipulator = orbit,
             onFrame = {
-                if (frames[0] == 0) view.configureForDebug(colorGrading)
-                val home = ArDebugFraming.home(
-                    bounds, orbit.home.azimuthDegrees, orbit.verticalFovDegrees, orbit.aspect,
-                    elevationDegrees = PREVIEW_ELEVATION,
-                    margin = ArDebugFraming.REPLAY_MARGIN,
-                )
-                if (orbit.following) orbit.home = home
-                if (!orbit.hasFramedContent) {
-                    orbit.hasFramedContent = true
-                    orbit.snapTo(home)
-                }
-                frames[0]++
-                // A few frames on screen: the photos are uploaded, nothing is half drawn.
-                if (frames[0] == SHOWN_AFTER_FRAMES) shown.value()
+                // The frame just drawn was aimed before it: shown once it was on the framing.
+                val framed = home.value()
+                if (opening.drawn(orbit, framed)) shown.value()
+                opening.aim(orbit, framed)
             },
         ) {
             DollhouseModel(
@@ -403,6 +499,11 @@ internal fun DollhousePreview(
     }
 }
 
+/**
+ * How wide the recording's chip may grow in the top end corner on a phone held sideways (#4527):
+ * the replay's corner card, so the two screens put their card in the same place at the same width.
+ */
+internal val DOLLHOUSE_CORNER_CARD_WIDTH = SceneViewTokens.DebugView.compactCardWidth
+
 /** A little higher than the replay's three-quarter view: a dollhouse is looked into from above. */
 private const val PREVIEW_ELEVATION = 40f
-private const val SHOWN_AFTER_FRAMES = 3

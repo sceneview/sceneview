@@ -1,0 +1,31 @@
+// pool_night_veil.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    Night in the in-ground pool AR demo: a sheet of transparent black over the whole
+//             screen. It draws after the camera image and before the pool, so the real garden
+//             darkens and the pool, lit by its own lamps, does not.
+// Used by:    samples/android-demo ARPoolDemo — nothing in the SDK.
+// Parameters:
+//   strength — float [0,1], how much of what is already on screen the veil hides; 0 by day.
+// The vertices are in device coordinates — one triangle larger than the screen, like the AR
+// camera stream's — so the veil ignores its node and the camera: turn frustum culling off on
+// its renderable. It neither tests nor writes depth, and only its draw priority places it.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+material {
+    "name" : "Pool Night Veil",
+    "parameters" : [
+        { "type" : "float", "name" : "strength" }
+    ],
+    "vertexDomain" : "device",
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "depthWrite" : false,
+    "depthCulling" : false,
+    "culling" : "none"
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        // Premultiplied: black, so the blend only keeps (1 - strength) of the screen beneath.
+        material.baseColor = float4(0.0, 0.0, 0.0, materialParams.strength);
+    }
+}

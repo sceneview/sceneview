@@ -86,6 +86,25 @@ class DeepLinkManifestScopeTest {
     }
 
     /**
+     * A link sent while the app is running must reach `MainActivity.onNewIntent` (#4502).
+     * Under the default `standard` launch mode it does not: the system either stacks a
+     * second activity or, when the link equals the intent the task was started with,
+     * brings the task forward and drops the link.
+     */
+    @Test
+    fun `the launcher activity receives links sent while it is running`() {
+        val activity = Regex("""<activity\b[^>]*android:name\s*=\s*"\.MainActivity"[^>]*>""")
+            .find(manifestSource())?.value
+            ?: throw AssertionError("MainActivity is not declared in the manifest")
+
+        assertTrue(
+            "MainActivity must be singleTop or singleTask, or a deep link sent to a " +
+                "running app is not delivered to onNewIntent (#4502): $activity",
+            attribute(activity, "launchMode") in setOf("singleTop", "singleTask"),
+        )
+    }
+
+    /**
      * The manifest with its XML comments stripped — the comment above the filter
      * quotes the very `<data android:scheme="https" />` shape this test forbids,
      * and a scanner that reads comments would fail on the documentation of the rule.

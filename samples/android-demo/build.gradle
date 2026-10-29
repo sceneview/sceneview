@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.roborazzi)
     // Firebase (analytics, crash reports, push) — applied below ONLY when a
     // google-services.json is present, so forks and secret-less CI still build.
     alias(libs.plugins.google.services) apply false
@@ -119,7 +118,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.52.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.63.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -243,6 +242,11 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        checkDependencies = true
+        checkTestSources = false
+        ignoreTestSources = true
+    }
     androidResources {
         // The demo apps ship in en-US only: source strings live in `values/`
         // and there are no translated `values-<locale>/` folders. This filter
@@ -281,6 +285,9 @@ android {
             includeAndroidResources = true
             all {
                 systemProperty 'robolectric.logging.enabled', 'true'
+                // Every class of the module shares one test JVM; the default 512 MB ran out in
+                // ScanObjectTest's synthetic rooms (~600k points each) after the Robolectric suites.
+                maxHeapSize = '2g'
                 // #2692: the CI Unit-tests job intermittently hangs in THIS task and
                 // gets force-cancelled at the job's 30 min timeout with zero output —
                 // no attribution possible. Name every test as it starts so the log's
@@ -386,12 +393,12 @@ dependencies {
     // HD pack (2026-09-29): the Wi-Fi-only, resumable download of the full-resolution demo
     // models runs as a WorkManager job. Literal coordinate, like the other demo-only extras
     // kept out of the shared catalogue.
-    implementation "androidx.work:work-runtime-ktx:2.11.2"
+    implementation "androidx.work:work-runtime-ktx:2.12.0"
     // Material 3 Expressive APIs (alpha, newer than BOM's stable release)
     implementation libs.androidx.compose.material3.expressive
 
-    // Compose @Preview annotation — needed at compile time so the AS preview pane and
-    // Roborazzi snapshot tests can discover @Preview functions on the demos.
+    // Compose @Preview annotation — needed at compile time so the AS preview pane
+    // can discover @Preview functions on the demos.
     implementation libs.androidx.compose.ui.tooling.preview
     // ui-tooling provides the runtime that renders @Preview functions in the AS pane;
     // shipping it in debug only avoids bundling the inspector into release APKs.
@@ -402,12 +409,17 @@ dependencies {
     implementation project(":arsceneview")
     // ML depth (Depth Anything V2 Small on LiteRT) for the Depth Visualization demo's ML
     // mode. The model is downloaded on first use and SHA-256 checked: 0 model bytes in the
-    // APK, ~8.6 MB of LiteRT native code per ABI.
+    // APK, ~9.4 MB of LiteRT native code on arm64-v8a.
     implementation project(":arsceneview-depth-ml")
 
     // Google Play In-App Updates — Play Core deps come via :samples:common
     // (`api libs.play.app.update*`). Manager + banner live in
     // `io.github.sceneview.sample.common.update.*`.
+
+    // Google Play Billing — the "Support SceneView" contributions (support/). Three
+    // consumable one-time products, consumed as soon as Play confirms them: a gift,
+    // never an entitlement, so nothing in the app is gated on a purchase.
+    implementation libs.play.billing.ktx
 
     // Sketchfab API client — OkHttp for network, kotlinx-serialization for JSON.
     // Used by io.github.sceneview.demo.sketchfab.SketchfabService to stream
@@ -442,7 +454,8 @@ dependencies {
     // offline. The default options classify generic categories (Home good,
     // Fashion good, Food, Place, Plant). For finer labels callers can plug
     // in a custom TFLite model via ObjectDetectorOptions / CustomObjectDetectorOptions.
-    // See ARMLObjectLabelDemo (#1737).
+    // See ARMLObjectLabelDemo (#1737). It no longer has a catalogue card: it is
+    // Point & Ask's on-device fallback on phones without AICore (#4608, #2648).
     implementation libs.mlkit.object.detection
 
     // ML Kit GenAI Prompt API — Gemini Nano on-device for the Point & Ask demo.
@@ -469,20 +482,21 @@ dependencies {
         exclude group: 'com.google.auto.value', module: 'auto-value'
     }
 
-    // Screenshot testing (Roborazzi — JVM, no emulator needed)
+    // LiteRT — the 3D Scan's furniture detector (YOLOX-Tiny converted to .tflite,
+    // internal/semantic), on the runtime `arsceneview-depth-ml` already ships: no second native
+    // runtime in the APK. The model is not in the APK either: the app downloads it on first use
+    // from the assets-v1 release, checks its SHA-256 and keeps it in app storage (SceneModel.kt).
+    implementation libs.litert
+
+    // JVM tests on Robolectric — no emulator needed.
     testImplementation libs.robolectric
-    testImplementation libs.roborazzi
-    testImplementation libs.roborazzi.compose
-    testImplementation libs.roborazzi.rule
     testImplementation libs.androidx.test.junit
     testImplementation platform(libs.androidx.compose.bom)
     testImplementation libs.androidx.compose.ui
 
     // Compose layout assertions on the JVM, via Robolectric — no emulator.
     // Added for DemoScaffoldBottomBandTest (#3229), which measures the real
-    // bottom band at a large font scale. The defect it pins was invisible to
-    // every existing check: a Roborazzi golden only fails if a human looks at
-    // the diff, and the overlap it captures is 4 dp.
+    // bottom band at a large font scale; the overlap it pins is 4 dp.
     testImplementation libs.androidx.compose.ui.test.junit4
     // No `androidx.compose.ui:ui-test-manifest` dependency here (#3410): that
     // artifact's sole content is a manifest declaring the bare
@@ -492,13 +506,16 @@ dependencies {
     // release variant's unit-test resource package from the release
     // implementation graph, which a `debugImplementation` dependency never
     // reaches, so every compose-rule Robolectric test failed to resolve
-    // `ComponentActivity` in the release variant only (CI never ran it to
-    // notice: `verifyRoborazziDebug` is debug-only). The same manifest entry
+    // `ComponentActivity` in the release variant only. The same manifest entry
     // is declared directly in `src/main/AndroidManifest.xml` instead, so it
     // reaches both variants' real manifest/resource-link pipeline — see the
     // comment there.
 
     testImplementation libs.kotlin.coroutines.test
+    // The scan recogniser's detector on the JVM, where LiteRT does not run: the ONNX export the
+    // app's .tflite was converted from, on the desktop ONNX Runtime (SceneRecognitionCorpusTest).
+    // Tests only — nothing of ONNX Runtime is in the app.
+    testImplementation libs.onnxruntime.jvm
     // Local HTTP double for SketchfabService's cooperative-cancellation test
     // (#2644) — proves an aborted search releases its socket instead of
     // running to completion behind the debounce.
@@ -632,9 +649,10 @@ abstract class BundleChangelogAsset extends DefaultTask {
     @OutputDirectory
     abstract DirectoryProperty getOutputDir()
 
-    // Collator order (collate-changelog.sh). `Changed` is the fallback bucket.
+    // Collator order and tags (collate-changelog.sh). `Changed` is the fallback
+    // bucket. WhatsNewCategoryAlignmentTest fails when the two drift apart.
     static final List<String> CATEGORIES =
-            ['Added', 'Changed', 'Fixed', 'Performance', 'Removed', 'Tests', 'Docs']
+            ['Added', 'Changed', 'Fixed', 'Security', 'Performance', 'Removed', 'Tests', 'Docs']
 
     // These helpers are deliberately NOT private. Gradle decorates the task
     // class at runtime, and a Groovy closure dispatching onto the decorated
@@ -644,6 +662,7 @@ abstract class BundleChangelogAsset extends DefaultTask {
         switch (raw.toLowerCase().trim()) {
             case ['added', 'new']: return 'Added'
             case ['fixed', 'fix', 'bugfix']: return 'Fixed'
+            case ['security']: return 'Security'
             case ['performance', 'perf']: return 'Performance'
             case ['removed', 'remove']: return 'Removed'
             case ['tests', 'test']: return 'Tests'
@@ -821,21 +840,4 @@ abstract class BundleHdPackManifest extends DefaultTask {
         target.parentFile.mkdirs()
         target.bytes = manifest.get().asFile.bytes
     }
-}
-
-// ─── Roborazzi goldens are a declared test input (#3034, root cause of #3029) ─
-//
-// `verifyRoborazziDebug` compares against the PNGs under `src/test/snapshots/`,
-// but the Roborazzi plugin reads them from inside the test JVM, so Gradle never
-// knew the directory was an input of `testDebugUnitTest`. Measured 2026-08-06
-// (#3029): mutate a golden by 8000 red pixels, re-run, and the task came back
-// `UP-TO-DATE` / `BUILD SUCCESSFUL in 1s` having read no golden at all — a PR
-// whose only change IS a golden went green. The workaround was `--rerun` on
-// every gate (a full minute each run); the fix is to tell Gradle the truth.
-// `fileTree` rather than `inputs.dir` so a module without goldens still
-// configures — a missing directory is an empty input, not a failure.
-tasks.withType(Test).configureEach {
-    inputs.files(fileTree("src/test/snapshots"))
-            .withPropertyName("roborazziGoldens")
-            .withPathSensitivity(PathSensitivity.RELATIVE)
 }

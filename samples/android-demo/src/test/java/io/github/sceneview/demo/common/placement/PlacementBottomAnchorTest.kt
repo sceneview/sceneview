@@ -47,7 +47,7 @@ import org.robolectric.annotation.GraphicsMode
  *  - a second child costs its own painted height plus one gutter and nothing else.
  *
  * Robolectric reports no navigation inset, so `windowInsetsPadding` contributes 0 dp in
- * every case below; [PlacementBottomAnchorSnapshotTest] dispatches one by hand.
+ * every case below; [PlacementBottomAnchorStatesTest] dispatches one by hand.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")

@@ -81,5 +81,7 @@ open class CubeNode private constructor(
     fun updateGeometry(
         center: Position = geometry.center,
         size: Size = geometry.size
-    ) = setGeometry(geometry.update(engine, center, size))
+    ) {
+        geometry.update(engine, center, size)
+    }
 }

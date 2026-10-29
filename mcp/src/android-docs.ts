@@ -129,8 +129,7 @@ function cliMissingError(): AndroidDocsError {
       "`android docs` is an optional runtime dependency — `sceneview-mcp` works fine without it,",
       "but `search_android_docs` / `fetch_android_doc` cannot run until the CLI is on PATH.",
       "",
-      `Install it from ${INSTALL_URL} (or run \`bash .claude/scripts/android-env-check.sh --fix\``,
-      "from a SceneView checkout), then retry.",
+      `Install it from ${INSTALL_URL}, then retry.`,
     ].join("\n"),
   };
 }

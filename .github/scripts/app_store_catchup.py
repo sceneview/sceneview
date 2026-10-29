@@ -11,18 +11,26 @@ time. Each tag that landed while its predecessor was in review got a 409 and
 "deferred", and a deferred release was never retried, because retrying needed
 a human to press "Re-run". This probe is that retry.
 
+It decides once per App Store platform — iOS and macOS. They are separate
+version records with separate review slots, and app-store.yml defers each one
+on its own, so each one needs its own retry (macOS had none until 2026-10-22).
+
 Decision outputs:
-    action     none | submit | rebuild
-               submit  — a VALID iOS TestFlight build of the release exists:
-                         submit it from an ubuntu runner, no Xcode needed.
-               rebuild — no usable build: dispatch app-store.yml on the tag,
-                         which archives on macOS and submits.
-    version    X.Y.Z of the release to submit
-    build      CFBundleVersion of the TestFlight build to reuse (submit only):
-               the one an app-store.yml run ON THE TAG uploaded, never a
-               later manual run from main with the same marketing version
-    supersede  "true" when an OLDER version must be withdrawn from review first
-               (only when the `supersede` input was set by a human)
+    version           X.Y.Z of the release to submit
+    ios_action        none | submit | rebuild   (likewise macos_action)
+                      submit  — a VALID TestFlight build of the release exists
+                                for that platform: submit it from an ubuntu
+                                runner, no Xcode needed.
+                      rebuild — no usable build: dispatch app-store.yml on the
+                                tag, which archives both platforms and submits.
+    ios_build         CFBundleVersion of the TestFlight build to reuse (submit
+                      only), likewise macos_build: the one an app-store.yml run
+                      ON THE TAG uploaded, never a later manual run from main
+                      with the same marketing version
+    ios_supersede     "true" when an OLDER version must be withdrawn from review
+                      first (only when the `supersede` input was set by a human),
+                      likewise macos_supersede
+    rebuild           "true" when either platform needs app-store.yml dispatched
 
 Environment:
     ASC_KEY_ID, ASC_ISSUER_ID, ASC_API_KEY   App Store Connect API key (.p8 content)
@@ -42,6 +50,8 @@ import sys
 import time
 
 BUNDLE_ID = "io.github.sceneview.demo"
+# App Store Connect platform → the prefix of this probe's outputs.
+PLATFORMS = {"IOS": "ios", "MAC_OS": "macos"}
 ASC = "https://api.appstoreconnect.apple.com/v1"
 GH = "https://api.github.com"
 
@@ -88,6 +98,17 @@ BUILD_STAMP = "%Y%m%d%H%M"
 # slow runner pickup without reaching a later run's builds.
 TAG_BUILD_SLACK = datetime.timedelta(minutes=30)
 
+# The statuses GitHub uses for a run that has not finished.
+ACTIVE_RUN_STATUSES = ("queued", "in_progress", "waiting", "pending", "requested")
+# An app-store.yml run GitHub still lists as active after this long is a ghost,
+# not a deploy: GitHub fails a job that waits more than 24 hours for a runner,
+# and no job of app-store.yml runs anywhere near that long. Run 25906902157 — a
+# `push` on main from 2026-05-15, when app-store.yml still ran on main pushes —
+# has sat `queued` with zero jobs ever since. Counting it made every catch-up
+# run from the first (2026-09-29) to 2026-10-22 answer "app-store.yml is
+# already queued or running" and submit nothing, all 86 of them green.
+ACTIVE_RUN_MAX_AGE = datetime.timedelta(hours=24)
+
 SEMVER_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -132,14 +153,58 @@ def tag_build_numbers(builds, tag_run_windows):
     return out
 
 
+def split_active_runs(runs, now):
+    """(live, stale) among the app-store.yml runs GitHub reports as active.
+
+    runs  workflow-run dicts from the runs API (duplicates allowed: the caller
+          asks once per status), now  aware datetime
+    A run whose `created_at` is older than ACTIVE_RUN_MAX_AGE, or unreadable,
+    is stale: it cannot be a deploy that owns the release.
+    """
+    live, stale, seen = [], [], set()
+    for run in runs:
+        if run.get("id") in seen:
+            continue
+        seen.add(run.get("id"))
+        created = _parse_time(run.get("created_at"))
+        if created and now - created <= ACTIVE_RUN_MAX_AGE:
+            live.append(run)
+        else:
+            stale.append(run)
+    return live, stale
+
+
+def parse_builds(payload, platform):
+    """[(marketingVersion, buildNumber)] of `platform`, OLDEST first.
+
+    payload  a `builds?...&sort=-uploadedDate&include=preReleaseVersion` page
+    Both legs of app-store.yml upload the same build number to the same app,
+    one per platform; the preReleaseVersion's platform tells them apart.
+    """
+    included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
+    builds = []
+    for b in payload.get("data", []):
+        rel = b.get("relationships", {}).get("preReleaseVersion", {}).get("data")
+        prv = included.get((rel["type"], rel["id"]), {}) if rel else {}
+        attrs = prv.get("attributes", {})
+        if attrs.get("platform") == platform and not b.get("attributes", {}).get("expired"):
+            builds.append((attrs.get("version"), b["attributes"]["version"]))
+    # Oldest first. decide() prefers the build a run on the tag uploaded — a
+    # later manual run from main can carry the same marketing version with
+    # commits the tag does not have — and falls back to the oldest upload.
+    builds.reverse()
+    return builds
+
+
 def decide(latest_tag, versions, builds, supersede=False, deploy_running=False, tag_runs=0,
            tag_builds=None):
     """Pure decision. Returns {action, version, build, supersede, reason, level}.
 
     latest_tag      tag of the latest GitHub release, e.g. "v4.47.0"
-    versions        [(versionString, state)] — every iOS appStoreVersion
-    builds          [(marketingVersion, buildNumber)] — VALID, unexpired iOS
-                    builds, OLDEST first
+    versions        [(versionString, state)] — every appStoreVersion of one
+                    platform
+    builds          [(marketingVersion, buildNumber)] — VALID, unexpired builds
+                    of that platform, OLDEST first
     supersede       the human opted in to withdrawing an older version
     deploy_running  an app-store.yml run is queued or in progress
     tag_runs        app-store.yml runs already made on this tag
@@ -232,12 +297,12 @@ def decide(latest_tag, versions, builds, supersede=False, deploy_running=False, 
         return out
     if tag_runs >= MAX_RUNS_PER_TAG:
         out.update(level="warning",
-                   reason=f"no VALID iOS build of {target} on TestFlight after {tag_runs} "
+                   reason=f"no VALID build of {target} on TestFlight after {tag_runs} "
                           f"app-store.yml runs on v{target} — fix the build, then dispatch "
                           "app-store.yml on the tag")
         return out
     out.update(action="rebuild",
-               reason=f"no VALID iOS build of {target} on TestFlight — dispatching app-store.yml "
+               reason=f"no VALID build of {target} on TestFlight — dispatching app-store.yml "
                       f"on v{target} to archive, upload and submit it")
     return out
 
@@ -286,30 +351,21 @@ def get_all(url, headers, get=None):
 
 
 def read_app_store():
+    """{platform: (versions, builds)} for every platform in PLATFORMS."""
     h = _asc_headers()
     app_id = _get(f"{ASC}/apps?filter[bundleId]={BUNDLE_ID}", h)["data"][0]["id"]
-    versions = [
-        (v.get("attributes", {}).get("versionString", ""), version_state(v))
-        for v in get_all(f"{ASC}/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=200",
-                         h)
-    ]
     payload = _get(
         f"{ASC}/builds?filter[app]={app_id}&filter[processingState]=VALID&filter[expired]=false"
         "&sort=-uploadedDate&limit=100&include=preReleaseVersion", h)
-    included = {(i["type"], i["id"]): i for i in payload.get("included", [])}
-    builds = []
-    for b in payload.get("data", []):
-        rel = b.get("relationships", {}).get("preReleaseVersion", {}).get("data")
-        prv = included.get((rel["type"], rel["id"]), {}) if rel else {}
-        attrs = prv.get("attributes", {})
-        # iOS only: the macOS leg uploads the same numbers to the same app.
-        if attrs.get("platform") == "IOS" and not b.get("attributes", {}).get("expired"):
-            builds.append((attrs.get("version"), b["attributes"]["version"]))
-    # Oldest first. decide() prefers the build a run on the tag uploaded — a
-    # later manual run from main can carry the same marketing version with
-    # commits the tag does not have — and falls back to the oldest upload.
-    builds.reverse()
-    return versions, builds
+    out = {}
+    for platform in PLATFORMS:
+        versions = [
+            (v.get("attributes", {}).get("versionString", ""), version_state(v))
+            for v in get_all(f"{ASC}/apps/{app_id}/appStoreVersions"
+                             f"?filter[platform]={platform}&limit=200", h)
+        ]
+        out[platform] = (versions, parse_builds(payload, platform))
+    return out
 
 
 def read_github():
@@ -318,10 +374,19 @@ def read_github():
          "Accept": "application/vnd.github+json"}
     tag = _get(f"{GH}/repos/{repo}/releases/latest", h)["tag_name"]
     runs = f"{GH}/repos/{repo}/actions/workflows/app-store.yml/runs"
-    running = any(
-        _get(f"{runs}?status={s}&per_page=1", h).get("total_count", 0)
-        for s in ("queued", "in_progress", "waiting", "pending", "requested")
-    )
+    # The runs themselves, not `total_count`: a count cannot tell a deploy in
+    # progress from a ghost run that has been "queued" for months.
+    active = []
+    for s in ACTIVE_RUN_STATUSES:
+        active.extend(_get(f"{runs}?status={s}&per_page=100", h).get("workflow_runs", []))
+    live, stale = split_active_runs(active, datetime.datetime.now(datetime.timezone.utc))
+    for run in stale:
+        print(f"::warning::Ignoring app-store.yml run {run.get('id')} ({run.get('status')} since "
+              f"{run.get('created_at')}): GitHub still lists it as active after "
+              f"{int(ACTIVE_RUN_MAX_AGE.total_seconds() // 3600)} h, so it is not a deploy. "
+              f"Clear it with `gh api -X POST repos/{repo}/actions/runs/{run.get('id')}"
+              "/force-cancel`.")
+    running = bool(live)
     on_tag = _get(f"{runs}?branch={tag}&per_page=100", h)
     windows = []
     for run in on_tag.get("workflow_runs", []):
@@ -336,29 +401,45 @@ def read_github():
 
 def main():
     tag, running, tag_runs, windows = read_github()
-    versions, builds = read_app_store()
+    stores = read_app_store()
     supersede = (os.environ.get("CATCHUP_SUPERSEDE") or "").strip().lower() == "true"
-    d = decide(tag, versions, builds, supersede=supersede,
-               deploy_running=running, tag_runs=tag_runs,
-               tag_builds=tag_build_numbers(builds, windows))
 
-    live = ", ".join(f"{vs} {st}" for vs, st in versions
-                     if st in LIVE_STATES | IN_FLIGHT_STATES | NEEDS_HUMAN_STATES
-                     | EDITABLE_STATES) or "none"
-    print(f"Latest release: {tag} · iOS versions: {live} · "
-          f"app-store.yml running: {running} · runs on {tag}: {tag_runs}")
-    print(f"::{d['level']}::App Store catch-up — {d['reason']}")
-    if d["level"] == "error":
-        return 1
+    outputs = {"version": "", "rebuild": "false"}
+    lines = []
+    failed = False
+    for platform, prefix in PLATFORMS.items():
+        versions, builds = stores[platform]
+        d = decide(tag, versions, builds, supersede=supersede,
+                   deploy_running=running, tag_runs=tag_runs,
+                   tag_builds=tag_build_numbers(builds, windows))
+        live = ", ".join(f"{vs} {st}" for vs, st in versions
+                         if st in LIVE_STATES | IN_FLIGHT_STATES | NEEDS_HUMAN_STATES
+                         | EDITABLE_STATES) or "none"
+        print(f"Latest release: {tag} · {platform} versions: {live} · "
+              f"app-store.yml running: {running} · runs on {tag}: {tag_runs}")
+        print(f"::{d['level']}::App Store catch-up ({platform}) — {d['reason']}")
+        if d["level"] == "error":
+            # The other platform still gets its decision: one unclassified
+            # state must not hold back a release the other store can take.
+            failed = True
+            d = dict(d, action="none", build="", supersede="false")
+        outputs["version"] = outputs["version"] or d["version"]
+        outputs[f"{prefix}_action"] = d["action"]
+        outputs[f"{prefix}_build"] = d["build"] if d["action"] == "submit" else ""
+        outputs[f"{prefix}_supersede"] = d["supersede"]
+        if d["action"] == "rebuild":
+            outputs["rebuild"] = "true"
+        lines.append(f"- {platform}: {live} — **{d['action']}** — {d['reason']}")
+
     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-        for k in ("action", "version", "build", "supersede"):
-            f.write(f"{k}={d[k]}\n")
+        for k, v in outputs.items():
+            f.write(f"{k}={v}\n")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
             f.write(f"### App Store catch-up\n\n- Latest release: `{tag}`\n"
-                    f"- iOS versions: {live}\n- Decision: **{d['action']}** — {d['reason']}\n")
-    return 0
+                    + "\n".join(lines) + "\n")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

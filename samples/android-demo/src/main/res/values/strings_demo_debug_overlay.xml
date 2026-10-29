@@ -5,7 +5,7 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <string name="demo_debug_overlay_title">Debug Overlay</string>
+    <string name="demo_debug_overlay_title">Performance Test</string>
     <string name="demo_debug_overlay_subtitle">Find the node budget for smooth 3D rendering on your device</string>
     <string name="demo_debug_overlay_nodes_target">Nodes: %1$d / %2$d</string>
     <string name="demo_debug_overlay_spawning">Spawning %1$d / %2$d…</string>
@@ -21,7 +21,7 @@
     <string name="demo_debug_overlay_nodes">Rendered spheres: %1$d · lower costs less</string>
     <string name="demo_debug_overlay_triangles">Estimated triangles: %1$s · lower costs less</string>
     <string name="demo_debug_overlay_sparkline">FPS history → now · reference line: 60 fps</string>
-    <string name="demo_debug_overlay_explainer">rememberDebugStats measures frame delivery as spheres are added; the first sustained dip below 55 fps marks this run’s practical limit against a 60 fps target.</string>
+    <string name="demo_debug_overlay_explainer">This test measures frame delivery as spheres are added. The first sustained dip below 55 fps marks this run’s practical limit against a 60 fps target.</string>
     <string name="demo_debug_overlay_prompt">Start the stress test to find this device’s 60 fps node budget.</string>
     <string name="demo_debug_overlay_measuring">Testing %1$d nodes — looking for a sustained dip below 55 fps…</string>
     <string name="demo_debug_overlay_no_threshold">No sustained dip below 55 fps observed through %1$d nodes.</string>

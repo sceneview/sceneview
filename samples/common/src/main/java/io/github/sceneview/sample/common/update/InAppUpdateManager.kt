@@ -1,6 +1,13 @@
 package io.github.sceneview.sample.common.update
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
@@ -28,7 +35,7 @@ import java.util.concurrent.Executors
  * [updateState] + [downloadProgress] pair driven by [InstallStateUpdatedListener].
  * What the user sees is decided by [UpdatePromptController]: one prompt that goes
  * "Update available · Update" → "Waiting for Google Play…" → "Downloading update… 42 %"
- * → "Update ready · Restart", or "Update failed · Retry".
+ * → "Update ready · Restart", or "Update failed · Open Play Store".
  *
  * ## Flexible flow, one Google modal
  *
@@ -43,8 +50,21 @@ import java.util.concurrent.Executors
  * 3. Play reports `PENDING`, then `DOWNLOADING` with byte counts ([downloadProgress]),
  *    then `DOWNLOADED`, which flips [updateState] to `READY_TO_INSTALL`; the
  *    prompt's **Restart** calls [completeUpdate].
- * 4. A cancelled consent modal returns to `AVAILABLE`; a failed download or a
- *    refused launch lands on `FAILED`, from which [retry] starts over.
+ * 4. A cancelled consent modal returns to `AVAILABLE`; a failed download, a
+ *    failed consent modal or a refused launch lands on `FAILED`, logs one line
+ *    with Play's reason, and the prompt hands over to the Play Store listing
+ *    ([openStoreListing]) — Play's own Update button there is the way out
+ *    when the in-app flow cannot finish.
+ *
+ * ## Only for a build Play installed
+ *
+ * Play can only update an app it installed. A sideloaded APK (installer `null`,
+ * `adb`, another store) can still read `UPDATE_AVAILABLE`, but the flow then
+ * fails and the user is left on "Update failed". So the production constructor
+ * reads the installer once ([isInstalledByPlay]) and a build Play did not
+ * install never asks Play and is never offered the update. The fake-backed
+ * constructor (tests, the debug `update_qa` scenarios) skips that gate so the
+ * flow can still be driven on an emulator.
  *
  * Wire it from a [ComponentActivity]:
  *
@@ -112,14 +132,21 @@ class InAppUpdateManager @VisibleForTesting constructor(
     // and the debug QA fake pass an inline executor.
     private val checkExecutor: Executor,
     private val throttle: UpdateCheckThrottle,
+    // Whether Play installed this build, so can update it. Read once, lazily,
+    // on the first check. Always true for a fake (tests, debug QA).
+    installedByPlayCheck: () -> Boolean = { true },
 ) {
 
-    /** Production wiring: real Play, round-trip on a background thread, process-wide throttle. */
+    /**
+     * Production wiring: real Play, round-trip on a background thread,
+     * process-wide throttle, and no offer at all unless Play installed the build.
+     */
     constructor(activity: Activity) : this(
         activity,
         { AppUpdateManagerFactory.create(activity) },
         backgroundCheckExecutor,
         UpdateCheckThrottle.PROCESS,
+        { isInstalledByPlay(activity) },
     )
 
     /**
@@ -146,6 +173,8 @@ class InAppUpdateManager @VisibleForTesting constructor(
     // happens after a round-trip has already created it.
     private val appUpdateManager: AppUpdateManager by lazy(appUpdateManagerFactory)
 
+    private val installedByPlay: Boolean by lazy(installedByPlayCheck)
+
     var updateState by mutableStateOf(UpdateState.IDLE)
         private set
 
@@ -164,7 +193,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
     // Play accepts an AppUpdateInfo for ONE flow only (a second
     // `startUpdateFlowForResult` with it returns false), so it is dropped the
     // moment a flow is launched with it; a later tap (after a cancelled consent
-    // modal, or a Retry) asks Play for a fresh one.
+    // modal) asks Play for a fresh one.
     private var pendingUpdateInfo: AppUpdateInfo? = null
 
     // True while a Play `appUpdateInfo` round-trip is outstanding — the
@@ -187,6 +216,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
     private val installStateListener: InstallStateUpdatedListener = InstallStateUpdatedListener { state ->
         if (destroyed) return@InstallStateUpdatedListener
         val next = updateStateFor(state.installStatus()) ?: return@InstallStateUpdatedListener
+        if (next == UpdateState.FAILED) logFailure("download failed, installErrorCode=${state.installErrorCode()}")
         when (next) {
             UpdateState.DOWNLOADING ->
                 downloadProgress = downloadFractionOf(state.bytesDownloaded(), state.totalBytesToDownload())
@@ -242,6 +272,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
             }
             // `ActivityResult.RESULT_IN_APP_UPDATE_FAILED` and anything unknown.
             else -> {
+                logFailure("consent flow failed, resultCode=${result.resultCode}")
                 unregisterListener()
                 updateState = UpdateState.FAILED
             }
@@ -265,8 +296,10 @@ class InAppUpdateManager @VisibleForTesting constructor(
         if (destroyed) return
         // A flow on screen owns the state: a second `onResume` (returning from
         // Google's consent modal, a config change) must not re-query or
-        // re-prompt (#1941), nor replace "Update failed · Retry".
+        // re-prompt (#1941), nor replace "Update failed".
         if (updateState in FLOW_STATES) return
+        // Play cannot update a build it did not install: never offer it.
+        if (!installedByPlay) return
         // Re-entrancy guard for the CHECKING window.
         if (inFlight) return
         // Play already answered "nothing to do" moments ago in this process.
@@ -293,18 +326,30 @@ class InAppUpdateManager @VisibleForTesting constructor(
     }
 
     /**
-     * Starts over after a failure: asks Play for a fresh [AppUpdateInfo] and, if
-     * the update is still there, pops the consent modal again. Called from the
-     * prompt's **Retry**. A no-op unless [updateState] is `FAILED`.
+     * The way out of "Update failed": opens this app's Play Store listing, whose
+     * own **Update** button installs the release the in-app flow could not.
+     * Tries the Play Store app (`market://`), then the web listing in a browser.
+     * Called from the prompt's **Open Play Store**; ends the failure, so the
+     * prompt goes away and the next resume checks Play again. A no-op unless
+     * [updateState] is `FAILED`.
      */
-    fun retry() {
+    fun openStoreListing() {
         if (destroyed) return
         if (updateState != UpdateState.FAILED) return
-        beginUserFlow()
+        updateState = UpdateState.IDLE
+        val opened = storeListingIntents(activity.packageName).any { intent ->
+            try {
+                activity.startActivity(intent)
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            }
+        }
+        if (!opened) Log.w(TAG, "no app can open the Play Store listing")
     }
 
     /**
-     * The user closed "Update failed" without retrying: forget the failure so the
+     * The user closed "Update failed" without opening the store: forget the failure so the
      * next resume checks Play again (and offers the update again if it is still
      * there). A no-op unless [updateState] is `FAILED`.
      */
@@ -340,7 +385,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
                 inFlight = false
                 onAppUpdateInfo(info, launchIfAvailable)
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
                 // A device without Play, or a build Play did not install, fails
                 // the same way on every resume: do not rebind just to hear it again.
                 throttle.recordQuietResult()
@@ -348,7 +393,12 @@ class InAppUpdateManager @VisibleForTesting constructor(
                 inFlight = false
                 // A background check stays silent; a tap the user is watching
                 // gets an answer they can act on.
-                updateState = if (launchIfAvailable) UpdateState.FAILED else UpdateState.IDLE
+                if (launchIfAvailable) {
+                    logFailure("appUpdateInfo failed: ${error.javaClass.simpleName}: ${error.message}")
+                    updateState = UpdateState.FAILED
+                } else {
+                    updateState = UpdateState.IDLE
+                }
             }
     }
 
@@ -400,6 +450,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
             AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
         )
         if (!launched) {
+            logFailure("startUpdateFlowForResult returned false")
             unregisterListener()
             updateState = UpdateState.FAILED
         }
@@ -438,6 +489,12 @@ class InAppUpdateManager @VisibleForTesting constructor(
         appUpdateManager.completeUpdate()
     }
 
+    // The one line a failed update leaves in logcat (`adb logcat -s InAppUpdate`):
+    // what Play said, so a failure on a real phone can be read back.
+    private fun logFailure(reason: String) {
+        Log.w(TAG, "Update failed: $reason")
+    }
+
     /** Must be called from `Activity.onDestroy()` to prevent listener leaks. */
     fun destroy() {
         destroyed = true
@@ -465,7 +522,7 @@ class InAppUpdateManager @VisibleForTesting constructor(
         /** Downloaded; [completeUpdate] installs it and restarts the app. */
         READY_TO_INSTALL,
 
-        /** The download, or the launch of the flow, failed; [retry] starts over. */
+        /** The download, or the launch of the flow, failed; [openStoreListing] is the way out. */
         FAILED,
 
         /** Play has no newer release for this build. */
@@ -473,6 +530,8 @@ class InAppUpdateManager @VisibleForTesting constructor(
     }
 
     private companion object {
+        const val TAG = "InAppUpdate"
+
         // States a resume must leave alone (see `checkForUpdate`).
         val FLOW_STATES = setOf(
             UpdateState.AVAILABLE,
@@ -522,3 +581,43 @@ internal fun downloadFractionOf(bytesDownloaded: Long, totalBytesToDownload: Lon
     } else {
         null
     }
+
+/** Play Store's package: the only installer that can run an in-app update. */
+@VisibleForTesting
+internal const val PLAY_STORE_PACKAGE = "com.android.vending"
+
+/** True when [installerPackageName] is the Play Store, i.e. Play can update the app. */
+@VisibleForTesting
+internal fun isPlayInstaller(installerPackageName: String?): Boolean = installerPackageName == PLAY_STORE_PACKAGE
+
+/**
+ * Whether the Play Store installed this app — the condition for an in-app update.
+ * `false` for a sideloaded APK (installer `null`), `adb install`, or another store,
+ * and when the installer cannot be read.
+ */
+fun isInstalledByPlay(context: Context): Boolean {
+    val packageManager = context.packageManager
+    val installer = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getInstallerPackageName(context.packageName)
+        }
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+    return isPlayInstaller(installer)
+}
+
+/**
+ * The intents that open [packageName]'s Play Store listing, in the order to try:
+ * the Play Store app, then the web listing.
+ */
+@VisibleForTesting
+internal fun storeListingIntents(packageName: String): List<Intent> = listOf(
+    Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")),
+    Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")),
+)

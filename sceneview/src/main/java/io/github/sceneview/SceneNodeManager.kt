@@ -23,6 +23,8 @@ class SceneNodeManager(
     fun addNode(node: Node) {
         if (!managedNodes.add(node)) return
         node.collisionSystem = collisionSystem
+        // The scene's view is known now: video and view materials invert its tone mapper (#4595).
+        node.matchToneMapInverse(collisionSystem.view)
         if (node.sceneEntities.isNotEmpty()) {
             scene.addEntities(node.sceneEntities.toIntArray())
         }

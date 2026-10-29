@@ -91,8 +91,34 @@ enum CosmosSpacetime {
     static let gain: Double = 0.6
     static let ceiling: Double = 1.25
     static let spotInner: Double = 3
-    /// The sheet's base colour, #6E7680, in sRGB.
-    static let baseColor = SIMD3<Double>(0x6E, 0x76, 0x80) / 255
+    /// The sheet's base colour on the flat, lit plane, #1C2638 in sRGB — Android's
+    /// `cosmos-sheet` (#4670). A deep slate, not the reference's #6E7680 grey: that grey filled
+    /// the frame as a washed-out disc (#4623), and the grid needs a dark ground to glow on.
+    static let baseColor = SIMD3<Double>(0x1C, 0x26, 0x38) / 255
+
+    // The grid over the sheet: `cosmos_spacetime.mat`'s, value for value.
+    /// A grid line's colour on screen at full glow, #A4C1FF — Android's `cosmos-sheet-grid`.
+    static let gridColor = SIMD3<Double>(0xA4, 0xC1, 0xFF) / 255
+    /// World units between two lines on the flat sheet: straight on the XZ plane, so the wells
+    /// bend them.
+    static let gridSpacing: Double = 0.5
+    /// Line weights: the one-pixel core and the soft halo, both in screen pixels.
+    static let gridCore: Double = 0.8
+    static let gridHalo: Double = 0.22
+    static let gridCorePixels: Double = 1.3
+    static let gridHaloPixels: Double = 5
+    /// Cells smaller on screen than 1 / 0.09 px start fading, gone by 1 / 0.18 px.
+    static let gridLegible: ClosedRange<Double> = 0.09...0.18
+    /// The grid's gain at the star's well (1 + this), easing to 1 at `gridWellRadius`.
+    static let gridWellGain: Double = 0.6
+    static let gridWellRadius: Double = 3
+    /// The grid fades out, squared, from `gridFadeStart` to `gridFadeEnd`, inside the rim.
+    static let gridFadeStart: Double = 2
+    static let gridFadeEnd: Double = 11
+    /// A world's shadow dims a line to this share, without putting it out.
+    static let gridShadowFloor: Double = 0.35
+    /// The brightest a line gets: at the star, unshadowed.
+    static var gridGlowMax: Double { 1 + gridWellGain }
 
     // Pose.
     static let cameraElevationDegrees: Double = 42
@@ -429,6 +455,23 @@ enum CosmosSpacetime {
 
     static func spot(_ distance: Double) -> Double {
         1 - smoothstep(spotInner, rim, distance)
+    }
+
+    /// How strongly a grid line glows at `distance` from the star, before its coverage and a
+    /// world's shadow: the well's gain times the squared fade towards the rim (Android's
+    /// `gridGlow`).
+    static func gridGlow(_ distance: Double) -> Double {
+        let fade = 1 - smoothstep(gridFadeStart, gridFadeEnd, distance)
+        return (1 + gridWellGain * (1 - smoothstep(0, gridWellRadius, distance))) * fade * fade
+    }
+
+    /// A grid line's coverage `pixels` away from it on screen, where a cell spans `cellPixels`:
+    /// core plus halo, faded out where the cells get too small to read instead of aliasing.
+    static func gridLine(pixels: Double, cellPixels: Double) -> Double {
+        let legible = 1 - smoothstep(gridLegible.lowerBound, gridLegible.upperBound, 1 / cellPixels)
+        let core = 1 - smoothstep(0, gridCorePixels, pixels)
+        let halo = 1 - smoothstep(0, gridHaloPixels, pixels)
+        return (gridCore * core + gridHalo * halo) * legible
     }
 
     /// The light a sphere of `radius` at `center` lets through to `p` (iOS penumbra:

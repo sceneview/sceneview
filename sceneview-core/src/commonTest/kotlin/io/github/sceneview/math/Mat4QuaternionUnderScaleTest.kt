@@ -344,9 +344,9 @@ class Mat4QuaternionUnderScaleTest {
     }
 
     /**
-     * `Mat4.rotation` (the Euler decomposition backing `Node.worldRotation`) normalises an
-     * unsheared basis internally, so single-level scale does not affect it. Sheared Euler
-     * extraction has a separate approximate contract documented on `Node.worldRotation`.
+     * `Mat4.rotation` normalises an unsheared basis internally, so single-level scale does not
+     * affect it. It no longer backs `Node.worldRotation`, which reads its Euler angles from
+     * `worldQuaternion` since #3745.
      */
     @Test
     fun eulerRotationExtractionIsScaleImmune() {

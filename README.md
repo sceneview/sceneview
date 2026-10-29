@@ -40,7 +40,14 @@ API or the doc gets fixed.
 The demo apps are built from [`samples/`](samples/). Any demo opens straight from a link:
 `https://sceneview.github.io/open?demo=<id>`. Start with
 [Cosmos](https://sceneview.github.io/open?demo=cosmos), the galaxy the catalogue opens on, or
-[Rerun AR Replay](https://sceneview.github.io/open?demo=ar-rerun), a real AR session rebuilt in 3D.
+[3D Scan](https://sceneview.github.io/open?demo=ar-rerun), a space scanned with ARCore and rebuilt in 3D.
+
+### Help test the demos
+
+Install the Android demo, record your screen while you use a demo, and tell us what breaks or
+confuses you: [open an issue](https://github.com/sceneview/sceneview/issues/new?labels=user-feedback)
+with the recording attached, or send it from the app (any demo, Settings, then Send feedback).
+Your first report unlocks **SceneView Labs**, early access to the experimental demos, straight away.
 
 ---
 
@@ -53,8 +60,13 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.52.0")
+implementation("io.github.sceneview:sceneview:4.63.0")
 ```
+
+The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.4 and JVM
+target 21 for both Java and Kotlin: SceneView ships Java 21 bytecode with public `inline`
+functions. The [quickstart requirements](docs/docs/quickstart.md#requirements) give the Gradle
+snippet and the reason for each.
 
 ```kotlin
 @Composable
@@ -75,7 +87,7 @@ coroutine: Filament calls must run on the main thread, and `rememberModelInstanc
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.52.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.63.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -90,7 +102,7 @@ fun ARScreen() {
             if (anchor == null) {
                 anchor = frame.getUpdatedPlanes()
                     .firstOrNull { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
-                    ?.let { frame.createAnchorOrNull(it.centerPose) }
+                    ?.let { it.createAnchorOrNull(it.centerPose) }
             }
         }
     ) {
@@ -108,9 +120,15 @@ Plane detected → `anchor` set → Compose recomposes → the model appears. **
 state.** For placement without a tap, grounded and gesture-ready, start from
 `AutoPlacementScene` (see [`llms.txt`](./llms.txt)).
 
+`arsceneview` already declares the `CAMERA` permission and marks ARCore as optional. An AR
+Optional app declares `android.hardware.camera.ar` and `android.hardware.camera` as
+`<uses-feature … android:required="false" />`; an AR Required app overrides the ARCore value
+with `tools:replace="android:value"`. Both snippets are in the
+[AR manifest](docs/docs/quickstart.md#ar-manifest) section.
+
 ### iOS / macOS / visionOS (SwiftUI)
 
-Swift Package Manager: `https://github.com/sceneview/sceneview.git`, from `4.39.0`.
+Swift Package Manager: `https://github.com/sceneview/sceneview.git`, from `4.63.0`.
 
 ```swift
 import SwiftUI
@@ -138,8 +156,8 @@ that finishes loading after the scene appears is never added.
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.52.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -147,7 +165,7 @@ that finishes loading after the scene appears is never added.
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.52.0")
+implementation("io.github.sceneview:sceneview-compose:4.63.0")
 ```
 
 ```kotlin
@@ -160,7 +178,7 @@ A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iO
 ### Flutter
 
 ```dart
-// pubspec.yaml → flutter_sceneview: ^4.52.0
+// pubspec.yaml → flutter_sceneview: ^4.63.0
 final controller = SceneViewController();
 
 SceneView(
@@ -234,11 +252,11 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.52.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.52.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.52.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.52.0` |
-| Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.39.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.63.0` |
+| Android AR | `io.github.sceneview:arsceneview:4.63.0` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.63.0` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.63.0` |
+| Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.63.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
 | Flutter | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |
@@ -258,7 +276,7 @@ Everything an assistant needs to write SceneView code ships with the SDK:
   others), `CLAUDE.md` (Claude Code), `.github/copilot-instructions.md`, and `.cursorrules` for
   older Cursor versions.
 - **The [MCP server](./mcp/)** — free, no API key. The tools assistants reach for most:
-  `validate_code` (checks a snippet against the real public API before you run it),
+  `validate_code` (checks a snippet for known pitfalls and unknown symbols before you run it; it does not check argument names),
   `get_node_reference` (the exact node signature, not an invented one), `list_samples` /
   `get_sample` (38 samples to start from), and `get_setup` / `get_ar_setup` (project wiring).
 
@@ -339,7 +357,7 @@ SceneView(
 
     // Nesting — same as Column { Row { } }
     Node(position = Position(y = 1.0f)) {
-        LightNode(apply = { type(LightManager.Type.POINT); intensity(50_000f) })
+        LightNode(type = LightManager.Type.POINT, apply = { intensity(50_000f) })
         CubeNode(size = Size(0.05f))
     }
 }
@@ -389,7 +407,7 @@ SceneView(
 | **Cloud Anchors** | `CloudAnchorNode.host(ttlDays = N)` + `.resolve(id)` |
 | **Augmented Faces & Images** | `AugmentedFaceNode`, `AugmentedImageDatabase`, runtime image add |
 | **Image Stabilization (EIS)** | `ARSceneView(imageStabilizationMode = ImageStabilizationMode.EIS)` |
-| **Camera exposure & focus** | `ARSceneView(cameraConfig = …)`, `ARSceneScope.exposureCompensation` |
+| **Camera exposure & focus** | `ARSceneView(sessionCameraConfig = …, focusMode = …, cameraExposure = …)` |
 | **Record & Replay** | `rememberARRecorder()` to capture, `ARSceneView(playbackDataset = file)` to replay 1:1 — see [AR debugging](#ar-debugging) |
 | **Rerun.io live debug** | `rememberRerunBridge()` streams poses, planes and point clouds to the Rerun viewer |
 | **Permission flow** | `ARPermissionHandler` — auto-detected from `ComponentActivity` |
@@ -497,7 +515,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.52.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.63.0")`.
 
 [Landing page](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [npm](https://www.npmjs.com/package/sceneview-web)
 
@@ -522,9 +540,13 @@ concept by concept (`ArFragment` → `ARSceneView { }`, `ModelRenderable` →
   at your desk with `ARSceneView(playbackDataset = file)`. See
   [`docs/docs/ar-recording.md`](docs/docs/ar-recording.md) and the
   [Record & Playback demo](samples/android-demo/RECORDING_PLAYBACK.md).
-- **Hosted Rerun viewer** — tap **Save & Share** in the AR Rerun demo, host the `.rrd` file on
-  any public URL, and open `https://sceneview.github.io/rerun/?url=<encoded-url>` to scrub the
-  session frame by frame in a browser, with no local install. Architecture and the Kotlin API
+- **Hosted Rerun viewer** — export a scan's **Rerun recording** from the 3D Scan demo, host the `.rrd` file at
+  an https address that ends in `.rrd`, and open
+  `https://sceneview.github.io/rerun/?url=<encoded-url>` to scrub the session frame by frame in a
+  browser, with no local install. The host has to allow cross-origin requests (CORS): a public
+  GitHub repository's `raw.githubusercontent.com` link and GitHub Pages do, a GitHub release
+  asset does not (checked 2026-10-13); an R2 or S3 bucket does with a CORS rule that allows
+  `https://sceneview.github.io`. Architecture and the Kotlin API
   (`RerunBridge.requestSaveAndShare`) are in the *AR Debug — Rerun.io* section of
   [`llms.txt`](./llms.txt).
 
@@ -553,8 +575,8 @@ sceneview-core (Kotlin Multiplatform)
 | `samples/android-demo` | Android — 3D & AR | `./gradlew :samples:android-demo:assembleDebug` |
 | `samples/android-tv-demo` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` |
 | `samples/ios-demo` | iOS — 3D & AR | Open in Xcode |
-| `samples/web-demo` | Web | `./gradlew :samples:web-demo:jsBrowserRun` |
-| `samples/desktop-demo` | Desktop (JDK 22+) | `./gradlew :samples:desktop-demo:run` |
+| `samples/web-demo` | Web | `cd samples/web-demo && cp ../../website-static/js/sceneview.js site/js/sceneview.js && npx http-server site -p 8080` |
+| `samples/desktop-demo` | Desktop (JDK 21+) | `./gradlew :samples:desktop-demo:run` |
 | `samples/flutter-demo` | Flutter | `cd samples/flutter-demo && flutter run` |
 | `samples/react-native-demo` | React Native | See its README |
 
@@ -573,13 +595,28 @@ sceneview-core (Kotlin Multiplatform)
 - [Website](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [Documentation](https://sceneview.github.io/docs/)
 - [Discord](https://discord.gg/UbNDDBTNqb) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Migration v2 → v3](MIGRATION.md)
 
-## Support
+## Sponsors
 
-SceneView is free and open source. Donations keep it maintained across every platform above.
+<!-- Same message as the website home page (#fund) and companies.html#sponsor: edit the three together.
+     Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
 
-| | Platform | Link |
-|---|---|---|
-| :heart: | **Open Collective** — transparent ledger, one-off or monthly | [Donate on Open Collective](https://opencollective.com/sceneview) |
-| :star: | **GitHub Sponsors** | [Sponsor on GitHub](https://github.com/sponsors/sceneview) |
+### SceneView runs in commercial products. Sponsor it or buy support.
 
-See [SPONSORS.md](.github/SPONSORS.md) for how sponsorship works here.
+Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it or buy support, now.**
+
+**Sponsor.** Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.
+
+**[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
+
+**Commercial support.**
+
+- **Incident, $600.** One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.
+- **2.3 LTS, $1,800 for 90 days.** One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.
+
+Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective's budget. Payment comes before any work. Every version stays under Apache 2.0. Write to [hello@sceneview.dev](mailto:hello@sceneview.dev).
+
+<a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/organizations.svg?avatarHeight=56&width=830" alt="Logos of the companies sponsoring SceneView on Open Collective"></a>
+
+<a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/individuals.svg?avatarHeight=40&width=830&button=false" alt="Avatars of the people backing SceneView on Open Collective"></a>
+
+[How sponsorship works](.github/SPONSORS.md)

@@ -33,8 +33,7 @@ import org.junit.runner.RunWith
  * dead API surface because [NodeGestureDelegate]'s 2-arg entry points called their own 3-arg
  * functions directly instead of dispatching through `node.onMove(...)` / `node.onScale(...)`.
  *
- * [NodeGestureDelegateDispatchContractTest] pins the same fix at the source level (a real
- * gesture pipeline can't run on the JVM); this class drives the real thing on-device: a genuine
+ * This class drives the real thing on-device: a genuine
  * [android.view.ScaleGestureDetector]-recognized pinch for scale, and a genuine ray-cast hit
  * test for move, each against a [Node] subclass overriding the 3-arg callback. `onRotate`
  * already dispatches correctly and is out of scope (tracked separately by #3735).

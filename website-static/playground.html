@@ -62,12 +62,12 @@
   <!-- Preconnect -->
   <!-- Preload -->
   <link rel="preload" href="js/filament/filament.js" as="script">
-  <link rel="preload" href="js/sceneview.js?v=4.52.0" as="script">
+  <link rel="preload" href="js/sceneview.js?v=4.63.0" as="script">
 
   <!-- Fonts -->
   <!-- SceneView engine -->
   <script src="js/filament/filament.js"></script>
-  <script src="js/sceneview.js?v=4.52.0"></script>
+  <script src="js/sceneview.js?v=4.63.0"></script>
 
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -1948,7 +1948,7 @@
                 <optgroup label="Characters">
                   <option value="AnimatedAstronaut">Astronaut</option>
                   <option value="AnimatedTrex">T-Rex</option>
-                  <option value="KindredLol">Kindred (LoL)</option>
+                  <option value="threejs_robot_expressive">Robot</option>
                 </optgroup>
                 <optgroup label="Animals">
                   <option value="Duck">Duck</option>
@@ -2114,7 +2114,7 @@
         },
         web: {
           file: 'model-viewer.js', lang: 'JavaScript',
-          code: '// SceneView Web — Model Viewer\nconst viewer = await SceneView.modelViewer(\n    "canvas",\n    "models/toy_car.glb",\n    {\n        autoRotate: true,\n        cameraDistance: 4.0,\n        backgroundColor: [0.07, 0.07, 0.11, 1.0]\n    }\n);\n\n// Optional: load environment for PBR reflections\nawait viewer.loadEnvironment("envs/neutral.ktx");\n\n// Orbit controls are enabled by default\n// Drag to rotate, scroll to zoom, right-drag to pan'
+          code: '// SceneView Web — Model Viewer\nconst viewer = await SceneView.modelViewer(\n    "canvas",\n    "models/toy_car.glb",\n    {\n        autoRotate: true,\n        cameraDistance: 4.0,\n        backgroundColor: [0.26, 0.27, 0.36, 1.0]\n    }\n);\n\n// Optional: load environment for PBR reflections\nawait viewer.loadEnvironment("envs/neutral.ktx");\n\n// Orbit controls are enabled by default\n// Drag to rotate, scroll to zoom, right-drag to pan'
         },
         flutter: {
           file: 'model_viewer.dart', lang: 'Dart',
@@ -2126,7 +2126,7 @@
         },
         desktop: {
           file: 'ModelViewerScreen.kt', lang: 'Kotlin',
-          code: '// Compose Desktop: SceneViewer from sceneview-compose.\n// Filament renders through filament-kmp (JDK 22+).\n// Viewer subset only: model, orbit camera, light,\n// environment, tap hit-testing. No AR on desktop.\n//\n// build.gradle.kts:\n// implementation("io.github.sceneview:sceneview-compose:4.52.0")\n\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\n\n@Composable\nfun ModelViewerScreen() {\n    SceneViewer(\n        model = ModelSource.Asset("models/toy_car.glb"),\n        modifier = Modifier.fillMaxSize(),\n    )\n}'
+          code: '// Compose Desktop: SceneViewer from sceneview-compose.\n// Filament renders through filament-kmp (JDK 21+).\n// Viewer subset only: model, orbit camera, light,\n// environment, tap hit-testing. No AR on desktop.\n//\n// build.gradle.kts:\n// implementation("io.github.sceneview:sceneview-compose:4.63.0")\n\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Modifier\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\n\n@Composable\nfun ModelViewerScreen() {\n    SceneViewer(\n        model = ModelSource.Asset("models/toy_car.glb"),\n        modifier = Modifier.fillMaxSize(),\n    )\n}'
         },
         mcp: {
           file: 'prompt.md', lang: 'Markdown',
@@ -2286,7 +2286,7 @@
           file: 'rerun-embed.html', lang: 'HTML',
           // NOTE: every </tag> inside this string is escaped as <\/tag> so the
           // outer <script> block isn't terminated early by the HTML parser.
-          code: '<!-- Embed the Rerun Web Viewer next to a SceneView canvas -->\n<!doctype html>\n<html>\n<head>\n    <meta charset="utf-8" />\n    <title>SceneView + Rerun<\/title>\n    <style>\n        body { margin: 0; background: #0f0f14; }\n        .split {\n            display: grid;\n            grid-template-columns: 1fr 1fr;\n            height: 100vh;\n        }\n        #sceneview-canvas, #rerun-viewer {\n            width: 100%;\n            height: 100%;\n            border: 0;\n        }\n    <\/style>\n<\/head>\n<body>\n    <div class="split">\n        <canvas id="sceneview-canvas"><\/canvas>\n        <!-- Official Rerun hosted viewer in an iframe -->\n        <iframe\n            id="rerun-viewer"\n            src="https://app.rerun.io/version/0.22.0/?url=https://example.com/your-session.rrd"\n            sandbox="allow-scripts allow-same-origin"\n            title="Rerun Web Viewer">\n        <\/iframe>\n    <\/div>\n\n    <script src="js/sceneview.js"><\/script>\n    <script>\n        SceneView.create("sceneview-canvas", {\n            backgroundColor: [0.07, 0.07, 0.11, 1.0]\n        }).then(function(sv) {\n            sv.loadModel("models/toy_car.glb");\n        });\n    <\/script>\n<\/body>\n<\/html>'
+          code: '<!-- Embed the Rerun Web Viewer next to a SceneView canvas -->\n<!doctype html>\n<html>\n<head>\n    <meta charset="utf-8" />\n    <title>SceneView + Rerun<\/title>\n    <style>\n        body { margin: 0; background: #0f0f14; }\n        .split {\n            display: grid;\n            grid-template-columns: 1fr 1fr;\n            height: 100vh;\n        }\n        #sceneview-canvas, #rerun-viewer {\n            width: 100%;\n            height: 100%;\n            border: 0;\n        }\n    <\/style>\n<\/head>\n<body>\n    <div class="split">\n        <canvas id="sceneview-canvas"><\/canvas>\n        <!-- Official Rerun hosted viewer in an iframe -->\n        <iframe\n            id="rerun-viewer"\n            src="https://app.rerun.io/version/0.22.0/?url=https://example.com/your-session.rrd"\n            sandbox="allow-scripts allow-same-origin"\n            title="Rerun Web Viewer">\n        <\/iframe>\n    <\/div>\n\n    <script src="js/sceneview.js"><\/script>\n    <script>\n        SceneView.create("sceneview-canvas", {\n            backgroundColor: [0.26, 0.27, 0.36, 1.0]\n        }).then(function(sv) {\n            sv.loadModel("models/toy_car.glb");\n        });\n    <\/script>\n<\/body>\n<\/html>'
         },
         flutter: {
           file: 'rerun_debug.md', lang: 'Markdown',
@@ -2412,7 +2412,7 @@
         },
         web: {
           file: 'multi-model.js', lang: 'JavaScript',
-          code: '// Multi-model scene with SceneView Web\nconst scene = await SceneView.create("canvas");\n\nawait scene.loadEnvironment("envs/studio.ktx");\n\n// Load multiple models concurrently\nconst [table, lamp, vase] = await Promise.all([\n    scene.loadModel("models/table.glb"),\n    scene.loadModel("models/lamp.glb"),\n    scene.loadModel("models/vase.glb")\n]);\n\n// Position each model\nlamp.setPosition(-0.5, 0.8, 0);\nlamp.setScale(0.5, 0.5, 0.5);\n\nvase.setPosition(0.5, 0.8, 0.2);\nvase.setScale(0.3, 0.3, 0.3);\n\n// Add key light\nscene.addLight({\n    type: "directional",\n    direction: [-1, -1, -1],\n    intensity: 100000,\n    castShadows: true\n});\n\nscene.enableCameraControls({\n    distance: 6, target: [0, 1, 0]\n});'
+          code: '// Several models with SceneView Web: one viewer per model.\n// A viewer shows one model at a time: a second loadModel()\n// call on the same viewer replaces the first.\nconst models = {\n    table: "models/table.glb",\n    lamp: "models/lamp.glb",\n    vase: "models/vase.glb"\n};\n\n// One <canvas> per model: id="table", id="lamp", id="vase"\nconst viewers = await Promise.all(\n    Object.entries(models).map(async ([id, file]) => {\n        const viewer = await SceneView.create(id);\n        await viewer.loadEnvironment("envs/studio.ktx");\n        await viewer.loadModel(file);\n        viewer.addLight({\n            type: "directional",\n            direction: [-1, -1, -1],\n            intensity: 100000,\n            castShadows: true\n        });\n        return viewer;\n    })\n);'
         }
       },
       'post-processing': {
@@ -2705,7 +2705,7 @@
       if (platform === 'desktop') {
         return {
           file: title.replace(/\s+/g, '') + '.kt', lang: 'Kotlin',
-          code: '// Desktop — ' + title + '\n//\n// Compose Desktop renders through Filament\n// (filament-kmp bindings, JDK 22+). SceneViewer\n// covers the viewer subset: a model, an orbit\n// camera, a light, an environment. No AR.\n//\n// Gradle: io.github.sceneview:sceneview-compose\n// Model: a GLB on the classpath (src/main/resources).\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.window.Window\nimport androidx.compose.ui.window.application\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\nimport io.github.sceneview.compose.rememberCameraState\n\nfun main() = application {\n    Window(onCloseRequest = ::exitApplication, title = \"' + title + '\") {\n        SceneViewer(\n            model = ModelSource.Asset(\"models/toy_car.glb\"),\n            modifier = Modifier.fillMaxSize(),\n            camera = rememberCameraState(),\n        )\n    }\n}'
+          code: '// Desktop — ' + title + '\n//\n// Compose Desktop renders through Filament\n// (filament-kmp bindings, JDK 21+). SceneViewer\n// covers the viewer subset: a model, an orbit\n// camera, a light, an environment. No AR.\n//\n// Gradle: io.github.sceneview:sceneview-compose\n// Model: a GLB on the classpath (src/main/resources).\nimport androidx.compose.foundation.layout.fillMaxSize\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.window.Window\nimport androidx.compose.ui.window.application\nimport io.github.sceneview.compose.ModelSource\nimport io.github.sceneview.compose.SceneViewer\nimport io.github.sceneview.compose.rememberCameraState\n\nfun main() = application {\n    Window(onCloseRequest = ::exitApplication, title = \"' + title + '\") {\n        SceneViewer(\n            model = ModelSource.Asset(\"models/toy_car.glb\"),\n            modifier = Modifier.fillMaxSize(),\n            camera = rememberCameraState(),\n        )\n    }\n}'
         };
       }
       if (platform === 'mcp') {
@@ -2914,7 +2914,7 @@
           });
           _previewLightEntities.push(key, fill);
           updatePreviewSettings();
-        }).catch(function(e) { console.warn(e); });
+        }).catch(warnLoadError);
       },
 
       // Auto-play the glTF animation baked in the model.
@@ -2922,7 +2922,7 @@
         sv.loadModel(getModelUrl('AnimatedAstronaut')).then(function() {
           sv.playAnimation(0, true);
           updatePreviewSettings();
-        }).catch(function(e) { console.warn(e); });
+        }).catch(warnLoadError);
       },
 
       // Spring-physics: load the Duck and play its glTF animation as a stand-in
@@ -2932,7 +2932,7 @@
         sv.loadModel(getModelUrl('Duck')).then(function() {
           sv.playAnimation(0, true);
           updatePreviewSettings();
-        }).catch(function(e) { console.warn(e); });
+        }).catch(warnLoadError);
       },
 
       // Post-processing: load the toy car with bloom forced ON so the user sees the
@@ -2942,7 +2942,7 @@
           if (sv.setBloom) {
             sv.setBloom({ strength: 0.25, resolution: 512 });
           }
-        }).catch(function(e) { console.warn(e); });
+        }).catch(warnLoadError);
       }
     };
 
@@ -2989,9 +2989,7 @@
           sv.stopAnimation && sv.stopAnimation();
           sv.loadModel(getModelUrl(ex.defaultModel)).then(function() {
             updatePreviewSettings();
-          }).catch(function(err) {
-            console.warn('loadModel error:', err);
-          });
+          }).catch(warnLoadError);
         });
       }
     }
@@ -3046,12 +3044,20 @@
       return MODEL_BASE + '/' + name + '.glb';
     }
 
+    // A pick made while the previous model was still loading replaces it: sceneview.js
+    // rejects the older load with an AbortError, which is not a failure.
+    function warnLoadError(e) {
+      if (e && e.name === 'AbortError') return;
+      console.warn('SceneView loadModel error:', e);
+    }
+
     function getBgColor() {
       var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      // The colours as displayed (sRGB): #344351 / #E3E0DB, #74818F / #E6E2DB.
       if (darkBg) {
-        return isDark ? [0.05, 0.07, 0.09, 1.0] : [0.92, 0.94, 0.97, 1.0];
+        return isDark ? [0x34 / 255, 0x43 / 255, 0x51 / 255, 1.0] : [0xE3 / 255, 0xE0 / 255, 0xDB / 255, 1.0];
       } else {
-        return isDark ? [0.15, 0.18, 0.22, 1.0] : [1.0, 1.0, 1.0, 1.0];
+        return isDark ? [0x74 / 255, 0x81 / 255, 0x8F / 255, 1.0] : [0xE6 / 255, 0xE2 / 255, 0xDB / 255, 1.0];
       }
     }
 
@@ -3079,9 +3085,7 @@
       if (sceneViewInstance) {
         return sceneViewInstance.loadModel(modelUrl).then(function() {
           updatePreviewSettings();
-        }).catch(function(e) {
-          console.warn('SceneView loadModel error:', e);
-        });
+        }).catch(warnLoadError);
       }
       // First init — create the viewer
       return SceneView.modelViewer('previewCanvas', modelUrl, {
@@ -3516,8 +3520,8 @@
 
         var prompt = 'Build me a SceneView ' + platLabel + ' app:\n\n' + userDesc + '\n\n';
         prompt += '--- SceneView Quick Reference ---\n';
-        prompt += 'SDK: io.github.sceneview:sceneview:4.52.0 (3D) / arsceneview:4.52.0 (AR)\n';
-        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.52.0")\n';
+        prompt += 'SDK: io.github.sceneview:sceneview:4.63.0 (3D) / arsceneview:4.63.0 (AR)\n';
+        prompt += 'iOS: SPM https://github.com/sceneview/sceneview.git (from: "4.63.0")\n';
         prompt += 'Web: npm install sceneview-web@4\n\n';
 
         if (plat === 'android' || plat === 'flutter' || plat === 'reactnative' || plat === 'desktop') {

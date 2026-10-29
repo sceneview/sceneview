@@ -24,6 +24,7 @@ import io.github.sceneview.model.collisionShape
 import io.github.sceneview.model.emptyNodeEntities
 import io.github.sceneview.model.engine
 import io.github.sceneview.model.getAnimationIndex
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.lightEntities
 import io.github.sceneview.model.model
 import io.github.sceneview.model.renderableEntities
@@ -63,7 +64,7 @@ open class ModelNode(
      * - ...
      */
     centerOrigin: Position? = null
-) : Node(engine = modelInstance.engine, entity = modelInstance.root) {
+) : Node(engine = modelInstance.engine, entity = modelInstance.liveRoot()) {
 
     interface ChildNode {
         val entity: Entity
@@ -72,18 +73,32 @@ open class ModelNode(
 
         /**
          * Gets the `NameComponentManager` label for the given node, if it exists.
+         *
+         * The sub-nodes of a [ModelNode] read it once, when they are built, and keep it.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val name: String? get() = model.getName(entity)
+        val name: String? get() = model.also { checkModelAlive("name") }.getName(entity)
 
         /**
          * Gets the glTF extras string for the asset or a specific node.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val extras: String? get() = model.getExtras(entity)
+        val extras: String? get() = model.also { checkModelAlive("extras") }.getExtras(entity)
 
         /**
          * Gets the names of all morph targets in the given entity.
+         *
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
          */
-        val morphTargetNames: List<String> get() = model.getMorphTargetNames(entity).toList()
+        val morphTargetNames: List<String>
+            get() = model.also { checkModelAlive("morphTargetNames") }.getMorphTargetNames(entity).toList()
+
+        private fun checkModelAlive(what: String) = check(!model.isDestroyed) {
+            "ModelNode.ChildNode.$what: the model of this node was destroyed (ModelLoader.destroyModel, " +
+                "clear or destroy). Stop using the node once its model is destroyed."
+        }
     }
 
     inner class RenderableNode internal constructor(
@@ -92,6 +107,15 @@ open class ModelNode(
         ChildNode {
         override var name = super<ChildNode>.name
 
+        /**
+         * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]): gltfio
+         * destroyed this entity with it, and its id can already name another renderable.
+         */
+        override fun getMaterialInstanceAt(@IntRange(from = 0) primitiveIndex: Int): MaterialInstance {
+            checkModelAlive("RenderableNode.getMaterialInstanceAt")
+            return super.getMaterialInstanceAt(primitiveIndex)
+        }
+
         // The sanitize-once latch ([permanentlyValidEntities]) assumes a static renderable's AABB
         // can never go back to empty once observed valid. Explicitly mutating the geometry or the
         // bounding box of a *latched* renderable is the one out-of-band path that can re-introduce
@@ -99,9 +123,29 @@ open class ModelNode(
         // entity from the latch on every such mutation makes the next [sanitizeEmptyBoundingBoxes]
         // pass re-scan it and re-detect the empty AABB before Filament can crash on it (#2311).
 
+        /**
+         * Takes this renderable out of [permanentlyValidEntities] after its geometry or bounding
+         * box was written, and asks for the frame that re-scans it: a model at rest is not ticked
+         * (#4451).
+         *
+         * The frame is asked for on the **model** — `sanitizeEmptyBoundingBoxes` is the model's
+         * work. This sub-node has none of its own, and an unqualified `hasOwnFrameWork` here
+         * would be this sub-node's: a step that does nothing, on a model that stays asleep.
+         */
+        private fun unlatchBoundingBox() {
+            permanentlyValidEntities -= entity
+            this@ModelNode.hasOwnFrameWork = true
+        }
+
         override fun setGeometry(geometry: Geometry) {
             super.setGeometry(geometry)
-            permanentlyValidEntities -= entity
+            unlatchBoundingBox()
+        }
+
+        // A bound geometry also changes through `Geometry.update`, which rebinds this renderable
+        // — new bounding box included — without going through `setGeometry` (#4344).
+        override fun onGeometryApplied() {
+            unlatchBoundingBox()
         }
 
         override fun setGeometryAt(
@@ -113,14 +157,14 @@ open class ModelNode(
             count: Int
         ) {
             super.setGeometryAt(primitiveIndex, type, vertices, indices, offset, count)
-            permanentlyValidEntities -= entity
+            unlatchBoundingBox()
         }
 
         override var axisAlignedBoundingBox: Box
             get() = super.axisAlignedBoundingBox
             set(value) {
                 super.axisAlignedBoundingBox = value
-                permanentlyValidEntities -= entity
+                unlatchBoundingBox()
             }
     }
 
@@ -173,7 +217,7 @@ open class ModelNode(
     val model get() = modelInstance.model
 
     /**
-     * Called when an exception occurs during [onFrame] (e.g. bone matrix update, popRenderable).
+     * Called when an exception occurs during the model's frame (e.g. bone matrix update, popRenderable).
      *
      * Set this to handle frame errors programmatically (crash reporting, analytics, UI feedback).
      * When `null` (default), errors are logged via `android.util.Log.e`.
@@ -181,12 +225,54 @@ open class ModelNode(
     var onFrameError: ((Exception) -> Unit)? = null
 
     /**
+     * `true` once the model was destroyed under this node, by `ModelLoader.destroyModel`, `clear`
+     * or `destroy`. `rememberModelInstance` destroys it when it leaves the composition, possibly
+     * before the node detaches. Check it before using a node that may outlive its model.
+     *
+     * gltfio frees the asset, its instance and its animator without clearing the instance's and
+     * the animator's handles, so the node guards each of its members that reaches them:
+     * - **do nothing:** the node's frame, [stopAnimation];
+     * - **throw [IllegalStateException]:** [boundingBox], [halfExtent], [extents], [center],
+     *   [size], [scaleToUnitCube], [centerOrigin], [animationCount], [playAnimation],
+     *   [setAnimationSpeed], [skinCount], [skinNames], [materialVariantNames], [attachSkin],
+     *   [detachSkin], [getJointCount]; on the sub-nodes, [ChildNode.name] (read once, when the
+     *   sub-node is built), [ChildNode.extras], [ChildNode.morphTargetNames] and
+     *   `RenderableNode.getMaterialInstanceAt`.
+     *
+     * Not guarded:
+     * - [model] and [animator] are gltfio's own objects, handed out as they are: a call on them
+     *   after the destroy is a native crash;
+     * - the renderable state — [materialInstances], [setMaterialInstance], [isShadowCaster],
+     *   [isShadowReceiver], [setMorphWeights], [setLayerVisible], [setLayerMask], [setPriority],
+     *   [setCulling], [setScreenSpaceContactShadows], [setBlendOrder],
+     *   [setGlobalBlendOrderEnabled] and the same members on the sub-nodes — goes through the
+     *   engine's managers by entity, not through the asset. gltfio destroyed those entities with
+     *   it: Filament ignores a write to an entity without a component and answers a read with its
+     *   default. An entity id the engine has since given to another object is not detected,
+     *   except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the getter of
+     *   [materialInstances]), which throw.
+     */
+    val isModelDestroyed: Boolean get() = model.isDestroyed
+
+    private fun checkModelAlive(what: String) = check(!isModelDestroyed) {
+        "ModelNode.$what: the model of this node was destroyed (ModelLoader.destroyModel, clear " +
+            "or destroy). Stop using the node once its model is destroyed."
+    }
+
+    /**
      * Gets the bounding box computed from the supplied min / max values in glTF accessors.
      *
      * This does not return a bounding box over all FilamentInstance, it's just a straightforward
      * AAAB that can be determined at load time from the asset data.
+     *
+     * @throws IllegalStateException once the model was destroyed, as [halfExtent], [extents],
+     * [center] and [size] do.
      */
-    val boundingBox get() = model.boundingBox
+    val boundingBox: Box
+        get() {
+            checkModelAlive("boundingBox")
+            return model.boundingBox
+        }
     val halfExtent get() = boundingBox.halfExtent.let { v -> Float3(v[0], v[1], v[2]) }
     val extents get() = halfExtent * 2.0f
     val center get() = boundingBox.center.let { v -> Float3(v[0], v[1], v[2]) }
@@ -199,10 +285,38 @@ open class ModelNode(
 
     /**
      * The number of animation definitions in the glTF asset.
+     *
+     * @throws IllegalStateException once the model was destroyed, as [playAnimation] and
+     * [setAnimationSpeed] do.
      */
-    val animationCount get() = animator.animationCount
+    val animationCount: Int
+        get() {
+            checkModelAlive("animationCount")
+            return animator.animationCount
+        }
 
-    var playingAnimations = mutableMapOf<Int, PlayingAnimation>()
+    /**
+     * The animations in flight, by animation index. Filled by [playAnimation], emptied by
+     * [stopAnimation] and by a non-looping animation reaching its end; it can also be written
+     * directly.
+     *
+     * A map assigned here is read and written through: the node keeps it as its storage and hands
+     * back a view of it. Add an entry through this property (or [playAnimation]) rather than
+     * through a reference kept to the assigned map — an entry that appears behind the node's back
+     * in a model that was at rest is only picked up once something else gives the node a frame.
+     * The same goes for one map assigned to two models: each sees only what is added through its
+     * own property.
+     *
+     * Main thread only, reads and writes alike: the map has never been thread-safe, and the model
+     * decides at the end of each of its frames whether it still needs the next one.
+     */
+    var playingAnimations: MutableMap<Int, PlayingAnimation> =
+        mutableMapOf<Int, PlayingAnimation>().observedBy(this) { hasOwnFrameWork = true }
+        set(value) {
+            // Seen through a view that raises `hasOwnFrameWork` on every entry added.
+            field = value.observedBy(this) { hasOwnFrameWork = true }
+            if (value.isNotEmpty()) hasOwnFrameWork = true
+        }
 
     /**
      * Tracks renderable entities whose AABB was empty and had culling/shadows disabled.
@@ -233,21 +347,67 @@ open class ModelNode(
      */
     private val permanentlyValidEntities = mutableSetOf<Entity>()
 
+    /** Skins are created with the instance; read once rather than over JNI on every frame. */
+    private val hasSkins: Boolean = modelInstance.skinCount > 0
+
+    /**
+     * Whether a frame has something to do on this model — what `hasOwnFrameWork` is set to at the
+     * end of construction and of every frame it ran on. Any of:
+     *
+     * - **an animation is in [playingAnimations]** — paused ones included;
+     * - **the model has a skin**: its bone matrices are recomputed on every frame, which is what
+     *   lets a skeleton posed by any means — a joint node moved, [animator] driven directly —
+     *   reach the mesh. Nothing reports those writes, so a rigged model is ticked at rest too;
+     * - **a renderable's bounding box is still being watched** by [sanitizeEmptyBoundingBoxes]:
+     *   one that is empty for now, or one with morph targets, which is never latched.
+     *
+     * A fully loaded model with no skin, no morph target and nothing playing answers `false`, and
+     * the scene then has no step for it. Two writes raise the model's flag again at once, since a
+     * model at rest has no frame on which to find them:
+     *
+     * - an entry added to [playingAnimations] through the property or [playAnimation];
+     * - a geometry or bounding-box write on one of [renderableNodes] — `setGeometry`,
+     *   `setGeometryAt`, `axisAlignedBoundingBox`, or a `Geometry.update` on a geometry bound to
+     *   it — which takes that renderable out of [permanentlyValidEntities].
+     *
+     * Read on the main thread only, like everything it reads.
+     */
+    private val needsFrame: Boolean
+        get() = playingAnimations.isNotEmpty() || hasSkins ||
+            permanentlyValidEntities.size != renderableNodes.size
+
     /**
      * Gets the skin count of this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    val skinCount: Int get() = modelInstance.skinCount
+    val skinCount: Int
+        get() {
+            checkModelAlive("skinCount")
+            return modelInstance.skinCount
+        }
 
     /**
      * Returns the names of all material variants.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
     val materialVariantNames: List<String>
-        get() = modelInstance.materialVariantNames.toList()
+        get() {
+            checkModelAlive("materialVariantNames")
+            return modelInstance.materialVariantNames.toList()
+        }
 
     /**
      * Gets the skin name at skin index in this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    val skinNames: List<String> get() = modelInstance.skinNames.toList()
+    val skinNames: List<String>
+        get() {
+            checkModelAlive("skinNames")
+            return modelInstance.skinNames.toList()
+        }
 
     /**
      * Changes whether or not the renderable casts shadows.
@@ -332,6 +492,8 @@ open class ModelNode(
      * Pauses the `animation` if zero.
      * @param loop Specifies if the `animation` should repeat forever.
      *
+     * Main thread only, like every write to [playingAnimations].
+     *
      * @see Animator.getAnimationCount
      */
     fun playAnimation(animationIndex: Int, speed: Float = 1f, loop: Boolean = true) {
@@ -345,6 +507,7 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun playAnimation(animationName: String, speed: Float = 1f, loop: Boolean = true) {
+        checkModelAlive("playAnimation")
         animator.getAnimationIndex(animationName)?.let { playAnimation(it, speed, loop) }
     }
 
@@ -367,6 +530,7 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun setAnimationSpeed(animationName: String, speed: Float) {
+        checkModelAlive("setAnimationSpeed")
         animator.getAnimationIndex(animationName)?.let { setAnimationSpeed(it, speed) }
     }
 
@@ -387,6 +551,15 @@ open class ModelNode(
      * @see Animator.getAnimationName
      */
     fun stopAnimation(animationName: String) {
+        // Nothing plays on a destroyed model, and the `ModelNode` composable stops its named
+        // animation on dispose, which can come after `rememberModelInstance` destroyed the model.
+        if (isModelDestroyed) {
+            android.util.Log.d(
+                "SceneView",
+                "ModelNode.stopAnimation(\"$animationName\"): its model was destroyed, nothing to stop"
+            )
+            return
+        }
         animator.getAnimationIndex(animationName)?.let { stopAnimation(it) }
     }
 
@@ -395,24 +568,36 @@ open class ModelNode(
      * BONE_INDICES and BONE_WEIGHTS attributes.
      *
      * This is a no-op if the given skin index or target is invalid.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    fun attachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) =
+    fun attachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) {
+        checkModelAlive("attachSkin")
         modelInstance.attachSkin(skinIndex, target.entity)
+    }
 
     /**
      * Attaches the given skin to the given node, which must have an associated mesh with
      * BONE_INDICES and BONE_WEIGHTS attributes.
      *
      * This is a no-op if the given skin index or target is invalid.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    fun detachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) =
+    fun detachSkin(target: Node, @IntRange(from = 0) skinIndex: Int = 0) {
+        checkModelAlive("detachSkin")
         modelInstance.detachSkin(skinIndex, target.entity)
+    }
 
     /**
      * Gets the joint count at skin index in this instance.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]).
      */
-    open fun getJointCount(@IntRange(from = 0) skinIndex: Int = 0): Int =
-        modelInstance.getJointCountAt(skinIndex)
+    open fun getJointCount(@IntRange(from = 0) skinIndex: Int = 0): Int {
+        checkModelAlive("getJointCount")
+        return modelInstance.getJointCountAt(skinIndex)
+    }
 
     /**
      * Changes the material instances binding for the given primitives.
@@ -511,17 +696,42 @@ open class ModelNode(
         renderableNodes.forEach { it.setGlobalBlendOrderEnabled(enabled) }
     }
 
-    /**
-     * A glTF animation in flight keeps the scene rendering under
-     * [io.github.sceneview.FrameRatePolicy.OnDemand]: the skinning / morphing write-back happens in
-     * [onFrame] below, which no transform setter goes through, so nothing else would invalidate.
-     */
-    override val isFrameActive: Boolean
-        get() = playingAnimations.isNotEmpty() || super.isFrameActive
+    init {
+        // A glTF animation in flight keeps the scene rendering under `FrameRatePolicy.OnDemand`:
+        // the skinning / morphing write-back happens in `onOwnFrame` below, which no transform setter
+        // goes through, so nothing else would invalidate. `playingAnimations` is a public mutable
+        // map — nothing reports a write to it — so the scene asks on every tick (#3724).
+        addFrameActivityProvider { playingAnimations.isNotEmpty() }
+        // `autoAnimate` raised it already when it started something; a rigged or still-loading
+        // model raises it here, and a static one leaves it down.
+        hasOwnFrameWork = needsFrame
+    }
 
+    /**
+     * Kept for binary compatibility, and does nothing of its own: the model's per-frame work
+     * moved to `onOwnFrame` (#4451), so the scene no longer has to call this on every frame —
+     * and walk every node of the glTF under it — to reach that work.
+     * `SceneFrameDispatch` relies on this body being `super` alone, and
+     * `LibraryOnFrameOverridesContractTest` fails the build the day it is not.
+     */
     override fun onFrame(frameTimeNanos: Long) {
         super.onFrame(frameTimeNanos)
+    }
 
+    /**
+     * The model's frame: renderables that became ready, the playing animations, the bone
+     * matrices. Runs after the node's `onFrame` callback, as it did when it was the tail of the
+     * `onFrame` override, and only while [needsFrame] says there is a reason to.
+     */
+    override fun onOwnFrame(frameTimeNanos: Long) {
+        if (isModelDestroyed) {
+            // `rememberModelInstance` destroys the model when it leaves the composition, and the
+            // node can detach from a child composition a frame later. The asset, its instance and
+            // its animator are freed: nothing left to pop, animate or skin, and no frame to ask for.
+            playingAnimations.clear()
+            hasOwnFrameWork = false
+            return
+        }
         try {
             // Capture BEFORE applyAnimations(): a non-looping animation removes itself
             // from `playingAnimations` on the same frame it writes its final pose, so a
@@ -534,7 +744,9 @@ open class ModelNode(
                 // for rendering that could have empty AABBs.
                 sanitizeEmptyBoundingBoxes()
                 wasAnimating = playingAnimations.isNotEmpty()
-                applyAnimations(frameTimeNanos)
+                applyAnimations(
+                    animator, playingAnimations, finishedAnimationIndices, frameTimeNanos
+                )
                 animator.updateBoneMatrices()
             } finally {
                 // glTF animation (applyAnimations) writes the sub-nodes' transforms straight
@@ -564,6 +776,9 @@ open class ModelNode(
             onFrameError?.invoke(e)
                 ?: android.util.Log.e("SceneView", "ModelNode.onFrame error", e)
         }
+        // After the work, so the frame on which a non-looping animation wrote its last pose and
+        // left `playingAnimations` is the last one the model asks for.
+        hasOwnFrameWork = needsFrame
     }
 
     /**
@@ -578,7 +793,7 @@ open class ModelNode(
      * the sub-node invalidation explicit at this level should the parenting ever change.
      *
      * The genuinely-needed invalidation for animation is the `wasAnimating` pass in
-     * [onFrame]: glTF animation writes sub-node transforms straight into Filament,
+     * `onOwnFrame`: glTF animation writes sub-node transforms straight into Filament,
      * bypassing the [Node] setters that would otherwise trigger this propagation (#2264).
      */
     override fun onWorldTransformChanged() {
@@ -600,7 +815,7 @@ open class ModelNode(
      *
      * Once the AABB becomes valid (non-empty), culling and shadows are re-enabled.
      *
-     * **Per-frame cost (#2273).** This runs from [onFrame] every frame. To avoid issuing a
+     * **Per-frame cost (#2273).** This runs from [onOwnFrame] on every frame the model is ticked. To avoid issuing a
      * `getInstance` + `getAxisAlignedBoundingBox` JNI call (plus a `FloatArray(3)` allocation)
      * per renderable on every frame forever, a renderable is latched into
      * [permanentlyValidEntities] and skipped on subsequent frames **once, and only once, it is
@@ -619,7 +834,7 @@ open class ModelNode(
         // Skinning is a model-level property: if any skin exists, conservatively treat every
         // renderable as runtime-mutable (we can't cheaply map an entity to its skin), so none
         // get latched and the full per-frame check is preserved.
-        val modelHasSkins = modelInstance.skinCount > 0
+        val modelHasSkins = hasSkins
         val box = Box()
         renderableNodes.forEach { renderableNode ->
             // Already proven valid and static: never needs re-checking, skip the JNI calls.
@@ -683,39 +898,59 @@ open class ModelNode(
      * render thread inside [applyAnimations], so there is no race.
      */
     private val finishedAnimationIndices = ArrayList<Int>(0)
+}
 
-    private fun applyAnimations(frameTimeNanos: Long) {
-        val animator = animator
-        // `forEach` over the map walks the backing LinkedHashMap.Entry nodes (which are persistent
-        // — not boxed per frame; the Int key was boxed once at insert in playAnimation()). Finished
-        // non-looping animations are collected into the reusable [finishedAnimationIndices] scratch
-        // and removed after the walk, replacing the prior `iterator.remove()` mutation-during-
-        // iteration. Behaviour is identical: a finished animation still has its final pose applied
-        // this frame before it is dropped.
-        playingAnimations.forEach { (index, animation) ->
-            if (animation.speed == 0f) return@forEach
+/**
+ * The root entity of [this], checked before the [ModelNode] super constructor reads it: past
+ * `ModelLoader.destroyModel`, the instance's handle points at freed memory.
+ */
+private fun ModelInstance.liveRoot(): Entity {
+    check(!isDestroyed) {
+        "Cannot create a ModelNode: its model was destroyed (ModelLoader.destroyModel, clear or " +
+            "destroy). Create the node from a model that is still loaded."
+    }
+    return root
+}
 
-            val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
-            val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
-            val animationDuration = animator.getAnimationDuration(index)
-            val animationTime: Float = if (animation.speed > 0) {
-                adjustedTimeSeconds
-            } else {
-                animationDuration - adjustedTimeSeconds
-            }
+/**
+ * Applies every animation of [playing] at [frameTimeNanos] through [animator], then drops the
+ * non-looping ones that reached their end. [finished] is the caller's scratch list, left empty.
+ */
+private fun applyAnimations(
+    animator: Animator,
+    playing: MutableMap<Int, ModelNode.PlayingAnimation>,
+    finished: ArrayList<Int>,
+    frameTimeNanos: Long
+) {
+    // `forEach` over the map walks the backing LinkedHashMap.Entry nodes (which are persistent
+    // — not boxed per frame; the Int key was boxed once at insert in playAnimation()). Finished
+    // non-looping animations are collected into the reusable [finished] scratch and removed
+    // after the walk, replacing the prior `iterator.remove()` mutation-during-iteration.
+    // Behaviour is identical: a finished animation still has its final pose applied this frame
+    // before it is dropped.
+    playing.forEach { (index, animation) ->
+        if (animation.speed == 0f) return@forEach
 
-            animator.applyAnimation(index, animationTime)
-
-            if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
-                finishedAnimationIndices.add(index)
-            }
+        val elapsedTimeSeconds = frameTimeNanos.intervalSeconds(animation.startTime)
+        val adjustedTimeSeconds = elapsedTimeSeconds.toFloat() * abs(animation.speed)
+        val animationDuration = animator.getAnimationDuration(index)
+        val animationTime: Float = if (animation.speed > 0) {
+            adjustedTimeSeconds
+        } else {
+            animationDuration - adjustedTimeSeconds
         }
-        if (finishedAnimationIndices.isNotEmpty()) {
-            for (i in finishedAnimationIndices.indices) {
-                playingAnimations.remove(finishedAnimationIndices[i])
-            }
-            finishedAnimationIndices.clear()
+
+        animator.applyAnimation(index, animationTime)
+
+        if (!animation.loop && adjustedTimeSeconds >= animationDuration) {
+            finished.add(index)
         }
+    }
+    if (finished.isNotEmpty()) {
+        for (i in finished.indices) {
+            playing.remove(finished[i])
+        }
+        finished.clear()
     }
 }
 

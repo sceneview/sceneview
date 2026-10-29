@@ -26,7 +26,7 @@ sealed interface UpdatePrompt {
     /** "Update ready" + **Restart** → [InAppUpdateManager.completeUpdate]. Stays until answered. */
     data object ReadyToInstall : UpdatePrompt
 
-    /** "Update failed" + **Retry** → [InAppUpdateManager.retry]. Dismissible. */
+    /** "Update failed" + **Open Play Store** → [InAppUpdateManager.openStoreListing]. Dismissible. */
     data object Failed : UpdatePrompt
 }
 
@@ -70,7 +70,8 @@ class SharedPreferencesUpdatePromptStore(context: Context) : UpdatePromptStore {
  *   the snooze: the user asked for this download and watches it run.
  * - `READY_TO_INSTALL` → [UpdatePrompt.ReadyToInstall], whatever the snooze: **Restart** is the
  *   only way to finish the download the user asked for.
- * - `FAILED` → [UpdatePrompt.Failed]; **Retry** starts over, closing it forgets the failure.
+ * - `FAILED` → [UpdatePrompt.Failed]; **Open Play Store** hands over to the store listing
+ *   (whose own Update button installs the release), closing it forgets the failure.
  */
 class UpdatePromptController(
     private val manager: InAppUpdateManager,
@@ -92,7 +93,7 @@ class UpdatePromptController(
         when (prompt) {
             UpdatePrompt.Available -> manager.startUpdate()
             UpdatePrompt.ReadyToInstall -> manager.completeUpdate()
-            UpdatePrompt.Failed -> manager.retry()
+            UpdatePrompt.Failed -> manager.openStoreListing()
             // Progress has no action.
             UpdatePrompt.Waiting, is UpdatePrompt.Downloading -> {}
         }

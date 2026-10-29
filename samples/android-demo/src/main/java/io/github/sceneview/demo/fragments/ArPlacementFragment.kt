@@ -3,11 +3,14 @@ package io.github.sceneview.demo.fragments
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoMode
 import io.github.sceneview.demo.DemoModeHost
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.placement.PlaceModeMemory
 import io.github.sceneview.demo.demos.ARPlacementDemo
 import io.github.sceneview.demo.demos.ARPoseDemo
 import io.github.sceneview.demo.demos.PlacementSceneDemo
@@ -48,19 +51,26 @@ object ArPlacementFragment : DemoFragment {
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
+        // Held outside the modes, which the host disposes on every switch: what Place had armed
+        // survives a trip to Free pose or One call, and "Place" reopens its camera (#4531).
+        val placeMemory = rememberSaveable(saver = PlaceModeMemory.Saver) { PlaceModeMemory() }
         DemoModeHost(
             modes = modes,
             tabToMode = mapOf(FREE_POSE_TAB to 1, ONE_CALL_TAB to 2),
             defaultModeReadsTab = true,
         ) { mode ->
+            SideEffect { if (mode != PLACE_MODE) placeMemory.visitedOtherMode = true }
             when (mode) {
                 1 -> ARPoseDemo(onBack)
                 2 -> PlacementSceneDemo(onBack)
-                else -> ARPlacementDemo(onBack)
+                else -> ARPlacementDemo(onBack, placeMemory)
             }
         }
     }
 }
+
+/** Index of the Place mode in [ArPlacementFragment.modes]. */
+private const val PLACE_MODE = 0
 
 /** Launch tab of the Free pose mode; 0 and 1 are the floor and the wall of Place. */
 private const val FREE_POSE_TAB = 2

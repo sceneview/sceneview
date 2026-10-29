@@ -91,7 +91,9 @@ appId: io.github.sceneview.demo.qa
 # touches, so interacting first orbited nothing.
 #
 # AR demos pass `firstFrameRendered = null` (their viewport is the camera feed),
-# so they publish "Scene ready" as soon as they compose and this passes at once.
+# so they publish "Scene ready" as soon as the AR screen itself composes. The
+# camera-permission screen in front of it draws no scene and never publishes it
+# (#4460): an AR demo opened without the camera granted times out here.
 - extendedWaitUntil:
     visible: "Scene ready"
     timeout: 30000

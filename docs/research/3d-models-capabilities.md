@@ -53,7 +53,7 @@
 |-------|---------|-------|---------|
 | **Fox** (Khronos) | CC-BY | ~1 MB | 3 animations (Survey, Walk, Run) — `playAnimation(index)` |
 | **CesiumMan** (Khronos) | CC-BY | ~0.5 MB | Textured walking man |
-| **Soldier.glb** (three.js) | MIT | ~1 MB | Walk/run/idle — human-scale for AR |
+| **Soldier.glb** (three.js) | not free: a Mixamo character, removed in #4586 | ~1 MB | Replaced by the CC0 Quaternius Ranger (idle/walk/run/sprint/dance) |
 | **Quaternius Platformer Character** | CC0 | ~0.5-1 MB | 18 animations per character |
 
 ### Morph Targets

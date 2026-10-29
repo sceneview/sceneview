@@ -37,19 +37,27 @@ file it works. That branch now has a test; see the suite's dispatch-path case.
 
 Exit codes are the step's verdict: a non-zero exit is a red step and a release
 that did NOT reach App Review. Do not add a bare `except` that swallows one.
-Exit 75 (EX_TEMPFAIL) is the one exception: DEFERRED, because an IDENTIFIED
-version holds App Store Connect's single non-live slot. Callers grade it green
-with a notice. For iOS, app-store-catch-up.yml submits the latest release once
-the slot frees; macOS requires a manual app-store.yml dispatch or submission in
-App Store Connect. It is not 2 on purpose: python itself exits 2 when it cannot
-open this file, and that must stay red. A 409 whose holder cannot be named is
-exit 1 — nothing proves it is only a wait.
+Exit 0 is a release with Apple: submitted by this run, or found already
+WAITING_FOR_REVIEW / IN_REVIEW / approved under this same versionString.
+
+Exit 75 (EX_TEMPFAIL): DEFERRED, because an IDENTIFIED OTHER version holds App
+Store Connect's single non-live slot. It is still a release that did NOT reach
+App Review, and since 2026-10-22 both callers grade it red: the green deferral
+of 4.59.0 and 4.60.0 leaned on a catch-up that never ran, and the store sat on
+4.58.0 with every badge green. app-store-catch-up.yml submits the latest release,
+iOS and macOS, once the slot frees. It is not 2 on purpose: python itself exits
+2 when it cannot open this file. A 409 whose holder cannot be named is exit 1 —
+nothing proves it is only a wait.
 """
 import os, sys, json, time, pathlib, jwt, requests
 
 # See the docstring: deferred behind an identified slot holder. Kept in sync
-# with app-store.yml and app-store-catch-up.yml, which grade it green.
+# with app-store.yml and app-store-catch-up.yml, which grade it red.
 EXIT_DEFERRED = 75
+# This versionString in one of these states is already with Apple: nothing is
+# left to submit, and the run that finds it is a success, not a deferral.
+WITH_APPLE_STATES = {"WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_APPLE_RELEASE",
+                     "PENDING_DEVELOPER_RELEASE", "PROCESSING_FOR_APP_STORE"}
 
 KEY_ID = os.environ["ASC_KEY_ID"]
 ISSUER_ID = os.environ["ASC_ISSUER_ID"]
@@ -537,7 +545,8 @@ def defer_or_supersede(slot, apple_409=None):
     """An identified version holds the one non-live slot: supersede it or defer.
 
     Returns the claimed version id when ASC_SUPERSEDE withdrew an OLDER version
-    from review; otherwise exits EXIT_DEFERRED with a notice. `apple_409` is
+    from review; exits 0 when the holder is this very release, already with
+    Apple; otherwise exits EXIT_DEFERRED with an error. `apple_409` is
     the body of the POST that 409'd, or None when the slot was seen before
     any POST was attempted (the normal path since the look-before-create).
 
@@ -552,40 +561,33 @@ def defer_or_supersede(slot, apple_409=None):
     if (SUPERSEDE and holder_state in ("WAITING_FOR_REVIEW", "IN_REVIEW")
             and _vtuple(holder_vs) and _vtuple(holder_vs) < _vtuple(version_string)):
         return supersede(holder_vs, holder_state)
-    if holder_vs == version_string:
-        why = (f"{version_string} is already {holder_state} — this release is with "
-               "Apple, there is nothing left to submit")
-    elif PLATFORM == "MAC_OS":
-        why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
-               f"version at a time. Build {build_version} is on TestFlight; "
-               "app-store-catch-up.yml covers iOS only. Once "
-               f"{holder_vs} is live, dispatch app-store.yml on tag v{version_string} with "
-               "submit_for_review=true (this rebuilds and uploads both iOS and macOS), or "
-               "submit the Mac build from App Store Connect")
-        if SUPERSEDE:
-            why += " (supersede was requested but only applies to an OLDER version "\
-                   "that is WAITING_FOR_REVIEW or IN_REVIEW)"
-    else:
-        why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
-               f"version at a time. Build {build_version} is on TestFlight; "
-               f"app-store-catch-up.yml submits {version_string} automatically once "
-               f"{holder_vs} is live")
-        if SUPERSEDE:
-            why += " (supersede was requested but only applies to an OLDER version "\
-                   "that is WAITING_FOR_REVIEW or IN_REVIEW)"
-    print(f"::notice::{PLATFORM} submission for {version_string} DEFERRED: {why}. Nothing was "
-          "cancelled and no review was touched.")
+    if holder_vs == version_string and holder_state in WITH_APPLE_STATES:
+        print(f"::notice::{PLATFORM} {version_string} is already {holder_state} — this release "
+              "is with Apple, there is nothing left to submit.")
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a") as f:
+                f.write(f"### App Store: {version_string} already {holder_state}\n\n"
+                        "Submitted earlier; nothing left to do.\n")
+        raise SystemExit(0)
+    why = (f"{holder_vs} is {holder_state}, and App Store Connect allows one non-live "
+           f"version at a time. Build {build_version} is on TestFlight; "
+           f"app-store-catch-up.yml submits {version_string} for {PLATFORM} once "
+           f"{holder_vs} leaves that state")
+    if SUPERSEDE:
+        why += " (supersede was requested but only applies to an OLDER version "\
+               "that is WAITING_FOR_REVIEW or IN_REVIEW)"
+    print(f"::error::{PLATFORM} {version_string} NOT submitted for review — DEFERRED: {why}. "
+          "Nothing was cancelled and no review was touched.")
     if apple_409 is not None:
         print(f"POST /v1/appStoreVersions → 409: {apple_409[:400]}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
             f.write(f"### App Store: {version_string} deferred\n\n{why}.\n")
-    # Deferred by Apple's state machine, not broken. Both callers grade
-    # EXIT_DEFERRED as a green step with this notice. The catch-up workflow owns
-    # the iOS retry; the macOS notice gives the required manual follow-up. A red
-    # badge that only asks a human to press "re-run" later is what kept iOS days
-    # behind (2026-09-28).
+    # Deferred by Apple's state machine: the release did not reach review, so
+    # both callers grade EXIT_DEFERRED red. The catch-up workflow owns the retry
+    # for both platforms; the red run is the signal that it has work to do.
     raise SystemExit(EXIT_DEFERRED)
 
 

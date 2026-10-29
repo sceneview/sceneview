@@ -30,7 +30,9 @@ import io.github.sceneview.demo.fragments.ArPlacementFragment
 import io.github.sceneview.demo.fragments.ArRerunFragment
 import io.github.sceneview.demo.fragments.ArXrFragment
 import io.github.sceneview.demo.fragments.CameraAndGesturesFragment
+import io.github.sceneview.demo.fragments.FingerDrawingFragment
 import io.github.sceneview.demo.fragments.RollingBallsFragment
+import io.github.sceneview.demo.fragments.TwoDInThreeDFragment
 
 /**
  * The sample on screen, for events logged deep inside shared components (the settings sheet,
@@ -81,6 +83,11 @@ fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
             if (shouldCloseSample(activity?.isChangingConfigurations == true)) {
                 Telemetry.analytics.log(
                     AnalyticsEvent.SampleClose(sampleId, session.elapsedMillis() / MILLIS_PER_SECOND),
+                )
+                // A sample used for a while is a moment of value: the one the Support
+                // interstitial may follow, once the user is back on the tab host.
+                io.github.sceneview.demo.support.SupportPrompt.onSampleUsed(
+                    session.elapsedMillis() / MILLIS_PER_SECOND,
                 )
             }
         }
@@ -184,9 +191,11 @@ internal val SAMPLE_MODES: Map<String, List<String>> = mapOf(
     "cosmos" to COSMOS_MODES,
     "camera-gestures" to CameraAndGesturesFragment.modes.map { it.key },
     "rolling-balls" to RollingBallsFragment.modes.map { it.key },
+    "finger-drawing" to FingerDrawingFragment.modes.map { it.key },
     "ar-rerun" to ArRerunFragment.modes.map { it.key },
     "ar-cloud-anchor" to ArCloudAnchorFragment.modes.map { it.key },
     "ar-xr" to ArXrFragment.modes.map { it.key },
+    "two-d-in-three-d" to TwoDInThreeDFragment.modes.map { it.key },
 )
 
 /** Initial mode of a catalogue umbrella. The pending tab is only peeked; the demo consumes it. */

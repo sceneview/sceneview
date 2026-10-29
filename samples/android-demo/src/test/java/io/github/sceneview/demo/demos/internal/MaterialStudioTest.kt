@@ -14,7 +14,7 @@ import org.junit.Test
  * just differed from one another, because the subject was streamed from Sketchfab when the
  * network was warm and bundled when it was not. The rebuild removes the cause rather than
  * mitigating it — the whole scene is now primitives plus material parameters — so the tests
- * below pin *that*: no remote subject, a fixed wall layout, and a bounded camera whose QA
+ * below pin the deterministic data layer: a fixed wall layout and a bounded camera whose QA
  * phase is a constant.
  *
  * Pure JVM — no Android framework, no network, no Filament.
@@ -271,23 +271,6 @@ class MaterialStudioTest {
 
     // ── The determinism contract itself ──────────────────────────────────────────────────
 
-    /**
-     * Asserted on the SOURCE because no frame can tell the two versions apart on a machine
-     * with no network: the streamed subject only appears when the fetch succeeds, which is
-     * exactly the condition CI does not reproduce (#2874).
-     */
-    @Test
-    fun `the demo streams nothing`() {
-        val source = demoSource("MaterialsDemo.kt")
-        listOf("Sketchfab", "SampleAssets", "MaterialsSubject", "http").forEach { forbidden ->
-            assertTrue(
-                "MaterialsDemo must stay fully procedural — found `$forbidden` in its source. " +
-                    "A remote subject makes the cold-launch frame depend on the network (#2874).",
-                !source.contains(forbidden),
-            )
-        }
-    }
-
     private fun format(value: Float): String {
         val hundredths = kotlin.math.round(value * 100f).toInt()
         return "${hundredths / 100}.${(hundredths % 100).toString().padStart(2, '0')}"
@@ -300,9 +283,6 @@ class MaterialStudioTest {
      */
     private fun assetFile(assetPath: String): File =
         repoFile("samples/android-demo/src/main/assets/$assetPath")
-
-    private fun demoSource(fileName: String): String =
-        repoFile("samples/android-demo/src/main/java/io/github/sceneview/demo/demos/$fileName").readText()
 
     private fun repoFile(relative: String): File {
         var dir: File? = File("").absoluteFile

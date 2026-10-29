@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Always needed for AR. -->
-    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Always needed for AR. The app declares the matching optional camera
+         feature itself (the demo does), so lint's library-only check is ignored. -->
+    <uses-permission
+        android:name="android.permission.CAMERA"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
 
     <application>
         <!-- Indicates that this app requires Google Play Services for AR ("AR Required") and causes

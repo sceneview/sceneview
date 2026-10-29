@@ -8,12 +8,12 @@ import com.google.android.filament.Engine
 import com.google.android.filament.Filament
 import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
+import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Renderer
 import com.google.android.filament.Skybox
+import com.google.android.filament.Texture
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.View.AntiAliasing
-import com.google.android.filament.View.QualityLevel
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
@@ -22,11 +22,14 @@ import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.managers.color
+import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.math.toColor
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
+import io.github.sceneview.node.Node
+import io.github.sceneview.node.VideoNode
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.OpenGL
 import io.github.sceneview.utils.readBuffer
@@ -64,6 +67,19 @@ const val DEFAULT_FILL_LIGHT_COLOR_INTENSITY = 3_000.0f
 val DEFAULT_FILL_LIGHT_COLOR = Colors.cct(DEFAULT_FILL_LIGHT_COLOR_TEMPERATURE).toColor()
 val DEFAULT_FILL_LIGHT_INTENSITY = DEFAULT_FILL_LIGHT_COLOR_INTENSITY
 
+/**
+ * Direction the default main light travels in (world space, not normalised; Filament normalises).
+ *
+ * A studio key: high above the subject, a little to the right of and in front of a camera
+ * looking down `-Z`. Steep enough that the cast shadow pools under the model and grounds it (a
+ * key from lower in front throws the shadow behind the subject, where the camera cannot see it,
+ * and the model reads as floating), tilted enough that the front faces catch some key light and
+ * the shadow has a direction. It used to point straight down (`0, -1, 0`), which lit only the
+ * top faces. The fill ([DefaultFillLightNode]) comes from the opposite side, upper-left-back. In
+ * AR, ARCore's environmental HDR estimate replaces this direction from the first frame.
+ */
+val DEFAULT_MAIN_LIGHT_DIRECTION = Direction(-0.25f, -1.0f, -0.25f)
+
 val DEFAULT_OBJECT_POSITION = Position(0.0f, 0.0f, -4.0f)
 
 /**
@@ -87,45 +103,51 @@ fun createEglContext(): EGLContext {
     return OpenGL.createEglContext()
 }
 
-fun createEngine(eglContext: EGLContext): Engine = Engine.create(eglContext)
+/**
+ * The Filament feature flag that stops each frame from parking a job thread in an unbounded GPU
+ * fence wait just to timestamp the frame's completion on the GPU.
+ *
+ * `Engine.destroyRenderer` joins that thread (`FrameInfoManager::terminate`, Filament v1.72.1), so
+ * a driver slow to signal the fence — `eglClientWaitSyncKHR` on PowerVR GE8320, in field ANR
+ * reports — blocks the main thread inside the destroy. SceneView never reads that timestamp;
+ * dynamic resolution uses the GPU timer queries, which the flag leaves alone.
+ */
+internal const val DISABLE_GPU_COMPLETE_METRIC = "engine.frame_info.disable_gpu_complete_metric"
+
+/**
+ * Creates the Filament [Engine] SceneView renders with, sharing [eglContext].
+ *
+ * Built with the `engine.frame_info.disable_gpu_complete_metric` feature flag: a constant flag,
+ * only settable at creation.
+ */
+fun createEngine(eglContext: EGLContext): Engine = Engine.Builder()
+    .sharedContext(eglContext)
+    .feature(DISABLE_GPU_COMPLETE_METRIC, true)
+    .build()
 
 fun createScene(engine: Engine): com.google.android.filament.Scene = engine.createScene()
 
 fun createView(engine: Engine): View = engine.createView().apply {
-    renderQuality = renderQuality.apply {
-        hdrColorBuffer = QualityLevel.MEDIUM
-    }
-    dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
-        homogeneousScaling = true
-        quality = QualityLevel.MEDIUM
-    }
-    multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
-    }
-    antiAliasing = AntiAliasing.FXAA
-    // SSAO on by default — adds visible grounding under geometry crevices (toy_car, helmet)
-    // without artifacts on diffuse-only models. Validated 2026-05-11 on Pixel_7a GPU host.
-    ambientOcclusionOptions = ambientOcclusionOptions.apply {
-        enabled = true
-    }
-    // Subtle bloom on by default — strength 0.10 lifts metallic/emissive highlights
-    // (satin chrome, light filaments) but is invisible on diffuse-only assets, so it costs
-    // nothing on plain models. Push higher only for cinematic scenes.
-    bloomOptions = bloomOptions.apply {
-        enabled = true
-        strength = 0.1f
-    }
-    // Keep Filmic tone mapper as default. ACES was tested on 2026-05-11 and shifts PBR
-    // hero shots (DamagedHelmet) toward a cooler/desaturated film grade — fine for cinema
-    // but not the SDK's job to impose. Users can opt into ACES via `view.colorGrading`.
-    // The demo's ViewerBackdrop inverts this exact curve: change the tone mapper, update it too.
+    // The out-of-the-box look is [RenderQuality.Default]: FXAA, MEDIUM HDR buffer, SSAO at
+    // MEDIUM quality with bilateral upsampling, bloom 0.10, soft (DPCF) shadows. `SceneView`
+    // re-applies the same preset from its `renderQuality` parameter; writing it here too keeps a
+    // view used outside the composable (plain `SceneView` View, `rememberView` + custom host)
+    // identical to the composable's. The soft (DPCF) shadow filter and the SSAO quality are
+    // creation defaults the preset leaves alone, so a caller's own choice survives it.
+    applyRenderQualitySpec(RenderQuality.Default.spec())
+    applyCreationRenderDefaults()
+    // Khronos PBR Neutral tone mapper. It is the identity up to 0.76 and only
+    // compresses what is brighter, so a base colour displays as authored: measured on the
+    // demo's brand ramp, Filmic kept 40–57 % of the light blue's chroma and 45–65 % of the
+    // lilac's (its shoulder bleaches pastels, its toe crushes darks), PBR Neutral 90–99 %.
+    // ACES (tested 2026-05-11) grades toward a cooler, desaturated film look. Opt back into
+    // the old look with `view.colorGrading = ColorGrading.Builder()
+    // .toneMapper(ToneMapper.Filmic()).build(engine)`. AR keeps Filmic — see [createARView].
+    // SplatNode and the demo's ViewerBackdrop invert this exact curve: change the tone mapper,
+    // update them too.
     colorGrading = ColorGrading.Builder()
-        .toneMapper(ToneMapper.Filmic())
+        .toneMapper(ToneMapper.PBRNeutralToneMapper())
         .build(engine)
-    // Shadows on by default — matches RealityKit on iOS and produces a more grounded look
-    // out of the box. Disable via `View.setShadowingEnabled(false)` when not needed.
-    setShadowingEnabled(true)
 }
 
 /**
@@ -166,25 +188,15 @@ fun createView(engine: Engine): View = engine.createView().apply {
  * Unlike [createView], the AR view keeps bloom and ambient occlusion **off** so they cannot tint
  * the camera background — those were the real source of the oversaturation/vignetting in #657.
  *
- * Shadows are enabled by default because AR users commonly want 3D content to cast shadows on
- * detected planes. Disable via `View.setShadowingEnabled(false)` when not needed.
+ * Shadows are enabled by default, soft (`ShadowType.DPCF`), because AR users commonly want 3D
+ * content to cast shadows on detected planes. Disable via `View.setShadowingEnabled(false)` when
+ * not needed.
  */
 fun createARView(engine: Engine): View = engine.createView().apply {
-    renderQuality = renderQuality.apply {
-        hdrColorBuffer = QualityLevel.MEDIUM
-    }
-    dynamicResolutionOptions = dynamicResolutionOptions.apply {
-        enabled = false
-        homogeneousScaling = true
-        quality = QualityLevel.MEDIUM
-    }
-    multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
-        enabled = false
-    }
-    antiAliasing = AntiAliasing.FXAA
-    ambientOcclusionOptions = ambientOcclusionOptions.apply {
-        enabled = false
-    }
+    // [RenderQuality.Default] minus SSAO and bloom (#657): FXAA, MEDIUM HDR buffer, soft (DPCF)
+    // shadows on detected planes.
+    applyRenderQualitySpec(RenderQuality.Default.spec(isArView = true))
+    applyCreationRenderDefaults()
     // Filmic tone mapper: the AR camera-stream shader pre-applies Inverse_Tonemap_Filmic, so the
     // Filmic post-process re-applies the matching forward curve and the camera background round-
     // trips back to the original pixels. Using ToneMapper.Linear here leaves the inverse curve
@@ -194,8 +206,34 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     colorGrading = ColorGrading.Builder()
         .toneMapper(ToneMapper.Filmic())
         .build(engine)
-    // Shadows on by default for AR: models casting shadows onto detected planes.
-    setShadowingEnabled(true)
+    filmicViews += this
+}
+
+/**
+ * Views created by [createARView], whose tone mapper is Filmic rather than [createView]'s PBR
+ * Neutral. A material that pre-distorts its colour by the inverse of the view's tone mapper
+ * (`splat.mat`) reads it to pick the matching inverse. Weak: a destroyed view drops out.
+ */
+internal val filmicViews: MutableSet<View> =
+    java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(java.util.WeakHashMap()))
+
+/**
+ * Points a material that pre-distorts its colour by the inverse of the view's tone mapper
+ * (`video_texture*.mat`, `view_texture_*.mat`) at the inverse matching [view]: Filmic for a
+ * [createARView] view, PBR Neutral for every other one (#4595). No-op without a view, or for a
+ * material that has no `inverseFilmic` parameter.
+ */
+/** Matches a [VideoNode] or [ViewNode] material to [view]'s tone mapper; other nodes are left as is. */
+internal fun Node.matchToneMapInverse(view: View?) {
+    when (this) {
+        is VideoNode -> materialInstance.matchToneMapInverse(view)
+        is ViewNode -> materialInstance.matchToneMapInverse(view)
+    }
+}
+
+internal fun MaterialInstance.matchToneMapInverse(view: View?) {
+    if (view == null || !material.hasParameter("inverseFilmic")) return
+    setParameter("inverseFilmic", view in filmicViews)
 }
 
 fun createRenderer(engine: Engine): Renderer = engine.createRenderer()
@@ -275,14 +313,19 @@ fun createViewNodeManager(context: Context) = ViewNode.WindowManager(context)
 fun createEnvironment(
     environmentLoader: EnvironmentLoader,
     isOpaque: Boolean = true
-) = createEnvironment(
-    engine = environmentLoader.engine,
-    isOpaque = isOpaque,
-    indirectLight = KTX1Loader.createIndirectLight(
+): Environment {
+    val indirectLightBundle = KTX1Loader.createIndirectLight(
         environmentLoader.engine,
         environmentLoader.context.assets.readBuffer("environments/neutral/neutral_ibl.ktx"),
-    ).indirectLight?.also { it.intensity = DEFAULT_IBL_INTENSITY },
-)
+    )
+    return createEnvironment(
+        engine = environmentLoader.engine,
+        isOpaque = isOpaque,
+        indirectLight = indirectLightBundle.indirectLight
+            ?.also { it.intensity = DEFAULT_IBL_INTENSITY },
+        textures = listOfNotNull(indirectLightBundle.cubemap),
+    )
+}
 
 fun createEnvironment(
     engine: Engine,
@@ -292,7 +335,37 @@ fun createEnvironment(
         .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
         .build(engine),
     sphericalHarmonics: List<Float>? = null
-) = Environment(indirectLight, skybox, sphericalHarmonics)
+): Environment =
+    createEnvironment(engine, isOpaque, indirectLight, skybox, sphericalHarmonics, emptyList())
+
+/**
+ * Creates an environment that owns the [textures] its indirect light and skybox sample.
+ *
+ * Filament does not destroy a texture with the `IndirectLight` or `Skybox` built on it, so a
+ * cubemap left out of [textures] stays on the GPU until the engine is destroyed (#4358) — the
+ * `cubemap` half of a `KTX1Loader` bundle is the usual one. Ownership moves to the returned
+ * [Environment]: `Engine.safeDestroyEnvironment` and `EnvironmentLoader.destroyEnvironment` both
+ * destroy them, once, after the light and the skybox. Do not destroy them yourself, and do not
+ * hand the same texture to two environments.
+ *
+ * A `copy()` of the returned environment shares its handles without owning the textures: the
+ * environment to destroy is this one.
+ *
+ * @param textures The cubemaps [indirectLight] and [skybox] sample. A texture listed twice — one
+ * cubemap serving both — is destroyed once.
+ */
+fun createEnvironment(
+    engine: Engine,
+    isOpaque: Boolean = true,
+    indirectLight: IndirectLight? = null,
+    skybox: Skybox? = Skybox.Builder()
+        .color(colorOf(rgb = 0.0f, a = if (isOpaque) 1.0f else 0.0f).toFloatArray())
+        .build(engine),
+    sphericalHarmonics: List<Float>? = null,
+    textures: List<Texture>,
+): Environment = Environment(indirectLight, skybox, sphericalHarmonics).also {
+    it.ownTextures(textures)
+}
 
 fun createCollisionSystem(view: View) = CollisionSystem(view)
 
@@ -354,7 +427,11 @@ class DefaultLightNode(engine: Engine) : LightNode(
     apply = {
         color(DEFAULT_MAIN_LIGHT_COLOR)
         intensity(DEFAULT_MAIN_LIGHT_COLOR_INTENSITY)
-        direction(0.0f, -1.0f, 0.0f)
+        direction(
+            DEFAULT_MAIN_LIGHT_DIRECTION.x,
+            DEFAULT_MAIN_LIGHT_DIRECTION.y,
+            DEFAULT_MAIN_LIGHT_DIRECTION.z
+        )
         castShadows(true)
     }
 )

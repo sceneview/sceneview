@@ -63,6 +63,30 @@ import SceneViewSwift
 ///
 /// Every rig disables both system light slots, so what you see is the rig and
 /// nothing else. That is the entire fix for "aucune différence".
+///
+/// ## The former Lighting Lab, folded in (#4603)
+///
+/// Android merged its separate `lighting-lab` card into this screen (#4605):
+/// same helmet, same floor, same sliders — QA could not tell which of the two
+/// to open. iOS follows. What the lab offered and RealityKit can do now lives
+/// here and applies to whichever rig is up:
+///
+/// - **Image rig** — *Environment intensity* (``SceneEnvironment/intensity``,
+///   a ×0.05–×6 ratio: iOS IBL has no absolute unit) and *Draw the sky*
+///   (``SceneEnvironment/showSkybox``), both live.
+/// - **Reflections**, under every rig — a ``ReflectionProbeNode`` sphere at the
+///   stage centre carrying the *sunset* HDR. While the camera is inside its
+///   radius, every stage mesh receives the probe's light instead of the rig's
+///   (`ImageBasedLightReceiverComponent`); shrink the area under the camera's
+///   distance and the stage goes back. Android's `ReflectionProbeNode
+///   (cameraPosition:)` rule. The sunset is decoded the first time the probe
+///   is switched on, never before.
+///
+/// Android's **Frame** section (contact shading, fog, MSAA, FXAA, dithering)
+/// is a set of Filament view options. RealityKit's `RealityView` on iOS
+/// exposes none of them, so those switches are absent rather than simulated,
+/// and the sheet says so. `lighting-lab` and `reflection-probes` deep-link
+/// here through `DemoDeepLinkRegistry.legacyAliases`.
 struct LightingDemo: View {
 
     /// The three rigs, in the order Android lists them. `Image` opens because it
@@ -134,6 +158,26 @@ struct LightingDemo: View {
     /// Hour of day for the Sun rig, 0…24.
     @State private var hour: Double = 15
 
+    // MARK: Image rig knobs and reflections (the former Lighting Lab bench)
+
+    /// Multiplier on the Image rig's HDR, Android's `imageIblIntensity`.
+    @State private var iblIntensity: Double = 1
+    /// Whether the Image rig draws its HDR as the background. On by default, like Android.
+    @State private var showSky = true
+    @State private var probeEnabled = false
+    @State private var probeZone: Double = Self.probeZoneDefault
+    /// The sunset HDR the probe carries, decoded the first time the probe is switched on —
+    /// Android's `probeEnvironmentRequested` latch: never before, and kept once built.
+    @State private var probeEnvironment: EnvironmentResource?
+    @State private var probeLoadStarted = false
+    /// Whether the camera stands inside the probe's sphere. Only written when it flips.
+    @State private var cameraInsideZone = true
+    /// Distance from the camera to the probe centre, for the sheet's readout (per 5 cm).
+    @State private var cameraDistance: Float = 0
+    /// Live handles the content closure publishes, so a slider tick can reach them without
+    /// rebuilding the scene. A reference type on purpose: writing it must not re-render.
+    @State private var live = LightingLiveHandles()
+
     /// The hero, loaded once. `nil` until it lands (or if it fails — the probes still stand).
     @State private var heroNode: ModelNode?
     @State private var heroLoadFailed = false
@@ -196,6 +240,23 @@ struct LightingDemo: View {
         .studio, .outdoor, .sunset, .nightSky
     ]
 
+    /// Android's `PROBE_ZONE_DEFAULT` / `_MIN` / `_MAX`, in metres.
+    static let probeZoneDefault: Double = 2.5
+    static let probeZoneRange: ClosedRange<Double> = 0.5...6
+    /// Android's 500–60 000 lux around a 10 000 lux default, as a ratio.
+    static let intensityRange: ClosedRange<Double> = 0.05...6
+    /// Where the probe sphere sits: the stage centre, like Android's `Position(0, 0, 0)`.
+    static let probeCentre: SIMD3<Float> = .zero
+    /// How much each rig scales its own HDR — the probe's sunset is scaled the same, so
+    /// switching the probe on swaps *which* light, not how much.
+    private var rigIBLScale: Float {
+        switch rig {
+        case .image: return Float(iblIntensity)
+        case .studio: return Self.studioIBLIntensity
+        case .sun: return 0.35
+        }
+    }
+
     // MARK: - Derived state
 
     /// The environment for the current rig.
@@ -206,7 +267,10 @@ struct LightingDemo: View {
     private var environment: SceneEnvironment {
         switch rig {
         case .image:
-            return Self.imageEnvironments[environmentIndex]
+            var image = Self.imageEnvironments[environmentIndex]
+            image.intensity *= Float(iblIntensity)
+            image.showSkybox = showSky
+            return image
         case .studio:
             var studio = SceneEnvironment.studio
             studio.intensity = Self.studioIBLIntensity
@@ -248,7 +312,9 @@ struct LightingDemo: View {
     /// intermittently renders nothing at all on iOS 26 Simulator, permanently
     /// (#3008).
     private var contentKey: String {
-        let hero = heroNode == nil ? "" : "-hero"
+        // Intensity and the sky are applied live by `SceneView` and the probe handle; the
+        // probe itself is content, so its on/off is part of the key.
+        let hero = (heroNode == nil ? "" : "-hero") + (probeActive ? "-probe" : "")
         switch rig {
         case .image:
             return "image-\(environmentIndex)\(hero)"
@@ -257,6 +323,16 @@ struct LightingDemo: View {
         case .sun:
             return "sun-\(Int(hour * 4))\(hero)"
         }
+    }
+
+    /// The probe lights the stage only once its sunset is decoded and the camera is inside.
+    private var probeActive: Bool {
+        probeEnabled && probeEnvironment != nil && cameraInsideZone
+    }
+
+    /// The probe carries the sunset at its own preset level, scaled like the rig's own HDR.
+    private var probeIntensity: Float {
+        SceneEnvironment.sunset.intensity * rigIBLScale
     }
 
     private var rigSelection: Binding<Rig> {
@@ -288,6 +364,7 @@ struct LightingDemo: View {
                 if let token = DeepLinkRouter.consumeTab(for: "lighting") { rig = Rig.initial(token) }
                 if qaMode { orbiting = false }
                 heldPose = framingPose(yawDegrees: Self.staticYawDegrees)
+                if let heldPose { noteCameraPosition(heldPose.cameraPosition()) }
             }
             .onChange(of: proxy.size) { _, size in
                 viewport = size
@@ -296,16 +373,34 @@ struct LightingDemo: View {
         }
         .ignoresSafeArea()
         .task { await loadHeroIfNeeded() }
+        .onChange(of: probeEnabled) { _, enabled in
+            if enabled { Task { await loadProbeEnvironmentIfNeeded() } }
+        }
+        .onChange(of: probeZone) { _, _ in
+            if let position = live.cameraPosition { noteCameraPosition(position) }
+        }
+        .onChange(of: iblIntensity) { _, _ in _ = live.probe?.intensity(probeIntensity) }
         // The rig picker and the rig's one control ride the scaffold's
         // accessory cluster on glass; the explainer lives in the sheet. The
         // previous `.ultraThinMaterial` card went near-white in dark mode
         // and the screen had no back button at all (#3766 P2 §3, §6).
         .demoChrome(
+            // Android's dock, minus Fog (RealityKit has no depth fog). Sky only means
+            // something on the Image rig: the studio has none, the sun's sky is the demo.
             dock: [
+                DockItem(icon: "cloud.fill", label: "Sky", enabled: rig == .image,
+                         selected: showSky && rig == .image) { showSky.toggle() },
                 DockItem(icon: orbiting ? "pause.fill" : "play.fill", label: "Animate",
                          selected: orbiting) { setOrbiting(!orbiting) },
+                DockItem(icon: "circle.fill", label: "Reflections", selected: probeEnabled) {
+                    probeEnabled.toggle()
+                },
             ],
             onReset: {
+                iblIntensity = 1
+                showSky = true
+                probeEnabled = false
+                probeZone = Self.probeZoneDefault
                 orbitStartYaw = Self.staticYawDegrees
                 heldPose = framingPose(yawDegrees: Self.staticYawDegrees)
                 orbiting = false
@@ -317,16 +412,27 @@ struct LightingDemo: View {
                 }
             }
         ) {
-            Text(rig.explainer)
-                .font(SceneViewTokens.TypeScale.body)
-                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
-                .fixedSize(horizontal: false, vertical: true)
+            sheetControls
         }
     }
 
     private func scene(pose: SceneCameraPose?) -> some View {
         SceneView { root in
-            addStage(to: root)
+            // The stage sits under its own parent so the probe can claim every mesh on it
+            // and none of the rig's lights or markers.
+            let stage = Entity()
+            stage.name = "LightingStage"
+            root.addChild(stage)
+            addStage(to: stage)
+            if probeActive, let probeEnvironment {
+                let probe = Self.makeProbe(radius: Float(probeZone), intensity: probeIntensity,
+                                           environment: probeEnvironment)
+                root.addChild(probe.entity)
+                Self.attach(stage, to: probe)
+                live.probe = probe
+            } else {
+                live.probe = nil
+            }
             switch rig {
             case .image:
                 break                       // the environment is the whole rig
@@ -373,8 +479,10 @@ struct LightingDemo: View {
         orbiting = on
     }
 
-    /// A drag while the orbit runs hands the camera to the viewer.
+    /// Every reported pose feeds the probe's enter/exit test; a drag while the orbit runs
+    /// also hands the camera to the viewer.
     private func noteCamera(_ reported: SceneCameraPose) {
+        noteCameraPosition(reported.cameraPosition())
         guard orbiting else { return }
         let expected = framingPose(yawDegrees: yaw(at: Date()))
         var yawDelta = abs(reported.azimuth - expected.azimuth)
@@ -386,6 +494,15 @@ struct LightingDemo: View {
             heldPose = reported
             orbiting = false
         }
+    }
+
+    /// Android's probe rule: the override applies while the camera is inside the sphere.
+    private func noteCameraPosition(_ position: SIMD3<Float>) {
+        live.cameraPosition = position
+        let inside = Self.zoneContains(camera: position, radius: Float(probeZone))
+        if inside != cameraInsideZone { cameraInsideZone = inside }
+        let distance = simd_distance(position, Self.probeCentre)
+        if abs(distance - cameraDistance) >= 0.05 { cameraDistance = distance }
     }
 
     /// The pose that fits the helmet and both probes between the top chrome and the dock at
@@ -492,6 +609,47 @@ struct LightingDemo: View {
         root.addChild(floor)
     }
 
+    // MARK: - Reflections (unit-tested in `LightingReflectionsTests`)
+
+    @MainActor
+    private func loadProbeEnvironmentIfNeeded() async {
+        guard !probeLoadStarted else { return }
+        probeLoadStarted = true
+        probeEnvironment = try? await SceneEnvironment.sunset.load()
+        if probeEnvironment == nil { probeLoadStarted = false }
+    }
+
+    /// The local probe: a sphere of `radius` at ``probeCentre`` carrying `environment`.
+    @MainActor
+    static func makeProbe(radius: Float, intensity: Float,
+                          environment: EnvironmentResource?) -> ReflectionProbeNode {
+        let probe = ReflectionProbeNode.sphere(radius: radius, intensity: intensity)
+            .position(probeCentre)
+        if let environment {
+            probe.environmentTexture(environment)
+        }
+        return probe
+    }
+
+    /// Points `entity` and everything under it at the probe instead of the scene's global IBL.
+    ///
+    /// The receiver `environmentTexture(_:)` installs lives on the probe entity itself, so the
+    /// geometry that should *show* the probe needs its own receiver targeting it — otherwise it
+    /// keeps reflecting the global environment and the probe contributes nothing (#3158). Set on
+    /// every descendant too, so a loaded model's inner meshes follow its root.
+    @MainActor
+    static func attach(_ entity: Entity, to probe: ReflectionProbeNode) {
+        entity.components.set(ImageBasedLightReceiverComponent(imageBasedLight: probe.entity))
+        for child in entity.children {
+            attach(child, to: probe)
+        }
+    }
+
+    /// Whether a camera at `camera` stands inside a probe sphere of `radius` at ``probeCentre``.
+    static func zoneContains(camera: SIMD3<Float>, radius: Float) -> Bool {
+        simd_distance(camera, probeCentre) <= radius
+    }
+
     // MARK: - Studio rig
 
     /// Position on the rig sphere for an azimuth/elevation pair, in degrees.
@@ -594,6 +752,71 @@ struct LightingDemo: View {
 
     // MARK: - Controls
 
+    /// The sheet: the rig's explainer and its extra knobs, then the sections every rig
+    /// shares — Android's order (`LightingDemo.kt` controls).
+    @ViewBuilder
+    private var sheetControls: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+            Text(rig.explainer)
+                .font(SceneViewTokens.TypeScale.body)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if rig == .image {
+                LabeledSlider(label: "Environment intensity", value: $iblIntensity,
+                              range: Self.intensityRange, decimals: 2, unit: "×")
+                Toggle("Draw the sky", isOn: $showSky)
+            }
+
+            sectionHeader("Reflections")
+            Text("A reflection probe swaps the reflections for a sunset while the camera is inside its area.")
+                .font(SceneViewTokens.TypeScale.captionRegular)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("Local reflections", isOn: $probeEnabled)
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs) {
+                LabeledSlider(label: "Reflection area", value: $probeZone,
+                              range: Self.probeZoneRange, decimals: 1, unit: "m")
+                    .disabled(!probeEnabled)
+                Text(probeReadout)
+                    .font(SceneViewTokens.TypeScale.caption)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("lighting-probe-readout")
+            }
+
+            sectionHeader("Frame")
+            Text("Contact shading, fog, edge smoothing and dithering are Android-only: the iOS RealityKit view has no setting for them.")
+                .font(SceneViewTokens.TypeScale.captionRegular)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .tint(SceneViewTheme.primary)
+    }
+
+    /// Android's `SectionHeader`: a hairline, then the section name in the accent.
+    private func sectionHeader(_ title: String) -> some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            Divider()
+            Text(title)
+                .font(SceneViewTokens.TypeScale.bodySemibold)
+                .foregroundStyle(SceneViewTheme.primary)
+        }
+    }
+
+    /// What the probe is doing right now, in words.
+    private var probeReadout: String {
+        let distance = String(format: "%.1f", cameraDistance)
+        guard probeEnabled else {
+            return "Inside the area the model reflects a sunset. Camera \(distance) m from the centre."
+        }
+        guard probeEnvironment != nil else { return "Loading the sunset…" }
+        return cameraInsideZone
+            ? "Camera \(distance) m from the centre: inside the area, the model reflects the sunset."
+            : "Camera \(distance) m from the centre: outside the area, the model reflects the rig's light."
+    }
+
     /// One control per rig — the handful of knobs that rig actually needs.
     @ViewBuilder
     private var rigControl: some View {
@@ -641,4 +864,11 @@ struct LightingDemo: View {
         let total = Int((hour * 60).rounded())
         return String(format: "%02d:%02d", (total / 60) % 24, total % 60)
     }
+}
+
+/// Handles the content closure hands back to the view, outside SwiftUI's state graph.
+@MainActor
+private final class LightingLiveHandles {
+    var probe: ReflectionProbeNode?
+    var cameraPosition: SIMD3<Float>?
 }

@@ -24,6 +24,76 @@
   --sv-card-border: rgba(164, 193, 255, 0.15);
 }
 
+/* ─── Header and tabs: the home page's top bar ───
+ * The same glass bar as sceneview.github.io (website-static/assets/tokens.css: --bg,
+ * --text, --text-2, --hairline, --accent, --header-glass), in place of Material's
+ * saturated primary-colour bar, so going from the home page to the docs no longer
+ * changes the whole frame. Light and dark follow the docs' palette toggle. */
+:root {
+  --sv-nav-glass: rgba(245, 246, 248, 0.78);   /* --header-glass, light */
+  --sv-nav-fg: #0A0D13;                        /* --text, light */
+  --sv-nav-fg-2: #465061;                      /* --text-2, light: 7.5:1 on the bar */
+  --sv-nav-hairline: #C9D0DA;                  /* --hairline, light */
+  --sv-nav-accent: #0B5BD3;                    /* --accent, light */
+  --sv-nav-field: rgba(10, 13, 19, 0.05);
+  --sv-nav-field-hover: rgba(10, 13, 19, 0.08);
+}
+[data-md-color-scheme="slate"] {
+  --sv-nav-glass: rgba(7, 9, 13, 0.72);        /* --header-glass, dark */
+  --sv-nav-fg: #F3F5F9;                        /* --text, dark */
+  --sv-nav-fg-2: #B4BCCB;                      /* --text-2, dark: 10.4:1 on the bar */
+  --sv-nav-hairline: #3A4456;                  /* --hairline, dark */
+  --sv-nav-accent: #8AB4FF;                    /* --accent, dark */
+  --sv-nav-field: rgba(243, 245, 249, 0.06);
+  --sv-nav-field-hover: rgba(243, 245, 249, 0.10);
+}
+.md-header {
+  --md-primary-bg-color: var(--sv-nav-fg);
+  --md-primary-bg-color--light: var(--sv-nav-fg-2);
+  background-color: var(--sv-nav-glass);
+  color: var(--sv-nav-fg);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  backdrop-filter: saturate(160%) blur(16px);
+  border-bottom: 1px solid var(--sv-nav-hairline);
+}
+.md-header, .md-header--shadow { box-shadow: none; }
+.md-header__title { font-weight: 650; letter-spacing: -0.02em; }
+@media screen and (min-width: 76.25em) {
+  [dir="ltr"] .md-header__title { margin-left: 0.2rem; }
+  [dir="rtl"] .md-header__title { margin-right: 0.2rem; }
+}
+/* The phone drawer's title bar was Material's primary blue too: it takes the bar's colours. */
+.md-nav--primary .md-nav__title[for="__drawer"] {
+  background-color: var(--md-default-bg-color);
+  color: var(--sv-nav-fg);
+  font-weight: 650;
+  border-bottom: 1px solid var(--sv-nav-hairline);
+}
+.md-header__button.md-logo img { height: 1.3rem; }
+.md-tabs { background-color: transparent; color: var(--sv-nav-fg); }
+.md-tabs__link {
+  color: var(--sv-nav-fg-2);
+  opacity: 1;
+  font-weight: 500;
+  margin-top: 0;
+  padding: 0.6rem 0 0.55rem;
+  border-bottom: 2px solid transparent;
+  transition: color 140ms, border-color 140ms;
+}
+.md-tabs__link:hover,
+.md-tabs__link:focus { color: var(--sv-nav-fg); }
+.md-tabs__item--active .md-tabs__link { color: var(--sv-nav-fg); border-bottom-color: var(--sv-nav-accent); }
+@media screen and (min-width: 60em) {
+  .md-search__form {
+    background-color: var(--sv-nav-field);
+    border: 1px solid var(--sv-nav-hairline);
+    border-radius: 999px;
+  }
+  .md-search__form:hover { background-color: var(--sv-nav-field-hover); }
+  .md-search__input, .md-search__input ~ .md-search__icon { color: var(--sv-nav-fg); }
+  [data-md-toggle="search"]:checked ~ .md-header .md-search__form { border-radius: 0.9rem 0.9rem 0 0; }
+}
+
 /* ─── Hero Section ─── */
 
 .sv-hero {
@@ -213,31 +283,6 @@
   line-height: 1.7;
 }
 
-/* ─── Testimonials ─── */
-
-.sv-testimonials {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  margin: 1.5rem 0;
-}
-
-.sv-testimonial {
-  background: var(--sv-card-bg);
-  border-left: 3px solid var(--md-primary-fg-color);
-  border-radius: 8px;
-  padding: 1.25rem 1.5rem;
-  margin: 0;
-}
-
-.sv-testimonial p {
-  margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.65;
-  color: var(--md-default-fg-color--light);
-  font-style: italic;
-}
-
 /* ─── Community links ─── */
 
 .sv-community {
@@ -306,9 +351,6 @@
   }
   .sv-stat-number {
     font-size: 1.4rem;
-  }
-  .sv-testimonials {
-    grid-template-columns: 1fr;
   }
 }
 

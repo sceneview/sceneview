@@ -33,8 +33,8 @@ class AskFlowTest {
         assertEquals(AskStep.ModelDownloading(1_024L), flow.step)
         flow.onAvailability(AskAvailability.Ready)
         assertEquals(AskStep.Ready, flow.step)
-        flow.onAvailability(AskAvailability.Unsupported)
-        assertEquals(AskStep.ModelUnsupported, flow.step)
+        flow.onAvailability(AskAvailability.Unsupported(AskUnavailableReason.NoAicore))
+        assertEquals(AskStep.ModelUnsupported(AskUnavailableReason.NoAicore), flow.step)
     }
 
     @Test
@@ -139,8 +139,8 @@ class AskFlowTest {
         val flow = readyFlow()
         flow.onTap()
         flow.onFailure(AskFailure.ModelUnavailable)
-        assertEquals(AskAvailability.Unsupported, flow.availability)
-        assertEquals(AskStep.ModelUnsupported, flow.step)
+        assertEquals(AskAvailability.Unsupported(AskUnavailableReason.NotSupported), flow.availability)
+        assertEquals(AskStep.ModelUnsupported(AskUnavailableReason.NotSupported), flow.step)
         assertFalse("no more rounds once the platform said no", flow.onTap())
     }
 
@@ -149,7 +149,7 @@ class AskFlowTest {
         val flow = readyFlow()
         flow.onTap()
         flow.onFailure(AskFailure.NeedsSystemUpdate)
-        assertEquals(AskStep.ModelUnsupported, flow.step)
+        assertEquals(AskStep.ModelUnsupported(AskUnavailableReason.NeedsSystemUpdate), flow.step)
     }
 
     @Test
@@ -218,8 +218,8 @@ class AskFlowTest {
         val flow = readyFlow()
         flow.onTap()
         flow.onFrameAccepted()
-        flow.onAvailability(AskAvailability.Unsupported)
-        assertEquals(AskStep.ModelUnsupported, flow.step)
+        flow.onAvailability(AskAvailability.Unsupported(AskUnavailableReason.NoAicore))
+        assertEquals(AskStep.ModelUnsupported(AskUnavailableReason.NoAicore), flow.step)
         assertFalse(flow.isBusy)
     }
 
@@ -279,5 +279,44 @@ class AskFlowTest {
         assertFalse(transient.persistent)
         assertTrue(persistent.persistent)
         assertFalse("a persistent card is never a terminal one", persistent.failure.isTerminal)
+    }
+
+    @Test
+    fun `a download reports its total and percent (#2648)`() {
+        val flow = AskFlow()
+        flow.onAvailability(AskAvailability.Downloading(412L, 1_100L))
+        assertEquals(AskStep.ModelDownloading(412L, 1_100L), flow.step)
+    }
+
+    @Test
+    fun `a failed download is retryable, never the unsupported card (#2648)`() {
+        val flow = AskFlow()
+        flow.onAvailability(AskAvailability.DownloadFailed(AskFailure.DownloadInterrupted))
+        assertEquals(AskStep.ModelDownloadFailed(AskFailure.DownloadInterrupted), flow.step)
+        assertFalse("no rounds while the model is missing", flow.onTap())
+        flow.onAvailability(AskAvailability.Downloading())
+        assertEquals(AskStep.ModelDownloading(null), flow.step)
+        flow.onAvailability(AskAvailability.Ready)
+        assertEquals(AskStep.Ready, flow.step)
+    }
+
+    @Test
+    fun `checking again after unsupported can recover to ready (#2648)`() {
+        val flow = AskFlow()
+        flow.onAvailability(AskAvailability.Unsupported(AskUnavailableReason.AicoreNotReady))
+        flow.onAvailability(AskAvailability.Checking)
+        assertEquals(AskStep.CheckingAvailability, flow.step)
+        flow.onAvailability(AskAvailability.Ready)
+        assertEquals(AskStep.Ready, flow.step)
+        assertTrue(flow.onTap())
+    }
+
+    @Test
+    fun `the new QA states resolve to their cards (#2648)`() {
+        assertTrue(askStepForQaOverride("download-failed") is AskStep.ModelDownloadFailed)
+        assertEquals(
+            AskStep.ModelUnsupported(AskUnavailableReason.AicoreNotReady),
+            askStepForQaOverride("unsupported-not-ready"),
+        )
     }
 }

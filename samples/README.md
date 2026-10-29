@@ -192,9 +192,10 @@ fun MultiModelScene() {
 |---|---|---|---|
 | `android-demo/` | Android (Jetpack Compose) | `./gradlew :samples:android-demo:bundleRelease` | ✓ |
 | `android-tv-demo/` | Android TV | `./gradlew :samples:android-tv-demo:assembleDebug` | ✓ |
+| `android-auto-demo/` | Android Auto (parked app) — prototype, not verified in a car | `./gradlew :samples:android-auto-demo:assembleDebug` | |
 | `ios-demo/` | iOS (SwiftUI) | `open samples/ios-demo/SceneViewDemo.xcodeproj` | ✓ |
-| `web-demo/` | Web (Kotlin/JS + Filament.js) | `./gradlew :samples:web-demo:jsBrowserProductionWebpack` | ✓ |
-| `desktop-demo/` | Desktop (Compose) — `SceneViewer` via filament-kmp, JDK 22+ | `./gradlew :samples:desktop-demo:run` | |
+| `web-demo/` | Web (static site + Filament.js) | `cd samples/web-demo && cp ../../website-static/js/sceneview.js site/js/sceneview.js && npx http-server site -p 8080` — see [`web-demo/README.md`](web-demo/README.md) | ✓ |
+| `desktop-demo/` | Desktop (Compose) — `SceneViewer` via filament-kmp, JDK 21+ | `./gradlew :samples:desktop-demo:run` | |
 | `flutter-demo/` | Flutter | `cd samples/flutter-demo && flutter build apk --debug` | ✓ |
 | `react-native-demo/` | React Native | See [`react-native-demo/SETUP.md`](react-native-demo/SETUP.md) — one-time bridge build + pod install required before first `run-android`/`run-ios` | scaffold only |
 
@@ -206,10 +207,10 @@ clean checkout of `main` (validated in session 34, 2026-04-11).
 - **Android / Android TV**: copy the root `local.properties` into the
   worktree or export `ANDROID_HOME=~/Library/Android/sdk` before running
   `./gradlew`.
-- **Web**: depends on `samples/web-demo/webpack.config.d/filament.js`
-  which disables Node polyfills for `path`, `fs`, `crypto`. Do not
-  remove — filament.js imports those unconditionally and webpack 5
-  fails the build otherwise.
+- **Web**: a plain static site, not a Gradle module (see
+  `settings.gradle`). Stage `website-static/js/sceneview.js` into
+  `site/js/` before serving it; see
+  [`web-demo/README.md`](web-demo/README.md).
 - **Flutter**: the plugin uses Kotlin 2.0 + Compose Compiler Gradle
   plugin (`org.jetbrains.kotlin.plugin.compose`). No action needed in
   the demo itself; the plugin is wired in

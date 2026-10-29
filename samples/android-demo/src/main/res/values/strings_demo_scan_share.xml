@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="scan_share">Share</string>
+    <string name="scan_close">Close</string>
+    <string name="scan_place">Place in AR</string>
+    <string name="scan_share_privacy">This file contains your room in 3D, its photos and the path you walked. Anyone you send it to can see them.</string>
+    <string name="scan_share_privacy_without_photos">Even without photos, the 3D surfaces and points in this file show your room and the path you walked. Anyone you send it to can see them.</string>
+    <string name="scan_share_include_photos">Include photos</string>
+    <string name="scan_share_file_size">File size</string>
+    <string name="scan_share_file_size_unknown">Unknown</string>
+    <string name="scan_share_preparing">Preparing file…</string>
+    <string name="scan_share_failed">The file couldn\'t be prepared. Close this and try again.</string>
+    <string name="scan_no_photos">This scan has no photos.</string>
+</resources>

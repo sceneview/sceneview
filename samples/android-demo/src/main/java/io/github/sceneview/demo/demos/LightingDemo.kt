@@ -1,3 +1,5 @@
+@file:OptIn(io.github.sceneview.ExperimentalSceneViewApi::class)
+
 package io.github.sceneview.demo.demos
 
 import androidx.annotation.StringRes
@@ -19,9 +21,12 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.Lens
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -34,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -47,6 +53,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.google.android.filament.LightManager
+import com.google.android.filament.View.AntiAliasing
+import com.google.android.filament.View.Dithering
 import dev.romainguy.kotlin.math.length
 import io.github.sceneview.RenderQuality
 import io.github.sceneview.SceneView
@@ -67,42 +75,47 @@ import io.github.sceneview.demo.rememberFitOrbitRadius
 import io.github.sceneview.demo.rememberHeroOrbitCameraManipulator
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.ConnectedChoiceRow
+import io.github.sceneview.environment.Environment
+import io.github.sceneview.environment.rememberHDREnvironment
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.colorOf
 import io.github.sceneview.node.DynamicSkyNode
+import io.github.sceneview.node.FogNode
 import io.github.sceneview.rememberCameraNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
+import io.github.sceneview.rememberScene
 import io.github.sceneview.rememberView
 import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.rememberUnlitMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 import java.util.Locale
 import kotlin.math.abs
+import com.google.android.filament.Scene as FilamentScene
 
 /**
- * **Lighting** — the showcase half of the lighting pair: *where does the light come from?*
+ * **Lighting** — *where does the light come from, and what does the frame do with it?*
  *
- * ## What this screen is, and what the lab is
+ * ## One screen, not a pair
  *
- * Until #3496 / #3497 the catalogue carried seven lighting modes across two cards, split on no
- * principle anyone could state: `lighting` was "pick a `LightManager.Type`", `lighting-lab` was
- * "sky, environments, probes, post-FX and fog" — a drawer whose last two entries are not lighting
- * at all. Each mode built its own engine and reloaded the same helmet, so switching tab meant a
- * black flash, and no two of them could be seen together.
+ * Until #3496 / #3497 the catalogue carried seven lighting modes across two cards. #3496 rebuilt
+ * them as a pair over one shared stage ([LightingStage]): this screen for the rigs, a separate
+ * `lighting-lab` for the frame options. On the device the two still read as the same sample twice
+ * — same helmet, same floor, same exposure and environment sliders — and QA could not say which
+ * one to open (#4603). So the lab's bench now lives here, below the rig controls, and applies to
+ * whichever rig is on screen:
  *
- * The pair is now split by **role**, over one shared stage ([LightingStage]):
+ * - **Reflections** — `ReflectionProbeNode`, a local IBL that swaps the reflection for a sunset
+ *   while the camera is inside its zone;
+ * - **Frame** — SSAO, `FogNode`, MSAA, FXAA and dithering. Each switch starts from the value the
+ *   screen actually renders with (`RenderQuality.Cinematic`, so all on), and flipping one shows
+ *   what that option buys.
  *
- * - **this screen** — three *rigs*, the three real answers to where a frame's light comes from,
- *   with the handful of controls each one needs;
- * - **[LightingLabDemo]** — one workbench, every knob live on the same frame at once.
- *
- * Both ids survive, so every deep link into either keeps working; the retired ids that used to
- * land inside the old lab are re-pointed at whichever half now hosts their subject (see
- * `DeepLinkRouter.DEMO_ID_ALIASES`).
+ * `lighting-lab` and the ids that used to land in it (`reflection-probes`, `post-processing`,
+ * `fog`) resolve here through `DeepLinkRouter.DEMO_ID_ALIASES`.
  *
  * ## The three rigs
  *
@@ -134,10 +147,16 @@ import kotlin.math.abs
  * one on screen, so a sky change is a swap and not a load: a day is ~34 s and crosses four of
  * them, the shortest for 3.3 s — less than a load takes on a slow device. They are released when
  * the clock stops.
+ *
+ * ## What the default frame is allowed to allocate
+ *
+ * A control that is off must not have paid for itself yet (#3554): the reflection probe's own
+ * 2 048² HDR is built the first time the probe is switched on, never before, and without a skybox
+ * — see `probeEnvironment`.
  */
 @Composable
 fun LightingDemo(onBack: () -> Unit) {
-    // Inspection mode (@Preview pane, Roborazzi snapshots): bail out BEFORE rememberEngine(),
+    // Inspection mode (@Preview pane, Robolectric tests): bail out BEFORE rememberEngine(),
     // which needs Filament .so files LayoutLib does not have.
     if (LocalInspectionMode.current) {
         DemoPreviewPlaceholder(title = stringResource(R.string.demo_lighting_title), onBack = onBack)
@@ -152,6 +171,7 @@ fun LightingDemo(onBack: () -> Unit) {
     // ── Rig state ────────────────────────────────────────────────────────────────────────────
     var environmentOption by remember { mutableStateOf(LightingStage.defaultEnvironment) }
     var environmentRotation by remember { mutableFloatStateOf(0f) }
+    var imageIblIntensity by remember { mutableFloatStateOf(LightingStage.IBL_INTENSITY_DEFAULT) }
     var showSky by remember { mutableStateOf(true) }
 
     var keyAzimuth by remember { mutableFloatStateOf(DEFAULT_KEY_AZIMUTH) }
@@ -167,6 +187,32 @@ fun LightingDemo(onBack: () -> Unit) {
     var exposure by remember { mutableFloatStateOf(LightingStage.EXPOSURE_DEFAULT) }
     var orbiting by remember { mutableStateOf(true) }
 
+    // ── Reflections + frame state (the former Lighting Lab bench) ─────────────────────────────
+    var probeEnabled by remember { mutableStateOf(false) }
+    var probeZone by remember { mutableFloatStateOf(LightingStage.PROBE_ZONE_DEFAULT) }
+    /**
+     * Whether the probe's own HDR has ever been asked for — see [probeEnvironment] for why this
+     * latch exists rather than a plain `remember(probeEnabled)`. Never reset: once built, the
+     * environment stays so the next toggle is instant.
+     */
+    var probeEnvironmentRequested by remember { mutableStateOf(false) }
+    val setProbeEnabled: (Boolean) -> Unit = { enabled ->
+        probeEnabled = enabled
+        if (enabled) probeEnvironmentRequested = true
+    }
+    // Defaults are what `RenderQuality.Cinematic` renders with: every option on. A switch flipped
+    // off shows what that option buys on this frame.
+    var ssaoEnabled by remember { mutableStateOf(true) }
+    var msaaEnabled by remember { mutableStateOf(true) }
+    var fxaaEnabled by remember { mutableStateOf(true) }
+    var ditheringEnabled by remember { mutableStateOf(true) }
+    var fogEnabled by remember { mutableStateOf(false) }
+    var fogDensity by remember { mutableFloatStateOf(DEFAULT_FOG_DENSITY) }
+    var fogColor by remember { mutableStateOf(LightingStage.fogColors.first()) }
+    // Camera world position for the probe's enter/exit test. Written from `onFrame` and read only
+    // inside the scene content, so a moving camera recomposes that scope and not the screen.
+    var cameraPosition by remember { mutableStateOf(Position()) }
+
     // ── Engine + stage resources ─────────────────────────────────────────────────────────────
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -175,6 +221,8 @@ fun LightingDemo(onBack: () -> Unit) {
     val cameraNode = rememberCameraNode(engine)
     // Held here rather than left to `SceneView`'s default so the stage fade can be written to it.
     val view = rememberView(engine)
+    // Held here because `ReflectionProbeNode` writes the probe's IBL into the Filament scene.
+    val scene: FilamentScene = rememberScene(engine)
     val heroInstance = rememberModelInstance(modelLoader, LightingStage.HERO_MODEL)
     val orbitRadius = rememberFitOrbitRadius(
         extentX = LightingStage.SUBJECT_EXTENT_X,
@@ -261,9 +309,19 @@ fun LightingDemo(onBack: () -> Unit) {
     // end before its sky is ready and never be seen. So while it runs, the three sky HDRs are
     // loaded once and kept behind the one on screen; they are released when it stops.
     val residentSkies = if (sunClockRunning) LightingStage.skyEnvironmentFiles else emptyList()
-    val presentedEnvironment =
-        rememberResidentEnvironment(environmentLoader, environmentFile, warm = residentSkies)
+    val wantedEnvironmentFile by rememberUpdatedState(environmentFile)
+    val presentedEnvironment = rememberResidentEnvironment(
+        environmentLoader,
+        environmentFile,
+        warm = residentSkies,
+        // A sky kept warm behind the one on screen can fail without the stage missing anything.
+        onLoadFailed = { file -> if (file == wantedEnvironmentFile) firstFrame.reportContentFailed() },
+    )
     val loadedEnvironment = presentedEnvironment?.resource
+    // "Scene ready" is the helmet under the rig's own light, with its sky when it has one — not
+    // the fallback-lit, empty stage the first frames show (#4459).
+    firstFrame.holdUntil(landed = loadedEnvironment != null)
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = heroInstance != null)
     // The previous environment stays on screen while the next one loads, and for that stretch
     // `skyVisible` already describes the rig being loaded: applied at once it would draw the
     // studio HDR as a sky on Studio → Sun. So the engine follows `skyOnScreen`, the flag of the
@@ -276,6 +334,22 @@ fun LightingDemo(onBack: () -> Unit) {
     val fallbackEnvironment = remember(environmentLoader) { createEnvironment(environmentLoader) }
     DisposableEffect(fallbackEnvironment) {
         onDispose { environmentLoader.destroyEnvironment(fallbackEnvironment) }
+    }
+    /**
+     * The reflection probe's IBL — built the first time the probe is switched on, never before,
+     * and without a skybox (#3554). An HDR environment is not a file read: it is decoded, uploaded,
+     * rendered to a cubemap and prefiltered over a full mip chain, so building it eagerly made the
+     * default frame pay for a second cubemap pyramid nothing sampled. `createSkybox = false` is
+     * free: [ReflectionProbeNode] only ever reads `environment.indirectLight`.
+     */
+    val probeEnvironment: Environment? = if (probeEnvironmentRequested) {
+        rememberHDREnvironment(
+            environmentLoader,
+            LightingStage.PROBE_ENVIRONMENT_FILE,
+            createSkybox = false,
+        )
+    } else {
+        null
     }
     // With no sky, the backdrop is the stage colour rather than the renderer's black clear: the
     // floor fades into that colour (see `StageFade`), and it has to meet the same colour behind
@@ -298,7 +372,7 @@ fun LightingDemo(onBack: () -> Unit) {
     // The IBL is dimmed for the analytic rigs: at full strength the ambient does the modelling
     // the key light is there to do, and moving the key barely changes the frame.
     val iblIntensity = when (rig) {
-        LightingRig.Image -> LightingStage.IBL_INTENSITY_DEFAULT
+        LightingRig.Image -> imageIblIntensity
         LightingRig.Studio -> STUDIO_IBL_INTENSITY
         LightingRig.Sun -> SUN_IBL_INTENSITY
     }
@@ -317,13 +391,27 @@ fun LightingDemo(onBack: () -> Unit) {
     SideEffect {
         // The fade's sky sample is sharp only near the far plane (LightingStage.STAGE_FAR).
         if (cameraNode.far != LightingStage.STAGE_FAR) cameraNode.far = LightingStage.STAGE_FAR
-        StageFade.apply(
-            view = view,
-            cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
-            sky = environment.skybox.takeIf { skyOnScreen },
-            skyTint = fadeSkyTint,
-            ground = fadeGround,
-        )
+        if (!fogEnabled) {
+            StageFade.apply(
+                view = view,
+                cameraDistance = eyeDistance[0].takeIf { it.isFinite() } ?: orbitRadius,
+                sky = environment.skybox.takeIf { skyOnScreen },
+                skyTint = fadeSkyTint,
+                ground = fadeGround,
+            )
+        } else {
+            // `FogNode` takes the view's fog over; without this its fog keeps the sky's colour.
+            StageFade.release(view)
+        }
+        // Only `enabled` is written, so the qualities `RenderQuality.Cinematic` set (4× MSAA,
+        // high-quality SSAO) survive a switch turned off and on again. Going through the setters
+        // keeps that independent of Filament's getters returning the live struct.
+        view.ambientOcclusionOptions = view.ambientOcclusionOptions.apply { enabled = ssaoEnabled }
+        view.multiSampleAntiAliasingOptions = view.multiSampleAntiAliasingOptions.apply {
+            enabled = msaaEnabled
+        }
+        view.antiAliasing = if (fxaaEnabled) AntiAliasing.FXAA else AntiAliasing.NONE
+        view.dithering = if (ditheringEnabled) Dithering.TEMPORAL else Dithering.NONE
         loadedEnvironment?.indirectLight?.let { light ->
             light.setRotation(LightingStage.iblRotation(effectiveRotation))
             light.intensity = iblIntensity
@@ -359,6 +447,8 @@ fun LightingDemo(onBack: () -> Unit) {
         title = stringResource(R.string.demo_lighting_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
+        sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_lighting_loading),
         peekHeader = when (rig) {
             LightingRig.Image -> stringResource(
@@ -392,6 +482,16 @@ fun LightingDemo(onBack: () -> Unit) {
             haze = DEFAULT_HAZE
             exposure = LightingStage.EXPOSURE_DEFAULT
             orbiting = true
+            imageIblIntensity = LightingStage.IBL_INTENSITY_DEFAULT
+            probeEnabled = false
+            probeZone = LightingStage.PROBE_ZONE_DEFAULT
+            ssaoEnabled = true
+            msaaEnabled = true
+            fxaaEnabled = true
+            ditheringEnabled = true
+            fogEnabled = false
+            fogDensity = DEFAULT_FOG_DENSITY
+            fogColor = LightingStage.fogColors.first()
         },
         dock = listOf(
             DockItem(
@@ -405,17 +505,24 @@ fun LightingDemo(onBack: () -> Unit) {
                 onClick = { showSky = !showSky },
             ),
             DockItem(
-                icon = Icons.Filled.Lightbulb,
-                label = "Markers",
-                enabled = rig == LightingRig.Studio,
-                selected = showMarkers && rig == LightingRig.Studio,
-                onClick = { showMarkers = !showMarkers },
-            ),
-            DockItem(
                 icon = if (orbiting) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 label = "Animate",
                 selected = orbiting,
                 onClick = { orbiting = !orbiting },
+            ),
+            // The dock holds four. Fog and Reflections are the two before/after flips worth a
+            // thumb; the Studio markers moved to a switch in that rig's controls.
+            DockItem(
+                icon = Icons.Filled.BlurOn,
+                label = "Fog",
+                selected = fogEnabled,
+                onClick = { fogEnabled = !fogEnabled },
+            ),
+            DockItem(
+                icon = Icons.Filled.Lens,
+                label = "Reflections",
+                selected = probeEnabled,
+                onClick = { setProbeEnabled(!probeEnabled) },
             ),
         ),
         controls = {
@@ -445,6 +552,15 @@ fun LightingDemo(onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
                     LabeledSlider(
+                        label = stringResource(R.string.demo_lighting_ibl_intensity),
+                        value = imageIblIntensity,
+                        onValueChange = { imageIblIntensity = it },
+                        valueRange = LightingStage.IBL_INTENSITY_MIN..LightingStage.IBL_INTENSITY_MAX,
+                        decimals = 0,
+                        unit = "lux",
+                    )
+                    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+                    LabeledSlider(
                         label = stringResource(R.string.demo_lighting_rotation),
                         value = environmentRotation,
                         onValueChange = { environmentRotation = it },
@@ -457,6 +573,11 @@ fun LightingDemo(onBack: () -> Unit) {
                         text = stringResource(R.string.demo_lighting_rotation_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.demo_lighting_sky),
+                        checked = showSky,
+                        onCheckedChange = { showSky = it },
                     )
                 }
 
@@ -496,6 +617,11 @@ fun LightingDemo(onBack: () -> Unit) {
                         checked = rimEnabled,
                         onCheckedChange = { rimEnabled = it },
                     )
+                    SwitchRow(
+                        label = stringResource(R.string.demo_lighting_markers),
+                        checked = showMarkers,
+                        onCheckedChange = { showMarkers = it },
+                    )
                 }
 
                 LightingRig.Sun -> {
@@ -529,6 +655,81 @@ fun LightingDemo(onBack: () -> Unit) {
                 valueRange = LightingStage.EXPOSURE_MIN..LightingStage.EXPOSURE_MAX,
                 decimals = 2,
             )
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+            SectionHeader(stringResource(R.string.demo_lighting_section_reflections))
+            Text(
+                text = stringResource(R.string.demo_lighting_probe_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_probe),
+                checked = probeEnabled,
+                onCheckedChange = setProbeEnabled,
+            )
+            LabeledSlider(
+                label = stringResource(R.string.demo_lighting_probe_zone),
+                value = probeZone,
+                onValueChange = { probeZone = it },
+                valueRange = LightingStage.PROBE_ZONE_MIN..LightingStage.PROBE_ZONE_MAX,
+                decimals = 1,
+                unit = "m",
+                enabled = probeEnabled,
+            )
+
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.md))
+            SectionHeader(stringResource(R.string.demo_lighting_section_frame))
+            Text(
+                text = stringResource(R.string.demo_lighting_ssao_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_ssao),
+                checked = ssaoEnabled,
+                onCheckedChange = { ssaoEnabled = it },
+            )
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_fog),
+                checked = fogEnabled,
+                onCheckedChange = { fogEnabled = it },
+            )
+            LabeledSlider(
+                label = stringResource(R.string.demo_lighting_fog_density),
+                value = fogDensity,
+                onValueChange = { fogDensity = it },
+                valueRange = 0f..FOG_DENSITY_MAX,
+                decimals = 2,
+                enabled = fogEnabled,
+            )
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.sm)) {
+                LightingStage.fogColors.forEach { option ->
+                    FilterChip(
+                        selected = fogColor == option,
+                        onClick = { fogColor = option },
+                        label = { Text(option.label) },
+                        enabled = fogEnabled,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_msaa),
+                checked = msaaEnabled,
+                onCheckedChange = { msaaEnabled = it },
+            )
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_fxaa),
+                checked = fxaaEnabled,
+                onCheckedChange = { fxaaEnabled = it },
+            )
+            SwitchRow(
+                label = stringResource(R.string.demo_lighting_dithering),
+                checked = ditheringEnabled,
+                onCheckedChange = { ditheringEnabled = it },
+            )
         },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -536,10 +737,12 @@ fun LightingDemo(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 onFrame = { frameTimeNanos ->
                     firstFrame.onFrame(frameTimeNanos)
+                    if (probeEnabled) cameraPosition = cameraNode.worldPosition
                     // Re-solve the fade when a pinch or drag has moved the eye, so zooming out
-                    // never brings the floor's edge back into view.
+                    // never brings the floor's edge back into view. With fog on, `FogNode` owns
+                    // the view's fog and the fade stays out of its way.
                     val distance = length(cameraNode.worldPosition)
-                    if (!(abs(distance - eyeDistance[0]) < EYE_DISTANCE_EPSILON)) {
+                    if (!fogEnabled && !(abs(distance - eyeDistance[0]) < EYE_DISTANCE_EPSILON)) {
                         eyeDistance[0] = distance
                         StageFade.apply(
                             view = view,
@@ -553,6 +756,7 @@ fun LightingDemo(onBack: () -> Unit) {
                 },
                 engine = engine,
                 view = view,
+                scene = scene,
                 modelLoader = modelLoader,
                 materialLoader = materialLoader,
                 environmentLoader = environmentLoader,
@@ -581,7 +785,28 @@ fun LightingDemo(onBack: () -> Unit) {
                     maxPolarDegrees = LightingStage.maxOrbitPolarDegrees(orbitRadius),
                 ),
             ) {
-                // ── The stage: identical on both lighting screens ────────────────────────────
+                // ── Reflections and fog, on whichever rig is up ──────────────────────────────
+                if (probeEnabled && probeEnvironment != null) {
+                    ReflectionProbeNode(
+                        filamentScene = scene,
+                        environment = probeEnvironment,
+                        position = Position(0f, 0f, 0f),
+                        radius = probeZone,
+                        cameraPosition = cameraPosition,
+                    )
+                }
+                // On, the view's fog is the library's `FogNode`; off, the view carries the stage
+                // fade (set from the `SideEffect` and `onFrame`). Only one writes it at a time.
+                if (fogEnabled) {
+                    FogNode(
+                        view = view,
+                        enabled = true,
+                        density = fogDensity,
+                        color = fogColor.color,
+                    )
+                }
+
+                // ── The stage ────────────────────────────────────────────────────────────────
                 LightingStageFloor()
                 heroInstance?.let { instance ->
                     ModelNode(
@@ -829,6 +1054,19 @@ internal fun SwitchRow(
     }
 }
 
+@Composable
+private fun SectionHeader(text: String) {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(modifier = Modifier.height(SceneViewTokens.Space.sm))
+}
+
 /** Whether the environment on screen draws its sky — a plain holder, written in composition. */
 private class PresentedSky(var visible: Boolean)
 
@@ -848,6 +1086,9 @@ private const val DEFAULT_HOUR = 16.5f
 private const val EYE_DISTANCE_EPSILON = 0.01f
 
 private const val DEFAULT_HAZE = 2.5f
+
+private const val DEFAULT_FOG_DENSITY = 0.12f
+private const val FOG_DENSITY_MAX = 0.6f
 
 /** The photo-studio HDR: a dark surround with a few big softboxes, so it fills without modelling. */
 private const val STUDIO_ENVIRONMENT_FILE = "environments/studio_warm_2k.hdr"

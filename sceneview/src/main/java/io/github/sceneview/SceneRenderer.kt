@@ -16,6 +16,7 @@ import com.google.android.filament.Viewport
 import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import io.github.sceneview.utils.SurfaceMirrorer
+import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -116,8 +117,30 @@ class SceneRenderer(
      * each mirrored surface gets its own swap chain and its own render pass, so the live view's
      * frame is complete and presented before any mirror work starts. Wiring a mirrorer changes
      * nothing about the window swap chain — it can be attached and detached at any time.
+     *
+     * The mirrorer is told which view this renderer draws into and how to wake its render loop,
+     * which is what lets a [io.github.sceneview.capture.SceneRecorder] size its video, copy a
+     * photo and start a recording on a still scene.
      */
     var surfaceMirrorer: SurfaceMirrorer? = null
+        set(value) {
+            if (field !== value) field?.let { if (it.host === mirrorHost) it.host = null }
+            field = value
+            value?.host = mirrorHost
+        }
+
+    /** The `SurfaceView` / `TextureView` this renderer is attached to — weak, the view owns us. */
+    private var renderViewRef: WeakReference<android.view.View>? = null
+
+    private val mirrorHost = object : SurfaceMirrorer.Host {
+        override val renderView: android.view.View?
+            get() = renderViewRef?.get()
+
+        // `View.getScene` is a cached Java field, no JNI.
+        override fun requestRender() {
+            view.scene?.let { SceneRenderInvalidators.requestRender(it) }
+        }
+    }
 
     // ── Resize callback ─────────────────────────────────────────────────────────────────────────
 
@@ -175,6 +198,7 @@ class SceneRenderer(
         uiHelper.renderCallback =
             makeRendererCallback(viewHeight = { surfaceView.height }, votable = true)
         uiHelper.attachTo(surfaceView)
+        renderViewRef = WeakReference(surfaceView)
 
         onTouch?.let { dispatch ->
             surfaceView.setOnTouchListener { _, event -> dispatch(event); true }
@@ -208,6 +232,7 @@ class SceneRenderer(
         uiHelper.renderCallback =
             makeRendererCallback(viewHeight = { textureView.height }, votable = false)
         uiHelper.attachTo(textureView)
+        renderViewRef = WeakReference(textureView)
 
         onTouch?.let { dispatch ->
             textureView.setOnTouchListener { _, event -> dispatch(event); true }
@@ -229,6 +254,17 @@ class SceneRenderer(
      */
     internal var presentedFrameCount: Long = 0L
         private set
+
+    /**
+     * The identity this renderer reports its frames under to the engine's [EngineDestroyQueue],
+     * which is how the queue tells two renderers on one engine from one renderer rendering twice
+     * (sceneview/sceneview#4359).
+     *
+     * A bare token rather than `this`: the queue keeps it until its counter next advances, and it
+     * is reachable from a static map for as long as the engine lives — holding the renderer there
+     * would keep its surface callbacks alive after [destroy] on an engine nobody renders any more.
+     */
+    private val frameSource = Any()
 
     /**
      * Presents a single frame if a swap chain is available.
@@ -261,10 +297,10 @@ class SceneRenderer(
         onBeforeRender()
 
         if (shouldPresent?.invoke() == false) {
-            // Still drain: the queue's grace periods are counted in ticks of real scene time, and a
+            // Still drain: the queue's grace periods are counted in frames of the engine, and a
             // scene that settles into on-demand would otherwise hold destroyed GPU resources until
             // something happened to wake it.
-            EngineDestroyQueue.of(engine).drain()
+            EngineDestroyQueue.of(engine).drainFrame(frameSource)
             return false
         }
 
@@ -283,12 +319,13 @@ class SceneRenderer(
             presented = true
         }
 
-        // Destroy GPU resources whose grace period has elapsed. Runs after endFrame on the main
-        // (render) thread so Filament has reclaimed any MaterialInstance the texture was bound to —
-        // see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from a
-        // Choreographer callback so it advances in lock-step with real rendered frames, and stops
-        // the moment the surface (and thus the render loop) goes away.
-        EngineDestroyQueue.of(engine).drain()
+        // Destroy GPU resources whose grace period has elapsed, after endFrame on the main (render)
+        // thread — see EngineDestroyQueue (sceneview/sceneview#874). Driven here rather than from
+        // a Choreographer callback so it advances in lock-step with real rendered frames, and
+        // stops the moment the surface (and thus the render loop) goes away. Reported under this
+        // renderer's identity: the queue belongs to the engine, and counts one frame per pass of
+        // the renderers sharing it, not one per renderer (sceneview/sceneview#4359).
+        EngineDestroyQueue.of(engine).drainFrame(frameSource)
 
         return presented
     }
@@ -355,6 +392,7 @@ class SceneRenderer(
         // bound at its first mirrored frame.
         surfaceMirrorer?.destroy()
         surfaceMirrorer = null
+        renderViewRef = null
         votableSurfaceRef.set(null)
         votedFrameRate = 0f
         uiHelper.detach()

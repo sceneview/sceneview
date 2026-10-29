@@ -24,6 +24,8 @@ on:
       - 'assets/manifest.json'
       - 'tools/fetch-assets.sh'
       - '.github/workflows/ios.yml'
+  schedule:
+    - cron: '30 3 * * *'
   workflow_dispatch:
 
 # Cancel only a genuinely superseded PR run, never a push to `main` — same
@@ -42,6 +44,83 @@ permissions:
   contents: read
 
 jobs:
+  # `assets/manifest.json` caused 7 of 27 iOS runs in the 2026-10-19 audit
+  # (~540 macOS minutes/week), although the demo bundles only the `ios` entries
+  # plus shiba.glb and raccoon_family.spz from the Android scope. Compare that
+  # projection, including the download base URL, before starting any macOS job.
+  ios-changes:
+    name: Detect iOS asset changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.ios.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: assets
+      - name: Check whether an iOS input changed
+        id: ios
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — running every iOS job."
+            exit 0
+          fi
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::No base SHA available; running every iOS job."
+            exit 0
+          fi
+          NON_MANIFEST=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
+            SceneViewSwift samples/ios-demo tools/fetch-assets.sh .github/workflows/ios.yml)
+          if [ -n "$NON_MANIFEST" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "An iOS source or workflow input changed."
+            exit 0
+          fi
+          if python3 - "$BASE_SHA" "$HEAD_SHA" <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          bundled_android = {
+              "samples/android-demo/src/main/assets/models/shiba.glb",
+              "samples/android-demo/src/main/assets/splats/raccoon_family.spz",
+          }
+
+          def projection(revision):
+              raw = subprocess.check_output(
+                  ["git", "show", f"{revision}:assets/manifest.json"], text=True
+              )
+              manifest = json.loads(raw)
+              files = [
+                  entry for entry in manifest["files"]
+                  if entry.get("scope") == "ios" or entry.get("path") in bundled_android
+              ]
+              return {
+                  "baseUrl": manifest.get("baseUrl"),
+                  "iosScope": manifest.get("scopes", {}).get("ios"),
+                  "files": sorted(files, key=lambda entry: entry["path"]),
+              }
+
+          sys.exit(0 if projection(sys.argv[1]) == projection(sys.argv[2]) else 1)
+          PY
+          then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Only manifest entries unused by the iOS demo changed; skipping macOS jobs."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "An asset bundled by the iOS demo changed."
+          fi
+
   # Two jobs, run in parallel: the SceneViewSwift package (iOS build,
   # visionOS build, unit tests) and the iOS sample demo (simulator test,
   # device-path compile). They share nothing at build time — the demo builds
@@ -53,6 +132,8 @@ jobs:
   # as #3811) re-runs alone instead of re-running the whole job.
   build:
     name: Build & Test (iOS)
+    needs: ios-changes
+    if: needs.ios-changes.outputs.run == 'true'
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -170,6 +251,7 @@ jobs:
   # self-hosted Xcode lists stay on 26.x until this job is green.
   build-xcode27:
     name: Build & Test (iOS, Xcode 27 preview)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: xcode-27
     continue-on-error: true
     timeout-minutes: 30
@@ -244,6 +326,8 @@ jobs:
 
   demo:
     name: Build & Test (iOS sample demo)
+    needs: ios-changes
+    if: needs.ios-changes.outputs.run == 'true'
     runs-on: macos-15
     timeout-minutes: 30
 
@@ -382,6 +466,7 @@ jobs:
   # key is separate.
   build-demo-xcode27:
     name: Build & Test (iOS sample demo, Xcode 27 preview)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: xcode-27
     continue-on-error: true
     timeout-minutes: 30

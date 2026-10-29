@@ -15,9 +15,9 @@ const val RERUN_INTRO: String =
 
 /** Atop the sheet, on every screen of the demo: what it records, and where that stays. */
 const val RERUN_REPLAY_INTRO: String =
-    "\"Record your room\" keeps the camera's path, its photos, the surfaces and the points, then " +
-        "replays the room in 3D. \"Watch a sample session\" plays a real room recorded the same way. " +
-        "Your sessions stay on this phone until you share or delete them."
+    "\"Start scanning\" keeps the camera's path, its photos, the surfaces and the points, then " +
+        "shows the space in 3D. \"See an example\" plays a real room scanned the same way. " +
+        "Your scans stay on this phone until you share or delete them."
 
 /** The status line over the camera: a dot, a [title] and a quieter [detail] line. */
 data class RerunStatusUx(
@@ -27,14 +27,19 @@ data class RerunStatusUx(
     val live: Boolean,
 )
 
-fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float): RerunStatusUx =
+fun rerunStatusUx(
+    isConnected: Boolean,
+    eventsSent: Long,
+    eventsPerSecond: Float,
+    locale: Locale = Locale.getDefault(),
+): RerunStatusUx =
     if (isConnected) {
         val rate = eventsPerSecond.takeIf { it.isFinite() && it > 0f }?.let {
-            " · ${String.format(Locale.US, "%.0f", it)} per second"
+            " · ${String.format(locale, "%.0f", it)} per second"
         }.orEmpty()
         RerunStatusUx(
             title = "Streaming to your computer",
-            detail = "${String.format(Locale.US, "%,d", eventsSent)} " +
+            detail = "${String.format(locale, "%,d", eventsSent)} " +
                 (if (eventsSent == 1L) "event" else "events") + " sent$rate",
             live = true,
         )
@@ -47,8 +52,14 @@ fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float
         )
     }
 
-/** Heading of the settings-sheet section that holds [RERUN_SETUP_STEPS]. */
-const val RERUN_SETUP_TITLE: String = "Advanced: stream to a computer"
+/**
+ * The folded row that holds [RERUN_SETUP_TITLE] in debug builds (#4619): shell commands are for
+ * the people who build the app, never for the store app's settings sheet.
+ */
+const val RERUN_DEVELOPER_TITLE: String = "Developer tools"
+
+/** Heading of the section, under [RERUN_DEVELOPER_TITLE], that holds [RERUN_SETUP_STEPS]. */
+const val RERUN_SETUP_TITLE: String = "Stream to a computer"
 
 /** One numbered step of "Connect your computer"; [command] is shown in a mono block. */
 data class RerunSetupStep(val text: String, val command: String? = null)

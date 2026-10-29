@@ -53,7 +53,7 @@ no honest common shape.
 |---|---|---|
 | Android | Filament, via `io.github.sceneview.SceneView` | ✅ implemented |
 | iOS | RealityKit, via `SceneViewSwift` | ✅ implemented — needs a one-time app registration, below |
-| Desktop (JVM) | Filament, via filament-kmp (Maven). Offscreen readback → Skia. **JDK 22+** | ✅ implemented |
+| Desktop (JVM) | Filament, via filament-kmp (Maven). Offscreen readback → Skia. **JDK 21+** | ✅ implemented |
 
 Unimplemented platforms render a visible placeholder naming the platform and the reason,
 not an empty viewport — a blank box is indistinguishable from a model that failed to
@@ -178,9 +178,12 @@ there.
 ## Desktop (JVM)
 
 Filament through [filament-kmp](https://github.com/Erkko68/filament-kmp) on Maven
-(`filament-compose` 0.4.0, `implementation` — never on the public API). Offscreen
-readback → Skia, inside filament-kmp. **JDK 22+** (FFM). Consumers must run with
-`--enable-native-access=ALL-UNNAMED`.
+(`filament-compose` 0.8.0, `implementation` — never on the public API). Offscreen
+readback → Skia, inside filament-kmp. **JDK 21+**, no JVM flag. filament-kmp's JNI
+binding (0.7.0+) needs only JDK 17, but this module's `api` dependency
+`dev.romainguy:kotlin-math` ships JDK 21 bytecode, so a JDK 17 runtime fails with
+`UnsupportedClassVersionError`. On JDK 24+, `--enable-native-access=ALL-UNNAMED` is
+optional and only silences the JVM's warning about native library loading.
 
 `ModelSource.Asset` resolves against the JVM classpath. Prefer `ModelSource.Bytes`
 from a Compose Multiplatform resource. Sample: [`samples/desktop-demo`](../samples/desktop-demo).

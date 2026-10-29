@@ -1,1 +1,1 @@
-SceneView Demo — SDK samples
+SceneView Demo: 3D & AR SDK

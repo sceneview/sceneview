@@ -5,7 +5,7 @@ SceneView is an open-source 3D and augmented reality SDK for SwiftUI, built on R
 START HERE
 
 - Cosmos — a galaxy, a star with a ringed planet, and particle storms that glow in real time. Tap the planet and the camera flies there.
-- Rerun AR Replay — watch a real AR session rebuild itself in 3D.
+- 3D Scan — move around a space and watch it take shape in 3D.
 
 WHAT THE SAMPLES SHOW
 
@@ -14,11 +14,11 @@ WHAT THE SAMPLES SHOW
 - Real-world blending — real furniture and passing people stay in front of virtual objects, and the light around you lights the model.
 - Lighting and materials — swap HDR environments and watch reflections and shadows change in real time.
 - Scene mesh, depth, physics, geometry, spatial audio and more.
-- Your own files — open a USDZ, Reality, STL, OBJ, PLY or 3MF file and see how the SDK renders it.
+- Your own files — open a USDZ, Reality, STL, OBJ or PLY file and see how the SDK renders it.
 
 FOR DEVELOPERS
 
-A 3D model on screen is one view, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples and this app are free and open source.
+A 3D model on screen is one view, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples and this app are free and open source: SceneView has more than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency.
 
 github.com/sceneview/sceneview
 

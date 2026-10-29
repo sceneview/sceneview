@@ -19,10 +19,13 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
+import io.github.sceneview.demo.theme.SceneViewTokens
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -199,6 +202,116 @@ class DemoScaffoldBottomBandTest {
         )
     }
 
+    // --- the snackbar, wired to the same band (#4483) ---
+
+    @Test
+    fun snackbar_overADemoWithNoBottomStack_restsOneGutterAboveTheDockBand() {
+        // The placement the snackbar had before it knew about stacks (#3325): one gutter above
+        // the dock band, whose top edge is the dock's.
+        val snackbar = raiseSnackbarWithTheSheetClosed(bottomOverlay = null)
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
+        assertEquals(
+            "the snackbar ends at ${snackbar.bottom} over a dock starting at ${dock.top}",
+            SceneViewTokens.Space.md.value,
+            (dock.top - snackbar.bottom).value,
+            HALF_A_DP,
+        )
+    }
+
+    @Test
+    fun snackbar_overABottomOverlayThatDrawsNothing_isWhereItIsWithNoStack() {
+        // Composed, empty: the band still measures its 104 dp dock reserve, 24 dp taller than
+        // the dock band. That reserve is not a stack — for the scene's inset nor for this.
+        val snackbar = raiseSnackbarWithTheSheetClosed(bottomOverlay = {})
+        val dock = composeRule.onNodeWithTag(DemoScaffoldTestTags.DOCK).getUnclippedBoundsInRoot()
+        assertEquals(
+            "the snackbar ends at ${snackbar.bottom} over a dock starting at ${dock.top}",
+            SceneViewTokens.Space.md.value,
+            (dock.top - snackbar.bottom).value,
+            HALF_A_DP,
+        )
+    }
+
+    @Test
+    fun snackbar_overABottomStack_restsOneGutterAboveIt() {
+        val snackbar = raiseSnackbarWithTheSheetClosed(
+            bottomOverlay = {
+                Box(Modifier.fillMaxWidth().height(48.dp).testTag(OVERLAY_PROBE))
+            },
+        )
+        val stack = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
+        assertEquals(
+            "the snackbar ends at ${snackbar.bottom} over a stack starting at ${stack.top}",
+            SceneViewTokens.Space.md.value,
+            (stack.top - snackbar.bottom).value,
+            HALF_A_DP,
+        )
+    }
+
+    @Test
+    fun snackbar_overTheDemosOwnSceneCard_restsOneGutterAboveIt() {
+        // What `TapToPlaceArSession` does with its decision card: anchored one gutter above
+        // the chrome, in the scene slot, where the scaffold cannot measure it unless told.
+        val snackbar = raiseSnackbarWithTheSheetClosed(
+            bottomOverlay = {
+                Box(Modifier.fillMaxWidth().height(48.dp).testTag(OVERLAY_PROBE))
+            },
+            scene = {
+                Box(Modifier.fillMaxSize()) {
+                    Box(
+                        Modifier
+                            .align(androidx.compose.ui.Alignment.BottomCenter)
+                            .padding(bottom = LocalDemoChromeBottomInset.current + SceneViewTokens.Space.md)
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .reportsDemoSceneBottomCard()
+                            .testTag(SCENE_PROBE),
+                    )
+                }
+            },
+        )
+        val card = composeRule.onNodeWithTag(SCENE_PROBE).getUnclippedBoundsInRoot()
+        val stack = composeRule.onNodeWithTag(OVERLAY_PROBE).getUnclippedBoundsInRoot()
+        assertTrue("the card at $card is not above the stack at $stack", card.bottom <= stack.top)
+        assertEquals(
+            "the snackbar ends at ${snackbar.bottom} over a card starting at ${card.top}",
+            SceneViewTokens.Space.md.value,
+            (card.top - snackbar.bottom).value,
+            HALF_A_DP,
+        )
+    }
+
+    /**
+     * Raises "Demo reset" the only way the app can — from its row in the settings sheet —
+     * closes the sheet, and returns where the snackbar's layout box came to rest. Material
+     * draws the container 12 dp inside that box, over a stack as over the dock.
+     */
+    private fun raiseSnackbarWithTheSheetClosed(
+        bottomOverlay: (@Composable DemoBottomOverlayScope.() -> Unit)?,
+        scene: @Composable () -> Unit = {},
+    ): DpRect {
+        composeRule.setContent {
+            SceneViewDemoTheme(darkTheme = false) {
+                DemoScaffold(
+                    title = "Band",
+                    onBack = {},
+                    onReset = {},
+                    bottomOverlay = bottomOverlay,
+                ) {
+                    scene()
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_FAB).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.RESET_ACTION).performClick()
+        composeRule.onNodeWithTag(DemoScaffoldTestTags.SETTINGS_CLOSE).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Demo reset — ready to try again").assertIsDisplayed()
+        return composeRule.onNodeWithTag(DemoScaffoldTestTags.SNACKBAR).getUnclippedBoundsInRoot()
+    }
+
     private fun assertOverlayClearsDock(fontScale: Float) {
         val overlay = measureOverlay(fontScale)
         val dock = composeRule
@@ -256,6 +369,9 @@ class DemoScaffoldBottomBandTest {
     private companion object {
         const val OVERLAY_PROBE = "bottom-overlay-probe"
         const val SCENE_PROBE = "scene-probe"
+
+        /** Rounding of a dp measured through pixels at this density. */
+        const val HALF_A_DP = 0.5f
 
         /** Matches the `w411dp` Robolectric qualifier on this class. */
         val SCREEN_WIDTH = 411.dp

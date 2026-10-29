@@ -18,9 +18,10 @@ import android.speech.RecognizerIntent
  *  - [RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS] —
  *    silence after which it returns a possibly-complete partial result.
  *
- * Both call sites (`BugReportSheet`'s note dictation, `PointAndAskDemo`'s question
- * dictation) share this helper so the tuning stays in one place instead of drifting
- * between two copy-pasted literals.
+ * Google's recognizer turned out to ignore them on a Pixel 9 (#4618): it still ends a
+ * segment after about half a second of silence. They stay as a best-effort hint for
+ * recognizers that honour them; what actually keeps a dictation going is
+ * [DictationSession], which reopens the dialog after each round (see `rememberVoiceDictation`).
  */
 fun Intent.putVoiceSilenceExtras(): Intent = apply {
     putExtra(

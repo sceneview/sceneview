@@ -28,6 +28,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -143,7 +144,7 @@ class UpdateSnackbarTest {
     }
 
     @Test
-    fun aFailedDownload_offersRetry() {
+    fun aFailedDownload_offersThePlayStore() {
         showRootWithUpdateAvailable()
         tapUpdate()
         fake.userAcceptsUpdate()
@@ -153,11 +154,15 @@ class UpdateSnackbarTest {
 
         composeRule.onNodeWithText("Update failed").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Dismiss").assertIsDisplayed()
-        composeRule.onNodeWithText("Retry").performClick()
+        composeRule.onNodeWithText("Retry").assertDoesNotExist()
+        composeRule.onNodeWithText("Open Play Store").performClick()
         composeRule.waitForIdle()
 
-        assertNarrating("Waiting for Google Play")
-        assertTrue(fake.isConfirmationDialogVisible)
+        composeRule.onNodeWithText("Update failed").assertDoesNotExist()
+        assertEquals(
+            "market://details?id=${activity.packageName}",
+            shadowOf(activity).nextStartedActivity.dataString,
+        )
     }
 
     @Test

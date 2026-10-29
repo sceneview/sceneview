@@ -304,6 +304,15 @@ struct ExploreTab: View {
                 // A 401/403 met during search latches the same banner the feeds
                 // use, so one rejected key is explained once, in one place.
                 if search.keyRejected { keyRejected = true }
+                // `search`: counted once its results have stayed on screen for
+                // `SearchTerm.settleDelay` (or a result is opened), so the fragments
+                // a live search fires mid-typing never count — Android parity.
+                guard search.isSearching else {
+                    DemoAnalytics.shared.searchCleared(.models)
+                    return
+                }
+                do { try await Task.sleep(for: SearchTerm.settleDelay) } catch { return }
+                logModelSearch()
             }
             // Pull-to-refresh — every available source has live feeds to refresh
             // (Poly Haven needs no key), so it's always wired.
@@ -356,6 +365,19 @@ struct ExploreTab: View {
     /// set it back" retry never restarted anything (#3586).
     private var searchTaskKey: String {
         "\(search.activeQuery)|\(selectedSource.id.slug)|\(search.retryToken)"
+    }
+
+    /// The `search` event for the query on screen; a failure logs as `error`.
+    /// `DemoAnalytics` drops the repeat when a tap follows the settle.
+    private func logModelSearch() {
+        let count: Int?
+        switch search.state {
+        case .results(let models): count = models.count
+        case .noResults: count = 0
+        case .failed: count = nil
+        case .idle, .loading: return
+        }
+        DemoAnalytics.shared.searchSettled(search.activeQuery, surface: .models, resultCount: count)
     }
 
     /// Resolve the concrete source that produced `model` (robust against a source
@@ -808,6 +830,7 @@ struct ExploreTab: View {
                     HStack(spacing: 14) {
                         ForEach(models, id: \.cardKey) { model in
                             FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                                logModelSearch()
                                 viewingModel = model
                                 #if os(iOS)
                                 SceneViewHaptic.shared.light()

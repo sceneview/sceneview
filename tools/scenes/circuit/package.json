@@ -1,0 +1,13 @@
+{
+  "name": "sceneview-night-circuit-builder",
+  "private": true,
+  "type": "module",
+  "description": "Builds the homepage night-circuit scene (GLB + environment map + posters). See build.sh.",
+  "dependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "meshoptimizer": "^1.3.0",
+    "playwright-core": "^1.64.0"
+  }
+}

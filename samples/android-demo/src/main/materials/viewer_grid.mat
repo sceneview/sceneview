@@ -1,0 +1,111 @@
+// viewer_grid.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The ground grid of the demo's 3D viewers (#4651): an endless metric grid on the
+//             floor the subject stands on, fading with distance like the viewport grid of
+//             Blender, so the floor gives scale and orientation and never shows an edge.
+// Used by:    samples/android-demo ViewerGroundGrid (Model Viewer, its showroom, the Explore
+//             viewer) — nothing in the SDK.
+// Parameters:
+//   minorColor — float4, linear premultiplication-free colour and alpha of the minor lines.
+//   majorColor — float4, the same for the major lines, every tenth minor line.
+//   target     — float3, user-world point the camera orbits (the subject). The grid's cell
+//                size and its fade both follow the eye's distance to it, so zooming in or out
+//                keeps the same density of lines on screen.
+//   shape      — float4: x = fade start and y = fade end, in eye-to-target distances from the
+//                eye; z = eye-to-target distances per minor cell at which a cell size gives
+//                way to the next power of ten; w = major line width, in pixels.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+//
+// Why endless: the quad is a unit square the vertex stage re-centres under the eye every frame
+// and stretches to the fade's radius, so wherever the camera goes the grid reaches the fade
+// before it reaches an edge. The node is never culled for the same reason.
+//
+// Why powers of ten: one cell size fits one zoom. A 6 cm earbud and a 4 m car both open
+// framed, and a fixed metre grid is a single line under the first and a blur under a city. The
+// minor cell is the power of ten nearest the eye's distance / shape.z; as the eye moves out,
+// the finest level fades out and the next one takes its place, the way Blender's grid does, so
+// a zoom never pops a line in or out.
+//
+// Why fwidth: each line is drawn one pixel wide whatever its distance, anti-aliased against the
+// screen-space derivative of the grid coordinate, and a level whose cells shrink to a few
+// pixels fades out before it can alias into a moiré.
+//
+// Blending is premultiplied "transparent" over whatever the floor is: the showroom's lit floor,
+// the Explore viewer's transparent sheet. The view's fog, where there is one, carries the far
+// lines into the horizon with the floor under them.
+material {
+    "name" : "Viewer Grid",
+    "parameters" : [
+        { "type" : "float4", "name" : "minorColor" },
+        { "type" : "float4", "name" : "majorColor" },
+        { "type" : "float3", "name" : "target", "precision" : "high" },
+        { "type" : "float4", "name" : "shape" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "gridPosition" ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "depthWrite" : false,
+    "culling" : "none",
+    "doubleSided" : true
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 eye = getWorldCameraPosition();
+        highp float3 userEye = mulMat4x4Float3(getUserWorldFromWorldMatrix(), eye).xyz;
+        highp float reach = max(length(userEye - materialParams.target), 1e-4) * materialParams.shape.y;
+        highp float4 local = getPosition();
+        // The floor's height comes from the node; its extent and centre from the eye.
+        // Lifted a hair, a share of the eye's distance, off the opaque floor it lies on: coplanar,
+        // the two depth-fight and the far lines break into dashes.
+        highp float lift = reach * 0.0005;
+        highp float floorY = mulMat4x4Float3(getWorldFromModelMatrix(), float3(0.0)).y + lift;
+        highp float3 world = float3(eye.x + local.x * 2.0 * reach, floorY, eye.z + local.z * 2.0 * reach);
+        material.worldPosition = float4(world, 1.0);
+        material.gridPosition = float4(mulMat4x4Float3(getUserWorldFromWorldMatrix(), world).xyz, 0.0);
+    }
+}
+fragment {
+    // Coverage of a grid of [cell]-sized squares at [p], lines [width] pixels wide.
+    float gridLines(highp float2 p, highp float cell, float width) {
+        highp float2 c = p / cell;
+        highp float2 w = max(fwidth(c), float2(1e-6));
+        highp float2 d = abs(fract(c - 0.5) - 0.5) / w;
+        float line = 1.0 - clamp(min(d.x, d.y) - 0.5 * (width - 1.0), 0.0, 1.0);
+        // A level whose cells are only a few pixels across is a moiré, not a grid.
+        float dense = 1.0 - smoothstep(0.12, 0.45, max(w.x, w.y));
+        return line * dense;
+    }
+
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        highp float3 p = variable_gridPosition.xyz;
+        highp float3 userEye = mulMat4x4Float3(getUserWorldFromWorldMatrix(), getWorldCameraPosition()).xyz;
+        float4 shape = materialParams.shape;
+        highp float eyeDistance = max(length(userEye - materialParams.target), 1e-4);
+
+        // The level of detail: a minor cell of about distance / shape.z, in powers of ten.
+        highp float level = log2(eyeDistance / shape.z) * 0.30103;
+        highp float base = floor(level);
+        float blend = float(level - base);
+        highp float fine = exp2(base * 3.321928);
+        highp float minorCell = fine * 10.0;
+        highp float majorCell = fine * 100.0;
+
+        float finest = gridLines(p.xz, fine, 1.0) * (1.0 - blend);
+        float minor = max(gridLines(p.xz, minorCell, 1.0), finest);
+        float major = gridLines(p.xz, majorCell, shape.w);
+
+        // Fades with the distance from the eye: the grid has no edge, only a horizon.
+        float fade = 1.0 - smoothstep(shape.x * eyeDistance, shape.y * eyeDistance, length(p - userEye));
+
+        float4 minorColor = materialParams.minorColor;
+        float4 majorColor = materialParams.majorColor;
+        float minorAlpha = minorColor.a * minor;
+        float majorAlpha = majorColor.a * major;
+        float alpha = max(minorAlpha, majorAlpha) * fade;
+        float3 rgb = majorAlpha >= minorAlpha ? majorColor.rgb : minorColor.rgb;
+        material.baseColor = float4(rgb * alpha, alpha);
+    }
+}

@@ -54,7 +54,7 @@ PSL_DATA_TYPES_APP_PERFORMANCE,PSL_PERFORMANCE_DIAGNOSTICS,true,MULTIPLE_CHOICE,
 PSL_DATA_TYPES_APP_PERFORMANCE,PSL_OTHER_PERFORMANCE,,MULTIPLE_CHOICE,App info and performance/Other app performance data
 PSL_DATA_TYPES_FILES_AND_DOCS,PSL_FILES_AND_DOCS,,MULTIPLE_CHOICE,Files and docs/Files and docs
 PSL_DATA_TYPES_APP_ACTIVITY,PSL_USER_INTERACTION,true,MULTIPLE_CHOICE,App activity/App interactions
-PSL_DATA_TYPES_APP_ACTIVITY,PSL_IN_APP_SEARCH_HISTORY,,MULTIPLE_CHOICE,App activity/In-app search history
+PSL_DATA_TYPES_APP_ACTIVITY,PSL_IN_APP_SEARCH_HISTORY,true,MULTIPLE_CHOICE,App activity/In-app search history
 PSL_DATA_TYPES_APP_ACTIVITY,PSL_APPS_ON_DEVICE,,MULTIPLE_CHOICE,App activity/Installed apps
 PSL_DATA_TYPES_APP_ACTIVITY,PSL_USER_GENERATED_CONTENT,,MULTIPLE_CHOICE,App activity/Other user-generated content
 PSL_DATA_TYPES_APP_ACTIVITY,PSL_OTHER_APP_ACTIVITY,,MULTIPLE_CHOICE,App activity/Other actions
@@ -686,13 +686,13 @@ PSL_DATA_USAGE_RESPONSES:PSL_USER_INTERACTION:DATA_USAGE_SHARING_PURPOSE,PSL_FRA
 PSL_DATA_USAGE_RESPONSES:PSL_USER_INTERACTION:DATA_USAGE_SHARING_PURPOSE,PSL_ADVERTISING,,MULTIPLE_CHOICE,Data usage and handling (App interactions)/Why is this user data shared? Select all that apply./Advertising or marketing
 PSL_DATA_USAGE_RESPONSES:PSL_USER_INTERACTION:DATA_USAGE_SHARING_PURPOSE,PSL_PERSONALIZATION,,MULTIPLE_CHOICE,Data usage and handling (App interactions)/Why is this user data shared? Select all that apply./Personalisation
 PSL_DATA_USAGE_RESPONSES:PSL_USER_INTERACTION:DATA_USAGE_SHARING_PURPOSE,PSL_ACCOUNT_MANAGEMENT,,MULTIPLE_CHOICE,Data usage and handling (App interactions)/Why is this user data shared? Select all that apply./Account management
-PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:PSL_DATA_USAGE_COLLECTION_AND_SHARING,PSL_DATA_USAGE_ONLY_COLLECTED,,MULTIPLE_CHOICE,"Data usage and handling (In-app search history)/Is this data collected, shared or both?/Collected"
+PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:PSL_DATA_USAGE_COLLECTION_AND_SHARING,PSL_DATA_USAGE_ONLY_COLLECTED,true,MULTIPLE_CHOICE,"Data usage and handling (In-app search history)/Is this data collected, shared or both?/Collected"
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:PSL_DATA_USAGE_COLLECTION_AND_SHARING,PSL_DATA_USAGE_ONLY_SHARED,,MULTIPLE_CHOICE,"Data usage and handling (In-app search history)/Is this data collected, shared or both?/Shared"
-PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:PSL_DATA_USAGE_EPHEMERAL,,,MAYBE_REQUIRED,Data usage and handling (In-app search history)/Is this data processed ephemerally?
-PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_USER_CONTROL,PSL_DATA_USAGE_USER_CONTROL_OPTIONAL,,SINGLE_CHOICE,"Data usage and handling (In-app search history)/Is this data required for your app, or can users choose whether it's collected?/Users can choose whether this data is collected"
+PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:PSL_DATA_USAGE_EPHEMERAL,,false,MAYBE_REQUIRED,Data usage and handling (In-app search history)/Is this data processed ephemerally?
+PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_USER_CONTROL,PSL_DATA_USAGE_USER_CONTROL_OPTIONAL,true,SINGLE_CHOICE,"Data usage and handling (In-app search history)/Is this data required for your app, or can users choose whether it's collected?/Users can choose whether this data is collected"
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_USER_CONTROL,PSL_DATA_USAGE_USER_CONTROL_REQUIRED,,SINGLE_CHOICE,"Data usage and handling (In-app search history)/Is this data required for your app, or can users choose whether it's collected?/Data collection is required (users can't turn off this data collection)"
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_APP_FUNCTIONALITY,,MULTIPLE_CHOICE,Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./App functionality
-PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_ANALYTICS,,MULTIPLE_CHOICE,Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./Analytics
+PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_ANALYTICS,true,MULTIPLE_CHOICE,Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./Analytics
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_DEVELOPER_COMMUNICATIONS,,MULTIPLE_CHOICE,Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./Developer communications
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_FRAUD_PREVENTION_SECURITY,,MULTIPLE_CHOICE,"Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./Fraud prevention, security and compliance"
 PSL_DATA_USAGE_RESPONSES:PSL_IN_APP_SEARCH_HISTORY:DATA_USAGE_COLLECTION_PURPOSE,PSL_ADVERTISING,,MULTIPLE_CHOICE,Data usage and handling (In-app search history)/Why is this user data collected? Select all that apply./Advertising or marketing

@@ -4,7 +4,7 @@
   "title": "Bundled Asset Credits — SceneView web demo",
   "artefact": "the sceneview.github.io/web-demo deploy",
   "source": "assets/catalog.json",
-  "total": 17,
+  "total": 18,
   "sections": [
     {
       "title": "3D models",
@@ -97,6 +97,16 @@
           "licenseUrl": "https://creativecommons.org/licenses/by-nc/4.0/",
           "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-diorama-7bafb356e4f34695954da8fa6cd640b4",
           "size": 769040,
+          "note": ""
+        },
+        {
+          "file": "models/nintendo_switch_oled.glb",
+          "name": "Nintendo Switch OLED",
+          "author": "rtql8d",
+          "license": "CC-BY-4.0",
+          "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+          "sourceUrl": "https://sketchfab.com/3d-models/nintendo-switch-oled-model-9b8721e10a4f4a689fc4f72cdcee4b01",
+          "size": 2634880,
           "note": ""
         },
         {

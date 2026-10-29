@@ -2,20 +2,26 @@ name: App Store catch-up
 
 # Makes the latest GitHub release end up submitted to Apple without a human.
 #
-# App Store Connect allows ONE non-live iOS version at a time. A tag whose
-# deploy runs while the previous version is still in review gets a 409 and
-# defers (app_store_submit.py, exit 75). Before this workflow, nothing ever
-# retried a deferred release: iOS sat at 4.40.0 for days while Android shipped
-# 4.47.0, with Apple approving every submission in 20 to 36 hours (2026-09-28).
+# App Store Connect allows ONE non-live version per platform at a time. A tag
+# whose deploy runs while the previous version is still in review defers
+# (app_store_submit.py, exit 75 — a red step since 2026-10-22). Before this
+# workflow, nothing ever retried a deferred release: iOS sat at 4.40.0 for days
+# while Android shipped 4.47.0, with Apple approving every submission in 20 to
+# 36 hours (2026-09-28).
 #
 # Every 3 hours, `probe` (ubuntu, ~1 min) reads App Store Connect and GitHub
-# and decides, through .github/scripts/app_store_catchup.py:
+# and decides, for iOS and for macOS, through .github/scripts/app_store_catchup.py:
 #   none     live is up to date, the release is already with Apple, an older
 #            version is still in review (wait), or a deploy is running.
-#   submit   a VALID iOS build of the release is on TestFlight: `submit`
-#            re-submits it from ubuntu — no Xcode, no rebuild.
+#   submit   a VALID build of the release is on TestFlight for that platform:
+#            `submit` submits it from ubuntu — no Xcode, no rebuild.
 #   rebuild  no usable build: `rebuild` dispatches app-store.yml on the tag
-#            (macOS archive + upload + submit). Capped per tag.
+#            (macOS archive + upload + submit, both platforms). Capped per tag.
+#
+# "A deploy is running" counts app-store.yml runs created in the last 24 hours
+# only. Until 2026-10-22 it counted any run GitHub listed as queued, and one
+# ghost run (25906902157, queued with zero jobs since 2026-05-15) made all 86
+# runs from 2026-09-29 decide "none" — green, while 4.59.0 and 4.60.0 waited.
 #
 # `supersede` (manual dispatch only, off by default) withdraws an OLDER
 # version from App Review to put the latest release in its place. That
@@ -51,10 +57,12 @@ jobs:
       contents: read
       actions: read
     outputs:
-      action: ${{ steps.decide.outputs.action }}
       version: ${{ steps.decide.outputs.version }}
-      build: ${{ steps.decide.outputs.build }}
-      supersede: ${{ steps.decide.outputs.supersede }}
+      ios_build: ${{ steps.decide.outputs.ios_build }}
+      ios_supersede: ${{ steps.decide.outputs.ios_supersede }}
+      macos_build: ${{ steps.decide.outputs.macos_build }}
+      macos_supersede: ${{ steps.decide.outputs.macos_supersede }}
+      rebuild: ${{ steps.decide.outputs.rebuild }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,18 +89,24 @@ jobs:
         run: |
           if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_API_KEY" ]; then
             echo "::notice::App Store Connect secrets not configured — nothing to probe."
-            echo "action=none" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Exits 1 when a platform's state is unclassified, AFTER writing the
+          # other platform's decision: the jobs below still act on that one.
           "$RUNNER_TEMP/asc-venv/bin/python3" .github/scripts/app_store_catchup.py
 
   submit:
-    name: Submit ${{ needs.probe.outputs.version }} (TestFlight build ${{ needs.probe.outputs.build }})
+    name: Submit ${{ needs.probe.outputs.version }} (iOS ${{ needs.probe.outputs.ios_build || '-' }}, macOS ${{ needs.probe.outputs.macos_build || '-' }})
     needs: probe
-    if: needs.probe.outputs.action == 'submit'
+    # !cancelled(): a probe that went red on one platform's unclassified state
+    # still hands over the other platform's decision.
+    if: ${{ !cancelled() && (needs.probe.outputs.ios_build != '' || needs.probe.outputs.macos_build != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Same group as app-store.yml: never two submitters against one app record.
+    # One job for both platforms, not a matrix: a group holds one running and
+    # ONE pending entry, so two matrix legs queued behind a deploy would cancel
+    # each other.
     concurrency:
       group: app-store-deploy
       cancel-in-progress: false
@@ -134,25 +148,36 @@ jobs:
           echo "$ASC_API_KEY" > ~/.private_keys/"AuthKey_${ASC_KEY_ID}.p8"
           chmod 600 ~/.private_keys/"AuthKey_${ASC_KEY_ID}.p8"
 
-      - name: Submit for App Store review
+      - name: Install pinned App Store Connect deps
+        run: |
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/pip" install -r "$GITHUB_WORKSPACE/.catchup-main/.github/workflows/requirements/app-store.txt" --quiet
+
+      # Exit 0 = with Apple (submitted now, or found already in review). Any
+      # other exit is red, 75 (deferred: the slot filled since the probe)
+      # included — the release is not in review, and the next run retries.
+      - name: Submit iOS for App Store review
+        if: ${{ needs.probe.outputs.ios_build != '' }}
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_VERSION_STRING: v${{ needs.probe.outputs.version }}
-          ASC_EXPECTED_BUILD: ${{ needs.probe.outputs.build }}
-          ASC_SUPERSEDE: ${{ needs.probe.outputs.supersede }}
-        run: |
-          python3 -m venv "$RUNNER_TEMP/asc-venv"
-          "$RUNNER_TEMP/asc-venv/bin/pip" install -r "$GITHUB_WORKSPACE/.catchup-main/.github/workflows/requirements/app-store.txt" --quiet
-          set +e
-          "$RUNNER_TEMP/asc-venv/bin/python3" "$RUNNER_TEMP/app_store_submit.py"
-          rc=$?
-          set -e
-          if [ "$rc" -eq 75 ]; then
-            echo "::notice::Deferred by App Store Connect — the next catch-up run retries."
-            exit 0
-          fi
-          exit "$rc"
+          ASC_EXPECTED_BUILD: ${{ needs.probe.outputs.ios_build }}
+          ASC_SUPERSEDE: ${{ needs.probe.outputs.ios_supersede }}
+          ASC_PLATFORM: IOS
+        run: '"$RUNNER_TEMP/asc-venv/bin/python3" "$RUNNER_TEMP/app_store_submit.py"'
+
+      # !cancelled(): a red iOS submission must not hold back the Mac one.
+      - name: Submit macOS for App Store review
+        if: ${{ !cancelled() && needs.probe.outputs.macos_build != '' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_VERSION_STRING: v${{ needs.probe.outputs.version }}
+          ASC_EXPECTED_BUILD: ${{ needs.probe.outputs.macos_build }}
+          ASC_SUPERSEDE: ${{ needs.probe.outputs.macos_supersede }}
+          ASC_PLATFORM: MAC_OS
+        run: '"$RUNNER_TEMP/asc-venv/bin/python3" "$RUNNER_TEMP/app_store_submit.py"'
 
       - name: Remove the API key
         if: always()
@@ -161,7 +186,7 @@ jobs:
   rebuild:
     name: Dispatch app-store.yml on v${{ needs.probe.outputs.version }}
     needs: probe
-    if: needs.probe.outputs.action == 'rebuild'
+    if: ${{ !cancelled() && needs.probe.outputs.rebuild == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -171,7 +196,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.probe.outputs.version }}
-          SUPERSEDE: ${{ needs.probe.outputs.supersede }}
+          # Either platform's opt-in: app-store.yml takes one flag for both legs.
+          SUPERSEDE: ${{ needs.probe.outputs.ios_supersede == 'true' || needs.probe.outputs.macos_supersede == 'true' }}
         run: |
           # `supersede` only when asked: a tag cut before the input existed
           # rejects an unknown input, and false is its default anyway.

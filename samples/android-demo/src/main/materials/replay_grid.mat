@@ -1,0 +1,48 @@
+// replay_grid.mat — see CONTRIBUTING.md "Filament runtime ↔ .filamat ABI invariant"
+//
+// Purpose:    The floor grid of the 3D Scan replay and the AR Debug view (#4040): the grid's
+//             ribbons — 25 cm minor, 1 m major, real geometry a set number of pixels wide — in
+//             one flat colour that fades out with the distance from the room, the way the
+//             ground grid of Polycam or Reality Composer does, so the grid gives the path its
+//             scale and never ends on a hard edge.
+// Used by:    samples/android-demo ArDebugView (the GridMinor / GridMajor layers) — nothing in
+//             the SDK.
+// Parameters:
+//   color — float4, sRGB-converted RGBA of the lines (set like the unlit colour material's).
+//   fade  — float4: x, z = the room's centre on the floor, in user-world metres; z = radius the
+//           fade starts at; w = radius the lines are gone at.
+// matc profile: mobile-only, OpenGL + Vulkan — demo APK asset, not an AAR asset.
+//
+// Premultiplied like transparent_unlit_colored.mat (#2224): `blending: transparent` composites
+// ONE * src + (1 - a) * dst and Filament does not premultiply an unlit baseColor.
+material {
+    "name" : "Replay Grid",
+    "parameters" : [
+        { "type" : "float4", "name" : "color" },
+        { "type" : "float4", "name" : "fade", "precision" : "high" }
+    ],
+    "requires" : [ "position" ],
+    "variables" : [ "gridPosition" ],
+    "shadingModel" : "unlit",
+    "blending" : "transparent",
+    "depthWrite" : false,
+    "culling" : "none",
+    "doubleSided" : true
+}
+vertex {
+    void materialVertex(inout MaterialVertexInputs material) {
+        highp float3 user = mulMat4x4Float3(getUserWorldFromWorldMatrix(), material.worldPosition.xyz).xyz;
+        material.gridPosition = float4(user, 0.0);
+    }
+}
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        highp float4 fade = materialParams.fade;
+        highp float r = length(variable_gridPosition.xz - fade.xy);
+        float keep = 1.0 - smoothstep(fade.z, fade.w, r);
+        float4 color = materialParams.color;
+        float alpha = color.a * keep;
+        material.baseColor = float4(color.rgb * alpha, alpha);
+    }
+}

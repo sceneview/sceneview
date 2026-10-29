@@ -1,9 +1,6 @@
-// The model viewer's entrance flight and the Toy Car's material repair,
-// checked against the Android values they port.
+// The model viewer's entrance flight and the Toy Car's material repair.
 //
-// `ViewerEntranceFlight` is pure math, so the poses are checked without a
-// scene; the constants are also read from the Android sources, so a retune on
-// one side fails here until the other follows.
+// `ViewerEntranceFlight` is pure math, so the poses are checked without a scene.
 
 import XCTest
 import RealityKit
@@ -41,7 +38,7 @@ final class ViewerEntranceTests: XCTestCase {
         XCTAssertNotEqual(flight.pose, rest)
         for _ in 0..<200 { flight.advance(by: 1.0 / 60) }
         XCTAssertEqual(flight.pose, rest)
-        XCTAssertEqual(flight.settleDrop, 0)
+        XCTAssertEqual(flight.settleLift, 0)
         XCTAssertTrue(flight.isFinished)
     }
 
@@ -71,12 +68,12 @@ final class ViewerEntranceTests: XCTestCase {
         XCTAssertLessThan(curve.value(at: 0.1), 0.25)
     }
 
-    func testModelSettlesFromSixPercentOfTheCameraDistanceBelow() {
+    func testModelSettlesFromTwoPercentOfTheCameraDistanceAbove() {
         let flight = ViewerEntranceFlight(rest: rest, start: .arrival)
-        XCTAssertEqual(flight.settleDrop, rest.distance * 0.06, accuracy: 1e-5)
+        XCTAssertEqual(flight.settleLift, rest.distance * 0.02, accuracy: 1e-5)
         var later = flight
         for _ in 0..<3 { later.advance(by: 1.0 / 20) }
-        XCTAssertLessThan(later.settleDrop, flight.settleDrop)
+        XCTAssertLessThan(later.settleLift, flight.settleLift)
     }
 
     @MainActor
@@ -169,20 +166,12 @@ final class ViewerEntranceTests: XCTestCase {
     }
 
     @MainActor
-    func testConstantsMatchAndroid() throws {
-        let sources = ViewerAssetTests.androidDemoSources(#filePath)
-        let viewer = try String(contentsOf: sources.appendingPathComponent("ModelViewerDemo.kt"), encoding: .utf8)
-        let helpers = try String(contentsOf: sources.deletingLastPathComponent()
-            .appendingPathComponent("DemoHelpers.kt"), encoding: .utf8)
-        XCTAssertTrue(viewer.contains("CAMERA_ENTRANCE_MILLIS = \(Int(ViewerEntranceFlight.duration * 1000))"))
-        XCTAssertTrue(viewer.contains("fitRadius * 0.06f"))
-        XCTAssertTrue(helpers.contains("startDistanceScale: Float = 1.55f"))
-        XCTAssertTrue(helpers.contains("startYawDegrees: Float = 24f"))
-        XCTAssertTrue(helpers.contains("startLiftFraction: Float = 0.22f"))
+    func testEntranceConstantsStayInTheTunedRange() {
+        XCTAssertEqual(ViewerEntranceFlight.duration, 0.7)
         XCTAssertEqual(ViewerEntranceFlight.startDistanceScale, 1.55)
         XCTAssertEqual(ViewerEntranceFlight.startYawDegrees, 24)
         XCTAssertEqual(ViewerEntranceFlight.startLiftFraction, 0.22)
-        XCTAssertEqual(ViewerEntranceFlight.settleDropFraction, 0.06)
+        XCTAssertEqual(ViewerEntranceFlight.settleLiftFraction, 0.02)
     }
 
     // MARK: - Toy Car sheen

@@ -81,9 +81,9 @@ val IN_REVIEW_BADGE_VISIBLE: Boolean
  *                    Required on every demo and drives the "New" marker — see
  *                    [DemoFreshness]. Back-filled from git history (the first
  *                    release tag containing the demo's first commit). Work
- *                    merged between two releases declares the current
- *                    `VERSION_NAME`: [io.github.sceneview.demo.DemoFreshnessTest]
- *                    fails on a version newer than the build.
+ *                    merged between two releases declares the next version,
+ *                    which may be one minor ahead of `VERSION_NAME` until the
+ *                    release bump. See [DemoFreshness].
  * @param updatedIn   Release in which this demo's **user-visible behaviour**
  *                    last changed — a rebuild, a new control, a fixed render.
  *                    Drives the "Updated" marker. Not "any commit that touched
@@ -207,6 +207,35 @@ private val AR_DEMOS_OUTSIDE_AR_SECTIONS: Set<String> = setOf(
 /** Whether this demo runs on ARCore — see [AR_CATEGORIES]. */
 val DemoEntry.isArDemo: Boolean
     get() = category in AR_CATEGORIES || id in AR_DEMOS_OUTSIDE_AR_SECTIONS
+
+/**
+ * AR demos whose first screen needs no camera, so the route must not ask for it.
+ *
+ *  - `ar-rerun` opens on a landing page, and its sample replay, saved sessions and shared
+ *    `.svscan` / `.rrd` files play without a camera. It gates its two camera screens
+ *    (live capture, room dollhouse) itself.
+ *  - `ar-placement` opens on a model chooser with a "View in 3D" way out. It gates its
+ *    camera phase itself.
+ *  - `ar-splat-room` is the Rerun demo opened on its room dollhouse, which has a 3D view,
+ *    a list of recordings and an empty state that need no camera. Its AR view is gated by
+ *    the dollhouse screen itself (#4460).
+ *  - `ar-xr` renders reference poses on a phone and never opens the camera.
+ *
+ * Someone who refused the camera must still reach those screens (#4139 review).
+ */
+internal val AR_DEMOS_WITHOUT_CAMERA_ON_ENTRY: Set<String> = setOf(
+    "ar-placement",
+    "ar-rerun",
+    "ar-splat-room",
+    "ar-xr",
+)
+
+/**
+ * Whether opening this demo opens the camera straight away — the demos `DemoRouter` puts
+ * behind the camera-permission gate before they can mount an AR session.
+ */
+val DemoEntry.opensCameraOnEntry: Boolean
+    get() = isArDemo && id !in AR_DEMOS_WITHOUT_CAMERA_ON_ENTRY
 
 /**
  * Maps a stable category key to its display-name resource ID.

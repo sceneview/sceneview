@@ -6,7 +6,6 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_ar_record_playback_title">AR Recording</string>
-    <string name="demo_ar_record_playback_subtitle">Record an AR session and replay it anywhere</string>
 
     <!-- #3831: two steps in the dock instead of four mode chips in the sheet. -->
     <string name="ar_rec_step_record">Record</string>

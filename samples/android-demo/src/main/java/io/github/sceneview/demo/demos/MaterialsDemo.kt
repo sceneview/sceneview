@@ -102,6 +102,7 @@ import io.github.sceneview.material.setRoughness
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.math.colorOf
+import io.github.sceneview.math.toLinearSpace
 import io.github.sceneview.rememberCameraManipulator
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberEnvironment
@@ -159,7 +160,7 @@ import kotlin.math.sin
  */
 @Composable
 fun MaterialsDemo(onBack: () -> Unit) {
-    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): bypass the
+    // Inspection mode (Android Studio @Preview pane, Robolectric tests): bypass the
     // Filament-backed body BEFORE rememberEngine(), which needs .so files LayoutLib lacks.
     if (LocalInspectionMode.current) {
         DemoPreviewPlaceholder(title = "Materials", onBack = onBack)
@@ -709,6 +710,7 @@ private fun StudioSection(
         onBack = { if (inspecting) changeMode(MaterialsMode.Gallery) else onBack() },
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = if (inspecting) {
             stringResource(selected.nameRes)
@@ -1179,13 +1181,15 @@ private fun rememberStudioMaterial(
  * do not use them. One shader serves eight of the nine spheres, so "this material has no clear
  * coat" has to be written as `clearCoat = 0`; an unwritten uniform is not a guaranteed zero.
  */
-private fun MaterialInstance.push(
+internal fun MaterialInstance.push(
     material: StudioMaterial,
     metallic: Float = material.metallic,
     roughness: Float = material.roughness,
     traitAmount: Float = material.traitAmount,
 ) {
-    val base = colorOf(material.color)
+    // Metals carry linear reflectance; every other colour is sRGB and is linearised here, as
+    // `materialLoader.createColorInstance` does for any colour (RgbaType.SRGB).
+    val base = colorOf(material.color).let { if (material.colorIsLinear) it else it.toLinearSpace() }
 
     if (material.trait == MaterialTrait.Transmission) {
         setParameter("color", base.x, base.y, base.z, 1f)
@@ -1205,7 +1209,7 @@ private fun MaterialInstance.push(
     setParameter("clearCoat", coat)
     setParameter("clearCoatRoughness", material.traitRoughness)
 
-    val tint = colorOf(material.traitColor)
+    val tint = colorOf(material.traitColor).toLinearSpace()
     if (material.trait == MaterialTrait.Sheen) {
         setParameter("sheenColor", tint.x * traitAmount, tint.y * traitAmount, tint.z * traitAmount)
     } else {
@@ -1315,12 +1319,15 @@ private fun OcclusionSection(
     var occluderVisible by remember { mutableStateOf(false) }
 
     val firstFrame = rememberFirstFrameState(engine)
+    // The section is a helmet cut by a plane: without the helmet there is nothing to cut (#4459).
+    firstFrame.holdUntilModels(modelLoader, instancesLoaded = helmetInstance != null)
 
     DemoScaffold(
         title = stringResource(R.string.demo_materials_title),
         onBack = onBack,
         firstFrameRendered = firstFrame.rendered,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         loadingLabel = stringResource(R.string.demo_materials_loading),
         peekHeader = stringResource(
             if (occluderVisible) {
@@ -1342,8 +1349,8 @@ private fun OcclusionSection(
         controls = {
             ModeSelector(mode, onModeChange)
             // Toggleable on the whole row so tapping the label flips the state and
-            // UiAutomator finds a clickable ancestor — the contract the Post-FX switches in
-            // LightingLabDemo and the Lines & Paths switches share.
+            // UiAutomator finds a clickable ancestor — the contract the frame switches in
+            // LightingDemo and the Lines & Paths switches share.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

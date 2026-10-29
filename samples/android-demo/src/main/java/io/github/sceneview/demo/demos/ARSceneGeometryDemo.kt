@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.awaitVpsAvailability
 import io.github.sceneview.ar.node.MeshClassification
 import io.github.sceneview.ar.node.toMeshClassification
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
@@ -75,6 +77,7 @@ import io.github.sceneview.demo.demos.internal.friendlyArSessionError
 import io.github.sceneview.demo.demos.internal.sceneGeometryWait
 import io.github.sceneview.demo.demos.internal.vpsCell
 import io.github.sceneview.demo.rememberArPlaybackDataset
+import io.github.sceneview.demo.demos.internal.rememberArMeshTintInstance
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.overMediaEdge
 import io.github.sceneview.rememberEngine
@@ -84,8 +87,7 @@ import io.github.sceneview.sample.rememberMaterialInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
-private const val TAG_MESH = "ARSceneGeometryDemo/Mesh"
-private const val TAG_STREETSCAPE = "ARSceneGeometryDemo/Streetscape"
+private const val TAG = "ARStreetscapeDemo"
 
 // How long the camera may track with zero streetscape geometry before the status
 // banner swaps the spinner text for explicit "go outdoors" guidance (#1615).
@@ -99,169 +101,32 @@ private const val NO_GEOMETRY_HINT_DELAY_MS = 15_000L
 private const val VPS_RETRY_DELAY_MS = 30_000L
 
 /**
- * Overlay opacity for both modes' meshes — semi-transparent so the camera feed and the
- * real-world structure remain visible through the coloured geometry.
- */
-private const val MESH_OVERLAY_ALPHA = 0.55f
-
-/**
- * The Geospatial scene-geometry screens. They shared the `ar-scene-mesh` card behind a
- * segmented toggle (#2239 / #3463) until samples step 0 split them by what they teach:
+ * The Streetscape mode of the `ar-geospatial-anchors` card: the Geospatial API's
+ * Streetscape Geometry — the buildings and terrain around the user, as meshes.
  *
- * - **Mesh** ([ARSceneMeshDemo], the `ar-scene-mesh` card) —
- *   [io.github.sceneview.ar.node.SceneMeshNode] colour-codes each geometry by its
- *   [MeshClassification], the enum that gives ARKit `ARMeshAnchor` parity on Android.
- * - **Streetscape** ([ARStreetscapeDemo], a mode of the `ar-geospatial-anchors` card) —
- *   [io.github.sceneview.ar.node.StreetscapeGeometryNode], the raw node the classified one
- *   subclasses: one material for every geometry, no classification. The retired
- *   `ar-streetscape` link opens it through [io.github.sceneview.demo.DeepLinkRouter].
+ * One switch in the settings sheet, **Colour buildings & terrain**, picks the node that
+ * consumes the trackables:
  *
- * Each screen keeps its **own** `ARSceneView` and its own [rememberEngine], so leaving one
+ * - **On** (default) — [io.github.sceneview.ar.node.SceneMeshNode] colour-codes each
+ *   geometry by its [MeshClassification], the enum that gives ARKit `ARMeshAnchor` parity
+ *   on Android, with a legend over the camera. This was the `ar-scene-mesh` card ("Scene
+ *   Geometry") until the AR catalogue clean-up, wave 1; its link opens this mode.
+ * - **Off** — [io.github.sceneview.ar.node.StreetscapeGeometryNode], the raw node the
+ *   classified one subclasses: one material for every geometry, no classification. The
+ *   retired `ar-streetscape` link opens it through [io.github.sceneview.demo.DeepLinkRouter].
+ *
+ * The screen keeps its **own** `ARSceneView` and its own [rememberEngine], so leaving it
  * tears its ARCore session and Filament engine down completely — the leak invariant the
  * #2239 Batch-1 review pinned.
  *
- * **Requirements** (both screens):
+ * **Requirements:**
  * - ARCore Geospatial API enabled in Google Cloud Console + a Cloud API key
  * - Device supports the ARCore Geospatial API
  * - Outdoor environment with Google Street View coverage
  * - CAMERA + ACCESS_FINE_LOCATION permissions
  */
-/** The `ar-scene-mesh` card: classified [io.github.sceneview.ar.node.SceneMeshNode] geometry. */
 @Composable
-fun ARSceneMeshDemo(onBack: () -> Unit) = MeshSection(onBack)
-
-/**
- * The Streetscape mode of the `ar-geospatial-anchors` card (samples step 0): the raw
- * [io.github.sceneview.ar.node.StreetscapeGeometryNode], one material for every geometry.
- */
-@Composable
-fun ARStreetscapeDemo(onBack: () -> Unit) = StreetscapeSection(onBack)
-
-// ─── Mesh section ────────────────────────────────────────────────────────────
-// The `ar-scene-mesh` card.
-
-@Composable
-private fun MeshSection(onBack: () -> Unit) = GeospatialPermissionGate(
-    title = stringResource(R.string.demo_ar_scene_mesh_title),
-    deniedReason = stringResource(R.string.demo_ar_scene_mesh_location_denied),
-    onBack = onBack,
-) {
-    val engine = rememberEngine()
-    val modelLoader = rememberModelLoader(engine)
-    val materialLoader = rememberMaterialLoader(engine)
-    val arPlaybackDataset = rememberArPlaybackDataset()
-
-    // Per-classification material instances — colour coded so TERRAIN and BUILDING read
-    // at a glance from the mesh overlay. Both hues come from the brand ramp
-    // (`SceneViewColors`, mirrored from DESIGN.md): they are the two ends of it, which is
-    // the pair that stays distinguishable over an arbitrary camera frame.
-    val terrainMaterial = rememberMaterialInstance(
-        materialLoader,
-        color = SceneViewColors.Primary.copy(alpha = MESH_OVERLAY_ALPHA),
-        metallic = 0.0f,
-        roughness = 1.0f,
-        reflectance = 0.0f,
-    )
-    val buildingMaterial = rememberMaterialInstance(
-        materialLoader,
-        color = SceneViewColors.TintSoft.copy(alpha = MESH_OVERLAY_ALPHA),
-        metallic = 0.0f,
-        roughness = 1.0f,
-        reflectance = 0.0f,
-    )
-
-    val state = rememberSceneGeometryState()
-    val cloudStatus = rememberCloudStatus(state)
-    val locationEnabled = rememberIsLocationEnabled()
-    NoGeometryGuidanceEffect(state, cloudStatus)
-    VpsCoverageEffect(TAG_MESH, state)
-    SceneGeometryStatusLogEffect(TAG_MESH, state, cloudStatus, locationEnabled)
-
-    DemoScaffold(
-        title = stringResource(R.string.demo_ar_scene_mesh_title),
-        onBack = onBack,
-        // The sheet holds the mode toggle and the one-line explainer of what this mode
-        // renders; the dev-only ForceTrackingFailureMenu joins it in QA mode (#1620).
-        controls = {
-            Text(
-                text = stringResource(R.string.demo_ar_scene_mesh_mode_mesh_explainer),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (DemoSettings.qaMode) ForceTrackingFailureMenu()
-        },
-        // Legend + status pill are hosted by the scaffold's `bottomOverlay` slot, a
-        // bottom-aligned Column: they stack instead of sharing the same strip of pixels,
-        // and the banner is laid out against the dock instead of under it (#2779).
-        bottomOverlay = {
-            // Classification legend — only visible once geometry is rendering.
-            if (state.geometryCount > 0) {
-                MeshClassificationLegend(
-                    modifier = Modifier
-                        .align(Alignment.Start)
-                        .padding(start = SceneViewTokens.Space.md)
-                )
-            }
-            SceneGeometryStatusBanner(
-                state = state,
-                cloudStatus = cloudStatus,
-                locationEnabled = locationEnabled,
-                renderingText = stringResource(
-                    R.string.demo_ar_scene_mesh_rendering,
-                    state.geometryCount,
-                ),
-                lookingText = stringResource(R.string.demo_ar_scene_mesh_looking),
-                noGeometryHint = stringResource(R.string.demo_ar_scene_mesh_no_geometry_hint),
-            )
-        },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            ARSceneView(
-                modifier = Modifier.fillMaxSize(),
-                engine = engine,
-                modelLoader = modelLoader,
-                materialLoader = materialLoader,
-                playbackDataset = arPlaybackDataset,
-                planeRenderer = false,
-                sessionConfiguration = { session, config ->
-                    configureStreetscapeGeometry(TAG_MESH, session, config, state)
-                },
-                onSessionFailed = { exception ->
-                    Log.e(TAG_MESH, "AR session failed", exception)
-                    state.sessionError = friendlyArSessionError(exception)
-                },
-                onARCoreAvailability = { state.arCoreAvailability = it },
-                onSessionUpdated = { session, frame -> state.onFrame(session, frame) },
-                onTrackingFailureChanged = { reason -> state.trackingFailureReason = reason },
-            ) {
-                state.geometries.forEach { geo ->
-                    // Colour-code by classification so TERRAIN and BUILDING are visually
-                    // distinct — the one thing this mode has that Streetscape does not.
-                    val material = when (geo.type.toMeshClassification()) {
-                        MeshClassification.TERRAIN -> terrainMaterial
-                        else -> buildingMaterial
-                    }
-                    SceneMeshNode(
-                        streetscapeGeometry = geo,
-                        meshMaterialInstance = material,
-                    )
-                }
-            }
-
-            // Cover the still-black AR viewport until the first camera frame; lifts on a
-            // session error so the error banner below is never hidden (#2484).
-            ARCameraInitScrim(
-                initializing = !state.cameraReady && state.sessionError == null,
-                arCoreAvailability = state.arCoreAvailability,
-            )
-        }
-    }
-}
-
-// ─── Streetscape section ─────────────────────────────────────────────────────
-// The Streetscape mode of `ar-geospatial-anchors` (formerly `ar-streetscape`).
-
-@Composable
-private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
+fun ARStreetscapeDemo(onBack: () -> Unit) = GeospatialPermissionGate(
     title = stringResource(R.string.demo_ar_geospatial_anchors_title),
     deniedReason = stringResource(R.string.demo_ar_scene_mesh_streetscape_denied),
     onBack = onBack,
@@ -274,9 +139,19 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
     // `rememberArPlaybackDataset` — so live AR is completely unchanged for real users.
     val arPlaybackDataset = rememberArPlaybackDataset()
 
-    // One semi-transparent material for every geometry: the raw node carries no
-    // classification, and pretending otherwise would erase what separates the two modes.
-    val buildingMaterial = rememberMaterialInstance(
+    // On by default: the colours are what tell a building from the ground at a glance,
+    // and the retired `ar-scene-mesh` link lands here expecting them.
+    var colourByClassification by rememberSaveable { mutableStateOf(true) }
+
+    // Per-classification overlays — TERRAIN and BUILDING read at a glance. They tint the
+    // camera image instead of covering it (#4623): the old 55 %-alpha brand blue and lilac
+    // turned pastel over a bright wall once the AR view's Filmic tone mapper had its say.
+    // Blue ground, orange structure: the pair stays apart under colour-vision deficiencies.
+    val terrainMaterial = rememberArMeshTintInstance(materialLoader, SceneViewTokens.ArOverlay.meshGround)
+    val buildingMaterial = rememberArMeshTintInstance(materialLoader, SceneViewTokens.ArOverlay.meshStructure)
+    // Switch off: one semi-transparent material for every geometry — the raw node carries
+    // no classification, and pretending otherwise would erase what the switch shows.
+    val plainMaterial = rememberMaterialInstance(
         materialLoader,
         color = SceneViewColors.LandscapeOverlay,
         metallic = 0.1f,
@@ -288,23 +163,46 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
     val cloudStatus = rememberCloudStatus(state)
     val locationEnabled = rememberIsLocationEnabled()
     NoGeometryGuidanceEffect(state, cloudStatus)
-    VpsCoverageEffect(TAG_STREETSCAPE, state)
-    SceneGeometryStatusLogEffect(TAG_STREETSCAPE, state, cloudStatus, locationEnabled)
+    VpsCoverageEffect(TAG, state)
+    SceneGeometryStatusLogEffect(TAG, state, cloudStatus, locationEnabled)
 
     DemoScaffold(
         title = stringResource(R.string.demo_ar_geospatial_anchors_title),
         onBack = onBack,
         controls = {
+            SwitchRow(
+                label = stringResource(R.string.demo_ar_scene_mesh_colour_switch),
+                checked = colourByClassification,
+                onCheckedChange = { colourByClassification = it },
+            )
             Text(
-                text = stringResource(R.string.demo_ar_scene_mesh_mode_streetscape_explainer),
+                text = stringResource(
+                    if (colourByClassification) {
+                        R.string.demo_ar_scene_mesh_colour_on_explainer
+                    } else {
+                        R.string.demo_ar_scene_mesh_colour_off_explainer
+                    },
+                ),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // Developer-only debug toggle — lets QA force-emit each TrackingFailureReason
             // so the actionable-message overlay can be validated without staging a real
             // failure. See io.github.sceneview.demo.common.ForcedTrackingFailure / #1881.
             if (DemoSettings.qaMode) ForceTrackingFailureMenu()
         },
+        // Legend + status pill are hosted by the scaffold's `bottomOverlay` slot, a
+        // bottom-aligned Column: they stack instead of sharing the same strip of pixels,
+        // and the banner is laid out against the dock instead of under it (#2779).
         bottomOverlay = {
+            // Classification legend — only with the colours on, once geometry renders.
+            if (colourByClassification && state.geometryCount > 0) {
+                MeshClassificationLegend(
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = SceneViewTokens.Space.md)
+                )
+            }
             SceneGeometryStatusBanner(
                 state = state,
                 cloudStatus = cloudStatus,
@@ -322,6 +220,7 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,
@@ -329,10 +228,10 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
                 playbackDataset = arPlaybackDataset,
                 planeRenderer = false,
                 sessionConfiguration = { session, config ->
-                    configureStreetscapeGeometry(TAG_STREETSCAPE, session, config, state)
+                    configureStreetscapeGeometry(TAG, session, config, state)
                 },
                 onSessionFailed = { exception ->
-                    Log.e(TAG_STREETSCAPE, "AR session failed", exception)
+                    Log.e(TAG, "AR session failed", exception)
                     // Map to friendly copy (#2349) — never surface the raw
                     // "FatalException" class name to the user.
                     state.sessionError = friendlyArSessionError(exception)
@@ -342,13 +241,25 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
                 onTrackingFailureChanged = { reason -> state.trackingFailureReason = reason },
             ) {
                 state.geometries.forEach { geo ->
-                    StreetscapeGeometryNode(
-                        streetscapeGeometry = geo,
-                        meshMaterialInstance = buildingMaterial,
-                    )
+                    if (colourByClassification) {
+                        SceneMeshNode(
+                            streetscapeGeometry = geo,
+                            meshMaterialInstance = when (geo.type.toMeshClassification()) {
+                                MeshClassification.TERRAIN -> terrainMaterial
+                                else -> buildingMaterial
+                            },
+                        )
+                    } else {
+                        StreetscapeGeometryNode(
+                            streetscapeGeometry = geo,
+                            meshMaterialInstance = plainMaterial,
+                        )
+                    }
                 }
             }
 
+            // Cover the still-black AR viewport until the first camera frame; lifts on a
+            // session error so the error banner below is never hidden (#2484).
             ARCameraInitScrim(
                 initializing = !state.cameraReady && state.sessionError == null,
                 arCoreAvailability = state.arCoreAvailability,
@@ -360,11 +271,10 @@ private fun StreetscapeSection(onBack: () -> Unit) = GeospatialPermissionGate(
 // ─── Shared session plumbing ─────────────────────────────────────────────────
 
 /**
- * The per-mode session state both modes keep, and nothing else.
+ * The Streetscape session state, and nothing else.
  *
- * It is deliberately *not* hoisted above the `when` in [ARSceneGeometryDemo]: each mode
- * calls [rememberSceneGeometryState] at its own call site, so switching modes drops the
- * whole thing along with that mode's `ARSceneView` and engine.
+ * [ARStreetscapeDemo] calls [rememberSceneGeometryState] at its own call site, so leaving
+ * the mode drops the whole thing along with its `ARSceneView` and engine.
  */
 private class SceneGeometryState {
     val geometries = mutableStateListOf<StreetscapeGeometry>()
@@ -437,7 +347,7 @@ private class SceneGeometryState {
      */
     var vpsCloudStatus by mutableStateOf<CloudServiceStatus?>(null)
 
-    /** The one per-frame update both modes run — identical trackable bookkeeping. */
+    /** The per-frame trackable bookkeeping. */
     fun onFrame(session: Session, frame: Frame) {
         cameraReady = true
         this.session = session
@@ -608,7 +518,7 @@ private fun NoGeometryGuidanceEffect(state: SceneGeometryState, cloudStatus: Clo
 }
 
 /**
- * The VPS / tracking status pill, identical in both modes apart from the three sentences
+ * The VPS / tracking status pill, fed the three sentences
  * that name what the mode is rendering.
  */
 @Composable
@@ -700,7 +610,7 @@ private fun DemoBottomOverlayScope.SceneGeometryStatusBanner(
 }
 
 /**
- * The `sessionConfiguration` both modes pass — the same `Config.GeospatialMode.ENABLED` +
+ * The `sessionConfiguration` the mode passes — the same `Config.GeospatialMode.ENABLED` +
  * `Config.StreetscapeGeometryMode.ENABLED` pair, guarded identically.
  *
  * Enabling the mode unconditionally throws on devices without the feature, in regions
@@ -721,7 +631,7 @@ private fun configureStreetscapeGeometry(
         false
     }
     if (!geospatialOk) {
-        state.geospatialUnavailable = "Geospatial API not available on this device"
+        state.geospatialUnavailable = "Scene geometry isn't available here"
         Log.w(tag, "Geospatial mode unsupported — running plain AR session")
         config.planeFindingMode = Config.PlaneFindingMode.DISABLED
         return
@@ -735,7 +645,7 @@ private fun configureStreetscapeGeometry(
         // then fails at configure() time with an IllegalStateException. Surface a readable
         // message instead of a hard crash.
         Log.w(tag, "Geospatial config failed — falling back", error)
-        state.geospatialUnavailable = "Geospatial config failed: ${error.message}"
+        state.geospatialUnavailable = "Scene geometry couldn't start"
         config.geospatialMode = Config.GeospatialMode.DISABLED
         config.streetscapeGeometryMode = Config.StreetscapeGeometryMode.DISABLED
         config.planeFindingMode = Config.PlaneFindingMode.DISABLED
@@ -745,21 +655,16 @@ private fun configureStreetscapeGeometry(
 // ─── Permission gate ─────────────────────────────────────────────────────────
 
 /**
- * Gates the AR scene mount on both CAMERA and ACCESS_FINE_LOCATION being granted.
+ * Gates the AR scene mount on ACCESS_FINE_LOCATION being granted: without it
+ * `Session.configure(GeospatialMode.ENABLED)` throws
+ * `FineLocationPermissionNotGrantedException`.
  *
- * Streetscape Geometry crashes on either:
- *   1. CAMERA missing → ARSceneView session creation aborts
- *   2. FINE_LOCATION missing → `Session.configure(GeospatialMode.ENABLED)` throws
- *      `FineLocationPermissionNotGrantedException`
+ * The camera is not asked here: this demo only composes behind the AR demos' camera gate
+ * (`DemoEntry.opensCameraOnEntry`, #4139), which also keeps the two system dialogs one
+ * after the other — Android drops a request made while another is on screen.
  *
- * Mounting `ARSceneView` before both are granted produces a race where its own lifecycle
- * observer requests CAMERA in parallel with our LOCATION request, and Android drops one
- * ("Can request only one set of permissions at a time"). The fix is to *not* mount it
- * until both permissions resolve — this gate holds the composition while the system
- * dialogs are processed sequentially by a single launcher.
- *
- * [granted] is only composed once both are granted, so each mode's `rememberEngine` still
- * lives at that mode's own call site — the gate hoists nothing.
+ * [granted] is only composed once the location is granted, so the mode's `rememberEngine`
+ * still lives at that mode's own call site — the gate hoists nothing.
  */
 @Composable
 private fun GeospatialPermissionGate(
@@ -770,13 +675,6 @@ private fun GeospatialPermissionGate(
 ) {
     val context = LocalContext.current
 
-    var cameraGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
     var fineLocationGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -784,41 +682,28 @@ private fun GeospatialPermissionGate(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
-    var permissionsResolved by remember { mutableStateOf(cameraGranted && fineLocationGranted) }
+    var permissionsResolved by remember { mutableStateOf(fineLocationGranted) }
     var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
-    val cameraDeniedMessage = stringResource(R.string.demo_ar_scene_mesh_camera_denied)
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
+        contract = ActivityResultContracts.RequestPermission()
     ) { result ->
-        cameraGranted = result[Manifest.permission.CAMERA] ?: cameraGranted
-        fineLocationGranted =
-            result[Manifest.permission.ACCESS_FINE_LOCATION] ?: fineLocationGranted
-        permissionDeniedMessage = when {
-            !cameraGranted -> cameraDeniedMessage
-            !fineLocationGranted -> deniedReason
-            else -> null
-        }
+        fineLocationGranted = result
+        permissionDeniedMessage = deniedReason.takeUnless { result }
         permissionsResolved = true
     }
 
     LaunchedEffect(Unit) {
-        if (cameraGranted && fineLocationGranted) {
-            permissionsResolved = true
-            return@LaunchedEffect
+        if (!fineLocationGranted) {
+            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
-        val toRequest = buildList {
-            if (!cameraGranted) add(Manifest.permission.CAMERA)
-            if (!fineLocationGranted) add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        permissionLauncher.launch(toRequest.toTypedArray())
     }
 
     // Permission gate — a status UI with Retry + Open Settings buttons. ARSceneView is
     // *not* composed in this branch, which keeps it from racing our own permission
     // request. QA finding 2026-05-11: the gate used to show only the error text, so the
     // user was stuck with no way out except Back.
-    if (!permissionsResolved || !cameraGranted || !fineLocationGranted) {
+    if (!permissionsResolved || !fineLocationGranted) {
         DemoScaffold(title = title, onBack = onBack) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
@@ -849,19 +734,9 @@ private fun GeospatialPermissionGate(
                                 // when the user hits "Don't allow" but changes their mind
                                 // without going to Settings — Android re-prompts up to
                                 // twice before silent denial.
-                                val toRequest = buildList {
-                                    if (!cameraGranted) {
-                                        add(Manifest.permission.CAMERA)
-                                    }
-                                    if (!fineLocationGranted) {
-                                        add(Manifest.permission.ACCESS_FINE_LOCATION)
-                                    }
-                                }
-                                if (toRequest.isNotEmpty()) {
-                                    permissionDeniedMessage = null
-                                    permissionsResolved = false
-                                    permissionLauncher.launch(toRequest.toTypedArray())
-                                }
+                                permissionDeniedMessage = null
+                                permissionsResolved = false
+                                permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }) { Text(stringResource(R.string.demo_ar_scene_mesh_retry)) }
                             Button(onClick = {
                                 // Open Settings: deep-link to the app's permission page so
@@ -873,7 +748,7 @@ private fun GeospatialPermissionGate(
                                     android.net.Uri.fromParts("package", context.packageName, null)
                                 ).apply { flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK }
                                 context.startActivity(intent)
-                            }) { Text(stringResource(R.string.demo_ar_scene_mesh_open_settings)) }
+                            }) { Text(stringResource(R.string.ar_permission_open_settings)) }
                         }
                     }
                 }
@@ -895,7 +770,7 @@ private fun GeospatialPermissionGate(
  * only its opacity moves with the theme.
  */
 @Composable
-private fun MeshClassificationLegend(modifier: Modifier = Modifier) {
+internal fun MeshClassificationLegend(modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.lg)
     Column(
         modifier = modifier
@@ -916,11 +791,11 @@ private fun MeshClassificationLegend(modifier: Modifier = Modifier) {
             color = SceneViewTokens.ArOverlay.onScrimMuted,
         )
         LegendRow(
-            color = SceneViewColors.Primary,
+            color = SceneViewTokens.ArOverlay.meshGround,
             label = stringResource(R.string.demo_ar_scene_mesh_legend_terrain),
         )
         LegendRow(
-            color = SceneViewColors.TintSoft,
+            color = SceneViewTokens.ArOverlay.meshStructure,
             label = stringResource(R.string.demo_ar_scene_mesh_legend_building),
         )
     }

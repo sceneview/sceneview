@@ -333,7 +333,8 @@ internal object RerunWireFormat {
      * @param path     local path of the .rrd on the sidecar host (dev machine), or `null` on failure.
      * @param viewerUrl URL into the SceneView Rerun viewer that already encodes the
      *                  recording's location (often a `file://` link the user must
-     *                  re-host before sharing — useful as a copy-paste hint).
+     *                  re-host before sharing, on an https host that allows
+     *                  cross-origin requests — useful as a copy-paste hint).
      * @param events   number of events that made it into the file.
      * @param reason   human-readable error reason on failure (e.g. live-mode sidecar).
      */

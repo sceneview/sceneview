@@ -24,7 +24,7 @@ import io.github.sceneview.texture.setBitmap
  *
  * The plane is auto-sized from the image's aspect ratio (longest edge normalised to 1.0 world
  * unit) unless an explicit [size] is given. Assigning a new [bitmap] re-uploads the texture to the
- * GPU and optionally re-sizes the geometry.
+ * GPU, rebuilds its mip levels from it, and optionally re-sizes the geometry.
  *
  * Multiple constructors are provided for loading from a [Bitmap], an asset file path, or a
  * drawable resource ID.
@@ -64,6 +64,10 @@ open class ImageNode private constructor(
         set(value) {
             field = value
             texture.setBitmap(engine, value)
+            // The upload writes level 0 only. A quad drawn smaller than its bitmap (a label a few
+            // centimetres wide) is sampled from the lower mip levels, which would keep the image
+            // the texture was built with: rebuild them from the new one, as the build did.
+            if (texture.levels > 1) texture.generateMipmaps(engine)
             if (size == null) {
                 updateGeometry(
                     size = normalize(Size(value.width.toFloat(), value.height.toFloat()))

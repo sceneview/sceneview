@@ -37,6 +37,9 @@ sealed class ArDebugEvent(val nanos: Long) {
      */
     class DepthStats(nanos: Long, val added: Int, val kept: Int, val total: Int) : ArDebugEvent(nanos)
 
+    /** Floor cells a live scan covered new, [CoverageGrid.key]-packed (`floor_cells`, #4734). */
+    class FloorCells(nanos: Long, val keys: LongArray) : ArDebugEvent(nanos)
+
     /** Applies this event to [trace]. */
     fun applyTo(trace: ArDebugTrace) {
         when (this) {
@@ -46,6 +49,7 @@ sealed class ArDebugEvent(val nanos: Long) {
             is Anchor -> trace.addAnchor(nanos, id, pose)
             is Image -> trace.addImage(nanos, path)
             is DepthStats -> trace.addDepthStats(nanos, added, kept, total)
+            is FloorCells -> trace.addFloorCells(nanos, keys)
         }
     }
 }
@@ -93,6 +97,14 @@ fun parseArDebugEvent(line: String): ArDebugEvent? {
             val total = count("total") ?: return null
             ArDebugEvent.DepthStats(nanos, count("new") ?: 0, count("kept") ?: 0, total)
         }
+        "floor_cells" -> {
+            // Flat `[cx, cz, cx, cz, …]`: the cells' indices on the coverage grid.
+            val ints = (obj["cells"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content?.toIntOrNull() }
+                ?: return null
+            if (ints.size < 2) return null
+            val keys = LongArray(ints.size / 2) { CoverageGrid.key(ints[it * 2], ints[it * 2 + 1]) }
+            ArDebugEvent.FloorCells(nanos, keys)
+        }
         else -> null
     }
 }
@@ -111,6 +123,13 @@ internal fun packRgb(rgb: FloatArray): Int {
 
 /** Parses a whole log, in order. */
 fun parseArDebugLog(lines: Sequence<String>): List<ArDebugEvent> = lines.mapNotNull(::parseArDebugEvent).toList()
+
+/**
+ * Parses a whole log from its UTF-8 [bytes], a line at a time: the log is never decoded into one
+ * string, which on Android weighs twice the file (#4815).
+ */
+fun parseArDebugLog(bytes: ByteArray): List<ArDebugEvent> =
+    bytes.inputStream().bufferedReader(Charsets.UTF_8).useLines(::parseArDebugLog)
 
 /** `world/planes/42` → 42. Non-numeric ids (a hand-written log) hash to a stable int. */
 private fun entityId(entity: String?): Int? {

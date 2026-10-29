@@ -56,11 +56,11 @@ internal object AssetSourceProbe {
     /**
      * The pill for a demo showing SEVERAL streamed slots at once.
      *
-     * A WHOLE-SCENE verdict: one fallen-back slot out of four reads "Offline model" for all
+     * A WHOLE-SCENE verdict: one fallen-back slot out of four reads "Built-in model" for all
      * of them, and the pill never says which slot swapped. Pessimistic on purpose — of the
      * two imprecise answers, the optimistic one is the one that misleads. It is also a
      * MOVING verdict during load, since [loaded] and the fallback probe watch different
-     * signals: a slot that falls back last flips the pill Streaming → Offline after the fact.
+     * signals: a slot that falls back last flips the pill Streaming → Built-in after the fact.
      *
      * @param resolvedFiles one entry per streamed slot; `null` for a slot still resolving.
      *   Slots the demo renders straight from `assets/` have no origin question to answer and

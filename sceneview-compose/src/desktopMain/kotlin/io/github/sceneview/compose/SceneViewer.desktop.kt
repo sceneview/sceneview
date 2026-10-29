@@ -5,13 +5,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import dev.romainguy.kotlin.math.Float3
 import io.github.erkko68.filament.View
+import io.github.erkko68.filament.compose.FilamentSceneScope
 import io.github.erkko68.filament.compose.FilamentSceneView
 import io.github.erkko68.filament.compose.FilamentViewState
 import io.github.erkko68.filament.compose.OnFrame
@@ -19,26 +19,23 @@ import io.github.erkko68.filament.compose.rememberFilamentEngine
 import io.github.erkko68.filament.compose.rememberFilamentViewState
 import io.github.erkko68.filament.compose.scene.Direction
 import io.github.erkko68.filament.compose.scene.DirectionalLight
+import io.github.erkko68.filament.compose.scene.Environment
 import io.github.erkko68.filament.compose.scene.GltfInstance
-import io.github.erkko68.filament.compose.scene.IndirectLightState
 import io.github.erkko68.filament.compose.scene.LightIntensity
 import io.github.erkko68.filament.compose.scene.LinearColor
 import io.github.erkko68.filament.compose.scene.Position
 import io.github.erkko68.filament.compose.scene.ShadowConfig
 import io.github.erkko68.filament.compose.scene.Shadows
-import io.github.erkko68.filament.compose.scene.SkyboxSource
-import io.github.erkko68.filament.compose.scene.SkyboxState
+import io.github.erkko68.filament.compose.scene.Skybox
 import io.github.erkko68.filament.compose.scene.rememberCameraState as rememberFilamentCameraState
 import io.github.erkko68.filament.compose.scene.rememberGltfAsset
-import io.github.erkko68.filament.compose.scene.rememberHDREnvironment
-import io.github.erkko68.filament.compose.scene.rememberSkyboxState
+import io.github.erkko68.filament.compose.scene.rememberHdrEnvironment
 import io.github.erkko68.filament.utils.Float4
 import io.github.erkko68.filament.utils.inverse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
-import io.github.erkko68.filament.Engine
 import io.github.erkko68.filament.compose.scene.CameraState as FilamentCameraState
 
 /**
@@ -74,13 +71,6 @@ public actual fun SceneViewer(
         onError = { report(model.loadDescription(), it, currentOnError) },
     ) { loadModelBytes(model) }
 
-    val desktopEnvironment = rememberDesktopEnvironment(
-        engine = engine,
-        source = environment,
-        lighting = lighting,
-        onError = currentOnError,
-    )
-
     FilamentSceneView(
         modifier = modifier.viewerInput(
             camera = camera,
@@ -96,11 +86,10 @@ public actual fun SceneViewer(
         engine = engine,
         cameraState = filamentCamera,
         viewState = viewState,
-        skyboxState = desktopEnvironment.skyboxState,
-        indirectLightState = desktopEnvironment.indirectLightState,
         shadows = if (lighting.castShadows) Shadows.Pcf else null,
         transparent = !environment.isOpaque,
     ) {
+        SceneEnvironment(source = environment, lighting = lighting, onError = currentOnError)
         DirectionalLight(
             direction = Direction(lighting.direction.x, lighting.direction.y, lighting.direction.z),
             intensity = LightIntensity.LuminousPower(lighting.intensity),
@@ -113,42 +102,36 @@ public actual fun SceneViewer(
     }
 }
 
+/**
+ * Background and image-based lighting of [source], declared as scene content. An HDR lights
+ * the scene at [DEFAULT_IBL_INTENSITY] × [Lighting.ambientIntensity] and, when
+ * [EnvironmentSource.Hdr.showSkybox], is also the background. Default and Color are a solid
+ * background with no image-based light.
+ */
 @Composable
-private fun rememberDesktopEnvironment(
-    engine: Engine,
+private fun FilamentSceneScope.SceneEnvironment(
     source: EnvironmentSource,
     lighting: Lighting,
     onError: ((SceneViewerError) -> Unit)?,
-): DesktopEnvironment {
-    val skyboxState = rememberSkyboxState()
-    val hdr = if (source is EnvironmentSource.Hdr) {
-        rememberHDREnvironment(
-            initialIntensity = DEFAULT_IBL_INTENSITY,
-            showSkybox = source.showSkybox,
-            key = source.path,
-            onError = { report("loading HDR environment '${source.path}'", it, onError) },
-            engine = engine,
-        ) { DesktopAssets.bytes(source.path) }
-    } else {
-        null
-    }
-
-    if (hdr != null) {
-        val authoredAmbient = remember(hdr) { hdr.indirectLightState.intensity }
-        SideEffect {
-            hdr.indirectLightState.intensity = authoredAmbient * lighting.ambientIntensity
+) {
+    when (source) {
+        is EnvironmentSource.Hdr -> {
+            val hdr = rememberHdrEnvironment(
+                key = source.path,
+                onError = { report("loading HDR environment '${source.path}'", it, onError) },
+            ) { DesktopAssets.bytes(source.path) }
+            Environment(
+                environment = hdr,
+                intensity = DEFAULT_IBL_INTENSITY * lighting.ambientIntensity,
+                skyboxEnabled = source.showSkybox,
+            )
         }
-        return DesktopEnvironment(hdr.skyboxState, hdr.indirectLightState)
+        is EnvironmentSource.Color ->
+            Skybox(color = LinearColor(source.red, source.green, source.blue), alpha = source.alpha)
+        is EnvironmentSource.Default ->
+            Skybox(color = DEFAULT_BACKGROUND)
     }
-
-    SideEffect { skyboxState.source = source.toSkyboxSource() }
-    return DesktopEnvironment(skyboxState, indirectLightState = null)
 }
-
-private class DesktopEnvironment(
-    val skyboxState: SkyboxState?,
-    val indirectLightState: IndirectLightState?,
-)
 
 @Composable
 private fun applyOrbit(camera: CameraState, filament: FilamentCameraState) {
@@ -260,15 +243,6 @@ private fun length(eye: Position, world: Float3): Float {
     return sqrt(dx * dx + dy * dy + dz * dz)
 }
 
-private fun EnvironmentSource.toSkyboxSource(): SkyboxSource = when (this) {
-    is EnvironmentSource.Default ->
-        SkyboxSource.Color(LinearColor(0.08f, 0.10f, 0.14f))
-    is EnvironmentSource.Color ->
-        SkyboxSource.Color(LinearColor(red, green, blue), alpha = alpha)
-    is EnvironmentSource.Hdr ->
-        SkyboxSource.Color(LinearColor(0.08f, 0.10f, 0.14f))
-}
-
 private fun ModelSource.loadDescription(): String = when (this) {
     is ModelSource.Asset -> "loading asset '$path'"
     is ModelSource.Bytes -> "parsing ${bytes.size} in-memory bytes"
@@ -304,3 +278,4 @@ private fun report(what: String, cause: Throwable?, onError: ((SceneViewerError)
 
 private const val SCROLL_ZOOM = 0.05f
 private const val DEFAULT_IBL_INTENSITY = 30_000f
+private val DEFAULT_BACKGROUND = LinearColor(0.08f, 0.10f, 0.14f)

@@ -46,6 +46,9 @@ internal enum class MaterialTrait(val label: String, val extension: String) {
  * @param note          One clause explaining *why it looks like that*, shown under the picker.
  * @param color         Base colour. For a metal this is its measured reflectance (see
  *                      [MaterialStudio]); for a dielectric it is the diffuse albedo.
+ * @param colorIsLinear `true` when [color]'s bytes already are linear values (the measured
+ *                      metals); `false` for an sRGB colour (the brand ramp, the dielectrics),
+ *                      which is converted to linear before it reaches the shader.
  * @param metallic      `0` dielectric … `1` metal.
  * @param roughness     `0` mirror … `1` fully diffuse.
  * @param reflectance   Dielectric Fresnel reflectance at normal incidence. Ignored when
@@ -67,6 +70,7 @@ internal data class StudioMaterial(
     @StringRes val nameRes: Int,
     @StringRes val explainerRes: Int,
     val color: Color,
+    val colorIsLinear: Boolean = false,
     val metallic: Float,
     val roughness: Float,
     val reflectance: Float = 0.5f,
@@ -121,13 +125,13 @@ private fun format2(value: Float): String {
  * produce. The dielectrics and the emissive tint come from the brand ramp
  * ([SceneViewColors], mirrored from `DESIGN.md`) because *those* are a choice.
  *
- * The byte triples below are the guide's **linear** values × 255, not their sRGB encodings.
- * That is deliberate: SceneView passes colour components to Filament without a gamma
- * conversion (`io.github.sceneview.math.colorOf` says so in as many words), so what the
- * shader receives is exactly the number written here. Writing the sRGB encoding instead
- * would make the demo's gold a different gold from every reference image of it. The one
- * cost is that a Compose swatch drawn from the same value reads a little darker than the
- * rendered ball; the ball is the subject, so the ball wins.
+ * The metals' byte triples below are the guide's **linear** values × 255, not their sRGB
+ * encodings, and carry `colorIsLinear = true`: the shader receives exactly the number written
+ * here, so the demo's gold is the same gold as every reference image of it. The one cost is
+ * that a Compose swatch drawn from the same value reads a little darker than the rendered
+ * ball; the ball is the subject, so the ball wins. Every other colour — porcelain, crystal and
+ * the brand ramp — is an sRGB colour and is converted to linear before it reaches the shader:
+ * handing sRGB bytes to a linear `baseColor` paled Car Paint, Velvet and the glow to pastels.
  */
 internal object MaterialStudio {
 
@@ -169,6 +173,7 @@ internal object MaterialStudio {
             label = "Mirror Chrome",
             note = "A metal at roughness 0.02 reflects the studio almost perfectly.",
             color = Chromium,
+            colorIsLinear = true,
             metallic = 1f,
             roughness = 0.02f,
         ),
@@ -179,6 +184,7 @@ internal object MaterialStudio {
             label = "Polished Gold",
             note = "Metals have no diffuse color: this tint is gold's own reflectance.",
             color = Gold,
+            colorIsLinear = true,
             metallic = 1f,
             roughness = 0.14f,
         ),
@@ -189,6 +195,7 @@ internal object MaterialStudio {
             label = "Satin Copper",
             note = "The same shading, one notch rougher — the highlight spreads and softens.",
             color = Copper,
+            colorIsLinear = true,
             metallic = 1f,
             roughness = 0.32f,
         ),
@@ -199,6 +206,7 @@ internal object MaterialStudio {
             label = "Brushed Aluminum",
             note = "Roughness 0.55: the environment is still reflected, just scattered.",
             color = Aluminium,
+            colorIsLinear = true,
             metallic = 1f,
             roughness = 0.55f,
         ),

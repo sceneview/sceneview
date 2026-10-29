@@ -6,6 +6,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * How long the Explore tab waits for one feed or one search before giving up
@@ -123,4 +124,35 @@ internal fun feedsStatusOf(results: List<FeedResult<*>>): FeedsStatus = when {
     results.any { it.modelsOrEmpty.isNotEmpty() } -> FeedsStatus.Ready
     results.any { it !is FeedResult.Loaded } -> FeedsStatus.Failed
     else -> FeedsStatus.Empty
+}
+
+/**
+ * What the page shows once a (re)load ends, given what it [shown] already.
+ *
+ * A load that brought models replaces the page. One that did not (failed, timed
+ * out, or came back empty) keeps the models already on screen, so a background
+ * refresh on a flaky link never blanks a page that was working. With no models
+ * shown yet, the load's own outcome stands: the error card or the empty card.
+ */
+internal fun <K, T> settleFeeds(shown: FeedsLoad<K, T>?, fresh: FeedsLoad<K, T>): FeedsLoad<K, T> =
+    if (fresh.status == FeedsStatus.Ready || shown?.status != FeedsStatus.Ready) fresh else shown
+
+/**
+ * The last feeds each source returned in this process (#4622).
+ *
+ * The gallery's state is dropped with the screen, so every "Browse online models"
+ * opened on a spinner and waited on the network again (seconds on a slow link)
+ * for the models it had just shown. The page now opens on these and refreshes
+ * them behind the scenes, through [settleFeeds].
+ */
+internal class ExploreFeedCache<S, K, T> {
+    private val loads = ConcurrentHashMap<Pair<S, Boolean>, FeedsLoad<K, T>>()
+
+    /** The feeds [source] last returned with this filter, if they brought models. */
+    fun get(source: S, animatedOnly: Boolean): FeedsLoad<K, T>? = loads[source to animatedOnly]
+
+    /** Keep [load] when it brought models; a failed or empty load is not worth reopening on. */
+    fun put(source: S, animatedOnly: Boolean, load: FeedsLoad<K, T>) {
+        if (load.status == FeedsStatus.Ready) loads[source to animatedOnly] = load
+    }
 }

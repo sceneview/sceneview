@@ -31,7 +31,7 @@ It is a *viewer subset*, published as a **separate, additive artifact**. Nothing
 |---|---|---|---|
 | Android | delegates to the existing `SceneView { }` composable | Filament | implemented |
 | iOS | `UIKitView` hosting an app-supplied `UIView` (`SceneViewerBridge` → `SceneViewerHostView`) | RealityKit | implemented — the app registers the factory |
-| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via Maven `filament-kmp` 0.4.0 (FFM, JDK 22+) | **implemented** — `SceneViewer` desktop actual |
+| Desktop (JVM) | offscreen render → pipelined `readPixels` → Skia image | Filament, via Maven `filament-kmp` 0.8.0 (JNI, JDK 21+) | **implemented** — `SceneViewer` desktop actual |
 
 The point is that **one API does not imply one renderer.** RealityKit stays the Apple
 renderer — it is what ARKit and visionOS align with, and it is what the published App
@@ -205,8 +205,9 @@ or write a non-Filament renderer.
 
 **Decision: vendor the desktop path of filament-kmp under `third_party/`, under the
 terms of its Apache-2.0 licence.** It is genuinely good work — Google's official C++
-prebuilts, a hand-written combined C wrapper, and FFM bindings generated with
-`jextract` — and copying it beats both re-deriving it and taking a runtime dependency.
+prebuilts, a C wrapper over them, and the JVM bindings on top (FFM generated with
+`jextract` up to 0.6.0; since 0.7.0 a C API generated from Filament's headers, called
+through JNI) — and copying it beats both re-deriving it and taking a runtime dependency.
 
 Why vendor rather than depend:
 
@@ -256,10 +257,12 @@ rather than being hand-edited.
 
 ### Inherited costs, stated up front
 
-- **JDK 22+** on the desktop module. Project Panama's FFM API is what makes the binding
-  possible; copying the code does not remove the floor.
-- **A native build chain**: Filament prebuilt download, CMake for the C wrapper, and a
-  pinned `jextract` early-access build.
+- **A JDK floor** on the desktop module, set by the binding taken. The `0.3.0` copy is
+  Project Panama (FFM), so **JDK 22+**; copying the code does not remove that floor. A
+  copy taken at 0.7.0+ is JNI and needs JDK 17 (the Maven actual runs on 21 because of
+  kotlin-math, see increment 3).
+- **A native build chain**: Filament prebuilt download, CMake for the C wrapper, and —
+  for the `0.3.0` FFM copy — a pinned `jextract` early-access build.
 - **Three-OS CI.** The repo has 66 `ubuntu-latest` jobs and 5 macOS jobs and **no
   Windows runner**; one has to be added for the native leg.
 - **Recurring upkeep** at each Filament release we choose to follow — the work upstream
@@ -303,10 +306,11 @@ Each one is independently shippable. No big bang.
    `SceneViewSwift` after all, as `SceneViewerHostView`; what changed is that nothing
    depends on it at build time — the app links it and hands it over. See
    [the iOS wrapper](#the-ios-uiview-wrapper) below.
-3. **Desktop actual** — shipped via Maven `filament-kmp` 0.4.0 (`implementation`, never
+3. **Desktop actual** — shipped via Maven `filament-kmp` 0.8.0 (`implementation`, never
    `api`), not a vendored tree. filament-kmp already owns the offscreen readback → Skia
-   path; `SceneViewer.desktop.kt` is the façade. JDK 22+ and
-   `--enable-native-access=ALL-UNNAMED` at run. The vendoring gates below remain the
+   path; `SceneViewer.desktop.kt` is the façade. **JDK 21+**, no JVM flag: filament-kmp
+   0.7+ is JNI (JDK 17), and `dev.romainguy:kotlin-math`, exposed as `api`, ships JDK 21
+   bytecode (#4423). The vendoring gates below remain the
    path *if* we later copy the binding into `third_party/`; they are not a blocker for
    the Maven actual.
 4. CMP sample, `llms.txt` section, honest platform matrix.

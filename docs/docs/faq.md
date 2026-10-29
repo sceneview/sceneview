@@ -113,15 +113,36 @@ Partially. ARCore has limited emulator support. For reliable AR development, use
 
 ### How do I detect when the user taps a plane?
 
+Keep the latest ARCore `Frame`, then hit-test it on a confirmed single tap that landed on
+empty space (`node == null`). Don't place on `ACTION_UP` in `onTouchEvent`: it also fires at
+the end of every drag and pinch, and returning `true` there swallows the model's gestures.
+
 ```kotlin
+import com.google.ar.core.Anchor
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import io.github.sceneview.ar.arcore.createAnchorOrNull
+import io.github.sceneview.rememberOnGestureListener
+
+var anchor by remember { mutableStateOf<Anchor?>(null) }
+var latestFrame by remember { mutableStateOf<Frame?>(null) }
+
 ARSceneView(
-    onTouchEvent = { event, hitResult ->
-        if (event.action == MotionEvent.ACTION_UP && hitResult != null) {
-            anchor = hitResult.createAnchor()
+    onSessionUpdated = { _, frame -> latestFrame = frame },
+    onGestureListener = rememberOnGestureListener(
+        onSingleTapConfirmed = { event, node ->
+            if (node == null) { // empty space, not a placed model
+                latestFrame?.hitTest(event)
+                    ?.firstOrNull { (it.trackable as? Plane)?.isPoseInPolygon(it.hitPose) == true }
+                    ?.createAnchorOrNull()
+                    // Replacing the state key disposes the old AnchorNode, which detaches its anchor.
+                    ?.let { anchor = it }
+            }
         }
-        true
-    }
-) { /* ... */ }
+    )
+) {
+    anchor?.let { a -> AnchorNode(anchor = a) { /* your ModelNode */ } }
+}
 ```
 
 ### Can I track real-world images?
@@ -150,7 +171,7 @@ Yes — create the engine at a higher scope (e.g., ViewModel or CompositionLocal
 
 ### Does SceneView support iOS?
 
-Yes. SceneViewSwift (v4.52.0) provides a native SwiftUI library powered by RealityKit and ARKit. It supports iOS 18+, macOS 15+, and visionOS 2+. Install via Swift Package Manager. See the [Apple Quickstart](quickstart-ios.md).
+Yes. SceneViewSwift (v4.63.0) provides a native SwiftUI library powered by RealityKit and ARKit. It supports iOS 18+, macOS 15+, and visionOS 2+. Install via Swift Package Manager. See the [Apple Quickstart](quickstart-ios.md).
 
 ### What model formats work on iOS?
 

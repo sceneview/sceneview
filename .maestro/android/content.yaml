@@ -1,4 +1,4 @@
-# Maestro flow — "Content" demo category (2 demos).
+# Maestro flow — "Content" demo category (3 demos).
 #
 # Run a fast subset of the device-QA harness:
 #   maestro test .maestro/android/content.yaml
@@ -25,3 +25,11 @@ appId: io.github.sceneview.demo.qa
     env:
       DEMO_ID: lines-paths
       DEMO_NAME: Lines & Paths
+# Finger Drawing (#4082): the subflow's three drags are three strokes here, not
+# three orbits, and its centre tap is a dot of paint — so the one screenshot
+# shows a drawing, not an empty stage.
+- runFlow:
+    file: flows/demo.yaml
+    env:
+      DEMO_ID: finger-drawing
+      DEMO_NAME: Finger Drawing

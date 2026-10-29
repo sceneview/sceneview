@@ -87,6 +87,12 @@ data class BundledViewerModel(
     val thumbnailName: String get() = thumbnailStem ?: assetName.orEmpty()
 }
 
+/** One shelf of the Models sheet's real-product catalogue (#4560): a category and its models. */
+data class CatalogueShelf(
+    @StringRes val title: Int,
+    val models: List<BundledViewerModel>,
+)
+
 /**
  * The scenes the picker opens, besides a single model.
  *
@@ -127,8 +133,10 @@ enum class ViewerScene(
  * @param selectedKey [BundledViewerModel.key] of the model on screen, outlined; `null` outside
  *   the single-model section.
  * @param currentScene the scene on screen, outlined; `null` in the single-model section.
+ * @param catalogueShelves the real-product shelves (#4560) — HD pack files, downloaded per model —
+ *   shown after [models], one titled grid each; empty hides them.
  * @param museumModels the "Museum & Space" shelf — HD pack scans, downloaded after install —
- *   shown after [models]; empty hides the section.
+ *   shown last; empty hides the section.
  */
 @Composable
 fun ModelPickerSheet(
@@ -139,6 +147,7 @@ fun ModelPickerSheet(
     onScene: (ViewerScene) -> Unit,
     onDismiss: () -> Unit,
     museumModels: List<BundledViewerModel> = emptyList(),
+    catalogueShelves: List<CatalogueShelf> = emptyList(),
 ) {
     // Fully expanded from the start (`skipPartiallyExpanded`). The grid is a plain Column of
     // Rows rather than a LazyVerticalGrid: a lazy grid inside a sheet needs a bounded height, and
@@ -186,6 +195,12 @@ fun ModelPickerSheet(
             // HD pack (2026-09-29): museum scans downloaded after install. Their own shelf, after
             // the bundled models, so a card that needs a download is never mistaken for one that
             // opens at once — each card's caption says so.
+            // Real products (#4560), everyday first — after the bundled models for the same
+            // reason as the museum shelf: every card here downloads before it opens.
+            catalogueShelves.forEach { shelf ->
+                PickerSectionHeader(shelf.title, top = SceneViewTokens.Space.lg)
+                ModelGrid(shelf.models, selectedKey, onSelect)
+            }
             if (museumModels.isNotEmpty()) {
                 PickerSectionHeader(R.string.demo_model_picker_museum, top = SceneViewTokens.Space.lg)
                 ModelGrid(museumModels, selectedKey, onSelect)

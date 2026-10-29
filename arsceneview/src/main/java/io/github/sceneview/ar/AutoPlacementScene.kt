@@ -30,6 +30,7 @@ import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -406,6 +407,9 @@ fun AutoPlacementScene(
     // old glyph kept sweeping over that card's copy and its Try again button (#3986).
     // DESIGN.md: the coaching is silent whenever a card explains the state.
     var availability by remember { mutableStateOf<ARCoreAvailability?>(null) }
+    // Same rule for the "Camera access needed" card: with the camera refused the session
+    // never starts, so the coaching sat on "Getting ready" over that card for good (#4452).
+    var cameraDenied by remember { mutableStateOf(false) }
     // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
     DisposableEffect(state) {
@@ -438,6 +442,7 @@ fun AutoPlacementScene(
                 availability = it
                 onARCoreAvailability?.invoke(it)
             },
+            onCameraPermissionStateChanged = { cameraDenied = it != null },
             onTrackingFailureChanged = {
                 trackingFailure = it
                 onTrackingFailureChanged?.invoke(it)
@@ -451,6 +456,8 @@ fun AutoPlacementScene(
                 val tracked = session.getAllTrackables(Plane::class.java)
                     .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                 if (tracked != planes) planes = tracked
+                state.onFloor(trackedFloorY(tracked))
+                if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
                 val candidate = if (ready && state.wantsSurface) {
                     findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
                 } else null
@@ -472,7 +479,7 @@ fun AutoPlacementScene(
         if (coaching) {
             val guidance = rememberArGuidanceState(state, surface, trackingFailureReason = trackingFailure)
             ARCoachingOverlay(
-                cue = if (availability == null) guidance.cue else ArGuidanceCue.NONE,
+                cue = if (availability == null && !cameraDenied) guidance.cue else ArGuidanceCue.NONE,
                 surface = guidance.surface,
                 hint = guidance.hint,
                 scanLingering = guidance.scanLingering,
@@ -579,7 +586,8 @@ fun AutoPlacementScene(
  *
  * Gestures, as Scene Viewer and AR Quick Look:
  * - **Pinch** follows the fingers 1:1 relative to where they landed (spreading them twice as
- *   far doubles the object), limited to 25–400 % of the base, snapping to 100 % within ±4 %
+ *   far doubles the object), limited to [AutoPlacementState.scaleRange] (25–400 % of the base by
+ *   default), snapping to 100 % within ±4 %
  *   with a short elastic rebound.
  * - **Twist** turns the object about its base.
  * - **Double-tap** ([AutoPlacementState.toggleBaseScale]) animates back to 100 %; at 100 % it
@@ -601,6 +609,9 @@ fun ARSceneScope.AutoPlacementModel(
     val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = entrance.value > 0f) {
+        // A model destroyed under the composition has nothing left to show, and building a node
+        // over it (a re-key below) would throw: the pivot stays, the object leaves.
+        if (modelInstance.isDestroyed) return@AutomaticPlacementPivot
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
                 quaternion = if (placement.isWall) {
@@ -817,6 +828,15 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             /** The last size the user pinched to away from 100 % — what a double-tap restores. */
             var rememberedScale: Float? = null
 
+            /**
+             * This pinch opened an adjustment. The detector ends a pinch on the node it began
+             * on even when the begin was refused, so only a pinch that opened one closes one.
+             */
+            var pinching = false
+
+            /** This twist opened an adjustment — same rule as [pinching]. */
+            var rotating = false
+
             /** Visual scale the double-tap animation started from, `null` when none runs. */
             private var tweenFrom: Float? = null
             private var tweenStartNanos = 0L
@@ -870,17 +890,26 @@ private fun ARSceneScope.AutomaticPlacementPivot(
 
             override fun onRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
                 super.onRotateEnd(detector, e)
-                state.endAdjustment()
+                if (rotating) {
+                    rotating = false
+                    state.endAdjustment()
+                }
             }
             override fun onScaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
                 super.onScaleEnd(detector, e)
-                state.endAdjustment()
+                if (pinching) {
+                    pinching = false
+                    state.endAdjustment()
+                }
             }
         }.apply {
             isEditable = true
             isPositionEditable = false
-            editableScaleRange = ScaleSnap.MIN..ScaleSnap.MAX
-            onRotateBegin = { _, _ -> state.beginAdjustment() }
+            editableScaleRange = state.usableScaleRange
+            onRotateBegin = { _, _ ->
+                rotating = state.beginAdjustment()
+                rotating
+            }
             // The pinch is measured against the moment two fingers landed — the scale then,
             // times the span ratio since — never accumulated event by event: 1:1 with the
             // fingers (Scene Viewer / Quick Look / the iOS controller), path-independent, and
@@ -888,18 +917,29 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             var pinchStartScale = 1f
             var pinchStartSpan = 0f
             onScaleBegin = { detector, _ ->
-                cancelRebound()
-                pinchStartScale = logicalScale
-                pinchStartSpan = detector.currentSpan
-                state.beginAdjustment()
+                if (!state.allowsScaling) {
+                    // Real size is locked: keep the pinch (refusing it would hand it to the
+                    // anchor, which would resize instead) and do nothing with it.
+                    pinching = false
+                    true
+                } else {
+                    cancelRebound()
+                    editableScaleRange = state.usableScaleRange
+                    pinchStartScale = logicalScale
+                    pinchStartSpan = detector.currentSpan
+                    pinching = state.beginAdjustment()
+                    pinching
+                }
             }
-            onRotate = { _, _, _ -> state.isAdjusting }
+            onRotate = { _, _, _ -> rotating && state.isAdjusting }
             onScale = { detector, _, _ ->
-                if (state.isAdjusting) {
+                // Locking real size mid-pinch stops it at once, not at the next pinch.
+                if (pinching && state.allowsScaling && state.isAdjusting) {
                     val previous = logicalScale
+                    val range = state.usableScaleRange
                     val rawScale = ScaleSnap.pinchRaw(pinchStartScale, pinchStartSpan, detector.currentSpan)
-                        .coerceIn(ScaleSnap.MIN, ScaleSnap.MAX)
-                    val step = ScaleSnap.step(previous, rawScale)
+                        .coerceIn(range.start, range.endInclusive)
+                    val step = ScaleSnap.step(previous, rawScale, range)
                     logicalScale = step.displayed
                     if (step.enteredSnap) {
                         startRebound(fromAbove = previous > 1f)
@@ -934,14 +974,15 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                 state.scaleFactor = it
                 val crossed = (previous < 1f && it >= 1f) || (previous > 1f && it <= 1f)
                 if (crossed) state.gestureHapticSink?.invoke(ARHapticEvent.ScaleSnapped)
-                if (ScaleSnap.isAtLimit(it) && !ScaleSnap.isAtLimit(previous)) {
+                val range = state.usableScaleRange
+                if (ScaleSnap.isAtLimit(it, range) && !ScaleSnap.isAtLimit(previous, range)) {
                     state.gestureHapticSink?.invoke(ARHapticEvent.LimitReached)
                 }
                 scaleChanged((it * 100).roundToInt(), it == 1f, crossed)
             }
             state.scaleToggleAction = {
                 val previous = pivot.logicalScale
-                val target = ScaleSnap.doubleTapTarget(previous, pivot.rememberedScale)
+                val target = ScaleSnap.doubleTapTarget(previous, pivot.rememberedScale, state.usableScaleRange)
                 if (target == null) {
                     // Nothing to toggle: acknowledge the tap with the 100 % rebound.
                     pivot.startRebound(fromAbove = false)
@@ -958,6 +999,15 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                 state.rotateAction = null
                 state.scaleAction = null
                 state.scaleToggleAction = null
+            }
+        }
+        // Locking the size brings an already-resized object back to real size.
+        LaunchedEffect(pivot, state.allowsScaling) {
+            if (!state.allowsScaling && pivot.logicalScale != 1f) {
+                pivot.rememberedScale = null
+                pivot.animateTo(1f)
+                state.scaleFactor = 1f
+                scaleChanged(100, true, false)
             }
         }
         NodeLifecycle(pivot, content)
@@ -1017,6 +1067,43 @@ internal object PlacementEntrance {
     }
 }
 
+/**
+ * What a finished one-finger drag does to the placement (#4731). The move detector ends a drag
+ * when the finger lifts, and also when a second finger lands — whether or not the drag had begun.
+ */
+internal enum class DragEnd {
+    /** The drag never began: nothing to commit, no adjustment to close. */
+    NONE,
+
+    /** The object stays where it was dragged, on a new anchor. */
+    COMMIT,
+
+    /**
+     * A second finger landed right after the first one started sliding: a pinch or twist is
+     * starting, not a move, and the object goes back on its anchor.
+     */
+    REVERT;
+
+    companion object {
+        /** A drag at most this long when a second finger lands is the start of a pinch or twist. */
+        const val SLIP_MAX_MS = 300L
+
+        /** ...and one that carried the object at most this far, metres. */
+        const val SLIP_MAX_M = 0.05f
+
+        /**
+         * [began]: the drag opened an adjustment. [pointerCount]: fingers down as it ends.
+         * [elapsedMs] and [travelM]: how long it lasted and how far it carried the object. A real
+         * move followed by a two-finger twist is committed like any other.
+         */
+        fun of(began: Boolean, pointerCount: Int, elapsedMs: Long, travelM: Float): DragEnd = when {
+            !began -> NONE
+            pointerCount > 1 && elapsedMs <= SLIP_MAX_MS && travelM <= SLIP_MAX_M -> REVERT
+            else -> COMMIT
+        }
+    }
+}
+
 /** Bounds are already rotated into the anchor frame before grounding. */
 internal fun automaticPlacementOffset(corners: List<Position>, wall: Boolean): Position = Position(
     -(corners.minOf { it.x } + corners.maxOf { it.x }) / 2f,
@@ -1045,6 +1132,12 @@ private class AutomaticAnchorNode(
     private var offset: FloatArray? = null
     private var pending: AutoPlacementCandidate? = null
     private var interruptedMove = false
+
+    /** This drag opened an adjustment: only a drag that did closes one ([DragEnd]). */
+    private var dragging = false
+
+    /** When this drag began, `MotionEvent.eventTime`. */
+    private var dragStartMs = 0L
     init { isEditable = true }
 
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
@@ -1068,6 +1161,8 @@ private class AutomaticAnchorNode(
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         val grab = grabOffset(e) ?: return false
         if (!state.beginAdjustment()) return false
+        dragging = true
+        dragStartMs = e.eventTime
         offset = floatArrayOf(grab.x, grab.y, grab.z)
         pending = null
         interruptedMove = false
@@ -1078,7 +1173,8 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
-        val hits = frame.hitTest(e)
+        // Same stale-frame case as PoseNode.onMove: a paused session throws from hitTest.
+        val hits = arSessionGuarded("AutoPlacement onMove", null) { frame.hitTest(e) } ?: return false
         val candidate = if (placement.isWall) {
             // Nearest wall under the finger — plane, extended plane or depth hit — and, on a plain
             // wall with none of those, the wall the object already stands on (#4070).
@@ -1104,7 +1200,27 @@ private class AutomaticAnchorNode(
     }
 
     override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
-        if (state.isAdjusting) commitMove()
+        val target = pending?.pose
+        val travel = if (target == null) 0f else ViewportProjection.distance(
+            target.tx(), target.ty(), target.tz(), anchor.pose.tx(), anchor.pose.ty(), anchor.pose.tz(),
+        )
+        when (DragEnd.of(dragging, e.pointerCount, e.eventTime - dragStartMs, travel)) {
+            // The detector also ends a drag it never began — a second finger landing before the
+            // first one travelled: that drag opened no adjustment, so it closes none (closing
+            // one would end the pinch the two fingers are starting).
+            DragEnd.NONE -> return
+            DragEnd.COMMIT -> if (state.isAdjusting) commitMove()
+            // A second finger landing right after the first started sliding is a pinch or a
+            // twist starting (#4731): the few pixels the first finger slid are not a move.
+            // Committed, each pinch walked the object a few centimetres away from where it was
+            // set down. Back on its anchor instead.
+            DragEnd.REVERT -> {
+                pending = null
+                interruptedMove = false
+                if (anchor.trackingState == TrackingState.TRACKING) pose = anchor.pose
+            }
+        }
+        dragging = false
         if (!interruptedMove) {
             updateAnchorPose = true
             pending = null

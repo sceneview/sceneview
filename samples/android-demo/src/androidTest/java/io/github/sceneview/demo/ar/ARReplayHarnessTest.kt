@@ -77,12 +77,10 @@ import java.io.File
  * - [ARDemoPlaybackSmokeTest] — sweeps `androidTest/assets/ar-recordings/`
  *   fixtures (currently README-only; populated by #1442) through the single
  *   `ar-record-playback` demo with a per-fixture golden.
- * - [ARPlaybackScreenshotTest] — frame-indexed (f=30/60/120/180) golden
- *   regression for `ar-record-playback` against the bundled recording.
  * - **This test** — breadth: every AR demo, crash-survival + (where the demo
  *   supports it) real frame-advance, with a machine-readable summary.
  *
- * The three are complementary: depth (golden frames) on the replay demo,
+ * The two are complementary: depth (golden frames) on the replay demo,
  * breadth (all AR demos) here.
  *
  * ## Why most demos get a crash-survival check, not a golden

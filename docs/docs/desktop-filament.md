@@ -3,14 +3,27 @@
 Decision record for hardware-accelerated 3D rendering on Desktop. `samples/desktop-demo`
 now consumes `SceneViewer`.
 
-**Last updated:** 2026-08-19 · **Decision:** superseded — see
+**Last updated:** 2026-10-21 · **Decision:** superseded — see
 [compose-multiplatform.md](compose-multiplatform.md). The offscreen architecture below
 still stands; the *binding supply* decision does not.
+
+> **2026-10-16 update — the binding is JNI, the floor is JDK 21.** Since filament-kmp
+> 0.7.0 the desktop binding calls Filament through JNI instead of Project Panama (FFM),
+> from `io.github.erkko68.filament:filament-jni-desktop`; filament-kmp itself needs
+> only JDK 17. SceneView moved to 0.7.3 in
+> [#4518](https://github.com/sceneview/sceneview/pull/4518) and is on 0.8.0 (Filament
+> 1.78.0) since [#4706](https://github.com/sceneview/sceneview/pull/4706). The `sceneview-compose`
+> desktop target now runs on **JDK 21+**, not 22+, and needs no
+> `--enable-native-access=ALL-UNNAMED`. 21 rather than 17 because the module exposes
+> `dev.romainguy:kotlin-math` (`Float3`…) as `api`, and kotlin-math 1.7.0+ ships JDK 21
+> bytecode — measured: on JDK 17 the demo dies with `UnsupportedClassVersionError` on
+> `Float3`. Issue [#4423](https://github.com/sceneview/sceneview/issues/4423).
 
 > **2026-08-19 update.** The desktop `SceneViewer` actual is implemented. It depends on
 > Maven `io.github.erkko68.filament:filament-compose:0.4.0` as `implementation` (never
 > `api`) — filament-kmp already does the offscreen readback → Skia path. Not vendored.
-> Requires JDK 22+ and `--enable-native-access=ALL-UNNAMED` at run. See
+> It then required JDK 22+ and `--enable-native-access=ALL-UNNAMED` at run (FFM
+> binding, up to 0.6.0 — see the 2026-10-16 update above). See
 > [compose-multiplatform.md](compose-multiplatform.md). Issue
 > [#2540](https://github.com/sceneview/sceneview/issues/2540).
 
@@ -36,8 +49,8 @@ still stands; the *binding supply* decision does not.
 ## Current state: `SceneViewer` on desktop
 
 `samples/desktop-demo` consumes `sceneview-compose` `SceneViewer`. Filament is
-filament-kmp on Maven (offscreen readback → Skia). JDK 22+ and
-`--enable-native-access=ALL-UNNAMED`.
+filament-kmp 0.8.0 on Maven (JNI binding, offscreen readback → Skia). **JDK 21+**
+(kotlin-math's bytecode sets it; filament-kmp alone needs 17), no JVM flag.
 
 ---
 
@@ -68,19 +81,21 @@ distribution — so the real supply question is *where the desktop bindings come
 
 [Erkko68/filament-kmp](https://github.com/Erkko68/filament-kmp) — unofficial,
 Apache-2.0, actively maintained KMP wrapper around Filament, published on Maven
-Central (re-verified against `repo1.maven.org`, latest `0.3.0`, 2026-08-03):
+Central (re-verified against `repo1.maven.org` at `0.8.0`, 2026-10-21; first written
+against `0.3.0`, 2026-08-03):
 
-- **Desktop/JVM via Project Panama (FFM, JDK 22+)** over a single combined C wrapper,
-  natives bundled per platform: `io.github.erkko68.filament-ffm:filament-ffm` +
-  `filament-ffm-runtime-{macos-arm64, linux-x64, linux-arm64, windows-x64}`.
-  **No macos-x64 (Intel Mac) natives** — re-confirmed 2026-08-03 (404 on Maven Central).
-- Wraps **Filament 1.74.0** (`MATERIAL_VERSION` 74); modules mirror upstream
-  (`filament`, `gltfio`, `filamat`, `filament-utils`). A legacy `filament-jni` group
-  also exists; FFM is the current track.
-- It does **not** build Filament from source: it downloads Google's official C++
-  prebuilts, compiles a shared C wrapper, and generates the FFM bindings with `jextract`
-  at build time. The web runtime is the exception — that one comes from a personal fork
-  of Filament pending an upstream PR.
+- **Desktop/JVM via JNI (JDK 17+) since 0.7.0** over one generated `Fila*` C API,
+  natives bundled per platform: `io.github.erkko68.filament:filament-jni-desktop` +
+  `filament-jni-runtime-{macos-arm64, linux-x64, linux-arm64, windows-x64, windows-arm64}`.
+  Up to 0.6.0 it was Project Panama (FFM, JDK 22+) from
+  `io.github.erkko68.filament-ffm:filament-ffm`.
+  **No macos-x64 (Intel Mac) natives** — re-confirmed 2026-10-21 at 0.8.0 (404 on Maven Central).
+- Wraps **Filament 1.78.0** at 0.8.0; modules mirror upstream
+  (`filament`, `gltfio`, `filamat`, `filament-utils`).
+- It does **not** build Filament from source: it takes Google's official C++ prebuilts
+  and generates a C API from Filament's C++ headers, which every platform calls (JNI on
+  desktop and Android). Up to 0.6.0 the desktop bindings over that C layer were
+  generated with `jextract`. The web runtime is filament-kmp's own wasm build.
 - Backends on desktop: Metal on macOS, Vulkan default on Windows/Linux, OpenGL fallback.
 - Its Compose Desktop integration is exactly the offscreen architecture adopted in
   #2540, documented with real numbers in
@@ -110,7 +125,8 @@ pin ahead of SceneView Android's Filament ref (see the `.filamat` note below).
    **copied into `third_party/filament-kmp/`** under its Apache-2.0 licence rather than
    resolved from Maven Central, so the desktop track can pin its own Filament version
    and is not exposed to upstream's pre-1.0 API churn. The costs that come with owning
-   the copy — JDK 22+, the CMake/`jextract` chain, three-OS CI, recurring upkeep — are
+   the copy — at `0.3.0`, JDK 22+ and the CMake/`jextract` chain of the FFM binding,
+   plus three-OS CI and recurring upkeep — are
    listed in [compose-multiplatform.md](compose-multiplatform.md). Attribution is
    mandatory, not discretionary: upstream `LICENSE` plus a `NOTICE` crediting
    Èric Bitriá Ribes. **Amended again 2026-08-05: the copy is taken when the spike
@@ -131,9 +147,10 @@ pin ahead of SceneView Android's Filament ref (see the `.filamat` note below).
   puts the desktop module on its own Filament-version track — document it in the
   Version Location Map, don't diverge silently. P1/P2 dodge this via gltfio's
   built-in ubershaders.
-- **JDK:** FFM means a **JDK 22+ runtime floor** for the desktop module and demo
-  (jpackage bundles a modern JDK for the demo; library consumers get it documented
-  in the platform matrix).
+- **JDK:** the desktop module and demo run on **JDK 21+** (jpackage bundles that JDK
+  for the demo; library consumers get it documented in the platform matrix). The
+  binding alone would allow 17 since filament-kmp 0.7.0 (JNI); kotlin-math's JDK 21
+  bytecode is what holds the floor at 21. Under FFM (≤ 0.6.0) it was 22+.
 - **Platform honesty:** no Intel-Mac natives under S1 — say so in the docs rather
   than failing at load time.
 - **Frame pacing:** drive rendering from `withFrameNanos`, render on the engine

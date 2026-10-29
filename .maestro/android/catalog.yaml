@@ -26,16 +26,16 @@
 # still appear below after #2239 / #3463 retired their cards: driving the
 # retired id is how the merged mode gets exercised. Samples step 0 (2026-10-02)
 # retired nine more ids the same way (ar.yaml and advanced.yaml headers), so the
-# registry now holds 43 cards; `ar-xr` is reached through its `ar-hand-tracking`
+# registry held 43 cards (44 with Finger Drawing, #4082); `ar-xr` is reached through its `ar-hand-tracking`
 # and `ar-xr-face` legs. Flow entries:
 #   3d-basics.yaml ....... 5
 #   lighting.yaml ........ 5
-#   content.yaml ......... 2
+#   content.yaml ......... 3
 #   interaction.yaml ..... 4
 #   advanced.yaml ........ 14
 #   ar.yaml .............. 33
 #                          --
-#   Total entries ........ 63  (covering 43 registered demos, 63 capabilities)
+#   Total entries ........ 64  (covering 44 registered demos, 64 capabilities)
 #
 # Crash detection:
 #   - Per-demo: flows/demo.yaml asserts the "Navigate back" button is visible

@@ -1,1 +1,1 @@
-swiftui,realitykit,arkit,3d engine,developer,sample code,open source,swift,xcode,visionos,framework
+arkit,augmented reality,usdz,scan,3d engine,sample code,xcode,visionos,lidar,open source,framework

@@ -9,13 +9,14 @@ private typealias Column = RerunComponentColumn
 
 /**
  * Writes a [RerunExportScene] as a Rerun `.rrd` recording (`rerun space.rrd` opens it), in pure
- * Kotlin: no Rerun SDK, no protobuf or Arrow library. The iOS demo's `RerunRRDWriter`, chunk for
- * chunk, so both apps export a capture to the same bytes (the store source aside).
+ * Kotlin: no Rerun SDK, no protobuf or Arrow library. The iOS demo's `RerunRRDWriter` writes the
+ * same file byte for byte, default layout ([RerunRrdBlueprint]) and footer included, the store
+ * source label aside (`RerunRrdCrossPlatformFixtureTest` holds the two to one shared file).
  *
  * Targets the `.rrd` format of Rerun **0.38.1** (`RRF2` framing, sorbet `0.1.3` chunks),
- * uncompressed, without the optional footer — viewers read such a file with a full scan, the way
- * they read a live stream. What the viewer shows, on the `time` timeline (seconds since the
- * session started):
+ * uncompressed, closed by the footer `rerun rrd verify` asks for ([RerunRrdFooter]): an index of
+ * the chunks, which a viewer scanning the file does not need. What the viewer shows, on the
+ * `time` timeline (seconds since the session started):
  *
  * - `world` — Y-up, right-handed (`ViewCoordinates` RUB), static.
  * - `world/points` — the coloured map (`Points3D`), static.
@@ -23,8 +24,8 @@ private typealias Column = RerunComponentColumn
  *   observation, amber): the replay rebuilds the growing map and its live points from it.
  * - `world/dense` — a `.svscan` v2's dense cloud (`Points3D`: positions, colours, radius half a
  *   voxel), static, in one row: the room's surfaces where `world/points` has its landmarks.
- * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, static) and each
- *   photo at its time (`EncodedImage`, JPEG or PNG): every photo of the session when the scene
+ * - `world/camera` — the pose over time (`Transform3D`), the lens (`Pinhole`, timed when photo
+ *   sizes vary) and each photo at its time (`EncodedImage`, JPEG or PNG): every photo when the scene
  *   has them, else the keyframes'.
  * - `world/camera_path` — the whole path (`LineStrips3D`), static. Not under `world/camera`: a
  *   child of a pinhole lives in its 2D image space, and a child of the moving camera would move
@@ -32,6 +33,9 @@ private typealias Column = RerunComponentColumn
  * - `world/planes/<id>` — the outline (`LineStrips3D`) and, when the plane has a photo, the
  *   textured polygon (`Mesh3D`), static.
  * - `world/anchors/<id>` — the pose (`Transform3D`) and a small labelled box (`Boxes3D`), static.
+ *
+ * The file opens on a default layout ([RerunRrdBlueprint]): the room in 3D beside the camera's
+ * photos, instead of whatever views the viewer would guess.
  */
 object RerunRrdWriter {
     /** The Rerun release whose format this writer emits: 0.38.1. */
@@ -57,9 +61,12 @@ object RerunRrdWriter {
     /** Plane photos are sent as raw RGB texels, at most this many on a side. */
     const val PLANE_TEXTURE_SIZE = 512
 
+    private const val MESSAGE_HEADER_SIZE = 16
     private const val KIND_SET_STORE_INFO = 1L
     private const val KIND_ARROW_MSG = 2L
+    private const val KIND_BLUEPRINT_ACTIVATION = 3L
     private const val STORE_KIND_RECORDING = 1L
+    private const val STORE_KIND_BLUEPRINT = 2L
     private const val STORE_SOURCE_KIND_OTHER = 6L
     private const val COMPRESSION_NONE = 1L
     private const val ENCODING_ARROW_IPC = 1L
@@ -86,11 +93,23 @@ object RerunRrdWriter {
             throw PointColorCountMismatch(scene.points.size, scene.pointColors.size)
         }
         val ids = RerunTuidSequence(recordingId)
-        val store = StoreIdentity(applicationId, recordingId.toString().lowercase())
+        val store = StoreIdentity(STORE_KIND_RECORDING, applicationId, recordingId.toString().lowercase())
+        val blueprint = StoreIdentity(STORE_KIND_BLUEPRINT, applicationId, RerunRrdBlueprint.storeId(recordingId))
+        val chunks = chunks(scene, codec)
+        val hasPhotos = chunks.any { chunk -> chunk.components.any { it.fieldName == "EncodedImage:blob" } }
         val out = LittleEndian()
+        val footer = RerunRrdFooter()
         out.bytes(streamHeader())
+        // The blueprint first, as the Rerun SDKs write it, so the viewer has the layout before data.
+        appendMessage(KIND_SET_STORE_INFO, setStoreInfo(blueprint, ids.next()), out)
+        val layout = footer.manifest(RerunProtobufWriter().apply { storeId(blueprint) }.bytes)
+        for (chunk in RerunRrdBlueprint.chunks(recordingId, hasPhotos)) appendChunk(chunk, blueprint, ids, layout, out)
+        appendMessage(KIND_BLUEPRINT_ACTIVATION, blueprintActivation(blueprint), out)
         appendMessage(KIND_SET_STORE_INFO, setStoreInfo(store, ids.next()), out)
-        for (chunk in chunks(scene, codec)) appendMessage(KIND_ARROW_MSG, arrowMessage(chunk, store, ids), out)
+        val recording = footer.manifest(RerunProtobufWriter().apply { storeId(store) }.bytes)
+        for (chunk in chunks) appendChunk(chunk, store, ids, recording, out)
+        // Last, and nothing above depends on it: a file cut before here still reads by full scan.
+        footer.appendTo(out)
         return out.toByteArray()
     }
 
@@ -109,12 +128,12 @@ object RerunRrdWriter {
         out.bytes(payload)
     }
 
-    private class StoreIdentity(val applicationId: String, val recordingId: String)
+    private class StoreIdentity(val kind: Long, val applicationId: String, val id: String)
 
-    /** `rerun.common.v1alpha1.StoreId`: a recording (kind 1), its id and application. */
+    /** `rerun.common.v1alpha1.StoreId`: a recording (kind 1) or a blueprint (2), its id and application. */
     private fun RerunProtobufWriter.storeId(store: StoreIdentity) {
-        uint64(1, STORE_KIND_RECORDING)
-        string(2, store.recordingId)
+        uint64(1, store.kind)
+        string(2, store.id)
         message(3) { string(1, store.applicationId) }
     }
 
@@ -140,8 +159,28 @@ object RerunRrdWriter {
         return proto.bytes
     }
 
-    /** `rerun.log_msg.v1alpha1.ArrowMsg` carrying one chunk as an uncompressed IPC stream. */
-    private fun arrowMessage(chunk: RerunChunk, store: StoreIdentity, ids: RerunTuidSequence): ByteArray {
+    /**
+     * `rerun.log_msg.v1alpha1.BlueprintActivationCommand`: [blueprint] becomes the application's
+     * default (`make_default`), without overriding a layout the user saved (`make_active` unset).
+     */
+    private fun blueprintActivation(blueprint: StoreIdentity): ByteArray {
+        val proto = RerunProtobufWriter()
+        proto.message(1) { storeId(blueprint) }
+        proto.bool(3, true)
+        return proto.bytes
+    }
+
+    /**
+     * Writes [chunk] as a `rerun.log_msg.v1alpha1.ArrowMsg` — one uncompressed IPC stream — and
+     * records where it went in its store's [manifest].
+     */
+    private fun appendChunk(
+        chunk: RerunChunk,
+        store: StoreIdentity,
+        ids: RerunTuidSequence,
+        manifest: RerunRrdFooter.Manifest,
+        out: LittleEndian,
+    ) {
         val chunkId = ids.next()
         val rowIds = List(chunk.rowCount) { ids.next() }
         val payload = chunk.arrowIpc(chunkId, rowIds)
@@ -153,7 +192,15 @@ object RerunRrdWriter {
         proto.bytes(5, payload)
         proto.message(6) { tuid(chunkId) }
         proto.bool(7, chunk.times == null)
-        return proto.bytes
+        val message = proto.bytes
+        manifest.add(
+            chunk = chunk,
+            chunkId = chunkId,
+            byteOffset = out.size.toLong() + MESSAGE_HEADER_SIZE,
+            byteSize = message.size.toLong(),
+            uncompressedSize = payload.size.toLong(),
+        )
+        appendMessage(KIND_ARROW_MSG, message, out)
     }
 
     // Scene → chunks
@@ -263,8 +310,22 @@ object RerunRrdWriter {
             val data = scene.images[keyframe.imagePath] ?: return@mapNotNull null
             codec.photo(data)?.let { keyframe.time to it }
         }
-        pinhole(scene.lens, photos.firstOrNull()?.second)?.let { (matrix, resolution) ->
-            chunks += pinholeChunk(matrix, resolution)
+        val mixedSizes = photos.map { it.second.width to it.second.height }.distinct().size > 1
+        if (mixedSizes) {
+            var previousSize: Pair<Int, Int>? = null
+            for ((time, photo) in photos) {
+                val size = photo.width to photo.height
+                if (size != previousSize) {
+                    pinhole(scene.lens, photo)?.let { (matrix, resolution) ->
+                        chunks += pinholeChunk(matrix, resolution, nanoseconds(time))
+                    }
+                    previousSize = size
+                }
+            }
+        } else {
+            pinhole(scene.lens, photos.firstOrNull()?.second)?.let { (matrix, resolution) ->
+                chunks += pinholeChunk(matrix, resolution)
+            }
         }
         // The path's poses plus each photo's own pose, so the camera sits exactly where the
         // photo was taken at that instant (on a tie, the later row — the photo's — wins).
@@ -314,7 +375,7 @@ object RerunRrdWriter {
         times = photos.map { nanoseconds(it.first) },
     )
 
-    private fun pinholeChunk(matrix: FloatArray, resolution: FloatArray) = RerunChunk(
+    private fun pinholeChunk(matrix: FloatArray, resolution: FloatArray, time: Long? = null) = RerunChunk(
         "/world/camera",
         listOf(
             Column.vectors("Pinhole", "image_from_camera", "PinholeProjection", listOf(matrix), 9),
@@ -322,6 +383,7 @@ object RerunRrdWriter {
             Column.u8Vectors("Pinhole", "camera_xyz", "ViewCoordinates", listOf(VIEW_COORDINATES_RUB), 3),
             Column.floats("Pinhole", "image_plane_distance", "ImagePlaneDistance", listOf(floatArrayOf(IMAGE_PLANE))),
         ),
+        times = time?.let { listOf(it) },
     )
 
     /** Column-major `image_from_camera` and `[width, height]`, scaled to the photos' size. */

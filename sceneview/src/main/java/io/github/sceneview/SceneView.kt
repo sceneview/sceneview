@@ -9,6 +9,7 @@ package io.github.sceneview
 import android.content.Context
 import android.content.Context.WINDOW_SERVICE
 import android.opengl.EGLContext
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceView
 import android.view.TextureView
@@ -54,12 +55,14 @@ import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
 import com.google.android.filament.View
 import com.google.android.filament.View.BlendMode
+import io.github.sceneview.camera.CinematicCameraManipulator
 import io.github.sceneview.collision.CollisionSystem
 import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.CameraViewportSeed
 import io.github.sceneview.gesture.GestureDetector
+import io.github.sceneview.gesture.Inertia
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
@@ -71,16 +74,14 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
-import io.github.sceneview.utils.readBuffer
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.node.ViewNode
 import io.github.sceneview.utils.SurfaceMirrorer
 import io.github.sceneview.utils.destroy
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -500,7 +501,11 @@ fun SceneView(
     DisposableEffect(frameRateGate, sceneInvalidator, scene) {
         sceneInvalidator.attach(frameRateGate)
         SceneRenderInvalidators.register(scene, sceneInvalidator)
+        // And by engine, for the one change no node announces: a geometry upload that had to
+        // wait for the previous one and left from a Filament callback (#4365).
+        EngineRenderInvalidators.register(engine, sceneInvalidator)
         onDispose {
+            EngineRenderInvalidators.unregister(engine, sceneInvalidator)
             // Only this view's entry: another view may render the same scene (#3723).
             SceneRenderInvalidators.unregister(scene, sceneInvalidator)
             sceneInvalidator.detach(frameRateGate)
@@ -510,6 +515,12 @@ fun SceneView(
     DisposableEffect(frameRateGate, renderInvalidator) {
         renderInvalidator?.attach(frameRateGate)
         onDispose { renderInvalidator?.detach(frameRateGate) }
+    }
+    // A cinematic move started from outside the loop — a button, a `LaunchedEffect` — must wake a
+    // parked scene: once parked, nothing polls `cameraManipulator.isFrameActive` (#4652).
+    DisposableEffect(cameraManipulator, sceneInvalidator) {
+        val stop = (cameraManipulator as? CinematicCameraManipulator)?.wakeOnMoves(sceneInvalidator)
+        onDispose { stop?.invoke() }
     }
 
     // ── Filament wiring — one keyed effect per parameter, each asking for the frame it needs ──────
@@ -527,7 +538,16 @@ fun SceneView(
     // keyed on exactly that parameter (the pattern `renderQuality` already used since #1078), and
     // each asks for the frame its own write needs. Parameters that write nothing visible ask for
     // nothing, and are listed — with the reason — in the pull request's parameter table.
-    LaunchedEffect(scene, environment) {
+    //
+    // The environment is the one exception to "a `LaunchedEffect` per parameter": it is a
+    // `DisposableEffect`, because the scene has to let go of an environment before its owner
+    // destroys it (#4330). `rememberEnvironment(key = …)` destroys the previous environment in the
+    // same pass that hands this composable the next one; a `LaunchedEffect` only gave the scene
+    // the new skybox a dispatch later, and Filament's `Scene.setSkybox` reads the skybox it
+    // replaces — by then freed memory (SIGSEGV on a dark/light toggle). This effect is remembered
+    // after the caller's, so its `onDispose` runs first: the scene is already empty-handed when
+    // the old environment dies, and the swap completes before any frame can be drawn.
+    DisposableEffect(scene, environment) {
         scene.indirectLight = environment.indirectLight
         scene.skybox = environment.skybox
         // The first frozen image anyone would have hit: a dark/light toggle that swaps the
@@ -535,6 +555,12 @@ fun SceneView(
         // nothing else reports it, so without this the old sky stays on screen until something
         // unrelated wakes the loop.
         frameRateGate.requestRender()
+        onDispose {
+            // Only what this effect put there: a `ReflectionProbeNode`, or the caller, may have
+            // given the scene another light since.
+            if (scene.skybox === environment.skybox) scene.skybox = null
+            if (scene.indirectLight === environment.indirectLight) scene.indirectLight = null
+        }
     }
     LaunchedEffect(view, scene) {
         view.scene = scene
@@ -709,6 +735,14 @@ fun SceneView(
     // ── DSL nodes → Filament scene sync ──────────────────────────────────────────────────────────
 
     val childNodesRef = remember { AtomicReference(emptyList<Node>()) }
+    // Which of those nodes can ask for a frame, kept so the loop below does not re-walk the whole
+    // tree every tick to find out (#3724). Fed the same list, at the same moment, as
+    // `childNodesRef`; it survives a restart of the effect below and lets go of the nodes on exit.
+    val frameActivity = remember { SceneFrameActivity() }
+    DisposableEffect(frameActivity) { onDispose { frameActivity.clear() } }
+    // Hands each frame to the nodes that have per-frame work, instead of walking the tree (#4451).
+    val frameDispatch = remember { SceneFrameDispatch() }
+    DisposableEffect(frameDispatch) { onDispose { frameDispatch.clear() } }
 
     LaunchedEffect(nodeManager, autoCenterContent, contentRoot) {
         var prevNodes = emptyList<Node>()
@@ -739,6 +773,7 @@ fun SceneView(
             }
             prevNodes = newNodes
             childNodesRef.set(newNodes)
+            frameActivity.setRoots(newNodes)
             // A node was attached to (or detached from) the live scene — invalidate the same way
             // a surface resize does (#3560). Under [FrameRatePolicy.OnDemand] the frame loop below
             // parks on `shouldRender`, and only the gate can wake it. Before #3560 only
@@ -906,6 +941,10 @@ fun SceneView(
                 gestureDetector.onTouchEvent(event, hitResult)
                 if (!absorbedByEditableNode) {
                     cameraGestureDetectorRef.get()?.onTouchEvent(event)
+                } else if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    // The camera detector never sees this touch, but a finger on the screen still
+                    // stops a camera that is coasting from the previous flick.
+                    cameraGestureDetectorRef.get()?.stopInertia()
                 }
             }
         }
@@ -1082,8 +1121,10 @@ fun SceneView(
                             val active = isSceneFrameActive(
                                 gestureInFlight = gestureInFlightRef.get(),
                                 cameraMoved = cameraMoved,
-                                cameraPending = cameraPending,
-                                hasActiveNode = childNodesRef.get().any { it.isFrameActive },
+                                // A node edit coasting after release moves the scene with no
+                                // finger down and, in a scene with no manipulator, no camera.
+                                cameraPending = cameraPending || gestureDetector.isCoasting,
+                                hasActiveNode = frameActivity.hasActiveNode,
                                 // Not `progress < 1f`: Filament reports 0 for a loader that was
                                 // never asked for an async load, which read as "loading" for the
                                 // lifetime of every procedural scene. See [isAsyncLoadPending].
@@ -1126,7 +1167,7 @@ fun SceneView(
                         // TransformManager already sorted and reindex nothing (Engine.kt).
                         engine.sortTransformsIfUnsorted()
                         modelLoader.updateLoad()
-                        childNodesRef.get().forEach { it.onFrame(frameTimeNanos) }
+                        frameDispatch.dispatch(childNodesRef.get(), frameTimeNanos)
 
                         // One time step for everything this loop advances itself: capped, so a
                         // stall does not spend an ease in one frame, and nominal after a park —
@@ -1136,6 +1177,10 @@ fun SceneView(
                             frameTimeNanos,
                             lastFrameTimeNanosRef.get().takeIf { it != 0L }
                         ).toFloat()
+
+                        // A node drag / twist / pinch still coasting after release takes its step
+                        // here, with the same capped time step as the camera.
+                        gestureDetector.advanceInertia(frameDelta)
 
                         // Library-level auto-center (#1026). No-op once the content union has settled
                         // and the gate latched, and skipped while the content bounds are still empty
@@ -1333,9 +1378,10 @@ fun SceneView(
  * `destroyModel` tolerates already-freed assets — so the renderables are never left dangling.
  * A key change right after the load returns, while the textures are still decoding, is safe too:
  * `destroyModel` cancels that model's pending texture load before freeing it.
- * Only a model that finished loading is disposed here: a load cancelled by a key change after
- * `ModelLoader` registered the `Model` but before it was produced stays resident until the
- * loader is cleared. The [ModelLoader]
+ * Only a model that finished loading is disposed here: a load cancelled by a key change, or one
+ * that failed, after `ModelLoader` created the `Model` has the loader destroy it before the load
+ * ends. An external resource of a `.gltf` that cannot be read is logged and skipped, so the model
+ * shows without it. The [ModelLoader]
  * does **not** dedupe by path — each call creates a fresh, independent `Model`; re-loading the same
  * path is a new GPU allocation, not a cache hit. For a model you manage imperatively (outside this
  * composable's keyed lifecycle), use [ModelLoader.loadModelInstanceAsync] and call
@@ -1367,17 +1413,15 @@ fun rememberModelInstance(
     if (android.net.Uri.parse(assetFileLocation).scheme != null) {
         return rememberModelInstance(modelLoader, fileLocation = assetFileLocation)
     }
-    val context = LocalContext.current
     val instance = produceState<ModelInstance?>(
         initialValue = null,
         key1 = modelLoader,
         key2 = assetFileLocation
     ) {
-        // Read file bytes on IO, then call Filament APIs back on Main (produceState's context).
-        val buffer = withContext(Dispatchers.IO) {
-            runCatching { context.assets.readBuffer(assetFileLocation) }.getOrNull()
-        } ?: return@produceState
-        value = runCatching { modelLoader.createModelInstance(buffer) }.getOrNull()
+        // The `suspend` load, like the URL overload: bytes read on IO, 3MF/STL/OBJ/PLY → GLB and
+        // WebP → PNG converted on Default, only the Filament calls on Main (produceState's
+        // context). Converting in this coroutine ran all of it on the main thread.
+        value = modelLoader.loadModelInstanceOrNull(assetFileLocation)
     }.value
     // `produceState` only cancels the producer coroutine on a key change — it never destroys the
     // previously produced [ModelInstance]/[Model], which otherwise stays in `ModelLoader.models`
@@ -1403,7 +1447,7 @@ fun rememberModelInstance(
  * - File URIs: `"file:///sdcard/model.glb"`
  * - HTTP/HTTPS URLs: `"https://example.com/model.glb"`
  *
- * For asset paths (no scheme), delegates to the faster asset-based overload.
+ * For asset paths (no scheme), delegates to the asset-path overload.
  * For URLs, downloads the file on IO and creates the model on Main.
  *
  * **Lifecycle & ownership.** Like the asset overload, this composable owns the produced
@@ -1443,9 +1487,7 @@ fun rememberModelInstance(
         key1 = modelLoader,
         key2 = fileLocation
     ) {
-        value = runCatching {
-            modelLoader.loadModelInstance(fileLocation, resourceResolver)
-        }.getOrNull()
+        value = modelLoader.loadModelInstanceOrNull(fileLocation, resourceResolver)
     }.value
     // See the asset-path overload: `produceState` skips per-key disposal, so destroy the previous
     // [Model] on a key swap and on leave-composition (#2459). Disposal is ordered after the
@@ -1456,56 +1498,23 @@ fun rememberModelInstance(
     return instance
 }
 
-// ── Video helper ──────────────────────────────────────────────────────────────────────────────────
-
 /**
- * Creates and remembers a [android.media.MediaPlayer] configured for the given [assetFileLocation].
- *
- * The player is prepared synchronously on the IO dispatcher and returned once ready. Returns
- * `null` while loading. The player is released automatically when the composition leaves the
- * tree.
- *
- * Use this with [SceneScope.VideoNode] for easy video playback in 3D:
- * ```kotlin
- * SceneView {
- *     val player = rememberMediaPlayer(context, assetFileLocation = "videos/promo.mp4")
- *     if (player != null) {
- *         VideoNode(player = player, position = Position(z = -2f))
- *     }
- * }
- * ```
- *
- * @param context            Android context for resolving the asset.
- * @param assetFileLocation  Path to the video file relative to the `assets` folder.
- * @param isLooping          Whether the video should loop. Default `true`.
- * @param autoStart          Whether to start playback immediately once prepared. Default `true`.
- * @return The prepared [android.media.MediaPlayer], or `null` while loading.
+ * [ModelLoader.loadModelInstance] for the `rememberModelInstance` overloads: a failed load is
+ * `null`, as before, but no longer a silent one — it is logged with its cause. Cancellation (a key
+ * change, leaving the composition) is rethrown, not reported as a failure.
  */
-@io.github.sceneview.ExperimentalSceneViewApi
-@Composable
-fun rememberMediaPlayer(
-    context: android.content.Context = LocalContext.current,
-    assetFileLocation: String,
-    isLooping: Boolean = true,
-    autoStart: Boolean = true
-): android.media.MediaPlayer? {
-    val player = remember(assetFileLocation) {
-        runCatching {
-            val afd = context.assets.openFd(assetFileLocation)
-            android.media.MediaPlayer().apply {
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                this.isLooping = isLooping
-                prepare()
-                if (autoStart) start()
-            }
-        }.getOrNull()
+private suspend fun ModelLoader.loadModelInstanceOrNull(
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = {
+        ModelLoader.getFolderPath(fileLocation, it)
     }
-    DisposableEffect(player) {
-        onDispose {
-            player?.release()
-        }
-    }
-    return player
+): ModelInstance? = try {
+    loadModelInstance(fileLocation, resourceResolver)
+} catch (cancellation: CancellationException) {
+    throw cancellation
+} catch (error: Exception) {
+    Log.w("rememberModelInstance", "Could not load $fileLocation", error)
+    null
 }
 
 // ── Engine / resource lifecycle helpers ──────────────────────────────────────────────────────────
@@ -1523,7 +1532,15 @@ fun rememberMediaPlayer(
  * if you want to share Filament resources across multiple `SceneView` composables.
  *
  * @param eglContextCreator Factory for the EGL context. Override for custom EGL configurations.
- * @param engineCreator     Factory for the [Engine]. Override to customise engine flags.
+ * @param engineCreator     Factory for the [Engine]. Override to customise engine flags. A custom
+ * creator should keep the feature flag the default sets, without which destroying a renderer joins
+ * a thread parked in a GPU fence wait and can block the main thread on disposal:
+ * ```
+ * Engine.Builder()
+ *     .sharedContext(eglContext)
+ *     .feature("engine.frame_info.disable_gpu_complete_metric", true)
+ *     .build()
+ * ```
  * @return A [Engine] that is destroyed with its EGL context on disposal.
  */
 @Composable
@@ -1538,8 +1555,8 @@ fun rememberEngine(
             // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
             // run every queued command, and a scene disposed right after it appeared still has
             // its shader compiles queued — seconds on the main thread, an ANR (#3799). Destroy
-            // once the backend is idle instead, polled from the main looper; the usual idle case
-            // still destroys before onDispose returns.
+            // once the backend is idle instead, polled from the main looper; on an idle backend
+            // that is one poll after onDispose returns.
             engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }
@@ -2190,8 +2207,33 @@ fun rememberOnGestureListener(
  *                          `SceneView` forwards to your code and never wires to the camera.
  * @param targetPosition    Point in world space the camera orbits around and initially looks at
  *                          (optional; defaults to the origin). Does not affect the distance.
+ * @param inertia           How orbit, pan and pinch coast after the finger lifts.
+ *                          [Inertia.Default] (the default) coasts like a native fling;
+ *                          [Inertia.None] stops the camera dead on release. Applied to the
+ *                          manipulator [creator] returns when it is a
+ *                          [CameraGestureDetector.DefaultCameraManipulator].
  * @param creator           Factory for the manipulator. Override to set a custom orbit speed, etc.
  */
+@Composable
+fun rememberCameraManipulator(
+    orbitHomePosition: Position? = null,
+    targetPosition: Position? = null,
+    inertia: Inertia = Inertia.Default,
+    creator: () -> CameraGestureDetector.CameraManipulator = {
+        createDefaultCameraManipulator(orbitHomePosition, targetPosition)
+    }
+): CameraGestureDetector.CameraManipulator = remember(creator).also { it.applyInertia(inertia) }
+
+/**
+ * Binary-compatibility shim for the pre-`inertia` descriptor of [rememberCameraManipulator]. The
+ * Compose compiler puts every parameter in the JVM signature, so the new parameter retyped the
+ * function: this keeps a library compiled against the old signature linking, with the default
+ * [Inertia].
+ */
+@Deprecated(
+    "Binary-compatibility overload. Use the rememberCameraManipulator overload that takes `inertia`.",
+    level = DeprecationLevel.HIDDEN,
+)
 @Composable
 fun rememberCameraManipulator(
     orbitHomePosition: Position? = null,
@@ -2199,7 +2241,12 @@ fun rememberCameraManipulator(
     creator: () -> CameraGestureDetector.CameraManipulator = {
         createDefaultCameraManipulator(orbitHomePosition, targetPosition)
     }
-) = remember(creator)
+) = rememberCameraManipulator(
+    orbitHomePosition = orbitHomePosition,
+    targetPosition = targetPosition,
+    inertia = Inertia.Default,
+    creator = creator,
+)
 
 /**
  * Creates and remembers a [ViewNode.WindowManager] required by [SceneScope.ViewNode].
@@ -2260,8 +2307,8 @@ fun rememberViewNodeManager(
  * gradient panel with a hint pointing the developer at Android Studio's Live Edit feature —
  * which DOES iterate on the live device with the real Filament renderer.
  *
- * The placeholder also makes Roborazzi snapshot tests of demos containing a [SceneView]
- * deterministic in pure JVM (Robolectric inspection mode = true) — they capture this panel
+ * The placeholder also makes Robolectric tests of demos containing a [SceneView]
+ * deterministic in pure JVM (Robolectric inspection mode = true) — they compose this panel
  * instead of crashing on the missing Filament JNI.
  */
 @Composable

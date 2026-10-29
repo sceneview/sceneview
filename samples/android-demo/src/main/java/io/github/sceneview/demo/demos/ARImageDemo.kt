@@ -45,6 +45,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
@@ -57,7 +58,11 @@ import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.common.CatalogueProductPill
+import io.github.sceneview.demo.common.CatalogueProducts
 import io.github.sceneview.demo.common.DemoStatusBanner
+import io.github.sceneview.demo.common.rememberCatalogueProduct
+import io.github.sceneview.math.Position
 import io.github.sceneview.demo.common.DemoStatusTone
 import io.github.sceneview.demo.common.ForceTrackingFailureMenu
 import io.github.sceneview.demo.common.ForcedTrackingFailure
@@ -65,7 +70,6 @@ import io.github.sceneview.demo.common.trackingFailureMessage
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
-import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +96,9 @@ import kotlinx.coroutines.withContext
  * session config on the main thread itself — the demo only has to call it from a coroutine.
  *
  * When ARCore detects a registered image in the camera feed, an `AugmentedImageNode` is placed
- * at the image location with a 3D model attached.
+ * at the image location with a real product standing on it at its real size: the SMEG toaster
+ * from the catalogue (#4560), fetched from the HD pack — a countertop object for a print on a
+ * table.
  */
 @Composable
 fun ARImageDemo(onBack: () -> Unit) {
@@ -142,7 +148,7 @@ fun ARImageDemo(onBack: () -> Unit) {
     // reference image to point the camera at; it collapses to a chip once detection succeeds.
     var showScanGuide by remember { mutableStateOf(false) }
 
-    val modelInstance = rememberModelInstance(modelLoader, "models/khronos_toy_car.glb")
+    val toaster = rememberCatalogueProduct(modelLoader, CatalogueProducts.SMEG_TOASTER)
 
     // Decode the reference image once per composition — ARCore calls sessionConfiguration on
     // every session reconfig, so decoding inside that lambda re-opens the asset + allocates a
@@ -244,6 +250,8 @@ fun ARImageDemo(onBack: () -> Unit) {
             // flow. Grabs the live AR camera frame, registers it in the runtime database, and
             // ARCore starts tracking that scene with no pre-bundled database.
             //
+            // Until the toaster is in, its pill names it and narrates the download.
+            if (arCoreAvailability == null) CatalogueProductPill(toaster)
             // Status overlay
             AnimatedVisibility(
                 visible = true,
@@ -312,6 +320,7 @@ fun ARImageDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
@@ -408,14 +417,15 @@ fun ARImageDemo(onBack: () -> Unit) {
                 }
             ) {
                 detectedImages.forEach { image ->
-                    AugmentedImageNode(
-                        augmentedImage = image,
-                        applyImageScale = true
-                    ) {
-                        modelInstance?.let { instance ->
+                    // No image scale: it stretches X and Z by the print's size but not Y, which
+                    // flattens a real object. The toaster keeps its own real size instead.
+                    AugmentedImageNode(augmentedImage = image) {
+                        toaster.instance?.let { instance ->
                             ModelNode(
                                 modelInstance = instance,
-                                scaleToUnits = 0.1f,
+                                scaleToUnits = toaster.realSizeMetres,
+                                // Standing on the image: the bottom of its box on the image centre.
+                                centerOrigin = Position(y = -1f),
                             )
                         }
                     }

@@ -5,6 +5,7 @@ import com.google.android.filament.utils.KTX1Loader
 import io.github.sceneview.ar.camera.ARCameraStream
 import io.github.sceneview.ar.node.ARCameraNode
 import io.github.sceneview.createEnvironment
+import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.MaterialLoader
 import java.nio.Buffer
 
@@ -57,21 +58,23 @@ fun createARCameraStream(materialLoader: MaterialLoader) = ARCameraStream(materi
 fun createAREnvironment(
     engine: Engine,
     iblBuffer: Buffer? = null,
-) = createEnvironment(
-    engine = engine,
-    // Apply DEFAULT_IBL_INTENSITY (10k lux) so the AR baseline IBL doesn't blow out
-    // direct lighting once ARCore ENVIRONMENTAL_HDR replaces it (#1075). Same pattern
-    // as the 3D `createEnvironment` path.
-    indirectLight = iblBuffer?.let {
-        KTX1Loader.createIndirectLight(engine, it).indirectLight
-            ?.also { ibl -> ibl.intensity = io.github.sceneview.DEFAULT_IBL_INTENSITY }
-    },
-    // Skybox = null: camera feed passes through. `isOpaque` is intentionally omitted from
-    // the call — it only drives the default skybox alpha and is bypassed by this explicit
-    // null (#1121). The remaining `Skybox.Builder()` evaluation in the default-arg path is
-    // never reached because `skybox` is named and assigned `null` here.
-    skybox = null,
-)
+): Environment {
+    val indirectLightBundle = iblBuffer?.let { KTX1Loader.createIndirectLight(engine, it) }
+    return createEnvironment(
+        engine = engine,
+        // Apply DEFAULT_IBL_INTENSITY (10k lux) so the AR baseline IBL doesn't blow out
+        // direct lighting once ARCore ENVIRONMENTAL_HDR replaces it (#1075). Same pattern
+        // as the 3D `createEnvironment` path.
+        indirectLight = indirectLightBundle?.indirectLight
+            ?.also { ibl -> ibl.intensity = io.github.sceneview.DEFAULT_IBL_INTENSITY },
+        // Skybox = null: camera feed passes through. `isOpaque` is intentionally omitted from
+        // the call — it only drives the default skybox alpha and is bypassed by this explicit
+        // null (#1121). The remaining `Skybox.Builder()` evaluation in the default-arg path is
+        // never reached because `skybox` is named and assigned `null` here.
+        skybox = null,
+        textures = listOfNotNull(indirectLightBundle?.cubemap),
+    )
+}
 
 /**
  * Default AR camera node, exposure realigned with the v4.1.0 main+fill light setup

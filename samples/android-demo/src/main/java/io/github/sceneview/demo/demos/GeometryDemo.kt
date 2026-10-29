@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,13 +58,17 @@ import io.github.sceneview.demo.common.rememberMaterialsShowcaseEnvironment
 import io.github.sceneview.demo.demoContentPadding
 import io.github.sceneview.demo.demos.internal.DemoMath
 import io.github.sceneview.demo.demos.internal.GeometryDemoState
+import io.github.sceneview.demo.demos.internal.GeometryFinish
 import io.github.sceneview.demo.demos.internal.GeometryLayout
 import io.github.sceneview.demo.demos.internal.GeometryShape
+import io.github.sceneview.demo.demos.internal.MaterialTrait
+import io.github.sceneview.demo.demos.internal.studioFinish
 import io.github.sceneview.demo.driving
 import io.github.sceneview.demo.rememberContinuousCameraManipulator
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
+import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.demo.ui.GlassChip
 import io.github.sceneview.demo.ui.GlassChipStyle
 import io.github.sceneview.demo.ui.viewer.ViewerBackdrop
@@ -77,7 +82,6 @@ import io.github.sceneview.rememberEnvironmentLoader
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.sample.LifecycleAwareLaunchedEffect
-import io.github.sceneview.sample.rememberMaterialInstance
 import io.github.sceneview.sample.ui.LabeledSlider
 
 /** Where the spin is parked in QA mode, so two captures of the same state are the same picture. */
@@ -88,6 +92,9 @@ private const val QA_SPIN_DEGREES = 30f
  * their facets on the silhouette of a mirror finish at this size.
  */
 private const val ROUND_SEGMENTS = 48
+
+/** Dielectric reflectance of the shared material — `createColorInstance`'s default, 4 % F0. */
+private const val UNIFORM_REFLECTANCE = 0.5f
 
 /** From this width the two sliders sit side by side, so both fit a landscape sheet's peek. */
 private val SIDE_BY_SIDE_CONTROLS_MIN_WIDTH = 560.dp
@@ -100,8 +107,12 @@ private val SIDE_BY_SIDE_CONTROLS_MIN_WIDTH = 560.dp
  * - **Shape chips** over the scene show or hide each primitive. A hidden shape leaves its slot
  *   empty; nothing else moves and the camera stays where it is.
  * - **Animate** (dock) starts and stops the spin; **Recenter** (dock) brings the camera home.
- * - **Settings** holds the one material every shape shares: Metallic and Roughness, the whole
- *   PBR range from chalk to mirror. Reset restores the screen as it opens.
+ * - The shapes open in **studio finishes**, one material each — chrome, gold, copper, satin
+ *   aluminium, glazed ceramic, two clear-coated lacquers ([studioFinish]) — lit by the warm
+ *   studio HDR, so what reads first is the light they reflect, not a flat tint.
+ * - **Settings** switches them to **one material** they all share: Metallic and Roughness, the
+ *   whole PBR range from chalk to mirror. Dragging either slider makes that switch on its own.
+ *   Reset restores the screen as it opens.
  *
  * The scene is full-bleed and fitted to the band the chrome leaves free, in portrait and in
  * landscape: the band goes to `SceneView(contentPadding = …)`, [GeometryLayout] picks the
@@ -110,7 +121,7 @@ private val SIDE_BY_SIDE_CONTROLS_MIN_WIDTH = 560.dp
  */
 @Composable
 fun GeometryDemo(onBack: () -> Unit) {
-    // Inspection mode (Android Studio @Preview pane, Roborazzi snapshot tests): leave before any
+    // Inspection mode (Android Studio @Preview pane, Robolectric tests): leave before any
     // rememberEngine() call — LayoutLib does not ship Filament's native libraries.
     if (LocalInspectionMode.current) {
         DemoPreviewPlaceholder(title = stringResource(R.string.demo_geometry_title), onBack = onBack)
@@ -140,8 +151,8 @@ fun GeometryDemo(onBack: () -> Unit) {
     // `copy` shares the environment's Filament handles; only the backdrop is this screen's.
     val environment = remember(studioLight, stageBackdrop) { studioLight.copy(skybox = stageBackdrop) }
 
-    val materials = rememberShapeMaterials(materialLoader, state.metallic, state.roughness)
-    LaunchedEffect(state.metallic, state.roughness) { renderInvalidator.requestRender() }
+    val materials = rememberShapeMaterials(materialLoader, state.finish, state.metallic, state.roughness)
+    LaunchedEffect(state.finish, state.metallic, state.roughness) { renderInvalidator.requestRender() }
 
     val spinDegrees = rememberSpinDegrees(spinning = state.spinning)
 
@@ -156,6 +167,7 @@ fun GeometryDemo(onBack: () -> Unit) {
         // moment after the shapes, and lifting in between showed the scene twice.
         firstFrameRendered = firstFrame.sceneReady,
         sceneReady = firstFrame.sceneReady,
+        contentIssue = firstFrame.contentIssue,
         onReset = state::reset,
         dock = listOf(
             DockItem(
@@ -173,6 +185,7 @@ fun GeometryDemo(onBack: () -> Unit) {
         bottomOverlay = {
             GeometryShapeChips(
                 visibleShapes = state.visibleShapes,
+                finish = state.finish,
                 onToggle = state::toggle,
                 modifier = Modifier
                     .padding(horizontal = SceneViewTokens.Space.md)
@@ -181,10 +194,12 @@ fun GeometryDemo(onBack: () -> Unit) {
         },
         controls = {
             GeometryDemoControls(
+                finish = state.finish,
+                onFinishChange = { state.finish = it },
                 metallic = state.metallic,
-                onMetallicChange = { state.metallic = it },
+                onMetallicChange = state::dialMetallic,
                 roughness = state.roughness,
-                onRoughnessChange = { state.roughness = it },
+                onRoughnessChange = state::dialRoughness,
             )
         },
     ) {
@@ -314,9 +329,19 @@ internal class GeometryRestBottom {
  */
 private val STAGE_TONES = listOf(SceneViewColors.TintLight, SceneViewColors.TintSoft)
 
-/** The shape's colour on the stage — see [STAGE_TONES]. */
+/** The shape's colour on the stage in [GeometryFinish.Uniform] — see [STAGE_TONES]. */
 internal val GeometryShape.color: Color
     get() = STAGE_TONES[ordinal % STAGE_TONES.size]
+
+/**
+ * The colour of the shape's chip dot under [finish]: its studio finish's base colour, or its
+ * stage tone. A metal's base colour is its linear reflectance, so its dot reads a little darker
+ * than the polished shape — the same trade the *Materials* demo makes for its swatches.
+ */
+internal fun GeometryShape.swatch(finish: GeometryFinish): Color = when (finish) {
+    GeometryFinish.Studio -> studioFinish.color
+    GeometryFinish.Uniform -> color
+}
 
 @get:StringRes
 internal val GeometryShape.labelRes: Int
@@ -333,17 +358,46 @@ internal val GeometryShape.labelRes: Int
 // ── Scene ────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * One material per shape, sharing [metallic] and [roughness]. The instances live as long as the
- * screen; the sliders only write their parameters.
+ * One `studio_pbr` instance per shape. In [GeometryFinish.Studio] each carries its shape's
+ * [studioFinish]; in [GeometryFinish.Uniform] they all take [metallic] and [roughness] over the
+ * shape's stage tone. The instances live as long as the screen; a change only rewrites their
+ * parameters, on the main thread.
+ *
+ * `studio_pbr` rather than `materialLoader.createColorInstance`: SceneView's colour material has
+ * no clear coat, and a lacquer without its coat is the flat plastic this screen used to show.
  */
 @Composable
 private fun rememberShapeMaterials(
     materialLoader: MaterialLoader,
+    finish: GeometryFinish,
     metallic: Float,
     roughness: Float,
 ): Map<GeometryShape, MaterialInstance> {
+    val studioPbr = remember(materialLoader) {
+        materialLoader.createMaterial("materials/studio_pbr.filamat")
+    }
     val materials = GeometryShape.entries.associateWith { shape ->
-        rememberMaterialInstance(materialLoader, shape.color, metallic, roughness)
+        val instance = remember(studioPbr, shape) { materialLoader.createInstance(studioPbr) }
+        DisposableEffect(instance) {
+            onDispose { materialLoader.destroyMaterialInstance(instance) }
+        }
+        // Written in the apply step of the composition, before the frame that shows it.
+        SideEffect {
+            when (finish) {
+                GeometryFinish.Studio -> instance.push(shape.studioFinish)
+                GeometryFinish.Uniform -> instance.push(
+                    shape.studioFinish.copy(
+                        color = shape.color,
+                        colorIsLinear = false,
+                        reflectance = UNIFORM_REFLECTANCE,
+                        trait = MaterialTrait.None,
+                    ),
+                    metallic = metallic,
+                    roughness = roughness,
+                )
+            }
+        }
+        instance
     }
     // A quad has one face; without this it disappears whenever the orbit goes behind it.
     val plane = materials.getValue(GeometryShape.Plane)
@@ -480,13 +534,14 @@ private fun SceneScope.GeometryShapes(
 
 /**
  * One switch per shape, floating over the scene — a legend of what is on the stage. Every chip
- * is glass: shown, it carries a dot of its shape's colour; hidden, the dot is a hollow ring and
+ * is glass: shown, it carries a dot of its shape's colour ([swatch]); hidden, the dot is a hollow ring and
  * the name is struck through.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun GeometryShapeChips(
     visibleShapes: Set<GeometryShape>,
+    finish: GeometryFinish,
     onToggle: (GeometryShape) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -505,18 +560,21 @@ internal fun GeometryShapeChips(
                 toggle = true,
                 onClick = { onToggle(shape) },
                 style = GlassChipStyle.Legend,
-                swatch = shape.color,
+                swatch = shape.swatch(finish),
             )
         }
     }
 }
 
 /**
- * The settings sheet: the material every shape shares. Two sliders and nothing else, so the
- * sheet stays at its content height and the scene stays visible while a value is dragged.
+ * The settings sheet: studio finishes or one shared material, and the two sliders of that
+ * material. Nothing else, so the sheet stays at its content height and the scene stays visible
+ * while a value is dragged.
  */
 @Composable
 internal fun GeometryDemoControls(
+    finish: GeometryFinish,
+    onFinishChange: (GeometryFinish) -> Unit,
     metallic: Float,
     onMetallicChange: (Float) -> Unit,
     roughness: Float,
@@ -525,7 +583,45 @@ internal fun GeometryDemoControls(
 ) {
     val metallicLabel = stringResource(R.string.demo_geometry_metallic)
     val roughnessLabel = stringResource(R.string.demo_geometry_roughness)
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.md),
+    ) {
+        ConnectedChoiceRow(
+            options = GeometryFinish.entries,
+            selected = finish,
+            onSelect = onFinishChange,
+            label = { stringResource(it.labelRes) },
+        )
+        GeometryMaterialSliders(
+            metallicLabel = metallicLabel,
+            metallic = metallic,
+            onMetallicChange = onMetallicChange,
+            roughnessLabel = roughnessLabel,
+            roughness = roughness,
+            onRoughnessChange = onRoughnessChange,
+        )
+    }
+}
+
+@get:StringRes
+private val GeometryFinish.labelRes: Int
+    get() = when (this) {
+        GeometryFinish.Studio -> R.string.demo_geometry_finish_studio
+        GeometryFinish.Uniform -> R.string.demo_geometry_finish_uniform
+    }
+
+/** Metallic and Roughness: stacked on a phone, side by side from [SIDE_BY_SIDE_CONTROLS_MIN_WIDTH]. */
+@Composable
+private fun GeometryMaterialSliders(
+    metallicLabel: String,
+    metallic: Float,
+    onMetallicChange: (Float) -> Unit,
+    roughnessLabel: String,
+    roughness: Float,
+    onRoughnessChange: (Float) -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         if (maxWidth >= SIDE_BY_SIDE_CONTROLS_MIN_WIDTH) {
             Row(horizontalArrangement = Arrangement.spacedBy(SceneViewTokens.Space.lg)) {
                 LabeledSlider(
@@ -589,6 +685,8 @@ private fun GeometryDemoControlsPreview() {
     SceneViewDemoTheme(darkTheme = false) {
         Box(modifier = Modifier.padding(SceneViewTokens.Space.md)) {
             GeometryDemoControls(
+                finish = GeometryFinish.Studio,
+                onFinishChange = {},
                 metallic = GeometryDemoState.DEFAULT_METALLIC,
                 onMetallicChange = {},
                 roughness = GeometryDemoState.DEFAULT_ROUGHNESS,
@@ -604,6 +702,7 @@ private fun GeometryShapeChipsPreview() {
     SceneViewDemoTheme(darkTheme = true) {
         GeometryShapeChips(
             visibleShapes = GeometryDemoState.ALL_SHAPES - GeometryShape.Cone,
+            finish = GeometryFinish.Studio,
             onToggle = {},
             modifier = Modifier.padding(SceneViewTokens.Space.md),
         )

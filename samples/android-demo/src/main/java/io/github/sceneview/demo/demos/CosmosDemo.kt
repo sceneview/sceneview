@@ -1,13 +1,12 @@
 package io.github.sceneview.demo.demos
 
-import io.github.sceneview.demo.recording.rememberSceneRecorderState
-import io.github.sceneview.rememberSurfaceMirrorer
+import io.github.sceneview.demo.common.rememberFilmicView
+import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
 import io.github.sceneview.demo.telemetry.logSampleModeChange
 import android.os.SystemClock
 import android.util.Log
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,20 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cyclone
-import androidx.compose.material.icons.filled.Flare
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.RocketLaunch
-import androidx.compose.material.icons.filled.Waves
-import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +49,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import dev.romainguy.kotlin.math.Quaternion
+import io.github.sceneview.EngineDestroyQueue
 import io.github.sceneview.FrameRatePolicy
 import io.github.sceneview.SceneView
 import io.github.sceneview.demo.DemoPreviewPlaceholder
@@ -65,6 +57,7 @@ import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
+import io.github.sceneview.demo.demos.internal.CosmosChrome
 import io.github.sceneview.demo.demos.internal.CosmosFlight
 import io.github.sceneview.demo.demos.internal.CosmosFocus
 import io.github.sceneview.demo.demos.internal.CosmosFraming
@@ -86,7 +79,6 @@ import io.github.sceneview.demo.initialDemoMode
 import io.github.sceneview.demo.rememberFirstFrameState
 import io.github.sceneview.demo.theme.LocalMotionEnabled
 import io.github.sceneview.demo.theme.SceneViewTokens
-import io.github.sceneview.demo.ui.ConnectedChoiceRow
 import io.github.sceneview.math.Direction
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
@@ -98,9 +90,7 @@ import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberRenderInvalidator
-import io.github.sceneview.rememberView
 import io.github.sceneview.safeDestroyIndexBuffer
-import io.github.sceneview.safeDestroyTexture
 import io.github.sceneview.safeDestroyVertexBuffer
 import io.github.sceneview.sample.ui.LabeledSlider
 import kotlinx.coroutines.Dispatchers
@@ -172,9 +162,9 @@ private const val ONE_FRAME_SECONDS = 1f / 60f
  * jumps (light streaks, a surging wide lens) or fades. [CosmosVoyageCamera] turns the table into
  * a pose each frame with a Catmull-Rom spline, a look-ahead aim and a little handheld sway. Any
  * touch in the scene hands the camera back, eased; after [VoyageState.IDLE_RESUME_SECONDS]
- * untouched the voyage jumps on to the next scene. A scene picked in the dock is shown still for
- * [VoyageState.AUTO_START_SECONDS], then the voyage takes off from it. Only the dock's accent or
- * the Voyage toggle stops it for good; either starts it again.
+ * untouched the voyage jumps on to the next scene. A scene picked in the scene switch is shown
+ * still for [VoyageState.AUTO_START_SECONDS], then the voyage takes off from it. Only the dock's
+ * Autoplay or the Voyage toggle stops it for good; either starts it again.
  */
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
@@ -200,11 +190,11 @@ fun CosmosDemo(onBack: () -> Unit) {
 
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
-    val view = rememberView(engine)
-    // The shared Record action (samples step 0, the former `video-recording` card): the scene's
-    // frames are mirrored into an MP4 encoder, without the Compose chrome.
-    val surfaceMirrorer = rememberSurfaceMirrorer()
-    val recorder = rememberSceneRecorderState(surfaceMirrorer)
+    val view = rememberFilmicView(engine)
+    // The shared capture actions (samples step 0, the former `video-recording` card): the SDK's
+    // SceneRecorder takes a photo of the scene or mirrors its frames into an MP4, without the
+    // Compose chrome.
+    val recorder = rememberDemoSceneRecorder()
     val renderInvalidator = rememberRenderInvalidator()
     val cameraNode = rememberCameraNode(engine) {
         position = Position(0f, 0f, 6f)
@@ -421,12 +411,7 @@ fun CosmosDemo(onBack: () -> Unit) {
         firstFrameRendered = coverLifted,
         loadingLabel = stringResource(R.string.demo_cosmos_loading),
         recorder = recorder,
-        peekHeader = when {
-            voyageCaption != null -> voyageCaption
-            scene == CosmosScene.Star && spacetime -> spacetimeLegend
-            scene == CosmosScene.Star -> focus.caption
-            else -> scene.caption
-        },
+        peekHeader = CosmosChrome.status(scene, voyageCaption, spacetime, focus, spacetimeLegend),
         onResetSettings = {
             showSpacetime(false)
             voyageOn = true
@@ -434,39 +419,56 @@ fun CosmosDemo(onBack: () -> Unit) {
             animating = true
             bloom = DEFAULT_BLOOM
         },
-        dock = CosmosScene.entries.map { target ->
-            sceneDockItem(target, scene) {
-                // Star again while in Spacetime: already there, the voyage stays stopped.
-                if (it == CosmosScene.Star && spacetime) return@sceneDockItem
-                // Any other scene leaves Spacetime.
-                showSpacetime(false)
-                // The scene picked is shown still; a few seconds of calm and the voyage goes on.
-                voyage.pick(flight)
-                scene = it
-                // `galaxy` | `star` | `burst` | `flow` — the taxonomy shared with iOS.
-                logSampleInteraction(telemetrySampleId, it.name.lowercase())
-            }
-        },
-        dockAccent = if (voyageOn && voyageCaption != null) {
-            DockItem(Icons.Filled.Pause, "Stop the voyage", {
-                voyageOn = false
-                voyage.stop(flight)
-            })
-        } else {
-            DockItem(Icons.Filled.RocketLaunch, "Start the voyage", {
-                // The voyage goes back to Starlight before it moves on.
-                showSpacetime(false)
-                voyageOn = true
-                animating = true
-                voyage.resumeNow()
-            })
-        },
-        // The Star scene's two views, over the dock whenever the star is on screen — the
-        // voyage's Star shot included. The scaffold measures the band; nothing here places it.
-        bottomOverlay = if (scene == CosmosScene.Star) {
-            { SpacetimePill(spacetime, showSpacetime) }
-        } else {
-            null
+        // The dock holds the voyage, labelled, and Settings — never a scene (#4601): a scene one
+        // slot from Settings opened the sheet on a near miss, and the sheet faded the bar out.
+        dock = listOf(
+            if (CosmosChrome.autoplayPlaying(voyageOn, voyageCaption)) {
+                DockItem(
+                    icon = Icons.Filled.Pause,
+                    label = stringResource(R.string.demo_cosmos_autoplay_pause),
+                    onClick = {
+                        voyageOn = false
+                        voyage.stop(flight)
+                    },
+                    selected = true,
+                    caption = stringResource(R.string.demo_cosmos_autoplay),
+                )
+            } else {
+                DockItem(
+                    icon = Icons.Filled.PlayArrow,
+                    label = stringResource(R.string.demo_cosmos_autoplay_play),
+                    onClick = {
+                        // The voyage goes back to Starlight before it moves on.
+                        showSpacetime(false)
+                        voyageOn = true
+                        animating = true
+                        voyage.resumeNow()
+                    },
+                    caption = stringResource(R.string.demo_cosmos_autoplay),
+                )
+            },
+        ),
+        // Over the dock: the Star scene's two views whenever the star is on screen — the
+        // voyage's Star shot included — then the scene switch, always. The scaffold measures
+        // the band; nothing here places it.
+        bottomOverlay = {
+            CosmosBottomControls(
+                scene = scene,
+                spacetime = spacetime,
+                onSpacetime = showSpacetime,
+                onPick = { picked ->
+                    if (CosmosChrome.pickChangesScene(picked, scene)) {
+                        // Another scene leaves Spacetime.
+                        showSpacetime(false)
+                        // The scene picked is shown still; a few seconds of calm and the voyage
+                        // goes on.
+                        voyage.pick(flight)
+                        scene = picked
+                        // `galaxy` | `star` | `burst` | `flow` — the taxonomy shared with iOS.
+                        logSampleInteraction(telemetrySampleId, picked.name.lowercase())
+                    }
+                },
+            )
         },
         controls = {
             LabeledSlider(
@@ -490,7 +492,7 @@ fun CosmosDemo(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             view = view,
-            surfaceMirrorer = surfaceMirrorer,
+            surfaceMirrorer = recorder.surfaceMirrorer,
             materialLoader = materialLoader,
             cameraNode = cameraNode,
             cameraManipulator = null,
@@ -611,7 +613,7 @@ fun CosmosDemo(onBack: () -> Unit) {
                         voyageFocal = voyageCamera.focal
                         voyage.show(voyageCamera.fade, voyageCamera.streaks)
                         if (voyage.leaving >= 1f) {
-                            // A scene picked in the dock gets its own shot before the voyage moves on.
+                            // A scene picked in the switch gets its own shot before the voyage moves on.
                             landing = if (voyage.inPlace) current else CosmosVoyage.next(current)
                             if (landing == current) clock.restart() else scene = landing
                             voyage.arrive()
@@ -952,18 +954,6 @@ private fun ToggleRow(label: String, value: Boolean, onChange: (Boolean) -> Unit
     }
 }
 
-private fun sceneDockItem(target: CosmosScene, current: CosmosScene, select: (CosmosScene) -> Unit) = DockItem(
-    icon = when (target) {
-        CosmosScene.Galaxy -> Icons.Filled.Cyclone
-        CosmosScene.Star -> Icons.Filled.WbSunny
-        CosmosScene.Burst -> Icons.Filled.Flare
-        CosmosScene.Flow -> Icons.Filled.Waves
-    },
-    label = target.label,
-    onClick = { select(target) },
-    selected = current == target,
-)
-
 @Composable
 private fun io.github.sceneview.SceneScope.GlowMeshNode(
     mesh: GpuMesh,
@@ -981,41 +971,6 @@ private fun io.github.sceneview.SceneScope.GlowMeshNode(
             apply()
         },
     )
-}
-
-/**
- * The Star scene's two views, Starlight and Spacetime: a segmented pill over the dock, in the
- * fixed over-media palette of `DESIGN.md` (`mode-pill-*`) — opaque, so it reads on the black sky
- * and on the lit sheet alike, in light and dark theme.
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun SpacetimePill(spacetime: Boolean, onSelect: (Boolean) -> Unit) {
-    val pill = SceneViewTokens.ModePill
-    val starlight = stringResource(R.string.demo_cosmos_starlight)
-    val spacetimeLabel = stringResource(R.string.demo_cosmos_spacetime)
-    Surface(
-        shape = CircleShape,
-        color = pill.container,
-        contentColor = pill.onContainer,
-        border = BorderStroke(pill.outlineWidth, pill.outline),
-    ) {
-        ConnectedChoiceRow(
-            options = listOf(false, true),
-            selected = spacetime,
-            onSelect = onSelect,
-            label = { if (it) spacetimeLabel else starlight },
-            modifier = Modifier.padding(horizontal = SceneViewTokens.Space.xs),
-            optionTestTag = { if (it) "cosmos_spacetime" else "cosmos_starlight" },
-            colors = ToggleButtonDefaults.colors(
-                containerColor = pill.container,
-                contentColor = pill.onContainer,
-                checkedContainerColor = pill.selectedContainer,
-                checkedContentColor = pill.onSelected,
-            ),
-            fillWidth = false,
-        )
-    }
 }
 
 private fun MeshNodeImpl.configureGlow() {
@@ -1431,6 +1386,8 @@ private class FabricInstances(val sheet: MaterialInstance, val worlds: List<Mate
         val light = CosmosSpacetime.LIGHT
         sheet.setParameter("lightDir", light[0], light[1], light[2])
         sheet.setParameter("baseColor", base[0], base[1], base[2])
+        val grid = CosmosSpacetime.sheetGridLinear()
+        sheet.setParameter("gridColor", grid[0], grid[1], grid[2])
         sheet.setParameter("intensity", 0f)
         worlds.forEachIndexed { slot, world ->
             val look = FABRIC_LOOKS[slot]
@@ -1569,7 +1526,11 @@ private const val MAX_BAKE_BANDS = 8
 private class GpuSheet(val mesh: GpuMesh, val horizon: Texture) {
     fun destroy(engine: Engine) {
         mesh.destroy(engine)
-        engine.safeDestroyTexture(horizon)
+        // Queued, not destroyed here: the sheet's material instance still samples this map when
+        // the sheet goes. It belongs to the material loader, which is remembered before the sheet
+        // and so disposed after it. The sheet is built once and never rebuilt while its material
+        // stays, so there is no replacement map to bind an instance to first (#4360).
+        EngineDestroyQueue.of(engine).enqueueTexture(horizon)
     }
 }
 

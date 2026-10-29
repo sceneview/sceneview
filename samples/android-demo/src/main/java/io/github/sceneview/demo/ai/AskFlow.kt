@@ -12,8 +12,22 @@ sealed interface AskAvailability {
     /** Supported device, model not fetched — the user can start the download. */
     data object Downloadable : AskAvailability
 
-    /** Download in flight. `null` bytes until the first progress tick. */
-    data class Downloading(val bytesDownloaded: Long? = null) : AskAvailability
+    /**
+     * Download in flight. `null` bytes until the first progress tick; [bytesToDownload] is
+     * `null` until ML Kit announces the size (`DownloadStarted`), so progress can be shown as
+     * a percentage once it is known (#2648).
+     */
+    data class Downloading(
+        val bytesDownloaded: Long? = null,
+        val bytesToDownload: Long? = null,
+    ) : AskAvailability
+
+    /**
+     * The download stopped with an error. Not "unsupported": a dropped network or a full disk
+     * is fixable, so the card says why and offers to try again (#2648). Before this, every
+     * download failure became the dead-end "not available on this device" card.
+     */
+    data class DownloadFailed(val failure: AskFailure) : AskAvailability
 
     /** Model present — the demo can be asked questions. */
     data object Ready : AskAvailability
@@ -21,9 +35,10 @@ sealed interface AskAvailability {
     /**
      * The **platform** reported that this device cannot run the model. Only ever reached
      * from a real report — `FeatureStatus` saying so, a failed download, or a terminal ML
-     * Kit error code — never from a retry counter (#3407).
+     * Kit error code — never from a retry counter (#3407). [reason] says which, and the card
+     * always offers to check again (#2648).
      */
-    data object Unsupported : AskAvailability
+    data class Unsupported(val reason: AskUnavailableReason) : AskAvailability
 }
 
 /** What the demo is doing about the current question, once the model is [AskAvailability.Ready]. */
@@ -55,8 +70,9 @@ sealed interface AskRound {
 sealed interface AskStep {
     data object CheckingAvailability : AskStep
     data object ModelDownloadable : AskStep
-    data class ModelDownloading(val bytesDownloaded: Long?) : AskStep
-    data object ModelUnsupported : AskStep
+    data class ModelDownloading(val bytesDownloaded: Long?, val bytesToDownload: Long? = null) : AskStep
+    data class ModelDownloadFailed(val failure: AskFailure) : AskStep
+    data class ModelUnsupported(val reason: AskUnavailableReason) : AskStep
     data object Ready : AskStep
     data object CapturingFrame : AskStep
     data object Thinking : AskStep
@@ -115,8 +131,9 @@ class AskFlow(
         get() = when (val a = availability) {
             AskAvailability.Checking -> AskStep.CheckingAvailability
             AskAvailability.Downloadable -> AskStep.ModelDownloadable
-            is AskAvailability.Downloading -> AskStep.ModelDownloading(a.bytesDownloaded)
-            AskAvailability.Unsupported -> AskStep.ModelUnsupported
+            is AskAvailability.Downloading -> AskStep.ModelDownloading(a.bytesDownloaded, a.bytesToDownload)
+            is AskAvailability.DownloadFailed -> AskStep.ModelDownloadFailed(a.failure)
+            is AskAvailability.Unsupported -> AskStep.ModelUnsupported(a.reason)
             AskAvailability.Ready -> when (val r = round) {
                 AskRound.Idle -> AskStep.Ready
                 AskRound.CapturingFrame -> AskStep.CapturingFrame
@@ -211,7 +228,7 @@ class AskFlow(
         }
         consecutiveFailures++
         round = AskRound.Failed(failure, consecutiveFailures)
-        if (failure.isTerminal) availability = AskAvailability.Unsupported
+        if (failure.isTerminal) availability = AskAvailability.Unsupported(failure.unavailableReason())
     }
 
     /** A finished answer timed out on screen. */
@@ -251,8 +268,13 @@ fun askStepForQaOverride(id: String?): AskStep? = when (id?.trim()?.lowercase())
     null, "" -> null
     "checking" -> AskStep.CheckingAvailability
     "downloadable" -> AskStep.ModelDownloadable
-    "downloading" -> AskStep.ModelDownloading(bytesDownloaded = 412L * 1024 * 1024)
-    "unsupported" -> AskStep.ModelUnsupported
+    "downloading" -> AskStep.ModelDownloading(
+        bytesDownloaded = 412L * 1024 * 1024,
+        bytesToDownload = 1_100L * 1024 * 1024,
+    )
+    "download-failed" -> AskStep.ModelDownloadFailed(AskFailure.DownloadInterrupted)
+    "unsupported" -> AskStep.ModelUnsupported(AskUnavailableReason.NoAicore)
+    "unsupported-not-ready" -> AskStep.ModelUnsupported(AskUnavailableReason.AicoreNotReady)
     "ready" -> AskStep.Ready
     "capturing" -> AskStep.CapturingFrame
     "thinking" -> AskStep.Thinking
@@ -268,7 +290,9 @@ val ASK_QA_STATE_IDS = listOf(
     "checking",
     "downloadable",
     "downloading",
+    "download-failed",
     "unsupported",
+    "unsupported-not-ready",
     "ready",
     "capturing",
     "thinking",
