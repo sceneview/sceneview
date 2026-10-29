@@ -676,8 +676,11 @@ struct MyARScreen: View {
 - **App-foreground constraint.** Recording is bound to the recording app. Backgrounding the app or letting the OS show a recording-blocking system view (e.g. a system alert) will end the recording.
 - **No permission needed at start time** — the user gets a one-time consent sheet on `startRecording()` the first time the app uses the API; subsequent calls go straight through. If the user dismisses the sheet, the call throws `ARRecorderError.permissionDenied` (mapped from `RPRecordingErrorCode.userDeclined`, code -5803).
 - **Auto-stop at ~15 min** — Apple's docs note that long recordings may auto-stop around the 15-minute mark on some iOS versions to bound memory pressure. There is no API to extend this cap; restart the recording if needed.
+
 - **No `recordingRotation` parameter** — Android takes a `recordingRotation: Int` so the MP4 plays back upright when recorded in landscape. `RPScreenRecorder` always captures at the current screen orientation, so no per-call rotation knob is needed — the resulting clip already orients correctly for the way the user held the device.
 - **Output filename is `.mov`** (QuickTime container), not `.mp4`. Most players (Photos, QuickTime, VLC, browsers) accept both transparently.
+
+To record the scene alone (no SwiftUI chrome, AR camera feed included) or take a full-resolution photo, use `SceneRecorder` (section "SceneRecorder on iOS").
 
 **Save to Photos (v4.3.1+)** — `let localID = try await ARRecorder.saveToPhotoLibrary(url)` wraps `PHPhotoLibrary.shared().performChanges` so the recorded `.mov` lands in the user's Photos library, and returns the saved asset's `PHAsset.localIdentifier` (`String?`) so callers can deep-link to or later resolve the recording — parity with Android's `ARRecorder.exportToDownloads()` `Uri?` return. The host app's `Info.plist` MUST declare `NSPhotoLibraryAddUsageDescription` or iOS crashes the app on the first call. Throws `ARRecorderError.photoLibraryDenied` on user denial, `.photoLibrarySaveFailed` on `performChanges` error.
 
