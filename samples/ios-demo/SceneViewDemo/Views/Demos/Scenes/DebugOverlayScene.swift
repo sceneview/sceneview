@@ -1,6 +1,6 @@
 // @sceneId     debug-overlay
-// @title       Debug Overlay
-// @subtitle    Real-time FPS stats — sphere stress test
+// @title       Performance Test
+// @subtitle    Find the node budget for smooth 3D rendering on your device
 // @category    advanced
 // @section     devTools
 // @available   true
@@ -8,7 +8,7 @@
 // @order       23
 // @tags        debug,fps,stats,performance,overlay
 // @addedIn     4.15.2
-// @updatedIn   4.50.0
+// @updatedIn   4.63.0
 import SwiftUI
 
 enum DebugOverlayScene: DemoScene {
