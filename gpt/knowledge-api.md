@@ -4175,6 +4175,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
