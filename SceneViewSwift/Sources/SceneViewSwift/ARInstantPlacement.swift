@@ -54,11 +54,12 @@ enum ARInstantPlacement {
     static let anchorRetryLimit = 6
     static let anchorRetryBase: TimeInterval = 0.1
     static let anchorRetryCap: TimeInterval = 0.8
+    /// The closest the estimated placement comes, as a share of ``reach(forLargestSide:)``
+    /// (`NEAR_SHARE` on Android).
+    static let nearShare: Float = 0.6
 
     // MARK: SceneView iOS values
 
-    /// The closest the estimated placement comes, as a share of ``reach(forLargestSide:)``.
-    static let nearShare: Float = 0.5
     /// Assumed floor depth below the phone while ARKit knows no floor yet.
     static let phoneHeightGuess: Float = 1.3
     /// A horizontal surface counts as floor only this far below the phone (a table at chest
