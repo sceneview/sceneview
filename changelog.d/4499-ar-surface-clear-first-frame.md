@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **ARSceneView**: nothing flashes where the camera is about to appear any more. An opaque AR view now stands on black until its SurfaceView exists, where the window background used to show through for the first frames: a white screen under 3D Scan's live view in light theme. And the AR surface is cleared every frame, so the frames presented before the first camera image no longer show an uncleared buffer, which a tile-based GPU such as the Pixel 4a's fills with leftover pixels (#4499).

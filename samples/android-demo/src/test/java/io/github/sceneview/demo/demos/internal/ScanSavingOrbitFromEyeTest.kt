@@ -72,11 +72,24 @@ class ScanSavingOrbitFromEyeTest {
         assertEquals(-phone[9], look.y, EPS)
         assertEquals(-phone[10], look.z, EPS)
 
-        // A frame on, the orbit has set out from there without a jump.
+        // A frame on, the flight has set out from there without a jump, on the phone's heading.
         now += 16_666_667L
         val next = orbit.poseFor(followPose, points, camera)!!
-        assertEquals(first.azimuthDegrees + ScanFollow.SAVING_DEGREES_PER_SECOND * FRAME, next.azimuthDegrees, 1e-3f)
+        assertEquals(first.azimuthDegrees, next.azimuthDegrees, 1e-3f)
         assertTrue(CameraRig.eye(next).distanceTo(eye) < 0.01f)
+    }
+
+    @Test
+    fun `the orbit holds on the eye until the room's lid is cut off, then sets out`() {
+        lens.invalidate()
+        val first = orbit.poseFor(followPose, points, camera, ready = false)!!
+        now += 3_000_000_000L // a slow phone: three seconds to cut the ceiling off
+        assertEquals(first, orbit.poseFor(followPose, points, camera, ready = false))
+        // Ready, the flight starts from its first second, not three seconds in.
+        assertEquals(first, orbit.poseFor(followPose, points, camera, ready = true))
+        now += 1_000_000_000L
+        val flight = orbit.flight!!
+        assertEquals(flight.poseAt(1f), orbit.poseFor(followPose, points, camera, ready = true))
     }
 
     @Test

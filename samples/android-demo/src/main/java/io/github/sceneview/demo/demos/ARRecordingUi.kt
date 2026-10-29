@@ -350,11 +350,18 @@ internal fun RecordShutter(
     startEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    // What stopping does, said aloud where it is more than "Stop recording" (3D Scan: "Finish scan").
+    stopLabel: String? = null,
 ) {
     val tappable = isRecording || startEnabled
     val haptic = rememberHapticFeedback()
-    val label = stringResource(if (isRecording) R.string.ar_rec_stop_recording else R.string.ar_rec_start_recording)
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    val label = if (isRecording && stopLabel != null) {
+        stopLabel
+    } else {
+        stringResource(if (isRecording) R.string.ar_rec_stop_recording else R.string.ar_rec_start_recording)
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Surface(
             onClick = {
                 if (!DemoSettings.qaMode) haptic.heavy()

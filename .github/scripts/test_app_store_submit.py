@@ -133,28 +133,40 @@ class SubmitScriptTest(unittest.TestCase):
         self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
         self.assertIn("4.49.0 deferred", summary)
         self.assertIn("4.48.0 is WAITING_FOR_REVIEW", summary)
-        self.assertIn("app-store-catch-up.yml submits 4.49.0 automatically", stdout[0])
+        self.assertIn("::error::IOS 4.49.0 NOT submitted for review", stdout[0])
+        self.assertIn("app-store-catch-up.yml submits 4.49.0 for IOS", stdout[0])
 
-    def test_mac_deferred_requires_manual_follow_up_without_any_write(self):
+    def test_mac_deferred_is_caught_up_like_ios_without_any_write(self):
+        # Since 2026-10-22 app-store-catch-up.yml retries macOS too: the notice
+        # no longer sends a human to re-dispatch app-store.yml.
         stdout = []
         code, calls, summary = self.run_submit(
             editable=[], holders=[_version("V48", "4.48.0", "WAITING_FOR_REVIEW")],
             version="v4.49.0", platform="MAC_OS", stdout=stdout)
         self.assertEqual(code, 75)
         self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
-        self.assertNotIn("app-store-catch-up.yml submits", stdout[0])
-        self.assertIn("app-store-catch-up.yml covers iOS only", stdout[0])
-        self.assertIn("dispatch app-store.yml on tag v4.49.0 with submit_for_review=true",
-                      stdout[0])
-        self.assertIn("app-store-catch-up.yml covers iOS only", summary)
+        self.assertIn("::error::MAC_OS 4.49.0 NOT submitted for review", stdout[0])
+        self.assertIn("app-store-catch-up.yml submits 4.49.0 for MAC_OS", stdout[0])
+        self.assertNotIn("covers iOS only", stdout[0])
+        self.assertIn("4.49.0 deferred", summary)
 
-    def test_release_already_in_review_defers_without_a_409(self):
+    def test_release_already_in_review_is_a_success_without_a_409(self):
+        # The release itself holds the slot: it is with Apple. A re-dispatch
+        # (or catch-up racing app-store.yml) must end green, not deferred.
         code, calls, summary = self.run_submit(
             editable=[], holders=[_version("V48", "4.48.0", "WAITING_FOR_REVIEW")],
             version="v4.48.0")
-        self.assertEqual(code, 75)
+        self.assertEqual(code, 0)
         self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
         self.assertIn("already WAITING_FOR_REVIEW", summary)
+
+    def test_release_holding_the_slot_in_a_stuck_state_still_defers(self):
+        # Same versionString but INVALID_BINARY: not with Apple, not a success.
+        code, calls, _ = self.run_submit(
+            editable=[], holders=[_version("V48", "4.48.0", "INVALID_BINARY")],
+            version="v4.48.0")
+        self.assertEqual(code, 75)
+        self.assertFalse([c for c in calls if c[0] in ("PATCH", "POST")], calls)
 
     def test_slot_filled_after_the_probe_still_defers(self):
         # Free when probed, taken by the time of the POST: the 409 handler

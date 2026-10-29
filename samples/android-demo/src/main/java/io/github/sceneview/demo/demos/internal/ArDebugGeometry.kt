@@ -50,6 +50,19 @@ class DebugMesh(initialVertices: Int = 64) {
         indexCount = 0
     }
 
+    /** Makes this mesh a copy of [other] — positions, the texture coordinates it has, indices. */
+    fun set(other: DebugMesh) {
+        if (positions.size < other.vertexCount * 3) positions = FloatArray(other.vertexCount * 3)
+        other.positions.copyInto(positions, endIndex = other.vertexCount * 3)
+        val uvCount = min(other.uvs.size, other.vertexCount * 2)
+        if (uvs.size < other.vertexCount * 2) uvs = FloatArray(other.vertexCount * 2)
+        other.uvs.copyInto(uvs, endIndex = uvCount)
+        if (indices.size < other.indexCount) indices = IntArray(other.indexCount)
+        other.indices.copyInto(indices, endIndex = other.indexCount)
+        vertexCount = other.vertexCount
+        indexCount = other.indexCount
+    }
+
     fun vertex(x: Float, y: Float, z: Float): Int {
         if ((vertexCount + 1) * 3 > positions.size) positions = positions.copyOf(max(positions.size * 2, 48))
         positions[vertexCount * 3] = x
@@ -603,11 +616,14 @@ object ArDebugGeometry {
     /** Every n-th grid line is a major (1 m) line. */
     const val GRID_MAJOR_EVERY = 4
 
-    /** Past the room's corners, how far the grid stays whole before it starts to fade. */
-    const val GRID_FADE_START_M = 0.5f
+    /**
+     * Past the room's corners, how far the grid stays whole before it starts to fade: 2 m, so the
+     * grid reads as a floor the room stands on, not a mat under it (QA 2026-10-22: "too small").
+     */
+    const val GRID_FADE_START_M = 2f
 
     /** Over how many metres the grid fades out, from whole to gone ([gridFade]). */
-    const val GRID_FADE_M = 3f
+    const val GRID_FADE_M = 6f
 
     /** Axis gizmo arm length at the session origin. */
     const val AXIS_LENGTH_M = 0.3f

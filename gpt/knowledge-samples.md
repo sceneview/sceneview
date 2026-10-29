@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.60.0)
+  Source of truth: /llms.txt  (SceneView 4.63.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Recipes & Sample Index
 
 > Copy-paste recipes and the full demo/sample catalog.
-> Auto-generated from `llms.txt` (SceneView 4.60.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.63.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Recipes — "I want to..."
 
@@ -41,30 +41,19 @@ Box(Modifier.fillMaxSize()) {
 
 Parameters: `backdrop: Brush? = null`, `profile: CinematicCameraProfile = Default`, `contentRadius = 0.75f` (frames any model with `scaleToUnits = 1f`; content is auto-centred), `parallax = 0.4f`. No gestures on the 3D (the list keeps every touch); it stops drawing off screen and does not turn by itself with system animations off. Copy-paste prompt for an AI assistant: `docs/prompts/cinematic-hero.md`.
 
-### Record the scene to MP4 (in-app, no MediaProjection)
+### Capture the scene — photo and MP4 (in-app, no MediaProjection)
 
 ```kotlin
-val surfaceMirrorer = rememberSurfaceMirrorer()
-SceneView(surfaceMirrorer = surfaceMirrorer, ...)  // or ARSceneView — records camera feed + virtual content
+val recorder = rememberSceneRecorder()
+ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer, ...)  // or SceneView — camera feed + virtual content
 
-// Start: point a MediaRecorder's input surface at the scene.
-val recorder = MediaRecorder(context).apply {
-    setVideoSource(MediaRecorder.VideoSource.SURFACE)
-    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-    setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-    setVideoSize(1280, 720)
-    setOutputFile(outputFile.absolutePath)
-    prepare()
-}
-surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)
-recorder.start()
-
-// Stop:
-surfaceMirrorer.stopMirroring(recorder.surface)
-recorder.stop(); recorder.release()
+scope.launch { recorder.savePhoto() }                                  // full-res JPEG, File?
+recorder.startRecording(settings = VideoSettings(maxDurationMillis = 60_000))  // 1080p30 MP4
+recorder.stopRecording()                                              // SceneRecording?
+recorder.overlay = CaptureOverlay { canvas, w, h -> /* watermark */ }
 ```
 
-No consent dialog, no foreground service, no UI in the frame. Full guide: "Record the scene to MP4 — Surface mirroring".
+No consent dialog, no foreground service, no UI in the frame. Full guide: "Capture the scene — photo and MP4".
 
 ### Show a 3D model with orbit camera
 
@@ -418,6 +407,53 @@ fun MultiModelScene() {
     }
 }
 ```
+
+### Render a model thumbnail to a Bitmap (no visible view)
+
+```kotlin
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import io.github.sceneview.snapshot.ModelSnapshot
+import io.github.sceneview.snapshot.ModelSnapshotOptions
+import io.github.sceneview.snapshot.ModelThumbnailState
+import io.github.sceneview.snapshot.rememberModelSnapshot
+import io.github.sceneview.snapshot.rememberModelThumbnail
+
+// A library grid: every cell asks at once, the snapshot renders them one after the other.
+val paths = listOf("models/helmet.glb", "models/chair.glb", "models/lamp.glb")
+val engine = rememberEngine()
+val snapshot = rememberModelSnapshot(engine)          // one per screen: one queue, one cache
+LazyVerticalGrid(columns = GridCells.Adaptive(96.dp)) {
+    items(paths) { path ->
+        when (val thumbnail = rememberModelThumbnail(snapshot, path, size = 96.dp)) {
+            is ModelThumbnailState.Ready -> Image(thumbnail.bitmap, contentDescription = null)
+            is ModelThumbnailState.Failed -> Text("No preview")   // reason: thumbnail.reason
+            ModelThumbnailState.Loading -> CircularProgressIndicator()
+        }
+    }
+}
+
+// Without Compose: a suspend call, from any coroutine (a ViewModel's, a worker's).
+suspend fun shareImages(snapshot: ModelSnapshot): List<Bitmap?> = listOf(
+    snapshot.snapshot("models/helmet.glb", width = 512),   // null when it failed: the reason is logged
+    snapshot.snapshot(
+        "models/helmet.glb", width = 512,
+        options = ModelSnapshotOptions(yawDegrees = 210f, pitchDegrees = 10f),
+    ),
+)
+```
+
+- **Experimental**: the whole API is `@ExperimentalSceneViewApi` — add `@OptIn(ExperimentalSceneViewApi::class)` where you call it.
+- **Framing is automatic**: the model's bounding box is fitted whole into the picture, `padding` (default 8 %) of the frame on each side, seen from `yawDegrees`/`pitchDegrees` (default 30°/20°: three-quarter, slightly from above) through a `focalLength` lens (default 40 mm). Nothing to measure.
+- **Transparent background**: an immutable `ARGB_8888` bitmap, premultiplied alpha — composite it on any card.
+- **Explicit failures**: a model that cannot be loaded, an empty or non-finite bounding box, positions quantized with `KHR_mesh_quantization` (gltfio reports their box un-dequantized, ~32767× too large), a fully transparent image or a timeout (the GPU backend executing nothing for 30 s, or an executed frame never reaching the image — a merely slow backend only delays it) give `Failed(reason)` in Compose and `null` from `snapshot()`, logged under the `ModelSnapshot` tag and never cached. A failed cell is not retried until its file, size or options change.
+- **One at a time, at a model load's cost**: requests queue on the main thread (Filament's JNI calls stay there) and render one model at a time, so twenty requests never load together. Each still costs the main thread what loading that model into a scene costs — creating the asset (~130–150 ms) and finalising its textures (up to ~0.5 s in one frame, measured on an arm64 emulator with 2–5 MB GLBs): a grid of textured models drops frames while it fills. Each step waits, suspended and never blocking, for the GPU backend to execute what the previous one queued, so a slow backend (shader compilation on a cold emulator) delays the thumbnails without ever stalling the main thread on a full command stream. Pass the scene's `modelLoader` to `rememberModelSnapshot` to skip building a second loader (~0.6 s, built by the first request in a main-thread turn of its own). The renderer, view, lights and environment are made once and reused.
+- **Cache**: results are kept in an LRU of `maxCacheBytes` (default 32 MB, `0` disables it); `cached(...)` reads it without rendering, `clearCache()` empties it. A cache hit costs nothing. An image captured while its textures were still decoding (after a 10 s timeout), or of a model whose glTF could not be read a second time to check its extensions (an `http(s)` URL with `FileCache.enabled = false` — then no remote thumbnail is ever cached — or whose download could not be written to disk; a file changed in between; a warning is logged), is returned but not cached. The cache is keyed by the `fileLocation` string, size and options, not by the file's content: a model replaced at the same location keeps its old thumbnail until `clearCache()` or a new location.
+- **Lifetime**: `rememberModelSnapshot` destroys it with the screen. Created by hand (`ModelSnapshot(engine, context)`), call `destroy()` on the main thread before the engine goes: a render in flight stops at its next step (its model load is cancelled) and it, like every queued request, gets `null` / `Failed`; Filament objects are freed once that render has let go and the GPU is done with them.
+- Lighting is the SDK's default key + fill and a neutral IBL, so thumbnails match a default `SceneView`. Skinned models are drawn in their bind pose; the first animation frame is not applied.
+- **Tested on arm64 emulators only**: process death observed once on an x86_64 API 30 SwiftShader emulator, undiagnosed.
+- **A shared `modelLoader` must outlive the snapshot**: destroy the snapshot first (`rememberModelSnapshot` declared after `rememberModelLoader`). `modelLoader.clear()` (or `destroy()`) while a thumbnail renders destroys that thumbnail's model too: the render notices before its next call on the model and the request fails (`null`, `ModelThumbnailState.Failed`), no crash; later requests load again. A request made once the loader is destroyed fails the same way; destroying the loader while a request is still reading its file is not covered.
 
 ### Interactive model with tap and gesture
 
@@ -887,6 +923,8 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `animation-physics` — Animation. Play character animations under cinematic camera shots.
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
+- `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 

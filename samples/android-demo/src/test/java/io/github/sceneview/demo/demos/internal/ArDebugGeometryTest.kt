@@ -150,8 +150,9 @@ class ArDebugGeometryTest {
         val fade = ArDebugGeometry.gridFade(room)
         assertEquals(0f, fade.centreX, 1e-5f)
         assertEquals(0f, fade.centreZ, 1e-5f)
-        // The corners (2.5 m out) stay whole; the lines are gone 3 m further.
-        assertTrue(fade.start > 2.5f)
+        // The corners (2.5 m out) stay whole, and 2 m past them; the lines are gone 6 m further.
+        assertEquals(2.5f + ArDebugGeometry.GRID_FADE_START_M, fade.start, 1e-4f)
+        assertTrue(ArDebugGeometry.GRID_FADE_START_M >= 2f)
         assertEquals(ArDebugGeometry.GRID_FADE_M, fade.end - fade.start, 1e-4f)
         val end = fade.end
 
@@ -166,10 +167,11 @@ class ArDebugGeometryTest {
     fun `a major line every metre, three minor lines between`() {
         val (meshes, out) = layers()
         ArDebugGeometry.buildStage(floatArrayOf(-1f, 0f, -1f, 1f, 0f, 1f), 0f, style, out)
-        // Four vertices per ribbon: count the lines of each kind along x and z together.
+        // Four vertices per ribbon: count the lines of each kind along x and z together. Three
+        // minors between two majors, and up to three more past each end of each axis.
         val majors = meshes.getValue(DebugLayer.GridMajor).vertexCount / 4
         val minors = meshes.getValue(DebugLayer.GridMinor).vertexCount / 4
-        assertTrue("$minors minor lines for $majors major", minors > 2 * majors && minors <= 3 * majors)
+        assertTrue("$minors minor lines for $majors major", minors > 2 * majors && minors <= 3 * majors + 6)
         assertEquals(1f, ArDebugGeometry.GRID_CELL_M * ArDebugGeometry.GRID_MAJOR_EVERY, 1e-6f)
     }
 

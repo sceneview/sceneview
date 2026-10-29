@@ -35,7 +35,7 @@ internal object RerunShareCopy {
         var written = false
         try {
             return File(dir, RerunScanFile.fileName(title)).apply {
-                writeBytes(RerunScanFile.write(shared))
+                outputStream().buffered().use { RerunScanFile.write(shared, it) }
                 written = true
             }
         } finally {

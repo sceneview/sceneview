@@ -96,6 +96,24 @@ class ScanGround private constructor(
         private const val HALF = 0.5f
 
         /**
+         * A ground laid out by its caller, [cells] row-major (z then x), one of [OUTSIDE], [SEEN] or
+         * [MISSING] each: the live 3D map's floor, from the coverage grid.
+         */
+        @Suppress("LongParameterList")
+        fun ofCells(
+            floorY: Float,
+            cellM: Float,
+            originX: Float,
+            originZ: Float,
+            columns: Int,
+            rows: Int,
+            cells: ByteArray,
+        ): ScanGround {
+            require(cells.size == columns * rows) { "cells: ${cells.size} for $columns x $rows" }
+            return ScanGround(floorY, cellM, originX, originZ, columns, rows, cells)
+        }
+
+        /**
          * The ground under the [count] vertices of [positions] (xyz triples), their [normals]
          * (unit, xyz triples; `null` when there are none — no floor is found then, the model
          * stands on its lowest point). `null` when there is nothing to stand.

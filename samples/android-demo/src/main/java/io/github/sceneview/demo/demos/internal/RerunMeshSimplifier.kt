@@ -27,8 +27,11 @@ import kotlin.math.sqrt
  * every edge again for a handful of triangles.
  * Target is best effort: boundaries, topology and colour take priority over the triangle budget.
  * Storage: [workspaceBytes] of primitive working arrays, plus input/output and array headers.
- * Typical 400k-T / 200k-V scan: ~53 MiB workspace; the extraction's cap (1.5 M triangles) would
- * take ~200 MiB, more than a phone's heap gives — ask [workspaceBytes] before calling.
+ * Typical 400k-T / 200k-V scan: ~43 MiB workspace; the extraction's cap
+ * ([RerunMarchingCubes.MAX_TRIANGLES], ~0.5 M vertices) would take ~108 MiB, more than a phone's
+ * heap gives — ask [workspaceBytes] before calling. A vertex's corners are singly linked (a
+ * detach walks its few corners), and the sweep order holds the edges counted on the way in,
+ * about half the corners: a collapse only ever merges edges.
  * Time: O(S * (T log T + T d²)), S <= 64, d local vertex valence (normally ~6).
  */
 internal object RerunMeshSimplifier {
@@ -39,26 +42,66 @@ internal object RerunMeshSimplifier {
      *
      * [progress] is told the share done, 0–1, a few times a second; a caller stops the work by
      * throwing from it (a coroutine's `ensureActive()`), which leaves nothing behind.
+     * No collapse leaves an edge longer than [maxEdgeM]: a textured model's faces must each fit
+     * in one photo. A collapse is refused when its cost passes [maxErrorM]²: the cost is the sum
+     * of the squared distances from the new vertex to every plane its quadric gathered (plus the
+     * colour charge above), so each single distance stays under [maxErrorM], and a curved patch,
+     * whose planes disagree, stops sooner than one plane would make it. A flat wall goes down to
+     * a few large faces, a cushion keeps its curve, and the result may stay well above
+     * [targetTriangles]: the caller logs what it reached.
+     *
+     * With [maxErrorCeilingM] above [maxErrorM], the budget wins over the cap up to that ceiling:
+     * a sweep that stalls over [targetTriangles] doubles the cap and goes on, the cheapest
+     * collapses — the flattest — still first. A noisy surface the cap held back comes down to the
+     * budget instead of staying several times over it.
+     *
+     * With [belowTarget], a surface that starts under [targetTriangles] has every collapse under
+     * [maxErrorM] made, past the budget too: a small surface still loses the faces its flat runs
+     * do not need. One that starts over the budget stops there, as without it. With [consume], [mesh]'s colour and index arrays
+     * are worked in rather than copied, and left scrambled: for a caller done with them.
+     *
+     * With [collapseBorders], an open border is simplified too instead of held still: a border
+     * edge collapses along the border, an inner edge onto its border end, never across a strip
+     * between two borders, and every border edge adds to its ends' quadric the plane standing on
+     * it across its face, so the outline moves no further than the cap. A scan full of small holes
+     * — the lace a phone's depth makes of a far or dark wall — otherwise locks most of its vertices.
      */
+    @Suppress("LongParameterList")
     fun simplify(
         mesh: RerunMesh,
         targetTriangles: Int = DEFAULT_TARGET_TRIANGLES,
+        maxEdgeM: Float = Float.POSITIVE_INFINITY,
+        maxErrorM: Float = Float.POSITIVE_INFINITY,
+        maxErrorCeilingM: Float = maxErrorM,
+        belowTarget: Boolean = false,
+        consume: Boolean = false,
+        collapseBorders: Boolean = false,
         progress: (Float) -> Unit = {},
     ): RerunMesh {
         require(targetTriangles >= 0)
         if (mesh.triangleCount == 0) return mesh
-        return Worker(mesh, progress).run(targetTriangles)
+        val ceiling = maxOf(maxErrorM, maxErrorCeilingM).toDouble()
+        val worker = Worker(
+            mesh,
+            consume,
+            collapseBorders,
+            progress,
+            maxEdgeM.toDouble() * maxEdgeM,
+            maxErrorM.toDouble() * maxErrorM,
+            ceiling * ceiling,
+        )
+        return worker.run(targetTriangles, belowTarget)
     }
 
     /** The working arrays [simplify] allocates for a mesh of this size, in bytes. */
     fun workspaceBytes(vertices: Int, triangles: Int): Long =
         BYTES_PER_VERTEX * vertices + BYTES_PER_TRIANGLE * triangles
 
-    // positions 12, colours 4, quadric 80, corner list head 4, marks 4, two flags.
-    private const val BYTES_PER_VERTEX = 106L
+    // positions 12, colours 4, quadric 80, corner list head 4, marks 4, three flags.
+    private const val BYTES_PER_VERTEX = 107L
 
-    // indices 12, corner links 24, edge keys 24, sweep order 24.
-    private const val BYTES_PER_TRIANGLE = 84L
+    // indices 12, corner links 12, edge keys 24, sweep order 12 (each edge but a border's has two faces).
+    private const val BYTES_PER_TRIANGLE = 60L
 
     /** Collapses between two progress reports: a few milliseconds of work. */
     private const val REPORT_EVERY = 2048
@@ -66,19 +109,32 @@ internal object RerunMeshSimplifier {
     /** A sweep earns the next one by removing at least one triangle in this many. */
     private const val SWEEP_GAIN_DIVISOR = 100
 
-    private class Worker(val input: RerunMesh, val progress: (Float) -> Unit) {
+    /** A stalled cap doubles: four times its square. */
+    private const val CAP_STEP_SQ = 4.0
+
+    private class Worker(
+        input: RerunMesh,
+        consume: Boolean,
+        val collapseBorders: Boolean,
+        val progress: (Float) -> Unit,
+        val maxEdgeSq: Double,
+        var maxErrorSq: Double,
+        val maxErrorCeilingSq: Double,
+    ) {
         val vertices = input.vertexCount
         val p = input.positions.copyOf()
-        val colors = input.colors.copyOf()
-        val triangles = input.indices.copyOf()
+        val colors = if (consume) input.colors else input.colors.copyOf()
+        val triangles = if (consume) input.indices else input.indices.copyOf()
         val q = DoubleArray(vertices * 10)
         val head = IntArray(vertices) { -1 }
         val next = IntArray(triangles.size) { -1 }
-        val previous = IntArray(triangles.size) { -1 }
         val locked = BooleanArray(vertices)
+        val border = BooleanArray(vertices)
         val alive = BooleanArray(vertices) { true }
         val edges = LongArray(triangles.size)
-        val order = LongArray(triangles.size)
+
+        /** The sweep's edges by cost: as many as the first sweep finds, no collapse adds one. */
+        var order = LongArray(0)
         val marks = IntArray(vertices)
         var stamp = 0
         var count = input.triangleCount
@@ -150,17 +206,25 @@ internal object RerunMeshSimplifier {
             }
             collectEdges()
             var at = 0
+            var unique = 0
             while (at < triangles.size && edges[at] != Long.MAX_VALUE) {
                 var end = at + 1
                 while (end < triangles.size && edges[end] == edges[at]) end++
+                unique++
                 val a = (edges[at] ushr 32).toInt()
                 val b = edges[at].toInt()
-                if (end - at != 2 || colorStep(a, b).isInfinite()) {
+                val faces = end - at
+                if (faces > 2 || faces == 1 && !collapseBorders || colorStep(a, b).isInfinite()) {
                     locked[a] = true
                     locked[b] = true
+                } else if (faces == 1) {
+                    border[a] = true
+                    border[b] = true
+                    constrain(a, b)
                 }
                 at = end
             }
+            order = LongArray(unique)
             // Remove any duplicate input faces before doing topology checks.
             for (t in triangles.indices step 3) {
                 if (triangles[t] < 0) continue
@@ -178,12 +242,44 @@ internal object RerunMeshSimplifier {
             }
         }
 
-        fun run(target: Int): RerunMesh {
+        /** Adds to [a]'s and [b]'s quadrics the plane through their border edge, upright on its one face. */
+        fun constrain(a: Int, b: Int) {
+            var corner = head[a]
+            while (corner >= 0 && !contains(corner / 3 * 3, b)) corner = next[corner]
+            if (corner < 0) return
+            val t = corner / 3 * 3
+            faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], normal)
+            val ex = (p[b * 3] - p[a * 3]).toDouble()
+            val ey = (p[b * 3 + 1] - p[a * 3 + 1]).toDouble()
+            val ez = (p[b * 3 + 2] - p[a * 3 + 2]).toDouble()
+            val mx = ey * normal[2] - ez * normal[1]
+            val my = ez * normal[0] - ex * normal[2]
+            val mz = ex * normal[1] - ey * normal[0]
+            val length = sqrt(mx * mx + my * my + mz * mz)
+            if (length <= 1e-15) return
+            plane[0] = mx / length
+            plane[1] = my / length
+            plane[2] = mz / length
+            plane[3] = -(plane[0] * p[a * 3] + plane[1] * p[a * 3 + 1] + plane[2] * p[a * 3 + 2])
+            for (v in intArrayOf(a, b)) {
+                var at = v * 10
+                for (i in 0..3) for (j in i..3) q[at++] += plane[i] * plane[j]
+            }
+        }
+
+        fun run(target: Int, belowTarget: Boolean): RerunMesh {
             val toRemove = (count - target).coerceAtLeast(1).toFloat()
+            val baseErrorSq = maxErrorSq
+            // Under the base cap, every collapse goes; once it has grown, the budget stops it.
+            // A surface that starts under budget loses what its flat runs do not need; one over it
+            // stops at the budget, its faces kept small enough for the photos to cover.
+            val pastTarget = belowTarget && count <= target
+            fun goal() = if (pastTarget && maxErrorSq == baseErrorSq) 0 else target
+            fun report() = progress((1f - (count - target) / toRemove).coerceIn(0f, 1f))
             var sinceReport = 0
             repeat(64) {
-                if (count <= target) return compact()
-                progress(1f - (count - target) / toRemove)
+                if (count <= goal()) return compact()
+                report()
                 collectEdges()
                 var unique = 0
                 var last = -1L
@@ -194,6 +290,7 @@ internal object RerunMeshSimplifier {
                     last = edge
                 }
                 edgeCount = unique
+                if (order.size < edgeCount) order = LongArray(edgeCount)
                 for (i in 0 until edgeCount) {
                     val a = (edges[i] ushr 32).toInt()
                     val b = edges[i].toInt()
@@ -203,21 +300,27 @@ internal object RerunMeshSimplifier {
                 Arrays.sort(order, 0, edgeCount)
                 val before = count
                 var i = 0
-                while (i < edgeCount && count > target) {
+                while (i < edgeCount && count > goal()) {
                     val edge = edges[order[i++].toInt()]
                     val a = (edge ushr 32).toInt()
                     val b = edge.toInt()
                     // The cost is recomputed: it also sets where on the edge the collapse lands.
                     val gone = !alive[a] || !alive[b]
-                    if (gone || !cost(a, b).isFinite() || !legal(a, b)) continue
+                    if (gone) continue
+                    val cost = cost(a, b)
+                    if (!cost.isFinite() || cost > maxErrorSq || !legal(a, b)) continue
                     collapse(a, b)
                     if (++sinceReport == REPORT_EVERY) {
                         sinceReport = 0
-                        progress(1f - (count - target) / toRemove)
+                        report()
                     }
                 }
-                // Short of the budget and barely moving: what is left is locked, or would fold.
-                if ((before - count) * SWEEP_GAIN_DIVISOR < before) return compact()
+                // Short of the budget and barely moving: what is left is locked, would fold, or
+                // costs more than the cap — which doubles, up to its ceiling, before giving up.
+                if ((before - count) * SWEEP_GAIN_DIVISOR < before) {
+                    if (count <= target || maxErrorSq >= maxErrorCeilingSq) return compact()
+                    maxErrorSq = minOf(maxErrorSq * CAP_STEP_SQ, maxErrorCeilingSq)
+                }
             }
             return compact()
         }
@@ -253,7 +356,13 @@ internal object RerunMeshSimplifier {
             val slope = dx * (coefficient(0) * ax + coefficient(1) * ay + coefficient(2) * az + coefficient(3)) +
                 dy * (coefficient(1) * ax + coefficient(4) * ay + coefficient(5) * az + coefficient(6)) +
                 dz * (coefficient(2) * ax + coefficient(5) * ay + coefficient(7) * az + coefficient(8))
-            fraction = if (curvature > 1e-15) (-slope / curvature).coerceIn(0.0, 1.0) else 0.5
+            fraction = when {
+                // An inner edge with one end on the border lands there: the outline stays put.
+                border[a] && !border[b] -> 0.0
+                border[b] && !border[a] -> 1.0
+                curvature > 1e-15 -> (-slope / curvature).coerceIn(0.0, 1.0)
+                else -> 0.5
+            }
             val x = ax + fraction * dx
             val y = ay + fraction * dy
             val z = az + fraction * dz
@@ -282,7 +391,9 @@ internal object RerunMeshSimplifier {
 
         /**
          * The link condition: exactly two faces on the edge, and exactly their two opposite
-         * vertices shared by both one-rings. Boundaries were locked before any collapse.
+         * vertices shared by both one-rings — or, on a border edge, its one face and its one
+         * opposite vertex. An inner edge between two border vertices would pinch the surface.
+         * Without [collapseBorders], boundaries were locked before any collapse.
          */
         fun linked(a: Int, b: Int): Boolean {
             stamp++
@@ -307,7 +418,11 @@ internal object RerunMeshSimplifier {
                 }
                 corner = next[corner]
             }
-            return incident == 2 && shared == 2
+            return when (incident) {
+                2 -> shared == 2 && !(border[a] && border[b])
+                1 -> border[a] && border[b] && shared == 1
+                else -> false
+            }
         }
 
         /** No face around [v], an end of the edge [a]–[b], would double another, vanish or flip. */
@@ -347,11 +462,19 @@ internal object RerunMeshSimplifier {
             for (axis in 0..2) p[v * 3 + axis] =
                 (p[a * 3 + axis] + fraction * (p[b * 3 + axis] - p[a * 3 + axis])).toFloat()
             faceNormal(triangles[t], triangles[t + 1], triangles[t + 2], normal)
+            val tooLong = maxEdgeSq.isFinite() && (0..2).any { k ->
+                val u = triangles[t + k]
+                val w = triangles[t + (k + 1) % 3]
+                val dx = (p[u * 3] - p[w * 3]).toDouble()
+                val dy = (p[u * 3 + 1] - p[w * 3 + 1]).toDouble()
+                val dz = (p[u * 3 + 2] - p[w * 3 + 2]).toDouble()
+                dx * dx + dy * dy + dz * dz > maxEdgeSq
+            }
             p[v * 3] = px
             p[v * 3 + 1] = py
             p[v * 3 + 2] = pz
             val area = dot(normal, normal)
-            return area <= 1e-24 || dot(normal, oldNormal) <= 0.1 * sqrt(area * dot(oldNormal, oldNormal))
+            return tooLong || area <= 1e-24 || dot(normal, oldNormal) <= 0.1 * sqrt(area * dot(oldNormal, oldNormal))
         }
 
         fun collapse(a: Int, b: Int) {
@@ -365,6 +488,7 @@ internal object RerunMeshSimplifier {
             }
             colors[a] = color
             for (k in 0..9) q[a * 10 + k] += q[b * 10 + k]
+            if (border[b]) border[a] = true
             while (head[b] >= 0) {
                 val corner = head[b]
                 val t = corner / 3 * 3
@@ -381,16 +505,19 @@ internal object RerunMeshSimplifier {
 
         fun attach(corner: Int, v: Int) {
             next[corner] = head[v]
-            previous[corner] = -1
-            if (head[v] >= 0) previous[head[v]] = corner
             head[v] = corner
         }
 
+        /** Unlinks [corner] from its vertex's list: the head when a collapse moves it, else a few steps in. */
         fun detach(corner: Int) {
-            val before = previous[corner]
-            val after = next[corner]
-            if (before < 0) head[triangles[corner]] = after else next[before] = after
-            if (after >= 0) previous[after] = before
+            val v = triangles[corner]
+            if (head[v] == corner) {
+                head[v] = next[corner]
+                return
+            }
+            var before = head[v]
+            while (next[before] != corner) before = next[before]
+            next[before] = next[corner]
         }
 
         fun remove(t: Int) {

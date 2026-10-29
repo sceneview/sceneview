@@ -124,6 +124,13 @@ internal fun packRgb(rgb: FloatArray): Int {
 /** Parses a whole log, in order. */
 fun parseArDebugLog(lines: Sequence<String>): List<ArDebugEvent> = lines.mapNotNull(::parseArDebugEvent).toList()
 
+/**
+ * Parses a whole log from its UTF-8 [bytes], a line at a time: the log is never decoded into one
+ * string, which on Android weighs twice the file (#4815).
+ */
+fun parseArDebugLog(bytes: ByteArray): List<ArDebugEvent> =
+    bytes.inputStream().bufferedReader(Charsets.UTF_8).useLines(::parseArDebugLog)
+
 /** `world/planes/42` → 42. Non-numeric ids (a hand-written log) hash to a stable int. */
 private fun entityId(entity: String?): Int? {
     val last = entity?.substringAfterLast('/')?.takeIf { it.isNotEmpty() } ?: return null

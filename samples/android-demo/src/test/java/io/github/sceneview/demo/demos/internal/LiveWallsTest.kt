@@ -103,6 +103,14 @@ class LiveWallsTest {
     }
 
     @Test
+    fun `an empty snapshot is no move once nothing is drawn`() {
+        val motion = LiveWallMotion()
+        motion.step(LiveWallSnapshot.Empty, 0.016f)
+        assertFalse(motion.step(LiveWallSnapshot.Empty, 0.016f))
+        assertFalse(motion.step(LiveWallSnapshot.Empty, 0.016f))
+    }
+
+    @Test
     fun `a new wall rises from the floor and a dropped one goes`() {
         val motion = LiveWallMotion()
         val one = LiveWall(1, 0f, 0f, 2f, 0f, bornAt = 0f)
@@ -117,6 +125,27 @@ class LiveWallsTest {
         assertFalse("settled", motion.step(snapshot, 0.016f))
         assertTrue(motion.step(LiveWallSnapshot(emptyList(), floorY, 2.4f), 0.016f))
         assertTrue(motion.shown.isEmpty())
+    }
+
+    @Test
+    fun `a step of no time moves nothing, so nothing is rebuilt`() {
+        // #4750: ARCore hands the same image back on every other vsync, and for good once a
+        // recording has ended. Every such frame reported a move mid-rise and re-uploaded the walls.
+        val motion = LiveWallMotion()
+        val snapshot = LiveWallSnapshot(listOf(LiveWall(1, 0f, 0f, 2f, 0f, bornAt = 0f)), floorY, 2.4f)
+        assertTrue("a new wall is a move, even in no time", motion.step(snapshot, 0f))
+        repeat(3) { motion.step(snapshot, 0.016f) }
+        val rise = motion.shown.single().rise
+        assertTrue(rise > 0f && rise < 1f)
+        repeat(1000) { assertFalse("frozen camera, rising wall", motion.step(snapshot, 0f)) }
+        assertEquals(rise, motion.shown.single().rise, 0f)
+
+        // Mid-stretch and mid-height, the same.
+        val refit = LiveWallSnapshot(listOf(LiveWall(1, 0f, 0f, 3f, 0f, bornAt = 0f)), floorY, 2.6f)
+        assertTrue(motion.step(refit, 0.016f))
+        assertFalse(motion.step(refit, 0f))
+        assertTrue("time moves it on", motion.step(refit, 0.016f))
+        assertTrue("a dropped wall goes, even in no time", motion.step(LiveWallSnapshot(emptyList(), floorY, 2.6f), 0f))
     }
 
     @Test

@@ -18,6 +18,7 @@ import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.DepthFrame
 import io.github.sceneview.demo.demos.internal.DepthFreshness
 import io.github.sceneview.demo.demos.internal.DepthIntake
+import io.github.sceneview.demo.demos.internal.DepthWindow
 import io.github.sceneview.demo.demos.internal.DepthIntake.Outcome
 import io.github.sceneview.demo.demos.internal.IntervalGate
 import io.github.sceneview.demo.demos.internal.KeyframeGate
@@ -32,8 +33,11 @@ import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanIntrinsics
 import io.github.sceneview.demo.demos.internal.ScanDetail
 import io.github.sceneview.demo.demos.internal.ScanCutoff
+import io.github.sceneview.demo.demos.internal.ScanPhotoMotion
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.ScanPreset
 import io.github.sceneview.demo.demos.internal.ScanProjection
+import io.github.sceneview.demo.demos.internal.ScanSharpPicker
 import io.github.sceneview.demo.demos.internal.YuvFrame
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +96,11 @@ internal class ScanCapture private constructor(
     }
 
     private val gate = KeyframeGate(preset.photoStepM, preset.photoTurnDegrees, preset.maxPhotos)
-    private val photoSize = ScanProjection.photoSize(lens, PHOTO_LONG_SIDE)
+    private val photoMotion = ScanPhotoMotion()
+    private val sharpPicker = ScanSharpPicker()
+
+    /** Whether the camera was calm at the latest tracked frame: what a sharp photo waits for. */
+    private var calm = false
     private val jpegs = ConcurrentHashMap<String, ByteArray>()
     private val thumbnails = ConcurrentHashMap<String, Bitmap>()
 
@@ -110,7 +118,8 @@ internal class ScanCapture private constructor(
     private var fuseJob: Job? = null
     // The final model's TSDF, fed the same depth copies on its own worker (RerunModelUi.kt).
     private val model = if (rawDepth) RerunLiveModel(preset) else null
-    private var lastDepthNanos: Long? = null
+    // Which depth estimate was taken last, and how long the scan has waited for one.
+    private val depthWindow = DepthWindow()
     private var loggedSizes = false
     private val logGate = IntervalGate(LOG_INTERVAL_NS)
     private val verdictCounts = IntArray(DepthFreshness.Verdict.entries.size)
@@ -130,10 +139,6 @@ internal class ScanCapture private constructor(
 
     // Why depth frames did or did not grow the map, logged every two seconds for a device run.
     private val intake = DepthIntake()
-
-    // The last frame seen, and the last that brought fresh depth (or the first frame): [depthStarved].
-    @Volatile private var lastFrameNanos = 0L
-    @Volatile private var depthSeenFromNanos = 0L
 
     /**
      * The HUD's clock, from when Record started on the monotonic clock (see [elapsedSeconds]). It
@@ -163,13 +168,14 @@ internal class ScanCapture private constructor(
     val lowTexture: Boolean get() = !depthStarved && (dense?.confidence ?: trace.pointConfidence)?.lowTexture == true
 
     /**
-     * A depth scan that has had no fresh depth for [DEPTH_STARVED_NANOS] (#4540): ARCore gives
-     * none, or none the scan can use, so nothing is fused whatever the phone points at. The real
-     * cause of a count frozen at zero — which read as "this surface has little texture" in front
-     * of a parquet floor, because a starved confidence gate looks like a blank surface.
+     * A depth scan that has had no depth to fuse for [DepthFreshness.STARVED_AFTER_NANOS] (#4540):
+     * ARCore gives none, so nothing is fused whatever the phone points at. The real cause of a
+     * count frozen at zero — which read as "this surface has little texture" in front of a parquet
+     * floor, because a starved confidence gate looks like a blank surface. Depth that ARCore hands
+     * over late no longer starves the scan ([DepthWindow]).
      */
     val depthStarved: Boolean
-        get() = dense != null && depthSeenFromNanos != 0L && lastFrameNanos - depthSeenFromNanos > DEPTH_STARVED_NANOS
+        get() = dense != null && depthWindow.starved
 
     /** What the coaching line says of the dense map now: fine, adjusting its detail, or full. */
     val denseDetail: ScanDetail get() = dense?.detail() ?: ScanDetail.Fine
@@ -198,7 +204,12 @@ internal class ScanCapture private constructor(
     val isPhotoLimitReached: Boolean get() = gate.isFull
 
     /** Whether the camera at [display] should take a photo now. */
-    fun wantsPhoto(display: DebugPose): Boolean = inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    fun wantsPhoto(nanos: Long, display: DebugPose): Boolean {
+        // Measured on every tracked frame, so the motion between two consecutive frames is always
+        // known. It only decides whether the photo is a sharp one: the cadence is the gate's alone.
+        calm = photoMotion.isCalm(nanos, display)
+        return inFlight.get() < MAX_IN_FLIGHT && gate.wants(display)
+    }
 
     /** The camera image of [frame], or `null` when ARCore has none to give this frame. */
     fun acquire(frame: Frame): ScanImage? = runCatching {
@@ -219,6 +230,8 @@ internal class ScanCapture private constructor(
      */
     fun takePhoto(nanos: Long, image: ScanImage, display: DebugPose) {
         val path = ScanArchive.photoPath(gate.count)
+        val sharp = sharpPicker.nextIsSharp(calm)
+        sharpPicker.accept(sharp)
         val pixels = image.copy()
         val sensor = image.sensor
         gate.accept(display)
@@ -227,14 +240,28 @@ internal class ScanCapture private constructor(
         inFlight.incrementAndGet()
         jobs += scope.launch(Dispatchers.Default) {
             try {
-                val (width, height) = photoSize
+                val size = ScanPhotoPolicy.targetSize(sharp, lens, pixels.width, pixels.height)
+                val (width, height) = size
                 val argb = ScanProjection.uprightImage(pixels, intrinsics, sensor, display, lens, width, height)
                 val bitmap = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
-                val jpeg = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, jpeg)
-                jpegs[path] = jpeg.toByteArray()
-                thumbnails[path] = Bitmap.createScaledBitmap(bitmap, width / 2, height / 2, true)
-                bitmap.recycle()
+                try {
+                    val encoded = ScanPhotoPolicy.encode(sharp, size) { w, h, quality ->
+                        val scaled = if (w == width && h == height) bitmap
+                        else Bitmap.createScaledBitmap(bitmap, w, h, true)
+                        try {
+                            val out = ByteArrayOutputStream()
+                            if (scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)) out.toByteArray() else null
+                        } finally {
+                            if (scaled !== bitmap) scaled.recycle()
+                        }
+                    } ?: return@launch
+                    jpegs[path] = encoded.bytes
+                    // Same small live thumbnails as before, even when the stored photo is sharp.
+                    val (thumbWidth, thumbHeight) = ScanPhotoPolicy.thumbnailSize(encoded.width, encoded.height)
+                    thumbnails[path] = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
+                } finally {
+                    bitmap.recycle()
+                }
             } finally {
                 inFlight.decrementAndGet()
             }
@@ -243,15 +270,12 @@ internal class ScanCapture private constructor(
 
     /**
      * ARCore's raw depth of [frame] when it holds a new estimate, at most
-     * [DepthFreshness.MAX_AGE_NANOS] behind the frame and not fused already ([DepthFreshness]),
-     * and no fusion is running; `null` otherwise, or without [rawDepth]. Close it this frame.
+     * [DepthFreshness.MAX_AGE_NANOS] behind the frame and not fused already ([DepthFreshness]) —
+     * or past that window once none has come for a while ([DepthWindow]) — and no fusion is
+     * running; `null` otherwise, or without [rawDepth]. Close it this frame.
      */
     fun acquireDepth(frame: Frame): ScanDepth? {
-        // The wait for depth starts again after a gap — a pause, tracking lost: no frame came, so
-        // no depth could, and "No depth yet" flashed on resuming.
-        val gap = lastFrameNanos != 0L && frame.timestamp - lastFrameNanos > FRAME_GAP_NANOS
-        lastFrameNanos = frame.timestamp
-        if (depthSeenFromNanos == 0L || gap) depthSeenFromNanos = frame.timestamp
+        depthWindow.frame(frame.timestamp)
         if (dense == null || !depthGate.isDue(frame.timestamp)) return null
         if (fusing.get()) {
             intake.count(Outcome.Busy)
@@ -266,15 +290,13 @@ internal class ScanCapture private constructor(
         }
         // Before the gate, so a device log says what the scan sees even when it fuses nothing.
         logSizesOnce(depth, frame.timestamp)
-        val verdict = DepthFreshness.judge(frame.timestamp, depth.timestamp, lastDepthNanos)
+        val verdict = DepthFreshness.judge(frame.timestamp, depth.timestamp, depthWindow.lastTakenNanos)
         logVerdict(verdict, frame.timestamp, depth.timestamp)
-        if (verdict != DepthFreshness.Verdict.FRESH) {
+        if (!depthWindow.take(verdict, frame.timestamp, depth.timestamp)) {
             intake.count(Outcome.Stale)
             depth.close()
             return null
         }
-        lastDepthNanos = depth.timestamp
-        depthSeenFromNanos = frame.timestamp
         depthGate.mark(frame.timestamp)
         val confidence = runCatching { frame.acquireRawDepthConfidenceImage() }.getOrNull()
         return ScanDepth(depth, confidence, frame.camera.pose.toScanPose(), frame.timestamp)
@@ -319,7 +341,11 @@ internal class ScanCapture private constructor(
         } + listOfNotNull(
             unavailableReason?.takeIf { unavailableCount > 0 }?.let { "unavailable $unavailableCount ($it)" },
         )
-        Log.i(LOG_TAG, "depth verdicts: ${counts.joinToString()}; points $denseCount")
+        Log.i(
+            LOG_TAG,
+            "depth verdicts: ${counts.joinToString()}; late taken ${depthWindow.lateTaken}" +
+                "${if (depthWindow.late) " (late now)" else ""}; points $denseCount",
+        )
         verdictCounts.fill(0)
         unavailableCount = 0
     }
@@ -387,7 +413,7 @@ internal class ScanCapture private constructor(
         model?.join()
         // The journal is taken once and kept: a build that threw (out of memory, painting the
         // planes) is retried from the same events, not from a journal already let go.
-        val events = finishedEvents ?: run {
+        val journal = finishedEvents ?: run {
             trace.journal?.lastOrNull()?.let { last ->
                 recordDepthStats(last.nanos)
                 // The last fusion's floor cells, which no frame observed before the stop (#4734):
@@ -399,6 +425,8 @@ internal class ScanCapture private constructor(
         trace.journal = null
         jobs.toList().joinAll()
         if (trace.isEmpty) return null
+        // A photo whose encoding failed has no media: its image event does not reach the saved scan.
+        val events = ScanPhotoPolicy.savedEvents(journal) { jpegs[it] != null }
         val photos = events.filterIsInstance<ArDebugEvent.Image>().mapNotNull { image ->
             val jpeg = jpegs[image.path] ?: return@mapNotNull null
             val pose = poses[image.path] ?: return@mapNotNull null
@@ -424,7 +452,8 @@ internal class ScanCapture private constructor(
             tier = if (cloud != null) ScanDevice.TIER_DEPTH else ScanDevice.TIER_SPARSE,
             depthSource = if (cloud != null) ScanDevice.SOURCE_RAW_DEPTH else ScanDevice.SOURCE_FEATURE_POINTS,
         )
-        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs)
+        val camera = "${RerunScanCamera.line}; images ${intrinsics.width}x${intrinsics.height}"
+        return RerunCaptureBuilder.build(timeline, lens, photos, device, cloud, DenseFusion.VOXEL_M, denseMs, camera)
             .also { model?.keepFor(it) }
     }
 
@@ -461,11 +490,6 @@ internal class ScanCapture private constructor(
         /** 100 ms between two fused depth keyframes. */
         const val DEPTH_INTERVAL_NS = 100_000_000L
 
-        /** Two seconds without fresh depth: twenty missed keyframes, not a hiccup. */
-        const val DEPTH_STARVED_NANOS = 2_000_000_000L
-
-        /** Longer than this between two tracked frames, the scan was paused or lost track. */
-        const val FRAME_GAP_NANOS = 500_000_000L
 
         /** `adb logcat -s RerunScan`: the depth verdicts every second, the intake every two. */
         private const val LOG_TAG = "RerunScan"
@@ -473,10 +497,6 @@ internal class ScanCapture private constructor(
         /** One depth-verdict line a second of frame time at most. */
         private const val LOG_INTERVAL_NS = 1_000_000_000L
         private const val NANOS_PER_MS = 1_000_000L
-
-        /** 240×320, the bundled replay's own frame size: ~15 KB of JPEG each. */
-        private const val PHOTO_LONG_SIDE = 320
-        private const val JPEG_QUALITY = 85
 
         /** Photos being encoded at once; past it a keyframe waits for the next frame. */
         private const val MAX_IN_FLIGHT = 3

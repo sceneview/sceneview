@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos.internal
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -13,15 +14,11 @@ import kotlin.math.roundToInt
  * screen and the PDF page paint the same marks, each with its own ink.
  */
 
-/** How a survey's figures are written: metric, rounded to what a phone's scan can stand behind. */
+/**
+ * How a survey's figures are written: in metres to the 5 cm, or in feet and inches to the inch,
+ * as a tape reads them. How far a figure can be trusted is what its "±" says, in either.
+ */
 object SurveyFormat {
-    /**
-     * The plan's one unit system: a floor plan is drawn to scale in metres, whatever the locale.
-     * Every 3D Scan dimension reads it, so the replay's figures and the plan's never mix feet
-     * with metres.
-     */
-    val UNITS = MeasureUnitSystem.Metric
-
     /** Lengths are given to the nearest 5 cm. */
     const val LENGTH_STEP_M = 0.05f
 
@@ -35,21 +32,93 @@ object SurveyFormat {
     /** The mark in front of a figure that was not measured end to end. */
     const val ESTIMATE = "≈ "
 
-    fun length(metres: Float): String = "%.2f".format(Locale.US, (metres / LENGTH_STEP_M).roundToInt() * LENGTH_STEP_M)
+    /**
+     * The plan's units under [locale]: feet and inches in US English, metres in every other
+     * language. The plan's screen, its PDF, its shared text and the replay's floor labels and room
+     * line all read it.
+     */
+    fun units(locale: Locale): MeasureUnitSystem =
+        if (locale.language == "en" && locale.country == "US") MeasureUnitSystem.Imperial else MeasureUnitSystem.Metric
 
-    fun area(squareMetres: Float): String =
-        "%.1f".format(Locale.US, (squareMetres / AREA_STEP_M2).roundToInt() * AREA_STEP_M2)
+    /** A length in feet and inches to the inch, as a tape reads it: `13 ft 1 in`, `11 in`, `44 ft`. */
+    fun feetAndInches(metres: Float): String = formatMeasureLength(metres, MeasureUnitSystem.Imperial, Locale.US)
+
+    /** A length as a dimension line writes it in feet and inches: `13' 1"`, `6' 0"`. */
+    fun feetAndInchesMark(metres: Float): String {
+        val inches = (metres.coerceAtLeast(0f) / METRES_PER_INCH).roundToInt()
+        return "${inches / INCHES_PER_FOOT}' ${inches % INCHES_PER_FOOT}\""
+    }
+
+    /** An area in square feet: whole ones from 10 up, `124 ft²`, tenths below, with [locale]'s decimal mark. */
+    fun squareFeet(squareMetres: Float, locale: Locale = Locale.US): String =
+        formatMeasureArea(squareMetres, MeasureUnitSystem.Imperial, locale)
+
+    /** A volume in whole cubic feet, `1015 ft³`: the square feet it stands on are whole too. */
+    fun cubicFeet(cubicMetres: Float): String =
+        "${(cubicMetres.coerceAtLeast(0f) * CUBIC_FEET_PER_M3).roundToInt()} ft³"
+
+    /** A length's spread in inches, rounded up: never tighter than the inch its figure is given to. */
+    fun inchSpread(metres: Float): String = max(1, ceil(metres / METRES_PER_INCH - EPSILON).toInt()).toString()
+
+    /** An area's spread in square feet, rounded up: never tighter than a square foot. */
+    fun squareFeetSpread(squareMetres: Float): String =
+        max(1, ceil(squareMetres * SQUARE_FEET_PER_M2 - EPSILON).toInt()).toString()
+
+    /** A volume's spread in cubic feet, rounded up: never tighter than a cubic foot. */
+    fun cubicFeetSpread(cubicMetres: Float): String =
+        max(1, ceil(cubicMetres * CUBIC_FEET_PER_M3 - EPSILON).toInt()).toString()
+
+    /**
+     * The round lengths, in metres, a scale bar in [units] may be drawn at: whole feet in feet,
+     * `null` for the plan's own round metres.
+     */
+    fun scaleBars(units: MeasureUnitSystem): FloatArray? =
+        if (units == MeasureUnitSystem.Imperial) FOOT_BARS.map { it * METRES_PER_FOOT }.toFloatArray() else null
+
+    /** A feet scale bar's [metres] in feet: a whole number of them. */
+    fun feet(metres: Float): Int = (metres / METRES_PER_FOOT).roundToInt()
+
+    /**
+     * A wall's length as the plan labels it in [units]: [wall] in metres, with [locale]'s decimal
+     * mark, `≈ 13' 1"` in feet and inches. A wall the plan leaves unlabelled in metres stays
+     * unlabelled in feet.
+     */
+    fun wall(wall: SurveyWall, units: MeasureUnitSystem, locale: Locale = Locale.US): String {
+        val metric = wall(wall, locale)
+        if (units == MeasureUnitSystem.Metric || metric.isEmpty()) return metric
+        return (if (wall.length.estimate) ESTIMATE else "") + feetAndInchesMark(wall.length.value)
+    }
+
+    private const val METRES_PER_INCH = 0.0254f
+    private const val METRES_PER_FOOT = 0.3048f
+    private const val INCHES_PER_FOOT = 12
+    private const val SQUARE_FEET_PER_M2 = 10.76391f
+    private const val CUBIC_FEET_PER_M3 = 35.314667f
+    private val FOOT_BARS = floatArrayOf(1f, 2f, 5f, 10f, 20f, 50f)
+
+    /*
+     * The figures below take [Locale]'s decimal mark: `4.00` in English, `4,00` in French and
+     * German. English by default, as 3D Scan's screens write theirs; Measure's plan passes the
+     * phone's language, as the Measure screen beside it does.
+     */
+
+    fun length(metres: Float, locale: Locale = Locale.US): String =
+        "%.2f".format(locale, (metres / LENGTH_STEP_M).roundToInt() * LENGTH_STEP_M)
+
+    fun area(squareMetres: Float, locale: Locale = Locale.US): String =
+        "%.1f".format(locale, (squareMetres / AREA_STEP_M2).roundToInt() * AREA_STEP_M2)
 
     /** A length's spread, rounded up: never tighter than a step. */
-    fun lengthSpread(metres: Float): String =
-        "%.2f".format(Locale.US, max(1, ceil(metres / LENGTH_STEP_M - EPSILON).toInt()) * LENGTH_STEP_M)
+    fun lengthSpread(metres: Float, locale: Locale = Locale.US): String =
+        "%.2f".format(locale, max(1, ceil(metres / LENGTH_STEP_M - EPSILON).toInt()) * LENGTH_STEP_M)
 
     /** An area's spread, rounded up: never tighter than a step. */
-    fun areaSpread(squareMetres: Float): String =
-        "%.1f".format(Locale.US, max(1, ceil(squareMetres / AREA_STEP_M2 - EPSILON).toInt()) * AREA_STEP_M2)
+    fun areaSpread(squareMetres: Float, locale: Locale = Locale.US): String =
+        "%.1f".format(locale, max(1, ceil(squareMetres / AREA_STEP_M2 - EPSILON).toInt()) * AREA_STEP_M2)
 
-    /** A wall's length as the plan labels it: `≈ 4.00` when part of it was not seen. */
-    fun wall(wall: SurveyWall): String = (if (wall.length.estimate) ESTIMATE else "") + length(wall.length.value)
+    /** A wall's length as the plan labels it: `≈ 4.00` when part of it was not seen, nothing when it is not [SurveyWall.sized]. */
+    fun wall(wall: SurveyWall, locale: Locale = Locale.US): String =
+        if (!wall.sized) "" else (if (wall.length.estimate) ESTIMATE else "") + length(wall.length.value, locale)
 
     private const val EPSILON = 1e-3f
 }
@@ -94,6 +163,8 @@ class PlanTexts(
     val area: String?,
     val areaNote: String?,
     val scale: (metres: Float) -> String,
+    /** The round lengths, in metres, its scale bar may be drawn at; `null` for round metres. */
+    val scaleBars: FloatArray? = null,
 )
 
 /** A plan laid out in a [width] × [height] box, at [pxPerMetre]. [floor] is the outline, x then y. */
@@ -134,6 +205,7 @@ object RoomPlanLayout {
     private const val SIDES = 4
     private const val MAX_PASSES = 4
     private const val POLE_STEPS = 40
+    private const val ALIGNED = 0.01f
 
     /** The round lengths a scale bar is drawn at, metres. */
     private val SCALE_BARS = floatArrayOf(0.5f, 1f, 2f, 5f, 10f)
@@ -167,12 +239,32 @@ object RoomPlanLayout {
         return drawing!!
     }
 
-    /** Which side of the outline a wall's dimension goes on: the one its outer face looks at. */
-    private fun sideOf(wall: SurveyWall): Int = when {
-        wall.horizontal && wall.bx > wall.ax -> TOP
-        wall.horizontal -> BOTTOM
-        wall.by > wall.ay -> RIGHT
-        else -> LEFT
+    /** Which side of the outline a wall's dimension goes on: the one its outer face mostly looks at. */
+    private fun sideOf(wall: SurveyWall): Int {
+        // Clockwise on the page, y down: the room is on the right of the walk, the outside on its left.
+        val ox = wall.by - wall.ay
+        val oy = wall.ax - wall.bx
+        return when {
+            abs(oy) >= abs(ox) && oy < 0f -> TOP
+            abs(oy) >= abs(ox) -> BOTTOM
+            ox > 0f -> RIGHT
+            else -> LEFT
+        }
+    }
+
+    /** A wall square to neither of the page's axes: dimensioned along itself. */
+    private fun oblique(wall: SurveyWall): Boolean {
+        val dx = abs(wall.bx - wall.ax)
+        val dy = abs(wall.by - wall.ay)
+        return min(dx, dy) > ALIGNED * max(dx, dy)
+    }
+
+    /** The unit normal out of the room, on the page. */
+    private fun outward(wall: SurveyWall): FloatArray {
+        val ox = wall.by - wall.ay
+        val oy = wall.ax - wall.bx
+        val length = hypot(ox, oy)
+        return if (length > 0f) floatArrayOf(ox / length, oy / length) else floatArrayOf(0f, 0f)
     }
 
     @Suppress("LongParameterList") // one layout pass: its inputs, and the rows it found it needs
@@ -207,6 +299,8 @@ object RoomPlanLayout {
                         rowHeight * (1 + rows[side])
                 }
             }
+            val aside = obliqueMargins(rowHeight)
+            for (side in 0 until SIDES) margins[side] = max(margins[side], aside[side])
             margins[BOTTOM] += SCALE_BAND * u
             val roomW = width - margins[LEFT] - margins[RIGHT]
             val roomH = height - margins[TOP] - margins[BOTTOM]
@@ -234,10 +328,10 @@ object RoomPlanLayout {
         private fun assignLevels() {
             for (side in 0 until SIDES) {
                 val taken = ArrayList<MutableList<ClosedFloatingPointRange<Float>>>()
-                survey.walls.indices.filter { sideOf(survey.walls[it]) == side }.forEach { i ->
+                survey.walls.indices.filter { !oblique(survey.walls[it]) && sideOf(survey.walls[it]) == side }.forEach { i ->
                     val wall = survey.walls[i]
-                    val span = when {
-                        wall.horizontal -> min(wall.ax, wall.bx)..max(wall.ax, wall.bx)
+                    val span = when (side) {
+                        TOP, BOTTOM -> min(wall.ax, wall.bx)..max(wall.ax, wall.bx)
                         else -> min(wall.ay, wall.by)..max(wall.ay, wall.by)
                     }
                     var level = 0
@@ -287,6 +381,10 @@ object RoomPlanLayout {
             val rowHeight = DIMENSION_TEXT * LINE_HEIGHT * u
             survey.walls.forEachIndexed { i, wall ->
                 val side = sideOf(wall)
+                if (oblique(wall)) {
+                    aligned(i, wall, side)
+                    return@forEachIndexed
+                }
                 val out = if (side == TOP || side == LEFT) -1f else 1f
                 val edge = when (side) {
                     TOP -> top
@@ -298,7 +396,7 @@ object RoomPlanLayout {
                 val outermost = edge + out * (CHAIN_OFFSET + (levels[side] - 1) * CHAIN_PITCH) * u
                 val text = texts.walls.getOrElse(i) { "" }
                 val length = metrics.measure(text, DIMENSION_TEXT * u)
-                if (wall.horizontal) {
+                if (side == TOP || side == BOTTOM) {
                     val from = x(min(wall.ax, wall.bx))
                     val to = x(max(wall.ax, wall.bx))
                     lines += PlanLine(from, line, to, line, PlanStroke.Dimension)
@@ -334,6 +432,45 @@ object RoomPlanLayout {
             }
         }
 
+        /** An oblique wall's dimension: a line along the wall, outside it, its label beside it. */
+        private fun aligned(i: Int, wall: SurveyWall, side: Int) {
+            val (ox, oy) = outward(wall)
+            val offset = CHAIN_OFFSET * u
+            val ax = x(wall.ax)
+            val ay = y(wall.ay)
+            val bx = x(wall.bx)
+            val by = y(wall.by)
+            lines += PlanLine(ax + ox * offset, ay + oy * offset, bx + ox * offset, by + oy * offset, PlanStroke.Dimension)
+            val span = hypot(bx - ax, by - ay)
+            val dx = (bx - ax) / span
+            val dy = (by - ay) / span
+            val tick = TICK * u
+            for ((px, py) in listOf(ax to ay, bx to by)) {
+                lines += PlanLine(
+                    px + ox * EXTENSION_GAP * u, py + oy * EXTENSION_GAP * u,
+                    px + ox * (offset + EXTENSION_OVER * u), py + oy * (offset + EXTENSION_OVER * u),
+                    PlanStroke.Extension,
+                )
+                // The tick leans 45° across the line, as on the square walls.
+                val cx = px + ox * offset
+                val cy = py + oy * offset
+                val tx = (dx + ox) * tick
+                val ty = (dy + oy) * tick
+                lines += PlanLine(cx - tx, cy - ty, cx + tx, cy + ty, PlanStroke.Tick)
+            }
+            val text = texts.walls.getOrElse(i) { "" }
+            val length = metrics.measure(text, DIMENSION_TEXT * u)
+            val rowHeight = DIMENSION_TEXT * LINE_HEIGHT * u
+            val mx = (ax + bx) / 2
+            val my = (ay + by) / 2
+            place(side, text, length, fits = true) { row ->
+                // Clear of the line by half the label's own extent along the normal.
+                val half = abs(ox) * length / 2 + abs(oy) * rowHeight / 2
+                val reach = offset + LABEL_GAP * u + half + row * rowHeight
+                PlanText(text, mx + ox * reach, my + oy * reach, DIMENSION_TEXT * u, length, PlanTextRole.Dimension)
+            }
+        }
+
         /** Puts a label on the first row out where it covers no other; a row past 0 is asked of the next pass. */
         private fun place(side: Int, text: String, length: Float, fits: Boolean, at: (row: Int) -> PlanText) {
             if (text.isEmpty() || length <= 0f) return
@@ -359,7 +496,9 @@ object RoomPlanLayout {
                     // A label is wider than it is high: the room to its sides counts half.
                     var reach = Float.MAX_VALUE
                     for (wall in survey.walls) {
-                        reach = min(reach, if (wall.horizontal) abs(py - wall.ay) * 2 else abs(px - wall.ax))
+                        val (ox, oy) = outward(wall)
+                        val across = abs(ox * (px - wall.ax) + oy * (py - wall.ay))
+                        reach = min(reach, across * (1 + abs(oy)))
                     }
                     if (reach > best + EPSILON) {
                         best = reach
@@ -382,10 +521,9 @@ object RoomPlanLayout {
         private fun inside(px: Float, py: Float): Boolean {
             var crossings = 0
             for (wall in survey.walls) {
-                if (wall.horizontal) continue
-                val low = min(wall.ay, wall.by)
-                val high = max(wall.ay, wall.by)
-                if (py >= low && py < high && wall.ax > px) crossings++
+                if ((wall.ay > py) == (wall.by > py)) continue
+                val at = wall.ax + (py - wall.ay) * (wall.bx - wall.ax) / (wall.by - wall.ay)
+                if (at > px) crossings++
             }
             return crossings % 2 == 1
         }
@@ -397,12 +535,9 @@ object RoomPlanLayout {
                 val mx = x((wall.ax + wall.bx) / 2)
                 val my = y((wall.ay + wall.by) / 2)
                 val inset = TAG_INSET * u
-                val (tx, ty) = when (sideOf(wall)) {
-                    TOP -> mx to my + inset
-                    BOTTOM -> mx to my - inset
-                    LEFT -> mx + inset to my
-                    else -> mx - inset to my
-                }
+                val (ox, oy) = outward(wall)
+                val tx = mx - ox * inset
+                val ty = my - oy * inset
                 val size = TAG_TEXT * u
                 val tag = PlanText(wall.tag, tx, ty, size, metrics.measure(wall.tag, size), PlanTextRole.Tag)
                 if (placed.none { it.overlaps(tag) }) placed += tag
@@ -411,7 +546,8 @@ object RoomPlanLayout {
 
         /** A bar of a round length under the plan's left corner, its length written at its end. */
         private fun scaleBar(height: Float) {
-            val metres = SCALE_BARS.firstOrNull { it * scale >= SCALE_MIN * u } ?: SCALE_BARS.last()
+            val bars = texts.scaleBars ?: SCALE_BARS
+            val metres = bars.firstOrNull { it * scale >= SCALE_MIN * u } ?: bars.last()
             val from = min(x(0f), drawingLeft())
             val to = from + metres * scale
             val at = height - PADDING * u - TICK * u
@@ -423,6 +559,32 @@ object RoomPlanLayout {
             val length = metrics.measure(text, DIMENSION_TEXT * u)
             val labelX = to + LABEL_GAP * 2 * u + length / 2
             placed += PlanText(text, labelX, at - TICK * u / 2, DIMENSION_TEXT * u, length, PlanTextRole.Scale)
+        }
+
+        /**
+         * What the oblique walls' dimensions need around the room, side by side. A side whose only
+         * wall leans has no chain of its own and would keep [BARE_SIDE], too narrow for a dimension
+         * set [CHAIN_OFFSET] off the wall: each one is taken as starting on the room's outer edge,
+         * and the margins its line, its ticks and its label then reach are kept.
+         */
+        private fun obliqueMargins(rowHeight: Float): FloatArray {
+            val margins = FloatArray(SIDES)
+            survey.walls.forEachIndexed { i, wall ->
+                if (!oblique(wall)) return@forEachIndexed
+                val (ox, oy) = outward(wall)
+                val length = metrics.measure(texts.walls.getOrElse(i) { "" }, DIMENSION_TEXT * u)
+                val tick = (abs(ox) + abs(oy)) * TICK * u
+                val line = (CHAIN_OFFSET + EXTENSION_OVER) * u
+                val half = abs(ox) * length / 2 + abs(oy) * rowHeight / 2
+                val reach = (CHAIN_OFFSET + LABEL_GAP) * u + half + rows[sideOf(wall)] * rowHeight
+                val across = max(abs(ox) * line + tick, abs(ox) * reach + length / 2) + PADDING * u
+                val along = max(abs(oy) * line + tick, abs(oy) * reach + rowHeight / 2) + PADDING * u
+                val h = if (ox > 0f) RIGHT else LEFT
+                val v = if (oy > 0f) BOTTOM else TOP
+                margins[h] = max(margins[h], across)
+                margins[v] = max(margins[v], along)
+            }
+            return margins
         }
 
         private fun drawingLeft() = x(0f)

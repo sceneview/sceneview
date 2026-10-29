@@ -897,6 +897,10 @@ public final class io/github/sceneview/ar/FrameInput {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/sceneview/ar/HostLifecycleKt {
+	public static final fun rememberHostLifecycle (Landroidx/compose/runtime/Composer;I)Landroidx/lifecycle/Lifecycle;
+}
+
 public final class io/github/sceneview/ar/Ndc {
 	public static final field $stable I
 	public fun <init> (FF)V
@@ -1619,6 +1623,36 @@ public final class io/github/sceneview/ar/camera/ARCameraStreamKt {
 	public static final field kFogStartParameter Ljava/lang/String;
 	public static final field kPersonTextureParameter Ljava/lang/String;
 	public static final field kUVTransformParameter Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImagePoint {
+	public static final field $stable I
+	public fun <init> (FF)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getX ()F
+	public final fun getY ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/camera/CameraImageSize {
+	public static final field $stable I
+	public fun <init> (II)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHeight ()I
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/camera/DetectorImageMapping {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/ar/camera/CameraImageSize;I)V
+	public final fun detectorPixelToImagePixel (FF)Lio/github/sceneview/ar/camera/CameraImagePoint;
+	public final fun getDetectorHeight ()I
+	public final fun getDetectorWidth ()I
+	public final fun getImageSize ()Lio/github/sceneview/ar/camera/CameraImageSize;
+	public final fun getInputRotationDegrees ()I
 }
 
 public abstract interface class io/github/sceneview/ar/collaborative/CollaborativeMessage {

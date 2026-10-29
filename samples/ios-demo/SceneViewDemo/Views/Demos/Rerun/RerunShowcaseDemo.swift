@@ -43,6 +43,7 @@ struct RerunShowcaseDemo: View {
         + "photos, the surfaces, the room's points and the models you placed. Stop, and the replay "
         + "opens. Share exports it to .rrd, .glb, .usdz and .ply, made on your iPhone."
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var screen: Screen
     @State private var mode: Mode
     @State private var session: RerunReplaySession?
@@ -110,6 +111,11 @@ struct RerunShowcaseDemo: View {
         // follows the appearance, so its status bar does too.
         .themedPageStatusBar(screen == .choose)
         .task { await boot() }
+        // A replay interrupted by the system (Control Center, a call, the app switcher) plays on
+        // when the app is back; one the user paused stays paused.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { session?.resumeIfSuspended() } else { session?.suspend() }
+        }
         .onChange(of: inbox.pending) { _, pending in
             if pending != nil { Task { await importPending() } }
         }

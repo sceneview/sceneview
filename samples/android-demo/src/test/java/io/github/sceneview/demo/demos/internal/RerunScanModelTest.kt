@@ -32,6 +32,14 @@ class RerunScanModelTest {
 
     private val fov = 46.4
 
+    private companion object {
+        /** The share of the screen's narrower side the model's bounds span. */
+        val NARROW_FILL = 0.78f..0.82f
+
+        /** A model this close to the screen's edge along its long side fills that side. */
+        const val LONG_EDGE = 0.06f
+    }
+
     // ── Kept with the scan ────────────────────────────────────────────────────
 
     @Test
@@ -158,6 +166,30 @@ class RerunScanModelTest {
         assertNull(RerunScanModel.parse(newer, model.glb))
         assertNull(RerunScanModel.parse(info.replace("\"version\": ${RerunScanModel.VERSION},", ""), model.glb))
         assertNotNull(RerunScanModel.parse(info, model.glb))
+    }
+
+    @Test
+    fun `a model from the raw-surface format opens as it is, and its scan finishes it again`() {
+        val root = folder.newFolder("sessions")
+        val store = RerunSessionStore(root)
+        val saved = store.save(bundled(), "Room", RerunSessionSource.Recorded, 1_000_000L)
+        val dir = File(root, saved.id)
+        val model = floorModel()
+        // An earlier app's model.json: the raw surface, kept as its model.
+        val first = model.infoJson().replace("\"version\": ${RerunScanModel.VERSION}", "\"version\": 1")
+        File(dir, "model.json").writeText(first)
+        File(dir, "model.glb").writeBytes(model.glb)
+
+        // Opened at once on it, whether its recording still reads or not: refused, a scan whose
+        // recording no longer reads had nothing to open on.
+        val earlier = assertNotNull(store.model(saved.id))
+        assertArrayEquals(model.glb, earlier.glb)
+        assertFalse("an earlier app's raw surface is not a finished model", earlier.finished)
+        assertTrue("finished again from its recording", earlier.retriesFinish)
+        assertFalse("kept as it was, not saved over as this app's", earlier.keptWithScan)
+        // A finish that fails leaves it shown, still to finish at the next open.
+        assertTrue(earlier.finishedAgain(null).retriesFinish)
+        assertFalse(earlier.finishedAgain(null).finished)
     }
 
     @Test
@@ -309,33 +341,46 @@ class RerunScanModelTest {
     // ── The view ──────────────────────────────────────────────────────────────
 
     @Test
-    fun `the result fits the geometry where it is, whole, inside the chrome`() {
-        // A scan's world is wherever ARCore started: rooms far from the origin, long and short.
+    fun `the result frames the geometry to most of the screen's narrower side, where it is`() {
+        // A scan's world is wherever ARCore started: rooms far from the origin, long and short,
+        // a desk's corner, and a shelf scanned on its own.
         val rooms = listOf(
             floatArrayOf(2f, -0.1f, -7f, 6f, 2.4f, -4f),
             floatArrayOf(-12f, 0f, 3f, -3f, 2.6f, 5.5f),
             floatArrayOf(0.3f, 0.7f, 0.2f, 0.9f, 1.1f, 0.6f),
+            floatArrayOf(1f, 0.8f, -2f, 1.4f, 1.1f, -1.7f),
         )
-        val chrome = FramingInsets(left = 0.04f, top = 0.18f, right = 0.04f, bottom = 0.24f)
+        // The bar above and the sheet below it, raised or at rest over most of a phone's height.
+        val chromes = listOf(
+            FramingInsets(left = 0.04f, top = 0.14f, right = 0.04f, bottom = 0.22f),
+            FramingInsets(left = 0.04f, top = 0.12f, right = 0.04f, bottom = 0.62f),
+        )
+        val slack = 2e-3f
         for (bounds in rooms) {
-            for (aspect in listOf(0.46f, 2.17f)) {
-                val pose = RerunResultView.home(bounds, fov, aspect, chrome)
-                assertEquals(RerunResultView.AZIMUTH, pose.azimuthDegrees, 1e-3f)
-                assertEquals(RerunResultView.ELEVATION, pose.elevationDegrees, 1e-3f)
-                val seen = projected(bounds, pose, aspect)
-                val left = -1f + 2f * chrome.left
-                val right = 1f - 2f * chrome.right
-                val bottom = -1f + 2f * chrome.bottom
-                val top = 1f - 2f * chrome.top
-                val where = "bounds ${bounds.toList()} aspect $aspect"
-                val slack = 2e-3f
-                assertTrue("$where: cut on the left", seen[0] >= left - slack)
-                assertTrue("$where: cut on the right", seen[2] <= right + slack)
-                assertTrue("$where: cut at the bottom", seen[1] >= bottom - slack)
-                assertTrue("$where: cut at the top", seen[3] <= top + slack)
-                // Fitted, not lost in the middle: it fills the free area along one axis.
-                val fill = max((seen[2] - seen[0]) / (right - left), (seen[3] - seen[1]) / (top - bottom))
-                assertTrue("$where: fills $fill of the free area", fill > 0.8f)
+            for (chrome in chromes) {
+                for (aspect in listOf(0.46f, 1f, 2.17f)) {
+                    val pose = RerunResultView.home(bounds, fov, aspect, chrome)
+                    assertEquals(RerunResultView.AZIMUTH, pose.azimuthDegrees, 1e-3f)
+                    assertEquals(RerunResultView.ELEVATION, pose.elevationDegrees, 1e-3f)
+                    val seen = projected(bounds, pose, aspect)
+                    val where = "bounds ${bounds.toList()}, $chrome, aspect $aspect: seen ${seen.toList()}"
+                    assertTrue("$where: off the screen", seen.all { it in -1f - slack..1f + slack })
+                    // The narrower side: across a portrait screen, up a landscape one.
+                    val across = aspect <= 1f
+                    val narrow = if (across) (seen[2] - seen[0]) / 2f else (seen[3] - seen[1]) / 2f
+                    val longLo = if (across) seen[1] else seen[0]
+                    val longHi = if (across) seen[3] else seen[2]
+                    // Taller than the screen lets it be at that size: it fills its long side instead.
+                    val longFull = longLo <= -1f + 2f * LONG_EDGE || longHi >= 1f - 2f * LONG_EDGE
+                    assertTrue("$where: fills $narrow of the narrower side", narrow <= NARROW_FILL.endInclusive)
+                    assertTrue("$where: fills $narrow of the narrower side", longFull || narrow in NARROW_FILL)
+                    // Within the chrome along the long side whenever it fits there.
+                    val bandLo = if (across) -1f + 2f * chrome.bottom else -1f + 2f * chrome.left
+                    val bandHi = if (across) 1f - 2f * chrome.top else 1f - 2f * chrome.right
+                    if (longHi - longLo <= bandHi - bandLo) {
+                        assertTrue("$where: under the chrome", longLo >= bandLo - slack && longHi <= bandHi + slack)
+                    }
+                }
             }
         }
     }

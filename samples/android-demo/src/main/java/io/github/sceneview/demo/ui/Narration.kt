@@ -69,18 +69,24 @@ fun NarrationText(
     maxLines: Int = Int.MAX_VALUE,
 ) {
     val base = narrationBase(text)
-    if (base == null || !LocalMotionEnabled.current) {
-        Text(
-            text = text,
-            modifier = modifier,
-            color = color,
-            style = style,
-            textAlign = textAlign,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-        )
-        return
-    }
+    val narrated = base != null && LocalMotionEnabled.current
+    // One Text either way: a line that stops narrating ("Finishing your model…", then how it
+    // ended) keeps its node, so a live region on it is heard changing.
+    val shown = if (base != null && narrated) narrationDots(base, color, style) else AnnotatedString(text)
+    Text(
+        text = shown,
+        modifier = if (narrated) modifier.clearAndSetSemantics { this.text = AnnotatedString(text) } else modifier,
+        color = color,
+        style = style,
+        textAlign = textAlign,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** [base] and three dots whose opacity runs left to right on `motion-narration`. */
+@Composable
+private fun narrationDots(base: String, color: Color, style: TextStyle): AnnotatedString {
     val phase by rememberInfiniteTransition(label = "narration").animateFloat(
         initialValue = 0f,
         targetValue = NARRATION_DOTS.toFloat(),
@@ -92,7 +98,7 @@ fun NarrationText(
     )
     // The same resolution `Text` applies: explicit colour, then the style's, then the content colour.
     val resolved = color.takeOrElse { style.color.takeOrElse { LocalContentColor.current } }
-    val annotated = buildAnnotatedString {
+    return buildAnnotatedString {
         append(base)
         repeat(NARRATION_DOTS) { index ->
             withStyle(SpanStyle(color = resolved.copy(alpha = resolved.alpha * narrationDotAlpha(index, phase)))) {
@@ -100,15 +106,6 @@ fun NarrationText(
             }
         }
     }
-    Text(
-        text = annotated,
-        modifier = modifier.clearAndSetSemantics { this.text = AnnotatedString(text) },
-        color = color,
-        style = style,
-        textAlign = textAlign,
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 /** [text] without its trailing ellipsis, or `null` when it has none. */

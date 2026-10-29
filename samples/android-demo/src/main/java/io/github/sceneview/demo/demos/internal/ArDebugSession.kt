@@ -235,7 +235,11 @@ data class ArDebugStats(
     }
 }
 
-/** Text of the 3D view's chrome. Plain functions, so the wording is testable. */
+/**
+ * Text of the 3D view's chrome. Plain functions, so the wording is testable. Words and units stay
+ * English; the figures take the phone's separators ("14,2 m" in French): [Locale.getDefault] unless
+ * the caller passes the locale it renders in.
+ */
 object ArDebugFormat {
     /** `72.4` → `1:12`. Negative and non-finite inputs read as zero. */
     fun clock(seconds: Float): String {
@@ -243,30 +247,30 @@ object ArDebugFormat {
         return String.format(Locale.US, "%d:%02d", total / 60, total % 60)
     }
 
-    /** `0.42` → `42 cm`, `14.236` → `14.2 m`. */
-    fun distance(metres: Float): String = when {
+    /** `0.42` → `42 cm`, `14.236` → `14.2 m` (`14,2 m` in French). */
+    fun distance(metres: Float, locale: Locale = Locale.getDefault()): String = when {
         !metres.isFinite() || metres <= 0f -> "0 m"
         metres < 1f -> "${(metres * 100).toInt()} cm"
-        metres < 100f -> String.format(Locale.US, "%.1f m", metres)
-        else -> String.format(Locale.US, "%,d m", metres.toInt())
+        metres < 100f -> String.format(locale, "%.1f m", metres)
+        else -> String.format(locale, "%,d m", metres.toInt())
     }
 
     /** `0.42` → `0.4 m²`, `14.236` → `14 m²`: one decimal under ten, whole metres past it. */
-    fun area(metres2: Float): String = when {
+    fun area(metres2: Float, locale: Locale = Locale.getDefault()): String = when {
         !metres2.isFinite() || metres2 <= 0f -> "0 m²"
-        metres2 < AREA_WHOLE_FROM_M2 -> String.format(Locale.US, "%.1f m²", metres2)
-        else -> String.format(Locale.US, "%,d m²", metres2.roundToInt())
+        metres2 < AREA_WHOLE_FROM_M2 -> String.format(locale, "%.1f m²", metres2)
+        else -> String.format(locale, "%,d m²", metres2.roundToInt())
     }
 
     private const val AREA_WHOLE_FROM_M2 = 9.95f
 
-    /** `3812` → `3,812`. */
-    fun count(value: Int): String = String.format(Locale.US, "%,d", value)
+    /** `3812` → `3,812` (`3 812` in French). */
+    fun count(value: Int, locale: Locale = Locale.getDefault()): String = String.format(locale, "%,d", value)
 
-    /** For a narrow figure: `812` → `812`, `4_812` → `4.8k`, `12_400` → `12k`. */
-    fun compactCount(value: Int): String = when {
+    /** For a narrow figure: `812` → `812`, `4_812` → `4.8k` (`4,8k` in French), `12_400` → `12k`. */
+    fun compactCount(value: Int, locale: Locale = Locale.getDefault()): String = when {
         value < 1_000 -> value.coerceAtLeast(0).toString()
-        value < 10_000 -> String.format(Locale.US, "%.1fk", (value / 100) / 10f)
+        value < 10_000 -> String.format(locale, "%.1fk", (value / 100) / 10f)
         else -> "${value / 1_000}k"
     }
 }

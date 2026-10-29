@@ -4,14 +4,17 @@ Run: python3 -m unittest discover -s .github/scripts -p 'test_app_store_catchup.
 The catch-up workflow runs this before its probe, so a broken decision stops
 the job before it can submit anything.
 """
+import contextlib
 import datetime
+import io
 import pathlib
 import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from app_store_catchup import decide, get_all, tag_build_numbers  # noqa: E402
+from app_store_catchup import (  # noqa: E402
+    decide, get_all, parse_builds, split_active_runs, tag_build_numbers)
 
 # App Store Connect as measured on 2026-09-28, before 4.42.0 was withdrawn.
 LIVE_440 = [("4.40.0", "READY_FOR_SALE"), ("4.38.0", "REPLACED_WITH_NEW_VERSION")]
@@ -150,10 +153,91 @@ class PaginationTest(unittest.TestCase):
             calls.append(url)
             return {"data": [url], "links": {"next": url + "+"}}
 
-        with self.assertRaises(SystemExit) as e:
+        # The guard prints a `::error::` workflow command. Captured here: on
+        # the runner it would surface as a red annotation on a run that did
+        # not fail — which is what every catch-up run until 2026-10-22 showed.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as e:
             get_all("p", {}, get=endless)
         self.assertEqual(e.exception.code, 1)
         self.assertEqual(len(calls), 20)
+        self.assertIn("still paginating after 20 pages", out.getvalue())
+
+
+UTC = datetime.timezone.utc
+NOW = datetime.datetime(2026, 10, 22, 5, 4, tzinfo=UTC)
+
+
+class ActiveRunsTest(unittest.TestCase):
+    def test_ghost_run_queued_for_months_is_not_a_deploy(self):
+        # Run 25906902157: `queued` since 2026-05-15 with zero jobs. It made
+        # every catch-up run answer "app-store.yml is already running".
+        ghost = {"id": 25906902157, "status": "queued", "created_at": "2026-05-15T07:51:54Z"}
+        live, stale = split_active_runs([ghost], NOW)
+        self.assertEqual(live, [])
+        self.assertEqual(stale, [ghost])
+
+    def test_recent_run_owns_the_release(self):
+        run = {"id": 1, "status": "in_progress", "created_at": "2026-10-22T04:30:00Z"}
+        pending = {"id": 2, "status": "pending", "created_at": "2026-10-21T06:00:00Z"}
+        live, stale = split_active_runs([run, pending], NOW)
+        self.assertEqual([r["id"] for r in live], [1, 2])
+        self.assertEqual(stale, [])
+
+    def test_a_run_listed_under_two_statuses_counts_once(self):
+        run = {"id": 1, "status": "queued", "created_at": "2026-10-22T04:30:00Z"}
+        live, _ = split_active_runs([run, dict(run)], NOW)
+        self.assertEqual(len(live), 1)
+
+    def test_unreadable_creation_time_is_stale(self):
+        live, stale = split_active_runs([{"id": 3, "created_at": None}], NOW)
+        self.assertEqual(live, [])
+        self.assertEqual(len(stale), 1)
+
+
+class ParseBuildsTest(unittest.TestCase):
+    # Both legs of app-store.yml upload build 202610191150 to the one app.
+    PAYLOAD = {
+        "data": [
+            {"id": "B3", "attributes": {"version": "202610191150"},
+             "relationships": {"preReleaseVersion": {"data": {"type": "preReleaseVersions",
+                                                              "id": "PM"}}}},
+            {"id": "B2", "attributes": {"version": "202610191150"},
+             "relationships": {"preReleaseVersion": {"data": {"type": "preReleaseVersions",
+                                                              "id": "PI"}}}},
+            {"id": "B1", "attributes": {"version": "202610190737"},
+             "relationships": {"preReleaseVersion": {"data": {"type": "preReleaseVersions",
+                                                              "id": "PI59"}}}},
+        ],
+        "included": [
+            {"type": "preReleaseVersions", "id": "PM",
+             "attributes": {"platform": "MAC_OS", "version": "4.60.0"}},
+            {"type": "preReleaseVersions", "id": "PI",
+             "attributes": {"platform": "IOS", "version": "4.60.0"}},
+            {"type": "preReleaseVersions", "id": "PI59",
+             "attributes": {"platform": "IOS", "version": "4.59.0"}},
+        ],
+    }
+
+    def test_each_platform_sees_only_its_builds_oldest_first(self):
+        self.assertEqual(parse_builds(self.PAYLOAD, "IOS"),
+                         [("4.59.0", "202610190737"), ("4.60.0", "202610191150")])
+        self.assertEqual(parse_builds(self.PAYLOAD, "MAC_OS"), [("4.60.0", "202610191150")])
+
+
+class OctoberCatchUpTest(unittest.TestCase):
+    # App Store Connect on 2026-10-22: 4.58.0 live, 4.59.0 and 4.60.0 deferred
+    # on 2026-10-19 with no version record, their builds on TestFlight.
+    VERSIONS = [("4.58.0", "READY_FOR_SALE"), ("4.57.0", "READY_FOR_SALE")]
+    BUILDS = [("4.58.0", "202610190636"), ("4.59.0", "202610190737"),
+              ("4.60.0", "202610191150")]
+
+    def test_latest_release_is_submitted_with_its_tag_build(self):
+        windows = [(datetime.datetime(2026, 10, 19, 11, 50, 1, tzinfo=UTC),
+                    datetime.datetime(2026, 10, 19, 11, 50, 1, tzinfo=UTC))]
+        d = decide("v4.60.0", self.VERSIONS, self.BUILDS, tag_runs=1,
+                   tag_builds=tag_build_numbers(self.BUILDS, windows))
+        self.assertEqual((d["action"], d["build"]), ("submit", "202610191150"))
 
 
 if __name__ == "__main__":

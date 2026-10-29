@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS demo: a `.rrd` exported on iOS opens with the same layout as Android's and ends with the index footer ([#4698](https://github.com/sceneview/sceneview/issues/4698)).** The iOS writer now puts the default Rerun blueprint (room in 3D beside the camera photos, side panels collapsed) before the recording and closes the file with the `RrdFooter` chunk index that `rerun rrd verify` asks for. Its bytes match the Android writer's for the same scene, the store source label aside; a file cut inside the footer still reads.

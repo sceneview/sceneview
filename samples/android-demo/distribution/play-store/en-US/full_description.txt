@@ -5,12 +5,12 @@ SceneView is an open-source 3D and augmented reality SDK for Jetpack Compose, Sw
 START HERE
 
 - Cosmos — a galaxy, a particle collision, a flow field and a ringed star system, joined by a camera tour that flies you through them. Touch the screen to take the camera back.
-- 3D Scan — move around a space and watch it take shape in 3D.
+- 3D Scan — walk around a room and watch its walls appear in 3D as you go. On phones with ARCore depth, it then draws an indicative floor plan of the room's real shape, with its doors, windows, dimensions and area, which you can share as a PDF or a DXF drawing. Missed a corner? Scan that part again and it joins the room.
 
 WHAT THE SAMPLES SHOW
 
 - 3D models — load GLB and glTF files, play their animations, and orbit, pinch and zoom the camera.
-- Augmented reality — place a model on a table, hang something flat against a wall, track images and faces, and measure a real distance.
+- Augmented reality — place a model on a table, hang something flat against a wall, track images and faces, and measure distances, walls, doors and windows.
 - Real-world blending — real furniture and people stay in front of virtual objects, and the room's own light lights the model.
 - Lighting and materials — swap HDR environments and watch reflections and shadows change in real time.
 - Anchors, depth, physics, geometry, spatial audio and more.
@@ -18,7 +18,7 @@ WHAT THE SAMPLES SHOW
 
 FOR DEVELOPERS
 
-A 3D model on screen is one composable, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples, and this app are free and open source.
+A 3D model on screen is one composable, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples, and this app are free and open source: SceneView has more than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency.
 
 github.com/sceneview/sceneview
 

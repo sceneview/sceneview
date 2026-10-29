@@ -8,8 +8,8 @@ doubt **read the demo, do not improvise**.
 
 | Composable | Artifact | Demo |
 | --- | --- | --- |
-| `SceneView { … }` | `io.github.sceneview:sceneview:4.60.0` | `ModelViewerDemo.kt` |
-| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.60.0` | `ARPlacementDemo.kt` |
+| `SceneView { … }` | `io.github.sceneview:sceneview:4.63.0` | `ModelViewerDemo.kt` |
+| `ARSceneView { … }` | `io.github.sceneview:arsceneview:4.63.0` | `ARPlacementDemo.kt` |
 
 ## `SceneView` parameters (most common)
 
@@ -30,7 +30,7 @@ SceneView(
     renderQuality = RenderQuality.Default,              // Cinematic / Default / Performance
     onGestureListener = rememberOnGestureListener(/* … */),
     onFrame = { frameTimeNanos -> /* … */ },
-    surfaceMirrorer = rememberSurfaceMirrorer(),        // optional: record the rendered scene to MP4 in-app (no MediaProjection). Also on ARSceneView
+    surfaceMirrorer = rememberSurfaceMirrorer(),        // optional: photo / MP4 of the rendered scene in-app — pass rememberSceneRecorder().surfaceMirrorer. Also on ARSceneView
 ) { /* SceneScope content */ }
 ```
 
@@ -106,7 +106,8 @@ iOS: coaching overlay = `ARSceneView(showCoachingOverlay: true)` (native); retic
 | `rememberCameraManipulator(orbitRadius = 2.5f)` | `CameraGestureDetector.CameraManipulator?` | Orbit/pan controller, camera `orbitRadius` m from the target; `null` to lock. `orbitHomePosition = Position(…)` for an explicit eye (no "home" gesture exists despite the name) |
 | `rememberOnGestureListener(onSingleTapConfirmed = …)` | `GestureDetector.OnGestureListener` | Wire AR taps |
 | `rememberARRecorder()` | `ARRecorder` | Record/replay AR sessions — ARCore **dataset** for deterministic replay (no args) |
-| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Record the **rendered scene** to MP4 in-app (no MediaProjection). Pass to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then `startMirroring(surface)` / `stopMirroring(surface)` |
+| `rememberSceneRecorder()` | `SceneRecorder` | **Photo** (`savePhoto()`, full-res JPEG/PNG) and **MP4** (`startRecording(settings = VideoSettings(…))` / `stopRecording()`, 1080p30, optional mic, time limit, `overlay` watermark) of the rendered scene, in-app (no MediaProjection). Pass `recorder.surfaceMirrorer` to `SceneView`/`ARSceneView` |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror the **rendered scene** to your own encoder surface (no MediaProjection). Pass to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then `startMirroring(surface)` / `stopMirroring(surface)` |
 
 ## Common 3D nodes
 

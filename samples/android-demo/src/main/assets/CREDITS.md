@@ -213,3 +213,10 @@ Not bundled: the app reads each file from the `assets-v1` GitHub Release while t
 - `big_buck_bunny_excerpt_720p.mp4` — **[Big Buck Bunny (excerpt)](https://www.bigbuckbunny.org)** by Blender Foundation (© 2008 Blender Foundation) — [CC-BY-3.0](https://creativecommons.org/licenses/by/3.0/) (3.3 MB)
   - 16 s cut from the film (1:48–2:04), resized to 1280×720, sound removed — played by `TwoDInThreeDDemo` (Media).
 
+## Downloaded on first use (kept on the device)
+
+Not bundled: the app downloads each file from the `assets-v1` GitHub Release the first time a feature needs it, checks its SHA-256, and keeps it in its own storage.
+
+- `yolox_tiny.tflite` — **[YOLOX-Tiny (COCO object detector, TFLite)](https://github.com/Megvii-BaseDetection/YOLOX/releases/tag/0.1.1rc0)** by Megvii Inc. (Megvii-BaseDetection/YOLOX) (© 2021-2022 Megvii Inc.) — [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) (10.2 MB)
+  - Converted from the release's `yolox_tiny.onnx` to float16 TFLite with onnx2tf 1.29.24 — furniture detector of the 3D Scan replay, fetched on its first use (`internal/semantic/SceneModel.kt`).
+

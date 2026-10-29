@@ -11,15 +11,28 @@ Three modes behind one mode pill, built against Apple Measure, Google Measure an
   Aim at the first point again to close the shape and read its area.
 - **Wall** — add the two ends of a wall where it meets the floor. The wall then rises with your
   aim, a translucent surface whose top follows the phone; **Set height** locks it and reads
-  width, height and area.
-- **Room** — trace the floor corner by corner (a corner within a few degrees of square snaps to
-  90°), close it on the first corner, and every wall rises together to the ceiling: floor area,
-  perimeter, ceiling height, wall area.
+  width, height and area. **Door or window** then marks an opening by two opposite corners on
+  the wall, and the readout adds what the openings take off and the net area left to cover.
+- **Room** — trace the floor corner by corner and close it on the first corner; every wall then
+  rises together to the ceiling: floor area, perimeter, ceiling height, wall area, volume. A
+  corner within 3° of square snaps to 90°, within 6° when ARCore tracks the next wall: a
+  vertical plane standing on the floor (its bottom within 30 cm), at least 1.5 m tall and 1.2 m
+  long, within 3° of square to the last wall, its foot within 20 cm of the corner. An open door
+  (a 0.93 m leaf included, even with ARCore's plane a few centimetres past each end), a
+  cupboard's side or a wall cupboard does not count: a wrong confirmation would square a corner
+  up to 6° off without a word, where a missed one only falls back to 3°. After a short wall (1 m or less) the few
+  centimetres of noise on its corners eat that 3° margin, so the corner often stays at 3°.
+  **Door or window** marks openings on any of its walls the same way, two opposite corners on
+  one wall, and the readout adds the openings and the net wall area; the floor area and the
+  volume do not change. **Plan** opens the room as 3D Scan's dimensioned plan, with its PDF and
+  text shares; with openings marked, a card under the plan names each one by the plan's wall
+  letter and reads the net wall area.
 
 **Add point** commits the displayed candidate without a second raycast; tapping the camera never
-adds a point. Undo steps back one action at a time (a locked height, then the raised walls, then
-the closure, then a point). Share sends every figure as plain text. Units follow the locale
-(imperial in the US, Liberia, Myanmar) and can be switched in Settings.
+adds a point. Undo steps back one action at a time (an opening's first corner, the last opening,
+a locked height, then the raised walls, then the closure, then a point). Share sends every figure
+as plain text. Units follow the language, as the room plan's do: feet and inches in US English,
+metres everywhere else. Settings switches them for the screen and its plan alike.
 
 In Wall and Room every point after the first is the camera ray's hit on the **floor plane of the
 first point**, not the raw hit test: aimed at the foot of a wall, the hit test lands on the wall a
@@ -119,12 +132,13 @@ Each center-target candidate is resolved in a fixed preference order, which is a
    not grown a plane over.
 3. **The depth image directly**, via SceneView's `Frame.hitTestDepth(x, y)`. This is what
    makes a *cluttered* space measurable rather than just its flat floor: a sofa, a slope, the
-   lip of a workbench, where no plane will ever appear. Toggleable in the settings sheet, and
-   disabled automatically on devices that report no depth support.
+   lip of a workbench, where no plane will ever appear. Used whenever the device supports
+   ARCore depth and skipped on the others; no setting turns it off.
 4. **A raw feature point**, last resort and the noisiest of the four.
 
-The demo names the source of each point on screen ("Point 3 on depth map"), because a
-measuring tool that hides how it got its number is a measuring tool you cannot calibrate.
+Each aim keeps its source (`MeasureHitSource`), but the screen does not show it: the chip under the
+reticle names what the aim snapped to (point, corner, edge, vertical, level, square corner, wall
+foot, close) or why a tap would do nothing.
 
 ### Anchors, not positions
 
@@ -143,7 +157,8 @@ The arithmetic behind every displayed number is pure Kotlin with no ARCore or Fi
 [`MeasureBoard.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureBoard.kt) (the tap and
 undo flow), [`MeasureUnits.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureUnits.kt) and
 [`MeasureReport.kt`](src/main/java/io/github/sceneview/demo/demos/internal/MeasureReport.kt) (share text),
-covered by `MeasureMathTest` and `MeasureGeometryTest`:
+covered by `MeasureMathTest` and `MeasureGeometryTest`; doors and windows, on a wall and on a
+room's walls, by `MeasureOpeningsTest` and `MeasureRoomOpeningsTest`:
 
 ```bash
 ./gradlew :samples:android-demo:testDebugUnitTest --tests '*MeasureMathTest*' --tests '*MeasureGeometryTest*'

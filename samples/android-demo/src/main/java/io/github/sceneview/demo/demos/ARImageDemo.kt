@@ -45,6 +45,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.common.QaCameraBackdrop
 import io.github.sceneview.demo.common.qaCameraBackdropEnabled
 import io.github.sceneview.demo.common.qaCameraBackdropSurfaceType
@@ -319,6 +320,7 @@ fun ARImageDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (qaBackdrop) QaCameraBackdrop(seed = "ar-image")
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,

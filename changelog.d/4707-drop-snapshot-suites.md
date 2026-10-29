@@ -1,4 +1,0 @@
-<!-- category: Changed -->
-- **CI drops the test suites that cost time without catching bugs.** The Roborazzi snapshot tests of the demo app are removed: in 30 days they caused 37 of 63 failed "Unit tests" jobs, 36 of them fixed by re-recording and one real catch. Their real assertions now run as plain JVM tests. The three emulator screenshot jobs of `render-tests.yml` (demo screenshots, demo render goldens on swangle, AR playback screenshots) are removed too: zero catches, red on 13 of 24 nightlies.
-- **Detekt keeps only its bug-finding rules.** The formatting, naming and size/complexity rules are off. They caused about 40 red branches and no real catch.
-- **The changelog lint checks only the fragments a PR adds or modifies.** A malformed fragment already on `main` no longer turns unrelated PRs red.

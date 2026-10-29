@@ -805,7 +805,12 @@ class ScanObjects private constructor(
         private const val FLOOR_SKIN_M = 0.05f
         private const val FLAT_NORMAL_Y = 0.85f
 
-        /** A ceiling is at least this far above the floor; lower is the underside of a table. */
+        /**
+         * Down-facing surfels this far above the floor or more are marked as ceiling, so that they
+         * are not taken for an object; lower is the underside of a table. It sets nothing of the
+         * room: the room's height, and the ceiling the live walls look for, start at the survey's
+         * [RoomSurveyor.MIN_CEILING_M] (2 m). Lower here, a low ceiling is still kept out of objects.
+         */
         private const val MIN_CEILING_M = 1.8f
         private const val MIN_CEILING_SURFELS = 200
 

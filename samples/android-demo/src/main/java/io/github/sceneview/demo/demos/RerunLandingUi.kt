@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -394,7 +395,10 @@ private fun SessionCard(
 ) {
     val info = session.info
     val origin = remember(info) { sessionOrigin(info) }
-    val figures = remember(info) { ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration) }
+    val locale = LocalLocale.current.platformLocale
+    val figures = remember(info, locale) {
+        ScanCopy.figures(info.pathMetres, info.points, info.photos, info.duration, locale)
+    }
     var menu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier

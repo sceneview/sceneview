@@ -16,8 +16,8 @@ A quick reference for SceneView's most-used APIs. Print it, pin it, keep it next
 
 ```kotlin
 // build.gradle
-implementation("io.github.sceneview:sceneview:4.60.0")     // 3D
-implementation("io.github.sceneview:arsceneview:4.60.0")    // AR + 3D
+implementation("io.github.sceneview:sceneview:4.63.0")     // 3D
+implementation("io.github.sceneview:arsceneview:4.63.0")    // AR + 3D
 ```
 
 ---
@@ -174,6 +174,12 @@ wall shadows, and never substitutes a synthetic pool for renderer shading.
 
 ## ARSceneView (low-level / manual placement)
 
+Camera-image ML pipelines place a result by casting a world ray, not through the screen:
+capture `camera.pose` and `camera.imageIntrinsics` with the CPU image, map the detector's
+output pixel back to the unrotated image with
+`DetectorImageMapping(imageSize, rotationDegrees).detectorPixelToImagePixel(x, y)`, then
+`frame.hitTest(origin, 0, direction, 0)` on a later frame.
+
 ```kotlin
 ARSceneView(
     modifier = Modifier.fillMaxSize(),
@@ -210,6 +216,21 @@ ARSceneView(
 }
 ```
 
+### Session lifecycle
+
+`ARSceneView` follows `LocalLifecycleOwner` by default. Inside a `NavHost` that is the
+destination, which stops the camera as soon as the exit transition starts: the last camera image
+stays frozen on screen while the screen animates out. Opt in to the host activity's lifecycle
+for an AR destination with transitions:
+
+```kotlin
+ARSceneView(lifecycle = rememberHostLifecycle())   // camera live through enter/exit transitions
+```
+
+Keep the default where the AR screen stays composed but hidden (a `ViewPager2` page, a screen
+under a full-screen `dialog()`): with the host lifecycle the camera would stay on there. Two
+`ARSceneView`s resumed at once share the single camera: the last one to resume runs.
+
 ### Recording / playback
 
 ```kotlin
@@ -225,23 +246,26 @@ ARSceneView(
 
 **Two different "recordings" — pick by what you capture:**
 
-- **`SurfaceMirrorer`** (`sceneview` **and** `arsceneview`) — records **the rendered scene to an
-  MP4**: exactly what Filament draws (in AR, camera feed + virtual content composited), no Compose
-  UI. In-app, no MediaProjection consent dialog / foreground service. Share-ready video.
+- **`SceneRecorder`** (`sceneview`, works on `ARSceneView` too) — a **photo or MP4 of the rendered
+  scene**: exactly what Filament draws (in AR, camera feed + virtual content composited), no Compose
+  UI. In-app, no MediaProjection consent dialog / foreground service. Share-ready.
 - **`ARRecorder`** (above, `arsceneview` only) — records an **ARCore session dataset** (raw sensor
   streams) for deterministic **replay** through `playbackDataset` — a debugging tool, not a video.
 
 ```kotlin
-val surfaceMirrorer = rememberSurfaceMirrorer()
-SceneView(surfaceMirrorer = surfaceMirrorer) { /* DSL */ }   // or ARSceneView(surfaceMirrorer = …)
+val recorder = rememberSceneRecorder()                  // io.github.sceneview.capture
+ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer) { /* DSL */ }   // or SceneView(…)
 
-// Point a MediaRecorder (SURFACE video source) at the scene; frame is letterboxed to fit.
-surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)  // any thread, JNI-free
-recorder.start()
-// …record…
-surfaceMirrorer.stopMirroring(recorder.surface)                              // main thread only
-recorder.stop(); recorder.release()
+scope.launch { recorder.savePhoto() }                   // full-res PixelCopy → JPEG (or PNG), File?
+recorder.startRecording(                                 // H.264 MP4, 1080p30 by default, main thread
+    settings = VideoSettings(recordAudio = true, maxDurationMillis = 30_000),  // mic needs RECORD_AUDIO
+)
+recorder.stopRecording()                                 // SceneRecording? (file, size, duration)
+recorder.overlay = CaptureOverlay { canvas, width, height -> /* watermark, photo + video (API 29+) */ }
 ```
+
+Lower level: `rememberSurfaceMirrorer()` + `startMirroring(surface, width, height)` /
+`stopMirroring(surface)` (main thread) mirrors the frames to your own encoder surface.
 
 ### Camera exposure override
 
@@ -370,6 +394,23 @@ materialLoader.createColorInstance(Color.Red)
 Authoring your own model? See the [Blender pipeline recipe](recipes/blender-pipeline.md):
 export `.glb` from Blender for Android (native), or convert `.glb` → `.usdz` via Reality
 Converter + Reality Composer Pro for Apple platforms.
+
+### Thumbnails (off screen, no view)
+
+```kotlin
+// @OptIn(ExperimentalSceneViewApi::class)
+val snapshot = rememberModelSnapshot(engine)                  // one per screen: queue + cache
+val thumb: ModelThumbnailState = rememberModelThumbnail(snapshot, "models/file.glb", size = 96.dp)
+thumb.bitmapOrNull()?.let { Image(it, contentDescription = null) }   // Loading / Ready / Failed
+
+val bitmap: Bitmap? = snapshot.snapshot("models/file.glb", width = 512)   // suspend
+snapshot.snapshot("models/file.glb", 512, options = ModelSnapshotOptions(yawDegrees = 210f))
+```
+
+Framed whole on its bounding box, three-quarter view from slightly above, transparent
+background. Requests render one model at a time; each costs the main thread a model load
+(texture upload included), so a grid drops frames while it fills. Results are cached;
+failures (unloadable, empty box, `KHR_mesh_quantization`, nothing drawn) are `Failed(reason)`.
 
 ---
 

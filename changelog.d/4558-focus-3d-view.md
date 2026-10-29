@@ -1,2 +1,0 @@
-<!-- category: Added -->
-- **Demo app: full screen now re-frames the 3D view ([#4558](https://github.com/sceneview/sceneview/issues/4558)).** In the 3D Scan replay and the Model Viewer, the full-screen button now moves the subject into the whole screen as the chrome fades. The move is eased over 600 ms with the new `motion-focus` token. The exit button or system Back moves it back to the exact framing it had before. Before this change, the subject stayed small, framed for chrome that was no longer there. Orbit and pinch keep working in both states and during the move.

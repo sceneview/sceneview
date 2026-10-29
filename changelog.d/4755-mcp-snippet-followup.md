@@ -1,3 +1,0 @@
-<!-- category: Docs -->
-- AR tap-to-place snippets in the MCP samples and guides and in the docs (FAQ, use cases, AR funnel recipe) now place on a confirmed single tap on empty space (`rememberOnGestureListener(onSingleTapConfirmed = { event, node -> if (node == null) … })`) with an in-polygon ARCore `Plane` hit and their imports, instead of on every `ACTION_UP` in `onTouchEvent`, so the end of a drag or a pinch no longer moves the placed model.
-- The `CloudAnchorNode` hosting example shows what goes inside `ARSceneView { }`, tells the user to move around while feature-map quality is `INSUFFICIENT`, and drops the redundant future cancellation (`host()` and the node's disposal already cancel).

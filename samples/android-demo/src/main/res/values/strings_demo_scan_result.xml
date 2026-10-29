@@ -26,9 +26,6 @@
     <!-- The result's ground legend (#4719, #4734): the live map's and the replay's own figure -->
     <string name="scan_coverage_floor">%1$s of floor covered</string>
     <string name="scan_coverage_label">Scan map: %1$s of floor covered. The hatched part is still to scan.</string>
-    <!-- The same legend for a kept model whose recording cannot be read: no figure, the key alone -->
-    <string name="scan_coverage_hatched">Hatched: still to scan</string>
-    <string name="scan_coverage_label_hatched">Scan map: the hatched part is still to scan.</string>
     <!-- Map to complete, the live map opened (#4718) -->
     <string name="scan_coverage_title">Map to complete</string>
     <string name="scan_coverage_covered">Covered · %1$s</string>
@@ -37,6 +34,10 @@
     <string name="scan_coverage_hint">Walk to the hatched areas to fill them in.</string>
     <string name="scan_coverage_expand">Open the map</string>
     <string name="scan_coverage_collapse">Close the map</string>
+    <!-- The live 3D map of a room's scan, sharing the screen with the camera -->
+    <string name="scan_live_map_area">%1$s covered · hatched: still to scan</string>
+    <string name="scan_live_map_swap_camera">Make the camera bigger</string>
+    <string name="scan_live_map_swap_map">Make the map bigger</string>
     <string name="scan_result_replay">Replay</string>
     <string name="scan_result_replay_label">Replay the recording</string>
     <string name="scan_result_export">Export</string>
@@ -62,4 +63,25 @@
     <string name="scan_export_retry">Try again</string>
     <string name="scan_export_saved">File saved</string>
     <string name="scan_export_privacy">Everything stays on your phone until you save or share it.</string>
+
+    <!-- Parts to scan again (#4736): the result's list of what the scan missed. -->
+    <plurals name="scan_rescan_count">
+        <item quantity="one">%d part to scan again</item>
+        <item quantity="other">%d parts to scan again</item>
+    </plurals>
+    <string name="scan_rescan_title">Parts to scan again</string>
+    <string name="scan_rescan_missing_wall">Missing wall</string>
+    <string name="scan_rescan_floor_hole">Hole in the floor</string>
+    <string name="scan_rescan_low_density">Sparse area</string>
+    <string name="scan_rescan_action">Re-scan this part</string>
+    <string name="scan_rescan_unavailable">Each part is framed in amber on the model and the plan. Scanning one part on its own is not available yet: scan the room again to fill them in.</string>
+    <string name="scan_rescan_close">Close</string>
+    <!-- Re-scanning one part (#4736): the live guide, and the copy of the scan it completes. -->
+    <string name="scan_rescan_how">Each part is framed in amber on the model. Scan one again and it is added to a copy of this scan; this one stays as it is.</string>
+    <string name="scan_rescan_lining_up">Point at a part you scanned before so this lines up.</string>
+    <string name="scan_rescan_fill">Fill the amber frame: %1$d%%</string>
+    <string name="scan_rescan_covered">This part is covered. Save to add it to your scan.</string>
+    <string name="scan_rescan_refused">Couldn\'t line up this part with your scan.</string>
+    <string name="scan_rescan_merged_title">%1$s, completed</string>
+    <string name="scan_rescan_part_title">%1$s · part</string>
 </resources>

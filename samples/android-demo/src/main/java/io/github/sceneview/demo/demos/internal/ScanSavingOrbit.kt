@@ -4,8 +4,9 @@ import io.github.sceneview.math.Position
 
 /**
  * The saving orbit of one save (#4719): started on its first frame from the phone's eye of the
- * moment — the last one ARCore gave the live view ([ScanLens]), else the follow pose — round the
- * cloud's centre and reach read once, since the cloud no longer grows while saving.
+ * moment — the last one ARCore gave the live view ([ScanLens]), else the follow pose — and flown
+ * along a [ScanSavingPath] planned once round the cloud, which no longer grows while saving: up
+ * out of the room through its top, its ceiling cut off ([ScanOpenTop]), then round it from above (#4742).
  *
  * Seeded on the eye, the orbit's first pose stands where the phone stood, looking where it looked
  * ([ScanFollow.eyePose]), and the camera is put on it at once: the view leaves the camera image
@@ -13,25 +14,38 @@ import io.github.sceneview.math.Position
  * phone sets out from where it is instead. [nanoTime] is the clock, a fake one in tests.
  */
 class ScanSavingOrbit(private val nanoTime: () -> Long = System::nanoTime) {
-    private var from: OrbitPose? = null
+    private var path: ScanSavingPath? = null
     private var started = 0L
-    private var centre: Position? = null
-    private var radius = 0f
 
     /** The pose the orbit set out from, once it has: the eye it was seeded with. */
-    val start: OrbitPose? get() = from
+    val start: OrbitPose? get() = path?.from
 
-    fun poseFor(phone: OrbitPose?, points: FloatArray, orbit: ArDebugOrbitCamera): OrbitPose? {
-        val around = centre ?: (ScanFollow.cloudCentre(points) ?: return phone).also {
-            centre = it
-            radius = ScanFollow.cloudRadius(points, it)
+    /** The flight planned on the first frame ([ScanSavingPath]): up out of the room, then round it. */
+    val flight: ScanSavingPath? get() = path
+
+    /**
+     * The pose for this frame. Until [ready] — the room's lid still drawn, its cut on its way
+     * ([ScanOpenTop]) — the view holds on the eye it set out from: rising, it would go through
+     * the ceiling. The flight starts once it is.
+     */
+    fun poseFor(phone: OrbitPose?, points: FloatArray, orbit: ArDebugOrbitCamera, ready: Boolean = true): OrbitPose? {
+        val flight = path ?: run {
+            // The room's lid is not drawn while it saves, nor flown round ([ScanOpenTop]).
+            val points = ScanOpenTop.positions(points)
+            val centre = ScanFollow.cloudCentre(points) ?: return phone
+            ScanSavingPath(
+                from = seed(phone, centre, orbit),
+                points = points,
+                centre = centre,
+                radius = ScanFollow.cloudRadius(points, centre),
+                verticalFovDegrees = orbit.verticalFovDegrees,
+            ).also {
+                path = it
+                started = nanoTime()
+            }
         }
-        val start = from ?: seed(phone, around, orbit).also {
-            from = it
-            started = nanoTime()
-        }
-        val seconds = (nanoTime() - started) / NS_PER_S
-        return ScanFollow.savingPose(start, around, radius, seconds, orbit.verticalFovDegrees)
+        if (!ready) started = nanoTime()
+        return flight.poseAt((nanoTime() - started) / NS_PER_S)
     }
 
     /** The eye, the camera put on it at once, while the view still is the phone's; else as is. */

@@ -12,7 +12,7 @@ fragmentKtx = "1.9.1"
 
 # Compose
 composeBom = "2026.09.00"
-composeMaterial3Expressive = "1.5.0-beta01"
+composeMaterial3Expressive = "1.5.0-beta02"
 activityCompose = "1.13.0"
 navigationCompose = "2.10.2"
 lifecycleRuntimeCompose = "2.10.0"
@@ -84,10 +84,10 @@ filamentWeb = "1.52.3"
 filamentWebsite = "1.72.1"
 # Desktop Filament via filament-kmp on Maven. Independent of the three Filament
 # runtime pins above — this artifact vendors its own native Filament and its own
-# built-in materials (0.7.3 ships Filament 1.77.3, MATERIAL_VERSION 77, same as 0.6.0).
+# built-in materials (0.8.0 ships Filament 1.78.0, MATERIAL_VERSION 78; 0.7.3 was 1.77.3 / 77).
 # Used only by sceneview-compose desktopMain, which loads no SceneView .filamat: a bump
 # that changes MATERIAL_VERSION needs no blob here, only a desktop-demo run.
-filamentKmp = "0.7.3"
+filamentKmp = "0.8.0"
 arCore = "1.57.0"
 
 # Networking
@@ -105,6 +105,7 @@ tvMaterial = "1.1.0"
 
 # Play Services
 playAppUpdate = "2.1.0"
+playBilling = "8.3.0"
 playServicesLocation = "21.4.0"
 # Firebase — samples/android-demo ONLY (analytics, crash reports, push). The SDK modules
 # ship no telemetry (docs/docs/recipes/measure-ar-funnel.md); never add these to a library.
@@ -132,13 +133,18 @@ mlkitGenaiPrompt = "1.0.0-beta4"
 # fallback for any remaining transitive 4 KB .so not covered by this bump.
 mediapipeTasksVision = "0.10.26"
 # LiteRT (ex-TensorFlow Lite) — runtime of the optional `arsceneview-depth-ml` module
-# (monocular depth, Depth Anything V2 Small). Never a dependency of `arsceneview` itself.
+# (monocular depth, Depth Anything V2 Small), and of the demo's 3D Scan furniture detector
+# (YOLOX-Tiny, `.tflite`). Never a dependency of `arsceneview` itself.
 # 2.3.0 ships three AARs with distinct namespaces — `litert` (…litert.impl, libLiteRt.so),
 # `litert-api` (…litert, JNI, pulled in transitively) and `litert-gpu` (…litert.gpu, the
 # OpenCL/OpenGL accelerator that 2.1.5 bundled). 2.2.x gave `litert` and `litert-api` the same
 # namespace, which failed AGP 9's app manifest merge; `:samples:android-demo:processDebugMainManifest`
 # is the proof for any bump. `litert-gpu` must stay declared or `Backend.Gpu` loses its accelerator.
 litert = "2.3.0"
+# ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
+# demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
+# scans. Not in any app: the Android artifact started a telemetry provider at every launch.
+onnxruntime = "1.31.0"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
@@ -253,6 +259,7 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 # Play Services
 play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
+play-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "playBilling" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
@@ -276,6 +283,7 @@ mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", versio
 mediapipe-tasks-vision = { group = "com.google.mediapipe", name = "tasks-vision", version.ref = "mediapipeTasksVision" }
 litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
 litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert" }
+onnxruntime-jvm = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntime" }
 
 # Testing
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }

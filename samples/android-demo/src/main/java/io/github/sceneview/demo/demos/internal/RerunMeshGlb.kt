@@ -34,7 +34,7 @@ object RerunMeshGlb {
         progress: (Float) -> Unit = {},
     ): ByteArray {
         require(mesh.triangleCount > 0) { "a GLB mesh must contain triangles" }
-        val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles, progress)
+        val reduced = if (fullResolution) mesh else RerunMeshSimplifier.simplify(mesh, targetTriangles, progress = progress)
         require(reduced.triangleCount > 0) { "simplification must retain a surface" }
         onReduced(reduced.triangleCount)
         val exported = if (floorOrigin) {
@@ -54,8 +54,7 @@ object RerunMeshGlb {
      */
     private fun encode(mesh: RerunMesh, generator: String): ByteArray {
         val n = mesh.vertexCount
-        // 65535 is the reserved primitive-restart value and is forbidden in glTF indices.
-        val shortIndices = n <= 65535
+        val shortIndices = n <= MAX_SHORT_VERTICES
         val positionBytes = n * 12
         val normalBytes = n * 12
         val colorBytes = n * 4
@@ -142,7 +141,7 @@ object RerunMeshGlb {
         }
 
     /** The container around [json] and a binary chunk of [binBytes] that [writeBin] puts in place. */
-    private fun glb(json: ByteArray, binBytes: Int, writeBin: ByteBuffer.() -> Unit): ByteArray {
+    internal fun glb(json: ByteArray, binBytes: Int, writeBin: ByteBuffer.() -> Unit): ByteArray {
         val jsonPadded = pad(json.size)
         val binPadded = pad(binBytes)
         val total = HEADER + CHUNK_HEADER + jsonPadded + CHUNK_HEADER + binPadded
@@ -160,8 +159,11 @@ object RerunMeshGlb {
 
     private fun pad(size: Int) = (size + 3) and 3.inv()
 
+    /** 65535 is the reserved primitive-restart value and is forbidden in glTF indices. */
+    private const val MAX_SHORT_VERTICES = 65535
+
     /** sRGB byte → linear byte, glTF's colour space for `COLOR_0`. */
-    private val LINEAR = ByteArray(256) { i ->
+    internal val LINEAR = ByteArray(256) { i ->
         val c = i / 255.0
         val linear = if (c <= SRGB_KNEE) {
             c / SRGB_LINEAR_SLOPE

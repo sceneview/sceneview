@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **Reference docs and MCP snippets match the current API ([#4755](https://github.com/sceneview/sceneview/pull/4755)).** Nine invented signatures in `docs/docs/nodes.md` and the non-compiling Kotlin served by the MCP guides, samples and migration hints now follow the real declarations (AR tap-to-place via `frame.hitTest(...).createAnchorOrNull()`, `SecondaryCamera`, `MeshNode` buffers, required `LightNode` type, no `postProcessing` parameter).

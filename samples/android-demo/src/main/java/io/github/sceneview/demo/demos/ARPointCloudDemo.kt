@@ -47,6 +47,7 @@ import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.R
@@ -266,6 +267,7 @@ fun ARPointCloudDemo(onBack: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize().onSizeChanged { viewHeightPx = it.height }) {
             if (qaBackdrop) QaCameraBackdrop(seed = "point-cloud")
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),

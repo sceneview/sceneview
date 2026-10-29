@@ -127,6 +127,130 @@ final class RerunTraceTests: XCTestCase {
         XCTAssertEqual(playback.cursor, 0)
     }
 
+    // MARK: Camera while paused
+
+    func testCameraPauseRuleForButtonScrubEndAndBackground() {
+        var playback = RerunPlayback(duration: 1)
+        XCTAssertFalse(playback.cameraAdvances)
+        playback.playFromStart()
+        XCTAssertTrue(playback.cameraAdvances)
+        playback.togglePlay() // Button
+        XCTAssertFalse(playback.cameraAdvances)
+        playback.togglePlay()
+        playback.scrub(to: 0.5)
+        XCTAssertFalse(playback.cameraAdvances)
+        playback.playFromStart()
+        playback.pause() // App inactive/background
+        XCTAssertFalse(playback.cameraAdvances)
+        playback.playFromStart()
+        for _ in 0..<4 { playback.tick(0.25) }
+        XCTAssertEqual(playback.cursor, playback.duration)
+        XCTAssertTrue(playback.cameraAdvances, "The looping end hold is not a pause")
+        var held: Float = 0
+        while playback.cursor == playback.duration {
+            XCTAssertTrue(playback.cameraAdvances, "The camera keeps moving through the whole hold")
+            playback.tick(0.25)
+            held += 0.25
+        }
+        XCTAssertEqual(held, RerunPlayback.loopHold)
+        XCTAssertEqual(playback.cursor, 0)
+        XCTAssertTrue(playback.cameraAdvances)
+        for _ in 0..<4 { playback.tick(0.25) }
+        playback.loops = false
+        playback.tick(0.1)
+        XCTAssertFalse(playback.playing)
+        XCTAssertFalse(playback.cameraAdvances)
+    }
+
+    func testPausedOrbitHoldsForFiveSecondsButAllowsGesturesAndResumesContinuously() {
+        var orbit = RerunOrbitController()
+        orbit.playIntro(from: RerunIntro.start(for: orbit.home))
+        orbit.update(delta: 0.05)
+        let paused = orbit.pose
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose, paused)
+        orbit.update(delta: 0.05)
+        XCTAssertEqual(orbit.pose, RerunIntro.pose(from: RerunIntro.start(for: orbit.home),
+                                                to: orbit.home, progress: 0.1 / RerunIntro.duration))
+        orbit.dragBegan()
+        orbit.dragged(dx: 10, dy: 0)
+        orbit.dragEnded()
+        let dragged = orbit.pose
+        XCTAssertNotEqual(dragged, paused)
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose, dragged)
+        orbit.update(delta: 0.05)
+        XCTAssertEqual(orbit.pose, dragged, "Resuming must not resurrect gesture inertia")
+        orbit.pinched(magnification: 2)
+        XCTAssertLessThan(orbit.pose.distance, dragged.distance)
+    }
+
+    func testPausedOrbitNeverDriftsButStillReframes() {
+        var orbit = RerunOrbitController()
+        XCTAssertTrue(orbit.drift)
+        for _ in 0..<40 { orbit.update(delta: 0.05) }
+        XCTAssertNotEqual(orbit.pose.azimuth, RerunFraming.homeAzimuth, "The turntable drifts while playing")
+
+        // Pause: still from the first frame, with no glide after the drift.
+        let held = orbit.pose
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose, held)
+
+        // A rotation or a layer toggle moves home: the paused camera eases there.
+        var wider = orbit.home
+        wider.distance *= 2
+        wider.target.x += 1
+        orbit.home = wider
+        orbit.update(delta: 0.05, advancing: false)
+        XCTAssertGreaterThan(orbit.pose.distance, held.distance)
+        XCTAssertLessThan(orbit.pose.distance, wider.distance)
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose, orbit.home)
+        XCTAssertEqual(orbit.pose.distance, wider.distance)
+        XCTAssertEqual(orbit.pose.azimuth, held.azimuth, "Reframing while paused does not turn the room")
+
+        // A drag, then the double tap: back on the framing, from the angle the finger left.
+        orbit.dragBegan()
+        orbit.dragged(dx: 40, dy: 60)
+        orbit.dragEnded()
+        orbit.update(delta: 0.05, advancing: false)
+        let dragged = orbit.pose
+        XCTAssertNotEqual(dragged.elevation, wider.elevation)
+        orbit.recenter()
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose.elevation, wider.elevation)
+        XCTAssertEqual(orbit.pose.azimuth, dragged.azimuth)
+
+        // The map view, asked for while paused.
+        orbit.overhead = true
+        orbit.home.elevation = orbit.homeElevation
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose.elevation, RerunFraming.mapElevation)
+        orbit.overhead = false
+        orbit.home.elevation = orbit.homeElevation
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose.elevation, RerunFraming.homeElevation)
+
+        // Resuming ramps the drift back in instead of lurching.
+        let resumed = orbit.pose
+        orbit.update(delta: 0.05)
+        let turned = abs(RerunOrbitPose.shortestDelta(resumed.azimuth, orbit.pose.azimuth))
+        XCTAssertLessThan(turned, RerunOrbitController.driftDegreesPerSecond * 0.05)
+        for _ in 0..<60 { orbit.update(delta: 0.05) }
+        XCTAssertNotEqual(orbit.pose.azimuth, resumed.azimuth)
+    }
+
+    func testRecenterEndsTheEntranceEvenWhilePaused() {
+        var orbit = RerunOrbitController()
+        orbit.playIntro(from: RerunIntro.start(for: orbit.home))
+        orbit.update(delta: 0.05)
+        XCTAssertTrue(orbit.introPlaying)
+        orbit.recenter()
+        XCTAssertFalse(orbit.introPlaying)
+        for _ in 0..<100 { orbit.update(delta: 0.05, advancing: false) }
+        XCTAssertEqual(orbit.pose, orbit.home)
+    }
+
     // MARK: Wording
 
     func testFormat() {

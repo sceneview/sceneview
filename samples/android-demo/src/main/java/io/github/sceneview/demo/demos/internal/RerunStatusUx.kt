@@ -27,14 +27,19 @@ data class RerunStatusUx(
     val live: Boolean,
 )
 
-fun rerunStatusUx(isConnected: Boolean, eventsSent: Long, eventsPerSecond: Float): RerunStatusUx =
+fun rerunStatusUx(
+    isConnected: Boolean,
+    eventsSent: Long,
+    eventsPerSecond: Float,
+    locale: Locale = Locale.getDefault(),
+): RerunStatusUx =
     if (isConnected) {
         val rate = eventsPerSecond.takeIf { it.isFinite() && it > 0f }?.let {
-            " · ${String.format(Locale.US, "%.0f", it)} per second"
+            " · ${String.format(locale, "%.0f", it)} per second"
         }.orEmpty()
         RerunStatusUx(
             title = "Streaming to your computer",
-            detail = "${String.format(Locale.US, "%,d", eventsSent)} " +
+            detail = "${String.format(locale, "%,d", eventsSent)} " +
                 (if (eventsSent == 1L) "event" else "events") + " sent$rate",
             live = true,
         )

@@ -196,7 +196,24 @@
     <string name="about_support_title">Support SceneView</string>
     <string name="about_support_description">An independent open-source project. Your support pays for the time that keeps it maintained.</string>
     <string name="about_support_open_collective">Donate on Open Collective</string>
-    <string name="about_support_github_sponsors">GitHub Sponsors</string>
+    <string name="about_support_in_app">Give via Google Play</string>
+    <!-- Support SceneView sheet (About entry + moderated interstitial, support/SupportSheet.kt) -->
+    <string name="support_sheet_title">Support SceneView</string>
+    <string name="support_sheet_body">SceneView is free and open source, built and maintained by volunteers. It keeps going thanks to the people who use it.</string>
+    <string name="support_sheet_note">One-time payment through Google Play. Nothing to unlock: everything stays free.</string>
+    <string name="support_tier_small">Thanks</string>
+    <string name="support_tier_medium">Big thanks</string>
+    <string name="support_tier_large">Huge thanks</string>
+    <string name="support_prompt_not_now">Not now</string>
+    <string name="support_prompt_never">Don\'t ask again</string>
+    <string name="support_unavailable">Giving through Google Play isn\'t available right now.</string>
+    <string name="support_failed">Google Play couldn\'t complete the payment. Please try again.</string>
+    <string name="support_thanks_title">Thank you!</string>
+    <string name="support_thanks_toast">Thank you for supporting SceneView!</string>
+    <string name="support_thanks_body">Your contribution keeps SceneView free and open source for everyone who builds with it.</string>
+    <string name="support_pending_title">Almost there</string>
+    <string name="support_pending_body">Google Play is still confirming your payment. Thank you for supporting SceneView.</string>
+    <string name="support_done">Done</string>
     <string name="about_group_more_apps">More apps built with SceneView</string>
     <string name="about_app_ar_model_viewer_name">3D AR Model Viewer</string>
     <string name="about_app_ar_model_viewer_description">Open any 3D file and see it at real size in your room.</string>
@@ -269,6 +286,7 @@
     <string name="demo_loading_generic">Loading…</string>
     <string name="demo_settings_title">Settings</string>
     <string name="demo_settings_fab_cd">Demo settings</string>
+    <string name="demo_more_options_cd">More options</string>
     <!-- #4558: the identity row's last button gives the 3D view the whole screen. -->
     <string name="demo_full_screen_cd">Full screen</string>
     <string name="demo_full_screen_exit_cd">Exit full screen</string>

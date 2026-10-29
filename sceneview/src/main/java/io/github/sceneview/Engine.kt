@@ -21,6 +21,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.VertexBuffer
 import com.google.android.filament.View
 import com.google.android.filament.gltfio.AssetLoader
+import com.google.android.filament.gltfio.isReleased
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.EnvironmentLoader
@@ -95,7 +96,8 @@ internal const val BACKEND_IDLE_POLL_MS = 16L
  * shader compilation, and the join blocks the main thread for as long as that takes — an ANR on
  * an emulator (#3799). Instead the engine is destroyed through [whenBackendIdle], on the calling
  * thread (Filament requires it). When the backend is already idle — the usual case — the destroy
- * happens before this function returns, exactly as [safeDestroy] would.
+ * happens one poll later, once a fence has made the round trip to the backend, exactly as
+ * [safeDestroy] would.
  *
  * @param onDestroyed runs right after the engine is destroyed — release whatever must outlive
  * it (its shared EGL context, say) here.
@@ -120,9 +122,20 @@ internal fun Engine.destroyWhenBackendIdle(onDestroyed: () -> Unit = {}) {
  * "all pending commands" to execute (`Fence::waitAndDestroy(engine.createFence())`, Filament
  * v1.72.1 `Renderer.cpp`). A scene disposed while its shader programs are still being linked — an
  * activity destroyed right after a demo opened — parks the main thread on that whole backlog, an
- * ANR on an emulator (#3799). Deferred until the backend is idle, that inner wait has nothing left
- * to drain. When the backend is already idle — the usual case — the renderer is destroyed before
- * this function returns, exactly as [safeDestroyRenderer] would.
+ * ANR on an emulator (#3799). The inner wait covers what is queued when the destroy *runs*, not
+ * when it was deferred: on a shared engine, the next screen's shader compilations queued in
+ * between. So the destroy waits, through [whenBackendIdle]'s [FreshFenceProbe], until the backend
+ * has recently caught up with its queue. That inner wait then only finds what the main thread
+ * queued in the last 48 ms — main-thread time, not backend work: usually a frame or two, but a
+ * shader compilation queued in that window is still waited for. This narrows the blocking case
+ * without ruling it out.
+ * When the backend is already idle — the usual case — the renderer is destroyed one poll later,
+ * once that fence has made the round trip to the backend, exactly as [safeDestroyRenderer] would.
+ * A main thread polling less often than every 48 ms never finds a fence fresh: the destroy then
+ * waits for the 5 s fallback ([FRESH_FENCE_GIVE_UP_MS]).
+ *
+ * `FRenderer::terminate` then joins the frame-info job thread, parked in a GPU fence wait unless
+ * the engine was built without the GPU frame-complete metric — see [createEngine].
  */
 internal fun Engine.destroyRendererWhenBackendIdle(renderer: Renderer) {
     val startedAt = SystemClock.uptimeMillis()
@@ -144,15 +157,21 @@ internal fun logDeferredTeardown(what: String, startedAt: Long) = Log.i(
 private val backendIdleTeardowns = WeakHashMap<Engine, BackendIdleTeardowns>()
 
 /**
- * Runs [onIdle] on the calling thread once this engine's backend has executed everything already
- * queued, polling a fence from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS] instead
- * of waiting on it (#3799). See [BackendIdleTeardowns] for the contract.
+ * Runs [onIdle] on the calling thread once this engine's backend has caught up with everything
+ * queued on it, polling fences from the calling thread's [Looper] every [BACKEND_IDLE_POLL_MS]
+ * instead of waiting on them (#3799). "Caught up" means a fence was found reached at most 48 ms
+ * after it was created ([FreshFenceProbe]), so whatever [onIdle] waits for in turn is what the main
+ * thread queued in those 48 ms, even when more work was queued after this call. That bounds
+ * main-thread queuing time, not backend work: a shader compilation queued in that window is still
+ * waited for. See [BackendIdleTeardowns] for the contract.
  *
- * [onIdle] receives `deferred = false` when it ran before this function returned: the backend was
- * already idle, or — the old blocking behaviour — the thread has no [Looper] or the fence could not
- * be created. A deferred [onIdle] is run by [safeDestroy] at the latest, so the engine always
- * outlives it. [onEngineGone] runs instead of [onIdle] only when the engine is already destroyed,
- * or is destroyed without [safeDestroy] while the fence is pending; the fence is not touched then.
+ * [onIdle] receives `deferred = false` when it ran before this function returned, which is now the
+ * exception — the old blocking behaviour, when the thread has no [Looper] or the fence could not be
+ * created. Even an idle backend defers it by one poll: a fence just created is not reached yet by
+ * the zero-timeout check made right after. A deferred [onIdle] is run by [safeDestroy] at the
+ * latest, so the engine always outlives it. [onEngineGone] runs instead of [onIdle] only when the
+ * engine is already destroyed, or is destroyed without [safeDestroy] while the fence is pending;
+ * the fence is not touched then.
  * With `runsLast`, [onIdle] also waits for every other pending teardown of this engine to have run
  * (see [BackendIdleTeardowns.defer]) — the engine's own destroy.
  */
@@ -165,22 +184,39 @@ internal fun Engine.whenBackendIdle(
         onEngineGone()
         return
     }
-    val fence = if (Looper.myLooper() != null) runCatching { createFence() }.getOrNull() else null
-    if (fence == null) {
+    if (Looper.myLooper() == null) {
         onIdle(false)
         return
     }
+    // A fence created now only covers what is queued now; [onIdle]'s own wait covers what is
+    // queued when it runs. The probe waits until the backend has recently caught up instead.
+    val probe = freshFenceProbe()
     whenIdle(
-        isBusy = { isFenceBusy(fence) },
+        isBusy = probe::isBusy,
         onEngineGone = onEngineGone,
         runsLast = runsLast,
     ) { deferred ->
-        runCatching { destroyFence(fence) }
+        probe.release()
         onIdle(deferred)
     }
 }
 
-/** Whether [fence] has not been reached by the backend yet — a zero-timeout wait, never blocks. */
+/**
+ * A [FreshFenceProbe] on this engine's fences: busy until the backend has caught up with what is
+ * queued on it: a fence reached within 48 ms of its creation. Never waits. Not busy when no fence
+ * can be created.
+ */
+internal fun Engine.freshFenceProbe(): FreshFenceProbe<Fence> = FreshFenceProbe(
+    createFence = { runCatching { createFence() }.getOrNull() },
+    isReached = { !isFenceBusy(it) },
+    destroyFence = { destroyFence(it) },
+    now = SystemClock::uptimeMillis,
+)
+
+/**
+ * Whether [fence] has not been reached by the backend yet — a zero-timeout wait. Its `FLUSH` can
+ * still wait for room in a full command stream.
+ */
 internal fun isFenceBusy(fence: Fence): Boolean =
     runCatching { fence.wait(Fence.Mode.FLUSH, 0L) }.getOrNull() == Fence.FenceStatus.TIMEOUT_EXPIRED
 
@@ -213,6 +249,7 @@ internal fun Engine.whenIdle(
     backendIdleTeardowns.getOrPut(this) { BackendIdleTeardowns() }.defer(
         isEngineAlive = { isValid },
         isBackendBusy = isBusy,
+        // `false` once the looper is quitting: the teardown then runs at once instead of never.
         schedule = { delayMs, block -> handler.postDelayed(block, delayMs) },
         teardown = { deferred ->
             // Checked again here: whatever path runs a teardown, it never touches a dead engine.
@@ -237,6 +274,9 @@ internal fun Engine.whenIdle(
  * say) finds the model already gone and never gets here.
  */
 fun AssetLoader.safeDestroyModel(model: Model) {
+    // Destroyed already, through this path or another: gltfio zeroed its handle, and both calls
+    // below would hand that zero to native code.
+    if (model.isReleased) return
     runCatching { model.releaseSourceData() }
     runCatching { destroyAsset(model) }
 }

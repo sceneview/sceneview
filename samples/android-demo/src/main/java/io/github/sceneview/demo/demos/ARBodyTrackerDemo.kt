@@ -44,6 +44,7 @@ import io.github.sceneview.ar.body.Joint
 import io.github.sceneview.ar.body.SKELETON_BONES
 import io.github.sceneview.ar.frontCameraConfig
 import io.github.sceneview.ar.highestResolutionCameraConfig
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
@@ -208,6 +209,7 @@ fun ARBodyTrackerDemo(onBack: () -> Unit) {
             // A camera switch is a new ARCore session: rebuild it cleanly (ARSceneView KDoc).
             key(frontCamera) {
                 ARSceneView(
+                    lifecycle = rememberHostLifecycle(),
                     onSessionFailure = {
                         if (frontCamera) {
                             frontCamera = false

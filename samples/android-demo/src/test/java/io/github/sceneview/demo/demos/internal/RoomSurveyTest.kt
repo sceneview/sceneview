@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
@@ -296,12 +297,14 @@ class RoomSurveyTest {
     }
 
     @Test
-    fun `three walls give a plan and no area`() {
+    fun `three walls give a plan and an estimated area`() {
         val survey = Room().box(east = false).survey()
 
-        assertNull(survey.area)
-        assertNull(survey.perimeter)
-        assertNull(survey.length)
+        // The missing wall is deduced where the floor was seen to end: the figures it bounds are estimates.
+        assertNear(20f, survey.area?.value, 3 * AREA)
+        assertTrue(survey.area!!.estimate)
+        assertTrue(survey.perimeter!!.estimate)
+        assertTrue(survey.length!!.estimate)
         // The pair that was seen is measured.
         assertNear(4f, survey.width?.value)
         assertTrue(SurveyGap.MissingWall in survey.gaps)
@@ -323,6 +326,51 @@ class RoomSurveyTest {
         assertNull(survey.length)
         assertNear(4f, survey.width?.value)
         assertTrue(SurveyGap.MissingWall in survey.gaps)
+    }
+
+    @Test
+    fun `two adjacent walls, in feet and inches, give an area and wall lengths marked as estimates`() {
+        // The west and south walls of a 5 × 4 m room, seen up to the corner they make; the floor seen to its far corner.
+        val survey = Room()
+            .slab(0f, 5f, 0f, 4f, 0f)
+            .slab(0f, 5f, 0f, 4f, HEIGHT, up = false)
+            .wallAcross(0f, 0f, 4f, 1f)
+            .wallAlong(0f, 0f, 5f, 1f)
+            .camera(2.5f, 2f)
+            .survey()
+        val wording = imperialWording()
+        val rows = SurveyReport.rows(survey, wording).map { it.value }
+        val walls = SurveyReport.wallRows(survey, wording).map { it.value }
+        val plan = SurveyReport.planTexts(survey, wording)
+        val metric = Regex("""\d m\b|m²|m³""")
+
+        assertTrue(survey.area!!.estimate)
+        assertNear(20f, survey.area?.value, 20f * 0.03f)
+        assertTrue(rows[0], rows[0].startsWith(SurveyFormat.ESTIMATE) && rows[0].endsWith("ft²"))
+        assertTrue(plan.area.toString(), plan.area!!.startsWith(SurveyFormat.ESTIMATE) && plan.area!!.endsWith("ft²"))
+        assertEquals(survey.walls.size, walls.size)
+        // The walls bound an estimated area, so each length is given, as an estimate, in feet and inches:
+        // as a tape reads it in the wall table, as a dimension line writes it on the plan.
+        val marks = Regex("\\d+' \\d+\"")
+        assertTrue(survey.walls.toString(), survey.walls.all { it.sized && it.length.estimate })
+        assertTrue(walls.toString(), walls.all { it.startsWith(SurveyFormat.ESTIMATE) && " ft " in it })
+        assertTrue(
+            plan.walls.toString(),
+            plan.walls.all { it.startsWith(SurveyFormat.ESTIMATE) && marks.matches(it.removePrefix(SurveyFormat.ESTIMATE)) },
+        )
+        assertTrue((rows + walls + plan.walls).toString(), (rows + walls + plan.walls).none { metric.containsMatchIn(it) })
+    }
+
+    @Test
+    fun `a plan its walls do not close gives no wall a guessed length`() {
+        val survey = Room().box(east = false, west = false).survey()
+        val labels = SurveyReport.planTexts(survey, RoomPlanLayoutTest.WORDING).walls
+        val rows = SurveyReport.wallRows(survey, RoomPlanLayoutTest.WORDING).map { it.value }
+
+        assertNull(survey.area)
+        assertEquals(survey.walls.size, rows.size)
+        assertTrue(labels.toString(), labels.none { it.contains(SurveyFormat.ESTIMATE) })
+        assertTrue(rows.toString(), rows.none { it.contains(SurveyFormat.ESTIMATE) })
     }
 
     @Test
@@ -351,7 +399,7 @@ class RoomSurveyTest {
         assertEquals(0.45f, east.seenShare, 0.05f)
         assertFalse(east.seen)
         assertTrue(east.length.estimate)
-        assertNull(survey.area)
+        assertTrue(survey.area!!.estimate)
         assertTrue(RoomSurveyor.MIN_SEEN_SHARE > east.seenShare)
         // The two walls that end on it end on an estimate: their lengths are estimates too.
         val ending = survey.walls.filter { it.horizontal }
@@ -549,7 +597,7 @@ class RoomSurveyTest {
     }
 
     @Test
-    fun `a wall square to no other is said, and the area it cuts is an estimate`() {
+    fun `a wall square to no other is drawn as it stands, and the area it cuts is measured`() {
         // 5 x 4 m with a corner cut by a wall from (5, 2.5) to (3.5, 4).
         val room = Room()
             .slab(0f, 3.5f, 0f, 4f, 0f)
@@ -569,16 +617,15 @@ class RoomSurveyTest {
         }
         val survey = room.survey()
 
-        assertTrue(SurveyGap.ObliqueWall in survey.gaps)
-        // The advice to scan a missing wall would never resolve it: it is not given.
-        assertFalse(SurveyGap.MissingWall in survey.gaps)
+        // 20 m² less the cut corner's 1.125 m², the oblique wall 2.12 m long.
+        assertFalse(SurveyGap.ObliqueWall in survey.gaps)
+        assertTrue(survey.gaps.isEmpty())
         assertTrue(survey.hasPlan)
-        assertTrue(survey.area!!.estimate)
-        assertTrue(survey.perimeter!!.estimate)
-        assertEquals(0f, survey.area!!.plusMinus, 0f)
-        assertTrue(survey.hasEstimates)
-        // A room whose walls are all square has no such gap.
-        assertFalse(SurveyGap.ObliqueWall in Room().box().survey().gaps)
+        assertEquals(5, survey.walls.size)
+        assertNear(18.875f, survey.area?.value, AREA)
+        assertFalse(survey.area!!.estimate)
+        assertNear(17.12f, survey.perimeter?.value, 0.05f)
+        assertTrue(survey.walls.any { abs(it.length.value - 2.121f) < 0.05f && it.seen })
     }
 
     @Test
@@ -654,6 +701,19 @@ class RoomSurveyTest {
         assertEquals("A", RoomSurveyor.tagOf(0))
         assertEquals("Z", RoomSurveyor.tagOf(25))
         assertEquals("AA", RoomSurveyor.tagOf(26))
+    }
+
+    @Test
+    fun `a survey whose thread is interrupted stops instead of running to its end`() {
+        // A measure nobody waits for any more is interrupted: it has to give its thread back.
+        val room = Room().box().input()
+        Thread.currentThread().interrupt()
+        val ended = try {
+            runCatching { RoomSurveyor.survey(room) }.exceptionOrNull()
+        } finally {
+            Thread.interrupted()
+        }
+        assertTrue("the survey ran to its end: $ended", ended is InterruptedException)
     }
 
     private companion object {

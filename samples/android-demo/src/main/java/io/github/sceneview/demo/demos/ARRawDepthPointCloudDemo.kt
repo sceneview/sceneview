@@ -43,6 +43,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingFailureReason
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoStatusBanner
@@ -343,6 +344,7 @@ fun ARRawDepthPointCloudDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 modelLoader = modelLoader,

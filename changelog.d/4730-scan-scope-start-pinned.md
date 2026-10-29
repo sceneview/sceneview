@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **3D Scan's "What are you scanning?" keeps its start button in place ([#4730](https://github.com/sceneview/sceneview/issues/4730)).** The start button (for example "Scan a room") is now pinned at the bottom, above the navigation bar, in portrait and landscape. The four kinds scroll behind it and the last one scrolls clear above it. The Settings button is gone from this step: nothing in its sheet changed the scan about to start, and the capture screen keeps the same sheet.

@@ -6,7 +6,7 @@ AR scene rendering for Jetpack Compose, powered by ARCore and Google Filament.
 
 ```kotlin
 dependencies {
-    implementation("io.github.sceneview:arsceneview:4.60.0")
+    implementation("io.github.sceneview:arsceneview:4.63.0")
 }
 ```
 
@@ -54,6 +54,15 @@ fun ARScreen() {
 | `rememberAREnvironment(engine)` | `Environment` | No skybox, neutral IBL; updated by LightEstimator from the camera feed. |
 
 All `rememberXxx` helpers from the base `sceneview` module are also available.
+
+### Camera-image coordinate helpers
+
+| API | Description |
+|---|---|
+| `DetectorImageMapping(imageSize, inputRotationDegrees)` | Pure-Kotlin mapping for one detector request: the unrotated CPU image size and the clockwise rotation given to the vision API. |
+| `DetectorImageMapping.detectorPixelToImagePixel(x, y)` | Undoes the input rotation: the unrotated image pixel behind a detector-output pixel, the one `camera.imageIntrinsics` describes, hence the pixel to cast a world ray through. |
+| `DetectorImageMapping.detectorWidth` / `detectorHeight` | Size of the detector's rotated output image. |
+| `CameraImageSize` / `CameraImagePoint` | Image dimensions and image points, in camera-image pixels. |
 
 ### AR node composables (inside `ARSceneView { }`)
 

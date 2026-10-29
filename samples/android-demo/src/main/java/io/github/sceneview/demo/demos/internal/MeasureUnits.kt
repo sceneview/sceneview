@@ -6,9 +6,9 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Length and area units of the `ar-measure` demo, picked from the locale like the system
- * Measure apps do: the three countries that still measure in feet get feet and inches,
- * everyone else gets metres. The settings sheet lets the user override it.
+ * Length and area units of the `ar-measure` demo. One rule with its plan ([SurveyFormat.units]):
+ * feet and inches in US English, metres in every other language. The settings sheet picks the
+ * other one, for the screen and its plan alike.
  */
 enum class MeasureUnitSystem {
     Metric,
@@ -16,16 +16,15 @@ enum class MeasureUnitSystem {
     ;
 
     companion object {
-        private val IMPERIAL_COUNTRIES = setOf("US", "LR", "MM")
-
-        fun forLocale(locale: Locale): MeasureUnitSystem =
-            if (locale.country.uppercase(Locale.ROOT) in IMPERIAL_COUNTRIES) Imperial else Metric
+        /** The units Measure starts in under [locale]: the plan's ([SurveyFormat.units]). */
+        fun forLocale(locale: Locale): MeasureUnitSystem = SurveyFormat.units(locale)
     }
 }
 
 private const val METERS_PER_INCH = 0.0254f
 private const val INCHES_PER_FOOT = 12
 private const val SQUARE_FEET_PER_SQUARE_METER = 10.763910f
+private const val CUBIC_FEET_PER_CUBIC_METER = 35.314667f
 private const val CENTIMETERS_PER_METER = 100f
 private const val AREA_DECIMAL_LIMIT = 10f
 
@@ -76,6 +75,27 @@ fun formatMeasureArea(squareMeters: Float, system: MeasureUnitSystem, locale: Lo
                 String.format(locale, "%.1f ft²", squareFeet)
             } else {
                 "${squareFeet.roundToInt()} ft²"
+            }
+        }
+    }
+}
+
+/** A volume: "4.50 m³" / "30.0 m³", or "8.5 ft³" / "1059 ft³" — like [formatMeasureArea]. */
+fun formatMeasureVolume(cubicMeters: Float, system: MeasureUnitSystem, locale: Locale): String {
+    val safe = cubicMeters.coerceAtLeast(0f)
+    return when (system) {
+        MeasureUnitSystem.Metric ->
+            if (safe < AREA_DECIMAL_LIMIT) {
+                String.format(locale, "%.2f m³", safe)
+            } else {
+                String.format(locale, "%.1f m³", safe)
+            }
+        MeasureUnitSystem.Imperial -> {
+            val cubicFeet = safe * CUBIC_FEET_PER_CUBIC_METER
+            if (cubicFeet < AREA_DECIMAL_LIMIT) {
+                String.format(locale, "%.1f ft³", cubicFeet)
+            } else {
+                "${cubicFeet.roundToInt()} ft³"
             }
         }
     }

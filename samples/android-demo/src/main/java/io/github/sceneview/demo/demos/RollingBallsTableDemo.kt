@@ -20,6 +20,7 @@ import com.google.ar.core.Pose
 import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.physics.DepthCollider
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoScaffold
@@ -168,6 +169,7 @@ fun RollingBallsTableDemo(onBack: () -> Unit) {
             val depthColliderRef = remember { mutableStateOf<DepthCollider?>(null) }
 
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,
                 materialLoader = materialLoader,

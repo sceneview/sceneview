@@ -15,35 +15,49 @@ class ScanSavingOrbitTest {
     )
     private val centre = Position(0f, 1f, 0f)
 
+    /** A cloud round [centre] whose highest point is 1 m up. */
+    private val points = floatArrayOf(-2f, 0f, -2f, 2f, 1f, 2f, -2f, 0.5f, 2f, 2f, 0.5f, -2f)
+
+    private fun path(radius: Float = 3f) = ScanSavingPath(phone, points, centre, radius, verticalFovDegrees = 45.0)
+
+    private val settled = ScanSavingPath.RISE_SECONDS + ScanSavingPath.OUT_SECONDS
+
     @Test
     fun `the orbit starts on the follow pose, with no cut`() {
-        val start = ScanFollow.savingPose(phone, centre, radius = 3f, seconds = 0f, verticalFovDegrees = 45.0)
-        assertEquals(phone, start)
+        assertEquals(phone, path().poseAt(0f))
     }
 
     @Test
-    fun `once on it, the orbit frames the whole cloud round its centre`() {
-        val on = ScanFollow.savingPose(phone, centre, radius = 3f, seconds = 2f, verticalFovDegrees = 45.0)
+    fun `once on it, the orbit frames the whole cloud round its centre from above`() {
+        val on = path().poseAt(settled + 1f)
         assertEquals(centre, on.target)
-        assertEquals(ScanFollow.SAVING_ELEVATION_DEGREES, on.elevationDegrees, 1e-4f)
+        assertEquals(ScanSavingPath.ELEVATION_DEGREES, on.elevationDegrees, 1e-4f)
         // 3 m of reach in half a 45° view, at 85 % of it: about 9.2 m out.
         assertEquals(9.22f, on.distance, 0.05f)
         // A small cloud is never looked at from closer than the live view.
-        val small = ScanFollow.savingPose(phone, centre, radius = 0.2f, seconds = 2f, verticalFovDegrees = 45.0)
-        assertEquals(ScanFollow.DISTANCE_M, small.distance, 1e-4f)
+        assertEquals(ScanFollow.DISTANCE_M, path(radius = 0.2f).poseAt(settled + 1f).distance, 1e-4f)
     }
 
     @Test
-    fun `it turns slowly and one way, from the first frame`() {
+    fun `it holds the heading while it rises, then turns slowly and one way`() {
+        val path = path()
         var previous = phone.azimuthDegrees
         var t = 0.05f
         while (t < 10f) {
-            val pose = ScanFollow.savingPose(phone, centre, radius = 3f, seconds = t, verticalFovDegrees = 45.0)
-            assertTrue(pose.azimuthDegrees > previous)
+            val pose = path.poseAt(t)
+            if (t <= ScanSavingPath.RISE_SECONDS) {
+                assertEquals(phone.azimuthDegrees, pose.azimuthDegrees, 1e-3f)
+            } else {
+                // Easing into the turn above the walls, then on at its pace.
+                assertTrue("at $t s", pose.azimuthDegrees >= previous - 1e-4f)
+                if (t > settled) assertTrue("at $t s", pose.azimuthDegrees > previous)
+            }
             previous = pose.azimuthDegrees
             t += 0.05f
         }
-        assertEquals(phone.azimuthDegrees + ScanFollow.SAVING_DEGREES_PER_SECOND * 10f, previous, 0.5f)
+        val turned = 10f - ScanSavingPath.RISE_SECONDS - ScanSavingPath.OUT_SECONDS / 2f
+        val expected = phone.azimuthDegrees + ScanSavingPath.DEGREES_PER_SECOND * turned
+        assertEquals(expected, path.poseAt(10f).azimuthDegrees, 0.05f)
     }
 
     @Test

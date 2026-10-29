@@ -2,7 +2,6 @@ package io.github.sceneview.demo.demos.internal
 
 import io.github.sceneview.math.Position
 import kotlin.math.atan2
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -123,51 +122,11 @@ class ScanFollow {
         }
 
         /**
-         * While a scan is saved (#4719), the view leaves the phone and turns round the whole cloud
-         * at this pace: a turn in 40 s, slow enough to read as a showcase, not a spinner.
-         */
-        const val SAVING_DEGREES_PER_SECOND = 9f
-
-        /** The saving orbit's pitch: the room from above its walls, its floor still in depth. */
-        const val SAVING_ELEVATION_DEGREES = 42f
-
-        /** The move from the phone onto the saving orbit, seconds, eased out of the follow pose. */
-        const val SAVING_ENTER_SECONDS = 1.6f
-
-        /** How much of the view's height the cloud's horizontal reach fills on the saving orbit. */
-        const val SAVING_FILL = 0.85f
-
-        /**
-         * The saving orbit [seconds] after it began from [from], the follow pose of the moment,
-         * round a cloud centred on [centre] that reaches [radius] metres from it: from [from] it
-         * eases onto the orbit over [SAVING_ENTER_SECONDS] while it already turns, so the move
-         * never stops nor jolts. [verticalFovDegrees] is the view's, to frame the whole cloud.
-         */
-        fun savingPose(
-            from: OrbitPose,
-            centre: Position,
-            radius: Float,
-            seconds: Float,
-            verticalFovDegrees: Double,
-        ): OrbitPose {
-            val halfFov = Math.toRadians(verticalFovDegrees / 2.0)
-            val distance = maxOf(DISTANCE_M, (radius / sin(halfFov) / SAVING_FILL).toFloat())
-            val t = (seconds / SAVING_ENTER_SECONDS).coerceIn(0f, 1f)
-            val e = t * t * (3f - 2f * t)
-            fun mix(a: Float, b: Float) = a + (b - a) * e
-            return OrbitPose(
-                target = Position(mix(from.target.x, centre.x), mix(from.target.y, centre.y), mix(from.target.z, centre.z)),
-                azimuthDegrees = from.azimuthDegrees + SAVING_DEGREES_PER_SECOND * seconds.coerceAtLeast(0f),
-                elevationDegrees = mix(from.elevationDegrees, SAVING_ELEVATION_DEGREES),
-                distance = mix(from.distance, distance),
-            )
-        }
-
-        /**
          * The phone's eye as an orbit pose (#4719): the camera at [cameraToWorld]'s position
          * (column-major, as `Pose.toMatrix` writes it), looking down its forward axis at a point
          * level with [centre] along it — the cloud's depth ahead of the phone, [MIN_EYE_REACH_M] at
-         * least. The saving orbit sets out from it, so it leaves the camera image without a cut.
+         * least. The saving flight ([ScanSavingPath]) sets out from it, so it leaves the camera
+         * image without a cut.
          */
         fun eyePose(cameraToWorld: FloatArray, centre: Position): OrbitPose {
             val ex = cameraToWorld[12]

@@ -6,9 +6,11 @@ package io.github.sceneview.demo.demos.internal
  * - [Distance]: tap point after point, every segment gets its length. Tap the first point
  *   again to close an outline and read its area, or tap Done to end an open chain.
  * - [Wall]: tap the two ends of a wall where it meets the floor; the wall then rises with
- *   the aim, a tap locks its height and reads its area.
+ *   the aim, a tap locks its height and reads its area. Doors and windows marked on it then
+ *   come off its net area.
  * - [Room]: trace the floor corner by corner, tap the first corner to close it; all the
- *   walls rise together, a tap locks the ceiling height.
+ *   walls rise together, a tap locks the ceiling height. Doors and windows marked on any of
+ *   its walls then come off the walls' net area, as on a wall.
  */
 enum class MeasureMode { Distance, Wall, Room }
 
@@ -32,6 +34,8 @@ enum class MeasurePhase {
  * @property ended a Distance chain the user ended with Done, open: the next point starts a new chain.
  * @property raising the walls follow the aim (wall or room still open for a height).
  * @property height the locked wall height, metres; `null` until locked.
+ * @property openings the doors and windows marked on a measured wall or a measured room's walls,
+ *   left out of their net area; on a room, each on the wall it was marked on ([MeasureOpening]).
  */
 data class MeasureFigure<P>(
     val mode: MeasureMode,
@@ -40,6 +44,7 @@ data class MeasureFigure<P>(
     val ended: Boolean = false,
     val raising: Boolean = false,
     val height: Float? = null,
+    val openings: List<MeasureOpening> = emptyList(),
 ) {
     /** Done: no tap can change it any more, the next tap starts a new figure. */
     val finished: Boolean
@@ -56,10 +61,15 @@ data class MeasureFigure<P>(
  * Every figure measured so far, the last one possibly in progress. Immutable: each user
  * action returns a new board, which makes undo a pure function and the whole flow testable
  * without a camera.
+ *
+ * @property markingOpening Door or window is on: the next taps mark an opening on the [openingWall].
+ * @property openingCorner the opening's first corner once placed; the next tap places the opposite one.
  */
 data class MeasureBoard<P>(
     val mode: MeasureMode = MeasureMode.Distance,
     val figures: List<MeasureFigure<P>> = emptyList(),
+    val markingOpening: Boolean = false,
+    val openingCorner: MeasureWallPoint? = null,
 ) {
     /** The figure the next tap edits, or `null` when the next tap starts a new one. */
     val active: MeasureFigure<P>?
@@ -80,8 +90,11 @@ data class MeasureBoard<P>(
 
     val isEmpty: Boolean get() = figures.all { it.points.isEmpty() }
 
-    /** Switches mode. A half-drawn figure of the old mode is kept on screen as it is. */
-    fun withMode(next: MeasureMode): MeasureBoard<P> = copy(mode = next)
+    /**
+     * Switches mode. A half-drawn figure of the old mode is kept on screen as it is; a door or
+     * window being marked ends.
+     */
+    fun withMode(next: MeasureMode): MeasureBoard<P> = keepingOpening(copy(mode = next))
 
     /**
      * The tap of the accent button with the reticle on [point].
@@ -94,19 +107,20 @@ data class MeasureBoard<P>(
         if (figure == null) {
             if (point == null) return this
             val started = MeasureFigure<P>(mode = mode, points = listOf(point))
-            return copy(figures = figures + started)
+            return keepingOpening(copy(figures = figures + started))
         }
         val next = when {
             figure.raising -> figure // Locking needs the height: see lockHeight.
-            point == null -> figure
+            // Closing reuses the first point, so it needs no new one: check it before the null.
             closesOutline && figure.points.size >= MIN_OUTLINE_POINTS && mode != MeasureMode.Wall ->
                 figure.copy(closed = true, raising = mode == MeasureMode.Room)
+            point == null -> figure
             else -> {
                 val grown = figure.copy(points = figure.points + point)
                 if (mode == MeasureMode.Wall && grown.points.size == 2) grown.copy(raising = true) else grown
             }
         }
-        return replaceActive(next)
+        return keepingOpening(replaceActive(next))
     }
 
     /** A Distance chain with a segment can be ended with Done; walls and rooms end themselves. */
@@ -119,21 +133,54 @@ data class MeasureBoard<P>(
      */
     fun finish(): MeasureBoard<P> {
         val figure = active?.takeIf { canFinish } ?: return this
-        return replaceActive(figure.copy(ended = true))
+        return keepingOpening(replaceActive(figure.copy(ended = true)))
     }
 
     /** Locks the rising walls of the active figure at [height] metres. */
     fun lockHeight(height: Float): MeasureBoard<P> {
         val figure = active?.takeIf { it.raising } ?: return this
-        return replaceActive(
-            figure.copy(raising = false, height = height.coerceIn(WALL_MIN_HEIGHT, WALL_MAX_HEIGHT)),
+        return keepingOpening(
+            replaceActive(figure.copy(raising = false, height = height.coerceIn(WALL_MIN_HEIGHT, WALL_MAX_HEIGHT))),
         )
     }
 
-    /** Steps back one action: unlock a height, lower the walls, reopen, resume a chain, or drop a point. */
+    /**
+     * The measured figure an opening goes on: the last figure, when it is a wall with its height
+     * or a closed room with its ceiling height, and its mode is still the mode. `null` otherwise.
+     */
+    val openingWall: MeasureFigure<P>?
+        get() = figures.lastOrNull()?.takeIf {
+            it.mode == mode && it.height != null && when (mode) {
+                MeasureMode.Wall -> it.points.size == 2
+                MeasureMode.Room -> it.closed
+                MeasureMode.Distance -> false
+            }
+        }
+
+    /** Marking a door or a window: on, with no corner placed yet. */
+    fun startOpening(): MeasureBoard<P> = copy(markingOpening = true, openingCorner = null)
+
+    /** Marking off, its first corner dropped. */
+    fun stopOpening(): MeasureBoard<P> = copy(markingOpening = false, openingCorner = null)
+
+    /** The opening's first corner, placed at [corner] on the wall. */
+    fun withOpeningCorner(corner: MeasureWallPoint): MeasureBoard<P> = copy(openingCorner = corner)
+
+    /** Adds [opening] to the [openingWall]; the board as it is without one. */
+    fun addOpening(opening: MeasureOpening): MeasureBoard<P> {
+        val wall = openingWall ?: return this
+        return replaceActive(wall.copy(openings = wall.openings + opening))
+    }
+
+    /**
+     * Steps back one action: drop an opening's first corner, the last opening, unlock a height,
+     * lower the walls, reopen, resume a chain, or drop a point.
+     */
     fun undo(): MeasureBoard<P> {
+        if (openingCorner != null) return copy(openingCorner = null)
         val figure = figures.lastOrNull() ?: return this
         val stepped: MeasureFigure<P>? = when {
+            figure.openings.isNotEmpty() -> figure.copy(openings = figure.openings.dropLast(1))
             figure.height != null -> figure.copy(height = null, raising = true)
             figure.raising && figure.mode == MeasureMode.Wall ->
                 figure.copy(raising = false, points = figure.points.dropLast(1))
@@ -144,13 +191,26 @@ data class MeasureBoard<P>(
             else -> null
         }
         val rest = figures.dropLast(1)
-        return copy(
-            mode = stepped?.mode ?: mode,
-            figures = if (stepped == null) rest else rest + stepped,
+        return keepingOpening(
+            copy(
+                mode = stepped?.mode ?: mode,
+                figures = if (stepped == null) rest else rest + stepped,
+            ),
         )
     }
 
-    fun clear(): MeasureBoard<P> = copy(figures = emptyList())
+    fun clear(): MeasureBoard<P> = keepingOpening(copy(figures = emptyList()))
+
+    /**
+     * [next], still marking a door or window only while it stays on this board's [openingWall]:
+     * a mode change, a new figure, an unlocked height or a clear ends the marking, first corner
+     * and all, so a corner placed on one wall never resumes on another.
+     */
+    private fun keepingOpening(next: MeasureBoard<P>): MeasureBoard<P> {
+        val wall = openingWall
+        val sameWall = wall != null && next.mode == mode && next.openingWall?.points == wall.points
+        return if (sameWall) next else next.copy(markingOpening = false, openingCorner = null)
+    }
 
     private fun replaceActive(figure: MeasureFigure<P>): MeasureBoard<P> =
         copy(figures = figures.dropLast(1) + figure)

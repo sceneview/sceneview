@@ -89,6 +89,7 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.BuildConfig
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DemoSettings
@@ -972,6 +973,7 @@ fun PointAndAskDemo(onBack: () -> Unit) {
             // making the emulator indistinguishable from the device defect this fixes.
             if (qaBackdrop) QaCameraBackdrop(seed = "point-and-ask")
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 modifier = Modifier.fillMaxSize().onSizeChanged {
                     cardLayout.viewportWidth = it.width
                     cardLayout.viewportHeight = it.height

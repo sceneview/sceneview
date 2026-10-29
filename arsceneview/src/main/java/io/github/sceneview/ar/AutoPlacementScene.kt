@@ -30,6 +30,7 @@ import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.material.setColor
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
@@ -608,6 +609,9 @@ fun ARSceneScope.AutoPlacementModel(
     val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
         visibleDuringFade = entrance.value > 0f) {
+        // A model destroyed under the composition has nothing left to show, and building a node
+        // over it (a re-key below) would throw: the pivot stays, the object leaves.
+        if (modelInstance.isDestroyed) return@AutomaticPlacementPivot
         val model = remember(modelInstance, scaleToUnits, assetRotation) {
             io.github.sceneview.node.ModelNode(modelInstance, scaleToUnits = scaleToUnits).apply {
                 quaternion = if (placement.isWall) {
@@ -1169,7 +1173,8 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
-        val hits = frame.hitTest(e)
+        // Same stale-frame case as PoseNode.onMove: a paused session throws from hitTest.
+        val hits = arSessionGuarded("AutoPlacement onMove", null) { frame.hitTest(e) } ?: return false
         val candidate = if (placement.isWall) {
             // Nearest wall under the finger — plane, extended plane or depth hit — and, on a plain
             // wall with none of those, the wall the object already stands on (#4070).

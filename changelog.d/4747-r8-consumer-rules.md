@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **`arsceneview` no longer breaks an app's minified release build ([#4747](https://github.com/sceneview/sceneview/pull/4747)).** The optional `NearbyCollaborativeTransport` references Nearby Connections, which `arsceneview` only compiles against. An app whose keep rules reached that class (for example `-keep class io.github.sceneview.** { *; }`) failed `minifyReleaseWithR8` with "Missing class com.google.android.gms.nearby…" unless it added its own `-dontwarn`. The library's consumer rules now carry it, so no app-side rule is needed.

@@ -16,6 +16,15 @@
 -keep class io.github.sceneview.** { *; }
 -keepclassmembers class io.github.sceneview.** { *; }
 
+# ── LiteRT Interpreter (3D Scan furniture detector) ──────────────────────────
+# LiteRT's native library calls back into these classes by name. Today the
+# AGP default file (native method names) and LiteRT's own consumer rules
+# (@UsedByReflection) keep what it needs; this rule keeps it whatever a later
+# LiteRT ships. Not covered by arsceneview-depth-ml's consumer rule, which
+# keeps com.google.ai.edge.litert.** only. These classes reference nothing
+# outside java.* and themselves, so keeping them adds no missing class.
+-keep class org.tensorflow.lite.** { *; }
+
 # ── Kotlin Coroutines ─────────────────────────────────────────────────────────
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}

@@ -306,6 +306,105 @@ private const val WALL_FOOT_MIN_LENGTH = 0.05f
 /** [p] moved onto the horizontal plane at height [y] — floor lines stay flat on the floor. */
 fun measureOnLevel(p: Position, y: Float): Position = Position(p.x, y, p.z)
 
+/**
+ * The snap of one aim at [raw], in the order the reticle applies it: the placed [points], the
+ * planes' corners and edges ([measurePlaneSnapTargets]), the guides from the previous point of
+ * a Distance chain, then — in Room, when none of those holds — the square corner on the last
+ * two corners of [activeOutline]: within 6° when a tracked wall confirms the right angle, within
+ * 3° otherwise, so a room that is not square stays as it is traced. Without a [level] to stand a
+ * wall on, nothing confirms it.
+ */
+@Suppress("LongParameterList") // the reticle's whole input, one frame
+fun measureSnapAim(
+    mode: MeasureMode,
+    planes: List<MeasurePlane>,
+    level: Float?,
+    points: List<Position>,
+    activeOutline: List<Position>,
+    raw: Position,
+    tolerance: Float,
+): MeasureSnap {
+    val context = measurePlaneSnapTargets(mode, planes, level).copy(
+        points = points,
+        previous = activeOutline.lastOrNull().takeIf { mode == MeasureMode.Distance },
+    )
+    val snap = snapMeasureTarget(raw, context, tolerance)
+    if (snap.kind != MeasureSnapKind.None || mode != MeasureMode.Room || activeOutline.size < 2) return snap
+    val from = activeOutline[activeOutline.size - 2]
+    val corner = activeOutline.last()
+    val squareTolerance = if (level != null && squareConfirmed(from, corner, planes, level)) {
+        SQUARE_TOLERANCE_DEGREES
+    } else {
+        SQUARE_UNCONFIRMED_TOLERANCE_DEGREES
+    }
+    return snapSquareCorner(from, corner, raw, squareTolerance) ?: snap
+}
+
+/**
+ * Whether a tracked wall confirms that the room turns square at [corner], after the wall
+ * [from]–[corner]. A vertical plane stands square by a corner as often as a wall does — an open
+ * door, a cupboard's side, a wall cupboard, a wall further along the same line — so it counts as
+ * a wall only when it stands on the floor at [level], rises at least [SQUARE_CONFIRM_MIN_HEIGHT_M]
+ * and runs at least [SQUARE_CONFIRM_MIN_LENGTH_M] along it; then its foot confirms the corner when
+ * it runs within [SQUARE_CONFIRM_DEGREES] of square to the last wall and comes within
+ * [SQUARE_CONFIRM_REACH_M] of the corner.
+ */
+private fun squareConfirmed(from: Position, corner: Position, planes: List<MeasurePlane>, level: Float): Boolean {
+    val px = corner.x - from.x
+    val pz = corner.z - from.z
+    val pl = sqrt(px * px + pz * pz)
+    if (pl < EPSILON) return false
+    return planes.any { plane ->
+        if (plane.kind != MeasurePlaneKind.Vertical || !standsLikeAWall(plane.outline, level)) return@any false
+        val (a, b) = measureWallFootprint(plane.outline, level) ?: return@any false
+        val fx = b.x - a.x
+        val fz = b.z - a.z
+        val fl = sqrt(fx * fx + fz * fz)
+        if (fl < SQUARE_CONFIRM_MIN_LENGTH_M) return@any false
+        val cos = abs(px * fx + pz * fz) / (pl * fl)
+        val offDegrees = Math.toDegrees(kotlin.math.asin(cos.coerceAtMost(1f).toDouble())).toFloat()
+        // How far the corner is from the foot itself: a wall further along its line is no help.
+        val reach = horizontalDistance(corner, closestPointOnSegment(corner, a, b))
+        offDegrees <= SQUARE_CONFIRM_DEGREES && reach <= SQUARE_CONFIRM_REACH_M
+    }
+}
+
+/** Whether a vertical plane's [outline] stands on the floor at [level] and rises as a wall does. */
+private fun standsLikeAWall(outline: List<Position>, level: Float): Boolean {
+    if (outline.isEmpty()) return false
+    val bottom = outline.minOf { it.y }
+    val top = outline.maxOf { it.y }
+    return bottom <= level + SQUARE_CONFIRM_FLOOR_GAP_M && top - bottom >= SQUARE_CONFIRM_MIN_HEIGHT_M
+}
+
+/** Without a tracked wall confirming it, a corner is squared within this only. */
+private const val SQUARE_UNCONFIRMED_TOLERANCE_DEGREES = 3f
+
+/**
+ * How close to square to the last wall a tracked wall runs to confirm a right angle. The last
+ * wall is the traced one, so after a short one (1 m or less, its corners a few centimetres off)
+ * its own noise takes most of this, and the corner falls back to the unconfirmed 3°.
+ */
+private const val SQUARE_CONFIRM_DEGREES = 3f
+
+/** How far from the corner a confirming wall's foot may stop: ARCore's planes rarely reach into one. */
+private const val SQUARE_CONFIRM_REACH_M = 0.2f
+
+/**
+ * A confirming wall's foot runs at least this: longer than an open door is wide or a cupboard is
+ * deep, with room for ARCore's plane to run a few centimetres past each end of a 0.93 m door
+ * leaf, and long enough for those centimetres to leave its direction within a couple of degrees.
+ * The risk is lopsided: a wrong confirmation squares a corner up to 6° off without a word, a
+ * missed one only falls back to 3°.
+ */
+private const val SQUARE_CONFIRM_MIN_LENGTH_M = 1.2f
+
+/** A confirming wall's bottom is at most this above the floor: a wall cupboard is not a wall. */
+private const val SQUARE_CONFIRM_FLOOR_GAP_M = 0.3f
+
+/** A confirming wall rises at least this: a sideboard's or a counter's side is no wall. */
+private const val SQUARE_CONFIRM_MIN_HEIGHT_M = 1.5f
+
 // ── Rising walls ────────────────────────────────────────────────────────────────────────────
 
 /** Walls never rise below a few centimetres (so they stay visible) nor above a tall ceiling. */
@@ -318,10 +417,11 @@ private const val WALL_SPAN_SLACK = 0.25f
 /**
  * Height the user is aiming at on the vertical wall standing on floor line `a`–`b`: the
  * camera ray ([origin], [direction]) is intersected with that wall's vertical plane and the
- * hit's height above the line is returned, clamped to [WALL_MIN_HEIGHT]..[WALL_MAX_HEIGHT].
+ * hit's height above the line is returned, capped at [WALL_MAX_HEIGHT].
  *
- * `null` when the ray runs parallel to the wall, points away from it, or lands far past its
- * ends — the caller keeps the last height then, rather than jumping.
+ * `null` when the ray runs parallel to the wall, points away from it, lands far past its ends,
+ * or crosses the wall's plane under [WALL_MIN_HEIGHT] — aiming at the floor at the wall's foot
+ * reads no height at all, so Set height has nothing to lock (#4751) instead of the minimum.
  */
 fun measureWallHeightFromRay(
     origin: Position,
@@ -351,8 +451,11 @@ private fun wallRayHit(origin: Position, direction: Position, a: Position, b: Po
     val hz = origin.z + direction.z * t
     val along = ((hx - a.x) * ex + (hz - a.z) * ez) / length
     if (along < -spanSlack || along > length + spanSlack) return null
+    // At or under the foot the aim is on the floor, not on the wall: no height (#4751).
+    val height = hy - a.y
+    if (height < WALL_MIN_HEIGHT) return null
     val directionLength = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z)
-    return WallRayHit((hy - a.y).coerceIn(WALL_MIN_HEIGHT, WALL_MAX_HEIGHT), t * directionLength)
+    return WallRayHit(height.coerceAtMost(WALL_MAX_HEIGHT), t * directionLength)
 }
 
 /**

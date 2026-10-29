@@ -13,24 +13,35 @@ import androidx.compose.material.icons.rounded.UTurnLeft
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.sceneview.demo.demos.internal.ScanActivity
+import io.github.sceneview.demo.demos.internal.RescanRefusal
+import io.github.sceneview.demo.demos.internal.ScanSaveFailure
 import io.github.sceneview.demo.demos.internal.ScanTurn
 import io.github.sceneview.math.Position
 import io.github.sceneview.demo.demos.internal.OrbitPose
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MyLocation
-import androidx.compose.material.icons.rounded.NoPhotography
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Surface
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.stringResource
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.ScanFollow
+import io.github.sceneview.demo.demos.internal.ScanObserveGate
 import io.github.sceneview.demo.demos.internal.ScanSavingOrbit
+import io.github.sceneview.demo.demos.internal.ScanOpenTop
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import io.github.sceneview.demo.ui.GlassActionPill
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,6 +74,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import com.google.android.filament.Engine
 import io.github.sceneview.demo.demos.internal.ArDebugFormat
 import io.github.sceneview.demo.demos.internal.ArDebugOrbitCamera
@@ -81,7 +93,7 @@ import io.github.sceneview.loaders.ModelLoader
  * The capture screen of 3D Scan (#4627, #4628): the scan growing full screen over the dimmed
  * camera, following the phone heading-up, one
  * compact line above it — "Scanning · 0:42" and the points captured so far — and, under it,
- * one coaching line with Pause and Finish. Finish opens a review that Keep scanning leaves for
+ * one coaching line over the record control: Pause beside the stop shutter, which opens a review that Keep scanning leaves for
  * the same capture; only Save scan builds and writes it.
  */
 
@@ -98,7 +110,6 @@ internal fun ScanHud(
     seconds: Float,
     points: Int,
     label: String? = null,
-    photoLimit: Boolean = false,
     activity: ScanActivity? = null,
     room: ScanWallsState? = null,
 ) {
@@ -126,36 +137,24 @@ internal fun ScanHud(
                 modifier = Modifier.weight(1f),
             )
         }
+        // One line for both counts on a room's scan (#4807): `274,778 points captured · 3 walls`.
+        // A line less of card over the top of the camera, where the next wall's dashes are drawn.
         Text(
-            text = ScanCopy.pointsCaptured(points),
+            text = room?.let { "${ScanCopy.pointsCaptured(points)} · ${ScanCopy.wallsFound(it.wallCount)}" }
+                ?: ScanCopy.pointsCaptured(points),
             style = OnScrimBody,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.testTag(SCAN_POINTS_TAG),
         )
         if (room != null) ScanRoomGauge(room)
-        if (photoLimit) {
-            // Said once in the coaching line; from then on, this small reminder (#4717).
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.xs),
-                modifier = Modifier.semantics(mergeDescendants = true) {}.testTag(SCAN_PHOTO_LIMIT_TAG),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.NoPhotography,
-                    contentDescription = null,
-                    tint = LocalStageChrome.current.onCardMuted,
-                    modifier = Modifier.size(ScanDotSize + Space.xs),
-                )
-                Text(text = ScanCopy.PHOTO_LIMIT, style = OnScrimCaption, maxLines = 1)
-            }
-        }
     }
 }
 
 /**
- * A room's scan so far (#4540 live walls): `3 walls` over a ten-segment meter (DESIGN.md "Meters",
+ * A room's scan so far (#4540 live walls): a ten-segment meter under the HUD's `· 3 walls` (DESIGN.md "Meters",
  * one segment per 10 %), lit in `accent-progress`, then `accent-success` once the walls close the
- * room — the moment to tap Finish. The share is the meter alone, said aloud to TalkBack: the one
+ * room — the moment to tap stop. The share is the meter alone, said aloud to TalkBack: the one
  * figure on screen is the map's area, once two walls are seen.
  */
 @Composable
@@ -169,11 +168,7 @@ internal fun ScanRoomGauge(room: ScanWallsState) {
             .semantics(mergeDescendants = true) { stateDescription = ScanCopy.completion(share) }
             .testTag(SCAN_ROOM_GAUGE_TAG),
     ) {
-        Text(
-            text = ScanCopy.wallsFound(room.wallCount),
-            style = OnScrimBody,
-            maxLines = 1,
-        )
+        // The walls are counted on the HUD's points line (#4807): the meter is the gauge here.
         Row(
             horizontalArrangement = Arrangement.spacedBy(Space.xs),
             modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
@@ -200,7 +195,8 @@ internal fun ScanRoomGauge(room: ScanWallsState) {
  * The turn to the next gap of a room's scan (#4540, "arrows to say turn this way"): a glass disc at
  * the screen's edge on that side, an arrow in `accent-guidance`, the colour of the dashed gap in
  * the room. Behind the phone, it sits in the middle with a turning arrow; ahead, the gap is in
- * view and the dashes speak for it.
+ * view and the dashes speak for it. [turn] is held by the caller ([rememberHeld]), once for the
+ * arrow and the coaching line.
  */
 @Composable
 internal fun BoxScope.ScanTurnArrow(turn: ScanTurn?) {
@@ -246,8 +242,11 @@ internal fun BoxScope.ScanTurnArrow(turn: ScanTurn?) {
 private const val GAUGE_SEGMENTS = 10
 
 /**
- * Under a capture still open: the one coaching line, then Pause (Resume while paused) and the
- * prominent Finish. Both are full-height Material buttons, 48 dp targets.
+ * Under a capture still open: the one coaching line, then the camera app's record control (#4807).
+ * The red stop shutter — the one REC knows from every camera — sits in the middle from the first
+ * frame to the last and ends the capture (Finish: the review opens); Pause, the secondary, is a
+ * smaller disc beside it and turns into Resume (a play glyph) while paused. Nothing swaps places:
+ * the 72 dp shutter is where the thumb found it, paused or not.
  */
 @Composable
 internal fun ScanControls(
@@ -265,20 +264,50 @@ internal fun ScanControls(
         if (coaching != null) ScanHint(coaching)
         Row(
             modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilledTonalButton(
-                onClick = onTogglePause,
-                modifier = Modifier.weight(1f).heightIn(min = SceneViewTokens.Layout.touchTarget),
-            ) {
-                Text(if (phase == ScanPhase.Paused) resumeLabel else ScanCopy.PAUSE)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                val paused = phase == ScanPhase.Paused
+                ScanPauseButton(
+                    paused = paused,
+                    label = if (paused) resumeLabel else ScanCopy.PAUSE,
+                    onClick = onTogglePause,
+                )
             }
-            Button(
-                onClick = onFinish,
-                modifier = Modifier.weight(1f).heightIn(min = SceneViewTokens.Layout.touchTarget),
-            ) {
-                Text(ScanCopy.FINISH)
-            }
+            RecordShutter(
+                isRecording = true,
+                startEnabled = true,
+                onStart = {},
+                onStop = onFinish,
+                modifier = Modifier.testTag(SCAN_FINISH_TAG),
+                stopLabel = ScanCopy.FINISH_SCAN,
+            )
+            // The shutter's mirror: it stays centred on the screen, as a camera's does.
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+/** Pause and Resume, the record control's secondary: a 56 dp disc on the coaching line's ground. */
+@Composable
+private fun ScanPauseButton(paused: Boolean, label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = ArOverlay.scrimDark,
+        contentColor = ArOverlay.onScrim,
+        border = BorderStroke(SceneViewTokens.Layout.hairlineWidth, ArOverlay.onScrimMuted),
+        modifier = Modifier
+            .size(SceneViewTokens.Layout.touchTarget + Space.sm)
+            .testTag(SCAN_PAUSE_TAG)
+            .semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                contentDescription = null,
+                modifier = Modifier.size(SceneViewTokens.Layout.dockIconSize + Space.xs),
+            )
         }
     }
 }
@@ -393,19 +422,52 @@ internal fun ScanSavingCard(points: Int = 0) {
 
 /**
  * A write that failed stays on screen until it is answered: the built scan is still held, Try
- * again writes it again, Discard drops it. Never a toast, never "Saved".
+ * again writes it again, Discard drops it. Never a toast, never "Saved". It says why ([failure],
+ * [scanBytes]) and, when a file can still keep the scan, offers Save as file ([onSaveAsFile]) —
+ * a way out when the same failure would only come back (#4815). A part scanned again that did
+ * not line up ([refusal]) lines up no better a second time: its main action saves it as a
+ * separate scan instead of Try again.
  */
 @Composable
-internal fun ScanSaveFailedCard(onDiscard: () -> Unit, onRetry: () -> Unit) {
+internal fun ScanSaveFailedCard(
+    onDiscard: () -> Unit,
+    onRetry: () -> Unit,
+    failure: ScanSaveFailure? = null,
+    scanBytes: Long = 0L,
+    fileSaving: Boolean = false,
+    fileSaveFailed: Boolean = false,
+    onSaveAsFile: (() -> Unit)? = null,
+    refusal: RescanRefusal? = null,
+) {
     OverlayCard(testTag = SCAN_SAVE_FAILED_TAG) {
         Text(
-            text = ScanCopy.SAVE_FAILED,
+            text = ScanCopy.saveFailedTitle(failure),
             style = SceneViewTokens.Type.title.copy(color = ArOverlay.accentGuidance),
         )
-        Text(text = ScanCopy.SAVE_FAILED_DETAIL, style = OnScrimBody)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
-            FilledTonalButton(onClick = onDiscard, modifier = Modifier.weight(1f)) { Text(ScanCopy.DISCARD) }
-            Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text(ScanCopy.TRY_AGAIN) }
+        Text(text = ScanCopy.saveFailedDetail(failure, scanBytes, refusal), style = OnScrimBody)
+        if (fileSaveFailed) Text(text = ScanCopy.SAVE_AS_FILE_FAILED, style = OnScrimBody)
+        if (failure == ScanSaveFailure.Refused) {
+            // "Save as a separate scan" is too long for half the card: one action a row.
+            Button(onClick = onRetry, modifier = Modifier.fillMaxWidth().testTag(SCAN_SAVE_RETRY_TAG)) {
+                Text(ScanCopy.saveFailedAction(failure))
+            }
+            FilledTonalButton(onClick = onDiscard, modifier = Modifier.fillMaxWidth()) { Text(ScanCopy.DISCARD) }
+        } else {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+                FilledTonalButton(onClick = onDiscard, modifier = Modifier.weight(1f)) { Text(ScanCopy.DISCARD) }
+                if (failure != ScanSaveFailure.Empty) {
+                    Button(onClick = onRetry, modifier = Modifier.weight(1f).testTag(SCAN_SAVE_RETRY_TAG)) {
+                        Text(ScanCopy.saveFailedAction(failure))
+                    }
+                }
+            }
+        }
+        if (onSaveAsFile != null) {
+            FilledTonalButton(
+                onClick = onSaveAsFile,
+                enabled = !fileSaving,
+                modifier = Modifier.fillMaxWidth().testTag(SCAN_SAVE_AS_FILE_TAG),
+            ) { Text(if (fileSaving) ScanCopy.SAVING_FILE else ScanCopy.SAVE_AS_FILE) }
         }
     }
 }
@@ -419,6 +481,7 @@ internal fun ScanSaveFailedCard(onDiscard: () -> Unit, onRetry: () -> Unit) {
 internal fun ScanLeaveDialog(
     saveFailed: Boolean,
     empty: Boolean,
+    saveFailure: ScanSaveFailure? = null,
     onKeepScanning: () -> Unit,
     onSave: () -> Unit,
     onDiscard: () -> Unit,
@@ -436,7 +499,7 @@ internal fun ScanLeaveDialog(
             if (empty) {
                 TextButton(onClick = onKeepScanning) { Text(ScanCopy.KEEP_SCANNING) }
             } else {
-                TextButton(onClick = onSave) { Text(if (saveFailed) ScanCopy.TRY_AGAIN else ScanCopy.SAVE_SCAN) }
+                TextButton(onClick = onSave) { Text(if (saveFailed) ScanCopy.saveFailedAction(saveFailure) else ScanCopy.SAVE_SCAN) }
             }
         },
         dismissButton = {
@@ -508,12 +571,15 @@ private fun ScanHint(text: String) {
  * The phone's eye is the live pose too, paused or not, so resuming does not move the view.
  *
  * [saving] (#4719): the camera fades out under an opaque veil and the view leaves the phone for a
- * slow orbit round the whole cloud ([ScanFollow.savingPose]) while the scan is fused and written.
+ * slow dollhouse orbit round the whole cloud ([ScanSavingOrbit]) while the scan is fused and written:
+ * it rises out of the room through its open top first, never through a wall nor past a point (#4742).
+ * Its ceiling is cut off ([ScanOpenTop]) while the scan is [reviewing], ahead of the save.
  * It sets out from the phone's own eye ([ScanSavingOrbit], [EyeHandoff]): the first frame after the
  * stop tap is the camera's view of the frame before, eased from there onto the orbit.
  *
  * [walls] (#4540), a room's scan only: the walls recognised so far rise in the room, on the
- * camera, and the floor edges still open are dashed where the next wall should be.
+ * camera, and the floor edges still open are dashed where the next wall should be; an arrow points
+ * to the next one's [turn], as held by the caller.
  */
 @Composable
 @Suppress("LongParameterList") // the demo's shared engine, handed down once
@@ -529,6 +595,8 @@ internal fun ScanLiveView(
     livePose: (traced: DebugPose?) -> DebugPose? = { it },
     saving: Boolean = false,
     walls: ScanWallsState? = null,
+    turn: ScanTurn? = walls?.turn,
+    reviewing: Boolean = false,
 ) {
     // Saving, the view is handed back to the automatic framing, which the orbit then drives.
     LaunchedEffect(saving) { if (saving) orbit.recenter() }
@@ -538,6 +606,29 @@ internal fun ScanLiveView(
         label = "scanVeil",
     )
     val savingOrbit = remember(saving) { if (saving) ScanSavingOrbit() else null }
+    // Saving, the room loses its lid (#4742): the orbit rises out through its top, past no ceiling.
+    // Cut while the scan is reviewed, so it is ready by the save; the orbit holds on the phone's
+    // eye until it is drawn.
+    val cutting = reviewing || saving
+    var openTop by remember { mutableStateOf<ReplayDenseLayer?>(null) }
+    var lidOff by remember { mutableStateOf(false) }
+    val savingNow by rememberUpdatedState(saving)
+    LaunchedEffect(cutting) {
+        openTop = null
+        lidOff = false
+        if (!cutting) return@LaunchedEffect
+        media.liveDense?.invoke()?.let { live ->
+            openTop = withContext(Dispatchers.Default) { live.openTop() }
+        }
+        lidOff = true
+    }
+    val drawn = remember(media) {
+        // Over the camera its surfels are capped small; the save flight leaves the phone's eye.
+        media.liveDense?.let { live ->
+            media.withLiveDense(overCamera = { !savingNow }) { openTop?.takeIf { savingNow } ?: live() }
+        } ?: media
+    }
+    val observed = remember(coverage, walls) { ScanObserveGate() }
     Box(modifier = Modifier.fillMaxSize().testTag(SCAN_STAGE_TAG)) {
         // Only the camera is dimmed: the cloud is drawn by its own view, above the veil.
         Box(Modifier.fillMaxSize().background(veil))
@@ -548,28 +639,36 @@ internal fun ScanLiveView(
             modelLoader = modelLoader,
             materialLoader = materialLoader,
             modifier = Modifier.fillMaxSize(),
-            replay = media,
+            replay = drawn,
             transparent = true,
             visible = { it in SCAN_LIVE_GROUPS },
             follow = { frame ->
                 val phone = follow.poseFor(livePose(frame.camera))
-                savingOrbit?.poseFor(phone, media.dense?.cloud?.positions ?: frame.mapPoints, orbit) ?: phone
+                // Round the map as it stands, not the merged surfels the live view draws (#4792).
+                val points = (drawn.liveDense?.invoke() ?: media.dense)?.whole ?: frame.mapPoints
+                savingOrbit?.poseFor(phone, points, orbit, ready = lidOff) ?: phone
             },
             observe = { frame ->
                 val pose = livePose(frame.camera)
-                coverage.observe(
-                    frame,
-                    pose = pose,
-                    snapshotCells = media.liveDense?.invoke()?.coveredCells,
-                    record = media.trace,
-                )
-                walls?.observe(frame, coverage, pose)
+                val dense = media.liveDense?.invoke()
+                val cells = dense?.coveredCells
+                // The view hands the same frame to every render until it rebuilds one (#4743).
+                if (observed.isNew(frame, pose, cells)) {
+                    coverage.observe(frame, pose = pose, snapshotCells = cells, record = media.trace)
+                    // The depth cloud tells how much of each wall was seen: a wall is drawn that far.
+                    walls?.observe(frame, coverage, pose, dense = dense)
+                }
             },
             // The walls stand in the room while it is scanned; saving, the orbit shows the cloud.
             walls = walls,
             drawWalls = !saving,
+            // The cloud moves with the phone's eye, which ARCore updates at the camera's 30 Hz: a
+            // second view drawn at the display's 60 Hz redrew the same picture every other vsync,
+            // one GPU pass and one swap too many on a mid-range phone (#4743). Saving, the orbit is
+            // the view's own motion and gets the display's full rate back.
+            maxFps = if (saving) null else SCAN_LIVE_FPS,
         )
-        if (walls != null && !saving) ScanTurnArrow(walls.turn)
+        if (walls != null && !saving) ScanTurnArrow(turn)
     }
 }
 
@@ -597,6 +696,9 @@ internal fun ScanShutter(startEnabled: Boolean, onStart: () -> Unit) {
 /** What the live view draws: the points, in the colours the camera saw. */
 private val SCAN_LIVE_GROUPS = setOf(DebugGroup.Points)
 
+/** ARCore's camera rate, which paces the phone's eye the live view draws from (#4743). */
+private const val SCAN_LIVE_FPS = 30
+
 /** A notch above the capture card's 10 dp dot: this one is read from a metre away. */
 private val ScanDotSize = Space.md - Space.xs / 2
 
@@ -606,11 +708,14 @@ internal const val SCAN_TURN_TAG = "ar_rerun_scan_turn"
 internal const val SCAN_STAGE_TAG = "ar_rerun_scan_stage"
 internal const val SCAN_RECENTER_TAG = "ar_rerun_scan_recenter"
 internal const val SCAN_POINTS_TAG = "ar_rerun_scan_points"
-internal const val SCAN_PHOTO_LIMIT_TAG = "ar_rerun_scan_photo_limit"
 internal const val SCAN_CONTROLS_TAG = "ar_rerun_scan_controls"
+internal const val SCAN_PAUSE_TAG = "ar_rerun_scan_pause"
+internal const val SCAN_FINISH_TAG = "ar_rerun_scan_finish"
 internal const val SCAN_HINT_TAG = "ar_rerun_scan_hint"
 internal const val SCAN_REVIEW_TAG = "ar_rerun_scan_review"
 internal const val SCAN_SAVING_TAG = "ar_rerun_scan_saving"
 internal const val SCAN_SAVE_FAILED_TAG = "ar_rerun_scan_save_failed"
+internal const val SCAN_SAVE_AS_FILE_TAG = "ar_rerun_scan_save_as_file"
+internal const val SCAN_SAVE_RETRY_TAG = "ar_rerun_scan_save_retry"
 internal const val SCAN_LEAVE_TAG = "ar_rerun_scan_leave"
 internal const val SCAN_DISCARD_TAG = "ar_rerun_scan_discard"

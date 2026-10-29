@@ -368,7 +368,7 @@ bullet(s), prefixed with a category tag:
 - **Short headline ([#1234](https://github.com/sceneview/sceneview/issues/1234)).** What changed and why.
 ```
 
-Recognised categories: `Added`, `Changed`, `Fixed`, `Removed`, `Tests`, `Docs`.
+Recognised categories: `Added`, `Changed`, `Fixed`, `Security`, `Performance`, `Removed`, `Tests`, `Docs`.
 Distinct filenames mean parallel PRs never conflict on the changelog. At release
 time `.claude/scripts/collate-changelog.sh` collates all fragments into a new
 `## vX.Y.Z` section. See [`changelog.d/README.md`](changelog.d/README.md) for

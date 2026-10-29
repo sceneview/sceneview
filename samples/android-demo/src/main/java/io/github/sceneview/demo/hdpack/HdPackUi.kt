@@ -88,6 +88,17 @@ fun rememberHdAssetStatus(store: HdPackStore?, assetId: String?): State<HdPackSt
 fun hdPackSize(context: Context, bytes: Long): String = Formatter.formatShortFileSize(context, bytes)
 
 /**
+ * Whether the device is on a network that is up and metered — mobile data, a hotspot — where a
+ * large download waits for the user's go. `isActiveNetworkMetered` also answers `true` with no
+ * network at all, which would warn about mobile data on a device that has none: not this.
+ */
+fun isOnMeteredNetwork(context: Context): Boolean {
+    val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    val capabilities = connectivity?.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
+    return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
+}
+
+/**
  * "Download now": states the size, says whether it goes over mobile data, then queues the
  * download on any network. Nothing is fetched until [onConfirm].
  */
@@ -95,13 +106,7 @@ fun hdPackSize(context: Context, bytes: Long): String = Formatter.formatShortFil
 fun HdPackDownloadDialog(totalBytes: Long, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val size = hdPackSize(context, totalBytes)
-    // Only a network that is up and metered: `isActiveNetworkMetered` also answers `true` with no
-    // network at all, which would warn about mobile data on a device that has none.
-    val metered = remember {
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        val capabilities = connectivity?.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
-        capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false
-    }
+    val metered = remember { isOnMeteredNetwork(context) }
     val body = stringResource(R.string.hd_pack_dialog_body, size)
     val meteredNote = stringResource(R.string.hd_pack_dialog_metered_note)
     AlertDialog(

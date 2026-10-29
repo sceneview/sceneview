@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.text.format.DateFormat
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.content.FileProvider
@@ -19,12 +20,14 @@ import io.github.sceneview.demo.demos.internal.ArDebugLogWriter
 import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.BakeOcclusion
 import io.github.sceneview.demo.demos.internal.BakePhoto
+import io.github.sceneview.demo.demos.internal.BakePhotoCache
 import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.PlaneBake
+import io.github.sceneview.demo.demos.internal.PlaneRect
 import io.github.sceneview.demo.demos.internal.ReplayDense
 import io.github.sceneview.demo.demos.internal.ReplayGeometry
 import io.github.sceneview.demo.demos.internal.ReplayLens
@@ -42,6 +45,7 @@ import io.github.sceneview.demo.demos.internal.ScanScopeCopy
 import io.github.sceneview.demo.demos.internal.ScanArchive
 import io.github.sceneview.demo.demos.internal.ScanDevice
 import io.github.sceneview.demo.demos.internal.ScanFootprint
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.SvpcCodec
 import io.github.sceneview.demo.demos.internal.Vec3
 import io.github.sceneview.demo.demos.internal.of
@@ -89,24 +93,31 @@ internal object RerunCaptureBuilder {
         dense: DenseCloud? = null,
         denseVoxelM: Float = DenseFusion.VOXEL_M,
         denseMs: Long = 0L,
+        camera: String? = null,
     ): RerunCapturePack = withContext(Dispatchers.Default) {
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
         val whole = trace.frameAt(trace.duration)
-        val decoded = HashMap<Int, BakePhoto?>()
-        fun photo(index: Int): BakePhoto? = decoded.getOrPut(index) { decodePhoto(photos[index]) }
+        val reads = ArrayList<ScanPhotoPolicy.BakeRead>()
 
         val viewpoint = centroid(whole.trail)
         val planes = trace.lastPlanes()
         // What stands in front of a plane hides it from a photo: its own dense cloud and the other planes.
         val bakeStart = System.nanoTime()
         val occlusion = BakeOcclusion.of(dense, planes)
-        val baked = planes.mapNotNull { plane -> bakePlane(plane, viewpoint, photos, lens, occlusion, ::photo) }
-        // `adb logcat -s RerunCaptureBuilder`: what the visibility test costs on a real phone (#4697).
+        // Each photo decoded on the first plane that paints from it, and let go after the last one.
+        val rects = planes.map { PlaneBake.rectOf(it, viewpoint) }
+        val poses = photos.map { it.pose }
+        val picks = rects.map { rect -> rect?.let { PlaneBake.pickPhotos(it, poses, lens) }.orEmpty() }
+        val cache = BakePhotoCache(picks) { decodePhoto(photos[it], reads::add) }
+        val baked = planes.indices.mapNotNull { i -> bakePlane(planes[i], rects[i], lens, occlusion, cache.photosFor(i)) }
+        // `adb logcat -s RerunCaptureBuilder`: what the visibility test costs on a real phone (#4697),
+        // and at what size the bake read the photos it painted from.
         // The JVM tests build scans too, and their android.util.Log is a stub that throws.
         val bakeMs = (System.nanoTime() - bakeStart) / NANOS_PER_MS
         runCatching {
             Log.i(BAKE_LOG_TAG, "planes baked: ${baked.size} of ${planes.size}, ${photos.size} photos, " +
-                "${dense?.count ?: 0} dense points, $bakeMs ms")
+                "${dense?.count ?: 0} dense points, $bakeMs ms; ${ScanPhotoPolicy.bakeReadsLog(reads)}; " +
+                cache.logLine() + camera?.let { "; $it" }.orEmpty())
         }
         val denseCloud = dense?.takeIf { device != null && it.count > 0 }
         val denseBlob = denseCloud?.let { listOf(ReplayDense.PATH to SvpcCodec.encode(it)) }.orEmpty()
@@ -129,7 +140,7 @@ internal object RerunCaptureBuilder {
         )
         RerunCapturePack(
             manifest = manifest.toJson().toByteArray(),
-            log = ArDebugLogWriter.write(events).toByteArray(),
+            log = ArDebugLogWriter.writeBytes(events),
             media = archive,
         )
     }
@@ -137,15 +148,13 @@ internal object RerunCaptureBuilder {
     /** [plane]'s texture and its JPEG, painted from the photos that see it best; `null` if none do. */
     private fun bakePlane(
         plane: DebugPlane,
-        viewpoint: Vec3?,
-        photos: List<ScanPhoto>,
+        rect: PlaneRect?,
         lens: ReplayLens,
         occlusion: BakeOcclusion?,
-        photo: (Int) -> BakePhoto?,
+        picked: List<BakePhoto>,
     ): Pair<ReplayPlaneTexture, ByteArray>? {
-        val rect = PlaneBake.rectOf(plane, viewpoint) ?: return null
+        if (rect == null) return null
         val (width, height) = PlaneBake.sizeOf(rect)
-        val picked = PlaneBake.pickPhotos(rect, photos.map { it.pose }, lens).mapNotNull(photo)
         val baked = PlaneBake.bake(rect, width, height, picked, lens, occlusion, plane.id) ?: return null
         val bitmap = Bitmap.createBitmap(baked.argb, baked.width, baked.height, Bitmap.Config.ARGB_8888)
         val jpeg = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
@@ -156,8 +165,24 @@ internal object RerunCaptureBuilder {
         return texture to jpeg.toByteArray()
     }
 
-    private fun decodePhoto(photo: ScanPhoto): BakePhoto? {
-        val bitmap = BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size) ?: return null
+    /**
+     * [photo]'s pixels for the plane bake, read at [ScanPhotoPolicy.BAKE_LONG_SIDE] on the long side
+     * rather than whole: the build holds every photo a plane still to bake paints from, and a sharp
+     * photo read whole holds four times the pixels the texture can use. The bake samples a photo by
+     * its normalized position, so a reduced one still lands where the full one would. [onRead] hears
+     * each photo read, for the build's log line.
+     */
+    @VisibleForTesting
+    internal fun decodePhoto(photo: ScanPhoto, onRead: (ScanPhotoPolicy.BakeRead) -> Unit = {}): BakePhoto? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size, bounds)
+        val sample = ScanPhotoPolicy.bakeSample(bounds.outWidth, bounds.outHeight)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(photo.jpeg, 0, photo.jpeg.size, options) ?: return null
+        onRead(ScanPhotoPolicy.BakeRead(bounds.outWidth, bounds.outHeight, sample, bitmap.width, bitmap.height))
         val argb = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(argb, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         return BakePhoto(photo.pose, bitmap.width, bitmap.height, argb).also { bitmap.recycle() }
@@ -206,7 +231,15 @@ internal suspend fun RerunSessionStore.landingSessions(): List<LandingSession> =
     runCatching { sweepOrphans() }
     list().map { info ->
         val thumbnail = thumbnail(info.id)?.let { file ->
-            runCatching { BitmapFactory.decodeFile(file.path)?.asImageBitmap() }.getOrNull()
+            runCatching {
+                // The first photo may be a sharp one: decoded at a card's size, never whole.
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.path, bounds)
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = ScanPhotoPolicy.previewSample(bounds.outWidth, bounds.outHeight)
+                }
+                BitmapFactory.decodeFile(file.path, options)?.asImageBitmap()
+            }.getOrNull()
         }
         val footprint = if (thumbnail != null) null else footprintOf(info.id)
         LandingSession(info, thumbnail, footprint)
@@ -442,6 +475,10 @@ internal const val RERUN_SHARE_DIR = "rerun-share"
 internal const val RERUN_SHARE_SCAN = "scan"
 internal const val RERUN_SHARE_EXPORT = "export"
 internal const val RERUN_SHARE_PLAN = "plan"
+
+/** A scan that could not be saved on the phone, written out for the share sheet (#4815). */
+internal const val RERUN_SHARE_UNSAVED = "unsaved"
+
 private const val MILLIS = 1000L
 private const val HEAD_BYTES = 64
 private const val BUFFER_BYTES = 64 * 1024

@@ -30,6 +30,7 @@ import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.rememberDetectedPlanes
 import io.github.sceneview.ar.rememberArGuidanceState
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
 import io.github.sceneview.demo.DemoSettings
@@ -205,6 +206,7 @@ fun ARPlaneNodeDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,

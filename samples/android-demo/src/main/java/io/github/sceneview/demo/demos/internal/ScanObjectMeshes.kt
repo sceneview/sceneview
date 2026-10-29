@@ -175,6 +175,23 @@ data class ScanChrome(
     }
 
     /**
+     * Where a label may lie in a view [width] × [height]: inside [margin] of its sides, under the
+     * cards across the top — up to the rows of the corner [card] beside it ([cardRect] keeps it off
+     * the card itself) — and over the filmstrip and the dock.
+     */
+    fun labelArea(width: Int, height: Int): LabelRect {
+        val first = if (card != null) top - card.height + margin else top + margin
+        val last = height - bottom - margin
+        return LabelRect(margin, first, max(0, width - 2 * margin), max(0, last - first))
+    }
+
+    /** The corner [card] in a view [width] pixels wide, grown by [margin]: no label covers it. */
+    fun cardRect(width: Int): LabelRect? = card?.let {
+        val w = it.width + margin
+        LabelRect(if (it.atLeft) 0 else width - w, 0, w, top + margin)
+    }
+
+    /**
      * Where a label [labelWidth] × [labelHeight] puts its top left corner in a view [width] ×
      * [height], for a box drawn from [above] down to [below] in column [x]: centred over it
      * ([ScanObjectMeshes.labelTop]) — moved aside, level with the corner card, where it would lie

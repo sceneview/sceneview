@@ -279,6 +279,8 @@ so the eye lands on the one thing the screen is for.
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
 | `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
 | `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
+| `support-amount-height` | 64pt | One tip amount in the "Support SceneView" sheet (iOS, macOS) |
+| `sheet-width-mac` | 440pt | A compact sheet on macOS (support, prompts) |
 | `about-app-icon` | 40dp / 40pt, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon (App Store icon on iOS) of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
 | `about-app-divider-inset` | 72dp | Hairline start inset in that group (row padding + icon + gap) |
 
@@ -288,14 +290,19 @@ so the eye lands on the one thing the screen is for.
 - **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
   theme-independent — it is the product's identity, the same picture in light and dark,
   and its contrast is self-contained (light cube on `#0D2137`).
-- **Support is stated once and never pushed.** One card, on the About tab, above the
-  fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+- **Support is asked, never pushed.** One card, on the About tab, above the fold. No
+  launch prompt, no badge, no urgency copy. Apple only for now (iOS and macOS): the card
+  and one occasional prompt open the "Support SceneView" sheet — three one-time tips
+  through In-App Purchase (App Review refuses a donation link, guideline 3.1.1), one tap
+  per amount, a thank-you once it goes through, nothing unlocked. The prompt comes never
+  in the first two sessions, only when Home comes back after a sample, at most once
+  every 14 days, never over a demo or an AR session, with "Not now" and "Don't ask
+  again". The Android card keeps its own flow until the Play Billing version lands.
 - **Other apps are listed, not advertised.** "More apps built with SceneView" is a plain
   group of rows directly under the support card: icon, name, one line on what the app
   does for the person holding the phone, open-in-new. No tinted surface, no price, no
   badge, no install button — the icons are the only colour, and a tap opens the Play
-  listing. On iOS the group sits under the identity block (there is no support card
-  there), drawn as the "Privacy & notifications" group is; it lists only apps that are
+  listing. On iOS the group sits under the support card too, drawn as the "Privacy & notifications" group is; it lists only apps that are
   live on the App Store, with their App Store icon and name, and a tap opens the App
   Store listing — never another store's.
 
@@ -673,8 +680,13 @@ themed surface — so it is theme-independent and uses the "Button glass" row.
   `chrome-scrim` itself, under its glass and cut to its own outline
   (`LocalGlassGround`): same stack (scene, scrim, glass, glyph), same contrast,
   on the chip instead of across the picture.
-- **There is no overflow menu.** Reset, Send feedback and QA mode live in the
-  settings sheet the dock's Controls item opens — one settings surface, not two.
+- **The overflow menu is for a screen with no controls of its own (#4807).** Reset, Send
+  feedback and QA mode live in the settings sheet the dock's Controls item opens — one
+  settings surface, not two. A screen that owns the whole window and has nothing of its own
+  to tweak (3D Scan's live capture) passes `actionsMenu`: the same actions go in a standard
+  ⋮ menu (`glass-icon-button`, Material `DropdownMenu` on the app theme) at the end of the
+  identity row, and with no other dock item no dock is drawn — a Settings button that took
+  the bottom of the screen for two rows was reported again and again.
 - **A sheet you tweak the scene through is glass, low and non-modal (#3827).** The
   settings sheet exists to be watched through: drag a slider, look at what it did.
   - `sheet-peek`: it rests at **36 % of the window** (or hugs its controls when they
@@ -1043,6 +1055,8 @@ button is the only way out of the state the card explains.
   a camera frame. A demo card that used `surface` at 90% opacity — as the Cloud Anchors
   screen did before #3421 — is a near-white slab over the room in light mode and a
   near-black one in dark, neither contrasted against anything on purpose.
+- **Off the camera, the card takes the themed stage's card** (`overCamera = false`, Measure's
+  plan): `StageChrome.card` ground, `onCard` text (`onCardMuted` secondary), `edgeRing` hairline.
 - Title `type-card` in `on-ar-scrim`; body and captions `type-body` / `type-caption` in
   `on-ar-scrim-dim`.
 - **Codes are `font-mono` and shortened**, never wrapped prose. Show `first6…last4`; the
@@ -1060,6 +1074,12 @@ button is the only way out of the state the card explains.
   nothing is worse than a plain explanation (`ARCoreAvailabilityOverlay`, #3374).
 - **One card at a time, and never doubled with a pill saying the same thing.** When a card
   explains the state, the coaching overlay stays silent.
+- **A capture has one record control, in one place (#4807).** The 72dp shutter (`danger`
+  disc, a stop square while recording) sits centred from the first frame to the last; Pause
+  is the secondary, a 56dp `ar-scrim` disc on its leading side that turns into a play glyph
+  while paused. Its stop opens the review. No Pause / Finish text buttons in its place: the
+  REC everyone knows must not vanish when recording starts. The live capture holds the
+  phone upright (portrait lock while it records), as dedicated scan apps do.
 - **Recording is `danger` red, and only recording.** The live dot of a capture card and
   the shutter disc use `danger` (#ea4335) — the camera-app convention — so a red dot over
   the camera always means "this is being recorded", never an error (#3831).
@@ -1108,8 +1128,8 @@ the camera mode keeps `ARSceneView`'s own plane renderer).
   `surface-container` at 88 %; text `on-surface` (13:1), secondary `on-surface-dim`
   (8.9:1); edge `on-surface` at 12 %, no halo; the chrome bands wash towards the ground
   instead of black; the one filled accent is the light scheme's `primary`; the status bar
-  keeps dark icons. The 3D Scan and Camera & Gestures demos opt in — every other stage is
-  media.
+  keeps dark icons. The 3D Scan and Camera & Gestures demos, and Measure's plan, opt in —
+  every other stage is media.
 - **Stage sky** (`StageSky`, #4089): the backdrop of a themed stage whose subjects stand on
   an open floor that the camera orbits. A flat skybox in the stage ground (the zenith) under
   Filament height fog in `surface-container` (the horizon): the fog covers the far floor and

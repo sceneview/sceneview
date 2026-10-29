@@ -84,6 +84,11 @@ fun SampleTelemetry(sampleId: String, content: @Composable () -> Unit) {
                 Telemetry.analytics.log(
                     AnalyticsEvent.SampleClose(sampleId, session.elapsedMillis() / MILLIS_PER_SECOND),
                 )
+                // A sample used for a while is a moment of value: the one the Support
+                // interstitial may follow, once the user is back on the tab host.
+                io.github.sceneview.demo.support.SupportPrompt.onSampleUsed(
+                    session.elapsedMillis() / MILLIS_PER_SECOND,
+                )
             }
         }
     }

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **3D Scan says one floor-covered figure everywhere.** The live map, the replay and the result now read the same m², from the floor cells the capture records as it goes: it never goes down, keeps growing while points arrive, and a saved scan's replay and result end on the figure the capture showed. The result no longer shows a separate percentage, and the replay's room size from walls is labelled as such (#4734).

@@ -1,16 +1,32 @@
 package io.github.sceneview.demo.demos.internal
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 
 /**
  * Pins the 3D Scan capture lifecycle (#4627): Pause and Finish freeze a capture, the review
  * Finish opens goes back to the same capture, and nothing returns once Save scan has built it.
  */
 class ScanLifecycleTest {
+    // The copy under test is the English one, whatever the machine running it says.
+    private val locale = Locale.getDefault()
+
+    @Before
+    fun englishLocale() {
+        Locale.setDefault(Locale.US)
+    }
+
+    @After
+    fun restoreLocale() {
+        Locale.setDefault(locale)
+    }
+
 
     // ── Phase ─────────────────────────────────────────────────────────────────
 

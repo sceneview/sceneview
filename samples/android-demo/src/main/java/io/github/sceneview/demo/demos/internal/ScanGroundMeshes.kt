@@ -1,18 +1,26 @@
 package io.github.sceneview.demo.demos.internal
 
 /**
- * [ScanGround] as geometry (#4719): the slab under the scan, its edge, and the hatching of the
- * floor it did not see. Built off the main thread; the layers upload them on it.
+ * [ScanGround] as geometry (#4719): the slab under the scan and its edge. Built off the main
+ * thread; the layers upload them on it.
  *
- * - **Slab**: the footprint, one quad per run of cells along X, [SLAB_DROP_M] under the floor —
- *   under the scanned floor where there is one, so the scan stands on it rather than in it.
+ * - **Slab**: the footprint, holes included, one quad per run of cells along X, [SLAB_DROP_M]
+ *   under the floor — under the scanned floor where there is one, so the scan stands on it rather
+ *   than in it. A hole in the floor reads as the slab, never as a hatched tile: the result shows
+ *   the room, and the parts worth scanning again are named by their own pill (#4736).
  * - **Edge**: the slab's sides, [SLAB_THICKNESS_M] deep, one quad per cell side on the footprint's
  *   outline: a base, as the dollhouse's plinth is, not a sheet of paper.
- * - **Missing**: each missing cell's tile, inset, and its diagonal — cell after cell, the diagonals
- *   join into the 45° hatching of the live map's "still to scan".
+ * - **Missing**, on the live 3D map only (`hatchMissing`): each missing cell's tile, inset, and its
+ *   diagonal — cell after cell, the diagonals join into the 45° hatching of "still to scan". The
+ *   result leaves both empty.
  */
-class ScanGroundMeshes(val slab: DebugMesh, val edge: DebugMesh, val missingFill: DebugMesh, val hatch: DebugMesh) {
-    /** Triangles the four layers draw, for the frame-cost log. */
+class ScanGroundMeshes(
+    val slab: DebugMesh,
+    val edge: DebugMesh,
+    val missingFill: DebugMesh = DebugMesh(),
+    val hatch: DebugMesh = DebugMesh(),
+) {
+    /** Triangles the layers draw, for the frame-cost log. */
     val triangles: Int get() = slab.triangleCount + edge.triangleCount + missingFill.triangleCount + hatch.triangleCount
 
     companion object {
@@ -32,8 +40,9 @@ class ScanGroundMeshes(val slab: DebugMesh, val edge: DebugMesh, val missingFill
         /** Half the hatching's width, share of a cell. */
         const val HATCH_HALF_WIDTH = 0.07f
 
+        /** [ground]'s geometry; [hatchMissing] also tiles and hatches its missing cells (live map). */
         @Suppress("NestedBlockDepth")
-        fun of(ground: ScanGround): ScanGroundMeshes {
+        fun of(ground: ScanGround, hatchMissing: Boolean = false): ScanGroundMeshes {
             val slab = DebugMesh()
             val edge = DebugMesh()
             val fill = DebugMesh()
@@ -66,7 +75,7 @@ class ScanGroundMeshes(val slab: DebugMesh, val edge: DebugMesh, val missingFill
                     if (ground.at(col + 1, r) == ScanGround.OUTSIDE) side(edge, x1, z0, x1, z1, top, bottom)
                     if (ground.at(col, r - 1) == ScanGround.OUTSIDE) side(edge, x0, z0, x1, z0, top, bottom)
                     if (ground.at(col, r + 1) == ScanGround.OUTSIDE) side(edge, x0, z1, x1, z1, top, bottom)
-                    if (cell != ScanGround.MISSING) continue
+                    if (!hatchMissing || cell != ScanGround.MISSING) continue
                     val inset = s * TILE_INSET
                     val y = top + MISSING_LIFT_M
                     fill.quad(

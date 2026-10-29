@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -76,6 +77,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.DebugGroup
 import io.github.sceneview.demo.demos.internal.DebugPlaneKind
 import io.github.sceneview.demo.demos.internal.filmstripFrames
+import io.github.sceneview.demo.demos.internal.scanPathLength
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
@@ -101,6 +103,7 @@ import io.github.sceneview.demo.ui.overMediaEdge
 @Composable
 internal fun RerunLayersSection(session: ArDebugSession, modifier: Modifier = Modifier) {
     val stats = session.stats
+    val locale = LocalLocale.current.platformLocale
     Column(modifier = modifier.fillMaxWidth().padding(top = Space.md).testTag(RERUN_LAYERS_TAG)) {
         Text(
             text = LAYERS_TITLE,
@@ -110,9 +113,9 @@ internal fun RerunLayersSection(session: ArDebugSession, modifier: Modifier = Mo
         )
         RerunReplayControls.layers.forEach { layer ->
             val value = when (layer.group) {
-                DebugGroup.Trail -> ArDebugFormat.distance(stats.pathMetres)
-                DebugGroup.Planes -> ArDebugFormat.count(stats.planes)
-                DebugGroup.Points -> ArDebugFormat.compactCount(stats.mapPoints)
+                DebugGroup.Trail -> scanPathLength(stats.pathMetres, locale)
+                DebugGroup.Planes -> ArDebugFormat.count(stats.planes, locale)
+                DebugGroup.Points -> ArDebugFormat.compactCount(stats.mapPoints, locale)
                 else -> null
             }
             LayerRow(layer, value, session)

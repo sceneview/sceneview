@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: tapping an object in a 3D Scan replay picks what is under the finger ([#4696](https://github.com/sceneview/sceneview/issues/4696)).** With the settings sheet open, the replay is drawn smaller and higher. A tap there now selects the object under the finger, and the dimensions label sits over that object. When Points is turned off, or the timeline is moved back to before the object was scanned, the turntable starts turning again. A tap that is still being processed when the replay view closes is now dropped instead of being drawn.

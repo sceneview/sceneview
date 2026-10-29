@@ -1,5 +1,6 @@
 package io.github.sceneview.demo.common.placement
 
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.telemetry.AR_VIEW_SAMPLE_ID
 import io.github.sceneview.demo.telemetry.ArFunnelLog
 import io.github.sceneview.demo.telemetry.LocalSampleId
@@ -230,6 +231,7 @@ fun TapToPlaceArSession(
     ) {
         if (qaBackdrop) QaCameraBackdrop(seed = backdropSeed)
         ARSceneView(
+            lifecycle = rememberHostLifecycle(),
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,

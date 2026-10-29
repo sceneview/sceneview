@@ -1,2 +1,0 @@
-<!-- category: Docs -->
-- **AR manifests and tap examples served by the docs and MCP are consistent ([#4760](https://github.com/sceneview/sceneview/pull/4760)).** Every AR Required manifest the MCP serves now carries `tools:replace="android:value"` (the library declares ARCore `optional`), the `nodes.md` tap example and GeometryNode advice use real APIs, and CONTRIBUTING gives the real asset download sizes (~550 MiB for a root build, the Auto demo fetches the web scope).

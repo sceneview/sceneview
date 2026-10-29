@@ -48,6 +48,7 @@ import io.github.sceneview.ar.postprocessing.arDepthOfField
 import io.github.sceneview.ar.postprocessing.depthFocusDistance
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoMode
 import io.github.sceneview.demo.DemoModePill
 import io.github.sceneview.demo.DemoModeSwitch
@@ -203,6 +204,7 @@ fun ARDepthOfFieldDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 onARCoreAvailability = { arSessionUnavailable = it != null },
                 modifier = Modifier.fillMaxSize(),

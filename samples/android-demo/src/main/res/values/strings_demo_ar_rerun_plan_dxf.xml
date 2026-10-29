@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the 3D Scan floor plan's DXF drawing, shared on its own action beside the PDF's (`RerunPlanDxf.kt`).
+     Android's resource merger fans every `res/values/*.xml` file in, see #1870. -->
+<resources>
+    <!-- The plan's share menu, right after "Share PDF": the plan as a DXF drawing for a CAD tool. -->
+    <string name="demo_ar_rerun_plan_share_dxf">Share DXF (CAD)</string>
+    <!-- %1$s the scan's title. The first line under the drawing. -->
+    <string name="demo_ar_rerun_plan_dxf_heading">%1$s · floor plan</string>
+    <string name="demo_ar_rerun_plan_dxf_verify">Indicative plan, not a certified measurement: verify every figure on site.</string>
+    <string name="demo_ar_rerun_plan_dxf_units">Drawn in millimetres · figures in metres.</string>
+    <string name="demo_ar_rerun_plan_dxf_units_feet">Drawn in inches · figures in feet and inches.</string>
+    <string name="demo_ar_rerun_plan_dxf_estimates">≈ marks an estimate: the scan did not see all of what that figure needs.</string>
+    <!-- %1$s the door's width, and its height when known: 0.90 × 2.10. -->
+    <string name="demo_ar_rerun_plan_dxf_door">Door %1$s</string>
+    <!-- %1$s the window's width, and its height when known: 1.20 × 1.20. -->
+    <string name="demo_ar_rerun_plan_dxf_window">Window %1$s</string>
+    <!-- %1$s the window's sill height above the floor: 0.90. -->
+    <string name="demo_ar_rerun_plan_dxf_sill">sill %1$s</string>
+</resources>

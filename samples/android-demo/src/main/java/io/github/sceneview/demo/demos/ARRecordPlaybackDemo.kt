@@ -46,6 +46,7 @@ import io.github.sceneview.ar.recording.rememberARPlaybackStatus
 import io.github.sceneview.ar.recording.rememberARRecordInterpreter
 import io.github.sceneview.ar.recording.rememberARRecorder
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
@@ -547,6 +548,7 @@ private fun TakeScene(
     Box(modifier = Modifier.fillMaxSize()) {
         if (qaBackdrop) QaCameraBackdrop(seed = QA_SEED)
         ARSceneView(
+            lifecycle = rememberHostLifecycle(),
             onSessionFailure = { take.sessionFailed = true },
             modifier = Modifier.fillMaxSize(),
             engine = engine,

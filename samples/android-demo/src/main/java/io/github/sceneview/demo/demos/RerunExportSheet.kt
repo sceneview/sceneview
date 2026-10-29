@@ -430,8 +430,10 @@ private fun FloorPlanRow(offer: PlanOffer, onClick: () -> Unit) {
                     when (offer) {
                         PlanOffer.Ready -> R.string.demo_ar_rerun_plan_export_detail
                         PlanOffer.Measuring -> R.string.demo_ar_rerun_plan_measuring
+                        PlanOffer.StillMeasuring -> R.string.demo_ar_rerun_plan_still_measuring
                         PlanOffer.NoDepth -> R.string.demo_ar_rerun_plan_export_no_depth
                         PlanOffer.NoWalls -> R.string.demo_ar_rerun_plan_export_no_walls
+                        PlanOffer.Failed -> R.string.demo_ar_rerun_plan_export_failed
                     },
                 ),
                 style = Type.caption,
@@ -445,7 +447,7 @@ private fun FloorPlanRow(offer: PlanOffer, onClick: () -> Unit) {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(SceneViewTokens.Layout.touchTarget).padding(Space.sm),
             )
-        } else if (offer == PlanOffer.Measuring) {
+        } else if (offer == PlanOffer.Measuring || offer == PlanOffer.StillMeasuring) {
             // The same small spinner as a format being prepared.
             CircularProgressIndicator(
                 strokeWidth = Space.xs / 2,

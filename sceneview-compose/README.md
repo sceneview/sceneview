@@ -178,7 +178,7 @@ there.
 ## Desktop (JVM)
 
 Filament through [filament-kmp](https://github.com/Erkko68/filament-kmp) on Maven
-(`filament-compose` 0.7.3, `implementation` — never on the public API). Offscreen
+(`filament-compose` 0.8.0, `implementation` — never on the public API). Offscreen
 readback → Skia, inside filament-kmp. **JDK 21+**, no JVM flag. filament-kmp's JNI
 binding (0.7.0+) needs only JDK 17, but this module's `api` dependency
 `dev.romainguy:kotlin-math` ships JDK 21 bytecode, so a JDK 17 runtime fails with

@@ -3,6 +3,7 @@ package io.github.sceneview.demo.demos
 import io.github.sceneview.demo.demos.internal.ArDebugEvent
 import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DenseSamples
+import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.DepthBackProjection
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanDetail
@@ -13,6 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.sqrt
 
 /**
  * #4629: what the capture screen says of a long depth scan. Its one count is the points the
@@ -119,6 +121,33 @@ class ScanDenseMapTest {
         assertEquals(dense.savedCloud().count, revealed.last())
         // A compaction merged points the live count had: the reveal is not the live count.
         assertNotEquals(events.map { (it as ArDebugEvent.DepthStats).total }, revealed)
+    }
+
+    @Test
+    fun `the live view draws a point the map made coarser as wide as its level, leaving no holes`() {
+        val dense = map(maxPoints = 2_000)
+        var frame = 0
+        while (dense.fusion.compactions < 2 && frame < FRAMES) {
+            now += ScanDenseMap.LIVE_INTERVAL_NS
+            dense.add(plane(frame++))
+        }
+        val live = dense.live!!
+        val coarsest = (0 until live.cloud.count).maxOf { live.cloud.levelOf(it) }
+        assertTrue("part of the map is coarser now", coarsest > 0)
+        // A quad's first two corners span one side of it (DenseSurfels.mesh).
+        val p = live.mesh.positions
+        var widest = 0f
+        for (q in 0 until live.mesh.vertexCount / 4) {
+            val a = q * 4 * 3
+            val dx = p[a + 3] - p[a]
+            val dy = p[a + 4] - p[a + 1]
+            val dz = p[a + 5] - p[a + 2]
+            widest = maxOf(widest, sqrt(dx * dx + dy * dy + dz * dz))
+        }
+        // A merged point stands for its whole cell: drawn at the finest size, the wall between
+        // it and its neighbours shows through. Its size on screen is capped by the shader.
+        val coarse = 2f * DenseFusion.VOXEL_M * DenseSurfels.HALF_SIDE_VOXELS * (1 shl coarsest)
+        assertEquals("the widest point over the camera", coarse, widest, 1e-5f)
     }
 
     private fun coaching(lost: Boolean, photos: Boolean, detail: ScanDetail, phase: ScanPhase = ScanPhase.Scanning) =

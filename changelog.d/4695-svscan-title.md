@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **android-demo — 3D Scan**: a `.svscan` opened again through "Open in SceneView" keeps the title it was saved with ("Object · Oct 19, 12:16 PM"), instead of its file name, whose colons were replaced ("12-16 PM"). The share flow and the export sheet's "Original scan" now store the title in the file's manifest; files without one keep using their file name, and the iOS demo ignores the new key (#4695).

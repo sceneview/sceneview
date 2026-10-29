@@ -18,11 +18,12 @@ class MeasureGeometryTest {
     // ── Units ───────────────────────────────────────────────────────────────
 
     @Test
-    fun `locale picks imperial only where feet are used`() {
+    fun `locale picks imperial in US English only, as the plan does`() {
         assertEquals(MeasureUnitSystem.Imperial, MeasureUnitSystem.forLocale(Locale.US))
         assertEquals(MeasureUnitSystem.Metric, MeasureUnitSystem.forLocale(Locale.UK))
         assertEquals(MeasureUnitSystem.Metric, MeasureUnitSystem.forLocale(Locale.FRANCE))
-        assertEquals(MeasureUnitSystem.Imperial, MeasureUnitSystem.forLocale(Locale("en", "LR")))
+        assertEquals(MeasureUnitSystem.Metric, MeasureUnitSystem.forLocale(Locale("en", "LR")))
+        assertEquals(MeasureUnitSystem.Metric, MeasureUnitSystem.forLocale(Locale.forLanguageTag("es-US")))
     }
 
     @Test
@@ -129,15 +130,32 @@ class MeasureGeometryTest {
     }
 
     @Test
-    fun `aim height is clamped and rejects parallel or backward rays`() {
+    fun `aim height is capped and rejects parallel or backward rays`() {
         val a = p(0f, 0f, -2f)
         val b = p(2f, 0f, -2f)
-        assertEquals(WALL_MIN_HEIGHT, measureWallHeightFromRay(p(1f, 1f, 0f), p(0f, -1f, -1f), a, b)!!, 1e-6f)
         assertEquals(WALL_MAX_HEIGHT, measureWallHeightFromRay(p(1f, 1f, 0f), p(0f, 10f, -1f), a, b)!!, 1e-6f)
         assertNull(measureWallHeightFromRay(p(1f, 1f, 0f), p(1f, 0f, 0f), a, b))
         assertNull(measureWallHeightFromRay(p(1f, 1f, 0f), p(0f, 0f, 1f), a, b))
         // Far past the wall's end.
         assertNull(measureWallHeightFromRay(p(1f, 1f, 0f), p(3f, 0f, -1f), a, b))
+    }
+
+    @Test
+    fun `aiming at the floor at the wall's foot reads no height (#4751)`() {
+        val a = p(0f, 0f, -2f)
+        val b = p(2f, 0f, -2f)
+        // Camera at 1.5 m aiming down at the floor 1 m in front of the wall: the ray meets the
+        // wall's plane under its foot. It used to read the 5 cm minimum, which Set height locked.
+        assertNull(measureWallHeightFromRay(p(1f, 1.5f, 0f), p(0f, -1.5f, -1f), a, b))
+        // Right at the seam, 2 cm up: still under any useful wall.
+        assertNull(measureWallHeightFromRay(p(1f, 1.5f, 0f), p(0f, -1.48f, -2f), a, b))
+        val square = listOf(a, b, p(2f, 0f, -4f), p(0f, 0f, -4f))
+        assertNull(measureRoomHeightFromRay(p(1f, 1.5f, 0f), p(0f, -1.5f, -1f), square, closed = true))
+        // And the shutter refuses instead of locking.
+        assertEquals(
+            MeasureRefusal.OffWall,
+            measureRefusal(tracking = true, phase = MeasurePhase.Raising, aimFound = false, heightFound = false),
+        )
     }
 
     @Test

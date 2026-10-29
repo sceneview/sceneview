@@ -10,6 +10,7 @@ import com.google.android.filament.Engine
 import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import io.github.sceneview.demo.demos.internal.ArDebugFrame
+import io.github.sceneview.demo.demos.internal.ArDebugTrace
 import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.LiveWallMotion
@@ -18,7 +19,9 @@ import io.github.sceneview.demo.demos.internal.LiveWallSource
 import io.github.sceneview.demo.demos.internal.PlaneWallSource
 import io.github.sceneview.demo.demos.internal.ScanGuide
 import io.github.sceneview.demo.demos.internal.ScanTurn
+import io.github.sceneview.demo.demos.internal.WallExtent
 import io.github.sceneview.demo.demos.internal.WallMesh
+import io.github.sceneview.demo.demos.internal.lostBetween
 import io.github.sceneview.demo.demos.internal.openFloorEdges
 import io.github.sceneview.demo.demos.internal.update
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
@@ -36,8 +39,18 @@ import kotlin.math.sqrt
 internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSource()) {
     val motion = LiveWallMotion()
 
+    /** The walls as drawn: the [source]'s, each cut back to the points seen on it ([WallExtent.clip]). */
     var snapshot: LiveWallSnapshot = LiveWallSnapshot.Empty
         private set
+
+    /** The [source]'s walls as it found them, before [WallExtent.clip]: what the room's edges and gauge read. */
+    private var found: LiveWallSnapshot = LiveWallSnapshot.Empty
+    private var clippedFor: Any? = null
+    private var clippedPoints = -1
+
+    /** What the cut reads of the depth map ([depthOf]), and the snapshot it was read from. */
+    private var read: FloatArray? = null
+    private var readFor: ReplayDenseLayer? = null
 
     /** The floor edges seen with no wall on them: where the room still opens onto the unscanned. */
     var openEdges: List<FloatArray> = emptyList()
@@ -61,13 +74,61 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
     var turn by mutableStateOf<ScanTurn?>(null)
         private set
 
+    /**
+     * The phone faces a wall the scan has seen only part of ([WallExtent.facingUnfinished]): the
+     * HUD asks to move along it, which is how a wall gets finished.
+     */
+    var facingUnfinished by mutableStateOf(false)
+        private set
+
     private var extentFor: List<Pair<Float, Float>>? = null
     private var gridVersion = -1
 
-    fun observe(frame: ArDebugFrame, coverage: ScanCoverageState, pose: DebugPose?) {
-        val next = source.update(frame)
-        val wallsChanged = next !== snapshot
-        snapshot = next
+    /** The trace time of the last frame observed, seconds; `NaN` before the first. */
+    private var observedAt = Float.NaN
+
+    /**
+     * [frame], the trace's latest, after [coverage] observed it. The recorder writes nothing while
+     * ARCore has lost tracking: [record], the trace being recorded ([ScanCoverageState.recorded]),
+     * has no camera pose for that long, and the first frame after the gap is not tracked
+     * ([lostBetween]); the walls skip it. How long since the last frame observed says nothing.
+     * [dense], the depth map's live snapshot, cuts the walls back with the frame's feature points
+     * ([depthOf]).
+     */
+    @Suppress("LongParameterList") // the frame, its coverage, the phone, and the two point sources
+    fun observe(
+        frame: ArDebugFrame,
+        coverage: ScanCoverageState,
+        pose: DebugPose?,
+        record: ArDebugTrace? = coverage.recorded,
+        dense: ReplayDenseLayer? = null,
+    ) {
+        val tracking = record?.lostBetween(observedAt, frame.time) != true
+        observedAt = frame.time
+        val next = source.update(frame, tracking)
+        val wallsChanged = next !== found
+        found = next
+        // Cut back to the points seen on each wall: again when the walls or the points change.
+        val points = frame.mapPointCount
+        if (dense !== readFor) {
+            readFor = dense
+            read = dense?.let(::depthOf)
+        }
+        val depth = read
+        if (wallsChanged || depth !== clippedFor || points != clippedPoints) {
+            clippedFor = depth
+            clippedPoints = points
+            val clouds = listOfNotNull(frame.mapPoints, depth)
+            val walls = WallExtent.clip(next.walls, clouds, next.floorY, next.height)
+            val drawn = if (walls === next.walls) next else next.copy(walls = walls)
+            if (drawn.walls != snapshot.walls || drawn.floorY != snapshot.floorY || drawn.height != snapshot.height ||
+                drawn.ceilingSeen != snapshot.ceilingSeen
+            ) {
+                snapshot = drawn
+            }
+        }
+        val facing = WallExtent.facingUnfinished(pose, next.walls, snapshot.walls) != null
+        if (facing != facingUnfinished) facingUnfinished = facing
         if (wallsChanged || coverage.extent !== extentFor || coverage.grid.version != gridVersion) {
             extentFor = coverage.extent
             gridVersion = coverage.grid.version
@@ -88,38 +149,61 @@ internal class ScanWallsState(private val source: LiveWallSource = PlaneWallSour
         source.reset()
         motion.reset()
         snapshot = LiveWallSnapshot.Empty
+        found = LiveWallSnapshot.Empty
+        clippedFor = null
+        clippedPoints = -1
+        read = null
+        readFor = null
+        facingUnfinished = false
         openEdges = emptyList()
         cueEdge = null
         extentFor = null
         gridVersion = -1
+        observedAt = Float.NaN
         wallCount = 0
         completion = 0f
         done = false
         turn = null
     }
+
+    companion object {
+        /**
+         * What the cut reads of [layer], the depth map's live snapshot: the map's even stride
+         * ([ReplayDenseLayer.whole]), thinned evenly to one read of the cut ([WallExtent.MAX_READ]),
+         * so a wall's far end is cut where the map saw it and the cut costs no more than the cloud
+         * drawn did. Not the cloud drawn: it merges the far surfels into coarse cells
+         * ([io.github.sceneview.demo.demos.internal.DenseFusion.liveCloud]), dense by the eye and
+         * sparse away from it, so a far wall lost the end the map had seen, and moved each time
+         * the eye did. Once a snapshot, on the main thread.
+         */
+        fun depthOf(layer: ReplayDenseLayer): FloatArray {
+            val whole = layer.whole
+            val n = whole.size / 3
+            val stride = (n + WallExtent.MAX_READ - 1) / WallExtent.MAX_READ
+            if (stride <= 1) return whole
+            val read = FloatArray((n + stride - 1) / stride * 3)
+            for (k in 0 until read.size / 3) whole.copyInto(read, k * 3, k * stride * 3, k * stride * 3 + 3)
+            return read
+        }
+    }
 }
 
 /**
- * Draws a [ScanWallsState] in the live view: each wall a translucent quad in Measure's colour
- * ([WallMesh.FILL_ALPHA] of `accentProgress`) rising from its floor line, outlined; the floor edges
- * no wall stands on yet dashed in `accentGuidance` with a low ghost wall, the one the cue points at
- * standing a little taller. The layers go under the points, so the points stay on top.
+ * Draws a [ScanWallsState] in the live view: its walls through the shared [LiveWallLayer] (the
+ * same walls Measure shows while it measures, #4732), and the floor edges no wall stands on yet
+ * dashed in `accentGuidance` with a low ghost wall, the one the cue points at standing a little
+ * taller. The layers go under the points, so the points stay on top.
  */
 internal class ScanWallLayer(engine: Engine, private val materialLoader: MaterialLoader) {
-    private val fillMaterial = layerMaterial(ArOverlay.accentProgress.copy(alpha = WallMesh.FILL_ALPHA))
-    private val lineMaterial = layerMaterial(ArOverlay.accentProgress)
+    private val walls = LiveWallLayer(engine, materialLoader)
     private val openMaterial = layerMaterial(ArOverlay.accentGuidance)
     private val ghostMaterial = layerMaterial(ArOverlay.accentGuidance.copy(alpha = GHOST_ALPHA))
 
-    private val fill = DebugLayerNode(engine, fillMaterial, priority = FILL_PRIORITY)
-    private val lines = DebugLayerNode(engine, lineMaterial, priority = LINE_PRIORITY)
-    private val open = DebugLayerNode(engine, openMaterial, priority = LINE_PRIORITY)
-    private val ghost = DebugLayerNode(engine, ghostMaterial, priority = FILL_PRIORITY)
+    private val open = DebugLayerNode(engine, openMaterial, priority = LiveWallLayer.LINE_PRIORITY)
+    private val ghost = DebugLayerNode(engine, ghostMaterial, priority = LiveWallLayer.FILL_PRIORITY)
 
-    val nodes = listOf(ghost, fill, open, lines)
+    val nodes = listOf(ghost) + walls.nodes + open
 
-    private val fillMesh = DebugMesh()
-    private val lineMesh = DebugMesh()
     private val openMesh = DebugMesh()
     private val ghostMesh = DebugMesh()
     private var openFor: List<FloatArray>? = null
@@ -131,24 +215,10 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
      * [shown] — the save's orbit shows the cloud alone. On the main thread.
      */
     fun sync(state: ScanWallsState, dt: Float, shown: Boolean = true) {
-        nodes.forEach { if (it.isVisible != shown) it.isVisible = shown }
+        listOf(ghost, open).forEach { if (it.isVisible != shown) it.isVisible = shown }
+        walls.sync(state.motion, state.snapshot, dt, shown)
         if (!shown) return
         val motion = state.motion
-        if (motion.step(state.snapshot, dt)) {
-            fillMesh.clear()
-            lineMesh.clear()
-            for (wall in motion.shown) {
-                val height = motion.height * wall.rise
-                if (height <= 0f) continue
-                val y = motion.floorY
-                val base = fillMesh.vertexCount
-                WallMesh.quad(wall.ax, y, wall.az, wall.bx, y, wall.bz, height) { x, vy, z -> fillMesh.vertex(x, vy, z) }
-                fillMesh.quad(base, base + 1, base + 2, base + 3)
-                outline(lineMesh, wall.ax, wall.az, wall.bx, wall.bz, y, height)
-            }
-            fill.upload(fillMesh)
-            lines.upload(lineMesh)
-        }
         val floorY = motion.floorY
         if (state.openEdges !== openFor || state.cueEdge !== cueFor || floorY != openFloorY) {
             openFor = state.openEdges
@@ -174,21 +244,16 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
 
     /** On the main thread, after [nodes] left the scene. */
     fun destroy() {
-        nodes.forEach { it.destroy() }
-        listOf(fillMaterial, lineMaterial, openMaterial, ghostMaterial).forEach { materialLoader.destroyMaterialInstance(it) }
+        walls.destroy()
+        open.destroy()
+        ghost.destroy()
+        listOf(openMaterial, ghostMaterial).forEach { materialLoader.destroyMaterialInstance(it) }
     }
 
     private fun layerMaterial(color: Color): MaterialInstance =
         materialLoader.createUnlitColorInstance(color).apply { setCullingMode(Material.CullingMode.NONE) }
 
     private companion object {
-        /** Under the points (the debug layers' default 4): the cloud reads through the walls. */
-        const val FILL_PRIORITY = 2
-        const val LINE_PRIORITY = 3
-
-        /** A wall's outline, in metres: a hairline from across the room, not a bar up close. */
-        const val LINE_M = 0.012f
-
         /** The open edge's dashes, lifted off the floor so the floor's points do not hide them. */
         const val DASH_M = 0.12f
         const val GAP_M = 0.08f
@@ -199,39 +264,6 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
         const val CUE_GHOST_M = 0.9f
         const val GHOST_ALPHA = 0.18f
 
-        /** The wall's base, top and two sides as thin ribbons in its own plane. */
-        fun outline(mesh: DebugMesh, ax: Float, az: Float, bx: Float, bz: Float, y: Float, height: Float) {
-            val length = sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az))
-            if (length < 1e-4f) return
-            val ux = (bx - ax) / length * LINE_M
-            val uz = (bz - az) / length * LINE_M
-            val half = LINE_M / 2f
-            // Base and top: ribbons along the wall, LINE_M tall.
-            ribbon(mesh, ax, y, az, bx, y, bz, 0f, LINE_M, 0f)
-            ribbon(mesh, ax, y + height - half, az, bx, y + height - half, bz, 0f, LINE_M, 0f)
-            // Sides: ribbons up the wall, LINE_M wide, inside its ends.
-            ribbon(mesh, ax + ux / 2f, y, az + uz / 2f, ax + ux / 2f, y + height, az + uz / 2f, ux, 0f, uz)
-            ribbon(mesh, bx - ux / 2f, y, bz - uz / 2f, bx - ux / 2f, y + height, bz - uz / 2f, ux, 0f, uz)
-        }
-
-        /** A ribbon from a to b, [wx]/[wy]/[wz] wide across it, centred on the line. */
-        @Suppress("LongParameterList") // two points and a width vector, flat for a render loop
-        fun ribbon(
-            mesh: DebugMesh,
-            ax: Float, ay: Float, az: Float,
-            bx: Float, by: Float, bz: Float,
-            wx: Float, wy: Float, wz: Float,
-        ) {
-            val hx = wx / 2f
-            val hy = wy / 2f
-            val hz = wz / 2f
-            val a = mesh.vertex(ax - hx, ay - hy, az - hz)
-            val b = mesh.vertex(bx - hx, by - hy, bz - hz)
-            val c = mesh.vertex(bx + hx, by + hy, bz + hz)
-            val d = mesh.vertex(ax + hx, ay + hy, az + hz)
-            mesh.quad(a, b, c, d)
-        }
-
         /** The open [edge] dashed on the floor at [y], each dash a flat ribbon. */
         fun dashes(mesh: DebugMesh, edge: FloatArray, y: Float) {
             val dx = edge[2] - edge[0]
@@ -241,12 +273,12 @@ internal class ScanWallLayer(engine: Engine, private val materialLoader: Materia
             val ux = dx / length
             val uz = dz / length
             // Across the edge, on the floor: twice a wall line, so it reads from standing height.
-            val wx = -uz * LINE_M * 2f
-            val wz = ux * LINE_M * 2f
+            val wx = -uz * LiveWallLayer.LINE_M * 2f
+            val wz = ux * LiveWallLayer.LINE_M * 2f
             var t = 0f
             while (t < length) {
                 val end = minOf(t + DASH_M, length)
-                ribbon(
+                LiveWallLayer.ribbon(
                     mesh,
                     edge[0] + ux * t, y, edge[1] + uz * t,
                     edge[0] + ux * end, y, edge[1] + uz * end,

@@ -118,7 +118,7 @@ android {
         minSdk 28
         targetSdk 36
         versionCode project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 350
-        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.60.0"
+        versionName project.hasProperty('versionName') ? project.property('versionName') : "4.63.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -416,6 +416,11 @@ dependencies {
     // (`api libs.play.app.update*`). Manager + banner live in
     // `io.github.sceneview.sample.common.update.*`.
 
+    // Google Play Billing — the "Support SceneView" contributions (support/). Three
+    // consumable one-time products, consumed as soon as Play confirms them: a gift,
+    // never an entitlement, so nothing in the app is gated on a purchase.
+    implementation libs.play.billing.ktx
+
     // Sketchfab API client — OkHttp for network, kotlinx-serialization for JSON.
     // Used by io.github.sceneview.demo.sketchfab.SketchfabService to stream
     // models from api.sketchfab.com instead of bundling GLBs in the APK.
@@ -477,6 +482,12 @@ dependencies {
         exclude group: 'com.google.auto.value', module: 'auto-value'
     }
 
+    // LiteRT — the 3D Scan's furniture detector (YOLOX-Tiny converted to .tflite,
+    // internal/semantic), on the runtime `arsceneview-depth-ml` already ships: no second native
+    // runtime in the APK. The model is not in the APK either: the app downloads it on first use
+    // from the assets-v1 release, checks its SHA-256 and keeps it in app storage (SceneModel.kt).
+    implementation libs.litert
+
     // JVM tests on Robolectric — no emulator needed.
     testImplementation libs.robolectric
     testImplementation libs.androidx.test.junit
@@ -501,6 +512,10 @@ dependencies {
     // comment there.
 
     testImplementation libs.kotlin.coroutines.test
+    // The scan recogniser's detector on the JVM, where LiteRT does not run: the ONNX export the
+    // app's .tflite was converted from, on the desktop ONNX Runtime (SceneRecognitionCorpusTest).
+    // Tests only — nothing of ONNX Runtime is in the app.
+    testImplementation libs.onnxruntime.jvm
     // Local HTTP double for SketchfabService's cooperative-cancellation test
     // (#2644) — proves an aborted search releases its socket instead of
     // running to completion behind the debounce.
@@ -634,9 +649,10 @@ abstract class BundleChangelogAsset extends DefaultTask {
     @OutputDirectory
     abstract DirectoryProperty getOutputDir()
 
-    // Collator order (collate-changelog.sh). `Changed` is the fallback bucket.
+    // Collator order and tags (collate-changelog.sh). `Changed` is the fallback
+    // bucket. WhatsNewCategoryAlignmentTest fails when the two drift apart.
     static final List<String> CATEGORIES =
-            ['Added', 'Changed', 'Fixed', 'Performance', 'Removed', 'Tests', 'Docs']
+            ['Added', 'Changed', 'Fixed', 'Security', 'Performance', 'Removed', 'Tests', 'Docs']
 
     // These helpers are deliberately NOT private. Gradle decorates the task
     // class at runtime, and a Groovy closure dispatching onto the decorated
@@ -646,6 +662,7 @@ abstract class BundleChangelogAsset extends DefaultTask {
         switch (raw.toLowerCase().trim()) {
             case ['added', 'new']: return 'Added'
             case ['fixed', 'fix', 'bugfix']: return 'Fixed'
+            case ['security']: return 'Security'
             case ['performance', 'perf']: return 'Performance'
             case ['removed', 'remove']: return 'Removed'
             case ['tests', 'test']: return 'Tests'

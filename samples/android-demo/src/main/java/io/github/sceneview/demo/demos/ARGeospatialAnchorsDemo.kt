@@ -66,6 +66,7 @@ import io.github.sceneview.ar.ARCoreAvailability
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore.awaitVpsAvailability
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.DemoBottomOverlayScope
 import io.github.sceneview.demo.DemoScaffold
@@ -609,6 +610,7 @@ private fun GeospatialSection(
     ) {
         if (qaBackdrop) QaCameraBackdrop(seed = "ar-geospatial-anchors")
         ARSceneView(
+            lifecycle = rememberHostLifecycle(),
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             modelLoader = modelLoader,

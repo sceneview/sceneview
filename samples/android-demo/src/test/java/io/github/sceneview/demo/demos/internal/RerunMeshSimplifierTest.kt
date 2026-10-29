@@ -167,7 +167,7 @@ class RerunMeshSimplifierTest {
         }
         assertEquals(3, calls)
         assertEquals(
-            106L * mesh.vertexCount + 84L * mesh.triangleCount,
+            107L * mesh.vertexCount + 60L * mesh.triangleCount,
             RerunMeshSimplifier.workspaceBytes(mesh.vertexCount, mesh.triangleCount),
         )
     }

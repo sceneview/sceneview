@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.Locale
 import kotlin.math.abs
 
 /**
@@ -290,8 +291,8 @@ class RerunReplayTest {
     fun `compact counts fit a narrow figure`() {
         assertEquals("0", ArDebugFormat.compactCount(-4))
         assertEquals("812", ArDebugFormat.compactCount(812))
-        assertEquals("4.8k", ArDebugFormat.compactCount(4_812))
-        assertEquals("9.9k", ArDebugFormat.compactCount(9_999))
+        assertEquals("4.8k", ArDebugFormat.compactCount(4_812, Locale.US))
+        assertEquals("9.9k", ArDebugFormat.compactCount(9_999, Locale.US))
         assertEquals("12k", ArDebugFormat.compactCount(12_400))
     }
 

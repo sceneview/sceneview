@@ -62,6 +62,7 @@ import io.github.sceneview.ar.arcore.getProjectionTransform
 import io.github.sceneview.ar.arcore.transform
 import io.github.sceneview.ar.arcore.viewTransform
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.ARCameraInitScrim
 import io.github.sceneview.demo.AssetSourceState
 import io.github.sceneview.demo.DemoScaffold
@@ -859,6 +860,7 @@ fun OrbitalARDemo(onBack: () -> Unit) {
             key(sessionGeneration) {
                 val cameraStream = rememberARCameraStream(materialLoader)
                 ARSceneView(
+                    lifecycle = rememberHostLifecycle(),
                     modifier = Modifier.fillMaxSize(),
                     engine = engine,
                     modelLoader = modelLoader,

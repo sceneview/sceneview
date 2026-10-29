@@ -30,6 +30,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.ArGuidanceCue
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.ar.rememberArGuidanceState
+import io.github.sceneview.ar.rememberHostLifecycle
 import io.github.sceneview.demo.DemoScaffold
 import io.github.sceneview.demo.DockItem
 import io.github.sceneview.demo.LocalDemoChromeBottomInset
@@ -182,6 +183,7 @@ fun ARSurfacesDemo(onBack: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             ARSceneView(
+                lifecycle = rememberHostLifecycle(),
                 onSessionFailure = { arSessionFailed = true },
                 modifier = Modifier.fillMaxSize(),
                 engine = engine,

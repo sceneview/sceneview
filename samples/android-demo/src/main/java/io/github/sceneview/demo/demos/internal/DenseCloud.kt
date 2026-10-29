@@ -411,6 +411,17 @@ object DenseSurfels {
     const val MAX_SCREEN_SIDE = 0.25f
 
     /**
+     * [MAX_SCREEN_SIDE] over the camera: a tenth of the view's height, about the largest a finest
+     * surfel is drawn (at [NEAR_FADE_M]). A surfel the map coarsened keeps its width in the room,
+     * so a wall past about a metre stays whole at every level; nearer, it shrinks to the size of a
+     * fine one instead of growing into a square over the camera.
+     */
+    const val LIVE_MAX_SCREEN_SIDE = 0.1f
+
+    /** The largest side a view draws a surfel at: [LIVE_MAX_SCREEN_SIDE] over the camera ([live]). */
+    fun maxScreenSide(live: Boolean): Float = if (live) LIVE_MAX_SCREEN_SIDE else MAX_SCREEN_SIDE
+
+    /**
      * What `scan_surfel.mat`'s vertex stage scales a surfel's corners by about its centre — its
      * centre [depth] metres ahead, [halfDiagonal] metres from centre to corner, through a
      * projection whose `[1][1]` term is [clipYScale]: `1` past [nearFade] while its side on

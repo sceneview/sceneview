@@ -7,7 +7,7 @@ import io.github.sceneview.demo.DemoCategory
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.DemoStatus
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.demos.ARMeasureDemo
+import io.github.sceneview.demo.demos.MeasureScreen
 
 /** Append-only fragment for the `ar-measure` demo. See [DemoFragment]. */
 object ArMeasureFragment : DemoFragment {
@@ -29,6 +29,6 @@ object ArMeasureFragment : DemoFragment {
 
     @Composable
     override fun Screen(onBack: () -> Unit) {
-        ARMeasureDemo(onBack)
+        MeasureScreen(onBack)
     }
 }

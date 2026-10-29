@@ -285,6 +285,10 @@ import java.util.concurrent.atomic.AtomicReference
  *                                 and released when this view leaves composition (#4467).
  *                                 Pass `null` to skip permission checks.
  * @param lifecycle                Lifecycle that binds the AR session resume/pause cycle.
+ *                                 Defaults to `LocalLifecycleOwner`. For an AR screen inside a
+ *                                 `NavHost` with transitions, pass [rememberHostLifecycle] so the
+ *                                 camera stays live while the screen animates out instead of
+ *                                 freezing on its last image.
  * @param content                  Declare AR scene content using the [ARSceneScope] composable DSL.
  */
 /**
@@ -607,7 +611,8 @@ fun ARSceneView(
      * [RenderQuality.Performance] for battery-sensitive AR overlays, or [RenderQuality.Cinematic]
      * for a hero placement showcase. The Filmic tone mapper that round-trips the AR camera
      * background (#1434) is preserved across every preset — [applyRenderQuality] never writes
-     * `view.colorGrading`. Reapplied only when the value changes (keyed effect).
+     * `view.colorGrading` — and no preset turns SSAO or bloom on over the camera feed (#657).
+     * Reapplied only when the value changes (keyed effect).
      */
     renderQuality: RenderQuality? = null,
     /**
@@ -918,12 +923,12 @@ fun ARSceneView(
     // Apply the optional `renderQuality` preset to the AR `view`, mirroring the 3D
     // `SceneView` wiring but **only when the caller passes one**. `null` (default) leaves the
     // camera-feed-tuned defaults from `createARView` untouched, so existing AR consumers are
-    // unchanged (those defaults deliberately disable SSAO/bloom that `RenderQuality.Default`
-    // would re-enable). Keyed on (view, renderQuality) so the preset is reapplied only when it
-    // changes; the AR Filmic tone mapper (#1434) survives because `applyRenderQuality` never
-    // writes `view.colorGrading`.
+    // unchanged. A preset never re-enables SSAO/bloom on an AR view (#657): the AR usage is
+    // explicit even when the caller supplied the view. Keyed on (view, renderQuality) so the
+    // preset is reapplied only when it changes; the AR Filmic tone mapper (#1434) survives
+    // because `applyRenderQuality` never writes `view.colorGrading`.
     LaunchedEffect(view, renderQuality) {
-        renderQuality?.let { view.applyRenderQuality(it) }
+        renderQuality?.let { view.applyRenderQuality(it, isArView = true) }
     }
 
     val prevTrackingFailureRef = remember { AtomicReference<TrackingFailureReason?>(null) }
@@ -1510,7 +1515,11 @@ fun ARSceneView(
     // interactive `ViewNode`s (the Point & Ask demo pins Compose answer panels in the room).
     val capturedTouchNodeRef = remember { AtomicReference<Node?>(null) }
 
-    SideEffect { gestureDetector.listener = onGestureListener }
+    // A tap is confirmed from a Handler after the double-tap timeout, so the app's callback can run
+    // once the session has paused; `createAnchor()` then throws SessionPausedException from the
+    // main looper. The guard logs and drops that gesture instead of crashing the app.
+    val safeGestureListener = remember(onGestureListener) { onGestureListener?.arSessionSafe() }
+    SideEffect { gestureDetector.listener = safeGestureListener }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }

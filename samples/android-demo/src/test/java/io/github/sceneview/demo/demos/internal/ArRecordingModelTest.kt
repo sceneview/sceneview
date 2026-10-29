@@ -4,11 +4,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.Locale
 
 /**
  * JVM tests for the AR Recording demo's pure logic (#3831). The demo cannot run on the
@@ -16,6 +19,19 @@ import java.time.LocalDateTime
  * into a recording without a device.
  */
 class ArRecordingModelTest {
+    // The copy under test is the English one, whatever the machine running it says.
+    private val locale = Locale.getDefault()
+
+    @Before
+    fun englishLocale() {
+        Locale.setDefault(Locale.US)
+    }
+
+    @After
+    fun restoreLocale() {
+        Locale.setDefault(locale)
+    }
+
 
     private val placement = RecordedPlacement(
         index = 2,
@@ -238,11 +254,11 @@ class ArRecordingModelTest {
     fun `sizes and distances are short and plain`() {
         assertEquals("512 B", formatFileSize(512))
         assertEquals("45 kB", formatFileSize(45_300))
-        assertEquals("4.1 MB", formatFileSize(4_100_000))
-        assertEquals("1.2 GB", formatFileSize(1_230_000_000))
+        assertEquals("4.1 MB", formatFileSize(4_100_000, Locale.US))
+        assertEquals("1.2 GB", formatFileSize(1_230_000_000, Locale.US))
         assertEquals("0 cm", formatDistance(0f))
         assertEquals("35 cm", formatDistance(0.349f))
-        assertEquals("1.2 m", formatDistance(1.24f))
+        assertEquals("1.2 m", formatDistance(1.24f, Locale.US))
         assertEquals("0 cm", formatDistance(Float.NaN))
     }
 
@@ -331,7 +347,7 @@ class ArRecordingModelTest {
                 LiveStat("1", "Surface"),
                 LiveStat("3", "Placed"),
             ),
-            liveCaptureStats(frames = 1204, metersMoved = 2.3f, surfaces = 1, placements = 3),
+            liveCaptureStats(frames = 1204, metersMoved = 2.3f, surfaces = 1, placements = 3, locale = Locale.US),
         )
         assertEquals("Restored", liveCaptureStats(1, 0f, 2, 0, placementsLabel = "Restored")[3].label)
         assertEquals("Frame", liveCaptureStats(1, 0f, 2, 0)[0].label)

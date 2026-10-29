@@ -218,6 +218,7 @@ object ScanScopeCopy {
      * they close the room, else the [turn] to the next gap ([ScanGuide.cue]); and when nothing new
      * comes while a wall is missing, it says how to catch a plain wall — or, the phone looking at
      * the floor or the ceiling (not [facingWall]), to raise it to the walls (#4540 live walls).
+     * Facing a wall seen only in part ([wallToFinish]), it asks to walk along it first.
      * Every other line — tracking lost, the photo cap, the detail — says the same in every scope.
      */
     @Suppress("LongParameterList") // one input per thing the line can say
@@ -229,12 +230,14 @@ object ScanScopeCopy {
         turn: ScanTurn? = null,
         done: Boolean = false,
         facingWall: Boolean = true,
+        wallToFinish: Boolean = false,
     ): String? {
         val found = walls ?: -1
         val rooms = found >= 0 && scope.hasFloorPlan
         return when {
             nextRoom != null && nextRoom > 1 && line == ScanCopy.COACH_PAUSED -> between(nextRoom - 1, nextRoom)
             rooms && done && line in DONE_OVER -> ScanCopy.ROOM_DONE
+            line == ScanCopy.COACH_SCANNING && rooms && wallToFinish -> ScanCopy.WALL_TO_FINISH
             line == ScanCopy.COACH_SCANNING && rooms && turn != null && found >= 1 -> ScanCopy.turnHint(turn)
             line == ScanCopy.COACH_SCANNING && rooms -> ScanCopy.wallGuide(found)
             line == ScanCopy.COACH_SCANNING -> scanning(scope)

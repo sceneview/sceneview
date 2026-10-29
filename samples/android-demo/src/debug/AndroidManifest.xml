@@ -35,5 +35,11 @@
             android:name=".PlacementCardQaActivity"
             android:exported="true"
             android:theme="@style/Theme.SceneViewDemo" />
+        <!-- Debug-only side-by-side of the render presets on a plain SceneView.
+             See RenderPresetQaActivity.kt. -->
+        <activity
+            android:name=".RenderPresetQaActivity"
+            android:exported="true"
+            android:theme="@style/Theme.SceneViewDemo" />
     </application>
 </manifest>

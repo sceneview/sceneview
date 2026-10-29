@@ -31,6 +31,7 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DebugPlane
 import io.github.sceneview.demo.demos.internal.DebugPose
 import io.github.sceneview.demo.demos.internal.DenseCloud
+import io.github.sceneview.demo.demos.internal.DenseFusion
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.MeasureDrawing
 import io.github.sceneview.demo.demos.internal.MeasureSize
@@ -41,6 +42,8 @@ import io.github.sceneview.demo.demos.internal.ReplayManifest
 import io.github.sceneview.demo.demos.internal.RerunCapturePack
 import io.github.sceneview.demo.demos.internal.RerunReplayAssets
 import io.github.sceneview.demo.demos.internal.RoomMeasure
+import io.github.sceneview.demo.demos.internal.ScanOpenTop
+import io.github.sceneview.demo.demos.internal.ScanPhotoPolicy
 import io.github.sceneview.demo.demos.internal.scanLabels
 import io.github.sceneview.demo.demos.internal.SteadyRoomMeasure
 import io.github.sceneview.demo.demos.internal.SvpcCodec
@@ -90,7 +93,22 @@ internal class RerunReplayMedia(
      * new snapshot to upload.
      */
     val liveDense: (() -> ReplayDenseLayer?)? = null,
+    /**
+     * Whether a recording's view is drawn over the camera, from the phone's eye; its save flight
+     * leaves the phone and is not. Read on the main thread each frame.
+     */
+    val overCamera: () -> Boolean = { true },
 ) {
+    /** The same scan, its live dense cloud read from [liveDense] instead, over the camera while [overCamera]. */
+    fun withLiveDense(overCamera: () -> Boolean = { true }, liveDense: () -> ReplayDenseLayer?) =
+        RerunReplayMedia(trace, manifest, planeBitmaps, thumbnails, archive, growing, dense, liveDense, overCamera)
+
+    /**
+     * The largest side the dense layer draws a surfel at, now ([DenseSurfels.maxScreenSide]): the
+     * live cap only while a recording is drawn over the camera, the replay's on its save flight.
+     */
+    val denseMaxSide: Float get() = DenseSurfels.maxScreenSide(live = liveDense != null && overCamera())
+
     /** The thumbnail of the camera image in force at [time], `null` before the first one. */
     fun thumbnailAt(time: Float): Bitmap? {
         val index = trace.imageIndexAt(time)
@@ -132,7 +150,22 @@ internal class ReplayDenseLayer(
     val offsets: FloatArray = DenseSurfels.cornerOffsets(mesh),
     /** A live scan's floor cells [cloud] covers ([CoverageGrid.coveredKeys]), found with it off the main thread. */
     val coveredCells: LongArray = LongArray(0),
+    /**
+     * The surfels where the map holds them, `x, y, z` triples: [cloud]'s own, except in a live
+     * scan's snapshot, which draws the far ones merged ([DenseFusion.liveCloud]) and keeps here
+     * the map's even stride. The saving orbit is planned round these and the open top's floor
+     * read from them (#4792): the merged cloud is dense by the eye and sparse away from it, so
+     * its mean slid to where the scan ended.
+     */
+    val whole: FloatArray = cloud.positions,
 ) {
+    /**
+     * This layer with its lid off ([ScanOpenTop.cloud]), the floor read from [whole], which it
+     * keeps: the orbit is planned round the same points before and after the cut. Off the main
+     * thread.
+     */
+    fun openTop(): ReplayDenseLayer = of(ScanOpenTop.cloud(cloud, floorFrom = whole), voxelM, whole = whole)
+
     companion object {
         /** The dense cloud [manifest] indexes in [archive], built for drawing; `null` without one. */
         fun of(manifest: ReplayManifest, archive: ByteArray): ReplayDenseLayer? {
@@ -145,14 +178,20 @@ internal class ReplayDenseLayer(
 
         /**
          * [cloud] of [voxelM] surfels, meshed and coloured for drawing, with the floor cells it
-         * covers when [withCells] (a live scan's coverage). Off the main thread.
+         * covers when [withCells] (a live scan's coverage) and the map's [whole]. Off the main thread.
          */
-        fun of(cloud: DenseCloud, voxelM: Float, withCells: Boolean = false) = ReplayDenseLayer(
+        fun of(
+            cloud: DenseCloud,
+            voxelM: Float,
+            withCells: Boolean = false,
+            whole: FloatArray = cloud.positions,
+        ) = ReplayDenseLayer(
             cloud = cloud,
             voxelM = voxelM,
             mesh = DenseSurfels.mesh(cloud, voxelM),
             atlas = DenseSurfels.atlas(cloud, fallback = DENSE_FALLBACK_COLOR),
             coveredCells = if (withCells) CoverageGrid.coveredKeys(cloud.positions, cloud.count) else LongArray(0),
+            whole = whole,
         )
 
         /** A surfel the camera never coloured: the sparse points' own neutral. */
@@ -177,7 +216,7 @@ internal suspend fun loadRerunReplay(context: Context): RerunReplayMedia = withC
  */
 internal suspend fun loadRerunSession(capture: RerunCapturePack): RerunReplayMedia? = withContext(Dispatchers.Default) {
     val manifest = ReplayManifest.parse(String(capture.manifest)) ?: return@withContext null
-    openReplay(manifest, parseArDebugLog(String(capture.log).lineSequence()), capture.media)
+    openReplay(manifest, parseArDebugLog(capture.log), capture.media)
 }
 
 /** A replay from its three parts: the photos and plane textures decoded side by side. */
@@ -197,8 +236,21 @@ private suspend fun openReplay(
     val thumbnails = (0 until trace.imageCount).map { i ->
         async(Dispatchers.Default) {
             val path = trace.imagePath(i)
-            val options = BitmapFactory.Options().apply { inSampleSize = THUMBNAIL_SAMPLE_SIZE }
-            shell.decode(path, options)?.let { path to it }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            shell.decode(path, bounds)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = ScanPhotoPolicy.thumbnailSample(bounds.outWidth, bounds.outHeight)
+            }
+            shell.decode(path, options)?.let { decoded ->
+                // A sharp photo's thumbnail is as large as its neighbours': 120x160, not a power of two off.
+                val (width, height) = ScanPhotoPolicy.thumbnailSize(bounds.outWidth, bounds.outHeight)
+                val sized = if (bounds.outWidth > 0 && (decoded.width != width || decoded.height != height)) {
+                    Bitmap.createScaledBitmap(decoded, width, height, true).also { decoded.recycle() }
+                } else {
+                    decoded
+                }
+                path to sized
+            }
         }
     }
     RerunReplayMedia(
@@ -288,9 +340,6 @@ private const val WARM_UP_SIZE = 128
 /** The dense layer's surfels, size clamped on screen (#4742): `scan_surfel.mat`. */
 private const val SURFEL_MATERIAL = "materials/scan_surfel.filamat"
 
-/** 240×320 frames at a half: 120×160, ~77 KB each — the 184 of them fit in 14 MB. */
-private const val THUMBNAIL_SAMPLE_SIZE = 2
-
 /**
  * The replay's textured layers, kept in step with an [ArDebugFrame] like `ArDebugLayers`: each
  * rebuilt only when its inputs change. Owns its textures and material instances; [destroy] on
@@ -372,13 +421,18 @@ internal class ReplayLayers(
     /**
      * The dense layer's material: the image material's look, a surfel nearer than
      * [DenseSurfels.NEAR_FADE_M] shrunk towards a dot and any capped at
-     * [DenseSurfels.MAX_SCREEN_SIDE] (#4742), so one the camera passes close to never fills it.
+     * [DenseSurfels.MAX_SCREEN_SIDE] (#4742), so one the camera passes close to never fills it;
+     * over the camera, at the size of the largest fine one ([RerunReplayMedia.denseMaxSide]).
      */
     private val surfelMaterial: Material? = denseAtlas?.let { materialLoader.createMaterial(SURFEL_MATERIAL) }
+    /** [denseNode]'s material and the cap it was last given, set again as a recording's view changes ([syncDense]). */
+    private var denseMaterial: MaterialInstance? = null
+    private var denseSide = media.denseMaxSide
     private val denseNode: DebugLayerNode? = denseAtlas?.let { atlas ->
         val instance = materialLoader.createInstance(surfelMaterial!!).also {
+            denseMaterial = it
             it.setParameter("texture", atlas, nearest)
-            it.setParameter("maxSide", DenseSurfels.MAX_SCREEN_SIDE)
+            it.setParameter("maxSide", denseSide)
             it.setParameter("nearFade", DenseSurfels.NEAR_FADE_M)
             it.setDepthWrite(true)
             materials += it
@@ -603,6 +657,11 @@ internal class ReplayLayers(
         val live = media.liveDense
         if (live != null) {
             // Recording: the latest snapshot, drawn whole. One upload a snapshot, about a second.
+            val side = media.denseMaxSide
+            if (side != denseSide) {
+                denseSide = side
+                denseMaterial?.setParameter("maxSide", side)
+            }
             val snapshot = live()
             if (snapshot != null && snapshot !== liveDenseShown) {
                 liveDenseShown = snapshot

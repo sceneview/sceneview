@@ -12,7 +12,9 @@ import kotlin.math.tan
  * near the middle of a 4.2 × 4.4 m room and turns slowly on the spot, its feature points falling
  * on the floor and the walls in view, and each wall found as a vertical plane that grows as more
  * of it is seen. The front wall is found as two planes 2 cm apart — ARCore's habit on a long
- * plain wall — which the live walls must merge into one.
+ * plain wall — which the live walls must merge into one. The right wall's plane runs
+ * [OVERGROWN_M] past what was seen of it at each end, as ARCore grows a plane past its points:
+ * the live walls draw it only as far as its points go ([WallExtent]).
  *
  * The emulator cannot track, so this is the capture screen's QA take with walls (`record-walls`);
  * the JVM tests replay it too.
@@ -58,6 +60,9 @@ object ScanWallWalk {
     private const val FRONT_OFFSET_M = 0.02f
 
     private const val NANOS = 1_000_000_000L
+
+    /** How far past its points the right wall's plane runs, in metres, until it meets the room's corners. */
+    const val OVERGROWN_M = 0.9f
 
     /** The phone's pose [t] seconds into the turn: turning right, on a slow small circle. */
     fun pose(t: Float): DebugPose {
@@ -151,7 +156,7 @@ object ScanWallWalk {
                 FRONT_LEFT_ID -> wallAlongX(MIN_Z, s[0], s[1], bottom, top)
                 FRONT_RIGHT_ID -> wallAlongX(MIN_Z + FRONT_OFFSET_M, s[0], s[1], bottom, top)
                 BACK_ID -> wallAlongX(MAX_Z, s[0], s[1], bottom, top)
-                RIGHT_ID -> wallAlongZ(MAX_X, s[0], s[1], bottom, top)
+                RIGHT_ID -> wallAlongZ(MAX_X, max(MIN_Z, s[0] - OVERGROWN_M), min(MAX_Z, s[1] + OVERGROWN_M), bottom, top)
                 else -> wallAlongZ(MIN_X, s[0], s[1], bottom, top)
             }
             out += ArDebugEvent.Plane(nanos, id, DebugPlaneKind.Wall, polygon)

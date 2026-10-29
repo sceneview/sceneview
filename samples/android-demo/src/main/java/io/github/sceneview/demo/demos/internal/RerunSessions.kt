@@ -9,6 +9,8 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -42,7 +44,7 @@ class RerunCapturePack(val manifest: ByteArray, val log: ByteArray, val media: B
      */
     fun open(): OpenedCapture? {
         val parsed = ReplayManifest.parse(String(manifest)) ?: return null
-        val events = parseArDebugLog(String(log).lineSequence()).filter { event ->
+        val events = parseArDebugLog(log).filter { event ->
             event !is ArDebugEvent.Image || parsed.media.containsKey(event.path)
         }
         val trace = ArDebugTrace.of(events).apply { keyframeSpacing = ReplayGeometry.KEYFRAME_SPACING_M }
@@ -270,8 +272,12 @@ class RerunSessionStore(val root: File) {
      * Keeps [capture] as a new session. The capture files are written before `session.json`, so a
      * session only lists once it is whole.
      *
+     * [opened] is [capture] already opened — a scan just recorded is, for its result screen — so
+     * a long scan's log is not parsed a second time just to count its figures (#4815).
+     *
      * @throws RerunImportFailure.Unreadable when its manifest does not parse.
      * @throws RerunImportFailure.Empty when it holds nothing to replay.
+     * @throws java.io.IOException when a file cannot be written: the storage is full, or gone.
      */
     fun save(
         capture: RerunCapturePack,
@@ -280,8 +286,9 @@ class RerunSessionStore(val root: File) {
         nowMillis: Long = System.currentTimeMillis(),
         model: RerunScanModel? = null,
         scope: ScanScope = ScanScope.Room,
+        opened: OpenedCapture? = null,
     ): RerunStoredSession {
-        val opened = capture.open() ?: throw RerunImportFailure.Unreadable(title)
+        val opened = opened ?: capture.open() ?: throw RerunImportFailure.Unreadable(title)
         // Whole seconds: `session.json` stores ISO 8601, so what `save` returns equals what `list` reads.
         val session = RerunStoredSession.of(opened, title, source, createdAt = nowMillis / MILLIS, scope = scope)
             ?: throw RerunImportFailure.Empty(title)
@@ -296,7 +303,7 @@ class RerunSessionStore(val root: File) {
 
     /**
      * Keeps [model] as session [id]'s result, next to its capture: `model.glb`, then `model.json`,
-     * so a model only reads back once it is whole.
+     * so a model only reads back once it is whole. A model not [RerunScanModel.keptWithScan] is not kept.
      *
      * @throws IllegalStateException when the session is gone, or a file does not write.
      */
@@ -328,6 +335,9 @@ class RerunSessionStore(val root: File) {
     }
 
     private fun writeModel(dir: File, model: RerunScanModel) {
+        // A fallback is shown, not kept: the next open tries the finished model again. Out of
+        // memory, the raw surface is kept: the same heap would only run out again.
+        if (!model.keptWithScan) return
         // A stale `model.json` must never describe a new `model.glb` half-written next to it.
         File(dir, MODEL_INFO).delete()
         writeAtomically(File(dir, MODEL_GLB), model.glb)
@@ -423,7 +433,7 @@ class RerunSessionStore(val root: File) {
         partial.writeBytes(bytes)
         if (!partial.renameTo(target)) {
             partial.delete()
-            error("Could not write ${target.name}")
+            throw IOException("Could not write ${target.name}")
         }
     }
 
@@ -495,6 +505,9 @@ object RerunScanFile {
     }
 
     fun write(capture: RerunCapturePack): ByteArray = StoredZip.write(capture.files())
+
+    /** [capture] as a scan file, streamed into [sink]: the same bytes as [write]. */
+    fun write(capture: RerunCapturePack, sink: OutputStream) = StoredZip.write(capture.files(), sink)
 
     /** The capture in [bytes]; `null` when they are not a scan file or one of its files is missing. */
     fun read(bytes: ByteArray): RerunCapturePack? =
@@ -581,8 +594,15 @@ internal object StoredZip {
     private const val END_RECORD = 22
     private const val MAX_COMMENT = 65_535
 
-    fun write(files: List<Pair<String, ByteArray>>): ByteArray {
-        val out = LittleEndianBuffer()
+    fun write(files: List<Pair<String, ByteArray>>): ByteArray =
+        ByteArrayOutputStream().also { write(files, it) }.toByteArray()
+
+    /**
+     * The same zip as [write], streamed into [sink]: a file or a share copy is written without
+     * the whole archive ever sitting in memory a second time (#4815).
+     */
+    fun write(files: List<Pair<String, ByteArray>>, sink: OutputStream) {
+        val out = LittleEndianBuffer(sink)
         val central = LittleEndianBuffer()
         for ((path, data) in files) {
             val name = path.toByteArray()
@@ -640,7 +660,7 @@ internal object StoredZip {
         out.u32(central.size.toLong())
         out.u32(centralOffset.toLong())
         out.u16(0)
-        return out.toByteArray()
+        sink.flush()
     }
 
     /** The files of a stored zip, in archive order; `null` when it is not one, or compresses. */
@@ -692,13 +712,19 @@ internal object StoredZip {
 
     private const val BYTE = 0xFF
 
-    private class LittleEndianBuffer {
-        private val out = ByteArrayOutputStream()
-        val size: Int get() = out.size()
+    /** Little-endian writes into [sink], counting what went in: a zip's offsets are byte counts. */
+    private class LittleEndianBuffer(private val sink: OutputStream = ByteArrayOutputStream()) {
+        var size: Int = 0
+            private set
+
+        private fun write(value: Int) {
+            sink.write(value)
+            size++
+        }
 
         fun u16(value: Int) {
-            out.write(value and BYTE)
-            out.write(value shr 8 and BYTE)
+            write(value and BYTE)
+            write(value shr 8 and BYTE)
         }
 
         fun u32(value: Long) {
@@ -706,8 +732,12 @@ internal object StoredZip {
             u16((value shr 16 and 0xFFFF).toInt())
         }
 
-        fun bytes(value: ByteArray) = out.write(value)
+        fun bytes(value: ByteArray) {
+            sink.write(value)
+            size += value.size
+        }
 
-        fun toByteArray(): ByteArray = out.toByteArray()
+        /** What went in; only for a buffer written into memory, the default sink. */
+        fun toByteArray(): ByteArray = (sink as ByteArrayOutputStream).toByteArray()
     }
 }

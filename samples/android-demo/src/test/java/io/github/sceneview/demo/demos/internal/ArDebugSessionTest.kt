@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 /**
  * Pins the timeline of the Rerun demo's in-app 3D view (#3950): live by default, a scrub pauses
@@ -129,9 +130,9 @@ class ArDebugSessionTest {
 
         assertEquals("0 m", ArDebugFormat.distance(0f))
         assertEquals("42 cm", ArDebugFormat.distance(0.42f))
-        assertEquals("14.2 m", ArDebugFormat.distance(14.236f))
-        assertEquals("1,234 m", ArDebugFormat.distance(1234.5f))
+        assertEquals("14.2 m", ArDebugFormat.distance(14.236f, Locale.US))
+        assertEquals("1,234 m", ArDebugFormat.distance(1234.5f, Locale.US))
 
-        assertEquals("3,812", ArDebugFormat.count(3812))
+        assertEquals("3,812", ArDebugFormat.count(3812, Locale.US))
     }
 }
