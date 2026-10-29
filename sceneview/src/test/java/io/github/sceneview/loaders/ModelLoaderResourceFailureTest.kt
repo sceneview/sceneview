@@ -256,6 +256,33 @@ class ModelLoaderResourceFailureTest {
     }
 
     @Test
+    fun `createModelInstance throws when its resolver clears the loader, and asks gltfio nothing more`() {
+        resourceUris = arrayOf(BUFFER, TEXTURE)
+        val asked = mutableListOf<String>()
+
+        val failure = runCatching {
+            loader.createModelInstance(File(java.net.URI(modelFileUri()))) { asked += it; loader.clear(); null }
+        }.exceptionOrNull()
+
+        assertTrue("Expected IllegalStateException, got $failure", failure is IllegalStateException)
+        assertTrue(failure!!.message!!, "resource resolver destroyed" in failure.message!!)
+        assertEquals("the resolver is not asked again once the model is gone", listOf(BUFFER), asked)
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("no asyncBeginLoad on the freed asset", emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
+    fun `createModel throws when its resolver destroys the loader`() {
+        val failure = runCatching {
+            loader.createModel(File(java.net.URI(modelFileUri()))) { loader.destroy(); null }
+        }.exceptionOrNull()
+
+        assertTrue("Expected IllegalStateException, got $failure", failure is IllegalStateException)
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("no asyncBeginLoad on a freed loader", emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
     fun `createInstancedModel throws on a missing buffer and destroys the model`() {
         resourceUris = arrayOf(BUFFER, TEXTURE)
 

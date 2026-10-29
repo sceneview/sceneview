@@ -21,6 +21,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.VertexBuffer
 import com.google.android.filament.View
 import com.google.android.filament.gltfio.AssetLoader
+import com.google.android.filament.gltfio.isReleased
 import io.github.sceneview.environment.Environment
 import io.github.sceneview.geometries.Geometry
 import io.github.sceneview.loaders.EnvironmentLoader
@@ -273,6 +274,9 @@ internal fun Engine.whenIdle(
  * say) finds the model already gone and never gets here.
  */
 fun AssetLoader.safeDestroyModel(model: Model) {
+    // Destroyed already, through this path or another: gltfio zeroed its handle, and both calls
+    // below would hand that zero to native code.
+    if (model.isReleased) return
     runCatching { model.releaseSourceData() }
     runCatching { destroyAsset(model) }
 }

@@ -13,6 +13,12 @@ typealias ModelInstance = FilamentInstance
 
 val ModelInstance.model get() = asset
 val ModelInstance.engine get() = model.engine
+
+/**
+ * `true` once the [Model] of this instance was destroyed: see [Model.isDestroyed]. Every Filament
+ * call on the instance afterwards reads freed memory.
+ */
+val ModelInstance.isDestroyed: Boolean get() = model.isDestroyed
 val ModelInstance.renderableManager get() = engine.renderableManager
 val ModelInstance.lightManager get() = engine.lightManager
 
@@ -106,15 +112,25 @@ val ModelInstance.renderablesPrimitiveCounts: Map<EntityInstance, Int>
 /**
  * Changes the material instances binding for the given primitives.
  *
+ * From Kotlin, `instance.materialInstances` resolves to gltfio's own
+ * `FilamentInstance.getMaterialInstances()`, a member that wins over this extension; this one is
+ * reached from Java (`ModelInstanceKt.getMaterialInstances`) or by an explicit call.
+ *
+ * @throws IllegalStateException once the model was destroyed ([isDestroyed]): its renderables
+ * are gone, and reading them would be a native crash.
  * @see RenderableManager.getMaterialInstanceAt
  */
 var ModelInstance.materialInstances: Map<EntityInstance, List<MaterialInstance>>
-    get() = renderablesPrimitiveCounts.mapValues { (renderableInstance, primitiveCount) ->
-        List(primitiveCount) { index ->
-            renderableManager.getMaterialInstanceAt(renderableInstance, index)
+    get() {
+        checkNotDestroyed("materialInstances")
+        return renderablesPrimitiveCounts.mapValues { (renderableInstance, primitiveCount) ->
+            List(primitiveCount) { index ->
+                renderableManager.getMaterialInstanceAt(renderableInstance, index)
+            }
         }
     }
     set(value) {
+        checkNotDestroyed("materialInstances")
         value.forEach { (renderableInstance, materialInstances) ->
             materialInstances.forEachIndexed { primitiveIndex, materialInstance ->
                 renderableManager.setMaterialInstanceAt(
@@ -226,4 +242,9 @@ fun ModelInstance.setGlobalBlendOrderEnabled(enabled: Boolean) {
             )
         }
     }
+}
+
+private fun ModelInstance.checkNotDestroyed(what: String) = check(!isDestroyed) {
+    "ModelInstance.$what: the model of this instance was destroyed (ModelLoader.destroyModel, " +
+        "clear or destroy)"
 }
