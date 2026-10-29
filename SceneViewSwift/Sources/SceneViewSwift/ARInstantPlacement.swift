@@ -183,10 +183,20 @@ enum ARInstantPlacement {
         private(set) var target: SIMD3<Float>
         /// A world rotation still to reach (a wall landing re-facing the wall), else `nil`.
         var rotation: simd_quatf?
+        /// How fast the model eases toward the target, per second: ``settleSpeed`` for a landing
+        /// or a recenter, ``ARPlacementFeel/dragSpeed`` under the finger.
+        var speed: Float
 
-        init(target: SIMD3<Float>, rotation: simd_quatf? = nil) {
+        init(target: SIMD3<Float>, rotation: simd_quatf? = nil, speed: Float = settleSpeed) {
             self.target = target
             self.rotation = rotation
+            self.speed = speed
+        }
+
+        /// Follows a moving finger: every change counts, no deadband.
+        mutating func track(_ point: SIMD3<Float>) {
+            guard point.x.isFinite, point.y.isFinite, point.z.isFinite else { return }
+            target = point
         }
 
         /// Moves the target; `false` (target kept) for a change under ``followDeadband``.
@@ -200,9 +210,12 @@ enum ARInstantPlacement {
 
         /// Share of the remaining way covered in `delta` seconds; 1 for Reduce Motion.
         static func alpha(delta: TimeInterval, reduceMotion: Bool = false) -> Float {
-            if reduceMotion { return 1 }
-            guard delta.isFinite, delta > 0 else { return 0 }
-            return 1 - exp(-settleSpeed * Float(min(delta, 0.1)))
+            ARPlacementFeel.smoothing(delta: delta, speed: settleSpeed, reduceMotion: reduceMotion)
+        }
+
+        /// ``alpha(delta:reduceMotion:)`` at this follow's own ``speed``.
+        func alpha(delta: TimeInterval, reduceMotion: Bool = false) -> Float {
+            ARPlacementFeel.smoothing(delta: delta, speed: speed, reduceMotion: reduceMotion)
         }
 
         func position(from current: SIMD3<Float>, alpha: Float) -> SIMD3<Float> {
@@ -229,7 +242,8 @@ enum ARInstantPlacement {
         case lost
         /// The anchor did not resolve in time: drop it and back off before the next attempt.
         case retry
-        /// ``anchorRetryLimit`` anchors failed to resolve: pause landing on that plane.
+        /// ``anchorRetryLimit`` anchors failed to resolve: abandon the recovery (see
+        /// ``State/abandonAnchorRecovery(plane:area:)``) and leave the model where it stands.
         case abandon
     }
 
@@ -242,10 +256,10 @@ enum ARInstantPlacement {
     /// How long one landing anchor may take to resolve before it counts as a failure — the
     /// same budget as a plane placement's anchor (RealityKit resolves anchors asynchronously).
     static let anchorResolveWindow: TimeInterval = ARPlacementLifecycle.pendingAnchorTimeout
-    /// After ``anchorRetryLimit`` failures, landing on that plane pauses this long — or until
-    /// ARKit reports a different plane there, or that plane grows by ``abandonRegrowth``.
-    /// Android settles instead; here the model would otherwise stay approximate for good.
-    static let abandonCooldown: TimeInterval = 3
+    /// After ``anchorRetryLimit`` failures the recovery is abandoned (ARMV
+    /// `abandonAnchorRecovery`): no timer retries it. The next move of the model by the user
+    /// re-arms it, as does new evidence: ARKit reports a different plane under the model, or that
+    /// plane grows by this factor.
     static let abandonRegrowth: Float = 1.25
     /// Losses of the same plane in a row that count as one failure: an anchor that resolves
     /// slowly on a flickering edge would otherwise be created and dropped for good.
@@ -263,8 +277,8 @@ enum ARInstantPlacement {
         /// Anchors that failed to resolve since the last success, move or reset.
         private(set) var failures = 0
         private(set) var nextAttemptAt: TimeInterval = 0
-        /// The plane (and its area, m²) landing gave up on, and until when.
-        private(set) var abandoned: (plane: UUID, area: Float, until: TimeInterval)?
+        /// The plane (and its area, m²) the anchor recovery was abandoned on.
+        private(set) var abandoned: (plane: UUID, area: Float)?
         private(set) var lastRefineAt: TimeInterval?
         /// Losses in a row of the same plane, see ``lostLimit``.
         private(set) var lostStreak: (plane: UUID, count: Int)?
@@ -295,13 +309,13 @@ enum ARInstantPlacement {
             return true
         }
 
-        /// Whether a landing anchor may be created on `plane` (of `area` m²) now. An abandoned
-        /// plane is tried again once the cooldown ran out, or at once when it is another plane
-        /// or has grown — so a user who never drags is not left approximate for good.
+        /// Whether a landing anchor may be created on `plane` (of `area` m²) now. After an
+        /// abandoned recovery, only another plane or the same plane grown by
+        /// ``abandonRegrowth`` re-arms it here; time alone never does.
         mutating func mayAttemptLanding(on plane: UUID, area: Float, now: TimeInterval) -> Bool {
             if let abandoned {
                 let grew = area.isFinite && area >= abandoned.area * abandonRegrowth
-                guard plane != abandoned.plane || grew || now >= abandoned.until else { return false }
+                guard plane != abandoned.plane || grew else { return false }
                 moved()
             }
             return now >= nextAttemptAt
@@ -335,17 +349,28 @@ enum ARInstantPlacement {
         }
 
         /// Records an anchor that did not resolve; `true` when it was the last one allowed,
-        /// which pauses landing on `plane` (see ``abandonCooldown``).
+        /// which abandons the recovery (see ``abandonAnchorRecovery(plane:area:)``).
         @discardableResult
         mutating func failed(now: TimeInterval, plane: UUID, area: Float) -> Bool {
             lostStreak = nil
             failures += 1
             if failures >= anchorRetryLimit {
-                abandoned = (plane, area, now + abandonCooldown)
+                abandonAnchorRecovery(plane: plane, area: area)
                 return true
             }
             nextAttemptAt = now + anchorRetryDelay(attempt: failures)
             return false
+        }
+
+        /// Gives up landing on `plane` (ARMV `abandonAnchorRecovery`): the model stays where it
+        /// stands and nothing retries on a timer — no pull back, no anchor churn. A move by the
+        /// user (``moved()``) or new evidence (``mayAttemptLanding(on:area:now:)``) re-arms it.
+        mutating func abandonAnchorRecovery(plane: UUID, area: Float) {
+            abandoned = (plane, area)
+            failures = 0
+            lostStreak = nil
+            heldAt = nil
+            nextAttemptAt = 0
         }
 
         /// The model moved under the user's hand, or landed: retry from scratch.
