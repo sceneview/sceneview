@@ -46,6 +46,7 @@ import io.github.sceneview.demo.demos.internal.FingerDrawing
 import io.github.sceneview.demo.demos.internal.FingerDrawingPlacement
 import io.github.sceneview.demo.demos.internal.SteadyPen
 import io.github.sceneview.demo.isDemoCompactHeight
+import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.rememberArPlaybackDataset
 import io.github.sceneview.math.Position
 import io.github.sceneview.rememberARView
@@ -125,6 +126,9 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
     val view = rememberARView(engine)
     val cameraNode = rememberARCameraNode(engine)
     val arPlaybackDataset = rememberArPlaybackDataset()
+    // The shared capture actions: a photo or a video of the drawing in the room — camera feed
+    // and paint, rendered by Filament, without the Compose chrome.
+    val recorder = rememberDemoSceneRecorder()
     val paints = rememberPaintMaterials(materialLoader)
 
     val density = LocalDensity.current.density
@@ -265,6 +269,7 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
             else -> pluralStringResource(R.plurals.demo_finger_drawing_strokes, strokeCount, strokeCount)
         },
         onResetSettings = brush::reset,
+        recorder = recorder,
         dock = listOf(
             DockItem(
                 icon = Icons.AutoMirrored.Outlined.Undo,
@@ -318,6 +323,7 @@ private fun FingerDrawingArScene(onBack: () -> Unit, brush: FingerBrush) {
                 view = view,
                 cameraNode = cameraNode,
                 playbackDataset = arPlaybackDataset,
+                surfaceMirrorer = recorder.surfaceMirrorer,
                 // Nothing is placed on a surface here: the plane grid would only be noise
                 // behind the paint.
                 planeRenderer = false,
