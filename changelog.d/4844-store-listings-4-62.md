@@ -1,1 +1,0 @@
-- **Store listings match 4.62.0.** The Play listing says what 3D Scan does in 4.62.0 (a floor plan of the room's real shape with doors and windows, shared as PDF or DXF, and a part scanned again), and Measure reads doors and windows. The App Store keywords drop `gltf`, which the Apple app cannot open.
