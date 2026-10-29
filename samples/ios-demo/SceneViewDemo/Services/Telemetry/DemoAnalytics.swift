@@ -146,10 +146,10 @@ enum SupportPromptResult: String, Sendable, CaseIterable {
     static func completedPurchase(productId: String) -> SupportPromptResult? {
         guard let tier = productId.split(separator: ".").last else { return nil }
         switch tier {
-        case "small": .tierSmall
-        case "medium": .tierMedium
-        case "large": .tierLarge
-        default: nil
+        case "small": return .tierSmall
+        case "medium": return .tierMedium
+        case "large": return .tierLarge
+        default: return nil
         }
     }
 }
