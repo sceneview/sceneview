@@ -244,10 +244,9 @@ public struct SceneView: View {
         )
         #if os(iOS)
         // Shares the RealityView's rectangle, which is how it finds the `ARView` to capture.
-        if let sceneRecorder {
-            representation.background(SceneRecorderAnchor(recorder: sceneRecorder))
-        } else {
-            representation
+        // One branch, so adding or removing the recorder never rebuilds the RealityView.
+        representation.background {
+            if let sceneRecorder { SceneRecorderAnchor(recorder: sceneRecorder) }
         }
         #else
         representation

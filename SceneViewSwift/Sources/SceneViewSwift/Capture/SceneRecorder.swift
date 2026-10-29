@@ -74,7 +74,7 @@ public final class SceneRecorder: ObservableObject {
     public var onRecordingFinished: ((SceneRecording?) -> Void)?
 
     /// Whether a scene uses this recorder, so photos and videos can be taken.
-    public var isAttached: Bool { source != nil }
+    @Published public private(set) var isAttached = false
 
     private var source: (any SceneCaptureSource)?
     private var active: ActiveRecording?
@@ -179,7 +179,8 @@ public final class SceneRecorder: ObservableObject {
             sourceWidth: width,
             sourceHeight: height,
             maxLongEdge: settings.maxLongEdge,
-            maxShortEdge: settings.maxShortEdge
+            maxShortEdge: settings.maxShortEdge,
+            isSupported: isH264SizeSupported
         ) else {
             lastError = SceneRecorderError.noVideoSize(width: width, height: height)
             return false
@@ -233,6 +234,11 @@ public final class SceneRecorder: ObservableObject {
         recording.timers.cancel()
         recording.source.stopStreaming()
         isRecording = false
+        // Reset before the wait, so observers never see the previous recording's state
+        // next to `isRecording == false`.
+        elapsedTime = 0
+        lastError = nil
+        lastRecording = nil
         let duration = await recording.writer.finish()
         let result: SceneRecording?
         if let duration {
@@ -246,13 +252,11 @@ public final class SceneRecorder: ObservableObject {
                 hasOverlay: recording.writer.hasOverlay
             )
             lastRecording = result
-            lastError = nil
         } else {
             result = nil
             lastError = recording.writer.failure.map { SceneRecorderError.writeFailed($0.localizedDescription) }
                 ?? SceneRecorderError.noFrames
         }
-        elapsedTime = 0
         onRecordingFinished?(result)
         return result
     }
@@ -268,14 +272,11 @@ public final class SceneRecorder: ObservableObject {
             return
         }
         // Keep the app alive long enough to close the MP4 once it is in the background.
-        let application = UIApplication.shared
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        taskID = application.beginBackgroundTask(withName: "SceneRecorder.finish") {
-            application.endBackgroundTask(taskID)
-        }
+        let task = BackgroundTask()
+        task.begin()
         Task {
             await finish(reachedMaxDuration: false)
-            if taskID != .invalid { application.endBackgroundTask(taskID) }
+            task.end()
         }
     }
 
@@ -301,12 +302,34 @@ public final class SceneRecorder: ObservableObject {
         guard self.source !== source else { return }
         if let active, active.source !== source { finishInBackground(keepAppAlive: false) }
         self.source = source
+        isAttached = true
     }
 
     /// Forgets `source` if it is the attached one; a recording on it is finished.
     func detach(_ source: any SceneCaptureSource) {
         if let active, active.source === source { finishInBackground(keepAppAlive: false) }
-        if self.source === source { self.source = nil }
+        if self.source === source {
+            self.source = nil
+            isAttached = false
+        }
+    }
+
+    /// A background task ended exactly once: by the finished file or by its expiration.
+    @MainActor
+    private final class BackgroundTask {
+        private var id = UIBackgroundTaskIdentifier.invalid
+
+        func begin() {
+            id = UIApplication.shared.beginBackgroundTask(withName: "SceneRecorder.finish") { [self] in
+                MainActor.assumeIsolated { end() }
+            }
+        }
+
+        func end() {
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id)
+            id = .invalid
+        }
     }
 
     // MARK: - Overlay

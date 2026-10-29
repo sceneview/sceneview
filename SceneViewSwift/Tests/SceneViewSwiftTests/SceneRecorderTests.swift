@@ -129,8 +129,52 @@ final class SceneRecorderTests: XCTestCase {
         let recording = try XCTUnwrap(finished.first ?? nil)
         XCTAssertTrue(recording.reachedMaxDuration)
         XCTAssertFalse(recorder.isRecording)
-        XCTAssertEqual(recording.duration, 0.6, accuracy: 0.35)
+        // Frames past the limit are refused, so the video never runs over it.
+        XCTAssertLessThanOrEqual(recording.duration, 0.6 + 0.002)
+        XCTAssertGreaterThan(recording.duration, 0.3)
         XCTAssertTrue(FileManager.default.fileExists(atPath: recording.url.path))
+    }
+
+    func testGoingToTheBackgroundFinishesTheRecording() async throws {
+        let recorder = SceneRecorder()
+        let source = SyntheticSource(width: 1080, height: 1920)
+        recorder.attach(source)
+        var finished: [SceneRecording?] = []
+        recorder.onRecordingFinished = { finished.append($0) }
+
+        XCTAssertTrue(recorder.startRecording(to: file("background.mp4")))
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertFalse(source.isStreaming, "frames stop at once")
+        await waitUntil { !finished.isEmpty }
+
+        let recording = try XCTUnwrap(finished.first ?? nil)
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertFalse(recording.reachedMaxDuration)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recording.url.path))
+    }
+
+    func testAnOversizedRequestStepsDownToAnEncodableSize() async throws {
+        let recorder = SceneRecorder()
+        recorder.attach(SyntheticSource(width: 4000, height: 2000))
+        let settings = VideoSettings(maxLongEdge: 8000, maxShortEdge: 4500)
+
+        XCTAssertTrue(recorder.startRecording(to: file("large.mp4"), settings: settings))
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let stopped = await recorder.stopRecording()
+        let recording = try XCTUnwrap(stopped)
+        // 8000x4000 is beyond H.264 level 5.2; the 1080p box is the first step down.
+        XCTAssertEqual(recording.width, 1920)
+        XCTAssertEqual(recording.height, 960)
+    }
+
+    func testH264SizeLimits() {
+        XCTAssertTrue(isH264SizeSupported(1920, 1080))
+        XCTAssertTrue(isH264SizeSupported(4096, 2304))
+        XCTAssertTrue(isH264SizeSupported(2304, 4096))
+        XCTAssertFalse(isH264SizeSupported(4096, 2320), "more than 36 864 macroblocks")
+        XCTAssertFalse(isH264SizeSupported(4098, 100), "an edge over 4096")
+        XCTAssertFalse(isH264SizeSupported(0, 100))
     }
 
     func testARecordingWithoutAnyFrameReturnsNilAndRemovesTheFile() async {
@@ -260,6 +304,51 @@ final class SceneRecorderTests: XCTestCase {
         coordinator.syncRecorder(nil, on: arView)
         XCTAssertFalse(recorder.isAttached)
         XCTAssertNil(coordinator.captureSource)
+    }
+
+    func testARSceneViewFinishesTheRecordingWhenItLeavesTheWindow() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+        let arView = ARView(frame: container.bounds)
+        container.addSubview(arView)
+        let recorder = SceneRecorder()
+        let coordinator = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        coordinator.syncRecorder(recorder, on: arView)
+        XCTAssertTrue(recorder.isAttached)
+
+        XCTAssertTrue(recorder.startRecording(to: file("window.mp4")))
+
+        container.removeFromSuperview()
+        XCTAssertFalse(recorder.isAttached, "leaving the window detaches the recorder")
+        await waitUntil { !recorder.isRecording }
+        XCTAssertFalse(recorder.isRecording, "and finishes its recording")
+        XCTAssertNil(arView.renderCallbacks.postProcess, "the tap is gone")
+
+        coordinator.syncRecorder(recorder, on: arView)
+        XCTAssertFalse(recorder.isAttached, "an update off screen does not attach it again")
+        window.addSubview(container)
+        XCTAssertTrue(recorder.isAttached, "coming back attaches it again")
+    }
+
+    func testAReplacedPostProcessRunsInsideTheTapDuringARecording() {
+        let arView = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        let source = ARViewCaptureSource(arView: arView)
+
+        arView.renderCallbacks.postProcess = { _ in }
+        source.postProcessReplaced()
+        XCTAssertFalse(source.wrapsAnotherCallback, "nothing to do while not recording")
+
+        arView.renderCallbacks.postProcess = nil
+        source.startStreaming(into: NullSink())
+        XCTAssertFalse(source.wrapsAnotherCallback)
+        // The view's owner (the exposure filter) puts its own callback in mid-recording.
+        arView.renderCallbacks.postProcess = { _ in }
+        source.postProcessReplaced()
+        XCTAssertTrue(source.wrapsAnotherCallback, "the tap is back, running the new callback")
+        source.stopStreaming()
+        XCTAssertNotNil(arView.renderCallbacks.postProcess, "the new callback is left in place")
+        XCTAssertFalse(source.wrapsAnotherCallback)
     }
 
     @available(iOS 15.0, *)

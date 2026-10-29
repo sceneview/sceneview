@@ -14,6 +14,11 @@ import UIKit
 /// there before (the exposure filter of ``ARSceneView/cameraExposure(_:)``), or copies the frame
 /// through when there was none, then scales the finished frame into the encoder's pixel buffer
 /// on the same command buffer. Stopping puts the previous callback back.
+///
+/// The frame is read from the post-process target when Metal allows it, so effects of the
+/// previous callback are in the video. When RealityKit hands over a write-only target, the
+/// tap reads the frame from before the post-process instead: the video then misses the
+/// ``ARSceneView/cameraExposure(_:)`` adjustment, the rest of the frame being the same.
 @MainActor
 final class ARViewCaptureSource: SceneCaptureSource {
     private(set) weak var arView: ARView?
@@ -52,6 +57,7 @@ final class ARViewCaptureSource: SceneCaptureSource {
 
     func stopStreaming() {
         tap.sink = nil
+        tap.flush()
         guard installed else { return }
         installed = false
         arView?.renderCallbacks.postProcess = inner
@@ -65,6 +71,9 @@ final class ARViewCaptureSource: SceneCaptureSource {
         inner = arView.renderCallbacks.postProcess
         arView.renderCallbacks.postProcess = makeWrapper()
     }
+
+    /// Whether the tap runs another owner's callback inside it, for tests.
+    var wrapsAnotherCallback: Bool { inner != nil }
 
     private func makeWrapper() -> (ARView.PostProcessContext) -> Void {
         let inner = self.inner
@@ -85,7 +94,7 @@ final class ARViewCaptureSource: SceneCaptureSource {
 final class FrameTap: @unchecked Sendable {
     private let lock = NSLock()
     private var currentSink: (any VideoFrameSink)?
-    // Render thread only.
+    // Render thread only, except `textureCache`, also flushed from the main thread under `lock`.
     private var textureCache: CVMetalTextureCache?
     private var ciContext: CIContext?
     private var device: MTLDevice?
@@ -95,9 +104,16 @@ final class FrameTap: @unchecked Sendable {
         set { lock.lock(); currentSink = newValue; lock.unlock() }
     }
 
+    /// Lets the texture cache release the encoder buffers it wraps once a recording stops.
+    func flush() {
+        lock.lock()
+        defer { lock.unlock() }
+        if let textureCache { CVMetalTextureCacheFlush(textureCache, 0) }
+    }
+
     func capture(_ context: ARView.PostProcessContext) {
         // The target holds the frame with every effect applied; read it when Metal allows,
-        // otherwise read the source (the frame before the post-process).
+        // otherwise read the source (the frame before the post-process, see the type's doc).
         let target = context.targetColorTexture
         let source = !target.isFramebufferOnly && target.usage.contains(.shaderRead)
             ? target : context.sourceColorTexture
@@ -127,10 +143,16 @@ final class FrameTap: @unchecked Sendable {
     ) -> CVMetalTexture? {
         if self.device !== device {
             self.device = device
-            textureCache = nil
-            CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
+            var cache: CVMetalTextureCache?
+            CVMetalTextureCacheCreate(nil, nil, device, nil, &cache)
+            lock.lock()
+            textureCache = cache
+            lock.unlock()
             ciContext = CIContext(mtlDevice: device, options: [.cacheIntermediates: false])
         }
+        lock.lock()
+        let textureCache = self.textureCache
+        lock.unlock()
         guard let textureCache, let ciContext else { return nil }
 
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
@@ -148,18 +170,29 @@ final class FrameTap: @unchecked Sendable {
             : CGColorSpace(name: CGColorSpace.sRGB)
         guard let sourceSpace,
               let image = CIImage(mtlTexture: source, options: [.colorSpace: sourceSpace]) else { return nil }
-        let scaled = image.transformed(by: CGAffineTransform(
-            scaleX: CGFloat(width) / image.extent.width,
-            y: CGFloat(height) / image.extent.height
-        ))
+        // One scale for both edges, centred: a view turned mid-recording (portrait to
+        // landscape) is letterboxed in the size fixed at the start instead of stretched.
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        let fitted = image.transformed(by: Self.aspectFit(image.extent.size, in: bounds.size))
+            .composited(over: CIImage(color: .black).cropped(to: bounds))
         ciContext.render(
-            scaled,
+            fitted,
             to: destination,
             commandBuffer: commandBuffer,
-            bounds: CGRect(x: 0, y: 0, width: width, height: height),
+            bounds: bounds,
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         )
         return cvTexture
+    }
+
+    /// Scales `size` by one factor to fit inside `box`, centred.
+    static func aspectFit(_ size: CGSize, in box: CGSize) -> CGAffineTransform {
+        guard size.width > 0, size.height > 0 else { return .identity }
+        let scale = min(box.width / size.width, box.height / size.height)
+        return CGAffineTransform(
+            translationX: (box.width - size.width * scale) / 2,
+            y: (box.height - size.height * scale) / 2
+        ).scaledBy(x: scale, y: scale)
     }
 
     /// Whether sampling a texture of this format gives linear values (sRGB formats are decoded

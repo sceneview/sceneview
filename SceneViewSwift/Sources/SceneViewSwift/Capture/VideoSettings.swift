@@ -8,8 +8,10 @@ import Foundation
 ///
 /// The video keeps the scene's aspect ratio inside a `maxLongEdge` × `maxShortEdge` box
 /// turned like the view (a portrait view records a portrait video), with even edges as
-/// H.264 requires. When the encoder refuses that size, the recorder steps down through
-/// 1080p, 720p, 540p and 360p, never above the requested box.
+/// H.264 requires. When that size is beyond H.264 level 5.2 (4096 pixels per edge, 36 864
+/// macroblocks, as 4096 × 2304), the recorder steps down through 1080p, 720p, 540p and 360p,
+/// never above the requested box. The size is fixed when the recording starts: a view turned
+/// mid-recording is letterboxed in it, not stretched.
 public struct VideoSettings: Sendable, Equatable {
     /// Longest edge of the video, in pixels. Default 1920.
     public var maxLongEdge: Int
@@ -23,10 +25,14 @@ public struct VideoSettings: Sendable, Equatable {
     /// (`AVCaptureDevice.authorizationStatus(for: .audio) == .authorized`). The recorder
     /// never asks for it: without access, or when the microphone cannot be opened, the video
     /// is recorded silent and ``SceneRecording/hasAudio`` is `false`. Needs
-    /// `NSMicrophoneUsageDescription` in the app's Info.plist. Default `false`.
+    /// `NSMicrophoneUsageDescription` in the app's Info.plist. The app's audio session is
+    /// left as it is when it can already record; otherwise it is switched to `.playAndRecord`,
+    /// mixing with other audio, for the length of the recording, then put back.
+    /// Default `false`.
     public var recordAudio: Bool
     /// Stops the recording by itself after this many seconds, with
-    /// ``SceneRecording/reachedMaxDuration`` set. `nil` (the default) records until
+    /// ``SceneRecording/reachedMaxDuration`` set. Frames past the limit are refused, so the
+    /// video is never longer. `nil` (the default) records until
     /// ``SceneRecorder/stopRecording()``.
     public var maxDuration: TimeInterval?
 
@@ -77,6 +83,13 @@ struct VideoSize: Equatable, Hashable, CustomStringConvertible {
 
 /// Step-down boxes when the encoder refuses the requested one, each clamped to it.
 private let fallbackBoxes: [(Int, Int)] = [(1920, 1080), (1280, 720), (960, 540), (640, 360)]
+
+/// Whether an H.264 encoder takes this size: level 5.2 caps each edge at 4096 pixels and a
+/// frame at 36 864 macroblocks of 16 × 16 (4096 × 2304).
+func isH264SizeSupported(_ width: Int, _ height: Int) -> Bool {
+    guard width > 0, height > 0, width <= 4096, height <= 4096 else { return false }
+    return ((width + 15) / 16) * ((height + 15) / 16) <= 36_864
+}
 
 /// H.264 4:2:0 needs even edges; some encoders only take multiples of 16.
 private let alignments = [2, 16]

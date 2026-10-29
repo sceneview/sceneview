@@ -969,6 +969,8 @@ public struct ARSceneView: UIViewRepresentable {
         /// this view through.
         var sceneRecorder: SceneRecorder?
         var captureSource: ARViewCaptureSource?
+        /// Detaches the recorder while the view is out of a window, see `syncRecorder`.
+        var recorderWindowWatcher: WindowWatcher?
         var faceTrackingSession = false
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?

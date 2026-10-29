@@ -29,9 +29,9 @@ extension ARSceneView {
     /// Lets `recorder` take photos and videos of this AR scene: the camera feed and the
     /// virtual content together, never the SwiftUI views over it.
     ///
-    /// Works with ``cameraExposure(_:)``: the recorded frames carry the same exposure as the
-    /// screen. One recorder serves one scene at a time, and a recording finishes when this
-    /// view leaves the screen.
+    /// Works with ``cameraExposure(_:)`` (see ``SceneRecorder`` for the one case where the
+    /// video misses it). One recorder serves one scene at a time. A recording finishes when
+    /// this view leaves the window; the recorder is attached again when it comes back.
     ///
     /// - Parameter recorder: The recorder, or `nil` to detach.
     public func sceneRecorder(_ recorder: SceneRecorder?) -> ARSceneView {
@@ -127,16 +127,81 @@ struct SceneRecorderAnchor: UIViewRepresentable {
 
 extension ARSceneView.Coordinator {
     /// Attaches `recorder` to `arView`, detaching the previous one. Idempotent.
+    ///
+    /// While attached, a hidden subview of `arView` watches its window: leaving the window
+    /// detaches the recorder (finishing a recording), coming back attaches it again.
     @MainActor
     func syncRecorder(_ recorder: SceneRecorder?, on arView: ARView) {
-        if recorder === sceneRecorder, captureSource?.arView === arView { return }
+        if recorder === sceneRecorder, captureSource?.arView === arView || recorderWindowWatcher?.isOffWindow == true {
+            return
+        }
         if let sceneRecorder, let captureSource { sceneRecorder.detach(captureSource) }
         sceneRecorder = recorder
         captureSource = nil
-        guard let recorder else { return }
+        guard let recorder else {
+            recorderWindowWatcher?.removeFromSuperview()
+            recorderWindowWatcher = nil
+            return
+        }
+        if recorderWindowWatcher?.isOffWindow != true { attachSource(to: recorder, on: arView) }
+        if recorderWindowWatcher?.superview !== arView {
+            recorderWindowWatcher?.removeFromSuperview()
+            let watcher = WindowWatcher()
+            watcher.onWindowChange = { [weak self, weak arView] inWindow in
+                guard let self, let arView else { return }
+                self.recorderWindowChanged(inWindow: inWindow, arView: arView)
+            }
+            arView.addSubview(watcher)
+            recorderWindowWatcher = watcher
+        }
+    }
+
+    @MainActor
+    private func attachSource(to recorder: SceneRecorder, on arView: ARView) {
         let source = ARViewCaptureSource(arView: arView)
         captureSource = source
         recorder.attach(source)
+    }
+
+    @MainActor
+    private func recorderWindowChanged(inWindow: Bool, arView: ARView) {
+        guard let sceneRecorder else { return }
+        if inWindow {
+            if captureSource == nil { attachSource(to: sceneRecorder, on: arView) }
+        } else if let captureSource {
+            sceneRecorder.detach(captureSource)
+            self.captureSource = nil
+        }
+    }
+}
+
+/// A hidden, zero-size subview that reports when its superview leaves or re-enters a window.
+/// A view never put in a window is not reported as leaving one.
+final class WindowWatcher: UIView {
+    var onWindowChange: ((_ inWindow: Bool) -> Void)?
+    private var hadWindow = false
+
+    /// Left a window it was in and not back yet.
+    var isOffWindow: Bool { hadWindow && window == nil }
+
+    init() {
+        super.init(frame: .zero)
+        isHidden = true
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            hadWindow = true
+            onWindowChange?(true)
+        } else if hadWindow {
+            onWindowChange?(false)
+        }
     }
 }
 #endif

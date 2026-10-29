@@ -29,6 +29,7 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
 
     private let overlay: CaptureOverlay?
     private let frameInterval: CFTimeInterval
+    private let maxDuration: CFTimeInterval?
     private let writer: AVAssetWriter
     private let videoInput: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
@@ -44,6 +45,7 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
     private let lock = NSLock()
     private var accepting = true
     private var lastReserved: CFTimeInterval?
+    private var firstReserved: CFTimeInterval?
     private var inFlight = 0
 
     /// Frames reserved but not yet appended; more are skipped so a slow encoder never piles
@@ -56,6 +58,7 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
         self.overlay = overlay
         hasOverlay = overlay != nil
         frameInterval = 1.0 / Double(settings.frameRate)
+        maxDuration = settings.maxDuration
 
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -126,10 +129,16 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
         guard accepting, inFlight < Self.maxInFlight else { return nil }
         // 10 % slack so a 60 Hz scene keeps every other frame instead of drifting.
         if let lastReserved, hostTime - lastReserved < frameInterval * 0.9 { return nil }
+        // A frame that would end past `maxDuration` is refused, so the video stops at the
+        // limit even when the stop itself comes a little later.
+        if let maxDuration, let firstReserved, hostTime - firstReserved + frameInterval > maxDuration + 0.001 {
+            return nil
+        }
         guard let pool = adaptor.pixelBufferPool else { return nil }
         var buffer: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer else { return nil }
         lastReserved = hostTime
+        if firstReserved == nil { firstReserved = hostTime }
         inFlight += 1
         return buffer
     }
@@ -204,6 +213,7 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
         let ending: (start: CMTime, end: CMTime)? = await withCheckedContinuation { continuation in
             queue.async { [self] in
                 guard frameCount > 0, let sessionStart, let lastFrameTime, writer.status == .writing else {
+                    if writer.status == .writing { writer.cancelWriting() }
                     continuation.resume(returning: nil)
                     return
                 }
@@ -215,7 +225,6 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
             }
         }
         guard let ending else {
-            if writer.status == .writing { writer.cancelWriting() }
             try? FileManager.default.removeItem(at: url)
             return nil
         }
@@ -232,14 +241,24 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
 }
 
 /// The microphone, delivered as sample buffers on the writer's queue.
+///
+/// The capture session leaves the app's audio session alone (no automatic configuration):
+/// when its category cannot record, it is switched to `.playAndRecord`, mixing with other
+/// audio, for the length of the recording, then put back. Start and stop run in order on
+/// one serial queue, off the caller's thread since `startRunning` blocks.
 private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let session = AVCaptureSession()
     private let output = AVCaptureAudioDataOutput()
     private let onSample: (CMSampleBuffer) -> Void
+    private let control = DispatchQueue(label: "io.github.sceneview.capture.microphone")
+    /// The app's audio session setup before the recording switched it, on `control` only.
+    private var previousAudio: (category: AVAudioSession.Category, mode: AVAudioSession.Mode,
+                                options: AVAudioSession.CategoryOptions)?
 
     init?(queue: DispatchQueue, onSample: @escaping (CMSampleBuffer) -> Void) {
         self.onSample = onSample
         super.init()
+        session.automaticallyConfiguresApplicationAudioSession = false
         guard let device = AVCaptureDevice.default(for: .audio),
               let input = try? AVCaptureDeviceInput(device: device) else { return nil }
         session.beginConfiguration()
@@ -254,12 +273,33 @@ private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleB
     }
 
     func start() {
-        // `startRunning` blocks; keep it off the caller's thread.
-        DispatchQueue.global(qos: .userInitiated).async { [session] in session.startRunning() }
+        control.async { [self] in
+            let audio = AVAudioSession.sharedInstance()
+            if audio.category != .playAndRecord, audio.category != .record {
+                let previous = (audio.category, audio.mode, audio.categoryOptions)
+                do {
+                    try audio.setCategory(.playAndRecord, mode: .default,
+                                          options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
+                    previousAudio = previous
+                } catch {
+                    // The session keeps its category; the track then stays silent.
+                }
+            }
+            try? audio.setActive(true)
+            session.startRunning()
+        }
     }
 
     func stop() {
-        DispatchQueue.global(qos: .userInitiated).async { [session] in session.stopRunning() }
+        control.async { [self] in
+            session.stopRunning()
+            if let previousAudio {
+                try? AVAudioSession.sharedInstance().setCategory(
+                    previousAudio.category, mode: previousAudio.mode, options: previousAudio.options
+                )
+                self.previousAudio = nil
+            }
+        }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
