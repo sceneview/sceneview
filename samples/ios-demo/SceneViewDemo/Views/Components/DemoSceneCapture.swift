@@ -213,7 +213,7 @@ struct DemoCaptureStopPill: View {
     }
 }
 
-/// The capture result above the dock: a message, and **Share** or **Play**.
+/// The capture result above the bottom stack: a message, and **Share** or **Play**.
 struct DemoCaptureToast: View {
     @Environment(\.demoSceneCapture) private var capture
 
@@ -228,11 +228,12 @@ private struct DemoCaptureToastContent: View {
     @ObservedObject var capture: DemoSceneCapture
 
     var body: some View {
-        ZStack {
+        // Zero-size without a toast; the scaffold lays it over the stack, not in it.
+        VStack(spacing: 0) {
             if let toast = capture.toast {
                 HStack(spacing: SceneViewTokens.Space.sm) {
                     Text(toast.message)
-                        .font(.subheadline.weight(.semibold))
+                        .font(SceneViewTokens.TypeScale.chromeCaption)
                         .foregroundStyle(SceneViewTokens.Glass.onGlass)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,11 +241,13 @@ private struct DemoCaptureToastContent: View {
                     switch toast.action {
                     case let .share(url):
                         ShareLink(item: url) { actionLabel("Share") }
+                            .buttonStyle(.plain)
                             .accessibilityIdentifier("demo-capture-share")
                     case let .play(url):
                         Button {
                             capture.playing = url
                         } label: { actionLabel("Play") }
+                            .buttonStyle(.plain)
                             .accessibilityIdentifier("demo-capture-play")
                     case nil:
                         EmptyView()
@@ -265,18 +268,36 @@ private struct DemoCaptureToastContent: View {
             get: { capture.playing.map(PlayedVideo.init) },
             set: { capture.playing = $0?.url }
         )) { video in
-            VideoPlayer(player: AVPlayer(url: video.url))
-                .ignoresSafeArea()
-                .presentationDragIndicator(.visible)
+            DemoCapturePlayer(url: video.url)
         }
     }
 
     private func actionLabel(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline.weight(.semibold))
+            .font(SceneViewTokens.TypeScale.chromeLabel)
+            // On-glass white, as the dock labels: an accent tint lost contrast over a
+            // bright scene seen through the glass.
+            .foregroundStyle(SceneViewTokens.Glass.onGlass)
             .padding(.horizontal, SceneViewTokens.Space.sm)
             .frame(minHeight: SceneViewTokens.Layout.touchTarget)
             .contentShape(Rectangle())
+    }
+}
+
+/// Plays a recorded video; the player lives in state, made once per sheet.
+private struct DemoCapturePlayer: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .ignoresSafeArea()
+            .presentationDragIndicator(.visible)
+            .task {
+                if player == nil { player = AVPlayer(url: url) }
+                player?.play()
+            }
+            .onDisappear { player?.pause() }
     }
 }
 

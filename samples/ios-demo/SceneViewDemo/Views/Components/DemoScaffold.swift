@@ -209,8 +209,6 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                     DemoModePicker(model: modePicker)
                         .padding(.horizontal, Metrics.margin)
                 }
-                DemoCaptureToast()
-                    .padding(.horizontal, Metrics.margin)
                 accessory
                     .padding(.horizontal, Metrics.margin)
                 dockView
@@ -218,6 +216,13 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
             }
             .glassEffectGroup()
             .environment(\.chromeGlassNamespace, glassSpace)
+            // A capture result floats `space-md` above the whole bottom stack, which
+            // does not move for it (DESIGN.md, #4483).
+            .overlay(alignment: .top) {
+                DemoCaptureToast()
+                    .padding(.horizontal, Metrics.margin)
+                    .alignmentGuide(.top) { $0[.bottom] + SceneViewTokens.Space.md }
+            }
             .offset(y: travels ? Metrics.enterBottom : 0)
             .accessibilitySortPriority(1)
         }
