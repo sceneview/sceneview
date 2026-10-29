@@ -230,7 +230,8 @@ class FreshFenceTeardownTest {
 
     /**
      * 15 fps and 10 fps: the gap between polls alone exceeds the 48 ms window, so no fence is ever
-     * found fresh. The release waits for the give-up — late, but it does not block.
+     * found fresh. The release waits for the give-up — late, and here it does not block (see
+     * [FRESH_FENCE_GIVE_UP_MS] for the shader-compilation case that still does).
      */
     @Test
     fun `an idle backend polled slower than the freshness window waits for the give-up`() {

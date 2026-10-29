@@ -105,7 +105,8 @@ internal const val DISABLE_GPU_COMPLETE_METRIC = "engine.frame_info.disable_gpu_
 /**
  * Creates the Filament [Engine] SceneView renders with, sharing [eglContext].
  *
- * Built with [DISABLE_GPU_COMPLETE_METRIC]: a constant flag, only settable at creation.
+ * Built with the `engine.frame_info.disable_gpu_complete_metric` feature flag: a constant flag,
+ * only settable at creation.
  */
 fun createEngine(eglContext: EGLContext): Engine = Engine.Builder()
     .sharedContext(eglContext)

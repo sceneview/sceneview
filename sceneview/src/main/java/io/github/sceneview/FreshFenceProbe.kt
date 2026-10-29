@@ -15,7 +15,8 @@ package io.github.sceneview
  * and queuing its shaders — pass for fresh at the poll right after it, whenever the pass was not
  * much longer than the usual gap. So when the main thread polls less often than every 48 ms (a
  * steady 15 fps jank), no fence is ever fresh and teardowns wait for [FRESH_FENCE_GIVE_UP_MS]:
- * a late release, rather than a release that blocks.
+ * usually a late release rather than one that blocks — a shader compilation queued just before
+ * the give-up is still waited for.
  */
 internal const val FRESH_FENCE_MAX_AGE_MS = 3 * BACKEND_IDLE_POLL_MS
 
