@@ -7598,6 +7598,12 @@ var body: some View {
                 Text("Refining…")
             }
         }
+        .task {
+            let ticket = placement.selectModel()
+            guard let model = try? await ModelNode.load("khronos_toy_car"),
+                  !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+            placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+        }
 }
 ```
 

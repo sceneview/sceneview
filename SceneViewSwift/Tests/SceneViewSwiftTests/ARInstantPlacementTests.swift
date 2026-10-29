@@ -61,9 +61,9 @@ final class ARInstantPlacementTests: XCTestCase {
         }
     }
 
-    // MARK: Constants shared with Android
+    // MARK: Constants shared with ARMV
 
-    func testConstantsMatchAndroid() {
+    func testConstantsMatchARMV() {
         XCTAssertEqual(ARInstantPlacement.maxSurfaceDistance, 5)
         XCTAssertEqual(ARInstantPlacement.autoPlaceDelay, 0.6)
         XCTAssertEqual(ARInstantPlacement.settleSpeed, 6)
@@ -236,6 +236,24 @@ final class ARInstantPlacementTests: XCTestCase {
         state.observe(tracking: true, placed: false, now: 0.7)
         XCTAssertFalse(state.autoPlaceDue(now: 1.2))
         XCTAssertTrue(state.autoPlaceDue(now: 1.4))
+    }
+
+    func testInterruptionRestartsTheDelayWhenTrackingResumesNormal() {
+        var state = ARInstantPlacement.State()
+        state.observe(tracking: true, placed: false, now: 0)
+        // No frame arrives while the session is interrupted; the next one already tracks.
+        state.interrupted()
+        state.observe(tracking: true, placed: false, now: 10)
+        XCTAssertFalse(state.autoPlaceDue(now: 10.5))
+        XCTAssertTrue(state.autoPlaceDue(now: 10.6))
+    }
+
+    func testInterruptionWhilePlacedStillRestartsTheDelay() {
+        var state = ARInstantPlacement.State()
+        state.observe(tracking: true, placed: false, now: 0)
+        state.observe(tracking: true, placed: true, now: 1)
+        state.interrupted()
+        XCTAssertFalse(state.autoPlaceDue(now: 10))
     }
 
     func testResetRestartsTheDelay() {

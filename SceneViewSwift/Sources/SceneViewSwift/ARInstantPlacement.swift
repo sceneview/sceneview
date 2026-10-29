@@ -276,6 +276,12 @@ enum ARInstantPlacement {
             if !tracking { trackingSince = nil } else if trackingSince == nil { trackingSince = now }
         }
 
+        /// The session was interrupted: the auto-place delay starts again once tracking is back,
+        /// whether or not a model is placed.
+        mutating func interrupted() {
+            trackingSince = nil
+        }
+
         /// The estimated placement may happen: tracking has been normal for ``autoPlaceDelay``.
         func autoPlaceDue(now: TimeInterval) -> Bool {
             guard let trackingSince else { return false }
