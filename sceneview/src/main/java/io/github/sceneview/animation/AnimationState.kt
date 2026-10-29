@@ -63,6 +63,17 @@ class ModelAnimationState internal constructor(
      * Called automatically from a per-frame callback when using [rememberModelAnimationState].
      */
     internal fun update(frameTimeNanos: Long) {
+        // The animator of a destroyed model points at freed memory: reading a name or a duration
+        // from it is a native crash, out of reach of the `runCatching` below. Nothing plays any
+        // more, so the state reads as idle.
+        if (modelNode.isModelDestroyed) {
+            _playingCount.intValue = 0
+            _isPlaying.value = false
+            _currentIndex.intValue = -1
+            _currentName.value = null
+            _progress.floatValue = 0f
+            return
+        }
         val animations = modelNode.playingAnimations
         _playingCount.intValue = animations.size
         _isPlaying.value = animations.isNotEmpty()

@@ -170,7 +170,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -352,7 +352,8 @@ screen to another, the screen under the finger is frozen until the gesture ends.
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -692,6 +693,31 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**
@@ -1663,7 +1689,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -4649,6 +4675,68 @@ Button(onClick = { animator.flyTo(otherRoom) })                     // another s
   on the first touch and carries on at that speed; any other manipulator (the default orbit one
   included) gets a 350 ms glide from the move's last frame onto its own pose.
 
+**Pose keyframes — `CameraPosePath` and `CameraPathPlayer`.** Where `CameraPath` keys orbit
+parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quaternion)`), so a
+move can be a straight line through space — a travelling, a dolly — not only an arc round a
+subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
+pure function of time: the same time always gives the same pose, which is what a scrubber and
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
+
+```kotlin
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
+val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), restart(), seekTo(s), speed, loop
+SceneView(
+    cameraNode = cameraNode,
+    cameraManipulator = null,                          // the path owns the camera
+    frameRatePolicy = FrameRatePolicy.Continuous(),
+    onFrame = { nanos -> cameraNode.applyPose(player.advanceFrame(nanos)) },
+) { … }
+Slider(value = player.progress, onValueChange = { player.seekTo(it * player.durationSeconds) })
+```
+
+- `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
+  pathEasing = null, lookAt = null, up = +Y, loop = false)`: positions are `Linear` or `CatmullRom`
+  (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
+  leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
+- Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, at most 1000 turns, at least 6 keys per turn; loops seamlessly on any
+  number of turns, each lap of 1.5 turns starting where the last one ended), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
+- `CameraPathPlayer` owns the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
+  Compose state) and the count of whole laps played; `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
+  120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
+  clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
+  from the old one's. The player keeps a whole lap count and the time within the lap, so a
+  `CameraPath.tour(turns = 1.5f)` or an `orbit(turns = 1.5f)` carries on lap after lap with no
+  jump at the seam and is as exact after a week as on its first lap; other timelines are sampled
+  within the lap. On such a fractional path `pose` equals `timeline.poseAt(seconds)` on the first
+  lap only (lap two of 1.5 turns is half a turn on). `seconds` and `progress` stay within the lap,
+  `seekTo` keeps the lap (`seekTo(durationSeconds)` shows the end of the current lap), turning
+  `loop` off keeps the lap, a new timeline with another turn count applies its turn to the laps
+  played (the camera can jump), and `restart()` — or `play()` on a finished player — goes back to
+  lap 0 at time 0. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  target)` and `CameraShot.toPose()` build one.
+
 `CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,
 these are time-driven. Pick the animator when the move has a beginning and an end.
 
@@ -4660,11 +4748,14 @@ these are time-driven. Pick the animator when the move has a beginning and an en
 enum class RenderQuality { Cinematic, Default, Performance }
 ```
 
-| Preset | Shadows | SSAO | Bloom | MSAA | DoF | Use case |
+| Preset | Shadows | SSAO | Bloom | AA | HDR buffer | Use case |
 |---|---|---|---|---|---|---|
-| `Cinematic` | high-res VSM | ON | ON | 4x | ON | hero product viewer, marketing demos |
-| `Default` | medium PCF | ON | ON | 2x | OFF | most apps — shipped as the SceneView default |
-| `Performance` | low PCF | OFF | OFF | 1x | OFF | low-end devices, AR overlays, battery-sensitive flows |
+| `Cinematic` | soft, contact-hardening (PCSS) | HIGH, HIGH upsampling | 0.15 | MSAA 4x + FXAA | HIGH | hero shots on flagship GPUs |
+| `Default` | soft (DPCF), front key light | MEDIUM, bilateral upsampling | 0.10 | FXAA | MEDIUM | the SceneView default: a premium product shot at mid-range cost (Adreno 618 class, 60 fps) |
+| `Performance` | off | OFF | OFF | FXAA | LOW + dynamic resolution | low-end devices, many-model scenes, battery-sensitive flows |
+
+In AR (`createARView` / `rememberARView`), every preset keeps SSAO and bloom off over the camera
+feed (#657) and keeps the Filmic tone mapper (#1434); the rest of the preset applies.
 
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
@@ -4683,7 +4774,7 @@ ARSceneView(view = arView) { /* … */ }
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
-The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions`, `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
+The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself. `Default` leaves the shadow type and the SSAO quality/upsampling as they are: DPCF and MEDIUM are set once by `createView` / `createARView`, so your own `view.setShadowType(...)` survives the default preset. Only `Cinematic` and `Performance` write them.
 
 ---
 
@@ -6660,6 +6751,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `animation-physics` — Animation. Play character animations under cinematic camera shots.
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
 - `model-thumbnails` — Model Thumbnails. A model library drawn off screen, with no 3D view.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
