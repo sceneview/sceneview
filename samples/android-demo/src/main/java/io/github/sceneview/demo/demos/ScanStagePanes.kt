@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
@@ -58,6 +59,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -77,6 +79,15 @@ internal class ScanStagePanes(private val scope: CoroutineScope) {
     private val cameraAlpha = Animatable(1f)
     private var cameraPlaced = false
     private var mapShown = false
+    private var pendingDx = 0f
+    private var pendingDy = 0f
+    private var dragJob: Job? = null
+
+    /**
+     * Whether the camera pane is drawn at all. Once faded out on the finish screen it drops under
+     * the map, whose touches it would otherwise take, invisible, in the thumbnail's corner.
+     */
+    val cameraShown: Boolean by derivedStateOf { cameraAlpha.value > 0f }
 
     /** The camera pane's rectangle now, null while it is drawn as laid out (before a measure). */
     fun cameraRect(): StageRect? = if (cameraPlaced) camera.value.toStage() else null
@@ -119,14 +130,31 @@ internal class ScanStagePanes(private val scope: CoroutineScope) {
 
     internal suspend fun showCamera(shown: Boolean) = cameraAlpha.animateTo(if (shown) 1f else 0f, FADE)
 
-    /** A drag of the thumbnail by ([dx], [dy]): it follows the finger. */
+    /**
+     * A drag of the thumbnail by ([dx], [dy]): it follows the finger. The deltas add up while a
+     * move is pending, one coroutine for the drag rather than one per pointer event.
+     */
     fun dragBy(mapFirst: Boolean, dx: Float, dy: Float) {
+        pendingDx += dx
+        pendingDy += dy
+        if (dragJob?.isActive == true) return
         val pane = if (mapFirst) camera else map
-        scope.launch { pane.snapTo(pane.value.translate(dx, dy)) }
+        dragJob = scope.launch {
+            while (pendingDx != 0f || pendingDy != 0f) {
+                val x = pendingDx
+                val y = pendingDy
+                pendingDx = 0f
+                pendingDy = 0f
+                pane.snapTo(pane.value.translate(x, y))
+            }
+        }
     }
 
     /** The thumbnail let go: eased into [target], its corner's place. */
     fun settle(mapFirst: Boolean, target: StageRect) {
+        dragJob?.cancel()
+        pendingDx = 0f
+        pendingDy = 0f
         val pane = if (mapFirst) camera else map
         scope.launch { pane.animateTo(target.toRect(), MOVE) }
     }

@@ -63,8 +63,15 @@ internal data class ScanGroundColors(
         /** How much of the soft red a tile to redo takes over the slab. */
         const val WEAK_TINT = 0.85f
 
-        /** How much of the neutral line the hatching of a tile still to scan takes: quieter than done. */
+        /** How much of the amber the hatching of a tile still to scan takes: quieter than done. */
         const val HATCH_TINT = 0.45f
+
+        /**
+         * `warning-strong` (DESIGN.md), the amber of a part "not scanned yet" on a light stage: the
+         * same value as `ZoneInk.warningStrong` in #4812, the one colour for "still to scan" on the
+         * live map and on the result. To fold into `ZoneInk` once #4812 is on main.
+         */
+        val TO_SCAN_STRONG = Color(0xFFB45309)
 
         private const val HALF = 0.5f
 
@@ -85,15 +92,16 @@ internal data class ScanGroundColors(
         /**
          * The live 3D map's colours: [of]'s slab and edge; the covered floor tiled in [brand], the
          * colour of done; a covered cell holding too few points in the overlay's soft red, to
-         * redo; the floor still to scan left empty, only hatched in the theme's [neutral] outline
-         * grey. No white tile: on a dark stage it read as done as much as missing (#4810).
+         * redo; the floor still to scan left empty, only hatched in [toScan], the amber of a part
+         * not scanned yet on the result (#4812). No white tile: on a dark stage it read as done as
+         * much as missing (#4810).
          */
         @Suppress("LongParameterList")
-        fun live(card: Color, ground: Color, container: Color, outline: Color, neutral: Color, brand: Color): ScanGroundColors {
+        fun live(card: Color, ground: Color, container: Color, outline: Color, toScan: Color, brand: Color): ScanGroundColors {
             val base = of(card, ground, container, outline)
             return base.copy(
                 missing = base.slab,
-                hatch = lerp(base.slab, neutral.compositeOver(base.slab), HATCH_TINT),
+                hatch = lerp(base.slab, toScan.compositeOver(base.slab), HATCH_TINT),
                 seen = lerp(base.slab, brand.compositeOver(base.slab), SEEN_TINT),
                 weak = lerp(base.slab, SceneViewTokens.ArOverlay.accentBlocked, WEAK_TINT),
             )
@@ -112,7 +120,10 @@ internal data class ScanGroundColors(
         fun currentLive(): ScanGroundColors {
             val chrome = LocalStageChrome.current
             val scheme = MaterialTheme.colorScheme
-            return live(chrome.card, chrome.ground, scheme.surfaceContainerHigh, scheme.outlineVariant, scheme.outline, scheme.primary)
+            // As #4812's `ZoneInk.frame`: `warning-strong` on a light stage, `warning` on a dark one.
+            val toScan =
+                if (chrome.ground.luminance() > HALF) TO_SCAN_STRONG else SceneViewTokens.ArOverlay.accentGuidance
+            return live(chrome.card, chrome.ground, scheme.surfaceContainerHigh, scheme.outlineVariant, toScan, scheme.primary)
         }
     }
 }

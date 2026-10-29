@@ -102,6 +102,12 @@ internal object LiveCoverageGround {
         return covered.filter { (counts[it] ?: 0) < below }.toLongArray()
     }
 
+    /**
+     * Whether the live map paints [weakCells] in red, "to redo". Off: the heuristic is not tuned
+     * yet (it counts every point above a cell, the walls' too), so it flagged cells that were fine.
+     */
+    const val SHOW_WEAK_CELLS = false
+
     /** A covered cell under this share of the median cell's points is weak. */
     const val WEAK_SHARE = 0.25f
 

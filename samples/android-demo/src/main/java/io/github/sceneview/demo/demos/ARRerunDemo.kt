@@ -2202,7 +2202,8 @@ private fun RerunLiveScreen(
             val thumbRadius = with(density) { ThumbRadius.toPx() }
             val cameraPane = Modifier
                 .fillMaxSize()
-                .zIndex(if (split != null && split.mapFirst) 1f else 0f)
+                // Under the map once faded out: an invisible thumbnail took the map's touches.
+                .zIndex(if (split != null && split.mapFirst && stagePanes.cameraShown) 1f else 0f)
                 .stagePane({ stagePanes.cameraRect() }, thumbRadius, alpha = { stagePanes.cameraAlpha() })
             Box(modifier = cameraPane.onSizeChanged { stageSize = it }) {
                 val photo = qaPhoto
@@ -2224,7 +2225,10 @@ private fun RerunLiveScreen(
                     materialLoader = materialLoader,
                     isOpaque = !qaCameraBackdropEnabled(),
                     // A texture, not a surface: a SurfaceView cannot be scaled into the thumbnail.
-                    surfaceType = SurfaceType.TextureSurface,
+                    // Only the captures that map the ground are staged with a thumbnail; the
+                    // others keep the SurfaceView, the texture path having been measured on the
+                    // emulator only.
+                    surfaceType = if (scanScope.mapsGround) SurfaceType.TextureSurface else SurfaceType.Surface,
                     cameraStream = if (qaBackdrop) null else cameraStream,
                     playbackDataset = arPlaybackDataset,
                     // A capture draws the walls it recognises itself (#4540): ARCore's own planes, with
