@@ -93,15 +93,15 @@ class CameraPath(
     override fun poseAt(seconds: Float): CameraPose = shotAt(seconds).toPose()
 
     /**
-     * The pose [seconds] into lap [lap] of a [loop]ing path, for [CameraPathPlayer]: the turn of
-     * the laps already played is reduced to under one turn in double precision before it reaches
-     * a float, so lap 100 000 of a 1.05-turn tour is as exact as lap 1. [seconds] stays within the
-     * lap.
+     * The pose [seconds] into lap [lap] of a looping playhead, for [CameraPathPlayer], whether
+     * the loop is the path's own [loop] or the player's: the turn of the laps already played is
+     * reduced to under one turn in double precision before it reaches a float, so lap 100 000 of
+     * a 1.05-turn tour is as exact as lap 1. [seconds] stays within the lap.
      */
     @ExperimentalSceneViewApi
     internal fun poseAt(lap: Long, seconds: Float): CameraPose {
         val frames = keyframes
-        if (!loop || frames.size < 2 || durationSeconds <= 0f) return poseAt(seconds)
+        if (frames.size < 2 || durationSeconds <= 0f) return poseAt(seconds)
         val shot = sample(frames.first().seconds + seconds.coerceIn(0f, durationSeconds))
         val turnPerLap = frames.last().shot.azimuthDegrees.toDouble() - frames.first().shot.azimuthDegrees
         val offset = (lap.toDouble() * turnPerLap).mod(FULL_TURN.toDouble())

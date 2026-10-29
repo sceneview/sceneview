@@ -240,6 +240,19 @@ class CameraPathPlayerTest {
     }
 
     @Test
+    fun aPlayerLoopForcedOnANonLoopingFractionalOrbitDoesNotJumpAtTheSeam() {
+        // The player's loop, not the timeline's, decides whether the laps' turn applies: sampled
+        // without it, lap two restarted from the orbit's start, 180° back, at every seam.
+        val orbit = CameraPosePath.orbit(
+            Aabb(Position(0f, 0.5f, 0f), Position(0.5f, 0.5f, 0.5f)), 45.0, 1.0,
+            durationSeconds = 6f, turns = 1.5f, loop = false,
+        )
+        val player = playing(orbit, loop = true)
+        assertNoJump(steps(player, (4 * 6f / FRAME).toInt()))
+        assertTrue(player.isPlaying)
+    }
+
+    @Test
     fun seekingToTheEndShowsTheEndOnEveryLap() {
         val player = playing(oneAndAHalfTurnTour())
         for (lap in 0..2) {

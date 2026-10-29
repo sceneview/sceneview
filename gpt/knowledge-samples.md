@@ -887,6 +887,7 @@ by `samples/android-demo/scripts/collate-demos.sh` — never edit between the ma
 - `animation-physics` — Animation. Play character animations under cinematic camera shots.
 - `model-viewer` — Models. Explore a model in 3D or in your room.
 - `rolling-balls` — Rolling Balls. Tilt a wooden board and send the balls rolling.
+- `camera-path` — Camera Path. Play, pause and scrub a keyframed camera orbit.
 - `picking-collision` — Picking & Collision. Tap objects to select and inspect them.
 - `camera-gestures` — Camera & Gestures. Orbit with inertia, fly to a subject, named views.
 

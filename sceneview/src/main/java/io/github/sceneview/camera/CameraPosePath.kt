@@ -107,15 +107,31 @@ enum class CameraPathInterpolation {
  * non-finite position.
  */
 @ExperimentalSceneViewApi
-class CameraPosePath(
+class CameraPosePath private constructor(
     keyframes: List<CameraPoseKeyframe>,
-    val interpolation: CameraPathInterpolation = CameraPathInterpolation.CatmullRom,
-    val easing: (Float) -> Float = CameraEasing.Linear,
-    val pathEasing: ((Float) -> Float)? = null,
-    val lookAt: Position? = null,
-    val up: Direction = CameraPose.WORLD_UP,
-    override val loop: Boolean = false,
+    val interpolation: CameraPathInterpolation,
+    val easing: (Float) -> Float,
+    val pathEasing: ((Float) -> Float)?,
+    val lookAt: Position?,
+    val up: Direction,
+    override val loop: Boolean,
+    /**
+     * Turns per lap of an [orbit] whose turns are not whole, `0` otherwise: each lap then starts
+     * where the last one ended, that many turns round [lookAt] about [up]. Fixed at construction,
+     * so [tangents] always see it.
+     */
+    private val lapTurns: Double,
 ) : CameraTimeline {
+
+    constructor(
+        keyframes: List<CameraPoseKeyframe>,
+        interpolation: CameraPathInterpolation = CameraPathInterpolation.CatmullRom,
+        easing: (Float) -> Float = CameraEasing.Linear,
+        pathEasing: ((Float) -> Float)? = null,
+        lookAt: Position? = null,
+        up: Direction = CameraPose.WORLD_UP,
+        loop: Boolean = false,
+    ) : this(keyframes, interpolation, easing, pathEasing, lookAt, up, loop, lapTurns = 0.0)
 
     /** The keyframes in time order. */
     val keyframes: List<CameraPoseKeyframe> =
@@ -159,8 +175,8 @@ class CameraPosePath(
     }
 
     /**
-     * Spline tangents (world units per second), one per keyframe. Computed on first use, after
-     * [orbit] has set [lapTurns], which the tangents at both ends depend on.
+     * Spline tangents (world units per second), one per keyframe. Computed on first use; the
+     * tangents at both ends depend on [lapTurns].
      */
     private val tangents: List<Float3> by lazy { List(this.keyframes.size) { tangentAt(it) } }
 
@@ -184,7 +200,8 @@ class CameraPosePath(
      * The pose [seconds] into lap [lap], [seconds] within the lap. A fractional [orbit] adds the
      * turn of the laps already played, reduced to under one turn in double precision before it
      * reaches a float, so it carries on across the seam and lap 100 000 is as exact as lap 1.
-     * [CameraPathPlayer] samples a looping path here, never at a large time.
+     * [CameraPathPlayer] samples a looping playhead here, never at a large time, whether the loop
+     * is the path's own [loop] or the player's: a lap past the first means the path is looping.
      */
     internal fun poseAt(lap: Long, seconds: Float): CameraPose {
         val frames = keyframes
@@ -194,19 +211,12 @@ class CameraPosePath(
         val eased = pathEasing?.let { durationSeconds * applyEasing(it, local / durationSeconds) } ?: local
         val pose = sample(frames.first().seconds + eased)
         val pivot = lookAt
-        if (!loop || lap == 0L || lapTurns == 0.0 || pivot == null) return pose
+        if (lap == 0L || lapTurns == 0.0 || pivot == null) return pose
         val degrees = (lap.toDouble() * lapTurns).mod(1.0) * FULL_TURN_DEGREES
         if (degrees == 0.0) return pose
         val turn = Quaternion.fromAxisAngle(up, degrees.toFloat())
         return poseOf(CameraPose(pivot + CameraPose.rotate(turn, pose.position - pivot)))
     }
-
-    /**
-     * Turns per lap of an [orbit] whose turns are not whole, `0` otherwise: each lap then starts
-     * where the last one ended, that many turns round [lookAt] about [up]. Set once, before the
-     * first sample, so [tangents] see it.
-     */
-    private var lapTurns: Double = 0.0
 
     /** `true` once [seconds] is past the end of a path that does not loop. */
     fun isFinishedAt(seconds: Float): Boolean = !loop && seconds >= durationSeconds
@@ -461,9 +471,12 @@ class CameraPosePath(
                 keyframes = keyframes,
                 interpolation = CameraPathInterpolation.CatmullRom,
                 easing = CameraEasing.Linear,
+                pathEasing = null,
                 lookAt = center,
+                up = CameraPose.WORLD_UP,
                 loop = loop,
-            ).also { if (!wholeTurns) it.lapTurns = turns.toDouble() }
+                lapTurns = if (wholeTurns) 0.0 else turns.toDouble(),
+            )
         }
 
         /**

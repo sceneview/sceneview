@@ -4652,8 +4652,9 @@ move can be a straight line through space — a travelling, a dolly — not only
 subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
 pure function of time: the same time always gives the same pose, which is what a scrubber and
 a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
-`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does using a
-`CameraTimeline`, but implementing one requires the opt-in (`@SubclassOptInRequired`).
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
 
 ```kotlin
 val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work

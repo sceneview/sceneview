@@ -54,7 +54,11 @@ import kotlin.math.floor
  *
  * @param timeline The move to play.
  * @param loop Whether the playhead wraps at the end. Defaults to the timeline's own
- * [CameraTimeline.loop].
+ * [CameraTimeline.loop]. Forcing it on a timeline built with `loop = false` carries the turn of a
+ * fractional [CameraPosePath.orbit] or [CameraPath.tour] across the seam, but such a timeline
+ * keeps its non-looping ends: the speed can change at the seam, and a tour of 1.5 turns ends at
+ * the top of its rise, so its elevation jumps there. Build the timeline with `loop = true` for a
+ * seamless loop.
  */
 @ExperimentalSceneViewApi
 @Stable
@@ -159,7 +163,8 @@ class CameraPathPlayer(
 
     /**
      * The pose at the playhead: `timeline.poseAt(seconds)`, plus the turn of the laps played for
-     * a looping [CameraPath] or [CameraPosePath.orbit] whose turns are not whole. A
+     * a [CameraPath] or [CameraPosePath.orbit] whose turns are not whole, when the player loops
+     * (its own [loop], not only the timeline's). A
      * [CameraPath.tour] of 1.5 turns starts its second lap half a turn on, with no jump at the
      * seam, and stays exact after days of play: the player keeps a whole lap count and the time
      * within the lap, and the path reduces the laps' turn to under one turn in double precision
@@ -170,7 +175,7 @@ class CameraPathPlayer(
         get() {
             val current = timeline
             val time = seconds
-            if (!current.loop || laps == 0L) return current.poseAt(time)
+            if (laps == 0L) return current.poseAt(time)
             return when (current) {
                 is CameraPath -> current.poseAt(laps, time)
                 is CameraPosePath -> current.poseAt(laps, time)
