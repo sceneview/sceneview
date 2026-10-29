@@ -547,4 +547,24 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["demo-capture-play"].exists, "Play action missing")
         snapshot(app, "capture-05-video-toast")
     }
+
+    /// AR Placement's size read-out on the Simulator: `-ar-state-preview live` keeps the screen
+    /// out of the Unsupported card, so Demo settings shows the scale label and "Reset to 100%".
+    /// A render of the controls, never an AR proof.
+    /// Frames go to `$SV_CAPTURE_DIR` when set (`TEST_RUNNER_SV_CAPTURE_DIR=…`).
+    func testARPlacementSizeControlsScreenshot() {
+        let app = Self.makeApp()
+        app.launchArguments += ["-demo", "ar-placement", "-ar-state-preview", "live"]
+        app.launch()
+        let settings = app.descendants(matching: .any)["demo-settings-fab"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 30), "Demo settings never appeared")
+        Thread.sleep(forTimeInterval: 2)
+        settings.tap()
+
+        let label = app.descendants(matching: .any)["ar-scale-label"]
+        XCTAssertTrue(label.waitForExistence(timeout: 10), "the scale label never appeared")
+        XCTAssertTrue(app.descendants(matching: .any)["ar-scale-reset"].exists, "no Reset to 100% button")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, "placement-controls")
+    }
 }

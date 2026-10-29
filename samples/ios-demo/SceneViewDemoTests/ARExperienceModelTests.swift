@@ -237,6 +237,29 @@ final class ARExperienceModelTests: XCTestCase {
         model.sceneBecameActive()
         XCTAssertEqual(model.phase, .denied)
     }
+
+    /// `-ar-state-preview live` on the Simulator: the AR view reports `unsupported` at once,
+    /// and the forced phase must survive it so the screen's own controls stay reachable.
+    func testAForcedPhaseSurvivesSessionEvents() {
+        let model = ARExperienceModel(
+            requirement: .worldTracking, isSupported: false,
+            authorizationStatus: { .authorized }, requestAccess: { $0(true) },
+            forcedPhase: .live
+        )
+        model.resolve()
+        let arView = ARView(frame: .zero)
+        model.arSession(didEmit: .failed(ARSceneViewError.unsupported(.lidar)), in: arView)
+        XCTAssertEqual(model.phase, .live)
+
+        let starting = ARExperienceModel(
+            requirement: .worldTracking, isSupported: true,
+            authorizationStatus: { .authorized }, requestAccess: { $0(true) },
+            forcedPhase: .starting
+        )
+        starting.resolve()
+        starting.arSession(didEmit: .firstFrame, in: arView)
+        XCTAssertEqual(starting.phase, .starting, "a forced Starting card stays up after a first frame")
+    }
 }
 
 /// Automatic placement raises `hasPlacement` and `selection` in the same update. One AR event
