@@ -9528,6 +9528,8 @@ public struct ContactShadowNode: @unchecked Sendable {
     public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
     public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
     public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
     public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
                 plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
     public var context: ContactShadowContext  // live
@@ -9540,11 +9542,15 @@ public struct ContactShadowNode: @unchecked Sendable {
 ```
 
 - `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
-  its X/Z extents, at its lowest point + 5 mm. It follows the model and fades with its
-  `OpacityComponent`. Measured once — call after the mesh loads and after `scaleToUnits` /
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model and fades with its
+  `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
   `centerOrigin`; call `fit(under:)` again if the model changes size.
 - Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
-- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds` and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (follows the model)
+  or on the anchor when it holds several; content already carrying a contact shadow gets none.
 
 #### AnchorNode — AR world anchors (iOS only)
 

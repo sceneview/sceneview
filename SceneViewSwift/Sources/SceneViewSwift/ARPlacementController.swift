@@ -203,19 +203,20 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
 
     // A wrapper keeps the authored hierarchy untouched and makes its surface contact the pivot.
     static func prepare(_ entity: Entity, alignment: ARPlacementAlignment, previewSize: Float?) -> Entity? {
-        let bounds = entity.visualBounds(relativeTo: nil)
+        // A contact shadow already on the model is a decal wider than it: size the model alone.
+        let bounds = entity.visualBoundsExcludingContactShadows(relativeTo: nil)
         let longest = max(bounds.extents.x, max(bounds.extents.y, bounds.extents.z))
         guard longest.isFinite, longest > 0,
               previewSize == nil || (previewSize!.isFinite && previewSize! > 0) else { return nil }
         let wrapper = Entity()
         wrapper.addChild(entity)
         if let previewSize { entity.scale *= SIMD3<Float>(repeating: previewSize / longest) }
-        let fitted = entity.visualBounds(relativeTo: wrapper)
+        let fitted = entity.visualBoundsExcludingContactShadows(relativeTo: wrapper)
         let contact = alignment == .horizontal
             ? SIMD3<Float>(fitted.center.x, fitted.min.y, fitted.center.z)
             : SIMD3<Float>(fitted.center.x, fitted.min.y, fitted.min.z)
         entity.position -= contact
-        entity.generateCollisionShapes(recursive: true)
+        entity.generateCollisionShapesExcludingContactShadows()
         // RealityKit grounding shadows project downward; they are not wall contact shading.
         if alignment == .horizontal { ARSceneView.Coordinator.applyGroundingShadow(to: entity) }
         return wrapper

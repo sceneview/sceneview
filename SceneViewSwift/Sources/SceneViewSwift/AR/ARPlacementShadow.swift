@@ -20,10 +20,13 @@ public enum ARPlacementShadow: Sendable, Equatable {
     /// RealityKit's `GroundingShadowComponent(castsShadow: true)` on every placed model entity:
     /// a real shadow cast by the scene lights onto the detected surface. The default.
     case grounding
-    /// A procedural ``ContactShadowNode`` under each placed anchor, fitted to its content's
+    /// A procedural ``ContactShadowNode`` under each placed anchor's content, fitted to its
     /// bounds at its lowest point — needs no light and has a tunable peak opacity
-    /// (`nil` = the context's ``ContactShadowContext/intensity``). Changing the context or
-    /// intensity on a later render retunes the shadows already placed this way.
+    /// (`nil` = the context's ``ContactShadowContext/intensity``). When the anchor holds a
+    /// single entity the shadow is added to it, so it follows, turns and hides with the model;
+    /// otherwise it goes on the anchor. Content that already carries a contact shadow (a model
+    /// built with ``ModelNode/withContactShadow(_:intensity:spread:)``) gets no second one.
+    /// Changing the context or intensity on a later render retunes the shadows placed this way.
     case contact(ContactShadowContext = .floor, intensity: Float? = nil)
     /// No automatic shadow; the app grounds its content itself, or not at all.
     case none
@@ -78,18 +81,21 @@ extension ARSceneView.Coordinator {
         }
     }
 
-    /// Adds a fitted contact shadow under `anchor`, unless it has no visible geometry yet or
-    /// the app already grounded it with one.
+    /// Adds a fitted contact shadow to `anchor`'s content, unless it has no visible geometry
+    /// yet or already carries one anywhere in its subtree (a cloned model built with
+    /// `withContactShadow()` holds it one level down). A single child gets the shadow, so it
+    /// follows that model when the app moves, hides or swaps it; several go under the anchor.
     @MainActor
     static func applyContactShadow(
         to anchor: Entity,
         context: ContactShadowContext,
         intensity: Float?
     ) {
-        guard anchor.contactShadowFreeBounds(relativeTo: anchor) != nil,
-              !anchor.children.contains(where: { $0.components.has(ContactShadowComponent.self) })
+        guard !anchor.containsContactShadow,
+              anchor.contactShadowFreeBounds(relativeTo: anchor) != nil
         else { return }
-        let shadow = ContactShadowNode.under(anchor, context: context, intensity: intensity)
+        let target = anchor.children.count == 1 ? anchor.children[0] : anchor
+        let shadow = ContactShadowNode.under(target, context: context, intensity: intensity)
         shadow.entity.components[ContactShadowComponent.self]?.isPlacementShadow = true
     }
 
@@ -103,8 +109,7 @@ extension ARSceneView.Coordinator {
             if let settings = child.components[ContactShadowComponent.self],
                settings.isPlacementShadow,
                let shadow = ContactShadowNode(child) {
-                shadow.context = context
-                shadow.intensity = intensity ?? context.intensity
+                shadow.retune(context: context, intensity: intensity ?? context.intensity)
             } else {
                 retunePlacementShadows(under: child, context: context, intensity: intensity)
             }

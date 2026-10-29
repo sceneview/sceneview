@@ -126,7 +126,12 @@ public struct ContactShadowNode: @unchecked Sendable {
 
     /// How much wider than the model's footprint a fitted quad is. With the ``ContactShadowContext/floor``
     /// radius, the dark core then spans about the footprint and the fade spills just past it.
+    /// Same 1.6 as the `ShadowSpread` Android's AR placement sizes its `ContactShadow` with.
     public static let defaultSpread: Float = 1.6
+
+    /// The smallest side (metres, in world space) of a fitted quad, so a thin or tiny model still
+    /// gets a visible pool. Same 0.1 m floor as Android's AR placement shadow.
+    public static let minimumFittedSize: Float = 0.1
 
     /// Creates a free-standing contact shadow.
     ///
@@ -260,9 +265,11 @@ public struct ContactShadowNode: @unchecked Sendable {
     /// Creates a horizontal contact shadow under `model` and adds it as the model's child.
     ///
     /// The quad is centred under the model's footprint, sized from its bounds (times
-    /// `spread`) and rests at its lowest point, lifted by ``surfaceOffset``. As a child it
-    /// follows the model and fades with any `OpacityComponent` on it. It is measured now: call
-    /// this once the model's mesh is loaded, after `scaleToUnits` / `centerOrigin`.
+    /// `spread`, at least ``minimumFittedSize``) and rests at its lowest point, lifted by
+    /// ``surfaceOffset``. It stays level: it follows the model's turn around the vertical axis
+    /// but not a tilt of its root (a Z-up asset's correction, say). As a child it follows the
+    /// model and fades with any `OpacityComponent` on it. It is measured now: call this once
+    /// the model's mesh is loaded, after `scaleToUnits` / `centerOrigin`.
     ///
     /// - Parameters:
     ///   - model: The entity to ground. Its other contact shadows are not counted in its bounds.
@@ -283,15 +290,29 @@ public struct ContactShadowNode: @unchecked Sendable {
         return shadow
     }
 
-    /// Re-measures `model` and moves and resizes this shadow under it, in the shadow's parent
-    /// space. Does nothing while `model` has no visible geometry yet (an async load in flight).
+    /// Re-measures `model` and moves, turns and resizes this shadow under it, in the shadow's
+    /// parent space. The model is measured in a level frame (the parent's world transform
+    /// without its tilt), so the quad lies flat even under a tilted root. Does nothing while
+    /// `model` has no visible geometry yet (an async load in flight).
     @MainActor
     public func fit(under model: Entity, spread: Float = defaultSpread) {
         let reference = entity.parent ?? model
-        guard let bounds = model.contactShadowFreeBounds(relativeTo: reference) else { return }
-        let lift = Self.surfaceOffset / Self.verticalScale(of: reference)
-        let footprint = Self.footprint(of: bounds, spread: spread, lift: lift)
-        entity.position = footprint.position
+        let worldOrientation = reference.orientation(relativeTo: nil)
+        let level = Self.yaw(of: worldOrientation)
+        let worldScale = reference.scale(relativeTo: nil)
+        let frame = Entity()
+        frame.transform = Transform(scale: worldScale, rotation: level,
+                                    translation: reference.position(relativeTo: nil))
+        guard let bounds = model.contactShadowFreeBounds(relativeTo: frame) else { return }
+        let lift = Self.surfaceOffset / Self.finiteScale(worldScale.y)
+        let minimum = SIMD2<Float>(Self.minimumFittedSize / Self.finiteScale(worldScale.x),
+                                   Self.minimumFittedSize / Self.finiteScale(worldScale.z))
+        let footprint = Self.footprint(of: bounds, spread: spread, lift: lift, minimum: minimum)
+        // The level frame differs from the parent only by the parent's tilt: undo it.
+        var untilt = worldOrientation.inverse * level
+        if abs(untilt.real) > 0.999_999 { untilt = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1) }
+        entity.orientation = untilt
+        entity.position = untilt.act(footprint.position)
         size = footprint.size
     }
 
@@ -309,21 +330,46 @@ public struct ContactShadowNode: @unchecked Sendable {
         entity.model?.materials = [Self.material(settings.context, intensity: settings.intensity)]
     }
 
-    /// Where a fitted quad goes and how big it is, from the bounds it grounds (in the quad's
-    /// parent space): centred under the footprint, `lift` above its lowest point, `spread`
-    /// times its X/Z extents, never degenerate.
+    /// Sets the preset and the peak opacity together, rebuilding the material once.
+    @MainActor
+    func retune(context: ContactShadowContext, intensity: Float) {
+        var settings = component
+        settings.context = context
+        settings.intensity = Self.clampedIntensity(intensity)
+        apply(settings)
+    }
+
+    /// Where a fitted quad goes and how big it is, from the bounds it grounds (in the level
+    /// frame it is measured in): centred under the footprint, `lift` above its lowest point,
+    /// `spread` times its X/Z extents but at least `minimum`, never degenerate.
     static func footprint(
         of bounds: BoundingBox,
         spread: Float,
-        lift: Float
+        lift: Float,
+        minimum: SIMD2<Float> = .zero
     ) -> (position: SIMD3<Float>, size: SIMD2<Float>) {
         let center = bounds.center
         let factor = spread.isFinite && spread > 0 ? spread : defaultSpread
         let extents = bounds.extents
+        let floor = SIMD2<Float>(minimum.x.isFinite ? minimum.x : 0, minimum.y.isFinite ? minimum.y : 0)
         return (
             position: [center.x, bounds.min.y + (lift.isFinite ? lift : 0), center.z],
-            size: [positive(extents.x * factor), positive(extents.z * factor)]
+            size: [positive(max(extents.x * factor, floor.x)), positive(max(extents.z * factor, floor.y))]
         )
+    }
+
+    /// The turn of `orientation` around the vertical axis alone, without any tilt.
+    static func yaw(of orientation: simd_quatf) -> simd_quatf {
+        let forward = orientation.act([0, 0, -1])
+        let angle: Float
+        if forward.x * forward.x + forward.z * forward.z > 1e-6 {
+            angle = atan2(-forward.x, -forward.z)
+        } else {
+            // Facing straight up or down: the right vector still lies in the horizontal plane.
+            let right = orientation.act([1, 0, 0])
+            angle = atan2(-right.z, right.x)
+        }
+        return simd_quatf(angle: angle, axis: [0, 1, 0])
     }
 
     static func clampedIntensity(_ value: Float) -> Float {
@@ -336,10 +382,9 @@ public struct ContactShadowNode: @unchecked Sendable {
         value.isFinite ? max(value, 0.001) : 0.001
     }
 
-    @MainActor
-    private static func verticalScale(of entity: Entity) -> Float {
-        let y = abs(entity.scale(relativeTo: nil).y)
-        return y.isFinite && y > 1e-6 ? y : 1
+    private static func finiteScale(_ value: Float) -> Float {
+        let scale = abs(value)
+        return scale.isFinite && scale > 1e-6 ? scale : 1
     }
 
     /// One texture per preset, shared by every shadow.
@@ -419,19 +464,64 @@ enum ContactShadowMask {
 extension Entity {
     /// The visual bounds of this entity's subtree relative to `reference`, leaving out every
     /// contact-shadow quad (and anything under one). `nil` while nothing has visible geometry.
-    ///
-    /// Walks the subtree with non-recursive `visualBounds`: a recursive query on an ancestor
-    /// would fold the shadow's own quad — wider than the model by design — back in.
-    @MainActor
     func contactShadowFreeBounds(relativeTo reference: Entity?) -> BoundingBox? {
+        Self.contactShadowFreeBounds(of: [self], relativeTo: reference)
+    }
+
+    /// The union of the visual bounds of `roots` and their descendants relative to
+    /// `reference`, leaving out every contact-shadow quad (and anything under one). `nil` while
+    /// nothing has visible geometry. ``SceneView``'s automatic framing measures its content
+    /// with it.
+    ///
+    /// Walks the subtrees with non-recursive `visualBounds` (same union, since every
+    /// descendant is visited): a recursive query on an ancestor would fold the shadow's own
+    /// quad — wider than the model by design — back in. Empty or non-finite boxes (an
+    /// entity without a mesh) are skipped.
+    static func contactShadowFreeBounds(of roots: [Entity], relativeTo reference: Entity?) -> BoundingBox? {
         var accumulator = ContentBounds.Accumulator()
-        var stack: [Entity] = [self]
+        var stack = roots
         while let entity = stack.popLast() {
             if entity.components.has(ContactShadowComponent.self) { continue }
             stack.append(contentsOf: entity.children)
             accumulator.add(entity.visualBounds(recursive: false, relativeTo: reference))
         }
         return accumulator.result
+    }
+
+    /// Whether this entity's subtree holds a contact-shadow quad.
+    var containsContactShadow: Bool {
+        var stack: [Entity] = [self]
+        while let entity = stack.popLast() {
+            if entity.components.has(ContactShadowComponent.self) { return true }
+            stack.append(contentsOf: entity.children)
+        }
+        return false
+    }
+
+    /// `visualBounds(relativeTo:)` without the contact-shadow quads in the subtree, so sizing
+    /// and centring code measures the model rather than its wider decal. Exactly
+    /// `visualBounds(relativeTo:)` when the subtree has no contact shadow.
+    func visualBoundsExcludingContactShadows(relativeTo reference: Entity?) -> BoundingBox {
+        guard containsContactShadow else { return visualBounds(relativeTo: reference) }
+        return contactShadowFreeBounds(relativeTo: reference) ?? visualBounds(relativeTo: reference)
+    }
+
+    /// `generateCollisionShapes(recursive: true)`, then strips the collision shapes it gave
+    /// contact-shadow quads: a decal is not a tap target.
+    func generateCollisionShapesExcludingContactShadows() {
+        generateCollisionShapes(recursive: true)
+        var stack: [Entity] = [self]
+        while let entity = stack.popLast() {
+            if entity.components.has(ContactShadowComponent.self) {
+                var shadowTree: [Entity] = [entity]
+                while let part = shadowTree.popLast() {
+                    part.components.remove(CollisionComponent.self)
+                    shadowTree.append(contentsOf: part.children)
+                }
+                continue
+            }
+            stack.append(contentsOf: entity.children)
+        }
     }
 }
 

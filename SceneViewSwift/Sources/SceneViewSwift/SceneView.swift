@@ -2278,24 +2278,16 @@ private struct SceneViewRepresentation: View {
         // unioned afterwards: this runs on the main thread at 30 Hz for as long
         // as the framing driver is armed, including while the user is pinching,
         // and the per-tick array growth was pure churn on that path (#3597).
-        var accumulator = ContentBounds.Accumulator()
-        // Iterative pre-order walk — no recursion depth concerns, and the
-        // `contentRoot` itself is skipped (it is a transform-only node).
-        var stack: [Entity] = Array(entities.contentRoot.children)
-        while let entity = stack.popLast() {
-            // A contact-shadow quad is a decal wider than the model it grounds:
-            // framing it would pull the camera back for nothing.
-            if entity.components.has(ContactShadowComponent.self) { continue }
-            stack.append(contentsOf: entity.children)
-            // `relativeTo: entities.root` gives every box in the stable
-            // world frame so the union is meaningful AND immune to the
-            // `AnchorEntity` re-pin feedback described above. Non-recursive:
-            // the walk already visits every descendant (same union), and a
-            // recursive query would fold a skipped shadow back in through
-            // its parent.
-            accumulator.add(entity.visualBounds(recursive: false, relativeTo: entities.root))
-        }
-        return accumulator.result
+        // Iterative walk with an accumulator — no recursion depth concerns, and
+        // the `contentRoot` itself is skipped (it is a transform-only node).
+        // `relativeTo: entities.root` gives every box in the stable world frame
+        // so the union is meaningful AND immune to the `AnchorEntity` re-pin
+        // feedback described above. Contact-shadow quads are left out: a decal
+        // wider than the model it grounds would pull the camera back for nothing.
+        Entity.contactShadowFreeBounds(
+            of: Array(entities.contentRoot.children),
+            relativeTo: entities.root
+        )
     }
 
     /// Re-arms the one-shot fit-to-bounds pass so the next frames re-fit the
