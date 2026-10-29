@@ -129,6 +129,25 @@ class ARSession(
             isSemanticModeSupported(mode)
         }
 
+        // Environmental HDR is the default light estimation, and the richest: main light
+        // direction and colour, ambient spherical harmonics and a reflection cubemap. A device
+        // that cannot run it would throw `UnsupportedConfigurationException` here and take the
+        // whole session down, so step down to the ambient-intensity estimate (one colour and one
+        // intensity, still following the room) and only then to none. Each mode is probed on a
+        // fresh Config so another feature of the caller's config cannot veto the light.
+        val requestedLight = config.lightEstimationMode
+        config.lightEstimationMode = resolveLightEstimationMode(requestedLight) { mode ->
+            // A probe that throws keeps the requested mode: the behaviour before this gate.
+            runCatching { isSupported(Config(this).setLightEstimationMode(mode)) }.getOrDefault(true)
+        }
+        if (config.lightEstimationMode != requestedLight) {
+            android.util.Log.w(
+                "ARCore",
+                "Light estimation $requestedLight is not supported on this device; " +
+                    "using ${config.lightEstimationMode}"
+            )
+        }
+
         hasAugmentedImageDatabase = (config.augmentedImageDatabase?.numImages ?: 0) > 0
 
         super.configure(config)
@@ -282,6 +301,31 @@ internal fun resolveSemanticMode(
 ): Config.SemanticMode =
     if (requested == Config.SemanticMode.DISABLED || isSupported(requested)) requested
     else Config.SemanticMode.DISABLED
+
+/**
+ * Pure-Kotlin support-gate for [Config.LightEstimationMode] used by [ARSession.configure].
+ *
+ * [Config.LightEstimationMode.ENVIRONMENTAL_HDR] steps down to
+ * [Config.LightEstimationMode.AMBIENT_INTENSITY], then to [Config.LightEstimationMode.DISABLED];
+ * [Config.LightEstimationMode.AMBIENT_INTENSITY] steps down to `DISABLED` and is never upgraded.
+ * `DISABLED` is returned without probing.
+ *
+ * @param requested The mode the caller asked for (typically from `Config.lightEstimationMode`).
+ * @param isSupported Adapter returning `true` if the session supports a mode (typically
+ *   `Session.isSupported(Config(session).setLightEstimationMode(mode))`).
+ */
+internal fun resolveLightEstimationMode(
+    requested: Config.LightEstimationMode,
+    isSupported: (Config.LightEstimationMode) -> Boolean
+): Config.LightEstimationMode {
+    val ladder = when (requested) {
+        Config.LightEstimationMode.DISABLED -> return requested
+        Config.LightEstimationMode.ENVIRONMENTAL_HDR ->
+            listOf(requested, Config.LightEstimationMode.AMBIENT_INTENSITY)
+        else -> listOf(requested)
+    }
+    return ladder.firstOrNull(isSupported) ?: Config.LightEstimationMode.DISABLED
+}
 
 /**
  * Define the session config used by ARCore

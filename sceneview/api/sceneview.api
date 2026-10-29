@@ -3312,6 +3312,8 @@ public class io/github/sceneview/node/ModelNode : io/github/sceneview/node/Node 
 	public final fun getSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getSkinCount ()I
 	public final fun getSkinNames ()Ljava/util/List;
+	public final fun getWorldBoundingBox ()Lcom/google/android/filament/Box;
+	public final fun getWorldSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun isModelDestroyed ()Z
 	public final fun isShadowCaster ()Z
 	public final fun isShadowReceiver ()Z

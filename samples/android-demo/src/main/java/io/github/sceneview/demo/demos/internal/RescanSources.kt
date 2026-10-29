@@ -58,11 +58,18 @@ object RescanSources {
     /** The band of a room's height wall surfels are read in, from the floor, metres. */
     const val WALL_LOW_M = 0.2f
 
-    /** The zones of a scan whose dense points are [cloud] and whose model stands on [ground]. */
-    fun zones(cloud: DenseCloud, ground: ScanGround?): List<RescanZone> {
+    /** The room [cloud]'s surfels read as, or `null` when it has no normals to read walls from. */
+    fun surveyOf(cloud: DenseCloud): RoomSurvey? =
+        cloud.normals?.let { RoomSurveyor.survey(RoomSurveyInput(cloud.positions, it)) }
+
+    /**
+     * The zones of a scan whose dense points are [cloud] and whose model stands on [ground],
+     * [survey] the room read off [cloud] ([surveyOf]): a view that already has it passes it in.
+     */
+    fun zones(cloud: DenseCloud, ground: ScanGround?, survey: RoomSurvey? = surveyOf(cloud)): List<RescanZone> {
         val normals = cloud.normals
-        val survey = normals?.let { RoomSurveyor.survey(RoomSurveyInput(cloud.positions, it)) }
-            ?.takeIf { it.walls.isNotEmpty() }
+        @Suppress("NAME_SHADOWING")
+        val survey = survey?.takeIf { it.walls.isNotEmpty() }
         val floorY = survey?.floorY ?: ground?.floorY ?: lowest(cloud) ?: return emptyList()
         val height = survey?.ceilingHeight?.value ?: RescanZones.DEFAULT_HEIGHT_M
         val walls = if (survey != null && normals != null) walls(survey, cloud.positions, normals, cloud.count) else emptyList()

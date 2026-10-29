@@ -123,6 +123,8 @@ class ModelNodeAfterDestroyTest {
         assertDestroyedModelError { node.halfExtent }
         assertDestroyedModelError { node.extents }
         assertDestroyedModelError { node.size }
+        assertDestroyedModelError { node.worldSize }
+        assertDestroyedModelError { node.worldBoundingBox }
         assertEquals(emptyList<String>(), nativeCalls)
     }
 

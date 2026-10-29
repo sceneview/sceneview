@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A tap on a piece of furniture in the replay of a 3D scan (#4485): its name when scene
+     recognition gave it one, then its box's length × depth × height in the phone's units. -->
+<resources>
+    <!-- Length × depth × height, each with its unit: "1.40 m × 85 cm × 90 cm", "4 ft 7 in × 2 ft 9 in × 2 ft 11 in". -->
+    <string name="demo_replay_tap_sizes">%1$s × %2$s × %3$s</string>
+    <!-- Read out by TalkBack for an object nothing recognised. -->
+    <string name="demo_replay_tap_description">Selected object: %1$s long, %2$s deep, %3$s high</string>
+    <!-- Read out by TalkBack for a recognised object: its name, then its sizes. -->
+    <string name="demo_replay_tap_named_description">%1$s: %2$s long, %3$s deep, %4$s high</string>
+    <!-- The scan saw the object from one side only: the box misses its back and measures short. -->
+    <string name="demo_replay_tap_one_side">Seen from one side, may measure short</string>
+    <!-- TalkBack: the description, then the note above. -->
+    <string name="demo_replay_tap_with_note">%1$s. %2$s</string>
+</resources>
