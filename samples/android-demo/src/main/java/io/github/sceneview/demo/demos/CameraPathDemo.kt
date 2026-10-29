@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -66,6 +67,7 @@ import io.github.sceneview.rememberRenderInvalidator
 import io.github.sceneview.rememberView
 import io.github.sceneview.toAabb
 import io.github.sceneview.verticalFovDegreesForFocalLength
+import kotlinx.coroutines.flow.first
 import java.util.Locale
 
 /**
@@ -77,6 +79,11 @@ import java.util.Locale
  * it by the time between frames and writes the pose to the camera. The timeline bar plays, pauses
  * and scrubs the same playhead, so a scrubbed frame and a played frame at the same time are the
  * same pose.
+ *
+ * The move waits for its subject. Until the fox is loaded and drawn
+ * ([io.github.sceneview.demo.FirstFrameState.sceneReady]) the demo's loading cover stays up, the
+ * playhead holds at `0` and the timeline is disabled; the clock starts from `0` once the fox is on
+ * screen, so the first lap is never an empty stage.
  *
  * The camera manipulator is off (`cameraManipulator = null`): the path owns the camera, and a
  * manipulator would overwrite the scripted pose on the next frame.
@@ -154,21 +161,34 @@ fun CameraPathDemo(onBack: () -> Unit) {
             startAzimuthDegrees = ORBIT_START_AZIMUTH_DEGREES,
         )
     }
-    val player = rememberCameraPathPlayer(path, autoPlay = !DemoSettings.qaMode)
+    // Not autoPlay: a player that starts on composition runs its clock while the fox is still
+    // loading, and the first lap plays round an empty stage.
+    val player = rememberCameraPathPlayer(path, autoPlay = false)
     // Place the camera before the first frame: `onFrame` only fires once a frame was presented.
     LaunchedEffect(path) { cameraNode.applyPose(player.pose) }
+    // The clock starts from 0 once the fox is loaded and drawn. QA mode stays paused at the
+    // first keyframe, so a capture is deterministic.
+    val sceneReady by firstFrame.sceneReady
+    LaunchedEffect(player) {
+        snapshotFlow { firstFrame.sceneReady.value }.first { it }
+        if (!DemoSettings.qaMode) player.restart()
+    }
 
     DemoScaffold(
         title = stringResource(R.string.demo_camera_path_title),
         onBack = onBack,
-        firstFrameRendered = firstFrame.rendered,
+        // The cover lifts on the fox, not on the first frame: the move is round the fox, and
+        // lifting before it lands showed the camera circling an empty floor.
+        firstFrameRendered = firstFrame.sceneReady,
         sceneReady = firstFrame.sceneReady,
         contentIssue = firstFrame.contentIssue,
+        // Pressed before the fox is in, the ready effect still starts the clock again from 0.
         onReset = { player.restart() },
         themedStage = true,
         bottomOverlay = {
             CameraPathTimeline(
                 player = player,
+                enabled = sceneReady,
                 modifier = Modifier
                     // The timeline goes with the dock: one small gutter above it.
                     .offset(y = (dockGap - SceneViewTokens.Space.sm).coerceAtLeast(0.dp))
@@ -221,9 +241,16 @@ fun CameraPathDemo(onBack: () -> Unit) {
     }
 }
 
-/** Play / pause, a scrubber and a clock, on one glass bar. */
+/**
+ * Play / pause, a scrubber and a clock, on one glass bar. Not [enabled] while the subject is
+ * loading: the bar dims and takes no input.
+ */
 @Composable
-private fun CameraPathTimeline(player: CameraPathPlayer, modifier: Modifier = Modifier) {
+private fun CameraPathTimeline(
+    player: CameraPathPlayer,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val chrome = LocalStageChrome.current
     // Dragging pauses the move so the thumb and the camera stay under the finger; releasing
     // resumes it only when it was playing before the drag.
@@ -246,6 +273,7 @@ private fun CameraPathTimeline(player: CameraPathPlayer, modifier: Modifier = Mo
                 icon = if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = playLabel,
                 onClick = { player.toggle() },
+                enabled = enabled,
             )
             Slider(
                 value = player.progress,
@@ -260,11 +288,14 @@ private fun CameraPathTimeline(player: CameraPathPlayer, modifier: Modifier = Mo
                     if (resumeAfterScrub) player.play()
                     resumeAfterScrub = false
                 },
-                enabled = duration > 0f,
+                enabled = enabled && duration > 0f,
                 colors = SliderDefaults.colors(
                     thumbColor = chrome.onGlass,
                     activeTrackColor = chrome.onGlass,
                     inactiveTrackColor = chrome.track,
+                    disabledThumbColor = chrome.onGlassMuted,
+                    disabledActiveTrackColor = chrome.onGlassMuted,
+                    disabledInactiveTrackColor = chrome.track,
                 ),
                 modifier = Modifier
                     .weight(1f)
@@ -273,7 +304,7 @@ private fun CameraPathTimeline(player: CameraPathPlayer, modifier: Modifier = Mo
             Text(
                 text = "${formatClock(player.seconds)} / ${formatClock(duration)}",
                 style = SceneViewTokens.Type.caption.copy(fontFeatureSettings = TABULAR_FIGURES),
-                color = chrome.onGlass,
+                color = if (enabled) chrome.onGlass else chrome.onGlassMuted,
                 modifier = Modifier.padding(end = SceneViewTokens.Space.sm),
             )
         }
