@@ -7,16 +7,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * What [SurfaceMirrorer.stopMirroring] does with the swap chains of the mirrors it stops, run
- * against [releaseSwapChains] — the one sequence it goes through, with the Filament calls
- * replaced by recorders.
+ * What [SurfaceMirrorer.stopMirroring] and [SurfaceMirrorer.destroy] do with the swap chains of
+ * the mirrors they drop, run against [releaseSwapChains] — the one sequence both go through, with
+ * the Filament calls replaced by recorders.
  *
  * A mirror's swap chain is created at its first frame, and Filament only queues that creation:
  * the backend runs it later, and it reads the [android.view.Surface] then (`eglSurfaceAttrib` on
  * the window). Destroying the swap chain only queues another command, so a recorder that released
  * its input surface as soon as `stopMirroring` returned could free it before the backend reached
- * the creation, and Filament aborted the process. `stopMirroring` now waits for the backend, with
- * the bound a scene's own surface detach uses.
+ * the creation, and Filament aborted the process. Both now wait for the backend, with the bound a
+ * scene's own surface detach uses.
  */
 class SurfaceMirrorerReleaseTest {
 
@@ -43,16 +43,20 @@ class SurfaceMirrorerReleaseTest {
     }
 
     @Test
-    fun `a mirror stopped before its first frame waits for nothing`() {
-        assertTrue(release(emptyList()))
+    fun `a backend still busy at the bound is reported after the same sequence`() {
+        assertFalse(release(listOf("recorder", "preview"), backendCatchesUp = false))
 
-        assertEquals(emptyList<String>(), calls)
+        assertEquals(
+            listOf("destroy recorder", "destroy preview", "wait $SURFACE_DETACH_WAIT_NANOS"),
+            calls,
+        )
     }
 
     @Test
-    fun `a backend still busy at the bound is reported, not waited for longer`() {
-        assertFalse(release(listOf("recorder"), backendCatchesUp = false))
+    fun `a mirror stopped before its first frame waits for nothing`() {
+        // Nothing waited for, so nothing to report, however busy the backend is.
+        assertTrue(release(emptyList(), backendCatchesUp = false))
 
-        assertEquals(listOf("destroy recorder", "wait $SURFACE_DETACH_WAIT_NANOS"), calls)
+        assertEquals(emptyList<String>(), calls)
     }
 }

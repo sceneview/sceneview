@@ -214,7 +214,9 @@ class SurfaceMirrorer {
      * must release it only **after this returns**: Filament creates and destroys a mirror's swap
      * chain on its backend thread, after the call that queued it, and the creation reads the
      * surface there. This destroys the swap chain, then waits for the backend to execute it,
-     * up to one second; a surface released before that aborts the process inside Filament.
+     * up to one second; a surface released before that aborts the process inside Filament. The
+     * wait is bounded: a backend still busy after one second (compiling a new scene's shaders on
+     * a slow device, say) is logged and not waited for, and the race remains in that case.
      *
      * Idempotent: no-op if [surface] is not currently mirrored. Must be called from the main
      * thread (destroys the mirror's Filament swap chain).
@@ -230,7 +232,11 @@ class SurfaceMirrorer {
                 .also { surfaceMirrors.removeAll(it) }
                 .mapNotNull { mirror -> mirror.swapChain.also { mirror.swapChain = null } }
         }
-        if (engine == null) return
+        if (engine != null) release(engine, swapChains)
+    }
+
+    /** [releaseSwapChains] on [engine]'s backend, with a warning when the bound expires. */
+    private fun release(engine: Engine, swapChains: List<SwapChain>) {
         val caughtUp = releaseSwapChains(
             swapChains,
             destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
@@ -291,26 +297,28 @@ class SurfaceMirrorer {
     }
 
     /**
-     * Destroys every mirror's swap chain, clears the mirror list and releases the mirror renderer
-     * once the backend has executed everything queued so far, without waiting for that queue on
-     * the calling (main) thread.
+     * Destroys every mirror's swap chain and waits, up to one second, for the backend to execute
+     * that, as [stopMirroring] does; clears the mirror list and releases the mirror renderer once
+     * the backend has executed everything queued so far, without waiting for that queue on the
+     * calling (main) thread.
      *
      * Called by [io.github.sceneview.SceneRenderer.destroy] when the scene is disposed — a
-     * mirrored recording ends with the view that feeds it, and [onHostLost] is called.
+     * mirrored recording ends with the view that feeds it, and [onHostLost] is called. The
+     * recording releases its surface from there, so the swap chains must be gone first; a scene
+     * disposed with no mirror, or before a mirror's first frame, waits for nothing. Teardown waits
+     * on the backend are bounded (#4828), not banned: this is the same one-second bound as the
+     * scene's own surface detach.
      */
     internal fun destroy() {
-        val engine = engine
-        val renderer = synchronized(surfaceMirrors) {
-            surfaceMirrors.forEach { mirror ->
-                mirror.swapChain?.let { swapChain ->
-                    engine?.let { runCatching { it.destroySwapChain(swapChain) } }
-                }
-                mirror.swapChain = null
+        val (engine, swapChains, renderer) = synchronized(surfaceMirrors) {
+            val swapChains = surfaceMirrors.mapNotNull { mirror ->
+                mirror.swapChain.also { mirror.swapChain = null }
             }
             surfaceMirrors.clear()
-            mirrorRenderer.also { mirrorRenderer = null }
+            Triple(engine, swapChains, mirrorRenderer.also { mirrorRenderer = null })
         }
         this.engine = null
+        if (engine != null) release(engine, swapChains)
         // Not `destroyRenderer` on the spot: Filament's renderer teardown first waits, with no
         // bound, for every command already queued on the backend — the scene's last mirror passes
         // and, right after it appeared, its shader links. A recorded scene disposed then parked the
