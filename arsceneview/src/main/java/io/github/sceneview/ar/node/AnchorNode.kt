@@ -4,9 +4,11 @@ import android.view.MotionEvent
 import com.google.android.filament.Engine
 import com.google.ar.core.Anchor
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
 import com.google.ar.core.Pose
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
+import io.github.sceneview.ar.PlacementTrackableKind
 import io.github.sceneview.gesture.MoveGestureDetector
 
 /**
@@ -104,6 +106,12 @@ open class AnchorNode(
 
     private var isMoving = false
 
+    /**
+     * The finger is up but the dragged node has no anchor yet: the camera was not tracking at
+     * release. The node stays frozen at its world pose and [update] retries every frame.
+     */
+    private var awaitsReleaseAnchor = false
+
     init {
         updateVisibility()
     }
@@ -111,6 +119,10 @@ open class AnchorNode(
     override fun update(session: Session, frame: Frame) {
         super.update(session, frame)
 
+        if (awaitsReleaseAnchor && anchorAtRelease()) {
+            awaitsReleaseAnchor = false
+            isMoving = false
+        }
         if (isMoving) return
 
         // #2270: prefer the per-frame batched updated-anchors set computed once by the AR frame
@@ -135,6 +147,8 @@ open class AnchorNode(
         if (isPositionEditable) {
             detachAnchor()
             isMoving = true
+            awaitsReleaseAnchor = false
+            lastMoveTrackable = null
         }
         return true
     }
@@ -143,11 +157,48 @@ open class AnchorNode(
         super.onMoveEnd(detector, e)
 
         if (isPositionEditable) {
-            createAnchor()?.let {
-                anchor = it
+            if (anchorAtRelease()) {
+                isMoving = false
+            } else {
+                // No anchor can be made this frame. Keep the node frozen and visible where the
+                // finger left it rather than on the detached (STOPPED) anchor; update() retries.
+                awaitsReleaseAnchor = true
             }
-            isMoving = false
         }
+    }
+
+    /**
+     * Re-anchors the node at the end of a drag, where the finger left it.
+     *
+     * On the tracked plane the last move hit landed on when there is one, so the model follows
+     * the plane as ARCore refines it; otherwise on a plain world anchor at the node's current
+     * pose. Never on an Instant Placement point: an approximate anchor rides the camera until
+     * ARCore converges, which is the very drift a release must not reintroduce.
+     *
+     * @return `true` once the node holds its new anchor.
+     */
+    private fun anchorAtRelease(): Boolean {
+        val plane = (lastMoveTrackable as? Plane)?.let { topPlane(it) }
+        val decision = runCatching {
+            dragReleaseAnchor(
+                lastHitKind = when {
+                    plane == null -> null
+                    plane.isPoseInPolygon(pose) -> PlacementTrackableKind.PLANE_IN_POLYGON
+                    else -> PlacementTrackableKind.PLANE_OUT_OF_POLYGON
+                },
+                lastHitTracking = plane?.trackingState == TrackingState.TRACKING,
+                cameraTracking = cameraTrackingState == TrackingState.TRACKING,
+            )
+        }.getOrDefault(DragReleaseAnchor.WAIT)
+        val newAnchor = when (decision) {
+            DragReleaseAnchor.PLANE ->
+                runCatching { plane?.createAnchor(pose) }.getOrNull() ?: createAnchor()
+            DragReleaseAnchor.WORLD_POSE -> createAnchor()
+            DragReleaseAnchor.WAIT -> null
+        } ?: return false
+        anchor = newAnchor
+        lastMoveTrackable = null
+        return true
     }
 
     override fun destroy() {
@@ -159,4 +210,43 @@ open class AnchorNode(
 
         super.destroy()
     }
+}
+
+/** A plane ARCore merged into a bigger one hands its anchors to that one. */
+private tailrec fun topPlane(plane: Plane): Plane {
+    val parent = plane.subsumedBy ?: return plane
+    return topPlane(parent)
+}
+
+/** What [AnchorNode] re-anchors on when a drag ends. */
+internal enum class DragReleaseAnchor {
+    /** The tracked plane under the node: the anchor follows the plane as ARCore refines it. */
+    PLANE,
+
+    /** A plain world anchor at the node's pose at release: the model stays where it was left. */
+    WORLD_POSE,
+
+    /** The camera is not tracking, so no anchor can be made: hold the pose and try next frame. */
+    WAIT,
+}
+
+/**
+ * The anchor a released drag gets — the pure core of `AnchorNode.anchorAtRelease`.
+ *
+ * There is deliberately no Instant Placement outcome: whatever the drag landed on, an
+ * [PlacementTrackableKind.INSTANT_PLACEMENT] hit included, the result is never an approximate
+ * anchor that would follow the camera until ARCore reaches full tracking.
+ *
+ * @param lastHitKind     What the last accepted move hit landed on, `null` when none did.
+ * @param lastHitTracking Whether that trackable is still `TRACKING` at release.
+ * @param cameraTracking  Whether the camera is `TRACKING`; no anchor can be made otherwise.
+ */
+internal fun dragReleaseAnchor(
+    lastHitKind: PlacementTrackableKind?,
+    lastHitTracking: Boolean,
+    cameraTracking: Boolean,
+): DragReleaseAnchor = when {
+    !cameraTracking -> DragReleaseAnchor.WAIT
+    lastHitKind == PlacementTrackableKind.PLANE_IN_POLYGON && lastHitTracking -> DragReleaseAnchor.PLANE
+    else -> DragReleaseAnchor.WORLD_POSE
 }
