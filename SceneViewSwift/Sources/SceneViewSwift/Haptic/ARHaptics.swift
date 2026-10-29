@@ -17,7 +17,9 @@ import Foundation
 /// | ``recovered`` | `UINotificationFeedbackGenerator` `.success` |
 /// | ``helpNeeded`` | `UINotificationFeedbackGenerator` `.warning` |
 public enum ARHapticEvent: String, CaseIterable, Sendable {
-    /// A surface was found and the object stands on it (placement is immediate).
+    /// A surface was found and the object stands on it (placement is immediate). With instant
+    /// placement it plays when the model first stands on the estimated floor, and again when it
+    /// lands on the detected surface.
     case placed
     /// A tap selected the standing object.
     case selected
