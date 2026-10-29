@@ -308,7 +308,7 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertEqual(state.step(gesturesActive: false, anchored: true, overSurface: true, now: now, since: now), .commit)
     }
 
-    func testAnEdgeThatKeepsFlickeringCountsAsFailuresThenPauses() {
+    func testAnEdgeThatKeepsFlickeringCountsAsFailuresThenAbandons() {
         // An anchor that resolves slowly on a flickering edge must not loop create/remove forever.
         var state = ARInstantPlacement.State()
         var now: TimeInterval = 0
@@ -339,7 +339,7 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 8.25, since: 0), .retry)
     }
 
-    func testUnresolvedAnchorsBackOffThenPauseThatPlane() {
+    func testUnresolvedAnchorsBackOffThenAbandonTheRecovery() {
         var state = ARInstantPlacement.State()
         var now: TimeInterval = 0
         for attempt in 1..<ARInstantPlacement.anchorRetryLimit {
@@ -355,32 +355,49 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true,
                                   now: now + 3, since: 0), .abandon)
         XCTAssertTrue(state.failed(now: now, plane: plane, area: 1))
-        XCTAssertFalse(state.mayAttemptLanding(on: plane, area: 1, now: now + 1), "paused")
+        XCTAssertFalse(state.mayAttemptLanding(on: plane, area: 1, now: now + 1), "abandoned")
     }
 
-    func testAnAbandonedLandingRecoversWithoutAnyDrag() {
-        // The review case: a user who never drags must not stay approximate for good.
+    func testAbandonAnchorRecoveryLeavesTheModelAndNeverRetriesOnATimer() {
+        // ARMV `abandonAnchorRecovery`: after the last allowed failure the model stays where it
+        // stands; time alone never starts the anchor churn again.
         func abandoned() -> ARInstantPlacement.State {
             var state = ARInstantPlacement.State()
             for _ in 0..<ARInstantPlacement.anchorRetryLimit { state.failed(now: 10, plane: plane, area: 1) }
             XCTAssertNotNil(state.abandoned)
             return state
         }
-        var cooled = abandoned()
-        XCTAssertFalse(cooled.mayAttemptLanding(on: plane, area: 1.1, now: 12.9))
-        XCTAssertTrue(cooled.mayAttemptLanding(on: plane, area: 1, now: 10 + ARInstantPlacement.abandonCooldown))
-        XCTAssertEqual(cooled.attempt, 1, "a fresh round of attempts")
-        XCTAssertNil(cooled.abandoned)
+        var waited = abandoned()
+        XCTAssertEqual(waited.failures, 0, "the recovery is over, not counting")
+        for later in [10.5, 13.0, 60.0, 3_600.0] {
+            XCTAssertFalse(waited.mayAttemptLanding(on: plane, area: 1.1, now: later), "no retry at \(later) s")
+        }
+        XCTAssertNotNil(waited.abandoned)
+
+        var direct = ARInstantPlacement.State()
+        direct.abandonAnchorRecovery(plane: plane, area: 2)
+        XCTAssertFalse(direct.mayAttemptLanding(on: plane, area: 2, now: 100))
+    }
+
+    func testAnAbandonedRecoveryIsReArmedByAMoveOrNewEvidence() {
+        func abandoned() -> ARInstantPlacement.State {
+            var state = ARInstantPlacement.State()
+            state.abandonAnchorRecovery(plane: plane, area: 1)
+            return state
+        }
+        var dragged = abandoned()
+        dragged.moved()
+        XCTAssertTrue(dragged.mayAttemptLanding(on: plane, area: 1, now: 10.5), "the user moved the model")
+        XCTAssertNil(dragged.abandoned)
 
         var grown = abandoned()
-        XCTAssertTrue(grown.mayAttemptLanding(on: plane, area: 1.3, now: 10.5), "the plane grew under the model")
+        XCTAssertFalse(grown.mayAttemptLanding(on: plane, area: 1.2, now: 10.5))
+        XCTAssertTrue(grown.mayAttemptLanding(on: plane, area: ARInstantPlacement.abandonRegrowth, now: 10.5),
+                      "the plane grew under the model")
+        XCTAssertEqual(grown.attempt, 1, "a fresh round of attempts")
 
         var other = abandoned()
         XCTAssertTrue(other.mayAttemptLanding(on: UUID(), area: 0.5, now: 10.5), "ARKit reports another plane")
-
-        var dragged = abandoned()
-        dragged.moved()
-        XCTAssertTrue(dragged.mayAttemptLanding(on: plane, area: 1, now: 10.5))
     }
 
     func testResetClearsLandingStateAndTheThrottle() {

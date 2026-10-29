@@ -376,7 +376,7 @@ final class ARPlacementControllerTests: XCTestCase {
         let initialCount = view.gestureRecognizers?.count ?? 0
         controller.attach(to: view)
         controller.attach(to: view)
-        XCTAssertEqual(view.gestureRecognizers?.count, initialCount + 4)
+        XCTAssertEqual(view.gestureRecognizers?.count, initialCount + 5)
         let ticket = controller.selectModel()
         let (root, leaf) = nestedModel()
         XCTAssertTrue(controller.setModel(root, ticket: ticket))
