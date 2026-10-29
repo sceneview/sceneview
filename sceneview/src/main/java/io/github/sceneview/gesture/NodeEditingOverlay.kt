@@ -384,8 +384,10 @@ private fun FeedbackBadge(
  * Raw values are in Filament viewport pixels together with the viewport size, so the
  * canvas can rescale them when the composable's size differs from the render surface.
  * `null` anchors mean the point is behind the camera — skip drawing, never approximate.
+ *
+ * Internal, not private, for `ModelNodeAfterDestroyTest`.
  */
-private class NodeScreenAnchors {
+internal class NodeScreenAnchors {
     private var base by mutableStateOf<Offset?>(null)
     private var top by mutableStateOf<Offset?>(null)
     private var radiusX by mutableFloatStateOf(0f)
@@ -393,9 +395,10 @@ private class NodeScreenAnchors {
     private var viewportSize by mutableStateOf(Size.Zero)
 
     fun update(node: Node, view: View) {
-        if (node.isDestroyed) {
-            // The overlay can outlive the node by a frame (disposal ordering) — never
-            // touch released Filament components.
+        if (node.isDestroyed || (node is ModelNode && node.isModelDestroyed)) {
+            // The overlay can outlive the node by a frame (disposal ordering), and the node
+            // its model (`rememberModelInstance` destroys it first) — never touch released
+            // Filament components.
             base = null
             top = null
             return

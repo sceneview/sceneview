@@ -112,6 +112,9 @@ struct SceneViewDemoApp: App {
     #endif
 
     init() {
+        // Transaction listener up before any scene: a purchase finished while the app
+        // was closed is delivered at launch, and the launch counts as a session.
+        SupportStore.shared.start()
         #if os(macOS)
         // iOS starts Firebase from `DemoAppDelegate`; macOS has no delegate here.
         // In the EEA, UK and Switzerland, not before the user's yes (`ConsentStore`).
@@ -183,10 +186,13 @@ struct SceneViewDemoApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await updater.checkForUpdate() }
+                        SupportStore.shared.appBecameActive()
                         #if os(iOS)
                         // Permission changed in iOS Settings, or an opt-out to finish.
                         Task { await PushCenter.shared.appBecameActive() }
                         #endif
+                    } else if phase == .background {
+                        SupportStore.shared.appEnteredBackground()
                     }
                 }
         }
@@ -221,6 +227,9 @@ struct ContentView: View {
     #endif
     /// The usage-statistics consent (EEA, UK, Switzerland): its sheet comes up over Home.
     @ObservedObject private var consent = TelemetryConsent.shared
+    /// "Support SceneView": the policy asks, this view shows it when the screen is free.
+    @ObservedObject private var support = SupportStore.shared
+    @State private var supportPrompt: SupportStore.Presentation?
 
     /// Guards the one-shot launch-argument presentation so a view refresh
     /// doesn't re-present the demo.
@@ -314,6 +323,25 @@ struct ContentView: View {
                 onDecline: { consent.decline() }
             )
         }
+        // The occasional "Support SceneView" prompt: only on Home, with no demo, AR
+        // session or other sheet up — otherwise it waits for the next moment of value.
+        .onChange(of: support.promptRequested) { _, requested in
+            guard requested else { return }
+            if homeIsFree {
+                supportPrompt = .prompt
+                support.promptShown()
+            } else {
+                support.promptSkipped()
+            }
+        }
+        .task {
+            guard SupportStore.promptForcedByLaunchArgument else { return }
+            try? await Task.sleep(for: .seconds(2))
+            supportPrompt = .prompt
+        }
+        .sheet(item: $supportPrompt, onDismiss: { support.sheetDismissed() }) { presentation in
+            SupportSheet(presentation: presentation) { supportPrompt = nil }
+        }
         #if os(iOS)
         // A tapped "What's new" push: its sample, or Home for an id this build lacks.
         .onChange(of: push.pendingTap, initial: true) { _, tap in
@@ -333,6 +361,16 @@ struct ContentView: View {
             )
         }
         #endif
+    }
+
+    /// Home is on screen with nothing over it: no demo (AR included), no other sheet.
+    private var homeIsFree: Bool {
+        guard selectedTab == 0, presentedDemo == nil, !homePresenting,
+              !consent.sheetPresented, supportPrompt == nil else { return false }
+        #if os(iOS)
+        if push.prePromptPresented { return false }
+        #endif
+        return true
     }
 
     /// `ar_supported`: whether this device runs ARKit world tracking.

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The shared Record action of `DemoScaffold` (samples step 0). It replaced the
-     `video-recording` card: a demo that hands the scaffold a `SceneRecorderState` gets a
-     "Record video" row in its settings sheet and a Record / Stop pill in its bottom band. -->
+<!-- The shared capture actions of `DemoScaffold` (samples step 0). They replaced the
+     `video-recording` card: a demo that hands the scaffold the SDK's `SceneRecorder` gets
+     "Take photo" and "Record video" rows in its settings sheet and a Record / Stop pill in its
+     bottom band. -->
 <resources>
     <string name="demo_record_action">Record video</string>
     <string name="demo_record_stop_action">Stop recording</string>
@@ -10,4 +11,11 @@
     <string name="demo_record_saved">Video saved on this device</string>
     <string name="demo_record_play">Play</string>
     <string name="demo_record_failed">Could not record or open the video on this device</string>
+    <string name="demo_record_limit">Stopped at the %1$s limit</string>
+    <string name="demo_photo_action">Take photo</string>
+    <string name="demo_photo_saved">Photo saved on this device</string>
+    <string name="demo_photo_failed">Could not take the photo on this device</string>
+    <string name="demo_capture_share">Share</string>
+    <!-- Drawn on every photo and video the demo captures, never on the live scene. -->
+    <string name="demo_capture_watermark" translatable="false">Made with SceneView</string>
 </resources>

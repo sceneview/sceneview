@@ -9,7 +9,7 @@ A scannable, AI-first reference for every node type exposed by `SceneView` and `
 
 All examples assume you are inside a `SceneView { … }` or `ARSceneView { … }` block (for AR nodes). Import the `io.github.sceneview.*` / `io.github.sceneview.ar.*` packages as needed.
 
-Artifact versions: `io.github.sceneview:sceneview:4.62.0` and `io.github.sceneview:arsceneview:4.62.0`.
+Artifact versions: `io.github.sceneview:sceneview:4.63.0` and `io.github.sceneview:arsceneview:4.63.0`.
 
 ---
 
@@ -1322,6 +1322,6 @@ LightNode(
 ## See also
 
 - [`llms.txt`](../../llms.txt) — the machine-readable API surface consumed by `sceneview-mcp`
-- [`DESIGN.md`](../../DESIGN.md) — the design system for any UI around a `Scene`
-- [Samples](../../samples/) — runnable apps for every platform
+- [`DESIGN.md`](https://github.com/sceneview/sceneview/blob/main/DESIGN.md) — the design system for any UI around a `Scene`
+- [Samples](samples.md) — runnable apps for every platform
 - [sceneview-mcp](https://www.npmjs.com/package/sceneview-mcp) — MCP server that exposes this reference to any MCP client

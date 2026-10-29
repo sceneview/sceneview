@@ -15,7 +15,7 @@
     {
       "guid": "sceneview",
       "name": "SceneView",
-      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. 48 contributors since 2021; used in production apps and public samples by companies in payments hardware, security cameras, accessibility and spatial computing.",
+      "description": "Open source 3D and AR SDK for Android (Jetpack Compose, on Filament and ARCore), Apple platforms (SwiftUI, on RealityKit and ARKit) and the web (Kotlin/JS on Filament.js), with Flutter and React Native bridges and an MCP server that lets AI coding assistants produce working 3D and AR code. Apache-2.0, published on Maven Central, Swift Package Manager, npm and pub.dev. SDKs published by commercial vendors on Maven Central and npm declare SceneView as a dependency.",
       "webpageUrl": {
         "url": "https://sceneview.github.io"
       },
@@ -73,7 +73,7 @@
         "guid": "gold-sponsor",
         "status": "active",
         "name": "Gold sponsor (3 places)",
-        "description": "For companies that ship SceneView. Everything in Silver, plus your logo in the documentation sidebar and at the top of the README, and a thank-you line in the notes of each major release. Also 5,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "description": "For companies that ship SceneView. Funds the fixes, Filament upgrades and releases your product depends on; your company is listed nowhere unless you ask. Also 5,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
         "amount": 500,
         "currency": "USD",
         "frequency": "monthly",
@@ -86,7 +86,7 @@
         "guid": "silver-sponsor",
         "status": "active",
         "name": "Silver sponsor",
-        "description": "Everything in Bronze, plus your logo on the website home page and on the Sponsors screen of the SceneView demo apps. Also 2,500 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "description": "Funds the fixes, Filament upgrades and releases your product depends on; your company is listed nowhere unless you ask. Also 2,500 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
         "amount": 250,
         "currency": "USD",
         "frequency": "monthly",
@@ -99,7 +99,7 @@
         "guid": "bronze-sponsor",
         "status": "active",
         "name": "Bronze sponsor",
-        "description": "Your logo and link on the sponsors page of the website and in the README. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "description": "Funds the fixes, Filament upgrades and releases your product depends on; your company is listed nowhere unless you ask. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
         "amount": 100,
         "currency": "USD",
         "frequency": "monthly",

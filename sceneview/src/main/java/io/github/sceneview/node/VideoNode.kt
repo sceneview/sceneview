@@ -19,6 +19,7 @@ import io.github.sceneview.math.Position
 import io.github.sceneview.math.Size
 import io.github.sceneview.safeDestroyStream
 import io.github.sceneview.safeDestroyTexture
+import io.github.sceneview.whenBackendIdle
 
 /**
  * A [Node] that renders video from an Android [MediaPlayer] onto a flat plane in 3D space.
@@ -187,9 +188,13 @@ open class VideoNode(
      *
      * The sequence below therefore:
      * 1. destroys the [MaterialInstance] first (un-references the texture),
-     * 2. calls [Engine.drainFramePipeline] so any in-flight frame still holding the
-     *    MaterialInstance is flushed and the MI is actually reclaimed,
-     * 3. only then destroys the external [Texture] and [Stream].
+     * 2. waits for the backend to execute that destroy, so no in-flight frame still holds the
+     *    MaterialInstance — without blocking the main thread: polled once per frame through
+     *    `Engine.whenBackendIdle`, where an unbounded [Engine.drainFramePipeline] used to park it on
+     *    the whole backend backlog (field ANRs in `Fence.wait` at teardown),
+     * 3. only then destroys the external [Texture] and [Stream], and releases the [SurfaceTexture].
+     *
+     * On a thread without a [Looper] there is nothing to poll from: step 2 is the blocking drain.
      *
      * Must run on the main thread — all Filament JNI calls do.
      */
@@ -203,13 +208,22 @@ open class VideoNode(
         surfaceTexture.setOnFrameAvailableListener(null)
         surface.release()
         materialLoader.destroyMaterialInstance(mi)
-        // Flush the render pipeline so the just-destroyed MaterialInstance is reclaimed before
-        // its external texture is freed — otherwise Filament SIGABRTs ("Invalid texture still
-        // bound to MaterialInstance"). See KDoc above.
-        materialLoader.engine.drainFramePipeline()
-        materialLoader.engine.safeDestroyTexture(texture)
-        materialLoader.engine.safeDestroyStream(stream)
-        surfaceTexture.release()
+        // The just-destroyed MaterialInstance must be reclaimed by the backend before its
+        // external texture is freed — otherwise Filament SIGABRTs ("Invalid texture still bound
+        // to MaterialInstance"). See KDoc above.
+        val engine = materialLoader.engine
+        val releaseExternal = {
+            engine.safeDestroyTexture(texture)
+            engine.safeDestroyStream(stream)
+            surfaceTexture.release()
+        }
+        if (Looper.myLooper() == null) {
+            engine.drainFramePipeline()
+            releaseExternal()
+            return
+        }
+        // Engine already gone: it freed the texture and stream with it.
+        engine.whenBackendIdle(onEngineGone = { surfaceTexture.release() }) { releaseExternal() }
     }
 }
 

@@ -7,19 +7,19 @@ import androidx.annotation.MainThread
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
-import com.google.android.filament.Fence
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import com.google.android.filament.gltfio.releaseSourceDataIfAlive
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
 import io.github.sceneview.bumpTransformGeneration
 import io.github.sceneview.core.obj.ObjLoader
 import io.github.sceneview.core.ply.PlyLoader
 import io.github.sceneview.core.threemf.ThreeMfLoader
+import io.github.sceneview.freshFenceProbe
 import io.github.sceneview.isAsyncLoadPending
-import io.github.sceneview.isFenceBusy
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.model
@@ -42,6 +42,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -211,6 +212,8 @@ class ModelLoader(
      * A model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, without what the extension carries, as it always was; only
      * [awaitModelInstance] refuses it.
+     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
+     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
      * because Filament's Android build registers no `image/webp` decoder and would otherwise render
@@ -233,7 +236,7 @@ class ModelLoader(
         models += model
         loadResources(model, source, resourceResolver)
         if (releaseSourceData) {
-            model.releaseSourceData()
+            model.releaseSourceDataIfAlive()
         }
         return model
     }
@@ -553,7 +556,7 @@ class ModelLoader(
         // On the main thread, before anything else can destroy the model: releasing it after the
         // caller resumed (on the caller's thread) raced `clear()` into a JNI call on a freed
         // asset (#3868).
-        model.releaseSourceData()
+        model.releaseSourceDataIfAlive()
         return model.instance
     }
 
@@ -719,6 +722,8 @@ class ModelLoader(
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
      * resolver cannot read is logged and skipped. A model that requires an extension gltfio cannot
      * load (see [SUPPORTED_GLTF_EXTENSIONS]) is logged and loaded anyway, as in [createModel].
+     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
+     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * @see AssetLoader.createInstancedAsset
      */
@@ -734,7 +739,7 @@ class ModelLoader(
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
                 loadResources(model, source, resourceResolver)
-                model.releaseSourceData()
+                model.releaseSourceDataIfAlive()
             }
         }.filterNotNull()
 
@@ -1010,6 +1015,16 @@ class ModelLoader(
         }
     }
 
+    /**
+     * Whether [model] is still this loader's: not destroyed since by [destroyModel], [clear] or
+     * [destroy]. A model that left the registry has a zeroed native handle: no call on it is safe.
+     * Main thread.
+     */
+    internal fun holds(model: Model): Boolean = model in models
+
+    /** `false` once [destroy] was called (it cancels the load scope): no load may start on it. */
+    internal val isLoadable: Boolean get() = loadScope.isActive
+
     fun updateLoad() {
         // Allow the resource loader to finalize textures that have become ready.
         resourceLoader.asyncUpdateLoad()
@@ -1029,6 +1044,10 @@ class ModelLoader(
      * throws anything other than an `IOException` also destroys [model], then the error is
      * rethrown.
      *
+     * A resolver that destroys [model] itself (`clear()`, `destroy()`, `destroyModel`) ends the
+     * loop at once, with no further gltfio call on the model or the loader, in an
+     * [IllegalStateException].
+     *
      * This runs on the main thread, like the whole synchronous `createModel`, so the glTF JSON is
      * parsed (to tell buffers from textures) only once a resource is missing, or for a model with
      * an external WebP image: any other model whose resources all resolve never pays for it.
@@ -1047,14 +1066,23 @@ class ModelLoader(
         val buffers by lazy { GltfBufferUris.of(source.buffer, uris) }
         // Each resource the resolver could not supply, with the IOException it threw if it did.
         val unresolved = LinkedHashMap<String, IOException?>()
+        // The resolver is the caller's code, run on the main thread: a `clear()`, `destroy()` or
+        // `destroyModel` in it frees this model (and, for `destroy()`, the loader's gltfio
+        // objects), and every later gltfio call on them would read freed memory.
+        var destroyedByResolver = false
         // The missing buffers, among them.
         val missing: Map<String, IOException?> = try {
             for (uri in uris) {
+                var error: IOException? = null
                 val data = try {
                     resourceResolver(uri)
-                } catch (error: IOException) {
-                    unresolved[uri] = error
-                    continue
+                } catch (failure: IOException) {
+                    error = failure
+                    null
+                }
+                if (model !in models) {
+                    destroyedByResolver = true
+                    break
                 }
                 if (data != null) {
                     val fed = if (source.isExternalWebP(uri) && uri !in buffers) {
@@ -1064,26 +1092,40 @@ class ModelLoader(
                     }
                     resourceLoader.addResourceData(uri, fed)
                 } else {
-                    unresolved[uri] = null
+                    unresolved[uri] = error
                 }
             }
-            val kinds = GltfBufferUris.kinds(source.buffer, unresolved.keys)
-            val bufferUris = kinds.buffers
-            // Logged once each: a missing texture here, a missing buffer with the failure below.
-            unresolved.forEach { (uri, error) ->
-                if (uri !in bufferUris) {
-                    Log.w(TAG, "Could not read $uri; loading the model without it", error)
-                    // Only a declared image gets the stand-in: see loadModelThen.
-                    if (uri in kinds.images) resourceLoader.addResourceData(uri, unreadableTexture())
+            if (destroyedByResolver) {
+                // A bare destroyModel leaves the data already added in the loader, where the next
+                // load of the same URI would find it; destroy() cancelled loadScope and freed it.
+                if (loadScope.isActive) resourceLoader.evictResourceData()
+                emptyMap()
+            } else {
+                val kinds = GltfBufferUris.kinds(source.buffer, unresolved.keys)
+                val bufferUris = kinds.buffers
+                // Logged once each: a missing texture here, a missing buffer with the failure below.
+                unresolved.forEach { (uri, error) ->
+                    if (uri !in bufferUris) {
+                        Log.w(TAG, "Could not read $uri; loading the model without it", error)
+                        // Only a declared image gets the stand-in: see loadModelThen.
+                        if (uri in kinds.images) resourceLoader.addResourceData(uri, unreadableTexture())
+                    }
                 }
+                unresolved.filterKeys { it in bufferUris }
             }
-            unresolved.filterKeys { it in bufferUris }
         } catch (failure: Throwable) {
-            // Not begun yet, so nothing is decoding: the destroy is immediate.
-            resourceLoader.evictResourceData()
-            destroyModel(model)
+            // Not begun yet, so nothing is decoding: the destroy is immediate. A resolver that
+            // destroyed the model itself before throwing already took it, and maybe the loader.
+            if (model in models) {
+                resourceLoader.evictResourceData()
+                destroyModel(model)
+            }
             Log.w(TAG, "Could not resolve the resources of a glTF model; the model was destroyed", failure)
             throw failure
+        }
+        check(!destroyedByResolver) {
+            "The resource resolver destroyed the glTF model it was resolving (clear(), destroy() or " +
+                "destroyModel on its ModelLoader): resolve the resources without destroying the model"
         }
         val failure = when {
             missing.isNotEmpty() -> {
@@ -1284,17 +1326,19 @@ private class SettlingDestroys(private val engine: Engine) {
     private var pending = 0
 
     fun defer(isInFlight: () -> Boolean, pumpedProgress: () -> Float, destroy: () -> Unit) {
-        var fence: Fence? = null
+        // A fresh fence, not one created at the first poll: asyncCancelLoad's flushAndWait covers
+        // what is queued when it runs, the next screen's shader compilations included.
+        val probe = engine.freshFenceProbe()
         val gate = AsyncLoadSettleGate(
             isInFlight = isInFlight,
             pumpedProgress = pumpedProgress,
-            isBackendBusy = { isFenceBusy(fence ?: engine.createFence().also { fence = it }) },
+            isBackendBusy = probe::isBusy,
             now = SystemClock::uptimeMillis,
         )
         pending++
         engine.whenIdle(isBusy = gate::isBusy, onEngineGone = { pending-- }) {
             pending--
-            fence?.let { runCatching { engine.destroyFence(it) } }
+            probe.release()
             destroy()
         }
     }
@@ -1318,7 +1362,9 @@ private class SettlingDestroys(private val engine: Engine) {
  * Progress can stay below 1 for good — a texture whose external file never arrived counts as
  * pending forever, with no job running for it — so a load that has not advanced for
  * [stallTimeoutMs] stops holding the destroy. That one is cancelled for real, so the gate then
- * waits for [isBackendBusy] to say the cancel's `flushAndWait` would be instant.
+ * waits for [isBackendBusy] to say the backend recently caught up: the cancel's `flushAndWait`
+ * then only waits for what the main thread queued since. [isBackendBusy] is first asked at that
+ * point, which is where a [io.github.sceneview.FreshFenceProbe] starts its give-up delay.
  *
  * Filament-free so the ordering can be pinned in a JVM test. Main thread only.
  */

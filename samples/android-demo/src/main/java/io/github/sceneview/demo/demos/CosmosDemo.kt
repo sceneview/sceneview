@@ -1,8 +1,7 @@
 package io.github.sceneview.demo.demos
 
 import io.github.sceneview.demo.common.rememberFilmicView
-import io.github.sceneview.demo.recording.rememberSceneRecorderState
-import io.github.sceneview.rememberSurfaceMirrorer
+import io.github.sceneview.demo.recording.rememberDemoSceneRecorder
 import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
 import io.github.sceneview.demo.telemetry.logSampleModeChange
@@ -192,10 +191,10 @@ fun CosmosDemo(onBack: () -> Unit) {
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
     val view = rememberFilmicView(engine)
-    // The shared Record action (samples step 0, the former `video-recording` card): the scene's
-    // frames are mirrored into an MP4 encoder, without the Compose chrome.
-    val surfaceMirrorer = rememberSurfaceMirrorer()
-    val recorder = rememberSceneRecorderState(surfaceMirrorer)
+    // The shared capture actions (samples step 0, the former `video-recording` card): the SDK's
+    // SceneRecorder takes a photo of the scene or mirrors its frames into an MP4, without the
+    // Compose chrome.
+    val recorder = rememberDemoSceneRecorder()
     val renderInvalidator = rememberRenderInvalidator()
     val cameraNode = rememberCameraNode(engine) {
         position = Position(0f, 0f, 6f)
@@ -493,7 +492,7 @@ fun CosmosDemo(onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             view = view,
-            surfaceMirrorer = surfaceMirrorer,
+            surfaceMirrorer = recorder.surfaceMirrorer,
             materialLoader = materialLoader,
             cameraNode = cameraNode,
             cameraManipulator = null,

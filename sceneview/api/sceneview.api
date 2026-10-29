@@ -958,7 +958,7 @@ public final class io/github/sceneview/camera/CameraKeyframe {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class io/github/sceneview/camera/CameraPath {
+public final class io/github/sceneview/camera/CameraPath : io/github/sceneview/camera/CameraTimeline {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/camera/CameraPath$Companion;
 	public static final field MIN_DISTANCE F
@@ -971,14 +971,15 @@ public final class io/github/sceneview/camera/CameraPath {
 	public static final field TOUR_SECONDS F
 	public fun <init> (Ljava/util/List;Lkotlin/jvm/functions/Function1;ZZ)V
 	public synthetic fun <init> (Ljava/util/List;Lkotlin/jvm/functions/Function1;ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun getDurationSeconds ()F
+	public fun getDurationSeconds ()F
 	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
 	public final fun getEnd ()Lio/github/sceneview/camera/CameraShot;
 	public final fun getKeyframes ()Ljava/util/List;
-	public final fun getLoop ()Z
+	public fun getLoop ()Z
 	public final fun getShortestArc ()Z
 	public final fun getStart ()Lio/github/sceneview/camera/CameraShot;
 	public final fun isFinishedAt (F)Z
+	public fun poseAt (F)Lio/github/sceneview/camera/CameraPose;
 	public final fun shotAt (F)Lio/github/sceneview/camera/CameraShot;
 }
 
@@ -989,6 +990,122 @@ public final class io/github/sceneview/camera/CameraPath$Companion {
 	public static synthetic fun through$default (Lio/github/sceneview/camera/CameraPath$Companion;Ljava/util/List;FLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPath;
 	public final fun tour (Lio/github/sceneview/camera/CameraShot;FFFZ)Lio/github/sceneview/camera/CameraPath;
 	public static synthetic fun tour$default (Lio/github/sceneview/camera/CameraPath$Companion;Lio/github/sceneview/camera/CameraShot;FFFZILjava/lang/Object;)Lio/github/sceneview/camera/CameraPath;
+}
+
+public final class io/github/sceneview/camera/CameraPathInterpolation : java/lang/Enum {
+	public static final field CatmullRom Lio/github/sceneview/camera/CameraPathInterpolation;
+	public static final field Linear Lio/github/sceneview/camera/CameraPathInterpolation;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/camera/CameraPathInterpolation;
+	public static fun values ()[Lio/github/sceneview/camera/CameraPathInterpolation;
+}
+
+public final class io/github/sceneview/camera/CameraPathPlayer {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/camera/CameraTimeline;Z)V
+	public synthetic fun <init> (Lio/github/sceneview/camera/CameraTimeline;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun advance (F)Lio/github/sceneview/camera/CameraPose;
+	public final fun advanceFrame (J)Lio/github/sceneview/camera/CameraPose;
+	public final fun getDurationSeconds ()F
+	public final fun getLoop ()Z
+	public final fun getPose ()Lio/github/sceneview/camera/CameraPose;
+	public final fun getProgress ()F
+	public final fun getSeconds ()F
+	public final fun getSpeed ()F
+	public final fun getTimeline ()Lio/github/sceneview/camera/CameraTimeline;
+	public final fun isFinished ()Z
+	public final fun isPlaying ()Z
+	public final fun pause ()V
+	public final fun play ()V
+	public final fun restart ()V
+	public final fun seekTo (F)V
+	public final fun setLoop (Z)V
+	public final fun setSpeed (F)V
+	public final fun setTimeline (Lio/github/sceneview/camera/CameraTimeline;)V
+	public final fun toggle ()V
+}
+
+public final class io/github/sceneview/camera/CameraPathPlayerKt {
+	public static final fun rememberCameraPathPlayer (Lio/github/sceneview/camera/CameraTimeline;ZLandroidx/compose/runtime/Composer;II)Lio/github/sceneview/camera/CameraPathPlayer;
+}
+
+public final class io/github/sceneview/camera/CameraPose {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/camera/CameraPose$Companion;
+	public fun <init> ()V
+	public fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;)V
+	public synthetic fun <init> (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun component2 ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun copy (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;)Lio/github/sceneview/camera/CameraPose;
+	public static synthetic fun copy$default (Lio/github/sceneview/camera/CameraPose;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Quaternion;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPose;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getForward ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getPosition ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun getQuaternion ()Ldev/romainguy/kotlin/math/Quaternion;
+	public final fun getRight ()Ldev/romainguy/kotlin/math/Float3;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+	public final fun transform ()Ldev/romainguy/kotlin/math/Mat4;
+}
+
+public final class io/github/sceneview/camera/CameraPose$Companion {
+	public final fun lookingAt (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;)Lio/github/sceneview/camera/CameraPose;
+	public static synthetic fun lookingAt$default (Lio/github/sceneview/camera/CameraPose$Companion;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPose;
+}
+
+public final class io/github/sceneview/camera/CameraPoseKeyframe {
+	public static final field $stable I
+	public fun <init> (Lio/github/sceneview/camera/CameraPose;FLkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lio/github/sceneview/camera/CameraPose;FLkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/sceneview/camera/CameraPose;
+	public final fun component2 ()F
+	public final fun component3 ()Lkotlin/jvm/functions/Function1;
+	public final fun copy (Lio/github/sceneview/camera/CameraPose;FLkotlin/jvm/functions/Function1;)Lio/github/sceneview/camera/CameraPoseKeyframe;
+	public static synthetic fun copy$default (Lio/github/sceneview/camera/CameraPoseKeyframe;Lio/github/sceneview/camera/CameraPose;FLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPoseKeyframe;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getPose ()Lio/github/sceneview/camera/CameraPose;
+	public final fun getSeconds ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/camera/CameraPoseKt {
+	public static final fun applyCameraTimeline (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/camera/CameraTimeline;F)Lio/github/sceneview/camera/CameraPose;
+	public static final fun applyPose (Lio/github/sceneview/node/CameraNode;Lio/github/sceneview/camera/CameraPose;)V
+	public static final fun toPose (Lio/github/sceneview/camera/CameraShot;)Lio/github/sceneview/camera/CameraPose;
+}
+
+public final class io/github/sceneview/camera/CameraPosePath : io/github/sceneview/camera/CameraTimeline {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/camera/CameraPosePath$Companion;
+	public static final field DEFAULT_ORBIT_ELEVATION_DEGREES F
+	public static final field DEFAULT_ORBIT_SECONDS F
+	public static final field ORBIT_KEYFRAMES_PER_TURN I
+	public fun <init> (Ljava/util/List;Lio/github/sceneview/camera/CameraPathInterpolation;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;Z)V
+	public synthetic fun <init> (Ljava/util/List;Lio/github/sceneview/camera/CameraPathInterpolation;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getDurationSeconds ()F
+	public final fun getEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getEnd ()Lio/github/sceneview/camera/CameraPose;
+	public final fun getInterpolation ()Lio/github/sceneview/camera/CameraPathInterpolation;
+	public final fun getKeyframes ()Ljava/util/List;
+	public final fun getLookAt ()Ldev/romainguy/kotlin/math/Float3;
+	public fun getLoop ()Z
+	public final fun getPathEasing ()Lkotlin/jvm/functions/Function1;
+	public final fun getStart ()Lio/github/sceneview/camera/CameraPose;
+	public final fun getUp ()Ldev/romainguy/kotlin/math/Float3;
+	public final fun isFinishedAt (F)Z
+	public fun poseAt (F)Lio/github/sceneview/camera/CameraPose;
+}
+
+public final class io/github/sceneview/camera/CameraPosePath$Companion {
+	public final fun dolly (Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFLkotlin/jvm/functions/Function1;)Lio/github/sceneview/camera/CameraPosePath;
+	public static synthetic fun dolly$default (Lio/github/sceneview/camera/CameraPosePath$Companion;Ldev/romainguy/kotlin/math/Float3;Ldev/romainguy/kotlin/math/Float3;FFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPosePath;
+	public final fun orbit (Lio/github/sceneview/Aabb;DDFFFFFZI)Lio/github/sceneview/camera/CameraPosePath;
+	public static synthetic fun orbit$default (Lio/github/sceneview/camera/CameraPosePath$Companion;Lio/github/sceneview/Aabb;DDFFFFFZIILjava/lang/Object;)Lio/github/sceneview/camera/CameraPosePath;
+	public final fun travelling (Lio/github/sceneview/camera/CameraPose;FFLkotlin/jvm/functions/Function1;)Lio/github/sceneview/camera/CameraPosePath;
+	public static synthetic fun travelling$default (Lio/github/sceneview/camera/CameraPosePath$Companion;Lio/github/sceneview/camera/CameraPose;FFLkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/sceneview/camera/CameraPosePath;
 }
 
 public final class io/github/sceneview/camera/CameraShot {
@@ -1055,6 +1172,12 @@ public final class io/github/sceneview/camera/CameraShotVelocity$Companion {
 	public final fun getZero ()Lio/github/sceneview/camera/CameraShotVelocity;
 }
 
+public abstract interface class io/github/sceneview/camera/CameraTimeline {
+	public abstract fun getDurationSeconds ()F
+	public abstract fun getLoop ()Z
+	public abstract fun poseAt (F)Lio/github/sceneview/camera/CameraPose;
+}
+
 public final class io/github/sceneview/camera/CameraTransition {
 	public static final field $stable I
 	public static final field Companion Lio/github/sceneview/camera/CameraTransition$Companion;
@@ -1117,6 +1240,101 @@ public final class io/github/sceneview/camera/CinematicCameraManipulator$Compani
 
 public final class io/github/sceneview/camera/CinematicCameraManipulatorKt {
 	public static final fun rememberCinematicCameraManipulator (Lio/github/sceneview/camera/CameraAnimator;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/camera/CinematicCameraManipulator;
+}
+
+public abstract interface class io/github/sceneview/capture/CaptureOverlay {
+	public abstract fun draw (Landroid/graphics/Canvas;II)V
+}
+
+public final class io/github/sceneview/capture/PhotoFormat : java/lang/Enum {
+	public static final field JPEG Lio/github/sceneview/capture/PhotoFormat;
+	public static final field PNG Lio/github/sceneview/capture/PhotoFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getExtension ()Ljava/lang/String;
+	public final fun getMimeType ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/capture/PhotoFormat;
+	public static fun values ()[Lio/github/sceneview/capture/PhotoFormat;
+}
+
+public final class io/github/sceneview/capture/SceneRecorder {
+	public static final field $stable I
+	public fun <init> (Landroid/content/Context;)V
+	public fun <init> (Landroid/content/Context;Lio/github/sceneview/utils/SurfaceMirrorer;)V
+	public synthetic fun <init> (Landroid/content/Context;Lio/github/sceneview/utils/SurfaceMirrorer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getElapsedMillis ()J
+	public final fun getLastError ()Ljava/lang/Exception;
+	public final fun getLastRecording ()Lio/github/sceneview/capture/SceneRecording;
+	public final fun getOnRecordingFinished ()Lkotlin/jvm/functions/Function1;
+	public final fun getOverlay ()Lio/github/sceneview/capture/CaptureOverlay;
+	public final fun getSurfaceMirrorer ()Lio/github/sceneview/utils/SurfaceMirrorer;
+	public final fun isRecording ()Z
+	public final fun newCaptureFile (Ljava/lang/String;)Ljava/io/File;
+	public final fun release ()V
+	public final fun savePhoto (Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Ljava/io/File;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun savePhoto$default (Lio/github/sceneview/capture/SceneRecorder;Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setOnRecordingFinished (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOverlay (Lio/github/sceneview/capture/CaptureOverlay;)V
+	public final fun startRecording ()Z
+	public final fun startRecording (Ljava/io/File;)Z
+	public final fun startRecording (Ljava/io/File;Lio/github/sceneview/capture/VideoSettings;)Z
+	public static synthetic fun startRecording$default (Lio/github/sceneview/capture/SceneRecorder;Ljava/io/File;Lio/github/sceneview/capture/VideoSettings;ILjava/lang/Object;)Z
+	public final fun stopRecording ()Lio/github/sceneview/capture/SceneRecording;
+	public final fun takePhoto (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/capture/SceneRecorderKt {
+	public static final fun rememberSceneRecorder (Landroidx/lifecycle/Lifecycle;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/capture/SceneRecorder;
+}
+
+public final class io/github/sceneview/capture/SceneRecording {
+	public static final field $stable I
+	public fun <init> (Ljava/io/File;IIJZZZ)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (Ljava/io/File;IIJZZZ)Lio/github/sceneview/capture/SceneRecording;
+	public static synthetic fun copy$default (Lio/github/sceneview/capture/SceneRecording;Ljava/io/File;IIJZZZILjava/lang/Object;)Lio/github/sceneview/capture/SceneRecording;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMillis ()J
+	public final fun getFile ()Ljava/io/File;
+	public final fun getHasAudio ()Z
+	public final fun getHasOverlay ()Z
+	public final fun getHeight ()I
+	public final fun getReachedMaxDuration ()Z
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/capture/VideoSettings {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (IIIIZJ)V
+	public synthetic fun <init> (IIIIZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun component6 ()J
+	public final fun copy (IIIIZJ)Lio/github/sceneview/capture/VideoSettings;
+	public static synthetic fun copy$default (Lio/github/sceneview/capture/VideoSettings;IIIIZJILjava/lang/Object;)Lio/github/sceneview/capture/VideoSettings;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitRate ()I
+	public final fun getFrameRate ()I
+	public final fun getMaxDurationMillis ()J
+	public final fun getMaxLongEdge ()I
+	public final fun getMaxShortEdge ()I
+	public final fun getRecordAudio ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/collision/Collider {
@@ -2757,6 +2975,7 @@ public final class io/github/sceneview/model/ModelInstanceKt {
 	public static final fun getRenderableInstances (Lcom/google/android/filament/gltfio/FilamentInstance;)Ljava/util/List;
 	public static final fun getRenderableManager (Lcom/google/android/filament/gltfio/FilamentInstance;)Lcom/google/android/filament/RenderableManager;
 	public static final fun getRenderablesPrimitiveCounts (Lcom/google/android/filament/gltfio/FilamentInstance;)Ljava/util/Map;
+	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun isShadowCaster (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun isShadowReceiver (Lcom/google/android/filament/gltfio/FilamentInstance;)Z
 	public static final fun setBlendOrder (Lcom/google/android/filament/gltfio/FilamentInstance;I)V
@@ -2777,6 +2996,7 @@ public final class io/github/sceneview/model/ModelKt {
 	public static final fun getCollisionShape (Lcom/google/android/filament/gltfio/FilamentAsset;)Lio/github/sceneview/collision/Box;
 	public static final fun getRenderableByName (Lcom/google/android/filament/gltfio/FilamentAsset;Ljava/lang/String;)Ljava/lang/Integer;
 	public static final fun getRenderableNames (Lcom/google/android/filament/gltfio/FilamentAsset;)Ljava/util/List;
+	public static final fun isDestroyed (Lcom/google/android/filament/gltfio/FilamentAsset;)Z
 }
 
 public class io/github/sceneview/node/BillboardNode : io/github/sceneview/node/ImageNode {
@@ -3090,6 +3310,7 @@ public class io/github/sceneview/node/ModelNode : io/github/sceneview/node/Node 
 	public final fun getSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getSkinCount ()I
 	public final fun getSkinNames ()Ljava/util/List;
+	public final fun isModelDestroyed ()Z
 	public final fun isShadowCaster ()Z
 	public final fun isShadowReceiver ()Z
 	public fun onFrame (J)V
@@ -3187,6 +3408,7 @@ public final class io/github/sceneview/node/ModelNode$PlayingAnimation {
 public final class io/github/sceneview/node/ModelNode$RenderableNode : io/github/sceneview/node/RenderableNode, io/github/sceneview/node/ModelNode$ChildNode {
 	public fun getAxisAlignedBoundingBox ()Lcom/google/android/filament/Box;
 	public fun getExtras ()Ljava/lang/String;
+	public fun getMaterialInstanceAt (I)Lcom/google/android/filament/MaterialInstance;
 	public fun getModel ()Lcom/google/android/filament/gltfio/FilamentAsset;
 	public fun getModelInstance ()Lcom/google/android/filament/gltfio/FilamentInstance;
 	public fun getMorphTargetNames ()Ljava/util/List;
@@ -3823,6 +4045,101 @@ public final class io/github/sceneview/node/ViewNode$WindowManager {
 	public final fun pause ()V
 	public final fun removeView (Landroid/view/View;)V
 	public final fun resume (Landroid/view/View;)V
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshot {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshot$Companion;
+	public static final field DEFAULT_MAX_CACHE_BYTES I
+	public fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;ILio/github/sceneview/loaders/ModelLoader;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;ILio/github/sceneview/loaders/ModelLoader;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cached (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;)Landroid/graphics/Bitmap;
+	public static synthetic fun cached$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;ILjava/lang/Object;)Landroid/graphics/Bitmap;
+	public final fun clearCache ()V
+	public final fun destroy ()V
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getMaxCacheBytes ()I
+	public final fun snapshot (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun snapshot$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshot$Companion {
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotKt {
+	public static final fun rememberModelSnapshot (Lcom/google/android/filament/Engine;ILio/github/sceneview/loaders/ModelLoader;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/snapshot/ModelSnapshot;
+	public static final fun rememberModelThumbnail-942rkJo (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;FLio/github/sceneview/snapshot/ModelSnapshotOptions;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/snapshot/ModelThumbnailState;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshotOptions$Companion;
+	public static final field DEFAULT_FOCAL_LENGTH F
+	public static final field DEFAULT_PADDING F
+	public static final field DEFAULT_PITCH_DEGREES F
+	public static final field DEFAULT_YAW_DEGREES F
+	public fun <init> ()V
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelSnapshotOptions;FFFFILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocalLength ()F
+	public final fun getPadding ()F
+	public final fun getPitchDegrees ()F
+	public final fun getYawDegrees ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions$Companion {
+}
+
+public abstract interface class io/github/sceneview/snapshot/ModelThumbnailState {
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$DefaultImpls {
+	public static fun bitmapOrNull (Lio/github/sceneview/snapshot/ModelThumbnailState;)Landroidx/compose/ui/graphics/ImageBitmap;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Failed : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Loading : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/snapshot/ModelThumbnailState$Loading;
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Ready : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public fun <init> (Landroidx/compose/ui/graphics/ImageBitmap;)V
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun component1 ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun copy (Landroidx/compose/ui/graphics/ImageBitmap;)Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;Landroidx/compose/ui/graphics/ImageBitmap;ILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitmap ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/splat/SplatBuffers {

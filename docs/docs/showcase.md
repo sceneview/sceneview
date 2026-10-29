@@ -79,8 +79,7 @@ That's a production-quality 3D viewer. Five lines. Same Kotlin you write every d
 
 ### Compose-native — not a wrapper
 
-60% of the top 1,000 Play Store apps use Jetpack Compose. SceneView's scene graph **is** the
-Compose tree. The Compose runtime owns it.
+SceneView's scene graph **is** the Compose tree. The Compose runtime owns it.
 
 - `if/else` controls whether nodes exist
 - `State<T>` drives animations, positions, visibility
