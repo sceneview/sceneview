@@ -2283,14 +2283,17 @@ private struct SceneViewRepresentation: View {
         // `contentRoot` itself is skipped (it is a transform-only node).
         var stack: [Entity] = Array(entities.contentRoot.children)
         while let entity = stack.popLast() {
+            // A contact-shadow quad is a decal wider than the model it grounds:
+            // framing it would pull the camera back for nothing.
+            if entity.components.has(ContactShadowComponent.self) { continue }
             stack.append(contentsOf: entity.children)
             // `relativeTo: entities.root` gives every box in the stable
             // world frame so the union is meaningful AND immune to the
-            // `AnchorEntity` re-pin feedback described above. `visualBounds`
-            // already includes the entity's own descendants, but unioning
-            // per-entity is harmless (idempotent) and lets a child whose
-            // parent reports empty still contribute.
-            accumulator.add(entity.visualBounds(relativeTo: entities.root))
+            // `AnchorEntity` re-pin feedback described above. Non-recursive:
+            // the walk already visits every descendant (same union), and a
+            // recursive query would fold a skipped shadow back in through
+            // its parent.
+            accumulator.add(entity.visualBounds(recursive: false, relativeTo: entities.root))
         }
         return accumulator.result
     }

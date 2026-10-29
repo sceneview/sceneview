@@ -736,6 +736,9 @@ struct ModelViewerDemo: View {
         _ = node.centerOrigin()
         // The Toy Car's USDZ lost its velvet sheen and fabric tint.
         if let model { ViewerMaterialRepairs.apply(to: node.entity, asset: model.assetName) }
+        // Grounded like Android's showroom floor: a contact shadow at the
+        // model's lowest point. Last, so the bounds read above leave it out.
+        node.withContactShadow()
         playback = nil
         posterModel = nil
         loadedNode = node

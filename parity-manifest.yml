@@ -978,9 +978,10 @@ demos:
     parity: diverges
     evidence: >-
       Same room, boxes, TV, camera eye, presets, labels, strings, dock and
-      reset. The pool is a procedural quad (opacity mask baked from
-      contact_shadow.mat's falloff), not GroundingShadowComponent, which has
-      no intensity and cannot fall on a wall. Labels fade smoothly instead of
+      reset. The pool is the SDK's ContactShadowNode (Android
+      ContactShadowNode parity: opacity mask baked from contact_shadow.mat's
+      falloff), not GroundingShadowComponent, which has no intensity and
+      cannot fall on a wall. Labels fade smoothly instead of
       Android's show/hide; text is 3D geometry on a dark scrim. The camera
       aims lower (target y 0.4, Android 0.75) so the grounded box's pool
       clears the bottom option strip in portrait; the key light is 3 000 lux
