@@ -1,6 +1,6 @@
 ---
 title: SceneView — 3D & AR SDK for Android, iOS, Web, and more
-description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 9 platforms supported."
+description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences with Jetpack Compose, SwiftUI, and Filament.js. 10 platforms supported."
 ---
 
 <div class="sv-hero" markdown>
@@ -36,7 +36,7 @@ description: "Open-source 3D & AR SDK. Build immersive 3D and AR experiences wit
 </div>
 
 <div class="sv-stat">
-<span class="sv-stat-number">9</span>
+<span class="sv-stat-number">10</span>
 <span class="sv-stat-label">Platforms</span>
 </div>
 
