@@ -96,8 +96,17 @@ final class SceneViewDemoUITests: XCTestCase {
             let name = String(format: "%02d-tab-%@", i + 2, slug(button.label))
             button.tap()
             _ = app.wait(for: .runningForeground, timeout: 3)
-            snapshot(app, name)
+            Thread.sleep(forTimeInterval: 1.5)
+            capture(app, name)
         }
+
+        // The support card sits right under About's identity block, as on
+        // Android: its tips are In-App Purchases, kept reachable for good.
+        let about = tabBar.buttons["About"]
+        XCTAssertTrue(about.exists, "the About tab is missing")
+        about.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["about-support"].waitForExistence(timeout: 10),
+                      "the About tab has no Support SceneView card")
     }
 
     /// A representative subset of WORKING 3D demos, each launched headlessly
@@ -475,13 +484,11 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(chip.exists && !chip.isSelected, "\"Show all\" did not clear the What's new chip")
     }
 
-    /// Android's "since you last tested" flow and featured pager. Launched as
-    /// an install that last acknowledged 4.40.0 (the argument domain stands in
-    /// for the stored marker): the header's sparkle carries the badge and opens
-    /// the since sheet; "Got it" clears the badge. Then the pager swipes from
-    /// the live-stage window to the What's new page, which opens the sheet of
-    /// new demos.
-    func testHomePagerAndWhatsNewSinceSheet() {
+    /// Android's "since you last tested" flow. Launched as an install that last
+    /// acknowledged 4.40.0 (the argument domain stands in for the stored
+    /// marker): the header's sparkle carries the badge and opens the since
+    /// sheet; "Got it" clears the badge.
+    func testWhatsNewSinceSheet() {
         let app = Self.makeApp()
         app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
         app.launchArguments += Self.freshnessBuild
@@ -508,22 +515,6 @@ final class SceneViewDemoUITests: XCTestCase {
         gotIt.tap()
         XCTAssertTrue(waitForDisappearance(of: title, timeout: 6), "\"Got it\" did not close the sheet")
         XCTAssertTrue(waitForDisappearance(of: badge, timeout: 4), "\"Got it\" left the badge on")
-
-        // The pager: the window first, the What's new page one swipe away.
-        let pager = app.descendants(matching: .any)["home-pager"].firstMatch
-        XCTAssertTrue(pager.waitForExistence(timeout: 10), "the featured pager is missing")
-        let page = app.descendants(matching: .any)["home-pager-whats-new"].firstMatch
-        XCTAssertFalse(page.exists && page.isHittable, "the What's new page is on screen before a swipe")
-        pager.swipeLeft()
-        XCTAssertTrue(page.waitForExistence(timeout: 5), "the pager has no What's new page")
-        Thread.sleep(forTimeInterval: 1.5)
-        XCTAssertTrue(page.isHittable, "a swipe did not bring the What's new page")
-        capture(app, "since-03-pager-whats-new")
-        page.tap()
-        let sheet = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier IN %@", ["whats-new-sheet", "whats-new-title"]))
-            .firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the What's new page did not open the sheet")
     }
 
     /// Swipes the page up until `element` can take a tap.

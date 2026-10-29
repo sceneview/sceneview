@@ -570,11 +570,8 @@ enum SceneViewTokens {
         /// hero pill's label, and the space before it.
         static let heroPillIconSize: CGFloat = 18
         static let heroPillIconGap: CGFloat = 8
-        /// Android's `FeaturedPager` dots, the What's new badge dot and the
-        /// since sheet's category bullets — 6 pt.
+        /// The What's new badge dot and the since sheet's category bullets — 6 pt.
         static let indicatorDot: CGFloat = 6
-        /// Android's `whatsNewGlyphSize`: the sparkle on the pager's What's new page.
-        static let featuredGlyph: CGFloat = 28
         static let chipRowTopGap: CGFloat = 28
         static let chipRowHeight: CGFloat = 40
         static let chipGap: CGFloat = 8

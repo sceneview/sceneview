@@ -186,17 +186,12 @@ struct ShowcaseTab: View {
                         // While a query is active the hero steps aside so the results
                         // sit right under the header (Android parity).
                         if !searching, let heroId = top.hero.first {
-                            // Android's featured pager: the live-stage window,
-                            // then the What's new page while a demo is fresh.
-                            HomeFeaturedPager(height: heroHeight, freshCount: freshCount,
-                                              onWhatsNew: openWhatsNew) {
-                                HomeHero(height: heroHeight) {
-                                    open(sceneId: heroId)
-                                }
-                                #if os(iOS)
-                                .matchedTransitionSource(id: heroId, in: cardNamespace)
-                                #endif
+                            HomeHero(height: heroHeight) {
+                                open(sceneId: heroId)
                             }
+                            #if os(iOS)
+                            .matchedTransitionSource(id: heroId, in: cardNamespace)
+                            #endif
                             .staggeredReveal(position: 0, revealed: catalogueRevealed)
                         }
                     }

@@ -10,8 +10,8 @@ import SceneViewSwift
 /// then Android's grouped rows: **Learn** (Documentation, 3D Playground,
 /// source), **App** (HD pack, release notes), the "More apps built with
 /// SceneView" group, privacy, **Legal** (licence, credits), and a footer with
-/// attribution. No tips or donation card on Apple platforms (App Review
-/// guideline 3.1.1).
+/// attribution. The support card sits right under the identity block, as on
+/// Android (see "Support" below).
 struct AboutTab: View {
     private static let version: String = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -21,12 +21,15 @@ struct AboutTab: View {
     // Sketchfab model in `SampleAssets`); #3214 — bundled assets too, from
     // the generated `BundledCredits.json`.
     @State private var showCreditsSheet = false
+    /// "Support SceneView" — the tips sheet, opened from the support card.
+    @State private var showSupportSheet = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: SceneViewTokens.Space.xl) {
                     identity
+                    supportCard
                     learnGroup
                     appGroup
                     #if os(iOS)
@@ -52,6 +55,9 @@ struct AboutTab: View {
             .navigationTitle("About")
             .sheet(isPresented: $showCreditsSheet) {
                 CreditsSheet()
+            }
+            .sheet(isPresented: $showSupportSheet, onDismiss: { SupportStore.shared.sheetDismissed() }) {
+                SupportSheet(presentation: .about) { showSupportSheet = false }
             }
         }
     }
@@ -143,6 +149,47 @@ struct AboutTab: View {
                      destination: .action { showCreditsSheet = true })
         }
         .accessibilityIdentifier("about-group-legal")
+    }
+
+    // MARK: - Support
+
+    // App Review rejected 4.48.0 for a donation *link* (guideline 3.1.1:
+    // outside the US storefront a tip must be an In-App Purchase). So on Apple
+    // platforms the card opens `SupportSheet`, three consumable tips through
+    // StoreKit, and never leaves the app. Same title and place as Android's
+    // `AboutSupportCard`: the only tinted surface of the screen.
+
+    private var supportCard: some View {
+        Button { showSupportSheet = true } label: {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                HStack(spacing: SceneViewTokens.Space.sm) {
+                    Image(systemName: "heart")
+                        .font(.system(size: 18, weight: .semibold))
+                        .accessibilityHidden(true)
+                    Text("Support SceneView")
+                        .font(SceneViewTokens.TypeScale.card)
+                    Spacer(minLength: SceneViewTokens.Space.xs)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .opacity(0.7)
+                        .accessibilityHidden(true)
+                }
+                Text("Open source, maintained by volunteers, funded by the people who use it.")
+                    .font(SceneViewTokens.TypeScale.body)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
+            .padding(SceneViewTokens.Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SceneViewTokens.HomeColor.secondaryContainer,
+                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("about-support")
     }
 
     // MARK: - Footer
