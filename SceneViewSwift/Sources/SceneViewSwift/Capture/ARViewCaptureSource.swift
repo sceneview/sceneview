@@ -170,8 +170,8 @@ final class FrameTap: @unchecked Sendable {
             : CGColorSpace(name: CGColorSpace.sRGB)
         guard let sourceSpace,
               let image = CIImage(mtlTexture: source, options: [.colorSpace: sourceSpace]) else { return nil }
-        // One scale for both edges, centred: a view turned mid-recording (portrait to
-        // landscape) is letterboxed in the size fixed at the start instead of stretched.
+        // A view turned mid-recording (portrait to landscape) is letterboxed in the size
+        // fixed at the start instead of stretched; the even-edge rounding is filled.
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         let fitted = image.transformed(by: Self.aspectFit(image.extent.size, in: bounds.size))
             .composited(over: CIImage(color: .black).cropped(to: bounds))
@@ -185,10 +185,15 @@ final class FrameTap: @unchecked Sendable {
         return cvTexture
     }
 
-    /// Scales `size` by one factor to fit inside `box`, centred.
+    /// Fits `size` inside `box`. Aspect ratios less than 1 % apart (the video size rounded
+    /// to even edges, 1179 x 2556 into 884 x 1920) fill the box, so no thin dark bar runs
+    /// along an edge; a real aspect change (a view turned mid-recording) is scaled by one
+    /// factor, centred, letterboxed.
     static func aspectFit(_ size: CGSize, in box: CGSize) -> CGAffineTransform {
-        guard size.width > 0, size.height > 0 else { return .identity }
-        let scale = min(box.width / size.width, box.height / size.height)
+        guard size.width > 0, size.height > 0, box.width > 0, box.height > 0 else { return .identity }
+        let scaleX = box.width / size.width, scaleY = box.height / size.height
+        if abs(scaleX / scaleY - 1) < 0.01 { return CGAffineTransform(scaleX: scaleX, y: scaleY) }
+        let scale = min(scaleX, scaleY)
         return CGAffineTransform(
             translationX: (box.width - size.width * scale) / 2,
             y: (box.height - size.height * scale) / 2

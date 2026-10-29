@@ -27,7 +27,9 @@ public struct VideoSettings: Sendable, Equatable {
     /// is recorded silent and ``SceneRecording/hasAudio`` is `false`. Needs
     /// `NSMicrophoneUsageDescription` in the app's Info.plist. The app's audio session is
     /// left as it is when it can already record; otherwise it is switched to `.playAndRecord`,
-    /// mixing with other audio, for the length of the recording, then put back.
+    /// mixing with other audio, for the length of the recording, then deactivated (other
+    /// audio resumes) and put back, unless the app changed it in the meantime. If the switch
+    /// fails, the video is silent.
     /// Default `false`.
     public var recordAudio: Bool
     /// Stops the recording by itself after this many seconds, with

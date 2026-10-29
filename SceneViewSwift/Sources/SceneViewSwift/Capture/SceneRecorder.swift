@@ -305,6 +305,12 @@ public final class SceneRecorder: ObservableObject {
         isAttached = true
     }
 
+    /// Whether captures use `source` now. A scene the recorder left for another one checks
+    /// it to take the recorder back.
+    func isUsing(_ source: any SceneCaptureSource) -> Bool {
+        self.source === source
+    }
+
     /// Forgets `source` if it is the attached one; a recording on it is finished.
     func detach(_ source: any SceneCaptureSource) {
         if let active, active.source === source { finishInBackground(keepAppAlive: false) }

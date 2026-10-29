@@ -46,6 +46,34 @@ final class FrameTapTests: XCTestCase {
         assertBlack(pixel(buffer, x: 16, y: 56), "bar below")
     }
 
+    func testEvenEdgeRoundingFillsInsteadOfLeavingThinBars() throws {
+        // A 1179x2556 portrait view records at 884x1920: 0.2 % of aspect difference. A strict
+        // fit would leave a dark bar about 1.75 px thick above and below.
+        let g = Self.grey
+        let buffer = try copy(format: .bgra8Unorm, bytesPerPixel: 4, width: 1179, height: 2556,
+                              sinkWidth: 884, sinkHeight: 1920) { _, _ in [g, g, g, 255] }
+        assertGrey(pixel(buffer, x: 442, y: 0), "top row")
+        assertGrey(pixel(buffer, x: 442, y: 1919), "bottom row")
+        assertGrey(pixel(buffer, x: 0, y: 960), "left column")
+        assertGrey(pixel(buffer, x: 883, y: 960), "right column")
+    }
+
+    func testAspectFitFillsUnderOnePercentAndLetterboxesBeyond() {
+        let fill = CGRect(x: 0, y: 0, width: 1179, height: 2556)
+            .applying(FrameTap.aspectFit(CGSize(width: 1179, height: 2556), in: CGSize(width: 884, height: 1920)))
+        XCTAssertEqual(fill.minX, 0, accuracy: 0.001)
+        XCTAssertEqual(fill.minY, 0, accuracy: 0.001)
+        XCTAssertEqual(fill.width, 884, accuracy: 0.001)
+        XCTAssertEqual(fill.height, 1920, accuracy: 0.001)
+
+        // 2 % apart is a real aspect change: one scale, centred.
+        let fit = CGRect(x: 0, y: 0, width: 102, height: 200)
+            .applying(FrameTap.aspectFit(CGSize(width: 102, height: 200), in: CGSize(width: 100, height: 200)))
+        XCTAssertEqual(fit.width / fit.height, 102.0 / 200.0, accuracy: 0.0001)
+        XCTAssertEqual(fit.width, 100, accuracy: 0.001)
+        XCTAssertGreaterThan(fit.minY, 0)
+    }
+
     func testAspectFitCentresWithOneScale() {
         let transform = FrameTap.aspectFit(CGSize(width: 200, height: 100), in: CGSize(width: 100, height: 200))
         let rect = CGRect(x: 0, y: 0, width: 200, height: 100).applying(transform)

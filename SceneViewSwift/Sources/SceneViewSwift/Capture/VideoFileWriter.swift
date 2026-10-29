@@ -25,7 +25,12 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
     let url: URL
     let size: VideoSize
     let hasOverlay: Bool
-    private(set) var hasAudio = false
+    /// Whether a microphone sample made it into the file.
+    var hasAudio: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return wroteAudio
+    }
 
     private let overlay: CaptureOverlay?
     private let frameInterval: CFTimeInterval
@@ -47,6 +52,7 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
     private var lastReserved: CFTimeInterval?
     private var firstReserved: CFTimeInterval?
     private var inFlight = 0
+    private var wroteAudio = false
 
     /// Frames reserved but not yet appended; more are skipped so a slow encoder never piles
     /// up buffers.
@@ -111,7 +117,6 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
                 writer.add(input)
                 audioInput = input
                 self.microphone = microphone
-                hasAudio = true
             }
         }
 
@@ -189,8 +194,10 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
     private func appendAudio(_ sample: CMSampleBuffer) {
         guard writer.status == .writing, let audioInput, let sessionStart,
               CMSampleBufferGetPresentationTimeStamp(sample) >= sessionStart,
-              audioInput.isReadyForMoreMediaData else { return }
-        audioInput.append(sample)
+              audioInput.isReadyForMoreMediaData, audioInput.append(sample) else { return }
+        lock.lock()
+        wroteAudio = true
+        lock.unlock()
     }
 
     // MARK: Finish
@@ -242,18 +249,19 @@ final class VideoFileWriter: VideoFrameSink, @unchecked Sendable {
 
 /// The microphone, delivered as sample buffers on the writer's queue.
 ///
-/// The capture session leaves the app's audio session alone (no automatic configuration):
-/// when its category cannot record, it is switched to `.playAndRecord`, mixing with other
-/// audio, for the length of the recording, then put back. Start and stop run in order on
-/// one serial queue, off the caller's thread since `startRunning` blocks.
+/// The capture session leaves the app's audio session alone (no automatic configuration);
+/// ``MicrophoneAudioSession`` makes it recordable for the length of the recording. Start and
+/// stop run in order on one serial queue shared by every recording, off the caller's thread
+/// since `startRunning` blocks, so one recording's stop and the next one's start never
+/// interleave.
 private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
+    private static let control = DispatchQueue(label: "io.github.sceneview.capture.microphone")
+
     private let session = AVCaptureSession()
     private let output = AVCaptureAudioDataOutput()
     private let onSample: (CMSampleBuffer) -> Void
-    private let control = DispatchQueue(label: "io.github.sceneview.capture.microphone")
-    /// The app's audio session setup before the recording switched it, on `control` only.
-    private var previousAudio: (category: AVAudioSession.Category, mode: AVAudioSession.Mode,
-                                options: AVAudioSession.CategoryOptions)?
+    /// Only touched on `control`.
+    private let audio = MicrophoneAudioSession(AVAudioSession.sharedInstance())
 
     init?(queue: DispatchQueue, onSample: @escaping (CMSampleBuffer) -> Void) {
         self.onSample = onSample
@@ -273,37 +281,95 @@ private final class MicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleB
     }
 
     func start() {
-        control.async { [self] in
-            let audio = AVAudioSession.sharedInstance()
-            if audio.category != .playAndRecord, audio.category != .record {
-                let previous = (audio.category, audio.mode, audio.categoryOptions)
-                do {
-                    try audio.setCategory(.playAndRecord, mode: .default,
-                                          options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
-                    previousAudio = previous
-                } catch {
-                    // The session keeps its category; the track then stays silent.
-                }
-            }
-            try? audio.setActive(true)
+        Self.control.async { [self] in
+            // An audio session that cannot record leaves the track silent.
+            guard audio.begin() else { return }
             session.startRunning()
         }
     }
 
     func stop() {
-        control.async { [self] in
+        Self.control.async { [self] in
             session.stopRunning()
-            if let previousAudio {
-                try? AVAudioSession.sharedInstance().setCategory(
-                    previousAudio.category, mode: previousAudio.mode, options: previousAudio.options
-                )
-                self.previousAudio = nil
-            }
+            audio.end()
         }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         onSample(sampleBuffer)
+    }
+}
+
+/// The calls ``MicrophoneAudioSession`` makes on the app's audio session.
+protocol AudioSessionControlling: AnyObject {
+    var category: AVAudioSession.Category { get }
+    var mode: AVAudioSession.Mode { get }
+    var categoryOptions: AVAudioSession.CategoryOptions { get }
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode,
+                     options: AVAudioSession.CategoryOptions) throws
+    func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
+}
+
+extension AVAudioSession: AudioSessionControlling {}
+
+/// Makes the app's audio session recordable for one recording, then hands it back.
+///
+/// A category that already records (`.playAndRecord`, `.record`) is the app's own setup: it
+/// is activated and otherwise left alone. Any other category is switched to
+/// `.playAndRecord`, mixing with other audio, and activated; if the switch fails nothing is
+/// activated and the recording stays silent. At the end, a switched session is deactivated
+/// (other apps' audio is told it may resume) and its category put back, but only while it
+/// is still exactly the setup the recorder made: a category the app changed in the
+/// meantime (a voice chat, a switch to `.playback`) is the app's and is kept, active.
+final class MicrophoneAudioSession {
+    typealias Setup = (category: AVAudioSession.Category, mode: AVAudioSession.Mode,
+                       options: AVAudioSession.CategoryOptions)
+
+    static let recordingOptions: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP]
+
+    private let session: AudioSessionControlling
+    /// The app's setup before the switch, and the setup the switch left, while switched.
+    private var switched: (previous: Setup, applied: Setup)?
+    private var activated = false
+
+    init(_ session: AudioSessionControlling) {
+        self.session = session
+    }
+
+    /// Readies the session for the microphone. `false` when it cannot record.
+    func begin() -> Bool {
+        if session.category != .playAndRecord, session.category != .record {
+            let previous = current
+            do {
+                try session.setCategory(.playAndRecord, mode: .default, options: Self.recordingOptions)
+            } catch {
+                return false
+            }
+            // As read back: the system may normalise the options it was given.
+            switched = (previous, current)
+        }
+        activated = (try? session.setActive(true, options: [])) != nil
+        return true
+    }
+
+    /// Hands the session back. Call after the capture session stopped running.
+    func end() {
+        defer {
+            self.switched = nil
+            activated = false
+        }
+        guard let switched, Self.same(current, switched.applied) else { return }
+        if activated { try? session.setActive(false, options: .notifyOthersOnDeactivation) }
+        try? session.setCategory(switched.previous.category, mode: switched.previous.mode,
+                                 options: switched.previous.options)
+    }
+
+    private var current: Setup {
+        (session.category, session.mode, session.categoryOptions)
+    }
+
+    private static func same(_ a: Setup, _ b: Setup) -> Bool {
+        a.category == b.category && a.mode == b.mode && a.options == b.options
     }
 }
 #endif

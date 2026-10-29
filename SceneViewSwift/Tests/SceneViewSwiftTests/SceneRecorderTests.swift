@@ -1,6 +1,7 @@
 #if os(iOS)
 import AVFoundation
 import RealityKit
+import SwiftUI
 import UIKit
 import XCTest
 @testable import SceneViewSwift
@@ -11,6 +12,8 @@ import XCTest
 final class SceneRecorderTests: XCTestCase {
 
     private var directory: URL!
+    /// Windows kept alive until the test ends.
+    private var retained: [UIWindow] = []
 
     override func setUp() async throws {
         directory = FileManager.default.temporaryDirectory
@@ -20,6 +23,7 @@ final class SceneRecorderTests: XCTestCase {
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: directory)
+        retained.removeAll()
     }
 
     private func file(_ name: String) -> URL { directory.appendingPathComponent(name) }
@@ -368,6 +372,78 @@ final class SceneRecorderTests: XCTestCase {
         XCTAssertNotNil(arView.renderCallbacks.postProcess, "another owner's callback is put back")
     }
 
+    func testARecorderSharedByTwoARSceneViewsGoesBackToTheFirst() throws {
+        let recorder = SceneRecorder()
+        let arViewA = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        let arViewB = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        let sceneA = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        let sceneB = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+
+        sceneA.syncRecorder(recorder, on: arViewA)
+        sceneB.syncRecorder(recorder, on: arViewB)
+        XCTAssertTrue(recorder.isUsing(try XCTUnwrap(sceneB.captureSource)), "B took it")
+
+        sceneA.syncRecorder(recorder, on: arViewA)
+        let sourceA = try XCTUnwrap(sceneA.captureSource)
+        XCTAssertTrue(sourceA.arView === arViewA)
+        XCTAssertTrue(recorder.isUsing(sourceA), "A's next update takes it back")
+    }
+
+    func testARecorderSharedByTwoSceneViewsGoesBackToTheFirst() async throws {
+        let recorder = SceneRecorder()
+        let (_, markerA, _, _) = markedScene(recorder)
+        await waitUntil { uses(recorder, markerA) }
+        let (_, markerB, _, _) = markedScene(recorder)
+        await waitUntil { uses(recorder, markerB) }
+        XCTAssertTrue(uses(recorder, markerB), "B took it")
+
+        markerA.scheduleCheck()  // what SwiftUI's next update of A does
+        await waitUntil { uses(recorder, markerA) }
+        XCTAssertTrue(uses(recorder, markerA), "A's next update takes it back")
+    }
+
+    func testASceneViewDetachesItsRecorderWhenItLeavesTheWindow() async throws {
+        let recorder = SceneRecorder()
+        let (window, marker, container, arView) = markedScene(recorder)
+        await waitUntil { recorder.isAttached }
+        XCTAssertTrue(marker.source?.arView === arView, "paired with the ARView behind it")
+        XCTAssertTrue(recorder.startRecording(to: file("marker.mp4")))
+
+        container.removeFromSuperview()
+        XCTAssertFalse(recorder.isAttached, "leaving the window detaches the recorder")
+        XCTAssertNil(marker.source)
+        await waitUntil { !recorder.isRecording }
+        XCTAssertFalse(recorder.isRecording, "and finishes its recording")
+
+        window.addSubview(container)
+        await waitUntil { recorder.isAttached }
+        XCTAssertTrue(recorder.isAttached, "coming back attaches it again")
+    }
+
+    func testAddingOrRemovingTheRecorderKeepsTheSameScene() async throws {
+        let holder = RecorderHolder()
+        let builds = Counter()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 400))
+        window.rootViewController = UIHostingController(rootView: RecordedScene(holder: holder, builds: builds))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        await waitUntil { Self.arView(in: window) != nil && builds.count > 0 }
+        guard let arView = Self.arView(in: window), builds.count > 0 else {
+            throw XCTSkip("The RealityView does not render in this test host")
+        }
+
+        let recorder = SceneRecorder()
+        holder.recorder = recorder
+        await waitUntil { recorder.isAttached }
+        XCTAssertTrue(recorder.isAttached)
+        holder.recorder = nil
+        await waitUntil { !recorder.isAttached }
+        XCTAssertFalse(recorder.isAttached)
+
+        XCTAssertTrue(Self.arView(in: window) === arView, "same RealityView")
+        XCTAssertEqual(builds.count, 1, "the scene content was built once")
+    }
+
     func testSceneViewModifierStoresTheRecorder() {
         let recorder = SceneRecorder()
         let view = SceneView { _ in }.sceneRecorder(recorder)
@@ -376,6 +452,33 @@ final class SceneRecorderTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// A window holding a non-AR `ARView` with a recorder marker of the same rectangle over
+    /// it, as `SceneView` lays them out.
+    private func markedScene(_ recorder: SceneRecorder)
+        -> (UIWindow, SceneRecorderAnchor.Marker, UIView, ARView) {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
+        let container = UIView(frame: window.bounds)
+        window.addSubview(container)
+        let arView = ARView(frame: container.bounds, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        container.addSubview(arView)
+        let marker = SceneRecorderAnchor.Marker(frame: container.bounds)
+        container.addSubview(marker)
+        marker.recorder = recorder
+        retained.append(window)
+        return (window, marker, container, arView)
+    }
+
+    private func uses(_ recorder: SceneRecorder, _ marker: SceneRecorderAnchor.Marker) -> Bool {
+        guard let source = marker.source else { return false }
+        return recorder.isUsing(source)
+    }
+
+    private static func arView(in view: UIView) -> ARView? {
+        if let arView = view as? ARView { return arView }
+        for sub in view.subviews { if let found = arView(in: sub) { return found } }
+        return nil
+    }
 
     private func pixel(_ image: CGImage, x: Int, y: Int) -> (red: UInt8, green: UInt8, blue: UInt8) {
         var data = [UInt8](repeating: 0, count: 4)
@@ -404,6 +507,22 @@ private final class Counter: @unchecked Sendable {
 
     var count: Int { lock.lock(); defer { lock.unlock() }; return calls }
     var lastSize: CGSize { lock.lock(); defer { lock.unlock() }; return size }
+}
+
+@MainActor
+private final class RecorderHolder: ObservableObject {
+    @Published var recorder: SceneRecorder?
+}
+
+/// A `SceneView` whose recorder comes and goes, counting how often its content is built.
+private struct RecordedScene: View {
+    @ObservedObject var holder: RecorderHolder
+    let builds: Counter
+
+    var body: some View {
+        SceneView { _ in builds.increment(.zero) }
+            .sceneRecorder(holder.recorder)
+    }
 }
 
 private final class NullSink: VideoFrameSink, @unchecked Sendable {
