@@ -3,6 +3,7 @@ import ARKit
 import Combine
 import RealityKit
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// Automatic placement phases shared with Android. Permission and asset errors belong to the host.
 public enum ARPlacementPhase: String, Sendable {
@@ -168,6 +169,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private var activeGestures: Set<ObjectIdentifier> = []
     private var grabOffset = SIMD3<Float>.zero
     private(set) var twistBaseline = simd_quatf(angle: 0, axis: [0, 1, 0])
+    /// The user's own twist since the placement, in radians about the surface normal (ARMV
+    /// `twist`): a recenter faces the user again and keeps this on top. Internal for tests.
+    var userTwist: Float = 0
+    private var userTwistAtTwistBegan: Float = 0
     private var lastTimestamp: TimeInterval?
     private var visibility: Float = 0
     private var visibilityTarget: Float = 0
@@ -300,6 +305,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         cancelGestures()
         removeAnchor()
         pivot.transform = .identity
+        userTwist = 0
         scaleDisplay.reset()
         publishScale()
         visibility = 0
@@ -330,6 +336,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         model = nil
         selectedAssetReady = false
         pivot = Entity()
+        userTwist = 0
         lifecycle.dismiss()
         lastTimestamp = nil
         result = nil
@@ -395,10 +402,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
         tap.require(toFail: doubleTap)
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(pan(_:)))
+        let pan = ARTimedPanGestureRecognizer(target: self, action: #selector(pan(_:)))
         pan.maximumNumberOfTouches = 1
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinch(_:)))
-        let twist = UIRotationGestureRecognizer(target: self, action: #selector(twist(_:)))
+        let twist = ARTimedRotationGestureRecognizer(target: self, action: #selector(twist(_:)))
         recognizers = [tap, doubleTap, pan, pinch, twist]
         for recognizer in recognizers {
             recognizer.delegate = self
@@ -626,13 +633,18 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         publishPhase()
     }
     private func end(_ recognizer: UIGestureRecognizer) {
-        activeGestures.remove(ObjectIdentifier(recognizer))
-        if activeGestures.isEmpty {
-            discardPendingMove()
-            if lifecycle.phase == .adjusting { lifecycle.phase = .placed }
-            invalidMovement = false
-            publishPhase()
-        }
+        guard Self.endGesture(ObjectIdentifier(recognizer), in: &activeGestures) else { return }
+        discardPendingMove()
+        if lifecycle.phase == .adjusting { lifecycle.phase = .placed }
+        invalidMovement = false
+        publishPhase()
+    }
+    /// Ends `gesture`: `true` when it was the last one running, so the manipulation settles.
+    /// A gesture no longer in `active` — cut short by ``cancelGestures()``, whose `.cancelled`
+    /// arrives afterwards — settles nothing: it must not discard a move ``recenter()`` just
+    /// started onto a plane whose anchor is still resolving.
+    static func endGesture(_ gesture: ObjectIdentifier, in active: inout Set<ObjectIdentifier>) -> Bool {
+        active.remove(gesture) != nil && active.isEmpty
     }
     private func discardPendingMove() {
         if let pendingMove { arView?.scene.removeAnchor(pendingMove.anchor) }
@@ -668,14 +680,27 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         stopGlide()
         twistCoast.stop()
     }
+    /// Screen pixels per point. Not `contentScaleFactor`: RealityKit may render below the
+    /// screen's resolution, and the 150 px/s glide threshold is in screen pixels.
+    static func pixelScale(of view: UIView) -> CGFloat {
+        let scale = view.traitCollection.displayScale
+        if scale > 0 { return scale }
+        return view.window?.screen.scale ?? 1
+    }
     /// The pixel position ARMV measures velocities in.
     private func pixels(_ point: CGPoint, in view: UIView) -> [Float] {
-        [Float(point.x * view.contentScaleFactor), Float(point.y * view.contentScaleFactor)]
+        let scale = Self.pixelScale(of: view)
+        return [Float(point.x * scale), Float(point.y * scale)]
+    }
+    /// When the touch event behind this callback happened (ARMV samples `eventTime`), in the
+    /// `CACurrentMediaTime()` time base; the callback time only when no event was seen.
+    static func eventTime(of recognizer: UIGestureRecognizer) -> TimeInterval {
+        (recognizer as? ARTimedGestureRecognizer)?.eventTime ?? CACurrentMediaTime()
     }
     @objc private func pan(_ recognizer: UIPanGestureRecognizer) {
         guard canManipulate, let view = arView, let frame = view.session.currentFrame else { return }
         let point = recognizer.location(in: view)
-        let now = CACurrentMediaTime()
+        let now = Self.eventTime(of: recognizer)
         let active = activeGestures.contains(ObjectIdentifier(recognizer))
         if recognizer.state == .began {
             // Compute the contact-plane intersection, not a model bounding-box centre.
@@ -730,7 +755,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         guard canManipulate, let view = arView, let frame = view.session.currentFrame,
               let pointer = glidePointer else { stopGlide(); return }
         let (step, goesOn) = moveCoast.advance(by: Float(delta))
-        guard let next = ARPlacementFeel.glide(pointer: pointer, step: step, pixelScale: view.contentScaleFactor,
+        guard let next = ARPlacementFeel.glide(pointer: pointer, step: step, pixelScale: Self.pixelScale(of: view),
                                                bounds: view.bounds),
               drag(to: next, in: view, frame: frame) else { stopGlide(); return }
         glidePointer = next
@@ -820,16 +845,18 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
     @objc private func twist(_ recognizer: UIRotationGestureRecognizer) {
         guard canManipulate else { return }
-        let now = CACurrentMediaTime()
+        let now = Self.eventTime(of: recognizer)
         let active = activeGestures.contains(ObjectIdentifier(recognizer))
         if recognizer.state == .began {
             handFollowRotationToTwist()
+            userTwistAtTwistBegan = userTwist
             twistCoast.reset()
             twistCoast.addSample(time: now, [0])
             begin(recognizer)
         }
         if recognizer.state == .changed {
             pivot.orientation = twistBaseline * simd_quatf(angle: -Float(recognizer.rotation), axis: normalAxis)
+            userTwist = userTwistAtTwistBegan - Float(recognizer.rotation)
             // ARMV samples the cumulative twist in degrees, the coast's unit.
             twistCoast.addSample(time: now, [-Float(recognizer.rotation) * 180 / .pi])
         }
@@ -852,6 +879,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private func turn(by radians: Float) {
         let turn = simd_quatf(angle: radians, axis: normalAxis)
         pivot.orientation *= turn
+        userTwist += radians
         // A rotation still being eased toward turns with it, instead of overwriting the turn.
         if let rotation = follow?.rotation { follow?.rotation = simd_normalize(rotation * turn) }
     }
@@ -1164,8 +1192,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``ARInstantPlacement/settleSpeed`` to where the centre ray meets the floor, between half
     /// its reach and its reach ahead — on the detected plane there, else (``instantPlacement``
     /// on, or already approximate) on the estimated floor. Walls: the wall under the centre.
-    /// The pinch and the twist are kept: a floor model turns with the camera's bearing, so the
-    /// side the user saw still faces them. Plays ``ARHapticEvent/placed``.
+    /// The pinch and the twist are kept: a floor model faces the user again, with the user's own
+    /// twist on top (ARMV: yaw toward the camera plus `twist`). Plays ``ARHapticEvent/placed``.
     ///
     /// - Returns: `false`, with nothing changed, when nothing is placed or no surface is in view.
     @discardableResult
@@ -1179,10 +1207,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         let current = pivot.transformMatrix(relativeTo: nil)
         let currentRotation = follow?.rotation ?? pivot.orientation(relativeTo: nil)
         let oldContact = instant?.contact ?? result?.worldTransform ?? current
+        let twist = userTwist
         func rotation(at contact: simd_float4x4) -> simd_quatf {
             alignment == .horizontal
-                ? ARPlacementFeel.recenteredRotation(currentRotation, from: current.columns.3.xyz,
-                                                     to: contact.columns.3.xyz, eye: eye)
+                ? ARPlacementFeel.recenteredRotation(at: contact.columns.3.xyz, eye: eye, twist: twist)
                 : simd_normalize(simd_quatf(contact) * simd_quatf(oldContact).inverse * currentRotation)
         }
         let estimate = estimatedHit(at: center, in: view, camera: camera)
@@ -1239,6 +1267,63 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         instant = nil
         follow = nil
         instantState.reset()
+    }
+}
+
+/// A recognizer that remembers when its latest touch event happened.
+@MainActor
+protocol ARTimedGestureRecognizer: UIGestureRecognizer {
+    var eventTime: TimeInterval? { get }
+}
+
+/// A pan that keeps the latest touch event's timestamp, so the glide's velocity is measured on
+/// event time (ARMV `MotionEvent.eventTime`), not on when the action happened to run.
+final class ARTimedPanGestureRecognizer: UIPanGestureRecognizer, ARTimedGestureRecognizer {
+    private(set) var eventTime: TimeInterval?
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesBegan(touches, with: event)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesMoved(touches, with: event)
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesEnded(touches, with: event)
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesCancelled(touches, with: event)
+    }
+    override func reset() {
+        super.reset()
+        eventTime = nil
+    }
+}
+
+/// The twist counterpart of ``ARTimedPanGestureRecognizer``, for the spin's velocity.
+final class ARTimedRotationGestureRecognizer: UIRotationGestureRecognizer, ARTimedGestureRecognizer {
+    private(set) var eventTime: TimeInterval?
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesBegan(touches, with: event)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesMoved(touches, with: event)
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesEnded(touches, with: event)
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        eventTime = event.timestamp
+        super.touchesCancelled(touches, with: event)
+    }
+    override func reset() {
+        super.reset()
+        eventTime = nil
     }
 }
 

@@ -4,7 +4,7 @@ import RealityKit
 @testable import SceneViewSwift
 
 /// How a placed model moves under the fingers, device-free: ARMV's constants and transitions
-/// (drag smoothing, glide, twist coast, double tap, grow-in, recenter bearing).
+/// (drag smoothing, glide, twist coast, double tap, grow-in, recenter facing).
 @MainActor
 final class ARPlacementFeelTests: XCTestCase {
 
@@ -142,6 +142,19 @@ final class ARPlacementFeelTests: XCTestCase {
         XCTAssertEqual(travel(hz: 120, for: 0.5), travel(hz: 30, for: 0.5), accuracy: 0.5)
     }
 
+    func testTheCoastClampsAStalledFrameToATenthOfASecond() {
+        var stalled = ARPlacementFeel.moveCoast()
+        XCTAssertTrue(stalled.release(time: thrown(&stalled, speed: 1000)))
+        var tenth = ARPlacementFeel.moveCoast()
+        XCTAssertTrue(tenth.release(time: thrown(&tenth, speed: 1000)))
+        XCTAssertEqual(ARInertiaTracker.maxFrameDelta, 0.1)
+        // A 2 s hitch moves the model as far as one 0.1 s frame, not to the end of the glide.
+        XCTAssertEqual(stalled.advance(by: 2).step[0], tenth.advance(by: 0.1).step[0], accuracy: 0.0001)
+        XCTAssertEqual(stalled.velocity[0], tenth.velocity[0], accuracy: 0.0001)
+        XCTAssertTrue(stalled.isCoasting)
+        XCTAssertEqual(stalled.advance(by: -1).step, [0, 0], "a negative delta moves nothing")
+    }
+
     func testTheCoastStopsUnderMinSpeed() {
         var tracker = ARPlacementFeel.moveCoast()
         XCTAssertTrue(tracker.release(time: thrown(&tracker, speed: 1000)))
@@ -206,21 +219,26 @@ final class ARPlacementFeelTests: XCTestCase {
 
     // MARK: Recenter bearing
 
-    func testRecenterTurnsTheModelWithTheCameraBearing() {
+    func testRecenterFacesTheUserAgainAndKeepsTheTwist() {
         let eye = SIMD3<Float>(0, 1.5, 0)
         XCTAssertEqual(ARPlacementFeel.yawToward([0, 0, -2], eye: eye), 0, accuracy: 0.0001)
         XCTAssertEqual(ARPlacementFeel.yawToward([-2, 0, 0], eye: eye), .pi / 2, accuracy: 0.0001)
-        // Facing the user at (0, 0, -2); recentered to their left, it still faces them.
-        let facing = simd_quatf(angle: 0, axis: [0, 1, 0])
-        let turned = ARPlacementFeel.recenteredRotation(facing, from: [0, 0, -2], to: [-2, 0, 0], eye: eye)
-        let forward = turned.act([0, 0, 1])
+        // Recentered to the user's left without a twist, +Z faces them, whatever it faced before.
+        let facing = ARPlacementFeel.recenteredRotation(at: [-2, 0, 0], eye: eye, twist: 0)
+        let forward = facing.act([0, 0, 1])
         XCTAssertEqual(forward.x, 1, accuracy: 0.0001)
         XCTAssertEqual(forward.z, 0, accuracy: 0.0001)
-        // A user twist of 30° relative to them is kept.
-        let twisted = simd_quatf(angle: .pi / 6, axis: [0, 1, 0])
-        let kept = ARPlacementFeel.recenteredRotation(twisted, from: [0, 0, -2], to: [-2, 0, 0], eye: eye)
-        XCTAssertEqual(abs(simd_dot(kept.vector, simd_quatf(angle: .pi / 2 + .pi / 6, axis: [0, 1, 0]).vector)), 1,
+        // A user twist of 30° rides on top of facing them (ARMV: yawToward + twist).
+        let twisted = ARPlacementFeel.recenteredRotation(at: [-2, 0, 0], eye: eye, twist: .pi / 6)
+        XCTAssertEqual(abs(simd_dot(twisted.vector, simd_quatf(angle: .pi / 2 + .pi / 6, axis: [0, 1, 0]).vector)), 1,
                        accuracy: 0.0001)
+        // Straight ahead: the twist alone.
+        let ahead = ARPlacementFeel.recenteredRotation(at: [0, 0, -2], eye: eye, twist: -.pi / 4)
+        XCTAssertEqual(abs(simd_dot(ahead.vector, simd_quatf(angle: -.pi / 4, axis: [0, 1, 0]).vector)), 1,
+                       accuracy: 0.0001)
+        // A non-finite twist is ignored rather than spreading NaN into the pose.
+        let safe = ARPlacementFeel.recenteredRotation(at: [-2, 0, 0], eye: eye, twist: .nan)
+        XCTAssertTrue(safe.vector.x.isFinite && safe.vector.y.isFinite && safe.vector.w.isFinite)
     }
 
     // MARK: Double tap (ScaleSnap)
@@ -378,6 +396,35 @@ final class ARPlacementFeelTests: XCTestCase {
         XCTAssertFalse(controller.recenter())
     }
 
+    func testAGestureCutShortByRecenterSettlesNothingWhenItsCancelArrives() {
+        let pan = ObjectIdentifier(UIPanGestureRecognizer())
+        let pinch = ObjectIdentifier(UIPinchGestureRecognizer())
+        var active: Set<ObjectIdentifier> = [pan, pinch]
+        XCTAssertFalse(ARPlacementController.endGesture(pinch, in: &active), "the pan still runs")
+        XCTAssertTrue(ARPlacementController.endGesture(pan, in: &active), "the last one settles")
+        // recenter() → cancelGestures() empties the set, then starts a pending move; the
+        // `.cancelled` that follows must not discard it.
+        active = [pan, pinch]
+        active.removeAll()
+        XCTAssertFalse(ARPlacementController.endGesture(pan, in: &active))
+        XCTAssertFalse(ARPlacementController.endGesture(pinch, in: &active))
+        XCTAssertFalse(ARPlacementController.endGesture(pan, in: &active), "ending twice settles nothing")
+    }
+
+    func testResetForgetsTheUserTwist() {
+        let controller = ARPlacementController()
+        controller.userTwist = 0.7
+        controller.resetPlacement()
+        XCTAssertEqual(controller.userTwist, 0)
+        controller.userTwist = 0.7
+        controller.dismiss()
+        XCTAssertEqual(controller.userTwist, 0)
+    }
+
+    func testVelocitiesAreMeasuredInScreenPixels() {
+        XCTAssertGreaterThan(ARPlacementController.pixelScale(of: UIView()), 0)
+    }
+
     func testTheDragFollowEasesAtDragSpeed() {
         let controller = ARPlacementController()
         let anchor = AnchorEntity(world: matrix_identity_float4x4)
@@ -394,6 +441,13 @@ final class ARPlacementFeelTests: XCTestCase {
         let taps = (view.gestureRecognizers ?? []).compactMap { $0 as? UITapGestureRecognizer }
         let double = try XCTUnwrap(taps.first { $0.numberOfTapsRequired == 2 })
         XCTAssertTrue(controller.gestureRecognizer(double, shouldReceive: UITouch()))
+        // The drag and the twist measure their velocity on touch-event time.
+        let recognizers = view.gestureRecognizers ?? []
+        XCTAssertTrue(recognizers.contains { $0 is ARTimedPanGestureRecognizer })
+        XCTAssertTrue(recognizers.contains { $0 is ARTimedRotationGestureRecognizer })
+        let before = CACurrentMediaTime()
+        XCTAssertGreaterThanOrEqual(ARPlacementController.eventTime(of: double), before,
+                                    "no touch event yet: the callback time")
         controller.dismiss()
     }
 }

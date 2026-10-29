@@ -53,14 +53,11 @@ enum ARPlacementFeel {
         atan2(eye.x - point.x, eye.z - point.z)
     }
 
-    /// The world rotation a floor model gets when it is recentered from `from` to `to`: turned
-    /// about +Y by the change in the camera's bearing, so the side the user saw stays toward
-    /// them and the user's twist relative to them is kept (ARMV `recenter`).
-    static func recenteredRotation(_ rotation: simd_quatf, from: SIMD3<Float>, to: SIMD3<Float>,
-                                   eye: SIMD3<Float>) -> simd_quatf {
-        let turn = yawToward(to, eye: eye) - yawToward(from, eye: eye)
-        guard turn.isFinite else { return rotation }
-        return simd_normalize(simd_quatf(angle: turn, axis: [0, 1, 0]) * rotation)
+    /// The world rotation a floor model gets when it is recentered to `point` (ARMV `recenter`):
+    /// facing the user again, plus the user's own `twist` (radians about +Y) on top.
+    static func recenteredRotation(at point: SIMD3<Float>, eye: SIMD3<Float>, twist: Float) -> simd_quatf {
+        let yaw = yawToward(point, eye: eye) + (twist.isFinite ? twist : 0)
+        return simd_quatf(angle: yaw.isFinite ? yaw : 0, axis: [0, 1, 0])
     }
 
     /// The scale the pivot shows: the pinch, with the 100 % rebound or the double-tap ease on top,
@@ -89,7 +86,8 @@ enum ARPlacementFeel {
             return base * appear
         }
 
-        /// A pinch begins from the size shown: whatever still animates stops.
+        /// A pinch begins from the target size (``scale``), not the size shown: whatever still
+        /// animates stops, so a pinch during the double-tap ease or the rebound jumps to it.
         mutating func pinchBegan() {
             pinchStart = scale
             rebound = nil
@@ -274,12 +272,16 @@ struct ARInertiaTracker {
         return isCoasting
     }
 
-    /// Advances the coast by `delta` seconds: the distance travelled during that step (zeros when
-    /// not coasting) and whether the coast goes on after it.
+    /// The longest frame a coast advances by: a stalled frame counts as 0.1 s (ARMV clamps its
+    /// frame delta to 0…0.1 s), so the model never jumps after a hitch.
+    static let maxFrameDelta: Float = 0.1
+
+    /// Advances the coast by `delta` seconds, clamped to 0…``maxFrameDelta``: the distance
+    /// travelled during that step (zeros when not coasting) and whether the coast goes on after it.
     mutating func advance(by delta: Float) -> (step: [Float], goesOn: Bool) {
         var out = Array(repeating: Float(0), count: dimensions)
         guard isCoasting else { return (out, false) }
-        let dt = delta.isFinite ? max(0, delta) : 0
+        let dt = delta.isFinite ? min(max(0, delta), Self.maxFrameDelta) : 0
         let tau = Self.timeConstant
         let decay = exp(-dt / tau)
         let travel = tau * (1 - decay)

@@ -7574,8 +7574,8 @@ struct AutomaticPlacement: View {
   limited to 25–400%. Tracking loss cancels gestures and hides content until the existing
   anchor recovers. Empty-space taps deselect only.
 - `recenter()` brings the placed model back in front of the user: it glides (6/s) to where
-  the centre ray meets the floor, between half its reach and its reach ahead, turned with the
-  camera's bearing so the side the user saw still faces them; pinch and twist are kept. A wall
+  the centre ray meets the floor, between half its reach and its reach ahead, turned to face
+  the user again with the user's own twist on top; the pinch is kept. A wall
   model goes to the wall under the centre. It returns `false`, changing nothing, when nothing
   is placed or no surface is in view. The behaviour and constants follow ARMV, the SceneView
   Android AR model viewer app.
