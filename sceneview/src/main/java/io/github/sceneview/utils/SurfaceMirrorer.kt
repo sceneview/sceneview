@@ -8,6 +8,7 @@ import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
+import io.github.sceneview.SURFACE_DETACH_WAIT_NANOS
 import io.github.sceneview.destroyRendererWhenBackendIdle
 
 /**
@@ -66,8 +67,9 @@ import io.github.sceneview.destroyRendererWhenBackendIdle
  * [startMirroring] performs no Filament call and may be called from any thread — the swap chain
  * is created lazily on the render (main) thread at the next frame, and waking a parked scene is
  * posted to the main thread when needed. [stopMirroring] destroys the
- * swap chain immediately and **must be called from the main thread** (the standard Filament JNI
- * rule). Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
+ * swap chain and waits for the backend to execute that destroy, so it **must be called from the
+ * main thread** (the standard Filament JNI rule), and the surface must be released only after it
+ * returns. Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
  * one is a no-op.
  *
  * For photos and videos with sizing, microphone, duration and watermark handled, use
@@ -208,7 +210,11 @@ class SurfaceMirrorer {
      * Stops mirroring to [surface].
      *
      * Call when capture is complete — otherwise the per-frame render cost remains. The caller
-     * stays responsible for releasing the [Surface] itself (e.g. `MediaRecorder.stop()`).
+     * stays responsible for releasing the [Surface] itself (e.g. `MediaRecorder.stop()`), and
+     * must release it only **after this returns**: Filament creates and destroys a mirror's swap
+     * chain on its backend thread, after the call that queued it, and the creation reads the
+     * surface there. This destroys the swap chain, then waits for the backend to execute it,
+     * up to one second; a surface released before that aborts the process inside Filament.
      *
      * Idempotent: no-op if [surface] is not currently mirrored. Must be called from the main
      * thread (destroys the mirror's Filament swap chain).
@@ -225,11 +231,18 @@ class SurfaceMirrorer {
                 .mapNotNull { mirror -> mirror.swapChain.also { mirror.swapChain = null } }
         }
         if (engine == null) return
-        releaseSwapChains(
+        val caughtUp = releaseSwapChains(
             swapChains,
             destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
-            flushAndWait = { engine.flushAndWait(it) },
+            flushAndWait = { runCatching { engine.flushAndWait(it) }.getOrDefault(true) },
         )
+        if (!caughtUp) {
+            android.util.Log.w(
+                "SurfaceMirrorer",
+                "Mirroring stopped, backend still busy after " +
+                    "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+            )
+        }
     }
 
     /**
@@ -330,11 +343,21 @@ class SurfaceMirrorer {
     }
 }
 
+/**
+ * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits up to
+ * [SURFACE_DETACH_WAIT_NANOS] for the backend to execute everything queued so far: their creation
+ * and their destruction, the two backend commands that use the mirrored surface. Apart from its
+ * Filament calls so that a JVM test can pin it.
+ *
+ * @return `false` when the backend was still busy at the bound — the commands still run, in
+ * order, nothing is cancelled.
+ */
 internal fun <S> releaseSwapChains(
     swapChains: List<S>,
     destroySwapChain: (S) -> Unit,
     flushAndWait: (timeoutNanos: Long) -> Boolean,
 ): Boolean {
+    if (swapChains.isEmpty()) return true
     swapChains.forEach(destroySwapChain)
-    return true
+    return flushAndWait(SURFACE_DETACH_WAIT_NANOS)
 }
