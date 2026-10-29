@@ -1,16 +1,20 @@
 package io.github.sceneview.loaders
 
 import android.content.Context
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.MainThread
 import androidx.annotation.RawRes
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
+import com.google.android.filament.Fence
+import com.google.android.filament.Texture
 import com.google.android.filament.gltfio.AssetLoader
 import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
+import com.google.android.filament.gltfio.isReleased
 import com.google.android.filament.gltfio.releaseSourceDataIfAlive
 import io.github.sceneview.bumpLightGeneration
 import io.github.sceneview.bumpRenderableGeneration
@@ -126,8 +130,21 @@ class ModelLoader(
      * **This is not a "still loading?" flag.** It reports Filament's progress over the resources of
      * the last [asyncBeginLoad][com.google.android.filament.gltfio.ResourceLoader.asyncBeginLoad],
      * and a loader that was never asked for one reports `0`, not `1`. Ask [isLoading] instead.
+     *
+     * Read on the main thread, it asks gltfio. Read on any other thread, it is the value the main
+     * thread last read — at the latest, the render loop's last [updateLoad] — because gltfio's
+     * loader can be freed on the main thread between a check and the call. `0` once this loader or
+     * its engine is destroyed.
      */
-    val progress get() = resourceLoader.asyncGetLoadProgress()
+    val progress: Float get() = if (Looper.myLooper() == Looper.getMainLooper()) readProgress() else lastProgress
+
+    // `progress` as the main thread last read it, for the readers on other threads.
+    @Volatile
+    private var lastProgress = 0f
+
+    /** gltfio's progress, cached for the other threads. Main thread only. */
+    private fun readProgress(): Float =
+        (if (lifecycle.canTouchNatives) resourceLoader.asyncGetLoadProgress() else 0f).also { lastProgress = it }
 
     // Written on the main thread only (both `asyncBeginLoad` call sites hop to it, and `updateLoad`
     // is the render loop). Volatile because `isLoading` is public: a progress UI reading it from a
@@ -145,7 +162,7 @@ class ModelLoader(
             // compressed buffers fail to decode (ResourceLoader.cpp, `loadResources`). Both return
             // before any texture is queued. A missing buffer still returns `true`, see
             // GltfBufferUris: that is why every load checks the buffers itself before beginning.
-            resourceLoader.asyncBeginLoad(model)
+            resourceLoader.asyncBeginLoad(model).also { readProgress() }
         },
         restoreLoad = { previous ->
             // A refused begin left the native load pointing at the refused asset, while
@@ -169,6 +186,7 @@ class ModelLoader(
                 resourceLoader = ResourceLoader(engine, true)
             }
             asyncLoadStarted = false
+            readProgress()
         },
         finishLoad = {
             // The load is done (#3981), or it was refused with no earlier load in flight, which
@@ -179,11 +197,20 @@ class ModelLoader(
             retiredResourceLoaders += resourceLoader
             resourceLoader = ResourceLoader(engine, true)
             asyncLoadStarted = false
+            readProgress()
         },
     )
 
     // Model destroys waiting for their load to settle (#3981): the loader's own natives outlive them.
     private val settlingDestroys = SettlingDestroys(engine)
+
+    // Asked before every call into gltfio that a destroyed loader or engine would turn into a
+    // native abort (see LoaderLifecycle).
+    private val lifecycle = LoaderLifecycle(isEngineAlive = { engine.isValid })
+
+    // The GPU's largest texture side, which GltfLimits holds every model's textures to: a larger
+    // one is a PreconditionPanic in gltfio's texture providers. Read here, on the engine's thread.
+    private val maxTextureSize = Texture.getMaxTextureSize(engine, Texture.Sampler.SAMPLER_2D)
 
     /**
      * Whether an asynchronous resource load is in flight — i.e. one was started and Filament has
@@ -193,9 +220,10 @@ class ModelLoader(
      * on: texture finalisation happens inside the frame loop, so a scene that parked while a load
      * was outstanding would sit there untextured. [progress] alone cannot answer it, because `0`
      * means both "nothing started" and "started, nothing done yet" — see
-     * [io.github.sceneview.isAsyncLoadPending].
+     * [io.github.sceneview.isAsyncLoadPending]. Off the main thread it reads [progress] as the
+     * main thread last saw it, see there.
      */
-    val isLoading: Boolean get() = isAsyncLoadPending(asyncLoadStarted, progress)
+    val isLoading: Boolean get() = lifecycle.canTouchNatives && isAsyncLoadPending(asyncLoadStarted, progress)
 
     /**
      * Creates a [Model] from the contents of a GLB or GLTF [Buffer].
@@ -208,19 +236,25 @@ class ModelLoader(
      * @return The loaded [Model].
      * @throws IllegalArgumentException if the buffer cannot be parsed, or if one of its external
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
-     * resolver cannot read is logged and skipped.
+     * resolver cannot read is logged and skipped. Also when the glTF is one Filament's release
+     * build would crash on rather than refuse — an accessor or buffer view past its data, an
+     * external buffer shorter than it declares, a skinned mesh of more than 256 joints, a texture
+     * larger than the GPU's largest, morph weights animated past 256 targets: the message names
+     * each one, and a model already created for it is destroyed.
      * A model that requires an extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is
      * logged and loaded anyway, without what the extension carries, as it always was; only
      * [awaitModelInstance] refuses it.
-     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
-     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
+     * @throws IllegalStateException once this loader, or its engine, is destroyed; or if
+     * [resourceResolver] destroys the model it is resolving, by a `clear()`, `destroy()` or
+     * `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * WebP glTF textures (`EXT_texture_webp`) embedded in the payload are re-encoded to PNG first,
      * because Filament's Android build registers no `image/webp` decoder and would otherwise render
      * the model untextured (#2305); separate `.webp` files are converted once [resourceResolver]
      * has read them. That costs one decode + PNG encode per WebP texture, **on the
      * calling thread** here; the `suspend` [loadModel] does it off the main thread instead. A model
-     * without WebP textures is untouched.
+     * without WebP textures is untouched. The same goes for the one parse of the glTF JSON that
+     * checks it against Filament's limits: proportional to the JSON, never to the images.
      *
      * @see AssetLoader.createAsset
      */
@@ -230,11 +264,13 @@ class ModelLoader(
         releaseSourceData: Boolean = true,
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): Model {
+        lifecycle.checkCanCreate("create a model")
         val source = buffer.toFilamentModelSource()
+        val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
         val model = assetLoader.createAsset(source.buffer)
             ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")
         models += model
-        loadResources(model, source, resourceResolver)
+        loadResources(model, source, gltf, resourceResolver)
         if (releaseSourceData) {
             model.releaseSourceDataIfAlive()
         }
@@ -319,6 +355,11 @@ class ModelLoader(
      * (without what the extension carries), while [awaitModelInstance] throws the
      * [UnsupportedGltfExtensionException] there instead.
      *
+     * A glTF Filament's release build would crash on (see [GltfLimits]) is refused, logged, and
+     * handed to [onRefused]: by default nothing more, the result being `null`, while
+     * [awaitModelInstance] throws the [GltfLimitException] there instead (a model already created
+     * for it is destroyed first).
+     *
      * [onProgress] gets the [Stage.Reading] and [Stage.Creating] steps, from whichever thread
      * reached them (see [awaitModelInstance], which hands them to the main thread).
      */
@@ -329,6 +370,7 @@ class ModelLoader(
         onProgress: ((ModelLoadProgress) -> Unit)? = null,
         onDestroyedMeanwhile: () -> Unit = { Log.w(TAG, "$fileLocation was destroyed while it loaded") },
         onUnsupported: (UnsupportedGltfExtensionException) -> Unit = ::logUnsupported,
+        onRefused: (GltfLimitException) -> Unit = {},
         onLoadBegun: (Model) -> R,
     ): R? {
         onProgress?.invoke(ModelLoadProgress(Stage.Reading, 0f))
@@ -341,9 +383,19 @@ class ModelLoader(
             return null
         }
         onProgress?.invoke(ModelLoadProgress(Stage.Creating, READING_END))
-        // The extension check scans the JSON of what can be a 60 MB generated model, and
-        // transcoding decodes and re-encodes images: keep both off the main thread.
-        val source = withContext(Dispatchers.Default) { buffer.toFilamentModelSource(onUnsupported) }
+        // The extension check scans the JSON of what can be a 60 MB generated model, transcoding
+        // decodes and re-encodes images, and the limits check parses the JSON: all stay off the
+        // main thread. The extension check runs first, so its typed refusal comes before any other.
+        val (source, gltf) = withContext(Dispatchers.Default) {
+            buffer.toFilamentModelSource(onUnsupported).let { it to GltfLimits.parse(it.buffer) }
+        }
+        val violations = withContext(Dispatchers.Default) { gltf.violations(maxTextureSize) }
+        if (violations.isNotEmpty()) {
+            val refusal = GltfLimitException(violations)
+            Log.w(TAG, "Could not load $fileLocation: ${refusal.message}")
+            onRefused(refusal)
+            return null
+        }
         // Registering into `models` happens *inside* the create block, in the same
         // uninterrupted hop onto `dispatcher` as the asset creation itself (#3523): that is
         // what guarantees a cancellation landing right after creation still finds the model
@@ -351,9 +403,15 @@ class ModelLoader(
         // through the same claim-then-destroy path as every other destroyModel() caller
         // instead of racing it.
         val model = createOrDestroyOnCancel(::destroyModel) {
+            // A plain `loadModel` runs in its caller's scope, which `destroy()` does not cancel.
+            if (!lifecycle.canCreate) return@createOrDestroyOnCancel null
             create(source.buffer)?.also { models += it }
         } ?: run {
-            Log.w(TAG, "Could not parse $fileLocation")
+            if (lifecycle.canCreate) {
+                Log.w(TAG, "Could not parse $fileLocation")
+            } else {
+                Log.w(TAG, "Not loading $fileLocation: this ModelLoader or its Engine was destroyed")
+            }
             return null
         }
         // Whatever stops the load from here on — a cancellation, a resource resolver that throws,
@@ -387,15 +445,30 @@ class ModelLoader(
                 // else (a buffer it was not recognised as) as 1 byte, out of bounds.
                 val missingTextures = uris.filter { it !in supplied && it in kinds.images }
                 if (missing.isNotEmpty()) {
-                    throw MissingBufferException("Could not load $fileLocation without ${missing.joinToString()}")
+                    throw UnloadableModelException("Could not load $fileLocation without ${missing.joinToString()}")
+                }
+                val cgltfKeys = withContext(Dispatchers.Default) { cgltfKeys(source.buffer, uris) }
+                if (resources.isNotEmpty()) {
+                    // The converted bytes (a PNG for an external WebP image), as gltfio gets them.
+                    val loaded = resources.toMap()
+                    // A buffer shorter than it says, or a texture too large: measured once read.
+                    val unloadable = withContext(Dispatchers.Default) { gltf.violations(maxTextureSize, loaded::get) }
+                    if (unloadable.isNotEmpty()) {
+                        val refusal = GltfLimitException(unloadable)
+                        // Thrown by awaitModelInstance's hook: destroyOnFailure destroys the model.
+                        onRefused(refusal)
+                        throw UnloadableModelException("Could not load $fileLocation: ${refusal.message}")
+                    }
                 }
                 withContext(Dispatchers.Main) {
-                    if (model !in models) {
+                    // `destroy()` frees the resource loader once the models settle: none to feed.
+                    if (model !in models || !lifecycle.canCreate) {
                         onDestroyedMeanwhile()
                         return@withContext null
                     }
-                    resources.forEach { (uri, data) -> resourceLoader.addResourceData(uri, data) }
-                    missingTextures.forEach { resourceLoader.addResourceData(it, unreadableTexture()) }
+                    resources.forEach { (uri, data) -> addResource(uri, data, cgltfKeys[uri]) }
+                    // Images only, which cgltfKeys never names: fed under their `uri` as written.
+                    missingTextures.forEach { addResource(it, unreadableTexture(), cgltfKeys[it]) }
                     if (!asyncLoad.begin(model)) {
                         // A fresh asset is refused only when its meshopt buffers fail to decode,
                         // before gltfio queues any texture. `asyncLoad.begin` already handed the
@@ -406,7 +479,7 @@ class ModelLoader(
                         // decoding: in Filament 1.72.1 the texture providers copy their source
                         // bytes when a texture is pushed, and the buffers were already uploaded.
                         resourceLoader.evictResourceData()
-                        throw MissingBufferException(
+                        throw UnloadableModelException(
                             "gltfio refused to begin the resource load of $fileLocation " +
                                 "(its meshopt-compressed data could not be decoded)",
                         )
@@ -414,14 +487,14 @@ class ModelLoader(
                     onLoadBegun(model)
                 }
             }
-        } catch (failure: MissingBufferException) {
+        } catch (failure: UnloadableModelException) {
             Log.w(TAG, "${failure.message}; the model was destroyed")
             null
         }
     }
 
-    /** A load that cannot go on without its buffers; [loadModelThen] destroys its model. */
-    private class MissingBufferException(message: String) : Exception(message)
+    /** A load that cannot go on (a buffer missing, a texture too large); [loadModelThen] destroys its model. */
+    private class UnloadableModelException(message: String) : Exception(message)
 
     /**
      * Reads one external resource of [fileLocation], or `null` when it cannot be read; either way
@@ -594,7 +667,8 @@ class ModelLoader(
      * @throws UnsupportedGltfExtensionException if the model requires an extension gltfio cannot
      * load (see [SUPPORTED_GLTF_EXTENSIONS]), before anything is created.
      * @throws IllegalArgumentException when the file cannot be read or parsed (the reason is
-     * logged), or one of its external buffers is missing.
+     * logged), or one of its external buffers is missing; or when the glTF is one Filament's
+     * release build would crash on (see [createModel]): the message then names each reason.
      * @throws IllegalStateException if the model was destroyed meanwhile ([clear], [destroy]).
      *
      * Cancelling the call destroys the model, unless it had already returned.
@@ -637,6 +711,9 @@ class ModelLoader(
                         onDestroyedMeanwhile = { throw IllegalStateException("$fileLocation was destroyed while it loaded") },
                         // The only load that throws it: the others keep their `null`-and-log contract.
                         onUnsupported = { throw it },
+                        // Same for a glTF Filament's release build would crash on: the caller gets
+                        // its reasons, not a generic "reason logged".
+                        onRefused = { throw it },
                         onLoadBegun = { model -> releasedInstance(model).also { loaded = it } },
                     )
                 } finally {
@@ -720,10 +797,16 @@ class ModelLoader(
      *
      * @throws IllegalArgumentException if the buffer cannot be parsed, or if one of its external
      * `.bin` buffers cannot be resolved (the model is destroyed and the miss logged). A texture the
-     * resolver cannot read is logged and skipped. A model that requires an extension gltfio cannot
-     * load (see [SUPPORTED_GLTF_EXTENSIONS]) is logged and loaded anyway, as in [createModel].
-     * @throws IllegalStateException if [resourceResolver] destroys the model it is resolving, by a
-     * `clear()`, `destroy()` or `destroyModel` on this loader: nothing more is asked of gltfio.
+     * resolver cannot read is logged and skipped. Also when the glTF is one Filament's release
+     * build would crash on rather than refuse — an accessor or buffer view past its data, an
+     * external buffer shorter than it declares, a skinned mesh of more than 256 joints, a texture
+     * larger than the GPU's largest, morph weights animated past 256 targets: the message names
+     * each one, and a model already created for it is destroyed. A model that requires an
+     * extension gltfio cannot load (see [SUPPORTED_GLTF_EXTENSIONS]) is logged and loaded anyway,
+     * as in [createModel].
+     * @throws IllegalStateException once this loader, or its engine, is destroyed; or if
+     * [resourceResolver] destroys the model it is resolving, by a `clear()`, `destroy()` or
+     * `destroyModel` on this loader: nothing more is asked of gltfio.
      *
      * @see AssetLoader.createInstancedAsset
      */
@@ -734,11 +817,13 @@ class ModelLoader(
         resourceResolver: (resourceFileName: String) -> Buffer? = { null }
     ): List<ModelInstance> =
         arrayOfNulls<ModelInstance>(count).apply {
+            lifecycle.checkCanCreate("create a model")
             val source = buffer.toFilamentModelSource()
+            val gltf = GltfLimits.parse(source.buffer).also { it.check(maxTextureSize) }
             (assetLoader.createInstancedAsset(source.buffer, this)
                 ?: throw IllegalArgumentException("Failed to parse glTF model from buffer")).also { model ->
                 models += model
-                loadResources(model, source, resourceResolver)
+                loadResources(model, source, gltf, resourceResolver)
                 model.releaseSourceDataIfAlive()
             }
         }.filterNotNull()
@@ -905,10 +990,22 @@ class ModelLoader(
      * This cannot be called after FilamentAsset#releaseSourceData().
      * Animation is not supported in new instances.
      *
+     * [model] may come from another [ModelLoader] over the same engine.
+     *
+     * @throws IllegalStateException once this loader or its engine is destroyed, and when [model]
+     * is destroyed — or this loader's `destroyModel` is waiting for its textures to finish decoding.
      * @see AssetLoader.createInstance
      */
     @MainThread
-    fun createInstance(model: Model): ModelInstance? = assetLoader.createInstance(model)
+    fun createInstance(model: Model): ModelInstance? {
+        lifecycle.checkCanCreate("create an instance")
+        // gltfio reads the asset's native pointer without checking it: 0 once the asset is freed.
+        // A model of another ModelLoader is fine, as it always was; one destroyed (by any loader),
+        // or this loader's model whose destroy waits for its textures to decode, is not.
+        val beingDestroyed = asyncLoad.inFlight === model && model !in models
+        check(!model.isReleased && !beingDestroyed) { "Cannot create an instance of a destroyed model" }
+        return assetLoader.createInstance(model)
+    }
 
     /**
      * Destroys [model]'s native resources — a no-op if [model] is not (or is no longer)
@@ -935,27 +1032,29 @@ class ModelLoader(
      * registry.
      */
     fun destroyModel(model: Model) {
+        // The engine went first, or this loader is released: the model's natives went with them,
+        // and every gltfio call below would reach into freed memory. Forget the model, nothing else.
+        if (!lifecycle.canTouchNatives) {
+            claimAndDestroy(models, model) {}
+            return
+        }
         destroyAfterCancellingLoad(
             models,
             model,
             asyncLoad,
             // Pumped first: pops whatever gltfio finished since the last frame, so no texture of
             // the model is left queued to be marked ready after it is freed.
-            isLoadFinished = {
-                updateLoad()
-                resourceLoader.asyncGetLoadProgress() >= 1f
-            },
+            isLoadFinished = { pumpedProgress() >= 1f },
             whenLoadSettles = { inFlight, cancelThenDestroy ->
                 settlingDestroys.defer(
                     isInFlight = { asyncLoad.inFlight === inFlight },
-                    pumpedProgress = {
-                        updateLoad()
-                        resourceLoader.asyncGetLoadProgress()
-                    },
-                    destroy = cancelThenDestroy,
+                    pumpedProgress = ::pumpedProgress,
+                    // The engine may be gone by the time the load settles: then so is the model.
+                    destroy = { if (lifecycle.canTouchNatives) cancelThenDestroy() },
                 )
             },
         ) {
+            if (!lifecycle.canTouchNatives) return@destroyAfterCancellingLoad
             assetLoader.safeDestroyModel(it)
             // destroyAsset destroys every entity's components directly, bypassing
             // Node.destroy() entirely — the sibling Nodes' cached handles need to know a
@@ -984,7 +1083,7 @@ class ModelLoader(
         // No blanket `asyncLoad.cancel()` here any more: the only load it could interrupt belongs
         // to a model in `models`, whose destroyModel below cancels it — once doing so is instant
         // (#3981). With nothing in flight it was a pure `flushAndWait` on the main thread.
-        resourceLoader.evictResourceData()
+        if (lifecycle.canTouchNatives) resourceLoader.evictResourceData()
 
         // A cancelled load's own cleanup (destroyOnFailure/createOrDestroyOnCancel, both wired
         // to destroyModel) may still be queued behind this call on the main dispatcher. That is
@@ -1002,10 +1101,18 @@ class ModelLoader(
      * looper. The engine outlives them — its own deferred destroy waits for them.
      */
     fun destroy() {
+        // A second call (a DisposableEffect and an explicit destroy both running) would free the
+        // gltfio objects twice.
+        if (!lifecycle.requestDestroy()) return
         clear()
         loadScope.cancel()
 
         settlingDestroys.afterAll {
+            // From here on, the render loop's next `updateLoad` and any `progress` read do nothing.
+            // An engine destroyed first freed the materials and textures it owned, but not these
+            // loaders: freeing the material provider's materials would call into the dead engine,
+            // so they are all left to leak (a few small objects) rather than freed.
+            if (!lifecycle.release()) return@afterAll
             assetLoader.destroy()
             materialProvider.destroyMaterials()
             materialProvider.destroy()
@@ -1015,6 +1122,12 @@ class ModelLoader(
         }
     }
 
+    /** [updateLoad], then the progress it left; `1` once the natives are gone, nothing left to wait for. */
+    private fun pumpedProgress(): Float {
+        updateLoad()
+        return if (lifecycle.canTouchNatives) readProgress() else 1f
+    }
+
     /**
      * Whether [model] is still this loader's: not destroyed since by [destroyModel], [clear] or
      * [destroy]. A model that left the registry has a zeroed native handle: no call on it is safe.
@@ -1022,18 +1135,55 @@ class ModelLoader(
      */
     internal fun holds(model: Model): Boolean = model in models
 
-    /** `false` once [destroy] was called (it cancels the load scope): no load may start on it. */
-    internal val isLoadable: Boolean get() = loadScope.isActive
+    /**
+     * `false` once [destroy] was called (it cancels the load scope), or once this loader's gltfio
+     * objects or its [Engine] are gone: no load may start on it.
+     */
+    internal val isLoadable: Boolean get() = lifecycle.canTouchNatives && loadScope.isActive
 
     fun updateLoad() {
+        // The render loop can run one more frame after a view disposed its loader, or after the
+        // engine went first: gltfio's ResourceLoader keeps its native handle once destroyed.
+        if (!lifecycle.canTouchNatives) return
         // Allow the resource loader to finalize textures that have become ready.
         resourceLoader.asyncUpdateLoad()
         // Drop the latch as soon as Filament says the outstanding set is finalised, so `isLoading`
         // stops holding the render loop awake. `asyncGetLoadProgress()` is global over the
-        // outstanding set, so one boolean is the right shape here, not a counter.
-        if (asyncLoadStarted && resourceLoader.asyncGetLoadProgress() >= 1f) {
+        // outstanding set, so one boolean is the right shape here, not a counter. Asked only while
+        // a load is pending: every frame of a loaded scene would otherwise cross the JNI for it.
+        if (asyncLoadStarted && readProgress() >= 1f) {
             asyncLoadStarted = false
         }
+    }
+
+    /**
+     * Feeds [data] to gltfio under [uri], and also under [cgltfKey], the name cgltf looks a
+     * percent-encoded buffer up by: without it, a `my%20model.bin` buffer is never found and keeps
+     * no data.
+     */
+    @MainThread
+    private fun addResource(uri: String, data: Buffer, cgltfKey: String?) {
+        resourceLoader.addResourceData(uri, data)
+        cgltfKey?.let { resourceLoader.addResourceData(it, data) }
+    }
+
+    /**
+     * The name cgltf looks each percent-encoded buffer among [uris] up by, when it is not [uris]'s
+     * own. Buffers only: gltfio looks images up by their `uri` as written. And never a name among
+     * [uris]: gltfio replaces a resource fed twice under one name, so feeding `a%20b.bin` under
+     * `a b.bin` would hand cgltf its bytes for a buffer that has a file of its own. Nor a name two
+     * buffers decode to (`a%20b.bin` and `a%20%62.bin`): cgltf would get the last one fed for
+     * both, and [GltfLimits] refuses such a buffer. The JSON is read only when some `uri` decodes.
+     */
+    private fun cgltfKeys(source: Buffer, uris: Collection<String>): Map<String, String> {
+        val names = uris.toSet()
+        val keys = names.mapNotNull { uri -> GltfBufferUris.cgltfKey(uri)?.takeIf { it !in names }?.let { uri to it } }
+        if (keys.isEmpty()) return emptyMap()
+        val buffers = GltfBufferUris.of(source, keys.map { it.first })
+        return keys.filter { it.first in buffers }
+            .groupBy { it.second }
+            .values.mapNotNull { it.singleOrNull() }
+            .toMap()
     }
 
     /**
@@ -1049,15 +1199,18 @@ class ModelLoader(
      * [IllegalStateException].
      *
      * This runs on the main thread, like the whole synchronous `createModel`, so the glTF JSON is
-     * parsed (to tell buffers from textures) only once a resource is missing, or for a model with
-     * an external WebP image: any other model whose resources all resolve never pays for it.
-     * [loadModelThen] does that parse off the main thread.
+     * parsed (to tell buffers from textures) only once a resource is missing, a `uri` is
+     * percent-encoded, or for a model with an external WebP image: any other model whose
+     * resources all resolve never pays for it. [loadModelThen] does that parse off the main thread.
+     * The resolved resources (converted, for a WebP image) are checked against [gltf], the parse
+     * `createModel` already made.
      */
     @MainThread
     @Suppress("TooGenericExceptionCaught") // Destroy on any failure, then rethrow it unchanged.
     private fun loadResources(
         model: Model,
         source: FilamentModelSource,
+        gltf: GltfLimits.Parsed,
         resourceResolver: (String) -> Buffer?,
     ) {
         // `data:` URIs are decoded by gltfio itself; only the others are resolved here.
@@ -1066,12 +1219,16 @@ class ModelLoader(
         val buffers by lazy { GltfBufferUris.of(source.buffer, uris) }
         // Each resource the resolver could not supply, with the IOException it threw if it did.
         val unresolved = LinkedHashMap<String, IOException?>()
+        // Each resource it did supply (converted, for a WebP image), for GltfLimits to measure
+        // the external textures in.
+        val resolved = HashMap<String, Buffer>()
         // The resolver is the caller's code, run on the main thread: a `clear()`, `destroy()` or
         // `destroyModel` in it frees this model (and, for `destroy()`, the loader's gltfio
         // objects), and every later gltfio call on them would read freed memory.
         var destroyedByResolver = false
         // The missing buffers, among them.
         val missing: Map<String, IOException?> = try {
+            val cgltfKeys = cgltfKeys(source.buffer, uris)
             for (uri in uris) {
                 var error: IOException? = null
                 val data = try {
@@ -1090,15 +1247,17 @@ class ModelLoader(
                     } else {
                         data
                     }
-                    resourceLoader.addResourceData(uri, fed)
+                    addResource(uri, fed, cgltfKeys[uri])
+                    resolved[uri] = fed
                 } else {
                     unresolved[uri] = error
                 }
             }
             if (destroyedByResolver) {
                 // A bare destroyModel leaves the data already added in the loader, where the next
-                // load of the same URI would find it; destroy() cancelled loadScope and freed it.
-                if (loadScope.isActive) resourceLoader.evictResourceData()
+                // load of the same URI would find it; destroy() cancelled loadScope, and frees the
+                // gltfio objects once the models settle: evict only while they are there.
+                if (lifecycle.canTouchNatives) resourceLoader.evictResourceData()
                 emptyMap()
             } else {
                 val kinds = GltfBufferUris.kinds(source.buffer, unresolved.keys)
@@ -1127,6 +1286,14 @@ class ModelLoader(
             "The resource resolver destroyed the glTF model it was resolving (clear(), destroy() or " +
                 "destroyModel on its ModelLoader): resolve the resources without destroying the model"
         }
+        // The external buffers and textures, checked now that they are read (everything in the
+        // file itself was, before the asset was created). Never on a model the resolver destroyed:
+        // the check above already left.
+        val unloadable = if (missing.isEmpty() && resolved.isNotEmpty()) {
+            gltf.violations(maxTextureSize, resolved::get)
+        } else {
+            emptyList()
+        }
         val failure = when {
             missing.isNotEmpty() -> {
                 val causes = missing.values.filterNotNull()
@@ -1135,6 +1302,9 @@ class ModelLoader(
                     causes.firstOrNull(),
                 ).apply { causes.drop(1).forEach(::addSuppressed) }
             }
+            // A buffer shorter than it says, or a texture too large for the GPU, would crash the app
+            // inside asyncBeginLoad.
+            unloadable.isNotEmpty() -> GltfLimitException(unloadable)
             // A freshly created asset is refused only when its meshopt-compressed buffers fail to
             // decode (its resources were never loaded before), and before gltfio queues any texture.
             !asyncLoad.begin(model) -> IllegalArgumentException(

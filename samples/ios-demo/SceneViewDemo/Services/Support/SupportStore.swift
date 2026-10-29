@@ -54,6 +54,7 @@ final class SupportStore: ObservableObject {
 
     private let policy: SupportPromptPolicy
     private var updatesTask: Task<Void, Never>?
+    private var analyticsSessions: [String: SupportPromptAnalyticsSession] = [:]
 
     init(policy: SupportPromptPolicy = SupportPromptPolicy(store: DefaultsSupportPromptStore())) {
         self.policy = policy
@@ -131,9 +132,10 @@ final class SupportStore: ObservableObject {
 
     // MARK: Purchase
 
-    func purchase(_ product: Product) async {
+    func purchase(_ product: Product, analytics: SupportPromptAnalyticsSession) async {
         guard purchaseState != .purchasing(product.id) else { return }
         purchaseState = .purchasing(product.id)
+        analyticsSessions[product.id] = analytics
         do {
             let result = try await product.purchase()
             switch result {
@@ -141,20 +143,27 @@ final class SupportStore: ObservableObject {
                 switch verification {
                 case .verified(let transaction):
                     await transaction.finish()
-                    tipped()
+                    tipped(
+                        productId: product.id,
+                        analytics: analyticsSessions.removeValue(forKey: product.id)
+                    )
                 case .unverified(let transaction, _):
                     // Finished so it is not delivered again, but never thanked.
                     await transaction.finish()
+                    analyticsSessions.removeValue(forKey: product.id)?.recordPurchaseResult(.purchaseFailed)
                     purchaseState = .failed
                 }
             case .pending:
                 purchaseState = .pending
             case .userCancelled:
+                analyticsSessions.removeValue(forKey: product.id)?.recordPurchaseResult(.purchaseCancelled)
                 purchaseState = .idle
             @unknown default:
+                analyticsSessions.removeValue(forKey: product.id)?.recordPurchaseResult(.purchaseFailed)
                 purchaseState = .idle
             }
         } catch {
+            analyticsSessions.removeValue(forKey: product.id)?.recordPurchaseResult(.purchaseFailed)
             purchaseState = .failed
         }
     }
@@ -164,8 +173,11 @@ final class SupportStore: ObservableObject {
         if purchaseState != .pending { purchaseState = .idle }
     }
 
-    private func tipped() {
+    private func tipped(productId: String, analytics: SupportPromptAnalyticsSession?) {
         policy.onSupported()
+        if let result = SupportPromptResult.completedPurchase(productId: productId) {
+            analytics?.recordPurchaseResult(result)
+        }
         purchaseState = .thanked
     }
 
@@ -177,13 +189,24 @@ final class SupportStore: ObservableObject {
         case .unverified(let unverified, _):
             // Finished so StoreKit stops delivering it; it thanks nobody.
             if Self.productIds.contains(unverified.productID) { await unverified.finish() }
-            if purchaseState == .pending { purchaseState = .failed }
+            if purchaseState == .pending {
+                analyticsSessions.removeValue(forKey: unverified.productID)?
+                    .recordPurchaseResult(.purchaseFailed)
+                purchaseState = .failed
+            }
             return
         }
         guard Self.productIds.contains(transaction.productID) else { return }
         await transaction.finish()
         // An Ask to Buy approved while the sheet still waits on it.
-        if purchaseState == .pending { tipped() } else { policy.onSupported() }
+        if purchaseState == .pending {
+            tipped(
+                productId: transaction.productID,
+                analytics: analyticsSessions.removeValue(forKey: transaction.productID)
+            )
+        } else {
+            policy.onSupported()
+        }
     }
 
     private func finishUnfinished() async {
