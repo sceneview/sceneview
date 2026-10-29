@@ -18,7 +18,8 @@ import RealityKit
 /// ```
 public enum ARPlacementShadow: Sendable, Equatable {
     /// RealityKit's `GroundingShadowComponent(castsShadow: true)` on every placed model entity:
-    /// a real shadow cast by the scene lights onto the detected surface. The default.
+    /// a real shadow cast by the scene lights onto the detected surface. The default. Content
+    /// that already carries a ``ContactShadowNode`` keeps that shadow and gets no grounding one.
     case grounding
     /// A procedural ``ContactShadowNode`` under each placed anchor's content, fitted to its
     /// bounds at its lowest point — needs no light and has a tunable peak opacity

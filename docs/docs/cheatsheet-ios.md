@@ -284,6 +284,8 @@ ARSceneView(
         arView.scene.addAnchor(anchor.entity)
     }
 )
+.placementShadow(.contact(.floor, intensity: 0.6)) // procedural ContactShadowNode instead of
+                                                   // RealityKit's grounding shadow (.grounding, .none)
 .onSessionStarted { arView in }       // called when AR session begins
 .mainLight(.systemDefault)             // v4.3.0+ — see LightSlot (default 10 000-lux directional + shadow)
 .fillLight(.systemDefault)             // v4.3.0+ — Android-parity 3 000-lux fill on by default
@@ -412,6 +414,7 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
 | `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |
 | `ReflectionProbeNode` | `ReflectionProbeNode(position:radius:)` | zone-based IBL |
+| `ContactShadowNode` | `ContactShadowNode.under(model)` · `model.withContactShadow()` · `ContactShadowNode(width:length:context:plane:)` | `context:` `.floor` / `.tableTop` / `.wall`, `intensity:`, `spread:` (1.6); procedural decal, needs no light, left out of framing, sizing and collision |
 
 ---
 

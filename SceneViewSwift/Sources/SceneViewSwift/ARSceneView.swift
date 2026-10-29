@@ -1642,9 +1642,11 @@ public struct ARSceneView: UIViewRepresentable {
         /// entity under anchors that joined `arView.scene` after the snapshot —
         /// the RealityKit analogue of Android's invisible `ShadowReceiverPlane`
         /// (#2241/#894): RealityKit itself renders the contact shadow onto the
-        /// detected real-world surface, no shadow-catcher geometry needed.
+        /// detected real-world surface, no shadow-catcher geometry needed. Content that
+        /// already carries a ``ContactShadowNode`` keeps that one alone, never two shadows.
         func applyGroundingShadows(in arView: ARView, addedSince existing: Set<Entity.ID>) {
-            for anchor in arView.scene.anchors where !existing.contains(anchor.id) {
+            for anchor in arView.scene.anchors
+            where !existing.contains(anchor.id) && !anchor.containsContactShadow {
                 Self.applyGroundingShadow(to: anchor)
             }
         }

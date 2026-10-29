@@ -272,7 +272,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         entity.position -= contact
         entity.generateCollisionShapesExcludingContactShadows()
         // RealityKit grounding shadows project downward; they are not wall contact shading.
-        if alignment == .horizontal { ARSceneView.Coordinator.applyGroundingShadow(to: entity) }
+        // A model that brings its own contact shadow keeps that one alone.
+        if alignment == .horizontal, !entity.containsContactShadow {
+            ARSceneView.Coordinator.applyGroundingShadow(to: entity)
+        }
         return wrapper
     }
 

@@ -9783,8 +9783,8 @@ public struct ContactShadowNode: @unchecked Sendable {
 ```
 
 - `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
-  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model and fades with its
-  `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
   `centerOrigin`; call `fit(under:)` again if the model changes size.
 - Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
 - Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
@@ -9793,7 +9793,8 @@ public struct ContactShadowNode: @unchecked Sendable {
 - AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
   model when the app moves or hides it; replacing the child drops the shadow, so give the new model
   `withContactShadow()`) or on the anchor when it holds several; content already carrying a
-  contact shadow gets none.
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
 
 #### AnchorNode — AR world anchors (iOS only)
 

@@ -268,7 +268,9 @@ public struct ContactShadowNode: @unchecked Sendable {
     /// `spread`, at least ``minimumFittedSize``) and rests at its lowest point, lifted by
     /// ``surfaceOffset``. It stays level: it follows the model's turn around the vertical axis
     /// but not a tilt of its root (a Z-up asset's correction, say). As a child it follows the
-    /// model and fades with any `OpacityComponent` on it. It is measured now: call this once
+    /// model, including an animation of the model's root transform, and fades with any
+    /// `OpacityComponent` on it. A skeletal or per-part animation does not move it: it stays
+    /// where the model's rest pose stood until you call ``fit(under:spread:)`` again. It is measured now: call this once
     /// the model's mesh is loaded, after `scaleToUnits` / `centerOrigin`.
     ///
     /// - Parameters:

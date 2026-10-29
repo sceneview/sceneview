@@ -352,6 +352,25 @@ final class ARPlacementShadowTests: XCTestCase {
         XCTAssertTrue(model.components.has(CollisionComponent.self))
     }
 
+    func testGroundingSkipsContentThatBringsItsOwnContactShadow() throws {
+        let arView = ARView(frame: .zero)
+        let coordinator = ARSceneView.Coordinator(onTapOnPlane: nil, planeDetection: .horizontal)
+        let (_, plain) = placedAnchor(in: arView)
+        let (_, shadowed) = placedAnchor(in: arView)
+        ContactShadowNode.under(shadowed)
+        coordinator.applyPlacementShadow(.grounding, in: arView, addedSince: [])
+        XCTAssertTrue(plain.components.has(GroundingShadowComponent.self))
+        XCTAssertFalse(shadowed.components.has(GroundingShadowComponent.self), "one shadow, never two")
+
+        let model = ModelEntity(mesh: .generateBox(size: 0.2), materials: [SimpleMaterial()])
+        ContactShadowNode.under(model)
+        _ = try XCTUnwrap(ARPlacementController.prepare(model, alignment: .horizontal, previewSize: nil))
+        XCTAssertFalse(model.components.has(GroundingShadowComponent.self))
+        let bare = ModelEntity(mesh: .generateBox(size: 0.2), materials: [SimpleMaterial()])
+        _ = try XCTUnwrap(ARPlacementController.prepare(bare, alignment: .horizontal, previewSize: nil))
+        XCTAssertTrue(bare.components.has(GroundingShadowComponent.self))
+    }
+
     func testNoneStyleAddsNothing() {
         let arView = ARView(frame: .zero)
         let coordinator = ARSceneView.Coordinator(onTapOnPlane: nil, planeDetection: .horizontal)
