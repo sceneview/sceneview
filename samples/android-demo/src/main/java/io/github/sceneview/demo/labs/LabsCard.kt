@@ -1,9 +1,5 @@
 package io.github.sceneview.demo.labs
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,7 +43,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.R
-import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.ui.home.outlineSubtle
 
@@ -66,7 +61,7 @@ fun LabsHomeCard(
     onJoinClick: () -> Unit,
     onEnabledChange: (Boolean) -> Unit,
     onDemoClick: (DemoEntry) -> Unit,
-    onOpenCollectiveClick: () -> Unit,
+    onSupportClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -88,7 +83,7 @@ fun LabsHomeCard(
                     labsDemos = labsDemos,
                     onEnabledChange = onEnabledChange,
                     onDemoClick = onDemoClick,
-                    onOpenCollectiveClick = onOpenCollectiveClick,
+                    onSupportClick = onSupportClick,
                 )
             }
         }
@@ -184,7 +179,7 @@ private fun JoinedBody(
     labsDemos: List<DemoEntry>,
     onEnabledChange: (Boolean) -> Unit,
     onDemoClick: (DemoEntry) -> Unit,
-    onOpenCollectiveClick: () -> Unit,
+    onSupportClick: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.labs_joined_body),
@@ -218,12 +213,14 @@ private fun JoinedBody(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     // Another way to help, shown only once someone is already in: never the price of access.
+    // It opens the in-app Support sheet; Open Collective appears there only when Play can't
+    // take the gift, never as a link beside the in-app purchase.
     TextButton(
-        onClick = onOpenCollectiveClick,
+        onClick = onSupportClick,
         modifier = Modifier.heightIn(min = SceneViewTokens.Layout.touchTarget),
     ) {
         Text(
-            text = stringResource(R.string.labs_open_collective),
+            text = stringResource(R.string.labs_support),
             style = SceneViewTokens.Type.caption,
         )
     }
@@ -332,7 +329,7 @@ fun LabsGateBody(
     labsDemos: List<DemoEntry>,
     onJoinClick: () -> Unit,
     onEnabledChange: (Boolean) -> Unit,
-    onOpenCollectiveClick: () -> Unit,
+    onSupportClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -371,26 +368,9 @@ fun LabsGateBody(
                 onJoinClick = onJoinClick,
                 onEnabledChange = onEnabledChange,
                 onDemoClick = {},
-                onOpenCollectiveClick = onOpenCollectiveClick,
+                onSupportClick = onSupportClick,
             )
         }
-    }
-}
-
-/** The one support link Labs ever shows, the same Open Collective page as About. */
-const val LABS_SUPPORT_URL = "https://opencollective.com/sceneview"
-
-/** Opens [LABS_SUPPORT_URL], logged as an outbound link; a toast when no browser is installed. */
-fun openLabsSupportLink(context: Context) {
-    logOutboundLink(LABS_SUPPORT_URL)
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LABS_SUPPORT_URL)))
-    }.onFailure {
-        Toast.makeText(
-            context,
-            context.getString(R.string.about_no_browser).format(LABS_SUPPORT_URL),
-            Toast.LENGTH_LONG,
-        ).show()
     }
 }
 

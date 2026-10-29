@@ -1,1 +1,1 @@
-arkit,augmented reality,usdz,gltf,3d engine,sample code,xcode,visionos,lidar,open source,framework
+arkit,augmented reality,usdz,scan,3d engine,sample code,xcode,visionos,lidar,open source,framework

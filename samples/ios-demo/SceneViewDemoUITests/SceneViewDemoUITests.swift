@@ -47,7 +47,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// Switzerland its sheet comes up over Home on first launch.
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-push_preprompt", "off", "-telemetry_consent", "denied"]
+        app.launchArguments = ["-push_preprompt", "off", "-support_prompt", "off", "-telemetry_consent", "denied"]
         return app
     }
 
