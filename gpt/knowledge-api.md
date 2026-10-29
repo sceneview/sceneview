@@ -4570,6 +4570,68 @@ Button(onClick = { animator.flyTo(otherRoom) })                     // another s
   on the first touch and carries on at that speed; any other manipulator (the default orbit one
   included) gets a 350 ms glide from the move's last frame onto its own pose.
 
+**Pose keyframes — `CameraPosePath` and `CameraPathPlayer`.** Where `CameraPath` keys orbit
+parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quaternion)`), so a
+move can be a straight line through space — a travelling, a dolly — not only an arc round a
+subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
+pure function of time: the same time always gives the same pose, which is what a scrubber and
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
+
+```kotlin
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
+val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), restart(), seekTo(s), speed, loop
+SceneView(
+    cameraNode = cameraNode,
+    cameraManipulator = null,                          // the path owns the camera
+    frameRatePolicy = FrameRatePolicy.Continuous(),
+    onFrame = { nanos -> cameraNode.applyPose(player.advanceFrame(nanos)) },
+) { … }
+Slider(value = player.progress, onValueChange = { player.seekTo(it * player.durationSeconds) })
+```
+
+- `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
+  pathEasing = null, lookAt = null, up = +Y, loop = false)`: positions are `Linear` or `CatmullRom`
+  (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
+  leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
+- Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, at most 1000 turns, at least 6 keys per turn; loops seamlessly on any
+  number of turns, each lap of 1.5 turns starting where the last one ended), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
+- `CameraPathPlayer` owns the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
+  Compose state) and the count of whole laps played; `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
+  120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
+  clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
+  from the old one's. The player keeps a whole lap count and the time within the lap, so a
+  `CameraPath.tour(turns = 1.5f)` or an `orbit(turns = 1.5f)` carries on lap after lap with no
+  jump at the seam and is as exact after a week as on its first lap; other timelines are sampled
+  within the lap. On such a fractional path `pose` equals `timeline.poseAt(seconds)` on the first
+  lap only (lap two of 1.5 turns is half a turn on). `seconds` and `progress` stay within the lap,
+  `seekTo` keeps the lap (`seekTo(durationSeconds)` shows the end of the current lap), turning
+  `loop` off keeps the lap, a new timeline with another turn count applies its turn to the laps
+  played (the camera can jump), and `restart()` — or `play()` on a finished player — goes back to
+  lap 0 at time 0. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  target)` and `CameraShot.toPose()` build one.
+
 `CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,
 these are time-driven. Pick the animator when the move has a beginning and an end.
 
@@ -6174,7 +6236,7 @@ View modifiers (chainable):
 .onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
 .onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
 .onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
@@ -6185,7 +6247,7 @@ View modifiers (chainable):
 `cameraExposure` notes:
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
-- Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- Implemented via `ARView.renderCallbacks.postProcess`.
 - It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
 
 `onSessionError` notes (v4.39.0+):
