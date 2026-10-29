@@ -391,6 +391,33 @@ public struct ModelNode: @unchecked Sendable {
         return scale(entity.scale * correction)
     }
 
+    // MARK: - World size (mirrors Android's ModelNode.worldSize / worldBoundingBox)
+
+    /// The model's dimensions in world metres — width (X), height (Y) and depth (Z) of its own
+    /// visual bounds multiplied by its world scale, so parent scales count too.
+    ///
+    /// USDZ and glTF are authored in metres: a 1 m asset loaded without ``scaleToUnits(_:)``
+    /// under unscaled parents reports `(1, 1, 1)`, and after `scaleToUnits(0.3)` its longest side
+    /// reports `0.3`. Rotation does not change it; see ``worldBoundingBox`` for the space the
+    /// model occupies once rotated.
+    ///
+    /// Mirrors Android's `ModelNode.worldSize`.
+    @MainActor
+    public var worldSize: SIMD3<Float> {
+        let local = entity.visualBounds(relativeTo: entity).extents
+        return local * entity.scale(relativeTo: nil)
+    }
+
+    /// The axis-aligned box enclosing the model in world space, after every parent transform
+    /// (rotation, scale, translation). Its `min.y` is where the model touches the floor; its X/Z
+    /// extent is the footprint — what a contact shadow, a dimension label or a fit check needs.
+    ///
+    /// Mirrors Android's `ModelNode.worldBoundingBox`.
+    @MainActor
+    public var worldBoundingBox: BoundingBox {
+        entity.visualBounds(relativeTo: nil)
+    }
+
     // MARK: - Animation (mirrors Android's ModelNode animation API)
 
     /// The number of available animations on this model.

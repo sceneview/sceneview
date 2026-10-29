@@ -287,3 +287,37 @@ final class PlacementFeedbackTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(ARAugmentedFacesDemo.sphereRadius, 0.015)
     }
 }
+
+/// The placement size read-out: Android's `ar_scale_actual_size_height` /
+/// `ar_scale_actual_size_percent` / `ar_scale_preview_size` strings, verbatim.
+final class PlacementScaleLabelTests: XCTestCase {
+
+    func testRealSizeModelShowsPercentAndHeight() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: 1.8),
+                       "Actual size · 100% · 1.80 m tall")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1.5, heightMeters: 2.7),
+                       "Actual size · 150% · 2.70 m tall")
+    }
+
+    func testPreviewNeverClaimsMetres() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: false, scale: 0.25, heightMeters: 0.3),
+                       "Preview size · 25%")
+    }
+
+    func testUnknownHeightFallsBackToThePercentage() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: nil),
+                       "Actual size · 100%")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: .nan),
+                       "Actual size · 100%")
+    }
+
+    func testPercentRoundsInsteadOfTruncating() {
+        XCTAssertEqual(PlacementScaleLabel.percent(0.99999), 100)
+        XCTAssertEqual(PlacementScaleLabel.percent(4), 400)
+        XCTAssertEqual(PlacementScaleLabel.percent(.infinity), 100)
+    }
+
+    func testDimensionsReadWidthDepthHeight() {
+        XCTAssertEqual(PlacementScaleLabel.dimensions([0.5, 1.8, 0.3]), "0.50 × 0.30 × 1.80 m")
+    }
+}
