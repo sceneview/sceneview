@@ -8,7 +8,9 @@ import RealityKit
 /// Supply assets through the controller; dismissal cancels all tickets and releases anchors.
 ///
 /// `coaching` (default `true`) shows Apple's `ARCoachingOverlayView` while the session starts,
-/// searches for the controller's surface (floor or wall) or relocalizes. Hide your own chrome
+/// searches for the controller's surface (floor or wall) or relocalizes. With
+/// ``ARPlacementController/instantPlacement`` on, its goal is tracking only: the model does not
+/// wait for a surface. Hide your own chrome
 /// while ``ARPlacementController/isCoachingActive`` is true. Its "Start Over" button resets
 /// the placement and the session. Kotlin twin: `AutoPlacementScene(coaching = true)`.
 @MainActor
