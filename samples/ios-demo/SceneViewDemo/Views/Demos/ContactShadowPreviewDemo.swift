@@ -212,6 +212,8 @@ enum ContactShadowMath {
         let t = (deviation - 25) / 20
         return 1 - t * t * (3 - 2 * t)
     }
+
+    static func clamp01(_ x: Float) -> Float { min(max(x, 0), 1) }
 }
 
 // MARK: - Stage
