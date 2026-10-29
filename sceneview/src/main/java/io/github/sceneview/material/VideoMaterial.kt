@@ -50,14 +50,32 @@ class VideoMaterial(
         instance.setExternalTexture(texture)
     }
 
+    private val teardown = VideoMaterialTeardown(
+        releaseSurface = { surface.release() },
+        destroyInstance = { materialLoader.destroyMaterialInstance(instance) },
+        whenInstanceReclaimed = { onReclaimed, onEngineGone ->
+            if (Looper.myLooper() == null) {
+                engine.drainFramePipeline()
+                onReclaimed()
+            } else {
+                engine.whenBackendIdle(onEngineGone = onEngineGone) { onReclaimed() }
+            }
+        },
+        destroyTexture = { engine.safeDestroyTexture(texture) },
+        destroyStream = { engine.safeDestroyStream(stream) },
+        releaseSurfaceTexture = { surfaceTexture.release() },
+    )
+
     /**
-     * Destroys [instance], then the [texture], the [stream] and the surfaces.
+     * Destroys [instance], then the [texture], the [stream] and the surfaces. Only the first call
+     * does anything.
      *
      * Filament commits every material instance of the engine on every frame, whether or not a
      * renderable uses it, so an [instance] left alive once its [texture] is gone aborts the process
      * ("Invalid texture still bound to MaterialInstance"). The [instance] is destroyed first, and
-     * the [texture] and the [stream] only once the backend has executed that destroy, at a later
-     * frame (at once, after a blocking drain, on a thread without a [Looper]).
+     * the [texture] and the [stream] only once the backend has executed that destroy: polled on
+     * the calling thread's looper every 16 ms, giving up after 5 s (at once, after a blocking
+     * drain, on a thread without a [Looper]).
      *
      * Remove [instance] from every renderable that uses it, or destroy those renderables, before
      * calling this: a renderable keeps drawing with the instance it was given and would read it
@@ -65,40 +83,40 @@ class VideoMaterial(
      *
      * Must be called on the main thread.
      */
-    fun destroy() {
-        surface.release()
-        releaseVideoMaterial(
-            destroyInstance = { materialLoader.destroyMaterialInstance(instance) },
-            whenInstanceReclaimed = { releaseVideo ->
-                if (Looper.myLooper() == null) {
-                    engine.drainFramePipeline()
-                    releaseVideo()
-                } else {
-                    // Engine already gone: it freed the texture and the stream with it.
-                    engine.whenBackendIdle(onEngineGone = { surfaceTexture.release() }) {
-                        releaseVideo()
-                    }
-                }
-            },
-            releaseVideo = {
-                engine.safeDestroyTexture(texture)
-                engine.safeDestroyStream(stream)
-                surfaceTexture.release()
-            },
-        )
-    }
+    fun destroy() = teardown.destroy()
 }
 
 /**
- * The teardown order of [VideoMaterial.destroy], apart from its Filament calls so that a JVM test
- * can pin it: [destroyInstance] first, then [releaseVideo] (texture, stream, `SurfaceTexture`) once
- * [whenInstanceReclaimed] reports that the backend has executed that destroy.
+ * The teardown order of a [VideoMaterial], with each Filament or Android release passed in as a
+ * single call so that a JVM test can pin the order [VideoMaterial.destroy] runs them in.
+ *
+ * [whenInstanceReclaimed] runs its first callback once the backend has executed the instance
+ * destroy, or its second instead when the engine is already gone (it freed the texture and the
+ * stream with it).
  */
-internal fun releaseVideoMaterial(
-    destroyInstance: () -> Unit,
-    whenInstanceReclaimed: (releaseVideo: () -> Unit) -> Unit,
-    releaseVideo: () -> Unit,
+internal class VideoMaterialTeardown(
+    private val releaseSurface: () -> Unit,
+    private val destroyInstance: () -> Unit,
+    private val whenInstanceReclaimed: (onReclaimed: () -> Unit, onEngineGone: () -> Unit) -> Unit,
+    private val destroyTexture: () -> Unit,
+    private val destroyStream: () -> Unit,
+    private val releaseSurfaceTexture: () -> Unit,
 ) {
-    destroyInstance()
-    whenInstanceReclaimed(releaseVideo)
+    private var isDestroyed = false
+
+    fun destroy() {
+        // Once only (#4259): a second call would free the texture and the stream again.
+        if (isDestroyed) return
+        isDestroyed = true
+        releaseSurface()
+        destroyInstance()
+        whenInstanceReclaimed(
+            {
+                destroyTexture()
+                destroyStream()
+                releaseSurfaceTexture()
+            },
+            releaseSurfaceTexture,
+        )
+    }
 }

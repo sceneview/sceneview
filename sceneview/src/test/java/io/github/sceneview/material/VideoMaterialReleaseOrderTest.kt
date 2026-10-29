@@ -5,44 +5,64 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 /**
- * The teardown order of [VideoMaterial.destroy], run against [releaseVideoMaterial] — the one
- * sequence `destroy()` goes through, with the Filament calls replaced by recorders.
+ * The teardown order of [VideoMaterial.destroy], run against [VideoMaterialTeardown] — the class
+ * `destroy()` delegates to, given one recorder per Filament or Android release call.
  *
  * Filament's `FEngine::prepare` commits every surface material instance of the engine on every
  * frame, whether or not a renderable uses it. An instance left alive once its external texture is
  * destroyed aborts the process in `FMaterialInstance::commit` ("Invalid texture still bound to
- * MaterialInstance"). The real abort needs an engine and a GPU; this pins what is released and in
- * which order.
+ * MaterialInstance"). The real abort needs an engine and a GPU; this pins what is released, how
+ * many times and in which order.
  */
 class VideoMaterialReleaseOrderTest {
 
     private val released = mutableListOf<String>()
-    private var pendingRelease: (() -> Unit)? = null
+    private var onReclaimed: (() -> Unit)? = null
+    private var onEngineGone: (() -> Unit)? = null
 
-    private fun destroy() = releaseVideoMaterial(
+    private val teardown = VideoMaterialTeardown(
+        releaseSurface = { released += "surface" },
         destroyInstance = { released += "instance" },
-        whenInstanceReclaimed = { pendingRelease = it },
-        releaseVideo = {
-            released += "texture"
-            released += "stream"
+        whenInstanceReclaimed = { reclaimed, engineGone ->
+            released += "wait"
+            onReclaimed = reclaimed
+            onEngineGone = engineGone
         },
+        destroyTexture = { released += "texture" },
+        destroyStream = { released += "stream" },
+        releaseSurfaceTexture = { released += "surfaceTexture" },
     )
 
     @Test
-    fun `the material instance is destroyed with the material`() {
-        destroy()
-        pendingRelease?.invoke()
+    fun `the instance is destroyed, then the video once the backend has reclaimed it`() {
+        teardown.destroy()
 
-        assertEquals(listOf("instance", "texture", "stream"), released)
+        assertEquals(listOf("surface", "instance", "wait"), released)
+        assertNotNull("the texture and the stream are never released", onReclaimed)
+        onReclaimed!!.invoke()
+        assertEquals(
+            listOf("surface", "instance", "wait", "texture", "stream", "surfaceTexture"),
+            released,
+        )
     }
 
     @Test
-    fun `the texture outlives the instance until the backend has reclaimed it`() {
-        destroy()
+    fun `with the engine already gone only the SurfaceTexture is left to release`() {
+        teardown.destroy()
 
-        assertEquals(listOf("instance"), released)
-        assertNotNull("the texture and the stream are never released", pendingRelease)
-        pendingRelease!!.invoke()
-        assertEquals(listOf("instance", "texture", "stream"), released)
+        assertNotNull("the engine-gone path is never handed over", onEngineGone)
+        onEngineGone!!.invoke()
+        assertEquals(listOf("surface", "instance", "wait", "surfaceTexture"), released)
+    }
+
+    @Test
+    fun `a second destroy releases nothing`() {
+        teardown.destroy()
+        onReclaimed?.invoke()
+        val first = released.toList()
+
+        teardown.destroy()
+
+        assertEquals(first, released)
     }
 }
