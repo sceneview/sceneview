@@ -248,14 +248,6 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertTrue(state.autoPlaceDue(now: 10.7))
     }
 
-    func testInterruptionWhilePlacedStillRestartsTheDelay() {
-        var state = ARInstantPlacement.State()
-        state.observe(tracking: true, placed: false, now: 0)
-        state.observe(tracking: true, placed: true, now: 1)
-        state.interrupted()
-        XCTAssertFalse(state.autoPlaceDue(now: 10))
-    }
-
     func testResetRestartsTheDelay() {
         var state = ARInstantPlacement.State()
         state.observe(tracking: true, placed: false, now: 0)

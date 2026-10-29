@@ -37,11 +37,11 @@ public enum ARPlacementTrackingMethod: String, Sendable {
 /// The device-free rules of instant placement, pinned by unit tests on the Simulator.
 ///
 /// ``ARPlacementController`` feeds them ARKit values; nothing here touches a session. The
-/// behaviour and the shared constants follow the SceneView Android AR model viewer's
-/// `InstantPlacement`: auto-place on a real surface at once, else on the estimated floor after
+/// behaviour and the shared constants follow `InstantPlacement` in ARMV, the SceneView Android
+/// AR model viewer app: auto-place on a real surface at once, else on the estimated floor after
 /// ``autoPlaceDelay``; ease toward refined spots at ``settleSpeed``; back off anchor retries.
 enum ARInstantPlacement {
-    // MARK: Constants shared with Android (same names, Swift-cased)
+    // MARK: Constants shared with ARMV (same names, Swift-cased)
 
     /// A surface farther than this is ignored, horizontally — ARKit planes get unreliable far away.
     static let maxSurfaceDistance: Float = 5

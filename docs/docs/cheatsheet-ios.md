@@ -213,9 +213,15 @@ var body: some View {
         }
         .task {
             let ticket = placement.selectModel()
-            guard let model = try? await ModelNode.load("khronos_toy_car"),
-                  !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
-            placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            do {
+                let model = try await ModelNode.load("khronos_toy_car")
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                _ = model.withGroundingShadow()
+                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            } catch {
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                // Present a model-load error and retry, as in the automatic placement example.
+            }
         }
 }
 ```
