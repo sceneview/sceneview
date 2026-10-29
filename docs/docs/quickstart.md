@@ -18,7 +18,7 @@ description: "Set up SceneView in your Android project in 10 minutes. Add a 3D m
 
 ## Requirements
 
-SceneView 4.60.0 sets these floors on the app that depends on it.
+SceneView 4.63.0 sets these floors on the app that depends on it.
 
 | Setting | Value | Why |
 |---|---|---|

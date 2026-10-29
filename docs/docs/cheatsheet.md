@@ -395,6 +395,23 @@ Authoring your own model? See the [Blender pipeline recipe](recipes/blender-pipe
 export `.glb` from Blender for Android (native), or convert `.glb` → `.usdz` via Reality
 Converter + Reality Composer Pro for Apple platforms.
 
+### Thumbnails (off screen, no view)
+
+```kotlin
+// @OptIn(ExperimentalSceneViewApi::class)
+val snapshot = rememberModelSnapshot(engine)                  // one per screen: queue + cache
+val thumb: ModelThumbnailState = rememberModelThumbnail(snapshot, "models/file.glb", size = 96.dp)
+thumb.bitmapOrNull()?.let { Image(it, contentDescription = null) }   // Loading / Ready / Failed
+
+val bitmap: Bitmap? = snapshot.snapshot("models/file.glb", width = 512)   // suspend
+snapshot.snapshot("models/file.glb", 512, options = ModelSnapshotOptions(yawDegrees = 210f))
+```
+
+Framed whole on its bounding box, three-quarter view from slightly above, transparent
+background. Requests render one model at a time; each costs the main thread a model load
+(texture upload included), so a grid drops frames while it fills. Results are cached;
+failures (unloadable, empty box, `KHR_mesh_quantization`, nothing drawn) are `Failed(reason)`.
+
 ---
 
 ## Threading Rules

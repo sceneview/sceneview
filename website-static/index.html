@@ -143,7 +143,7 @@
       <a href="/playground.html">Playground</a>
     </nav>
     <div class="nav__end">
-      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars></span></a>
+      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
       <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
       <a class="btn btn--primary btn--sm" href="/docs/quickstart/" data-start>Get started</a>
       <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open menu"><svg><use href="#i-menu"/></svg></button>
@@ -528,18 +528,15 @@
         <p class="eyebrow reveal">In the open</p>
         <h2 class="h2 reveal" id="proof-title">Public numbers anyone can re-check.</h2>
       </div>
-      <!-- The data-metric="stars|contributors|releases|web-downloads" anchors are rewritten weekly by
-           .claude/scripts/update-site-metrics.sh: keep each one exactly once, on a text-only element.
-           No company names here: an Apache 2.0 user has not endorsed SceneView, and Play SDK Console
-           usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
+      <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
+           the nav (its data-metric anchor) is the one value rewritten weekly by
+           .claude/scripts/update-site-metrics.sh. No company names here: an Apache 2.0 user has not
+           endorsed SceneView, and Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <dl class="numbers reveal">
         <div class="numbers__lead"><dt>public repositories declare it as a dependency</dt><dd><a href="/companies.html">Over 500</a></dd></div>
-        <div><dt>stars on GitHub</dt><dd><a href="https://github.com/sceneview/sceneview" data-metric="stars">1.3K</a></dd></div>
-        <div><dt>contributors</dt><dd><a href="https://github.com/sceneview/sceneview/graphs/contributors" data-metric="contributors">48</a></dd></div>
-        <div><dt>releases</dt><dd><a href="https://github.com/sceneview/sceneview/releases" data-metric="releases">159</a></dd></div>
-        <div><dt>npm downloads, web, 30&nbsp;days</dt><dd><a href="https://www.npmjs.com/package/sceneview-web" data-metric="web-downloads">3.1K</a></dd></div>
+        <div class="numbers__lead"><dt>stars on GitHub</dt><dd><a href="https://github.com/sceneview/sceneview">More than 1,300</a></dd></div>
       </dl>
-      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Stars, contributors, releases and web downloads are refreshed weekly by an automated job.</p>
+      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page.</p>
     </div>
   </section>
 
