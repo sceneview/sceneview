@@ -580,9 +580,12 @@ fun AutoPlacementScene(
 
 /**
  * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
- * default. Pass null [scaleToUnits] to retain authored units. The model's complete bounding
+ * default. Pass null [scaleToUnits] to retain authored units — or use the overload taking a
+ * [PlacementSize], which names the choice. The model's complete bounding
  * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
- * before the grounded bounds are calculated.
+ * before the grounded bounds are calculated. The model's bottom-centre rests on the contact
+ * point, and the pinch scales about it. Its dimensions are published on
+ * [AutoPlacementState.baseSize] and [AutoPlacementState.placedSize].
  *
  * Gestures, as Scene Viewer and AR Quick Look:
  * - **Pinch** follows the fingers 1:1 relative to where they landed (spreading them twice as
@@ -605,6 +608,54 @@ fun ARSceneScope.AutoPlacementModel(
     assetRotation: Rotation = Rotation(0f),
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
+) = PlacedModelContent(placement, state, modelInstance, scaleToUnits, assetRotation, onInvalidMove, onScaleChanged)
+
+/**
+ * Grounded model content for [AutoPlacementScene] at an explicit [size]:
+ *
+ * - [PlacementSize.RealWorld] keeps the asset's authored metres — a 1 m cube is 1 m, nothing
+ *   is rescaled;
+ * - [PlacementSize.FitInto] scales it so its longest authored axis, before [assetRotation],
+ *   measures the given metres.
+ *
+ * Either way the model's bottom-centre rests on the surface (back and bottom against a wall),
+ * 100 % is that size, and the pinch, [AutoPlacementState.scaleTo] and the double-tap resize it
+ * from there. [AutoPlacementState.baseSize], [AutoPlacementState.placedSize] and
+ * [AutoPlacementState.isAtRealWorldSize] report the result in metres:
+ *
+ * ```kotlin
+ * AutoPlacementModel(placement, state, sofa, size = PlacementSize.RealWorld)
+ * Text(state.placedSize?.let { "%.2f m tall".format(it.y) } ?: "")
+ * ```
+ *
+ * [AutoPlacementState.baseSize] is the axis-aligned box after [assetRotation], published one
+ * frame after the model appears. [AutoPlacementState.scaleTo] clamps to
+ * [AutoPlacementState.scaleRange] (25–400 % by default): widen it for a target outside that.
+ *
+ * Gestures, selection and [assetRotation] behave as in the `scaleToUnits` overload.
+ */
+@Composable
+fun ARSceneScope.AutoPlacementModel(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    modelInstance: ModelInstance,
+    size: PlacementSize,
+    assetRotation: Rotation = Rotation(0f),
+    onInvalidMove: (Boolean) -> Unit = {},
+    onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
+) = PlacedModelContent(
+    placement, state, modelInstance, size.scaleToUnits, assetRotation, onInvalidMove, onScaleChanged,
+)
+
+@Composable
+private fun ARSceneScope.PlacedModelContent(
+    placement: AutoPlacementResult,
+    state: AutoPlacementState,
+    modelInstance: ModelInstance,
+    scaleToUnits: Float?,
+    assetRotation: Rotation,
+    onInvalidMove: (Boolean) -> Unit,
+    onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit,
 ) {
     val entrance = rememberPlacementEntrance(placement, state)
     AutomaticPlacementPivot(placement, state, onInvalidMove, onScaleChanged,
@@ -631,6 +682,15 @@ fun ARSceneScope.AutoPlacementModel(
                 isRotationEditable = false
                 isScaleEditable = false
             }
+        }
+        DisposableEffect(model, state) {
+            // Dimensions in the asset's corrected frame: the wall tilt is placement, not shape.
+            state.publishBaseSize(
+                owner = model,
+                size = placementBaseSize(model.halfExtent, model.scale, assetRotation),
+                realWorld = scaleToUnits == null,
+            )
+            onDispose { state.clearBaseSize(model) }
         }
         val footprint = remember(model) {
             // The model's own bounds, already rotated and grounded — the ring hugs the object.

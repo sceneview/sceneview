@@ -1615,13 +1615,14 @@ private fun SingleModelSection(
             // An opened file goes to AR as itself, at the size it actually is. That measurement
             // is the point for a 3MF: the format carries true manufacturing size, so a 60 mm
             // print must arrive in the room as 60 mm, not as the catalogue's default 30 cm.
-            DemoSettings.openedModelSizeMeters = openedFile?.let {
-                bounds?.extents?.let { extents ->
-                    // `Aabb.extents` is already the FULL size (halfExtent * 2), so the longest
-                    // dimension is the object's real length — no second doubling.
-                    maxOf(extents.x, extents.y, extents.z).takeIf { it > 0f }
-                }
-            }
+            // The size is claimed only for the very file AR is handed: `bounds` measure the
+            // instance on stage, and a mismatch would place one file at another's size.
+            DemoSettings.openedModelSizeMeters = openedFile?.arMeasuredSizeMeters(
+                presentedLocation = streamedModel?.location,
+                // `Aabb.extents` is already the FULL size (halfExtent * 2), so the longest
+                // dimension is the object's real length — no second doubling.
+                longestSideMeters = bounds?.extents?.let { maxOf(it.x, it.y, it.z) },
+            )
             // The staged file is called `opened-model` on disk, so AR cannot recover the user's
             // file name from the location it is handed. Carry it across explicitly.
             DemoSettings.openedModelDisplayName = openedFile?.displayName
@@ -2081,9 +2082,14 @@ private fun SingleModelSection(
                     val reopened = withContext(Dispatchers.IO) {
                         OpenedModelIntent.reopenAt(context, name, unit)
                     }
-                    if (reopened != null) {
+                    // Still the opened file on stage, not one a pick is already replacing.
+                    if (reopened != null && openedFile?.displayName == name && openedFileLeavingInstance == null) {
                         loadedUnit = unit
                         streamedFileUrl = reopened.location
+                        // The re-converted file IS the opened file from now on: View in AR must
+                        // take this one, not the staged original the loader reads in millimetres,
+                        // or a file reopened in metres reaches AR a thousand times too small.
+                        openedFile = reopened
                         // The file is a different size now: drop the zoom override and re-fly the
                         // camera, or the model lands framed for the size it no longer is.
                         DemoSettings.cameraDistance = null

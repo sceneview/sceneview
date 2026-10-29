@@ -714,6 +714,7 @@ public final class io/github/sceneview/ar/AutoPlacementResult {
 }
 
 public final class io/github/sceneview/ar/AutoPlacementSceneKt {
+	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Lio/github/sceneview/ar/PlacementSize;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementModel (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lcom/google/android/filament/gltfio/FilamentInstance;Ljava/lang/Float;Ldev/romainguy/kotlin/math/Float3;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;II)V
 	public static final fun AutoPlacementNode (Lio/github/sceneview/ar/ARSceneScope;Lio/github/sceneview/ar/AutoPlacementResult;Lio/github/sceneview/ar/AutoPlacementState;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;II)V
 	public static final synthetic fun AutoPlacementScene (ZLandroidx/compose/ui/Modifier;Lio/github/sceneview/ar/AutoPlacementState;Lio/github/sceneview/ar/PlacementSurface;Lcom/google/android/filament/Engine;Lio/github/sceneview/loaders/ModelLoader;Lio/github/sceneview/loaders/MaterialLoader;ZLjava/io/File;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function4;Landroidx/compose/runtime/Composer;III)V
@@ -737,12 +738,14 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun dismiss ()V
 	public final fun endAdjustment ()V
 	public final fun getAllowsScaling ()Z
+	public final fun getBaseSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getCameraHeight ()Ljava/lang/Float;
 	public final fun getFloorHeight ()Ljava/lang/Float;
 	public final fun getHasCameraFrame ()Z
 	public final fun getHasPlacement ()Z
 	public final fun getPhase ()Lio/github/sceneview/ar/PlacementPhase;
 	public final fun getPlacedAtMillis ()J
+	public final fun getPlacedSize ()Ldev/romainguy/kotlin/math/Float3;
 	public final fun getPlacementRequested ()Z
 	public final fun getPlacementsCreated ()I
 	public final fun getScaleFactor ()F
@@ -753,6 +756,7 @@ public final class io/github/sceneview/ar/AutoPlacementState {
 	public final fun getTicket ()Lio/github/sceneview/ar/AssetTicket;
 	public final fun getWantsSurface ()Z
 	public final fun isAdjusting ()Z
+	public final fun isAtRealWorldSize ()Z
 	public final fun isSelected ()Z
 	public final fun keepScanning (J)V
 	public final fun moveBy (FF)Z
@@ -982,6 +986,29 @@ public final class io/github/sceneview/ar/PlacementSceneKt {
 	public static final fun placementHit (Lcom/google/ar/core/Frame;Ljava/util/List;Z)Lcom/google/ar/core/HitResult;
 	public static final fun placementHitSource (ZZZ)Lio/github/sceneview/ar/PlacementHitSource;
 	public static final fun shouldShowReticle (ZZZ)Z
+}
+
+public abstract interface class io/github/sceneview/ar/PlacementSize {
+}
+
+public final class io/github/sceneview/ar/PlacementSize$FitInto : io/github/sceneview/ar/PlacementSize {
+	public static final field $stable I
+	public fun <init> (F)V
+	public final fun component1 ()F
+	public final fun copy (F)Lio/github/sceneview/ar/PlacementSize$FitInto;
+	public static synthetic fun copy$default (Lio/github/sceneview/ar/PlacementSize$FitInto;FILjava/lang/Object;)Lio/github/sceneview/ar/PlacementSize$FitInto;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMeters ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/ar/PlacementSize$RealWorld : io/github/sceneview/ar/PlacementSize {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/ar/PlacementSize$RealWorld;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/ar/PlacementSurface : java/lang/Enum {
