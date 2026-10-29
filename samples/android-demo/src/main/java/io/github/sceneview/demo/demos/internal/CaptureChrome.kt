@@ -231,5 +231,8 @@ object CaptureChrome {
         qaMode: Boolean,
     ): ScanHaptic? = haptic(before, after)?.takeIf { !qaMode && nowMs - playedAtMs >= HAPTIC_GAP_MS }
 
+    /** How long a haptic due at [nowMs] waits for [HAPTIC_GAP_MS] to pass since [playedAtMs]. */
+    fun hapticWaitMs(nowMs: Long, playedAtMs: Long): Long = (HAPTIC_GAP_MS - (nowMs - playedAtMs)).coerceAtLeast(0L)
+
     private const val PERCENT = 100
 }

@@ -93,4 +93,12 @@ class RoomCompletionTest {
         assertNull(CaptureChrome.hapticToPlay(clear, blocked, nowMs = 60_000L, playedAtMs = 0L, qaMode = true))
         assertNull(CaptureChrome.hapticToPlay(clear, clear, nowMs = 60_000L, playedAtMs = 0L, qaMode = false))
     }
+
+    @Test
+    fun `a haptic due within the gap waits out the rest of it`() {
+        val gap = CaptureChrome.HAPTIC_GAP_MS
+        assertEquals(gap - 300L, CaptureChrome.hapticWaitMs(nowMs = 5_300L, playedAtMs = 5_000L))
+        assertEquals(0L, CaptureChrome.hapticWaitMs(nowMs = 5_000L + gap, playedAtMs = 5_000L))
+        assertEquals(0L, CaptureChrome.hapticWaitMs(nowMs = 60_000L, playedAtMs = Long.MIN_VALUE / 2))
+    }
 }

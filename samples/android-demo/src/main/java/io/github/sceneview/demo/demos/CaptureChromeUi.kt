@@ -49,6 +49,7 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
 import io.github.sceneview.demo.theme.SceneViewTokens.Space
 import io.github.sceneview.haptic.rememberHapticFeedback
+import kotlinx.coroutines.delay
 
 /*
  * The 3D Scan capture's chrome legible in sunlight: every line of it sits on a solid fill, so the
@@ -195,7 +196,9 @@ internal fun ScanCueLine(cue: CaptureCue, modifier: Modifier = Modifier) {
 /**
  * A haptic on the changes that matter while the phone is held at arm's length: a blocker showing
  * (warning), clearing (light), the room completing (success). One a second at most, the room's
- * completion included, so a cause flickering at its threshold does not buzz; never in QA mode.
+ * completion included: one due sooner waits out the second rather than being lost, and a newer
+ * state cancels the wait and is weighed against the last one felt, so a cause flickering at its
+ * threshold does not buzz. Never in QA mode.
  */
 @Composable
 internal fun CaptureChromeHaptics(cue: CaptureCue?, complete: Boolean) {
@@ -203,9 +206,13 @@ internal fun CaptureChromeHaptics(cue: CaptureCue?, complete: Boolean) {
     val state = CaptureChromeState.of(cue, complete)
     val memory = remember { HapticMemory(state) }
     LaunchedEffect(state) {
+        val felt = memory.felt
+        if (CaptureChrome.haptic(felt, state) != null && !DemoSettings.qaMode) {
+            delay(CaptureChrome.hapticWaitMs(SystemClock.uptimeMillis(), memory.playedAt))
+        }
         val now = SystemClock.uptimeMillis()
-        val play = CaptureChrome.hapticToPlay(memory.last, state, now, memory.playedAt, DemoSettings.qaMode)
-        memory.last = state
+        val play = CaptureChrome.hapticToPlay(felt, state, now, memory.playedAt, DemoSettings.qaMode)
+        memory.felt = state
         if (play == null) return@LaunchedEffect
         memory.playedAt = now
         when (play) {
@@ -216,7 +223,7 @@ internal fun CaptureChromeHaptics(cue: CaptureCue?, complete: Boolean) {
     }
 }
 
-private class HapticMemory(var last: CaptureChromeState, var playedAt: Long = Long.MIN_VALUE / 2)
+private class HapticMemory(var felt: CaptureChromeState, var playedAt: Long = Long.MIN_VALUE / 2)
 
 internal const val SCAN_STEPS_TAG = "scan_steps"
 internal const val SCAN_BLOCKER_TAG = "scan_blocker"
