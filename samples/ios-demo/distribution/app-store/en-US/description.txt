@@ -18,7 +18,7 @@ WHAT THE SAMPLES SHOW
 
 FOR DEVELOPERS
 
-A 3D model on screen is one view, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples and this app are free and open source: SceneView has more than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency.
+A 3D model on screen is one view, and AR placement is one call. Find the screen that looks like what you want to build, open its code, and copy it into your project. The SDK, the samples and this app are open source: SceneView has more than 1,300 stars on GitHub, and over 500 public repositories declare it as a dependency.
 
 github.com/sceneview/sceneview
 

@@ -1,1 +1,1 @@
-Nearly 50 live 3D & AR samples for Jetpack Compose and ARCore, with source code
+3D models, AR placement and room scans for Compose, each with its source code
