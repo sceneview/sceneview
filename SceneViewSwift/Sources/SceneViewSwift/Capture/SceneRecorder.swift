@@ -306,7 +306,7 @@ public final class SceneRecorder: ObservableObject {
     }
 
     /// Whether captures use `source` now. A scene the recorder left for another one checks
-    /// it to take the recorder back.
+    /// it, with ``isAttached``, to take the recorder back only once it is free.
     func isUsing(_ source: any SceneCaptureSource) -> Bool {
         self.source === source
     }

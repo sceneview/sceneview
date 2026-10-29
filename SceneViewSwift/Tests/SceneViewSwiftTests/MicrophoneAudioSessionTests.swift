@@ -7,8 +7,10 @@ import XCTest
 /// activates, deactivates and puts back.
 final class MicrophoneAudioSessionTests: XCTestCase {
 
-    func testANonRecordingCategoryIsSwitchedThenDeactivatedAndPutBack() {
+    func testAnInactiveSessionUnderAnotherAppsMusicIsDeactivatedThenPutBack() {
+        // Music from another app plays over .soloAmbient: this app's session is inactive.
         let fake = FakeAudioSession(category: .soloAmbient)
+        fake.isOtherAudioPlaying = true
         let audio = MicrophoneAudioSession(fake)
 
         XCTAssertTrue(audio.begin())
@@ -24,6 +26,33 @@ final class MicrophoneAudioSessionTests: XCTestCase {
         XCTAssertEqual(fake.categoryOptions, [])
     }
 
+    func testAnActiveSessionIsPutBackWithoutDeactivating() {
+        // No other audio: the app's own sound (RealityKit audio, an AVPlayer) may be playing
+        // in its session, which deactivating would stop.
+        let fake = FakeAudioSession(category: .soloAmbient)
+        let audio = MicrophoneAudioSession(fake)
+
+        XCTAssertTrue(audio.begin())
+        audio.end()
+        XCTAssertEqual(fake.calls, [.setCategory(.playAndRecord), .setActive(true, []), .setCategory(.soloAmbient)])
+    }
+
+    func testAMixingCategoryIsPutBackWithoutDeactivatingEvenUnderOtherAudio() {
+        // Other audio playing says nothing about a session that mixes with it.
+        for (category, options) in [(AVAudioSession.Category.ambient, AVAudioSession.CategoryOptions()),
+                                    (.playback, [.mixWithOthers]), (.playback, [.duckOthers])] {
+            let fake = FakeAudioSession(category: category, options: options)
+            fake.isOtherAudioPlaying = true
+            let audio = MicrophoneAudioSession(fake)
+
+            XCTAssertTrue(audio.begin())
+            audio.end()
+            XCTAssertEqual(fake.calls, [.setCategory(.playAndRecord), .setActive(true, []), .setCategory(category)],
+                           "\(category.rawValue) \(options.rawValue)")
+            XCTAssertEqual(fake.categoryOptions, options)
+        }
+    }
+
     func testAFailedSwitchActivatesNothingAndPutsNothingBack() {
         let fake = FakeAudioSession(category: .soloAmbient)
         fake.failSetCategory = true
@@ -37,6 +66,7 @@ final class MicrophoneAudioSessionTests: XCTestCase {
 
     func testACategoryTheAppChangedDuringTheRecordingIsKept() {
         let fake = FakeAudioSession(category: .soloAmbient)
+        fake.isOtherAudioPlaying = true
         let audio = MicrophoneAudioSession(fake)
         XCTAssertTrue(audio.begin())
 
@@ -85,6 +115,7 @@ final class MicrophoneAudioSessionTests: XCTestCase {
 
     func testAFailedActivationIsNotUndone() {
         let fake = FakeAudioSession(category: .soloAmbient)
+        fake.isOtherAudioPlaying = true
         fake.failSetActive = true
         let audio = MicrophoneAudioSession(fake)
 
@@ -104,15 +135,18 @@ private final class FakeAudioSession: AudioSessionControlling {
 
     private(set) var category: AVAudioSession.Category
     private(set) var mode: AVAudioSession.Mode
-    private(set) var categoryOptions: AVAudioSession.CategoryOptions = []
+    private(set) var categoryOptions: AVAudioSession.CategoryOptions
+    var isOtherAudioPlaying = false
     var calls: [Call] = []
     var failSetCategory = false
     var failSetActive = false
     var normalise: (AVAudioSession.CategoryOptions) -> AVAudioSession.CategoryOptions = { $0 }
 
-    init(category: AVAudioSession.Category, mode: AVAudioSession.Mode = .default) {
+    init(category: AVAudioSession.Category, mode: AVAudioSession.Mode = .default,
+         options: AVAudioSession.CategoryOptions = []) {
         self.category = category
         self.mode = mode
+        categoryOptions = options
     }
 
     func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode,

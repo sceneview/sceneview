@@ -305,6 +305,7 @@ protocol AudioSessionControlling: AnyObject {
     var category: AVAudioSession.Category { get }
     var mode: AVAudioSession.Mode { get }
     var categoryOptions: AVAudioSession.CategoryOptions { get }
+    var isOtherAudioPlaying: Bool { get }
     func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode,
                      options: AVAudioSession.CategoryOptions) throws
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
@@ -315,12 +316,20 @@ extension AVAudioSession: AudioSessionControlling {}
 /// Makes the app's audio session recordable for one recording, then hands it back.
 ///
 /// A category that already records (`.playAndRecord`, `.record`) is the app's own setup: it
-/// is activated and otherwise left alone. Any other category is switched to
+/// is activated, never deactivated, never switched. Any other category is switched to
 /// `.playAndRecord`, mixing with other audio, and activated; if the switch fails nothing is
-/// activated and the recording stays silent. At the end, a switched session is deactivated
-/// (other apps' audio is told it may resume) and its category put back, but only while it
-/// is still exactly the setup the recorder made: a category the app changed in the
-/// meantime (a voice chat, a switch to `.playback`) is the app's and is kept, active.
+/// activated and the recording stays silent.
+///
+/// At the end the category is put back, but only while the session is still exactly the
+/// setup the recorder made: a category the app changed in the meantime (a voice chat, a
+/// switch to `.playback`) is the app's and is kept. The session is deactivated first (other
+/// apps' audio is told it may resume) only when it was inactive before the recording,
+/// which is the case when another app was playing over a category that does not mix:
+/// deactivating an active session would stop the app's own sound (RealityKit audio, an
+/// `AVPlayer`), with or without running I/O.
+///
+/// The app has one audio session: two recordings with the microphone at the same time share
+/// it, and the first one to end hands it back for both.
 final class MicrophoneAudioSession {
     typealias Setup = (category: AVAudioSession.Category, mode: AVAudioSession.Mode,
                        options: AVAudioSession.CategoryOptions)
@@ -328,8 +337,9 @@ final class MicrophoneAudioSession {
     static let recordingOptions: AVAudioSession.CategoryOptions = [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP]
 
     private let session: AudioSessionControlling
-    /// The app's setup before the switch, and the setup the switch left, while switched.
-    private var switched: (previous: Setup, applied: Setup)?
+    /// While switched: the app's setup before, the setup the switch left, and whether the
+    /// app's session was inactive before.
+    private var switched: (previous: Setup, applied: Setup, wasInactive: Bool)?
     private var activated = false
 
     init(_ session: AudioSessionControlling) {
@@ -340,13 +350,16 @@ final class MicrophoneAudioSession {
     func begin() -> Bool {
         if session.category != .playAndRecord, session.category != .record {
             let previous = current
+            // Another app's audio playing over a category that interrupts it means this
+            // app's session is not active.
+            let wasInactive = session.isOtherAudioPlaying && !Self.mixes(previous)
             do {
                 try session.setCategory(.playAndRecord, mode: .default, options: Self.recordingOptions)
             } catch {
                 return false
             }
             // As read back: the system may normalise the options it was given.
-            switched = (previous, current)
+            switched = (previous, current, wasInactive)
         }
         activated = (try? session.setActive(true, options: [])) != nil
         return true
@@ -359,13 +372,21 @@ final class MicrophoneAudioSession {
             activated = false
         }
         guard let switched, Self.same(current, switched.applied) else { return }
-        if activated { try? session.setActive(false, options: .notifyOthersOnDeactivation) }
+        if activated, switched.wasInactive {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
         try? session.setCategory(switched.previous.category, mode: switched.previous.mode,
                                  options: switched.previous.options)
     }
 
     private var current: Setup {
         (session.category, session.mode, session.categoryOptions)
+    }
+
+    /// Whether a setup plays along with other apps' audio instead of interrupting it.
+    static func mixes(_ setup: Setup) -> Bool {
+        setup.category == .ambient
+            || !setup.options.isDisjoint(with: [.mixWithOthers, .duckOthers, .interruptSpokenAudioAndMixWithOthers])
     }
 
     private static func same(_ a: Setup, _ b: Setup) -> Bool {

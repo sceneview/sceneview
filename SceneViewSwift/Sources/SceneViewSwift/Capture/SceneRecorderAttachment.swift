@@ -8,7 +8,9 @@ extension SceneView {
     ///
     /// The recorder captures what the scene renders, never the SwiftUI views over it. One
     /// recorder serves one scene at a time: attaching it to another one finishes a recording
-    /// running on the first. A recording also finishes when this view leaves the screen.
+    /// running on the first, which takes the recorder back once the other one lets it go
+    /// (leaves the screen or drops the recorder). A recording also finishes when this view
+    /// leaves the screen.
     ///
     /// ```swift
     /// @StateObject private var recorder = SceneRecorder()
@@ -30,7 +32,8 @@ extension ARSceneView {
     /// virtual content together, never the SwiftUI views over it.
     ///
     /// Works with ``cameraExposure(_:)`` (see ``SceneRecorder`` for the one case where the
-    /// video misses it). One recorder serves one scene at a time. A recording finishes when
+    /// video misses it). One recorder serves one scene at a time; a scene it left takes it
+    /// back once the other one lets it go. A recording finishes when
     /// this view leaves the window; the recorder is attached again when it comes back.
     ///
     /// - Parameter recorder: The recorder, or `nil` to detach.
@@ -116,8 +119,9 @@ struct SceneRecorderAnchor: UIViewRepresentable {
                 return
             }
             retriesLeft = 5
-            // Still in use, unless another scene took the recorder since (A, then B, then A).
-            if let source, source.arView === arView, recorder.isUsing(source) { return }
+            // Kept while another scene that took the recorder since holds it (it may be
+            // recording); taken back once that scene let it go.
+            if let source, source.arView === arView, recorder.isUsing(source) || recorder.isAttached { return }
             if let source { recorder.detach(source) }
             let newSource = ARViewCaptureSource(arView: arView)
             source = newSource
@@ -127,8 +131,9 @@ struct SceneRecorderAnchor: UIViewRepresentable {
 }
 
 extension ARSceneView.Coordinator {
-    /// Attaches `recorder` to `arView`, detaching the previous one. Idempotent, and takes the
-    /// recorder back when another scene attached it since.
+    /// Attaches `recorder` to `arView`, detaching the previous one. Idempotent. A recorder
+    /// another scene took since stays there while that scene holds it (it may be recording,
+    /// and this runs on every render); it is taken back once that scene let it go.
     ///
     /// While attached, a hidden subview of `arView` watches its window: leaving the window
     /// detaches the recorder (finishing a recording), coming back attaches it again.
@@ -136,7 +141,8 @@ extension ARSceneView.Coordinator {
     func syncRecorder(_ recorder: SceneRecorder?, on arView: ARView) {
         if recorder === sceneRecorder {
             if recorderWindowWatcher?.isOffWindow == true { return }
-            if let recorder, let captureSource, captureSource.arView === arView, recorder.isUsing(captureSource) {
+            if let recorder, let captureSource, captureSource.arView === arView,
+               recorder.isUsing(captureSource) || recorder.isAttached {
                 return
             }
         }
