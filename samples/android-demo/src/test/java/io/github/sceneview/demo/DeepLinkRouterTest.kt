@@ -504,10 +504,10 @@ class DeepLinkRouterTest {
         // 42 since #4603 folded `lighting-lab` into `lighting`, plus Finger Drawing (#4082) and
         // Pool in the garden; 41 since wave 1 of the AR catalogue clean-up retired three AR ids
         // and hid a fourth (`ar-ml-object-label`, registered but unlisted as Point & Ask's
-        // on-device fallback); 42 with Model Thumbnails.
+        // on-device fallback); 42 with Camera Path; 43 with Model Thumbnails.
         assertEquals(
-            "Android registers 42 demos after step 0, #4603, Finger Drawing, Pool in the garden, wave 1 and Model Thumbnails",
-            42,
+            "Android registers 43 demos after step 0, #4603, Finger Drawing, Pool in the garden, wave 1, Camera Path and Model Thumbnails",
+            43,
             ALL_DEMOS.size,
         )
     }
