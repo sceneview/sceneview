@@ -41,30 +41,19 @@ Box(Modifier.fillMaxSize()) {
 
 Parameters: `backdrop: Brush? = null`, `profile: CinematicCameraProfile = Default`, `contentRadius = 0.75f` (frames any model with `scaleToUnits = 1f`; content is auto-centred), `parallax = 0.4f`. No gestures on the 3D (the list keeps every touch); it stops drawing off screen and does not turn by itself with system animations off. Copy-paste prompt for an AI assistant: `docs/prompts/cinematic-hero.md`.
 
-### Record the scene to MP4 (in-app, no MediaProjection)
+### Capture the scene — photo and MP4 (in-app, no MediaProjection)
 
 ```kotlin
-val surfaceMirrorer = rememberSurfaceMirrorer()
-SceneView(surfaceMirrorer = surfaceMirrorer, ...)  // or ARSceneView — records camera feed + virtual content
+val recorder = rememberSceneRecorder()
+ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer, ...)  // or SceneView — camera feed + virtual content
 
-// Start: point a MediaRecorder's input surface at the scene.
-val recorder = MediaRecorder(context).apply {
-    setVideoSource(MediaRecorder.VideoSource.SURFACE)
-    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-    setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-    setVideoSize(1280, 720)
-    setOutputFile(outputFile.absolutePath)
-    prepare()
-}
-surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)
-recorder.start()
-
-// Stop:
-surfaceMirrorer.stopMirroring(recorder.surface)
-recorder.stop(); recorder.release()
+scope.launch { recorder.savePhoto() }                                  // full-res JPEG, File?
+recorder.startRecording(settings = VideoSettings(maxDurationMillis = 60_000))  // 1080p30 MP4
+recorder.stopRecording()                                              // SceneRecording?
+recorder.overlay = CaptureOverlay { canvas, w, h -> /* watermark */ }
 ```
 
-No consent dialog, no foreground service, no UI in the frame. Full guide: "Record the scene to MP4 — Surface mirroring".
+No consent dialog, no foreground service, no UI in the frame. Full guide: "Capture the scene — photo and MP4".
 
 ### Show a 3D model with orbit camera
 

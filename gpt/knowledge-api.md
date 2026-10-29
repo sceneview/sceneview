@@ -83,7 +83,7 @@ fun SceneView(
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
@@ -228,7 +228,7 @@ fun ARSceneView(
     onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,  // A requested capability was silently downgraded — see "ARConfigDowngrade" (#2096).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
@@ -4166,7 +4166,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
-| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
+| `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
 | `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
 | `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
@@ -4700,6 +4701,74 @@ val rotation = quaternion.toRotation(order = RotationsOrder.ZYX)
 SceneView(surfaceType = SurfaceType.Surface)          // SurfaceView, best perf (default)
 SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // TextureView, alpha
 ```
+
+---
+
+## Capture the scene — photo and MP4 (SceneRecorder, no MediaProjection)
+
+`SceneRecorder` (`io.github.sceneview.capture.SceneRecorder`) turns a `SceneView` or `ARSceneView` into a **shareable photo or video of exactly what the scene renders** — in AR, the camera feed and the virtual content composited. Never your Compose UI, no MediaProjection consent dialog, no `mediaProjection` foreground service. Built on `SurfaceMirrorer` (below), which stays available for custom encoders.
+
+```kotlin
+import io.github.sceneview.capture.VideoSettings
+import io.github.sceneview.capture.rememberSceneRecorder
+
+@Composable
+fun CapturableARScreen() {
+    val recorder = rememberSceneRecorder()
+    val scope = rememberCoroutineScope()
+
+    ARSceneView(  // or SceneView(...) — same parameter
+        modifier = Modifier.fillMaxSize(),
+        surfaceMirrorer = recorder.surfaceMirrorer,
+    ) { /* nodes */ }
+
+    // Photo: full-resolution PixelCopy of the scene, JPEG (default) or PNG.
+    Button(onClick = { scope.launch { val file: File? = recorder.savePhoto() } }) { Text("Photo") }
+
+    // Video: H.264 MP4, 1080p at 30 fps by default, optional mic, optional time limit.
+    Button(onClick = {
+        if (recorder.isRecording) {
+            recorder.stopRecording()                       // -> SceneRecording? (file, size, duration)
+        } else {
+            recorder.startRecording(settings = VideoSettings(recordAudio = true, maxDurationMillis = 30_000))
+        }
+    }) { Text(if (recorder.isRecording) "Stop ${recorder.elapsedMillis / 1000}s" else "Record") }
+}
+```
+
+Key facts:
+- **Photo** — `suspend fun takePhoto(): Bitmap?` (view-sized, full resolution) and `suspend fun savePhoto(file: File? = null, format: PhotoFormat = JPEG, quality: Int = 95): File?`. `PixelCopy` of the `SurfaceView` (the GPU buffer: camera feed included, Compose views over it excluded), `TextureView.getBitmap()` for a texture-view scene. `null` before the first frame. Main-safe suspend functions.
+- **Video** — `startRecording(file = newCaptureFile("mp4"), settings = VideoSettings()): Boolean`, `stopRecording(): SceneRecording?`. Main thread. The video keeps the view's aspect ratio inside a `maxLongEdge × maxShortEdge` box (default 1920 × 1080) turned like the view, edges aligned for H.264; when the encoder refuses that size it steps down through 1080p, 720p, 540p, 360p, never above the requested box. It is a second render of the scene, not a screen copy: a small view still records at 1080p.
+- **Microphone** — `VideoSettings(recordAudio = true)` records AAC mono when the app holds `RECORD_AUDIO` at start; without it, or when another app holds the microphone, the video is recorded silent and `SceneRecording.hasAudio` is `false` (the recorder never asks for the permission).
+- **Time limit** — `VideoSettings(maxDurationMillis = …)`: the recording stops by itself and `SceneRecording.reachedMaxDuration` is `true`. `onRecordingFinished: (SceneRecording?) -> Unit` fires on every stop, manual or automatic (`null` = nothing usable was written; see `lastError`).
+- **Automatic stops** — a recording also ends, file finalised and `onRecordingFinished` called, when the scene feeding it leaves composition or stops using `recorder.surfaceMirrorer`, and — with `rememberSceneRecorder()` — when the screen reaches `Lifecycle.Event.ON_STOP` (background, screen off): the scene stops rendering there. `rememberSceneRecorder(lifecycle = …)` picks another lifecycle.
+- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (GPU compositing through an `ImageReader`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
+- **Compose state** — `isRecording`, `elapsedMillis` (ticks every 250 ms), `lastRecording`, `lastError`, `overlay`, `onRecordingFinished` are snapshot state.
+- **Files** — `newCaptureFile(extension)` = `getExternalFilesDir(null)/captures/scene_<timestamp>.<ext>`, or `filesDir/captures/` without external files storage (no storage permission). Share through your `FileProvider`.
+- `rememberSceneRecorder()` releases the recorder (and stops a running recording) when it leaves composition. Outside Compose: `SceneRecorder(context)`, then `release()`.
+
+### Lower level: SurfaceMirrorer
+
+`SurfaceMirrorer` (`io.github.sceneview.utils.SurfaceMirrorer`, #2626) copies every rendered frame GPU-side onto additional `Surface`s — what `SceneRecorder` uses for video. Pass `rememberSurfaceMirrorer()` to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then attach your own encoder surface (a `MediaCodec`, an RTMP streamer, a second display):
+
+```kotlin
+fun startStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.startMirroring(encoderSurface, width = 1280, height = 720)  // any thread, JNI-free
+}
+
+fun stopStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.stopMirroring(encoderSurface)  // main thread, before stopping the encoder
+}
+```
+
+Key facts:
+- `startMirroring(surface, left = 0, bottom = 0, width = null, height = null)` — `width`/`height` are the destination rectangle on the surface; `null` defaults to the scene view's size. The frame is letterboxed to preserve aspect ratio. A scene that rendered on demand and went idle is woken for the new mirror.
+- `stopMirroring(surface)` — idempotent; a surface is identified by instance. Main thread (Filament rule).
+- Multiple surfaces can be mirrored at once (e.g. recorder + live preview/RTMP encoder).
+- The mirror copy runs only while frames render — pausing the lifecycle pauses the feed.
+- Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SceneRecorder` / `SurfaceMirrorer` record the *rendered* scene — the shareable video with virtual content composited.
+
+Sample: the Android demo app's `DemoScaffold` "Take photo" and "Record video" actions (`samples/android-demo/.../recording/SceneCapture.kt`: watermark, open and share), shown on `cosmos` and on AR `finger-drawing`; the retired `video-recording` id opens them.
 
 ---
 

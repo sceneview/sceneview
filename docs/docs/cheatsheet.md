@@ -246,23 +246,26 @@ ARSceneView(
 
 **Two different "recordings" — pick by what you capture:**
 
-- **`SurfaceMirrorer`** (`sceneview` **and** `arsceneview`) — records **the rendered scene to an
-  MP4**: exactly what Filament draws (in AR, camera feed + virtual content composited), no Compose
-  UI. In-app, no MediaProjection consent dialog / foreground service. Share-ready video.
+- **`SceneRecorder`** (`sceneview`, works on `ARSceneView` too) — a **photo or MP4 of the rendered
+  scene**: exactly what Filament draws (in AR, camera feed + virtual content composited), no Compose
+  UI. In-app, no MediaProjection consent dialog / foreground service. Share-ready.
 - **`ARRecorder`** (above, `arsceneview` only) — records an **ARCore session dataset** (raw sensor
   streams) for deterministic **replay** through `playbackDataset` — a debugging tool, not a video.
 
 ```kotlin
-val surfaceMirrorer = rememberSurfaceMirrorer()
-SceneView(surfaceMirrorer = surfaceMirrorer) { /* DSL */ }   // or ARSceneView(surfaceMirrorer = …)
+val recorder = rememberSceneRecorder()                  // io.github.sceneview.capture
+ARSceneView(surfaceMirrorer = recorder.surfaceMirrorer) { /* DSL */ }   // or SceneView(…)
 
-// Point a MediaRecorder (SURFACE video source) at the scene; frame is letterboxed to fit.
-surfaceMirrorer.startMirroring(recorder.surface, width = 1280, height = 720)  // any thread, JNI-free
-recorder.start()
-// …record…
-surfaceMirrorer.stopMirroring(recorder.surface)                              // main thread only
-recorder.stop(); recorder.release()
+scope.launch { recorder.savePhoto() }                   // full-res PixelCopy → JPEG (or PNG), File?
+recorder.startRecording(                                 // H.264 MP4, 1080p30 by default, main thread
+    settings = VideoSettings(recordAudio = true, maxDurationMillis = 30_000),  // mic needs RECORD_AUDIO
+)
+recorder.stopRecording()                                 // SceneRecording? (file, size, duration)
+recorder.overlay = CaptureOverlay { canvas, width, height -> /* watermark, photo + video (API 29+) */ }
 ```
+
+Lower level: `rememberSurfaceMirrorer()` + `startMirroring(surface, width, height)` /
+`stopMirroring(surface)` (main thread) mirrors the frames to your own encoder surface.
 
 ### Camera exposure override
 
