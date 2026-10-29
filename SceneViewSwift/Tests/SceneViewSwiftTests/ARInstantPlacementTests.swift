@@ -4,7 +4,7 @@ import ARKit
 import RealityKit
 @testable import SceneViewSwift
 
-/// Instant placement rules, device-free. The ARKit half (estimated planes, tracked raycasts,
+/// Instant placement rules, device-free. The ARKit half (estimated planes, plane raycasts,
 /// plane anchors resolving) needs a device; these pin every decision it feeds.
 @MainActor
 final class ARInstantPlacementTests: XCTestCase {
@@ -35,27 +35,6 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertTrue(ARPlacementController(alignment: .vertical, instantPlacement: true).instantPlacement)
     }
 
-    // MARK: Source precedence — Kotlin `placementHitSource`
-
-    func testPlaneAlwaysWins() {
-        for instant in [false, true] {
-            for estimated in [false, true] {
-                XCTAssertEqual(ARInstantPlacement.source(hasPlane: true, instantPlacement: instant,
-                                                         hasEstimatedSurface: estimated), .plane)
-            }
-        }
-    }
-
-    func testWithoutInstantPlacementNothingButAPlaneIsPlaced() {
-        XCTAssertEqual(ARInstantPlacement.source(hasPlane: false, instantPlacement: false, hasEstimatedSurface: true), .none)
-        XCTAssertEqual(ARInstantPlacement.source(hasPlane: false, instantPlacement: false, hasEstimatedSurface: false), .none)
-    }
-
-    func testInstantPlacementPrefersTheEstimatedSurfaceThenFallsBackToFixedDistance() {
-        XCTAssertEqual(ARInstantPlacement.source(hasPlane: false, instantPlacement: true, hasEstimatedSurface: true), .estimatedSurface)
-        XCTAssertEqual(ARInstantPlacement.source(hasPlane: false, instantPlacement: true, hasEstimatedSurface: false), .fixedDistance)
-    }
-
     // MARK: Tracking method — approximate → fullTracking
 
     func testTrackingMethodFollowsTheSurface() {
@@ -65,27 +44,99 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertEqual(ARInstantPlacement.trackingMethod(hasPlacement: true, onSurface: true), .fullTracking)
     }
 
-    func testTrackingMethodNamesMatchAndroid() {
-        // Raw values are stable for persistence and analytics; Kotlin uses the same two states.
+    func testTrackingMethodNamesMatchARCore() {
+        // Raw values are stable for persistence and analytics; each state names its ARCore twin.
         XCTAssertEqual(ARPlacementTrackingMethod.approximate.rawValue, "approximate")
         XCTAssertEqual(ARPlacementTrackingMethod.fullTracking.rawValue, "fullTracking")
+        XCTAssertEqual(ARPlacementTrackingMethod.approximate.arCoreName, "SCREENSPACE_WITH_APPROXIMATE_DISTANCE")
+        XCTAssertEqual(ARPlacementTrackingMethod.fullTracking.arCoreName, "FULL_TRACKING")
+        // When the Android sources sit next to this package, the Kotlin side must still use them.
+        let kotlin = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("arsceneview/src/main/java/io/github/sceneview/ar/PlacementScene.kt")
+        if let source = try? String(contentsOf: kotlin, encoding: .utf8) {
+            for method in [ARPlacementTrackingMethod.approximate, .fullTracking] {
+                XCTAssertTrue(source.contains(method.arCoreName), method.arCoreName)
+            }
+        }
     }
 
-    // MARK: Fixed-distance fallback
+    // MARK: Constants shared with Android
 
-    func testFallbackIsOneMetreAlongTheCentreRay() {
-        XCTAssertEqual(ARInstantPlacement.approximateDistance, 1)
-        assertClose(ARInstantPlacement.fixedDistancePoint(camera: matrix_identity_float4x4), [0, 0, -1])
-        let tilted = camera(at: eye, looking: [0, -1, -1])
-        let point = ARInstantPlacement.fixedDistancePoint(camera: tilted)
-        XCTAssertEqual(simd_length(point - eye), 1, accuracy: 0.0001)
-        assertClose(simd_normalize(point - eye), simd_normalize([0, -1, -1]))
+    func testConstantsMatchAndroid() {
+        XCTAssertEqual(ARInstantPlacement.maxSurfaceDistance, 5)
+        XCTAssertEqual(ARInstantPlacement.autoPlaceDelay, 0.6)
+        XCTAssertEqual(ARInstantPlacement.settleSpeed, 6)
+        XCTAssertEqual(ARInstantPlacement.anchorRetryLimit, 6)
+        XCTAssertEqual(ARInstantPlacement.anchorRetryBase, 0.1)
+        XCTAssertEqual(ARInstantPlacement.anchorRetryCap, 0.8)
     }
+
+    // MARK: Estimated floor — never mid-air
+
+    func testReachGrowsWithTheModelSoALargeOneNeverSurroundsTheCamera() {
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0.3), 1.2)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 2), 2.9, accuracy: 0.0001)
+        // A 2 m sofa centred 2.9 m ahead keeps its near edge well away from the phone.
+        XCTAssertGreaterThan(ARInstantPlacement.reach(forLargestSide: 2) - 1, 1.5)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 30), 4)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: .nan), 1.2)
+        XCTAssertEqual(ARInstantPlacement.reach(forLargestSide: 0), 1.2)
+    }
+
+    func testFloorIsTheLowestSurfaceWellBelowThePhoneElseThePhoneHeightGuess() {
+        XCTAssertEqual(ARInstantPlacement.floorHeight(cameraY: 1.5, surfaceHeights: []), 0.2, accuracy: 0.0001)
+        // A table at chest height is not the floor.
+        XCTAssertEqual(ARInstantPlacement.floorHeight(cameraY: 1.5, surfaceHeights: [1.3]), 0.2, accuracy: 0.0001)
+        XCTAssertEqual(ARInstantPlacement.floorHeight(cameraY: 1.5, surfaceHeights: [0.75, 0.02, .nan]), 0.02, accuracy: 0.0001)
+    }
+
+    func testFallbackStandsOnTheFloorWithinReachNeverAlongTheRay() {
+        let reach: Float = 1.2
+        // Looking 45° down from 1.5 m: the ray meets the floor 1.5 m ahead, beyond reach.
+        let far = ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, -1], floorY: 0, reach: reach)
+        assertClose(far!, [0, 0, -1.2])
+        // Steeply down: the ray meets the floor at 0.15 m; kept at half the reach.
+        let near = ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, -0.1], floorY: 0, reach: reach)
+        assertClose(near!, [0, 0, -0.6])
+        // Within range: exactly where the ray meets the floor.
+        let on = ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1.5, -1], floorY: 0, reach: reach)
+        assertClose(on!, [0, 0, -1])
+    }
+
+    func testPhoneHeldLevelStillStandsTheModelOnTheFloor() {
+        // The review case: a level phone used to leave the model 1 m along a horizontal ray, in mid-air.
+        for direction: SIMD3<Float> in [[0, 0, -1], [1, 0.2, 0], [0.3, 0.6, -1]] {
+            let point = ARInstantPlacement.floorPoint(origin: eye, direction: direction, floorY: 0.2, reach: 2.9)
+            XCTAssertEqual(point!.y, 0.2, accuracy: 0.0001)
+            XCTAssertEqual(simd_length(SIMD2(point!.x - eye.x, point!.z - eye.z)), 2.9, accuracy: 0.0001)
+        }
+    }
+
+    func testStraightDownWaitsForAHeading() {
+        XCTAssertNil(ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, 0], floorY: 0, reach: 1.2))
+        XCTAssertNil(ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, -1], floorY: .nan, reach: 1.2))
+    }
+
+    func testDragWhileApproximateFollowsTheEstimatedFloor() {
+        // Android `floorUnder`: the finger's ray meets the plane the model stands on.
+        let floor = ARInstantPlacement.pointOnContactPlane(rayOrigin: eye, rayDirection: [0.5, -1, -1],
+                                                           point: [0, 0.2, -1.3], normal: [0, 1, 0])
+        assertClose(floor!, [0.65, 0.2, -1.3])
+        XCTAssertNil(ARInstantPlacement.pointOnContactPlane(rayOrigin: eye, rayDirection: [0, 1, -1],
+                                                            point: [0, 0.2, -1.3], normal: [0, 1, 0]), "above the horizon")
+        XCTAssertNil(ARInstantPlacement.pointOnContactPlane(rayOrigin: eye, rayDirection: [0, -0.1, -1],
+                                                            point: [0, 0.2, -1.3], normal: [0, 1, 0]), "beyond 5 m")
+        XCTAssertNil(ARInstantPlacement.pointOnContactPlane(rayOrigin: eye, rayDirection: [1, 0, 0],
+                                                            point: [0, 0.2, -1.3], normal: [0, 1, 0]), "parallel")
+    }
+
+    // MARK: Estimated contact frame
 
     func testApproximateContactStandsUprightFacingTheCamera() {
         for forward: SIMD3<Float> in [[0, -0.5, -1], [1, -0.3, 0], [-0.4, -1, 0.7]] {
             let cam = camera(at: eye, looking: forward)
-            let point = ARInstantPlacement.fixedDistancePoint(camera: cam)
+            let point = eye + simd_normalize(forward) + SIMD3<Float>(0, -0.5, 0)
             let contact = ARInstantPlacement.approximateContact(point: point, camera: cam)
             assertClose(xyz(contact.columns.3), point)
             assertClose(xyz(contact.columns.1), [0, 1, 0])
@@ -97,7 +148,7 @@ final class ARInstantPlacementTests: XCTestCase {
 
     func testApproximateContactLookingStraightDownStillHasAValidFrame() {
         let cam = camera(at: eye, looking: [0, -1, 0])
-        let point = ARInstantPlacement.fixedDistancePoint(camera: cam)
+        let point = eye - SIMD3<Float>(0, 1.3, 0)
         let contact = ARInstantPlacement.approximateContact(point: point, camera: cam)
         assertClose(xyz(contact.columns.1), [0, 1, 0])
         XCTAssertEqual(simd_length(xyz(contact.columns.2)), 1, accuracy: 0.0001)
@@ -127,8 +178,8 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertFalse(ARInstantPlacement.acceptsEstimatedHit(point: [0, 1.5, -2], normal: [0, 0, 1],
                                                               camera: ahead, alignment: .horizontal), "wall")
         let down = camera(at: eye, looking: [0, -0.3, -1])
-        XCTAssertFalse(ARInstantPlacement.acceptsEstimatedHit(point: [0, 0, -5], normal: [0, 1, 0],
-                                                              camera: down, alignment: .horizontal), "beyond 3 m")
+        XCTAssertFalse(ARInstantPlacement.acceptsEstimatedHit(point: [0, 0, -5.5], normal: [0, 1, 0],
+                                                              camera: down, alignment: .horizontal), "beyond 5 m")
         XCTAssertFalse(ARInstantPlacement.acceptsEstimatedHit(point: [0, 0, 1], normal: [0, 1, 0],
                                                               camera: down, alignment: .horizontal), "behind")
         XCTAssertFalse(ARInstantPlacement.acceptsEstimatedHit(point: [0, 1.4, -0.1], normal: [0, 1, 0],
@@ -166,53 +217,138 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertGreaterThan(abs(simd_dot(relative.vector, twist.vector)), 0.9999)
     }
 
-    // MARK: Glide
+    // MARK: State machine — auto-place delay
 
-    func testGlideEasesFromTheEstimateToTheSurfaceWithoutAJump() {
-        let from = Transform(rotation: simd_quatf(angle: 0, axis: [0, 1, 0]), translation: [0, 0.4, -1])
-        let to = Transform(rotation: simd_quatf(angle: 0.6, axis: [0, 1, 0]), translation: [0, 0, -1.6])
-        var glide = ARInstantPlacement.Glide(from: from, to: to, duration: ARInstantPlacement.refineDuration)
-        assertClose(glide.translation, from.translation)
-        XCTAssertFalse(glide.isFinished)
-        var previous: Float = 0
-        var previousTranslation = glide.translation
-        let frame = 1.0 / 60
-        while !glide.isFinished {
-            glide.advance(by: frame)
-            XCTAssertGreaterThanOrEqual(glide.progress, previous)
-            // No visible jump: one 60 Hz frame never covers more than a fifth of the way
-            // (cubic ease-out peaks at 3 / 18 frames ≈ 16.7 % on the first frame).
-            XCTAssertLessThan(simd_length(glide.translation - previousTranslation),
-                              0.2 * simd_length(to.translation - from.translation))
-            previous = glide.progress
-            previousTranslation = glide.translation
+    func testNoEstimatedPlacementBeforeTrackingHasRunForTheDelay() {
+        var state = ARInstantPlacement.State()
+        XCTAssertFalse(state.autoPlaceDue(now: 100), "never tracked")
+        state.observe(tracking: true, placed: false, now: 0)
+        state.observe(tracking: true, placed: false, now: 0.3)
+        XCTAssertFalse(state.autoPlaceDue(now: 0.59))
+        XCTAssertTrue(state.autoPlaceDue(now: 0.6))
+    }
+
+    func testLosingTrackingBeforePlacementRestartsTheDelay() {
+        var state = ARInstantPlacement.State()
+        state.observe(tracking: true, placed: false, now: 0)
+        state.observe(tracking: false, placed: false, now: 0.5)
+        XCTAssertFalse(state.autoPlaceDue(now: 0.7))
+        state.observe(tracking: true, placed: false, now: 0.7)
+        XCTAssertFalse(state.autoPlaceDue(now: 1.2))
+        XCTAssertTrue(state.autoPlaceDue(now: 1.4))
+    }
+
+    func testResetRestartsTheDelay() {
+        var state = ARInstantPlacement.State()
+        state.observe(tracking: true, placed: false, now: 0)
+        state.reset()
+        XCTAssertFalse(state.autoPlaceDue(now: 5))
+        state.observe(tracking: true, placed: false, now: 5)
+        XCTAssertFalse(state.autoPlaceDue(now: 5.5))
+        XCTAssertTrue(state.autoPlaceDue(now: 5.7))
+    }
+
+    // MARK: State machine — landing
+
+    func testAnchorRetryBacksOffLikeAndroid() {
+        let delays = (1...7).map { ARInstantPlacement.anchorRetryDelay(attempt: $0) }
+        XCTAssertEqual(delays, [0.1, 0.2, 0.4, 0.8, 0.8, 0.8, 0.8])
+        XCTAssertEqual(ARInstantPlacement.anchorRetryDelay(attempt: 0), 0.1)
+        XCTAssertEqual(ARInstantPlacement.anchorRetryDelay(attempt: 1000), 0.8)
+    }
+
+    func testLandingCommitsOnceTheAnchorResolvesOverThePlane() {
+        let state = ARInstantPlacement.State()
+        XCTAssertEqual(state.step(generation: 0, gesturesActive: false, anchored: false, overSurface: true,
+                                  now: 1.05, since: 1), .wait)
+        XCTAssertEqual(state.step(generation: 0, gesturesActive: false, anchored: true, overSurface: true,
+                                  now: 1.05, since: 1), .commit)
+    }
+
+    func testLandingWaitsWhileAPinchOrTwistIsInProgress() {
+        // The review case: landing mid-gesture re-parented the pivot under a stale twist baseline.
+        let state = ARInstantPlacement.State()
+        for anchored in [false, true] {
+            for over in [false, true] {
+                XCTAssertEqual(state.step(generation: 0, gesturesActive: true, anchored: anchored, overSurface: over,
+                                          now: 50, since: 1), .hold)
+            }
         }
-        XCTAssertEqual(glide.progress, 1)
-        assertClose(glide.translation, to.translation)
-        XCTAssertGreaterThan(abs(simd_dot(glide.rotation.vector, to.rotation.vector)), 0.9999)
-        XCTAssertEqual(glide.elapsed, ARInstantPlacement.refineDuration, accuracy: 0.0001)
     }
 
-    func testGlideIsEaseOut() {
-        var glide = ARInstantPlacement.Glide(from: Transform(), to: Transform(translation: [1, 0, 0]), duration: 1)
-        glide.advance(by: 0.5)
-        XCTAssertEqual(glide.progress, 0.875, accuracy: 0.0001)
+    func testUnresolvedOrLostLandingRetriesWithBackoffThenGivesUpUntilMoved() {
+        var state = ARInstantPlacement.State()
+        XCTAssertEqual(state.step(generation: 0, gesturesActive: false, anchored: false, overSurface: true,
+                                  now: 1.1, since: 1), .retry)
+        XCTAssertEqual(state.step(generation: 0, gesturesActive: false, anchored: true, overSurface: false,
+                                  now: 1, since: 1), .retry, "the model is no longer over that plane")
+        var now: TimeInterval = 1
+        for attempt in 1..<ARInstantPlacement.anchorRetryLimit {
+            XCTAssertEqual(state.attempt, attempt)
+            XCTAssertFalse(state.failed(now: now))
+            XCTAssertFalse(state.mayAttemptLanding(now: now))
+            now += ARInstantPlacement.anchorRetryDelay(attempt: attempt)
+            XCTAssertTrue(state.mayAttemptLanding(now: now))
+        }
+        XCTAssertEqual(state.step(generation: 0, gesturesActive: false, anchored: false, overSurface: true,
+                                  now: now + 1, since: now), .abandon)
+        XCTAssertTrue(state.failed(now: now))
+        XCTAssertFalse(state.mayAttemptLanding(now: now + 100), "no anchor per frame forever")
+        state.moved()
+        XCTAssertTrue(state.mayAttemptLanding(now: now + 100))
+        XCTAssertEqual(state.attempt, 1)
     }
 
-    func testReduceMotionGlideSnaps() {
-        let glide = ARInstantPlacement.Glide(from: Transform(), to: Transform(translation: [0, -1, 0]), duration: 0)
-        XCTAssertTrue(glide.isFinished)
-        assertClose(glide.translation, [0, -1, 0])
+    func testALandingQueuedBeforeAResetNeverLandsTheNextPlacement() {
+        var state = ARInstantPlacement.State()
+        let queued = state.generation
+        state.reset()
+        XCTAssertEqual(state.step(generation: queued, gesturesActive: false, anchored: true, overSurface: true,
+                                  now: 1, since: 1), .discard)
+        XCTAssertEqual(state.step(generation: state.generation, gesturesActive: false, anchored: true,
+                                  overSurface: true, now: 1, since: 1), .commit)
     }
 
-    func testGlideIgnoresInvalidTimeSteps() {
-        var glide = ARInstantPlacement.Glide(from: Transform(), to: Transform(translation: [1, 0, 0]), duration: 0.3)
-        glide.advance(by: -1)
-        glide.advance(by: .nan)
-        XCTAssertEqual(glide.elapsed, 0)
-        glide.advance(by: 10)
-        XCTAssertTrue(glide.isFinished)
-        XCTAssertEqual(glide.elapsed, 0.3, accuracy: 0.0001)
+    // MARK: Follow — continuous, interruptible
+
+    func testFollowEasesAtSettleSpeed() {
+        XCTAssertEqual(ARInstantPlacement.Follow.alpha(delta: 1.0 / 60), 1 - exp(-0.1), accuracy: 0.00001)
+        XCTAssertEqual(ARInstantPlacement.Follow.alpha(delta: 1.0 / 60, reduceMotion: true), 1)
+        XCTAssertEqual(ARInstantPlacement.Follow.alpha(delta: -1), 0)
+        XCTAssertEqual(ARInstantPlacement.Follow.alpha(delta: .nan), 0)
+        // A stalled frame never teleports the model.
+        XCTAssertEqual(ARInstantPlacement.Follow.alpha(delta: 5), 1 - exp(-0.6), accuracy: 0.00001)
+    }
+
+    func testFollowIgnoresUpdatesUnderOneCentimetre() {
+        var follow = ARInstantPlacement.Follow(target: [0, 0, -1])
+        XCTAssertFalse(follow.retarget([0.005, 0, -1]))
+        assertClose(follow.target, [0, 0, -1])
+        XCTAssertFalse(follow.retarget([.nan, 0, -1]))
+        XCTAssertTrue(follow.retarget([0.02, 0, -1]))
+        assertClose(follow.target, [0.02, 0, -1])
+    }
+
+    func testANewTargetBendsThePathWithoutAJumpOrARestart() {
+        var follow = ARInstantPlacement.Follow(target: [0, 0, -2])
+        var position = SIMD3<Float>(0, 0, -1)
+        let alpha = ARInstantPlacement.Follow.alpha(delta: 1.0 / 60)
+        for frame in 0..<120 {
+            if frame == 10 { follow.retarget([0.5, 0, -1.5]) }
+            let next = follow.position(from: position, alpha: alpha)
+            // Each frame covers a tenth of what is left, never more: no visible jump.
+            XCTAssertLessThanOrEqual(simd_length(next - position), alpha * simd_length(follow.target - position) + 0.00001)
+            position = next
+        }
+        XCTAssertTrue(follow.arrived(at: position, rotation: simd_quatf(angle: 0, axis: [0, 1, 0])))
+        assertClose(position, [0.5, 0, -1.5], accuracy: 0.001)
+    }
+
+    func testFollowWaitsForItsRotationToo() {
+        let target = simd_quatf(angle: 0.4, axis: [0, 0, 1])
+        let follow = ARInstantPlacement.Follow(target: .zero, rotation: target)
+        XCTAssertFalse(follow.arrived(at: .zero, rotation: simd_quatf(angle: 0, axis: [0, 0, 1])))
+        XCTAssertTrue(follow.arrived(at: .zero, rotation: target))
     }
 }
 #endif

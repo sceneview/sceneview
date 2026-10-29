@@ -7406,18 +7406,24 @@ var body: some View {
 }
 ```
 
-- The model appears on the first frame: on an ARKit estimated plane under the screen centre
-  (`.estimatedPlane` raycast, same 0.25–3 m window and orientation rules as planes), or 1 m
-  along the centre ray when even that misses — ARCore's own approximate distance.
-- An `ARTrackedRaycast` keeps refining that estimate; once a real plane is detected on the
-  same ray, the model glides onto it (300 ms ease-out, a snap under Reduce Motion) and is
-  re-anchored to the `ARPlaneAnchor`. A floor model keeps its rotation; a wall model re-faces
-  the detected wall.
+- A detected plane places the model at once, as without instant placement. When none shows
+  up, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
+  surface ARKit knows at least 0.4 m below the phone, else 1.3 m below it. It sits along the
+  centre ray, 1.2–4 m ahead depending on its size (a 2 m sofa sits 2.9 m away), and is never
+  in mid-air. A wall model waits for ARKit's estimate of the wall in view.
+- Each frame re-casts the model's own screen position. An estimated surface there becomes the
+  target of a continuous ease (6/s, changes under 1 cm ignored, a snap under Reduce Motion)
+  that never blocks a gesture. A detected plane there (within 5 m) lands the model: it is
+  re-anchored to the `ARPlaneAnchor` and plays the `.placed` haptic. A floor model keeps its
+  rotation; a wall model re-faces the detected wall. Landing waits for pinch, twist or drag to
+  end, and retries an unresolved anchor with a 0.1–0.8 s backoff, giving up after 6 attempts
+  until the model moves.
 - `placement.trackingMethod` is `nil` before placement, `.approximate` while estimated, then
-  `.fullTracking`, and never goes back. Kotlin: `InstantPlacementPoint.TrackingMethod`
+  `.fullTracking`, and never goes back. `placement.result` stays `nil` while approximate.
+  Kotlin: `InstantPlacementPoint.TrackingMethod`
   `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` / `FULL_TRACKING`.
-- While approximate, tap-select, pinch and twist work; dragging waits for `.fullTracking`
-  (there is no surface to slide on yet).
+- While approximate, tap-select, drag (along the estimated floor, or onto a detected plane
+  under the finger), pinch, twist, `move(by:)` and `rotate(by:)` all work.
 - The coaching overlay coaches tracking only (`.tracking` goal) so it never covers the model.
 - Without `instantPlacement`, every placement starts as `.fullTracking`; behaviour is unchanged.
 - Needs a real device: the Simulator has no AR camera.

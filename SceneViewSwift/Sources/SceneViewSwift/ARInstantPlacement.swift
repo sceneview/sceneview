@@ -6,10 +6,10 @@ import UIKit
 /// How precisely a placement made by ``ARPlacementController`` is tracked — the Swift twin of
 /// ARCore's `InstantPlacementPoint.TrackingMethod`.
 ///
-/// With ``ARPlacementController/instantPlacement`` on, the model appears at once on an
-/// estimated surface (``approximate``) and moves to the real surface once ARKit detects it
-/// (``fullTracking``). Without instant placement every placement is ``fullTracking`` from
-/// the start. Read ``ARPlacementController/trackingMethod`` to show a "Refining…" hint:
+/// With ``ARPlacementController/instantPlacement`` on, the model appears on an estimated floor
+/// (``approximate``) and moves onto the real surface once ARKit detects it (``fullTracking``).
+/// Without instant placement every placement is ``fullTracking`` from the start. Read
+/// ``ARPlacementController/trackingMethod`` to show a "Refining…" hint:
 ///
 /// ```swift
 /// if placement.trackingMethod == .approximate {
@@ -17,49 +17,106 @@ import UIKit
 /// }
 /// ```
 public enum ARPlacementTrackingMethod: String, Sendable {
-    /// The pose is an estimate: an ARKit estimated plane under the screen centre, or a point
-    /// 1 m in front of the camera when even that misses.
-    /// Kotlin: `SCREENSPACE_WITH_APPROXIMATE_DISTANCE`. Dragging waits for ``fullTracking``.
+    /// The pose is an estimate: the floor as far as ARKit knows it (its lowest detected or
+    /// estimated horizontal surface, else a phone-height guess), at a distance that suits the
+    /// model's size. Drag, pinch and twist already work.
+    /// ARCore: `SCREENSPACE_WITH_APPROXIMATE_DISTANCE`.
     case approximate
-    /// Anchored to a detected plane. Never goes back to ``approximate``. Kotlin: `FULL_TRACKING`.
+    /// Anchored to a detected plane. Never goes back to ``approximate``. ARCore: `FULL_TRACKING`.
     case fullTracking
+
+    /// The ARCore `InstantPlacementPoint.TrackingMethod` constant this state mirrors.
+    var arCoreName: String {
+        switch self {
+        case .approximate: return "SCREENSPACE_WITH_APPROXIMATE_DISTANCE"
+        case .fullTracking: return "FULL_TRACKING"
+        }
+    }
 }
 
 /// The device-free rules of instant placement, pinned by unit tests on the Simulator.
 ///
-/// ``ARPlacementController`` feeds them ARKit values; nothing here touches a session.
+/// ``ARPlacementController`` feeds them ARKit values; nothing here touches a session. The
+/// behaviour and the shared constants follow the SceneView Android AR model viewer's
+/// `InstantPlacement`: auto-place on a real surface at once, else on the estimated floor after
+/// ``autoPlaceDelay``; ease toward refined spots at ``settleSpeed``; back off anchor retries.
 enum ARInstantPlacement {
-    /// Where a placement comes from, in precedence order — Kotlin `PlacementHitSource`, with
-    /// the instant branch split in two because ARKit has no screen-space instant point.
-    enum Source: Equatable {
-        /// A detected plane: always preferred, it is the accurate answer.
-        case plane
-        /// No plane yet; an ARKit estimated plane under the screen centre.
-        case estimatedSurface
-        /// Nothing under the centre at all; ``approximateDistance`` along the centre ray.
-        case fixedDistance
-        /// Nothing to place on: instant placement is off and no plane is usable.
-        case none
+    // MARK: Constants shared with Android (same names, Swift-cased)
+
+    /// A surface farther than this is ignored, horizontally — ARKit planes get unreliable far away.
+    static let maxSurfaceDistance: Float = 5
+    /// How long the camera tracks before the model places itself on the estimated floor when no
+    /// detected plane showed up. A detected plane places it at once.
+    static let autoPlaceDelay: TimeInterval = 0.6
+    /// How fast the model eases toward a refined spot, per second: slow, so it reads as a glide.
+    static let settleSpeed: Float = 6
+    /// Landing on a detected plane backs off for a few seconds, then leaves the model where it is.
+    static let anchorRetryLimit = 6
+    static let anchorRetryBase: TimeInterval = 0.1
+    static let anchorRetryCap: TimeInterval = 0.8
+
+    // MARK: SceneView iOS values
+
+    /// The closest the estimated placement comes, as a share of ``reach(forLargestSide:)``.
+    static let nearShare: Float = 0.5
+    /// Assumed floor depth below the phone while ARKit knows no floor yet.
+    static let phoneHeightGuess: Float = 1.3
+    /// A horizontal surface counts as floor only this far below the phone (a table at chest
+    /// height does not).
+    static let floorClearance: Float = 0.4
+    /// Refined spots closer than this to the current one are ignored: ARKit noise, not news.
+    static let followDeadband: Float = 0.01
+
+    /// How far ahead the estimated placement stands, horizontally, from the model's largest
+    /// side in metres: far enough that a large model never surrounds the camera (a 2 m sofa
+    /// stands 2.9 m away), never closer than 1.2 m, never farther than 4 m.
+    static func reach(forLargestSide side: Float) -> Float {
+        guard side.isFinite, side > 0 else { return 1.2 }
+        return min(4, max(1.2, side + 0.9))
     }
 
-    /// The accurate answer wins; the fallbacks only fill the gap, and only when opted in.
-    static func source(hasPlane: Bool, instantPlacement: Bool, hasEstimatedSurface: Bool) -> Source {
-        if hasPlane { return .plane }
-        guard instantPlacement else { return .none }
-        return hasEstimatedSurface ? .estimatedSurface : .fixedDistance
+    /// The floor height as ARKit knows it: the lowest horizontal surface well below the phone
+    /// (detected planes, plus the estimated surface under the screen centre), else the
+    /// phone-height guess.
+    static func floorHeight(cameraY: Float, surfaceHeights: [Float]) -> Float {
+        surfaceHeights.filter { $0.isFinite && $0 < cameraY - floorClearance }.min()
+            ?? (cameraY - phoneHeightGuess)
     }
 
-    /// Distance of the fallback point along the centre ray, in metres — Kotlin
-    /// `INSTANT_APPROXIMATE_DISTANCE_M`, ARCore's own starting guess.
-    static let approximateDistance: Float = 1
+    /// Where the centre ray meets the floor, kept between ``nearShare`` × `reach` and `reach`
+    /// ahead (horizontally) and always on the floor — never in mid-air along the ray. A ray
+    /// above the horizon stands the model `reach` ahead. `nil` when the ray has no horizontal
+    /// heading (looking straight down): the next frame decides.
+    static func floorPoint(origin: SIMD3<Float>, direction: SIMD3<Float>, floorY: Float, reach: Float) -> SIMD3<Float>? {
+        let heading = SIMD2<Float>(direction.x, direction.z)
+        let length = simd_length(heading)
+        guard length > 0.001, origin.x.isFinite, origin.y.isFinite, origin.z.isFinite, floorY.isFinite else { return nil }
+        let unit = heading / length
+        var distance = reach
+        if direction.y < -0.0001 {
+            let t = (floorY - origin.y) / direction.y
+            if t > 0 { distance = min(reach, max(reach * nearShare, t * length)) }
+        }
+        return SIMD3(origin.x + unit.x * distance, floorY, origin.z + unit.y * distance)
+    }
 
-    /// Same 0.25–3 m window as the plane path, so a refinement never lands somewhere a plane
-    /// placement would have been refused.
-    static let distanceRange: ClosedRange<Float> = 0.25...3
+    /// Where a screen ray meets the plane the model stands on (through `point`, along `normal`),
+    /// while the placement is still approximate — Android `floorUnder` without a detected plane.
+    /// `nil` behind the camera or beyond ``maxSurfaceDistance`` horizontally.
+    static func pointOnContactPlane(rayOrigin: SIMD3<Float>, rayDirection: SIMD3<Float>,
+                                    point: SIMD3<Float>, normal: SIMD3<Float>) -> SIMD3<Float>? {
+        let denominator = simd_dot(rayDirection, normal)
+        guard abs(denominator) > 0.0001 else { return nil }
+        let t = simd_dot(point - rayOrigin, normal) / denominator
+        guard t > 0, t.isFinite else { return nil }
+        let hit = rayOrigin + t * rayDirection
+        return withinReach(hit, from: rayOrigin) ? hit : nil
+    }
 
-    /// Duration of the glide from the estimated pose to the refined one: `motion-fade`
-    /// (DESIGN.md). Reduce Motion snaps instead.
-    static let refineDuration: TimeInterval = 0.3
+    /// Horizontal distance from the camera within ``maxSurfaceDistance``.
+    static func withinReach(_ point: SIMD3<Float>, from eye: SIMD3<Float>) -> Bool {
+        simd_length(SIMD2(point.x - eye.x, point.z - eye.z)) <= maxSurfaceDistance
+    }
 
     /// Derived, never stored: a placement is approximate exactly while it has no surface.
     static func trackingMethod(hasPlacement: Bool, onSurface: Bool) -> ARPlacementTrackingMethod? {
@@ -67,29 +124,26 @@ enum ARInstantPlacement {
         return onSurface ? .fullTracking : .approximate
     }
 
-    /// Whether an estimated-plane hit may carry the model: in front of the camera, within
-    /// ``distanceRange``, and of the requested orientation (an upward face seen from above for
-    /// floors — never a ceiling — or a near-vertical face for walls).
+    /// Whether an estimated-plane hit may carry the model: in front of the camera, at least
+    /// 0.25 m away and within ``maxSurfaceDistance``, and of the requested orientation (an
+    /// upward face seen from above for floors — never a ceiling — or a near-vertical face for
+    /// walls).
     static func acceptsEstimatedHit(point: SIMD3<Float>, normal: SIMD3<Float>,
                                     camera: simd_float4x4, alignment: ARPlacementAlignment) -> Bool {
         guard point.x.isFinite, point.y.isFinite, point.z.isFinite,
               simd_length(normal) > 0.0001 else { return false }
         let n = simd_normalize(normal)
-        let cameraPoint = (camera.inverse * SIMD4<Float>(point, 1))
-        guard cameraPoint.z < 0, distanceRange.contains(simd_length(SIMD3(cameraPoint.x, cameraPoint.y, cameraPoint.z)))
-        else { return false }
+        let eye = SIMD3(camera.columns.3.x, camera.columns.3.y, camera.columns.3.z)
+        let cameraPoint = camera.inverse * SIMD4<Float>(point, 1)
+        guard cameraPoint.z < 0, simd_length(point - eye) >= 0.25, withinReach(point, from: eye) else { return false }
         switch alignment {
-        case .horizontal:
-            let toCamera = SIMD3(camera.columns.3.x, camera.columns.3.y, camera.columns.3.z) - point
-            return n.y > 0.5 && simd_dot(toCamera, n) > 0
-        case .vertical:
-            return abs(n.y) < 0.5
+        case .horizontal: return n.y > 0.5 && simd_dot(eye - point, n) > 0
+        case .vertical: return abs(n.y) < 0.5
         }
     }
 
     /// The contact frame for an estimated pose: +Y up, +Z facing the camera (ARCore
-    /// `LOCAL_Y_UP`). Floors and walls share it — a wall object stands upright, facing the user.
-    /// A wall hit with a usable normal faces along that normal instead.
+    /// `LOCAL_Y_UP`, Android `yawToward`). A wall hit with a usable normal faces along it.
     @MainActor
     static func approximateContact(point: SIMD3<Float>, camera: simd_float4x4,
                                    wallNormal: SIMD3<Float>? = nil) -> simd_float4x4 {
@@ -100,19 +154,12 @@ enum ARInstantPlacement {
             toCamera = SIMD3(wallNormal.x, 0, wallNormal.z)
         }
         if simd_length(toCamera) < 0.0001 {
-            // Looking straight down: face the way the top of the phone points.
-            toCamera = -SIMD3(camera.columns.1.x, 0, camera.columns.1.z)
+            // Straight above the point: face back along the camera's viewing direction.
+            toCamera = SIMD3(camera.columns.2.x, 0, camera.columns.2.z)
             if simd_length(toCamera) < 0.0001 { toCamera = [0, 0, 1] }
         }
         return ARPlacementController.wallContactTransform(point: point, normal: toCamera,
                                                          towardCamera: eye - point)
-    }
-
-    /// The fallback point: ``approximateDistance`` along the camera's forward ray (−Z).
-    static func fixedDistancePoint(camera: simd_float4x4, distance: Float = approximateDistance) -> SIMD3<Float> {
-        let eye = SIMD3(camera.columns.3.x, camera.columns.3.y, camera.columns.3.z)
-        let forward = -simd_normalize(SIMD3(camera.columns.2.x, camera.columns.2.y, camera.columns.2.z))
-        return eye + forward * distance
     }
 
     /// The model's world rotation once it lands on the real surface. A floor keeps exactly the
@@ -126,56 +173,139 @@ enum ARInstantPlacement {
         }
     }
 
-    /// A short eased glide between two poses in the same parent space. Scale is left alone:
-    /// it belongs to the pinch.
-    struct Glide: Equatable {
-        let fromTranslation: SIMD3<Float>
-        let fromRotation: simd_quatf
-        let toTranslation: SIMD3<Float>
-        let toRotation: simd_quatf
-        let duration: TimeInterval
-        private(set) var elapsed: TimeInterval = 0
+    /// An interruptible, continuous ease toward the latest refined spot — Android
+    /// `moveTo(…, SettleSpeed)`. Each frame covers `1 − e^(−settleSpeed·dt)` of what is left,
+    /// so a new target simply bends the path: no restart, nothing to wait for, no gesture
+    /// blocked. Scale is never touched (it belongs to the pinch).
+    struct Follow {
+        private(set) var target: SIMD3<Float>
+        /// A world rotation still to reach (a wall landing re-facing the wall), else `nil`.
+        var rotation: simd_quatf?
 
-        init(from: Transform, to: Transform, duration: TimeInterval) {
-            fromTranslation = from.translation
-            fromRotation = from.rotation
-            toTranslation = to.translation
-            toRotation = to.rotation
-            self.duration = duration
+        init(target: SIMD3<Float>, rotation: simd_quatf? = nil) {
+            self.target = target
+            self.rotation = rotation
         }
 
-        var isFinished: Bool { duration <= 0 || elapsed >= duration }
-
-        /// Cubic ease-out progress in 0…1.
-        var progress: Float {
-            guard duration > 0 else { return 1 }
-            let t = Float(min(1, max(0, elapsed / duration)))
-            return 1 - pow(1 - t, 3)
+        /// Moves the target; `false` (target kept) for a change under ``followDeadband``.
+        @discardableResult
+        mutating func retarget(_ point: SIMD3<Float>) -> Bool {
+            guard point.x.isFinite, point.y.isFinite, point.z.isFinite,
+                  simd_length(point - target) >= followDeadband else { return false }
+            target = point
+            return true
         }
 
-        var translation: SIMD3<Float> { simd_mix(fromTranslation, toTranslation, SIMD3(repeating: progress)) }
-        var rotation: simd_quatf { simd_slerp(fromRotation, toRotation, progress) }
+        /// Share of the remaining way covered in `delta` seconds; 1 for Reduce Motion.
+        static func alpha(delta: TimeInterval, reduceMotion: Bool = false) -> Float {
+            if reduceMotion { return 1 }
+            guard delta.isFinite, delta > 0 else { return 0 }
+            return 1 - exp(-settleSpeed * Float(min(delta, 0.1)))
+        }
 
-        mutating func advance(by delta: TimeInterval) {
-            guard delta.isFinite, delta > 0 else { return }
-            elapsed = min(duration, elapsed + delta)
+        func position(from current: SIMD3<Float>, alpha: Float) -> SIMD3<Float> {
+            simd_mix(current, target, SIMD3(repeating: alpha))
+        }
+
+        /// Close enough to stop easing (1 mm).
+        func arrived(at current: SIMD3<Float>, rotation currentRotation: simd_quatf) -> Bool {
+            simd_length(current - target) < 0.001
+                && rotation.map { abs(simd_dot($0.vector, currentRotation.vector)) > 0.99999 } ?? true
+        }
+    }
+
+    /// What the landing on a detected plane does this frame.
+    enum LandingStep: Equatable {
+        /// A gesture holds the pivot: landing waits for it to end, whatever the anchor does.
+        case hold
+        /// The plane anchor resolved and the model is over the plane: land now.
+        case commit
+        /// The anchor has not resolved yet; its retry delay has not run out.
+        case wait
+        /// This attempt failed: drop its anchor and back off before the next one.
+        case retry
+        /// ``anchorRetryLimit`` attempts failed: leave the model where it is.
+        case abandon
+        /// The landing belongs to a placement that was reset: drop it, no attempt counted.
+        case discard
+    }
+
+    /// Android's anchor backoff: 0.1, 0.2, 0.4, 0.8, 0.8… s for attempt 1, 2, 3, 4, 5…
+    static func anchorRetryDelay(attempt: Int) -> TimeInterval {
+        let shift = max(0, min(attempt - 1, 16))
+        return min(anchorRetryCap, anchorRetryBase * Double(1 << shift))
+    }
+
+    /// The landing state machine across placements. Holds no ARKit object, so it is tested
+    /// whole: auto-place delay, landing backoff, gesture hold, and stale landings after a reset.
+    struct State {
+        /// Bumped by every reset: a landing created for an earlier placement never lands.
+        private(set) var generation = 0
+        /// When tracking became normal with nothing placed. Feeds ``autoPlaceDue(now:)``.
+        private(set) var trackingSince: TimeInterval?
+        /// Failed landing attempts since the last success, move or reset.
+        private(set) var failures = 0
+        private(set) var nextAttemptAt: TimeInterval = 0
+        /// Set after ``anchorRetryLimit`` failures; a move or a reset clears it.
+        private(set) var abandoned = false
+
+        mutating func observe(tracking: Bool, placed: Bool, now: TimeInterval) {
+            if placed { return }
+            if !tracking { trackingSince = nil } else if trackingSince == nil { trackingSince = now }
+        }
+
+        /// The estimated placement may happen: tracking has been normal for ``autoPlaceDelay``.
+        func autoPlaceDue(now: TimeInterval) -> Bool {
+            guard let trackingSince else { return false }
+            return now - trackingSince >= autoPlaceDelay
+        }
+
+        func mayAttemptLanding(now: TimeInterval) -> Bool { !abandoned && now >= nextAttemptAt }
+
+        /// The attempt a new landing anchor would be, 1-based.
+        var attempt: Int { failures + 1 }
+
+        func step(generation landing: Int, gesturesActive: Bool, anchored: Bool, overSurface: Bool,
+                  now: TimeInterval, since: TimeInterval) -> LandingStep {
+            guard landing == generation else { return .discard }
+            if gesturesActive { return .hold }
+            if anchored && overSurface { return .commit }
+            if overSurface && now - since < anchorRetryDelay(attempt: attempt) { return .wait }
+            return attempt >= anchorRetryLimit ? .abandon : .retry
+        }
+
+        /// Records a failed attempt; returns `true` when it was the last one allowed.
+        @discardableResult
+        mutating func failed(now: TimeInterval) -> Bool {
+            failures += 1
+            if failures >= anchorRetryLimit {
+                abandoned = true
+                return true
+            }
+            nextAttemptAt = now + anchorRetryDelay(attempt: failures)
+            return false
+        }
+
+        /// The model moved under the user's hand, or landed: retry from scratch.
+        mutating func moved() {
+            failures = 0
+            nextAttemptAt = 0
+            abandoned = false
+        }
+
+        mutating func reset() {
+            generation &+= 1
+            trackingSince = nil
+            moved()
         }
     }
 
     /// What an approximate placement carries until it lands on a detected plane.
     struct Runtime {
-        /// The centre ray the placement was made along, in world space. Refinement stays on it,
-        /// as an ARCore instant-placement point does.
-        var origin = SIMD3<Float>.zero
-        var direction = SIMD3<Float>(0, 0, -1)
-        /// The estimated contact frame, in world space.
+        /// The estimated contact frame, in world space (the world anchor's pose).
         var contact = matrix_identity_float4x4
-        /// ARKit's own refinement of the estimated surface along ``origin``/``direction``.
-        var trackedRaycast: ARTrackedRaycast?
-        /// The latest tracked-raycast result not applied yet.
-        var estimate: simd_float4x4?
-        /// A plane anchor created for the refinement, waiting for RealityKit to resolve it.
-        var pending: (anchor: AnchorEntity, plane: ARPlaneAnchor, point: SIMD3<Float>, since: TimeInterval)?
+        /// A plane anchor created for the landing, waiting for RealityKit to resolve it.
+        var pending: (anchor: AnchorEntity, plane: UUID, generation: Int, since: TimeInterval)?
     }
 }
 #endif
