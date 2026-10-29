@@ -645,6 +645,14 @@ video.play() / .pause() / .stop() / .seek(to: 30.0) / .volume(0.5)
 CameraNode().position(.init(x: 0, y: 1.5, z: 3)).lookAt(.zero).fieldOfView(60)
 ```
 
+**ContactShadowNode** — procedural grounding pool (floor, table or wall), tunable intensity:
+```swift
+model.withContactShadow()                                   // fitted under a ModelNode
+ContactShadowNode.under(entity, context: .tableTop, intensity: 0.4)
+ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical)
+ARSceneView(onTapOnPlane: place).placementShadow(.contact(intensity: 0.5))
+```
+
 **iOS parity status (#1036):**
 
 Full canonical reference in `docs/docs/cheatsheet-ios.md`. Three buckets:

@@ -2126,9 +2126,11 @@ floor; use `ContactShadow` when you need grounding that survives any light direc
 a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
 catching a real shadow while a wall gets a procedural one.
 
-Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
-`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
-light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+Platform matrix: **iOS** — mirrored by SceneViewSwift's `ContactShadowNode` (same
+`ContactShadowContext` presets, `intensity` 0–1, horizontal or vertical quad;
+`ContactShadowNode.under(model)` / `ModelNode.withContactShadow()` fit it to a model), and in AR
+by `ARSceneView.placementShadow(.contact(...))`; RealityKit's `GroundingShadowComponent` stays
+the AR default. **Web** — coming soon. Non-AR preview
 demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
@@ -8017,6 +8019,14 @@ video.play() / .pause() / .stop() / .seek(to: 30.0) / .volume(0.5)
 CameraNode().position(.init(x: 0, y: 1.5, z: 3)).lookAt(.zero).fieldOfView(60)
 ```
 
+**ContactShadowNode** — procedural grounding pool (floor, table or wall), tunable intensity:
+```swift
+model.withContactShadow()                                   // fitted under a ModelNode
+ContactShadowNode.under(entity, context: .tableTop, intensity: 0.4)
+ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical)
+ARSceneView(onTapOnPlane: place).placementShadow(.contact(intensity: 0.5))
+```
+
 **iOS parity status (#1036):**
 
 Full canonical reference in `docs/docs/cheatsheet-ios.md`. Three buckets:
@@ -9416,6 +9426,7 @@ View modifiers (chainable):
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
+.placementShadow(_ style: ARPlacementShadow) -> ARSceneView  // shadow given to onTapOnPlane content: .grounding (default — GroundingShadowComponent), .contact(ContactShadowContext = .floor, intensity: Float? = nil) (procedural ContactShadowNode, retuned live), .none. Overrides `groundingShadows`
 ```
 
 `PlaneDetectionMode` values: `.none`, `.horizontal`, `.vertical`, `.both`
@@ -9527,6 +9538,7 @@ public struct ModelNode: @unchecked Sendable {
     // Misc
     public func enableCollision()
     public func withGroundingShadow() -> ModelNode           // iOS 18+ / visionOS 2+
+    public func withContactShadow(_ context: ContactShadowContext = .floor, intensity: Float? = nil, spread: Float = 1.6) -> ModelNode  // procedural pool at the lowest point — call after scaleToUnits / centerOrigin
     public mutating func onTap(_ handler: @escaping () -> Void) -> ModelNode
 }
 ```
@@ -9758,6 +9770,43 @@ public enum GeometryMaterial: @unchecked Sendable {
     public static func loadTexture(contentsOf url: URL) async throws -> TextureResource
 }
 ```
+
+#### ContactShadowNode — procedural contact shadow (Android `ContactShadowNode` parity)
+
+```swift
+public enum ContactShadowContext: String, CaseIterable, Sendable { case floor, wall, tableTop }
+// intensity / center / radius / softness — same values as Android's presets
+
+public struct ContactShadowNode: @unchecked Sendable {
+    public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
+    public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
+    public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
+    public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
+                plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
+    public var context: ContactShadowContext  // live
+    public var intensity: Float               // live, clamped 0...1
+    public var size: SIMD2<Float>
+    public static func under(_ model: Entity, context: ContactShadowContext = .floor,
+                             intensity: Float? = nil, spread: Float = 1.6) -> ContactShadowNode
+    public func fit(under model: Entity, spread: Float = 1.6)
+}
+```
+
+- `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  `centerOrigin`; call `fit(under:)` again if the model changes size.
+- Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
 
 #### AnchorNode — AR world anchors (iOS only)
 

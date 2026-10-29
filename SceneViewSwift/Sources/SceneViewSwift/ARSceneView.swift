@@ -110,6 +110,12 @@ public struct ARSceneView: UIViewRepresentable {
     private var showCoachingOverlay: Bool
     private var showPlacementReticle: Bool
     private var groundingShadows: Bool
+    /// Set by ``placementShadow(_:)``; `nil` falls back to `groundingShadows`.
+    var placementShadowStyle: ARPlacementShadow? = nil
+    /// ``placementShadow(_:)`` if set, else the `groundingShadows` flag.
+    var resolvedPlacementShadow: ARPlacementShadow {
+        placementShadowStyle ?? (groundingShadows ? .grounding : .none)
+    }
     private var cameraExposure: Float?
     private var onTapOnPlane: ((SIMD3<Float>, ARView) -> Void)?
     private var onSessionStarted: ((ARView) -> Void)?
@@ -181,7 +187,8 @@ public struct ARSceneView: UIViewRepresentable {
     ///     (#2241/#894). Applied to every model entity of anchors added to
     ///     `arView.scene` *synchronously inside* the `onTapOnPlane` callback (the
     ///     documented placement flow); content anchored later (e.g. after an async model
-    ///     load) must set the component itself. Default true.
+    ///     load) must set the component itself. Default true. ``placementShadow(_:)``
+    ///     overrides it, e.g. with a procedural ``ContactShadowNode`` of tunable intensity.
     ///   - imageTrackingDatabase: Set of reference images to detect. Use
     ///     `AugmentedImageNode.createImageDatabase()` or
     ///     `AugmentedImageNode.referenceImages(inGroupNamed:)` to create.
@@ -568,7 +575,7 @@ public struct ARSceneView: UIViewRepresentable {
         // The reticle is driven per frame from `session(_:didUpdate:)`; grounding
         // shadows are applied in `handleTap` to the anchors the callback places.
         context.coordinator.showPlacementReticle = showPlacementReticle
-        context.coordinator.groundingShadows = groundingShadows
+        context.coordinator.updatePlacementShadow(resolvedPlacementShadow, in: arView)
 
         // Coaching overlay. Never on a face-tracking session: its goals are all
         // plane goals ("Move the device to detect a surface"), which is nonsense
@@ -719,7 +726,7 @@ public struct ARSceneView: UIViewRepresentable {
         // whole view (`.id(...)`) to toggle them — which restarted the AR
         // session and dropped everything placed in it.
         context.coordinator.showPlacementReticle = showPlacementReticle
-        context.coordinator.groundingShadows = groundingShadows
+        context.coordinator.updatePlacementShadow(resolvedPlacementShadow, in: arView)
         context.coordinator.syncPlaneOverlay(
             on: arView,
             enabled: showPlaneOverlay && planeDetection != .none
@@ -1054,10 +1061,10 @@ public struct ARSceneView: UIViewRepresentable {
         /// ``session(_:didUpdate:)`` (#894 — Android `PlacementReticle` parity).
         var showPlacementReticle: Bool = false
 
-        /// Whether anchors placed via `onTapOnPlane` automatically receive
-        /// `GroundingShadowComponent(castsShadow: true)` on their model
-        /// entities (#894 — Android `ShadowReceiverPlane` analogue).
-        var groundingShadows: Bool = true
+        /// The shadow anchors placed via `onTapOnPlane` automatically receive —
+        /// `GroundingShadowComponent(castsShadow: true)` on their model entities
+        /// by default (#894 — Android `ShadowReceiverPlane` analogue).
+        var placementShadow: ARPlacementShadow = .grounding
 
         /// World anchor hosting the reticle disc. Created lazily on the first
         /// successful raycast, hidden (`isEnabled = false`) while the ray
@@ -1619,26 +1626,27 @@ public struct ARSceneView: UIViewRepresentable {
             let column = firstResult.worldTransform.columns.3
             let position = SIMD3<Float>(column.x, column.y, column.z)
 
-            // Grounding shadows (#894): snapshot the scene's anchors, let the
-            // callback place its content, then give every model entity the
-            // callback anchored a RealityKit contact shadow. Covers the
-            // documented synchronous placement flow; asynchronously anchored
-            // content must set `GroundingShadowComponent` itself.
-            let anchorsBefore = groundingShadows
-                ? Set(arView.scene.anchors.map(\.id)) : []
+            // Placement shadows (#894): snapshot the scene's anchors, let the
+            // callback place its content, then ground what the callback
+            // anchored (`ARPlacementShadow`). Covers the documented synchronous
+            // placement flow; asynchronously anchored content must be grounded
+            // by the app.
+            let style = placementShadow
+            let anchorsBefore = style == .none
+                ? [] : Set(arView.scene.anchors.map(\.id))
             onTapOnPlane(position, arView)
-            if groundingShadows {
-                applyGroundingShadows(in: arView, addedSince: anchorsBefore)
-            }
+            applyPlacementShadow(style, in: arView, addedSince: anchorsBefore)
         }
 
         /// Applies `GroundingShadowComponent(castsShadow: true)` to every model
         /// entity under anchors that joined `arView.scene` after the snapshot —
         /// the RealityKit analogue of Android's invisible `ShadowReceiverPlane`
         /// (#2241/#894): RealityKit itself renders the contact shadow onto the
-        /// detected real-world surface, no shadow-catcher geometry needed.
+        /// detected real-world surface, no shadow-catcher geometry needed. Content that
+        /// already carries a ``ContactShadowNode`` keeps that one alone, never two shadows.
         func applyGroundingShadows(in arView: ARView, addedSince existing: Set<Entity.ID>) {
-            for anchor in arView.scene.anchors where !existing.contains(anchor.id) {
+            for anchor in arView.scene.anchors
+            where !existing.contains(anchor.id) && !anchor.containsContactShadow {
                 Self.applyGroundingShadow(to: anchor)
             }
         }
@@ -1647,6 +1655,8 @@ public struct ARSceneView: UIViewRepresentable {
         /// descendants that render a model. Idempotent — re-setting the
         /// component on an entity that already has one is a no-op overwrite.
         static func applyGroundingShadow(to entity: Entity) {
+            // A contact-shadow decal must not throw a shadow of its own quad.
+            if entity.components.has(ContactShadowComponent.self) { return }
             if entity.components.has(ModelComponent.self) {
                 entity.components.set(GroundingShadowComponent(castsShadow: true))
             }

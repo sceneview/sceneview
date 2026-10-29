@@ -1,6 +1,5 @@
 import SwiftUI
 import Combine
-import CoreGraphics
 import RealityKit
 import SceneViewSwift
 
@@ -14,10 +13,10 @@ import SceneViewSwift
 /// **Why a procedural quad and not `GroundingShadowComponent`.** RealityKit's grounding
 /// shadow is a yes/no switch: no intensity, no preset shape, and it only falls on the
 /// ground, so it can neither darken under the slider nor sit on the wall behind the TV.
-/// The demo draws what Android's `contact_shadow.mat` draws instead: a black quad whose
-/// opacity is a soft elliptical falloff baked once per preset into a small texture
-/// (`ContactShadowMath.alpha`), scaled by the preset intensity and the slider, and faded
-/// and spread as the box lifts (`ContactShadowMath` mirrors Android's `DemoMath`).
+/// The demo uses the SDK's `ContactShadowNode` instead — what Android's `contact_shadow.mat`
+/// draws: a black quad whose opacity is a soft elliptical falloff per preset, scaled by the
+/// preset intensity and the slider, and faded and spread as the box lifts
+/// (`ContactShadowMath` mirrors Android's `DemoMath`).
 ///
 /// The key light deliberately casts no shadow, as on Android: the contact shadow must be
 /// the only grounding cue on screen.
@@ -117,42 +116,9 @@ struct ContactShadowPreviewDemo: View {
 
 // MARK: - Presets
 
-/// Android's `ContactShadowContext`: how the pool is shaped for what the object rests on.
-/// Centre and radii are in the quad's UV space, as in `contact_shadow.mat`.
-enum ContactShadowContext: CaseIterable, Hashable {
-    case floor, wall, tableTop
-
-    var intensity: Float {
-        switch self {
-        case .floor: 0.55
-        case .wall: 0.38
-        case .tableTop: 0.60
-        }
-    }
-
-    var center: SIMD2<Float> {
-        switch self {
-        case .floor, .tableTop: [0, 0]
-        case .wall: [0, -0.10]
-        }
-    }
-
-    var radius: SIMD2<Float> {
-        switch self {
-        case .floor: [0.30, 0.30]
-        case .wall: [0.34, 0.20]
-        case .tableTop: [0.26, 0.26]
-        }
-    }
-
-    var softness: Float {
-        switch self {
-        case .floor: 0.55
-        case .wall: 0.85
-        case .tableTop: 0.35
-        }
-    }
-
+/// Demo-only labels for the SDK's `ContactShadowContext` presets (Android's chip and legend
+/// strings).
+extension ContactShadowContext {
     var chipLabel: String {
         switch self {
         case .floor: "Floor"
@@ -247,43 +213,7 @@ enum ContactShadowMath {
         return 1 - t * t * (3 - 2 * t)
     }
 
-    /// `contact_shadow.mat`'s alpha before intensity: a soft ellipse, faded at the quad's
-    /// edges so it never ends on a hard line. `uv` has v pointing up.
-    static func alpha(u: Float, v: Float, context: ContactShadowContext) -> Float {
-        let p = SIMD2<Float>(u, v) - 0.5 - context.center
-        let d = simd_length(p / context.radius)
-        var a = 1 - smoothstep(1, 1 + context.softness, d)
-        a *= smoothstep(0, 0.08, min(min(u, v), min(1 - u, 1 - v)))
-        return a
-    }
-
-    static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-        let t = clamp01((x - edge0) / (edge1 - edge0))
-        return t * t * (3 - 2 * t)
-    }
-
     static func clamp01(_ x: Float) -> Float { min(max(x, 0), 1) }
-
-    /// The preset's opacity mask as a single grey channel. Not RGBA: RealityKit un-premultiplies
-    /// an alpha image on load, which turns every non-zero texel white and the falloff into a hard,
-    /// texel-stepped cut-out.
-    static func maskImage(_ context: ContactShadowContext, size: Int = 128) -> CGImage? {
-        var pixels = [UInt8](repeating: 0, count: size * size)
-        for row in 0..<size {
-            // Row 0 is the top of the image, which RealityKit maps to the top of the plane.
-            let v = 1 - (Float(row) + 0.5) / Float(size)
-            for column in 0..<size {
-                let u = (Float(column) + 0.5) / Float(size)
-                pixels[row * size + column] = UInt8((alpha(u: u, v: v, context: context) * 255).rounded())
-            }
-        }
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
-        return CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 8,
-                       bytesPerRow: size, space: CGColorSpaceCreateDeviceGray(),
-                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-                       provider: provider, decode: nil, shouldInterpolate: true,
-                       intent: .defaultIntent)
-    }
 }
 
 // MARK: - Stage
@@ -312,12 +242,11 @@ final class ContactShadowStage {
     }()
 
     @ObservationIgnored private var clock: Double = 0
-    @ObservationIgnored private var masks: [ContactShadowContext: TextureResource] = [:]
     private let groundedBox = ContactShadowStage.box()
     private let floatingBox = ContactShadowStage.box()
-    private let floorShadow = ModelEntity(
-        mesh: .generatePlane(width: ContactShadowMath.shadowQuad, depth: ContactShadowMath.shadowQuad))
-    private let wallShadow = ModelEntity(mesh: .generatePlane(width: 2.4, height: 1.6))
+    private let floorShadow = ContactShadowNode(
+        width: ContactShadowMath.shadowQuad, length: ContactShadowMath.shadowQuad, context: .floor)
+    private let wallShadow = ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical)
     private let groundedLabel = ContactShadowStage.label(["Shadow", "No shadow"])
     private let floatingLabel = ContactShadowStage.label(["No shadow"])
     @ObservationIgnored private var updates: (any Cancellable)?
@@ -325,11 +254,11 @@ final class ContactShadowStage {
 
     func install(in root: Entity) {
         buildRoom(in: root)
-        floorShadow.name = "contact-shadow-floor"
-        wallShadow.name = "contact-shadow-wall"
+        floorShadow.entity.name = "contact-shadow-floor"
+        wallShadow.entity.name = "contact-shadow-wall"
         wallShadow.position = [0, 1.3, -1.99]
-        root.addChild(wallShadow)
-        root.addChild(floorShadow)
+        root.addChild(wallShadow.entity)
+        root.addChild(floorShadow.entity)
         root.addChild(groundedBox)
         root.addChild(floatingBox)
         root.addChild(groundedLabel.entity)
@@ -409,8 +338,8 @@ final class ContactShadowStage {
 
         let slide = ContactShadowMath.shadowOffset(hop)
         floorShadow.position = [-half + slide.x, 0.004, z + slide.y]
-        floorShadow.scale = SIMD3(repeating: ContactShadowMath.spread(hop))
-        floorShadow.components.set(OpacityComponent(opacity: ContactShadowMath.intensityFactor(hop)))
+        floorShadow.size = SIMD2(repeating: ContactShadowMath.shadowQuad * ContactShadowMath.spread(hop))
+        floorShadow.entity.components.set(OpacityComponent(opacity: ContactShadowMath.intensityFactor(hop)))
 
         let alpha = ContactShadowMath.labelAlpha(azimuth: cameraAzimuth)
         groundedLabel.entity.position = [-half, edge + hop + 0.2, z]
@@ -423,32 +352,13 @@ final class ContactShadowStage {
 
     /// Shadow visibility, preset and intensity, written straight to the two quads.
     private func applyShadowState() {
-        floorShadow.isEnabled = shadowsEnabled
-        wallShadow.isEnabled = shadowsEnabled
-        floorShadow.model?.materials = [shadowMaterial(.floor, scale: ContactShadowContext.floor.intensity)]
-        wallShadow.model?.materials = [shadowMaterial(wallContext, scale: wallContext.intensity)]
+        floorShadow.entity.isEnabled = shadowsEnabled
+        wallShadow.entity.isEnabled = shadowsEnabled
+        floorShadow.intensity = ContactShadowContext.floor.intensity * intensityFactor
+        wallShadow.context = wallContext
+        wallShadow.intensity = wallContext.intensity * intensityFactor
         // The grounded box says "No shadow" whenever none is drawn, as Android's legend does.
         groundedLabel.show(shadowVisible ? 0 : 1)
-    }
-
-    private func shadowMaterial(_ context: ContactShadowContext, scale: Float) -> RealityKit.Material {
-        var material = UnlitMaterial(color: .black)
-        let opacity = scale * intensityFactor
-        if let mask = mask(context) {
-            material.blending = .transparent(opacity: .init(scale: opacity, texture: .init(mask)))
-        } else {
-            material.blending = .transparent(opacity: .init(floatLiteral: 0))
-        }
-        return material
-    }
-
-    private func mask(_ context: ContactShadowContext) -> TextureResource? {
-        if let cached = masks[context] { return cached }
-        guard let image = ContactShadowMath.maskImage(context),
-              let texture = try? TextureResource(image: image, options: .init(semantic: .raw))
-        else { return nil }
-        masks[context] = texture
-        return texture
     }
 
     // MARK: Room
