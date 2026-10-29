@@ -61,6 +61,12 @@ enum class RenderQuality {
      *
      * Matches the settings applied by [createView] when no preset is specified. In AR, the same
      * minus SSAO and bloom — what `createARView` applies.
+     *
+     * The shadow filter and the SSAO quality/upsampling are **creation defaults**, not preset
+     * values: [createView] and `createARView` set them once, and this preset leaves them as they
+     * are, so a `view.setShadowType(...)` or an `ambientOcclusionOptions` quality made before or
+     * after it survives. Only [Cinematic] and [Performance] write those three fields — a view
+     * moved from either back to [Default] keeps their values.
      */
     Default,
 
@@ -95,9 +101,10 @@ enum class RenderQuality {
  * call into a `LaunchedEffect(view, renderQuality)` (#1078) so the preset is reapplied
  * ONLY when `renderQuality` changes. Tweaks made AFTER the preset are preserved across
  * recompositions — but a renderQuality change (e.g. `Default → Cinematic` toggle) WILL
- * clobber them, since the new preset writes the full set of fields. To keep custom
- * tweaks across preset changes, re-apply them in a `LaunchedEffect(view, renderQuality)`
- * that runs after this one.
+ * clobber them, since the new preset writes its fields. [RenderQuality.Default] never writes
+ * the shadow filter nor the SSAO quality/upsampling (creation defaults, set by [createView]).
+ * To keep custom tweaks across preset changes, re-apply them in a
+ * `LaunchedEffect(view, renderQuality)` that runs after this one.
  */
 fun View.applyRenderQuality(quality: RenderQuality) {
     applyRenderQuality(quality, isArView = this in filmicViews)
@@ -123,13 +130,45 @@ internal data class RenderQualitySpec(
     val dynamicResolution: Boolean,
     val msaaSampleCount: Int,
     val ssao: Boolean,
-    val ssaoQuality: QualityLevel,
-    val ssaoUpsampling: QualityLevel,
+    /** `null`: left as the view has it ([createView] sets [CREATION_SSAO_QUALITY]). */
+    val ssaoQuality: QualityLevel?,
+    /** `null`: left as the view has it ([createView] sets [CREATION_SSAO_QUALITY]). */
+    val ssaoUpsampling: QualityLevel?,
     val bloom: Boolean,
     val bloomStrength: Float,
     val shadows: Boolean,
-    val shadowType: ShadowType,
+    /** `null`: left as the view has it ([createView] sets [CREATION_SHADOW_TYPE]). */
+    val shadowType: ShadowType?,
 )
+
+/**
+ * Shadow filter a view gets at creation ([createView], `createARView`): soft shadows from one
+ * blocker search over the same shadow map, so the edge of a cast shadow reads as studio light
+ * instead of a pixel-sharp cut-out, for a few taps more than Filament's PCF. Set at creation
+ * rather than by [RenderQuality.Default], so re-applying the preset never overwrites a
+ * `view.setShadowType(...)` made by the caller.
+ */
+internal val CREATION_SHADOW_TYPE = ShadowType.DPCF
+
+/**
+ * SSAO quality and upsampling a view gets at creation: MEDIUM samples with bilateral upsampling.
+ * Filament's LOW default leaves a blotchy half-resolution halo along silhouettes; HIGH doubles
+ * the sample count again. Set at creation for the same reason as [CREATION_SHADOW_TYPE].
+ */
+internal val CREATION_SSAO_QUALITY = QualityLevel.MEDIUM
+
+/**
+ * Writes the creation defaults that [RenderQuality.Default] deliberately leaves alone (see
+ * [CREATION_SHADOW_TYPE], [CREATION_SSAO_QUALITY]). Only the quality settings: whether SSAO is
+ * on stays with the preset (off in AR, #657). Main thread, like every Filament call.
+ */
+internal fun View.applyCreationRenderDefaults() {
+    ambientOcclusionOptions = ambientOcclusionOptions.apply {
+        quality = CREATION_SSAO_QUALITY
+        upsampling = CREATION_SSAO_QUALITY
+    }
+    setShadowType(CREATION_SHADOW_TYPE)
+}
 
 /**
  * The values [quality] writes. [isArView] is `true` when the view is used for AR, regardless of
@@ -168,17 +207,14 @@ private val DEFAULT_SPEC = RenderQualitySpec(
     // that has to be resolved every frame; FXAA alone keeps the frame cheap on Adreno 6xx.
     msaaSampleCount = 1,
     ssao = true,
-    // MEDIUM samples + bilateral upsampling: Filament's LOW default leaves a blotchy
-    // half-resolution halo along silhouettes; HIGH doubles the sample count again.
-    ssaoQuality = QualityLevel.MEDIUM,
-    ssaoUpsampling = QualityLevel.MEDIUM,
+    // Quality, upsampling and shadow filter are creation defaults (MEDIUM / MEDIUM / DPCF, see
+    // applyCreationRenderDefaults): the default preset never overwrites the caller's choice.
+    ssaoQuality = null,
+    ssaoUpsampling = null,
     bloom = true,
     bloomStrength = 0.1f,
     shadows = true,
-    // Soft shadows from one blocker search over the same shadow map: the edge of a cast
-    // shadow reads as studio light instead of a pixel-sharp cut-out, for a few taps more
-    // than the default PCF.
-    shadowType = ShadowType.DPCF,
+    shadowType = null,
 )
 
 private val PERFORMANCE_SPEC = RenderQualitySpec(
@@ -200,8 +236,12 @@ internal fun View.applyRenderQualitySpec(spec: RenderQualitySpec) {
     }
     dynamicResolutionOptions = dynamicResolutionOptions.apply {
         enabled = spec.dynamicResolution
-        homogeneousScaling = true
-        quality = QualityLevel.MEDIUM
+        // Only tune the scaler when the preset turns it on: a caller's own settings survive a
+        // preset that leaves dynamic resolution off.
+        if (spec.dynamicResolution) {
+            homogeneousScaling = true
+            quality = QualityLevel.MEDIUM
+        }
     }
     multiSampleAntiAliasingOptions = multiSampleAntiAliasingOptions.apply {
         enabled = spec.msaaSampleCount > 1
@@ -210,13 +250,13 @@ internal fun View.applyRenderQualitySpec(spec: RenderQualitySpec) {
     antiAliasing = AntiAliasing.FXAA
     ambientOcclusionOptions = ambientOcclusionOptions.apply {
         enabled = spec.ssao
-        quality = spec.ssaoQuality
-        upsampling = spec.ssaoUpsampling
+        spec.ssaoQuality?.let { quality = it }
+        spec.ssaoUpsampling?.let { upsampling = it }
     }
     bloomOptions = bloomOptions.apply {
         enabled = spec.bloom
         if (spec.bloom) strength = spec.bloomStrength
     }
-    setShadowType(spec.shadowType)
+    spec.shadowType?.let { setShadowType(it) }
     setShadowingEnabled(spec.shadows)
 }

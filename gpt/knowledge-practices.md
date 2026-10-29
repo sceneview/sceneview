@@ -43,7 +43,7 @@ ARSceneView(view = arView) { /* … */ }
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
-The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
+The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself. `Default` leaves the shadow type and the SSAO quality/upsampling as they are: DPCF and MEDIUM are set once by `createView` / `createARView`, so your own `view.setShadowType(...)` survives the default preset. Only `Cinematic` and `Performance` write them.
 
 ---
 

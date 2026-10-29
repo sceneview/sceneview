@@ -132,8 +132,10 @@ fun createView(engine: Engine): View = engine.createView().apply {
     // MEDIUM quality with bilateral upsampling, bloom 0.10, soft (DPCF) shadows. `SceneView`
     // re-applies the same preset from its `renderQuality` parameter; writing it here too keeps a
     // view used outside the composable (plain `SceneView` View, `rememberView` + custom host)
-    // identical to the composable's.
+    // identical to the composable's. The soft (DPCF) shadow filter and the SSAO quality are
+    // creation defaults the preset leaves alone, so a caller's own choice survives it.
     applyRenderQualitySpec(RenderQuality.Default.spec())
+    applyCreationRenderDefaults()
     // Khronos PBR Neutral tone mapper. It is the identity up to 0.76 and only
     // compresses what is brighter, so a base colour displays as authored: measured on the
     // demo's brand ramp, Filmic kept 40–57 % of the light blue's chroma and 45–65 % of the
@@ -194,6 +196,7 @@ fun createARView(engine: Engine): View = engine.createView().apply {
     // [RenderQuality.Default] minus SSAO and bloom (#657): FXAA, MEDIUM HDR buffer, soft (DPCF)
     // shadows on detected planes.
     applyRenderQualitySpec(RenderQuality.Default.spec(isArView = true))
+    applyCreationRenderDefaults()
     // Filmic tone mapper: the AR camera-stream shader pre-applies Inverse_Tonemap_Filmic, so the
     // Filmic post-process re-applies the matching forward curve and the camera background round-
     // trips back to the original pixels. Using ToneMapper.Linear here leaves the inverse curve

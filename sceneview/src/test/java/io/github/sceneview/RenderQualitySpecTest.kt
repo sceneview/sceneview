@@ -4,6 +4,8 @@ import com.google.android.filament.View.QualityLevel
 import com.google.android.filament.View.ShadowType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,16 +19,36 @@ class RenderQualitySpecTest {
     fun defaultIsThePremiumMiddleGround() {
         val spec = RenderQuality.Default.spec()
         assertTrue(spec.shadows)
-        assertEquals(ShadowType.DPCF, spec.shadowType)
         assertTrue(spec.ssao)
-        assertEquals(QualityLevel.MEDIUM, spec.ssaoQuality)
-        assertEquals(QualityLevel.MEDIUM, spec.ssaoUpsampling)
         assertTrue(spec.bloom)
         assertEquals(0.1f, spec.bloomStrength, 0f)
         assertEquals(QualityLevel.MEDIUM, spec.hdrColorBuffer)
         // Kept cheap for an Adreno 6xx at 60 fps: no multisampled HDR target, fixed resolution.
         assertEquals(1, spec.msaaSampleCount)
         assertFalse(spec.dynamicResolution)
+    }
+
+    @Test
+    fun defaultLeavesTheShadowFilterAndSsaoQualityToTheView() {
+        // Re-applying Default (SceneView does it on every renderQuality change) must not wipe a
+        // caller's `setShadowType` or SSAO quality: those are creation defaults, not preset values.
+        RenderQuality.Default.spec().let { spec ->
+            assertNull(spec.shadowType)
+            assertNull(spec.ssaoQuality)
+            assertNull(spec.ssaoUpsampling)
+        }
+        assertEquals(ShadowType.DPCF, CREATION_SHADOW_TYPE)
+        assertEquals(QualityLevel.MEDIUM, CREATION_SSAO_QUALITY)
+    }
+
+    @Test
+    fun onlyCinematicAndPerformanceWriteTheShadowFilterAndSsaoQuality() {
+        listOf(RenderQuality.Cinematic, RenderQuality.Performance).forEach { quality ->
+            val spec = quality.spec()
+            assertNotNull("$quality shadow type", spec.shadowType)
+            assertNotNull("$quality SSAO quality", spec.ssaoQuality)
+            assertNotNull("$quality SSAO upsampling", spec.ssaoUpsampling)
+        }
     }
 
     @Test
