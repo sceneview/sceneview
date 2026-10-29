@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import simd
 @testable import SceneViewSwift
 
@@ -128,6 +129,60 @@ final class CameraPathTests: XCTestCase {
     }
 
     // MARK: - Loop and clamp
+
+    func testEmptyPathSamplesTheIdentityPose() {
+        let path = CameraPosePath(keyframes: [])
+        XCTAssertEqual(path.durationSeconds, 0)
+        XCTAssertNil(path.start)
+        XCTAssertNil(path.end)
+        XCTAssertEqual(path.poseAt(5), CameraPose())
+        let player = CameraPathPlayer(timeline: path)
+        player.play()
+        player.advance(1)
+        XCTAssertEqual(player.pose, CameraPose())
+        XCTAssertEqual(player.progress, 0)
+    }
+
+    func testTwoKeysAtTheSameTimeAreACut() {
+        let keys = [key([0, 0, 4], 0), key([4, 0, 4], 1), key([8, 0, 4], 1), key([8, 0, 0], 2)]
+        for interpolation in [CameraPathInterpolation.linear, .catmullRom] {
+            let path = CameraPosePath(keyframes: keys, interpolation: interpolation)
+            XCTAssertEqual(path.keyframes.map(\.pose.position.x), [0, 4, 8, 8], "the tie keeps its order")
+            assertClose(path.poseAt(1 - 1e-3).position, [4, 0, 4], accuracy: 0.02)
+            assertClose(path.poseAt(1).position, [8, 0, 4], accuracy: 1e-5)
+            assertClose(path.poseAt(1 + 1e-3).position, [8, 0, 4], accuracy: 0.02)
+            for step in 0...40 {
+                let p = path.poseAt(Float(step) / 20).position
+                XCTAssertTrue(p.x.isFinite && p.y.isFinite && p.z.isFinite, "\(interpolation) at \(step)")
+            }
+        }
+    }
+
+    func testCatmullRomTangentIsCappedAtThreeTimesTheSlowerNeighbour() {
+        // 0.1 u/s in, 9.9 u/s out: the central difference (5 u/s) would overshoot the slow span.
+        let path = CameraPosePath(keyframes: [key([0, 0, 4], 0), key([0.1, 0, 4], 1), key([10, 0, 4], 2)],
+                                  interpolation: .catmullRom)
+        XCTAssertEqual(simd_length(path.tangents[1]), 0.3, accuracy: 1e-5)
+        XCTAssertGreaterThan(path.tangents[1].x, 0)
+        for step in 0...10 {
+            let x = path.poseAt(Float(step) / 10).position.x
+            XCTAssertGreaterThanOrEqual(x, -1e-5)
+            XCTAssertLessThanOrEqual(x, 0.1 + 1e-4, "the slow span never overshoots its far key")
+        }
+    }
+
+    func testHugeTimesSaturateInsteadOfTrapping() {
+        let orbit = CameraPosePath.orbit(center: .zero, extents: [1, 1, 1], aspect: 1,
+                                         durationSeconds: 6, turns: 0.5)
+        for t: Float in [1e21, -1e21, .greatestFiniteMagnitude, -.greatestFiniteMagnitude] {
+            let p = orbit.poseAt(t).position
+            XCTAssertTrue(p.x.isFinite && p.y.isFinite && p.z.isFinite, "poseAt(\(t))")
+        }
+        XCTAssertEqual(CameraPosePath.saturatingInt64(1e30), .max)
+        XCTAssertEqual(CameraPosePath.saturatingInt64(-1e30), .min)
+        XCTAssertEqual(CameraPosePath.saturatingInt64(.nan), 0)
+        XCTAssertEqual(CameraPosePath.saturatingInt64(-3.7), -3)
+    }
 
     func testLoopWrapsAndNonLoopClamps() {
         let keys = [key([0, 0, 4], 0), key([4, 0, 4], 2), key([0, 0, 4], 4)]
@@ -353,6 +408,49 @@ final class CameraPathTests: XCTestCase {
         XCTAssertEqual(player.seconds, 3, accuracy: 1e-4)
     }
 
+    func testAHugeSpeedSaturatesTheLapCount() {
+        let orbit = CameraPosePath.orbit(center: .zero, extents: [1, 1, 1], aspect: 1,
+                                         durationSeconds: 6, turns: 0.5)
+        let player = CameraPathPlayer(timeline: orbit)
+        player.speed = 1e25
+        player.play()
+        for _ in 0..<3 { player.advance(1.0 / 60) }
+        player.speed = -1e25
+        for _ in 0..<3 { player.advance(1.0 / 60) }
+        XCTAssertTrue((0...player.durationSeconds).contains(player.seconds))
+        let p = player.pose.position
+        XCTAssertTrue(p.x.isFinite && p.y.isFinite && p.z.isFinite)
+    }
+
+    func testANonFiniteSpeedPublishesNothing() {
+        let player = CameraPathPlayer(timeline: line)
+        var changes = 0
+        let watch = player.objectWillChange.sink { changes += 1 }
+        player.speed = .nan
+        player.speed = -.infinity
+        XCTAssertEqual(player.speed, 1)
+        XCTAssertEqual(changes, 0)
+        player.speed = 2
+        XCTAssertEqual(changes, 1)
+        watch.cancel()
+    }
+
+    func testSwappingTheTimelinePublishesTheNewPose() {
+        let player = CameraPathPlayer(timeline: line)
+        player.seek(to: 2)
+        let before = player.pose.position
+        var changes = 0
+        let watch = player.objectWillChange.sink { changes += 1 }
+        // Same length, still paused at the same playhead: only the pose changes.
+        player.timeline = CameraPosePath(keyframes: [key([0, 3, 4], 0), key([10, 3, 4], 10)],
+                                         interpolation: .linear)
+        XCTAssertGreaterThan(changes, 0, "a timeline swap must reach SwiftUI")
+        XCTAssertEqual(player.seconds, 2, accuracy: 1e-5)
+        XCTAssertEqual(player.durationSeconds, 10)
+        XCTAssertGreaterThan(simd_distance(player.pose.position, before), 1)
+        watch.cancel()
+    }
+
     // MARK: - SceneView interop
 
     func testSceneCameraPoseFollowsAFreePoseExactly() {
@@ -368,6 +466,14 @@ final class CameraPathTests: XCTestCase {
         assertClose(controls.lookForward(), pose.forward)
         assertClose(controls.cameraPose().forward, pose.forward)
         assertClose(controls.cameraPose().position, pose.position)
+    }
+
+    func testAZeroQuaternionFollowsAsTheIdentity() {
+        let pose = CameraPose(position: [1, 2, 3], quaternion: simd_quatf(vector: .zero))
+        let orbit = SceneCameraPose(pose, focusDistance: 2)
+        XCTAssertTrue(orbit.azimuth.isFinite && orbit.elevation.isFinite)
+        assertClose(orbit.cameraPosition(), [1, 2, 3], accuracy: 1e-4)
+        assertClose(orbit.target, [1, 2, 1], accuracy: 1e-4)
     }
 
     func testFollowingAPathFrameByFrameMatchesThePath() {

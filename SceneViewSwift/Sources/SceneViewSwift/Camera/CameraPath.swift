@@ -7,7 +7,9 @@ import simd
 // it (orbit, travelling, dolly) and a frame-drivable player. The Swift counterpart of
 // SceneView Android's `CameraPose`, `CameraTimeline`, `CameraPosePath` and
 // `CameraPathPlayer` (`io.github.sceneview.camera`): same sampling rules, same presets,
-// same player state machine, so a path authored on one platform plays the same on the other.
+// same player state machine. A path built from the same keys samples the same poses on both
+// platforms; the presets frame with each platform's own fit and defaults (below), so an
+// orbit built with default arguments is not guaranteed to match Android's frame for frame.
 //
 // ## What differs from Android, and why
 //
@@ -19,7 +21,16 @@ import simd
 // - ``CameraPosePath/orbit(center:extents:verticalFovDegrees:aspect:durationSeconds:turns:elevationDegrees:startAzimuthDegrees:margin:loop:keyframesPerTurn:)``
 //   fits its radius with ``CameraControls/fitRadius(boundsExtents:fovYDegrees:aspect:margin:)``,
 //   the fit every iOS `SceneView` uses, so an orbit opens at the distance the scene's own
-//   auto-framing would pick (Android uses its `fitDistanceForBounds`).
+//   auto-framing would pick (Android uses its `fitDistanceForBounds`). Breathing room is the
+//   iOS fit's `margin` multiplier (default ``CameraControls/defaultFitMargin``, 1.15) where
+//   Android takes an additive `padding` (default 0.15).
+// - `verticalFovDegrees` defaults to 60° here; Android requires it (its demo passes the
+//   default camera's 28 mm lens). Pass the field of view your camera really uses.
+// - Only the `center:extents:` orbit takes `keyframesPerTurn`; ``CameraPosePath/orbit(bounds:verticalFovDegrees:aspect:durationSeconds:turns:elevationDegrees:startAzimuthDegrees:margin:loop:)``
+//   keeps the default density (``CameraPosePath/orbitKeyframesPerTurn``), like Android's
+//   `orbit(bounds, …)`.
+// - Laps are counted in a saturating `Int64`: a time or playhead so large it has no lap
+//   number pins at the extreme instead of trapping, as Kotlin's `toLong()` saturates.
 // - A ``SceneView`` camera is an orbit camera: it follows a free pose through
 //   ``SceneCameraPose/init(_:focusDistance:)`` (or ``CameraControls/follow(_:focusDistance:)``),
 //   which keeps the eye and the look direction exact but cannot represent roll, and clamps
@@ -260,7 +271,8 @@ public struct CameraPosePath: CameraTimeline {
     /// where the first one ended instead of jumping back half a turn. `0` for any other path.
     let lapTurns: Double
     private let rotations: [simd_quatf]
-    private let tangents: [SIMD3<Float>]
+    /// Per-key Catmull-Rom tangents, in units per second (internal for tests).
+    let tangents: [SIMD3<Float>]
 
     public init(
         keyframes: [CameraPoseKeyframe],
@@ -339,7 +351,7 @@ public struct CameraPosePath: CameraTimeline {
         let time = seconds.isFinite ? seconds : 0
         let laps: Int64
         if loop && durationSeconds > 0 && !(0...durationSeconds).contains(time) {
-            laps = Int64(clamping: Int((time / durationSeconds).rounded(.down)))
+            laps = Self.saturatingInt64(Double((time / durationSeconds).rounded(.down)))
         } else {
             laps = 0
         }
@@ -628,6 +640,15 @@ public struct CameraPosePath: CameraTimeline {
         return r < 0 ? r + modulus : r
     }
 
+    /// `value` truncated to an `Int64`, pinned at `.min` / `.max` beyond their range and `0`
+    /// for NaN — Kotlin's `Double.toLong()`, where Swift's `Int64(_:)` would trap.
+    static func saturatingInt64(_ value: Double) -> Int64 {
+        guard !value.isNaN else { return 0 }
+        if value >= 9.2e18 { return .max }
+        if value <= -9.2e18 { return .min }
+        return Int64(value)
+    }
+
     static func normalizeOrIdentity(_ q: simd_quatf) -> simd_quatf {
         let norm = simd_length(q.vector)
         return (norm.isFinite && norm > 0) ? simd_quatf(vector: q.vector / norm) : simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
@@ -689,6 +710,9 @@ public final class CameraPathPlayer: ObservableObject {
     /// The timeline played. Swapping it keeps the playhead (clamped or wrapped into the new
     /// one) and adopts the new timeline's ``CameraTimeline/loop``.
     public var timeline: any CameraTimeline {
+        // `pose` is computed from the timeline, so a swap must tell SwiftUI itself — even a
+        // paused player on a same-length timeline shows a different frame.
+        willSet { objectWillChange.send() }
         didSet {
             if timeline.loop != oldValue.loop { loop = timeline.loop }
             durationSeconds = timeline.durationSeconds
@@ -700,10 +724,14 @@ public final class CameraPathPlayer: ObservableObject {
     @Published public var loop: Bool
 
     /// Playback rate: `1` real time, `2` double speed, negative plays backwards. A
-    /// non-finite value is ignored (Android throws).
-    @Published public var speed: Float = 1 {
-        didSet { if !speed.isFinite { speed = oldValue } }
+    /// non-finite value is ignored (Android throws) and publishes nothing.
+    public var speed: Float {
+        get { speedValue }
+        set { if newValue.isFinite { speedValue = newValue } }
     }
+
+    /// Storage behind ``speed``, validated before it publishes.
+    @Published private var speedValue: Float = 1
 
     /// The playhead, in seconds within one pass: `0...durationSeconds`.
     @Published public private(set) var seconds: Float = 0
@@ -792,7 +820,8 @@ public final class CameraPathPlayer: ObservableObject {
                 if !loop { isPlaying = false }
             } else if loop {
                 let wrapped = (next / duration).rounded(.down)
-                laps &+= Int64(clamping: Int(wrapped))
+                let (sum, overflow) = laps.addingReportingOverflow(CameraPosePath.saturatingInt64(wrapped))
+                laps = overflow ? (wrapped > 0 ? .max : .min) : sum
                 setPlayhead(next - wrapped * duration)
             } else if speed > 0 && next >= duration {
                 setPlayhead(duration)
@@ -849,12 +878,16 @@ extension SceneCameraPose {
     /// ±85° and the distance to the camera's radius limits — a pose outside them is
     /// approximated, not reproduced.
     public init(_ pose: CameraPose, focusDistance: Float) {
-        let forward = simd_normalize(pose.forward)
+        // A zero or non-finite quaternion (a hand-built `CameraTimeline`) reads as the identity,
+        // never as a NaN camera.
+        let rotation = CameraPosePath.normalizeOrIdentity(pose.quaternion)
+        let forward = simd_normalize(rotation.act(SIMD3<Float>(0, 0, -1)))
+        let up = rotation.act(SIMD3<Float>(0, 1, 0))
         let distance = (focusDistance.isFinite && focusDistance > 0) ? focusDistance : 1
         let elevation = asin(Swift.min(Swift.max(-forward.y, -1), 1))
         // Straight up or down the heading is undefined: keep it from the camera's up.
         let horizontal = SIMD2<Float>(forward.x, forward.z)
-        let heading = simd_length(horizontal) > 1e-6 ? horizontal : -SIMD2<Float>(pose.up.x, pose.up.z) * forward.y
+        let heading = simd_length(horizontal) > 1e-6 ? horizontal : -SIMD2<Float>(up.x, up.z) * forward.y
         let azimuth = atan2(-heading.x, -heading.y)
         self.init(azimuth: azimuth, elevation: elevation, distance: distance,
                   target: pose.position + forward * distance)
