@@ -209,6 +209,8 @@ public struct DemoScaffold<Stage: View, Accessory: View, Status: View, Controls:
                     DemoModePicker(model: modePicker)
                         .padding(.horizontal, Metrics.margin)
                 }
+                DemoCaptureToast()
+                    .padding(.horizontal, Metrics.margin)
                 accessory
                     .padding(.horizontal, Metrics.margin)
                 dockView

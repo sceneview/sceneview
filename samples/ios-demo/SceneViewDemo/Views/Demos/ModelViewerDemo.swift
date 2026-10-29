@@ -239,6 +239,8 @@ struct ModelViewerDemo: View {
     @Environment(\.analyticsSampleId) private var analyticsSampleId
     @State private var loadCount = 0
     @State private var recenterGeneration = 0
+    /// Take photo / Record video in the settings sheet: the scene only, watermarked.
+    @StateObject private var capture = DemoSceneCapture()
     /// Android's entrance: the camera flies in to each model that opens, and
     /// back to rest on Recenter (``ViewerEntranceFlight``). Skipped under
     /// `qa_mode`, where a capture must land on the resting frame every run, and
@@ -453,6 +455,7 @@ struct ModelViewerDemo: View {
                 }
             }
         )
+        .demoSceneCapture(capture)
         .hdPackDownloadDialog(isPresented: $confirmHD, assetID: pendingHDID)
         .sheet(item: $sheet) { which in
             Group {
@@ -590,7 +593,8 @@ struct ModelViewerDemo: View {
                 // `DemoSettings.cameraDistance` beating its own `radius` default.
                 .framingMargin(cameraDistanceOverride ?? (qaMode ? Self.captureFramingMargin : Self.framingMargin))
                 .contentID(loadedNode == nil ? nil : "\(loadCount)")
-                .recenterCamera(recenterGeneration),
+                .recenterCamera(recenterGeneration)
+                .sceneRecorder(capture.recorder),
                 entrance: entrance,
                 pickerPresented: sheet != nil
             )
