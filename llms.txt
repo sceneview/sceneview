@@ -679,6 +679,10 @@ ModelNode class properties (available via `apply` block):
 - `lightNodes: List<LightNode>` — embedded lights
 - `cameraNodes: List<CameraNode>` — embedded cameras
 - `boundingBox: Box` — glTF AABB
+- `worldSize: Size` — width, height, depth in world metres: authored bounds × `worldScale`
+  (parents included, rotation ignored); a 1 m glTF loaded without `scaleToUnits` reports 1 m
+- `worldBoundingBox: Box` — world-space AABB of the authored bounds after `worldTransform`;
+  its lowest Y is the floor contact, its X/Z extent the footprint
 - `animationCount: Int`
 - `isShadowCaster: Boolean`
 - `isShadowReceiver: Boolean`
@@ -702,9 +706,9 @@ clearing their handles, so the node guards each of its members that reaches them
 - Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
   scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
 - Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
-  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
-  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
-  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `center`, `size`, `worldSize`, `worldBoundingBox`, `scaleToUnitCube`, `centerOrigin`,
+  `animationCount`, `playAnimation`, `setAnimationSpeed`, `skinCount`, `skinNames`,
+  `materialVariantNames`, `attachSkin`, `detachSkin`, `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
   `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
   `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
 - Not guarded: `node.model`, `node.animator` and gltfio's own members
@@ -1555,6 +1559,20 @@ trustworthy authored units (**Actual size**). Scale limits are 25–400% of that
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).
+
+To name the choice, pass `size = PlacementSize.RealWorld` (authored metres, never rescaled:
+a 1 m cube is 1 m) or `size = PlacementSize.FitInto(0.3f)` (longest authored axis, before
+`assetRotation`, fitted into that many metres) instead of `scaleToUnits`. Either way the
+bottom-centre rests on the contact point and the model's dimensions are published in metres:
+`AutoPlacementState.baseSize` (width, height, depth at 100 % of the axis-aligned box after
+`assetRotation`, so with `FitInto` its largest side is the target only for multiples of 90°:
+a 1 m cube at `FitInto(1f)` turned 45° about Y is about 1.41 × 1 × 1.41 m; `null` until the
+frame after the model appears, and for an empty asset), `placedSize` (`baseSize * scaleFactor`,
+following the pinch) and `isAtRealWorldSize` (`RealWorld` and exactly 100 %). Let the user pick
+a size with `state.baseSize?.let { state.scaleTo(2f / it.y) }` (2 m tall). `scaleTo` clamps to
+`scaleRange` (25–400 % by default) without notice and does nothing while `allowsScaling` is
+`false`: a 0.3 m preview asked for 2 m needs ×6.7 and stops at 1.2 m, so widen `scaleRange`
+(e.g. `0.25f..16f`) first.
 For content that must stay at real size (furniture, a pool, a shed), set
 `placement.allowsScaling = false` — `remember { AutoPlacementState().apply { allowsScaling = false } }`:
 the pinch, the double-tap and `scaleTo` stop resizing it, drag and twist still move and turn
