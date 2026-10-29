@@ -277,9 +277,12 @@ enum DemoFreshness: Equatable {
     }
 
     /// The running build's marketing version (`MARKETING_VERSION`, kept equal
-    /// to Android's `VERSION_NAME` by the release pipeline).
+    /// to Android's `VERSION_NAME` by the release pipeline). UI tests pin it
+    /// with the `-demo_freshness_build <version>` launch argument (argument
+    /// domain only, never stored) so fresh cards exist whatever the build.
     static let appVersion: String =
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+        UserDefaults.standard.string(forKey: "demo_freshness_build")
+            ?? Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
 }
 
 extension DemoCategory {

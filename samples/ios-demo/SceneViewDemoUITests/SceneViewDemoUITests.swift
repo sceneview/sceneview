@@ -45,6 +45,11 @@ final class SceneViewDemoUITests: XCTestCase {
     /// second sample closed must not cover the screen a test is about to tap. The
     /// usage-statistics consent is pre-answered for the same reason: in the EEA, UK and
     /// Switzerland its sheet comes up over Home on first launch.
+    /// The build version the home's freshness window counts from: the newest
+    /// card's `updatedIn`, so the hero pager and the What's new row exist
+    /// whatever `MARKETING_VERSION` the app was built with.
+    private static let freshnessBuild = ["-demo_freshness_build", "4.52.0"]
+
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-push_preprompt", "off", "-support_prompt", "off", "-telemetry_consent", "denied"]
@@ -358,6 +363,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// (`TEST_RUNNER_SV_CAPTURE_DIR=… xcodebuild test …`).
     func testFeaturedRoundTripKeepsTheHome() {
         let app = Self.makeApp()
+        app.launchArguments += Self.freshnessBuild
         app.launch()
         let header = app.descendants(matching: .any)["home-section-featured"]
         XCTAssertTrue(header.waitForExistence(timeout: 30), "the Featured group never appeared")
@@ -371,7 +377,7 @@ final class SceneViewDemoUITests: XCTestCase {
             }
         }
         assertTabsOnScreen("on launch")
-        for (step, id) in ["cosmos", "splat-preview"].enumerated() {
+        for (step, id) in ["cosmos", "model-viewer"].enumerated() {
             let card = app.descendants(matching: .any)["home-featured-\(id)"]
             for _ in 0..<6 where !(card.exists && card.isHittable) {
                 app.swipeUp(velocity: .slow)
@@ -407,6 +413,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// whole catalogue back.
     func testWhatsNewRowOpensTheSheetAndTheChipFiltersWithAWayOut() {
         let app = Self.makeApp()
+        app.launchArguments += Self.freshnessBuild
         app.launch()
         let row = app.descendants(matching: .any)["home-whats-new-row"]
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
@@ -468,7 +475,6 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(chip.exists && !chip.isSelected, "\"Show all\" did not clear the What's new chip")
     }
 
-    /// Swipes the page up until `element` can take a tap.
     /// Android's "since you last tested" flow and featured pager. Launched as
     /// an install that last acknowledged 4.40.0 (the argument domain stands in
     /// for the stored marker): the header's sparkle carries the badge and opens
@@ -478,6 +484,7 @@ final class SceneViewDemoUITests: XCTestCase {
     func testHomePagerAndWhatsNewSinceSheet() {
         let app = Self.makeApp()
         app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
+        app.launchArguments += Self.freshnessBuild
         app.launch()
 
         let sparkle = app.buttons["home-whats-new"]
@@ -519,6 +526,7 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the What's new page did not open the sheet")
     }
 
+    /// Swipes the page up until `element` can take a tap.
     private func scroll(_ app: XCUIApplication, to element: XCUIElement) {
         for _ in 0..<10 where !(element.exists && element.isHittable) {
             app.swipeUp(velocity: .slow)
