@@ -2278,21 +2278,16 @@ private struct SceneViewRepresentation: View {
         // unioned afterwards: this runs on the main thread at 30 Hz for as long
         // as the framing driver is armed, including while the user is pinching,
         // and the per-tick array growth was pure churn on that path (#3597).
-        var accumulator = ContentBounds.Accumulator()
-        // Iterative pre-order walk — no recursion depth concerns, and the
-        // `contentRoot` itself is skipped (it is a transform-only node).
-        var stack: [Entity] = Array(entities.contentRoot.children)
-        while let entity = stack.popLast() {
-            stack.append(contentsOf: entity.children)
-            // `relativeTo: entities.root` gives every box in the stable
-            // world frame so the union is meaningful AND immune to the
-            // `AnchorEntity` re-pin feedback described above. `visualBounds`
-            // already includes the entity's own descendants, but unioning
-            // per-entity is harmless (idempotent) and lets a child whose
-            // parent reports empty still contribute.
-            accumulator.add(entity.visualBounds(relativeTo: entities.root))
-        }
-        return accumulator.result
+        // Iterative walk with an accumulator — no recursion depth concerns, and
+        // the `contentRoot` itself is skipped (it is a transform-only node).
+        // `relativeTo: entities.root` gives every box in the stable world frame
+        // so the union is meaningful AND immune to the `AnchorEntity` re-pin
+        // feedback described above. Contact-shadow quads are left out: a decal
+        // wider than the model it grounds would pull the camera back for nothing.
+        Entity.contactShadowFreeBounds(
+            of: Array(entities.contentRoot.children),
+            relativeTo: entities.root
+        )
     }
 
     /// Re-arms the one-shot fit-to-bounds pass so the next frames re-fit the

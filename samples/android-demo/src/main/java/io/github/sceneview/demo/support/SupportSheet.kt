@@ -40,6 +40,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,6 +58,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.R
 import io.github.sceneview.demo.common.DemoModalBottomSheet
+import io.github.sceneview.demo.telemetry.SupportResult
 import io.github.sceneview.demo.telemetry.logOutboundLink
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
@@ -80,17 +82,23 @@ fun SupportSheet(
     onOptOut: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val analytics = remember(mode) { SupportPromptAnalyticsSession(mode.analyticsSource) }
     LaunchedEffect(Unit) { SupportBilling.connect(context) }
-    DisposableEffect(Unit) {
+    DisposableEffect(analytics) {
+        analytics.shown()
         SupportBilling.sheetVisible = true
-        onDispose { SupportBilling.sheetVisible = false }
+        onDispose {
+            SupportBilling.sheetVisible = false
+            analytics.close()
+        }
     }
-    val dismiss = {
+    val dismiss: (SupportResult?) -> Unit = { result ->
+        analytics.close(result)
         SupportBilling.clearOutcome()
         onDismiss()
     }
     DemoModalBottomSheet(
-        onDismissRequest = dismiss,
+        onDismissRequest = { dismiss(null) },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         SupportSheetContent(
@@ -99,14 +107,17 @@ fun SupportSheet(
             prices = SupportBilling.qaPrices ?: SupportBilling.prices.mapValues { (_, details) -> details.formattedPrice() },
             inFlight = SupportBilling.inFlight,
             outcome = SupportBilling.outcome,
-            onTierClick = { tier -> context.findActivity()?.let { SupportBilling.buy(it, tier) } },
+            onTierClick = { tier ->
+                context.findActivity()?.let { SupportBilling.buy(it, tier, analytics) }
+            },
             onOpenCollectiveClick = { openOpenCollective(context) },
-            onNotNow = dismiss,
+            onNotNow = { dismiss(SupportResult.NotNow) },
             onOptOut = {
+                analytics.close(SupportResult.Never)
                 SupportBilling.clearOutcome()
                 onOptOut()
             },
-            onDone = dismiss,
+            onDone = { dismiss(null) },
         )
     }
 }

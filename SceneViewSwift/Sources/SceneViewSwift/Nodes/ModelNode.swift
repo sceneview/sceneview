@@ -383,7 +383,7 @@ public struct ModelNode: @unchecked Sendable {
     @discardableResult
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode {
         guard units.isFinite, units > 0 else { return self }
-        let extents = entity.visualBounds(relativeTo: entity.parent).extents
+        let extents = entity.visualBoundsExcludingContactShadows(relativeTo: entity.parent).extents
         let maxExtent = max(extents.x, max(extents.y, extents.z))
         guard maxExtent.isFinite, maxExtent > 0 else { return self }
         let correction = units / maxExtent
@@ -565,7 +565,7 @@ public struct ModelNode: @unchecked Sendable {
     /// - Returns: Self with the centring offset applied.
     @discardableResult
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode {
-        let bounds = entity.visualBounds(relativeTo: nil)
+        let bounds = entity.visualBoundsExcludingContactShadows(relativeTo: nil)
         let center = bounds.center
         let offset = target - center
         entity.position = entity.position + offset
@@ -606,7 +606,7 @@ public struct ModelNode: @unchecked Sendable {
     /// - Returns: Self with the alignment offset applied.
     @discardableResult
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode {
-        let bounds = entity.visualBounds(relativeTo: nil)
+        let bounds = entity.visualBoundsExcludingContactShadows(relativeTo: nil)
         entity.position = entity.position + Self.centerOriginTranslation(
             center: bounds.center,
             extents: bounds.extents,
@@ -635,9 +635,10 @@ public struct ModelNode: @unchecked Sendable {
 
     // MARK: - Collision
 
-    /// Generates collision shapes for this model, enabling hit testing.
+    /// Generates collision shapes for this model, enabling hit testing. A contact shadow
+    /// added with ``withContactShadow(_:intensity:spread:)`` gets none: it is not a tap target.
     public func enableCollision() {
-        entity.generateCollisionShapes(recursive: true)
+        entity.generateCollisionShapesExcludingContactShadows()
     }
 
     /// The axis-aligned bounding box of the collision shape, relative to the entity.
@@ -645,7 +646,7 @@ public struct ModelNode: @unchecked Sendable {
     /// Returns `nil` if no collision shapes have been generated.
     public var collisionBounds: BoundingBox? {
         guard entity.collision != nil else { return nil }
-        return entity.visualBounds(relativeTo: nil)
+        return entity.visualBoundsExcludingContactShadows(relativeTo: nil)
     }
 
     /// Registers a tap handler for this model.

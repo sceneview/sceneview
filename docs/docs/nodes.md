@@ -1314,7 +1314,7 @@ LightNode(
 | Using `MeshNode` for loaded glTF content | No animations, no PBR textures | Use `ModelNode` with `rememberModelInstance` |
 | Not handling `rememberModelInstance` returning `null` | Conditional branches crash at launch | Use `?.let { }` or `if (instance != null)` guards |
 | Showing a loading state on `null` and switching locations | No loading gap — the previous instance is returned until the new one loads ([#3900](https://github.com/sceneview/sceneview/issues/3900)) | Wrap the call in `key(location) { rememberModelInstance(...) }` so `null` is observed during the switch |
-| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android (since 4.28.0) and the web build both convert embedded WebP textures automatically — the message survives only for WebP kept in separate `.webp` files beside a `.gltf`; re-encode those to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [#3085](https://github.com/sceneview/sceneview/issues/3085), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
+| glTF with WebP-encoded textures (`EXT_texture_webp`) | Model loads/animates but renders untextured; Logcat shows `Missing texture provider for image/webp` | Android and the web build both convert embedded WebP textures automatically, and Android also converts separate `.webp` files beside a `.gltf` — the message survives only for those on the web; re-encode them to PNG/JPEG/KTX2 ([#2305](https://github.com/sceneview/sceneview/issues/2305), [#3085](https://github.com/sceneview/sceneview/issues/3085), [details](troubleshooting.md#model-loads-but-renders-untextured-webp-textures)) |
 | Calling `node.destroy()` manually | Use-after-free, crashes on recomposition | Let the composable own the lifecycle |
 
 ---
@@ -1322,6 +1322,6 @@ LightNode(
 ## See also
 
 - [`llms.txt`](../../llms.txt) — the machine-readable API surface consumed by `sceneview-mcp`
-- [`DESIGN.md`](../../DESIGN.md) — the design system for any UI around a `Scene`
-- [Samples](../../samples/) — runnable apps for every platform
+- [`DESIGN.md`](https://github.com/sceneview/sceneview/blob/main/DESIGN.md) — the design system for any UI around a `Scene`
+- [Samples](samples.md) — runnable apps for every platform
 - [sceneview-mcp](https://www.npmjs.com/package/sceneview-mcp) — MCP server that exposes this reference to any MCP client

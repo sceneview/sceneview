@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **`VideoMaterial.destroy()` no longer leaves a material instance bound to a destroyed texture ([#4859](https://github.com/sceneview/sceneview/pull/4859)).** It now destroys its material instance first and frees the video texture and stream only once the backend has let go of it, which stops Filament's "Invalid texture still bound to MaterialInstance" abort; a second call does nothing.

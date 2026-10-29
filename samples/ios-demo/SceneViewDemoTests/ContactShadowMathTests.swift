@@ -1,13 +1,14 @@
 // ContactShadowMathTests.swift
 //
 // Pure-function tests for the Contact Shadow Preview port (`ContactShadowPreviewDemo.swift`):
-// the hop, the pool that follows it, the label fade and the baked shadow mask — the iOS mirror
-// of Android's `DemoMath` grounding tests and `contact_shadow.mat`.
+// the hop, the pool that follows it and the label fade — the iOS mirror of Android's `DemoMath`
+// grounding tests. The shadow mask itself is tested in the SDK (`ContactShadowNodeTests`).
 
 #if DEBUG
 
 import XCTest
 import simd
+import SceneViewSwift
 @testable import SceneViewDemo
 
 final class ContactShadowMathTests: XCTestCase {
@@ -55,21 +56,6 @@ final class ContactShadowMathTests: XCTestCase {
         let eye = pose.cameraPosition()
         XCTAssertLessThan(simd_distance(eye, [0, 1.35, 3.3]), 1e-3)
         XCTAssertEqual(pose.target, ContactShadowMath.cameraTarget)
-    }
-
-    func testMaskIsDarkInTheMiddleAndClearAtTheEdges() {
-        for context in ContactShadowContext.allCases {
-            let centre = ContactShadowMath.alpha(u: 0.5 + context.center.x, v: 0.5 + context.center.y,
-                                                 context: context)
-            XCTAssertEqual(centre, 1, accuracy: 1e-5, "\(context)")
-            XCTAssertEqual(ContactShadowMath.alpha(u: 0, v: 0.5, context: context), 0, "\(context)")
-            XCTAssertEqual(ContactShadowMath.alpha(u: 0.5, v: 1, context: context), 0, "\(context)")
-            XCTAssertNotNil(ContactShadowMath.maskImage(context, size: 16))
-        }
-        // The wall pool sits below the TV's centre, where light from above would put it.
-        let below = ContactShadowMath.alpha(u: 0.5, v: 0.25, context: .wall)
-        let above = ContactShadowMath.alpha(u: 0.5, v: 0.75, context: .wall)
-        XCTAssertGreaterThan(below, above)
     }
 
     func testEveryPresetHasAChipAndAVerdict() {

@@ -1,0 +1,2 @@
+<!-- category: Docs -->
+- **Docs and website drop unsourced figures and stale facts ([#4851](https://github.com/sceneview/sceneview/pull/4851)).** Public numbers are now limited to the dependency count and "more than 1,300" GitHub stars (no ratings, testimonials, contributor, release or download counts). Versions, demo counts (41 Android, 35 Apple), dead links and the iOS bloom notes are corrected.

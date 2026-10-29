@@ -93,7 +93,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -274,7 +274,8 @@ screen to another, the screen under the finger is frozen until the gesture ends.
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -614,6 +615,31 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**
@@ -1584,7 +1610,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -2021,9 +2047,11 @@ floor; use `ContactShadow` when you need grounding that survives any light direc
 a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
 catching a real shadow while a wall gets a procedural one.
 
-Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
-`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
-light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+Platform matrix: **iOS** — mirrored by SceneViewSwift's `ContactShadowNode` (same
+`ContactShadowContext` presets, `intensity` 0–1, horizontal or vertical quad;
+`ContactShadowNode.under(model)` / `ModelNode.withContactShadow()` fit it to a model), and in AR
+by `ARSceneView.placementShadow(.contact(...))`; RealityKit's `GroundingShadowComponent` stays
+the AR default. **Web** — coming soon. Non-AR preview
 demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
@@ -3915,6 +3943,33 @@ val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
 A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
+### rememberModelLoadState (composable, progress + error)
+```kotlin
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+sealed interface ModelLoadState {
+    data class Loading(val progress: ModelLoadProgress) : ModelLoadState
+    data class Ready(val instance: ModelInstance) : ModelLoadState   // textures final, unless none progressed for 10 s (logged)
+    data class Failed(val error: Throwable) : ModelLoadState
+}
+```
+For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+```kotlin
+when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
+    is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })
+    is ModelLoadState.Ready -> SceneView(modelLoader = modelLoader) { ModelNode(modelInstance = state.instance) }
+    is ModelLoadState.Failed -> Text(
+        if (state.error is UnsupportedGltfExtensionException) "Unsupported model format" else "Could not load"
+    )
+}
+```
+Same ownership as `rememberModelInstance`: the composable destroys the `Model` when the location changes or on leave-composition. Unlike it, a location change goes back to `Loading`.
+
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
@@ -3936,13 +3991,38 @@ class ModelLoader(engine: Engine, context: Context) {
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
+
+    // Returns once every texture is final (or after 10 s without texture progress, logged); throws on failure (never null)
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {}   // called on the main thread
+    ): ModelInstance
+
+    companion object {
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String>   // what gltfio can honour in extensionsRequired
+        fun getFolderPath(baseFileName: String, resourceFileName: String): String
+    }
 }
+
+data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fraction 0..1, monotonic
+    enum class Stage { Reading, Creating, Textures }
+}
+class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
 
-**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture is logged and the model loads without it. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it.
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** in the `suspend`/`Async` loaders, file reading, WebP/3MF conversion and the `extensionsRequired` scan run off the main thread; the synchronous `createModel*` methods run that conversion and scan on the calling thread (the main one), so prefer the async loaders for such files. Either way, only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
 
-**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
-before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+**Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
+
+**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.72.1 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
+
+**WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
+embedded ones in the model itself, separate `.webp` files beside a `.gltf` once the resolver has read
+them (one that cannot be decoded is logged by name and left untextured). Only the URIs the glTF
+declares as WebP images are converted, never a buffer, and at most 256 images per model, embedded
+and external together: the rest keep WebP, are not decoded, and are reported in one log line.
 The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.
@@ -4175,6 +4255,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -4567,6 +4649,68 @@ Button(onClick = { animator.flyTo(otherRoom) })                     // another s
 - Hand-off: an inner manipulator that implements `CameraShotSink` gets `takeOver(shot, velocity)`
   on the first touch and carries on at that speed; any other manipulator (the default orbit one
   included) gets a 350 ms glide from the move's last frame onto its own pose.
+
+**Pose keyframes — `CameraPosePath` and `CameraPathPlayer`.** Where `CameraPath` keys orbit
+parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quaternion)`), so a
+move can be a straight line through space — a travelling, a dolly — not only an arc round a
+subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
+pure function of time: the same time always gives the same pose, which is what a scrubber and
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
+
+```kotlin
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
+val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), restart(), seekTo(s), speed, loop
+SceneView(
+    cameraNode = cameraNode,
+    cameraManipulator = null,                          // the path owns the camera
+    frameRatePolicy = FrameRatePolicy.Continuous(),
+    onFrame = { nanos -> cameraNode.applyPose(player.advanceFrame(nanos)) },
+) { … }
+Slider(value = player.progress, onValueChange = { player.seekTo(it * player.durationSeconds) })
+```
+
+- `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
+  pathEasing = null, lookAt = null, up = +Y, loop = false)`: positions are `Linear` or `CatmullRom`
+  (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
+  leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
+- Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, at most 1000 turns, at least 6 keys per turn; loops seamlessly on any
+  number of turns, each lap of 1.5 turns starting where the last one ended), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
+- `CameraPathPlayer` owns the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
+  Compose state) and the count of whole laps played; `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
+  120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
+  clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
+  from the old one's. The player keeps a whole lap count and the time within the lap, so a
+  `CameraPath.tour(turns = 1.5f)` or an `orbit(turns = 1.5f)` carries on lap after lap with no
+  jump at the seam and is as exact after a week as on its first lap; other timelines are sampled
+  within the lap. On such a fractional path `pose` equals `timeline.poseAt(seconds)` on the first
+  lap only (lap two of 1.5 turns is half a turn on). `seconds` and `progress` stay within the lap,
+  `seekTo` keeps the lap (`seekTo(durationSeconds)` shows the end of the current lap), turning
+  `loop` off keeps the lap, a new timeline with another turn count applies its turn to the laps
+  played (the camera can jump), and `restart()` — or `play()` on a finished player — goes back to
+  lap 0 at time 0. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  target)` and `CameraShot.toPose()` build one.
 
 `CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,
 these are time-driven. Pick the animator when the move has a beginning and an end.
@@ -6172,10 +6316,11 @@ View modifiers (chainable):
 .onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
 .onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
 .onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
+.placementShadow(_ style: ARPlacementShadow) -> ARSceneView  // shadow given to onTapOnPlane content: .grounding (default — GroundingShadowComponent), .contact(ContactShadowContext = .floor, intensity: Float? = nil) (procedural ContactShadowNode, retuned live), .none. Overrides `groundingShadows`
 ```
 
 `PlaneDetectionMode` values: `.none`, `.horizontal`, `.vertical`, `.both`
@@ -6183,7 +6328,7 @@ View modifiers (chainable):
 `cameraExposure` notes:
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
-- Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- Implemented via `ARView.renderCallbacks.postProcess`.
 - It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
 
 `onSessionError` notes (v4.39.0+):
@@ -6287,6 +6432,7 @@ public struct ModelNode: @unchecked Sendable {
     // Misc
     public func enableCollision()
     public func withGroundingShadow() -> ModelNode           // iOS 18+ / visionOS 2+
+    public func withContactShadow(_ context: ContactShadowContext = .floor, intensity: Float? = nil, spread: Float = 1.6) -> ModelNode  // procedural pool at the lowest point — call after scaleToUnits / centerOrigin
     public mutating func onTap(_ handler: @escaping () -> Void) -> ModelNode
 }
 ```
@@ -6518,6 +6664,43 @@ public enum GeometryMaterial: @unchecked Sendable {
     public static func loadTexture(contentsOf url: URL) async throws -> TextureResource
 }
 ```
+
+#### ContactShadowNode — procedural contact shadow (Android `ContactShadowNode` parity)
+
+```swift
+public enum ContactShadowContext: String, CaseIterable, Sendable { case floor, wall, tableTop }
+// intensity / center / radius / softness — same values as Android's presets
+
+public struct ContactShadowNode: @unchecked Sendable {
+    public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
+    public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
+    public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
+    public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
+                plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
+    public var context: ContactShadowContext  // live
+    public var intensity: Float               // live, clamped 0...1
+    public var size: SIMD2<Float>
+    public static func under(_ model: Entity, context: ContactShadowContext = .floor,
+                             intensity: Float? = nil, spread: Float = 1.6) -> ContactShadowNode
+    public func fit(under model: Entity, spread: Float = 1.6)
+}
+```
+
+- `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  `centerOrigin`; call `fit(under:)` again if the model changes size.
+- Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
 
 #### AnchorNode — AR world anchors (iOS only)
 

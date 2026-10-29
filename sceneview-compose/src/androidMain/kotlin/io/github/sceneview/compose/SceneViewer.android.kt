@@ -25,6 +25,7 @@ import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.model.model
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.rememberCameraNode
@@ -117,7 +118,8 @@ public actual fun SceneViewer(
             )
         }
 
-        modelInstance?.let { instance ->
+        // A model destroyed under the composition has nothing left to show.
+        modelInstance?.takeUnless { it.isDestroyed }?.let { instance ->
             ModelNode(modelInstance = instance)
         }
     }

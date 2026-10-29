@@ -17,11 +17,14 @@
 enum class RenderQuality { Cinematic, Default, Performance }
 ```
 
-| Preset | Shadows | SSAO | Bloom | MSAA | DoF | Use case |
+| Preset | Shadows | SSAO | Bloom | AA | HDR buffer | Use case |
 |---|---|---|---|---|---|---|
-| `Cinematic` | high-res VSM | ON | ON | 4x | ON | hero product viewer, marketing demos |
-| `Default` | medium PCF | ON | ON | 2x | OFF | most apps — shipped as the SceneView default |
-| `Performance` | low PCF | OFF | OFF | 1x | OFF | low-end devices, AR overlays, battery-sensitive flows |
+| `Cinematic` | soft, contact-hardening (PCSS) | HIGH, HIGH upsampling | 0.15 | MSAA 4x + FXAA | HIGH | hero shots on flagship GPUs |
+| `Default` | soft (DPCF), front key light | MEDIUM, bilateral upsampling | 0.10 | FXAA | MEDIUM | the SceneView default: a premium product shot at mid-range cost (Adreno 618 class, 60 fps) |
+| `Performance` | off | OFF | OFF | FXAA | LOW + dynamic resolution | low-end devices, many-model scenes, battery-sensitive flows |
+
+In AR (`createARView` / `rememberARView`), every preset keeps SSAO and bloom off over the camera
+feed (#657) and keeps the Filmic tone mapper (#1434); the rest of the preset applies.
 
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
@@ -40,7 +43,7 @@ ARSceneView(view = arView) { /* … */ }
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
-The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions`, `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
+The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself. `Default` leaves the shadow type and the SSAO quality/upsampling as they are: DPCF and MEDIUM are set once by `createView` / `createARView`, so your own `view.setShadowType(...)` survives the default preset. Only `Cinematic` and `Performance` write them.
 
 ---
 
@@ -63,7 +66,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions
 - **APK size**: +3.2MB (sceneview), +5.1MB (sceneview + arsceneview).
 - **Memory**: ~25MB empty 3D scene, ~45MB empty AR scene.
 - **Triangle budget**: <100K per model, <200K total scene (mid-tier devices).
-- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android since 4.28.0**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes embedded WebP textures to PNG (via Android's own decoder) before handing the asset to Filament — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. **The web build does the same** — `sceneview-web`'s `loadModel` re-encodes embedded WebP to PNG in the browser before `createAsset` (#3085), with the caveat that partial-alpha texels round-trip with rounding error (canvas 2D stores premultiplied colour). Still unsupported on both, and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`. Prefer PNG/JPEG/KTX2 when you control the asset (#2305, #3085).
+- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes WebP textures to PNG (via Android's own decoder) before handing them to Filament, embedded or in separate `.webp` files beside a `.gltf` — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. **The web build does the same** — `sceneview-web`'s `loadModel` re-encodes embedded WebP to PNG in the browser before `createAsset` (#3085), with the caveat that partial-alpha texels round-trip with rounding error (canvas 2D stores premultiplied colour). Still unsupported on the web, and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`. Prefer PNG/JPEG/KTX2 when you control the asset (#2305, #3085).
 - **Draw calls**: aim for <100 per frame. Merge static geometry in Blender before export.
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.

@@ -1,0 +1,2 @@
+<!-- category: Fixed -->
+- **Stopping a recording right after it started is far less likely to hit a native abort ([#4860](https://github.com/sceneview/sceneview/pull/4860)).** `SurfaceMirrorer.stopMirroring`, and a scene disposed while mirroring, now wait up to one second for Filament's backend after destroying a mirror's swap chain, so the recorder's surface is no longer freed before the backend's queued `eglSurfaceAttrib` on it; the wait is bounded, so a backend stalled for more than a second can still race.

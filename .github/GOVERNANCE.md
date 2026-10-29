@@ -2,17 +2,19 @@
 
 ## Project Leadership
 
-**Founder & Lead Maintainer:** Thomas Gorisse — see [`@sceneview` org members](https://github.com/orgs/sceneview/people)
+**Creator & Maintainer:** Thomas Gorisse — see [`@sceneview` org members](https://github.com/orgs/sceneview/people)
+
+Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR
 
 ## Decision Making
 
-SceneView uses a benevolent dictator model. Major decisions are made by the lead maintainer with input from the community.
+SceneView uses a benevolent dictator model. Major decisions are made by the maintainer with input from the community.
 
 ### How Decisions Are Made
 
 1. **Features & Roadmap** — Discussed in GitHub Issues and Discord. The roadmap is published in [ROADMAP.md](../ROADMAP.md).
 2. **Code Changes** — All changes go through Pull Requests with code review.
-3. **Releases** — Managed by the lead maintainer following semantic versioning.
+3. **Releases** — Managed by the maintainer following semantic versioning.
 4. **Breaking Changes** — Announced in advance, documented in [MIGRATION.md](../MIGRATION.md).
 
 ## Contributing
