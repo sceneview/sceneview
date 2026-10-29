@@ -60,7 +60,7 @@ One minimal, working example per platform. The full reference for each is in
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:sceneview:4.62.0")
+implementation("io.github.sceneview:sceneview:4.63.0")
 ```
 
 The app module needs `compileSdk = 37`, `minSdk` 24 or higher, AGP 9.4.0+, Kotlin 2.4 and JVM
@@ -87,7 +87,7 @@ coroutine: Filament calls must run on the main thread, and `rememberModelInstanc
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.sceneview:arsceneview:4.62.0")   // includes the 3D module
+implementation("io.github.sceneview:arsceneview:4.63.0")   // includes the 3D module
 ```
 
 ```kotlin
@@ -156,8 +156,8 @@ that finishes loading after the scene appears is never added.
 
 ```html
 <canvas id="viewer" style="width: 100%; height: 480px"></canvas>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.62.0/website-static/js/filament/filament.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.62.0/website-static/js/sceneview.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/filament/filament.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/sceneview.js"></script>
 <script> SceneView.modelViewer("viewer", "model.glb") </script>
 ```
 
@@ -165,7 +165,7 @@ that finishes loading after the scene appears is never added.
 
 ```kotlin
 // commonMain dependencies
-implementation("io.github.sceneview:sceneview-compose:4.62.0")
+implementation("io.github.sceneview:sceneview-compose:4.63.0")
 ```
 
 ```kotlin
@@ -178,7 +178,7 @@ A viewer by design — load, orbit, light, tap; no AR. Scope and the one-time iO
 ### Flutter
 
 ```dart
-// pubspec.yaml → flutter_sceneview: ^4.62.0
+// pubspec.yaml → flutter_sceneview: ^4.63.0
 final controller = SceneViewController();
 
 SceneView(
@@ -252,10 +252,10 @@ The other platforms in the table below join this section once a capture backs th
 
 | Platform | Coordinate |
 |---|---|
-| Android 3D | `io.github.sceneview:sceneview:4.62.0` |
-| Android AR | `io.github.sceneview:arsceneview:4.62.0` |
-| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.62.0` |
-| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.62.0` |
+| Android 3D | `io.github.sceneview:sceneview:4.63.0` |
+| Android AR | `io.github.sceneview:arsceneview:4.63.0` |
+| Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.63.0` |
+| KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.63.0` |
 | Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.60.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
@@ -515,7 +515,7 @@ npm install sceneview-web
 The package expects a `Filament` global and does not include the `SceneView.modelViewer` script
 helpers. A Kotlin Multiplatform project that only needs the shared core (collision, math,
 geometry, animation, physics — no renderer) uses
-`implementation("io.github.sceneview:sceneview-core-js:4.62.0")`.
+`implementation("io.github.sceneview:sceneview-core-js:4.63.0")`.
 
 [Landing page](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [npm](https://www.npmjs.com/package/sceneview-web)
 
@@ -597,9 +597,23 @@ sceneview-core (Kotlin Multiplatform)
 
 ## Sponsors
 
-SceneView is free and open source, funded by its users.
+<!-- Same message as the website home page (#fund) and companies.html#sponsor: edit the three together.
+     Generic on purpose: no company is named. Open Collective first, GitHub Sponsors second, nothing else. -->
+
+### SceneView runs in commercial products. Sponsor it or buy support.
+
+Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, **sponsor it or buy support, now.**
+
+**Sponsor.** Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.
 
 **[Sponsor on Open Collective](https://opencollective.com/sceneview)** · or through [GitHub Sponsors](https://github.com/sponsors/sceneview)
+
+**Commercial support.**
+
+- **Incident, $600.** One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.
+- **2.3 LTS, $1,800 for 90 days.** One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.
+
+Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective's budget. Payment comes before any work. Every version stays under Apache 2.0. Write to [hello@sceneview.dev](mailto:hello@sceneview.dev).
 
 <a href="https://opencollective.com/sceneview"><img src="https://opencollective.com/sceneview/organizations.svg?avatarHeight=56&width=830" alt="Logos of the companies sponsoring SceneView on Open Collective"></a>
 

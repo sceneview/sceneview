@@ -20,7 +20,7 @@
     </plurals>
     <string name="labs_empty">New experiments land here soon.</string>
     <string name="labs_help_most">What helps most: a screen recording (Quick Settings, Screen record) attached to the issue, what you expected and what happened, and your phone model.</string>
-    <string name="labs_open_collective">Want to do more? Back SceneView on Open Collective</string>
+    <string name="labs_support">Want to do more? Support SceneView</string>
     <string name="labs_badge">Labs</string>
     <string name="labs_gate_title">This is a Labs experiment</string>
     <string name="labs_gate_body_not_joined">It still needs testing on real phones, so it opens for people who help test. Send your first report and Labs opens right away.</string>
