@@ -218,14 +218,18 @@ class SurfaceMirrorer {
      * each call may return a new Java object wrapping the same native surface.
      */
     fun stopMirroring(surface: Surface) {
-        synchronized(surfaceMirrors) {
-            surfaceMirrors.filter { it.surface == surface }.onEach { mirror ->
-                mirror.swapChain?.let { swapChain ->
-                    engine?.let { runCatching { it.destroySwapChain(swapChain) } }
-                }
-                mirror.swapChain = null
-            }.also { surfaceMirrors.removeAll(it) }
+        // Out of the list under the lock: no later onFrame can create a swap chain for it again.
+        val (engine, swapChains) = synchronized(surfaceMirrors) {
+            engine to surfaceMirrors.filter { it.surface == surface }
+                .also { surfaceMirrors.removeAll(it) }
+                .mapNotNull { mirror -> mirror.swapChain.also { mirror.swapChain = null } }
         }
+        if (engine == null) return
+        releaseSwapChains(
+            swapChains,
+            destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
+            flushAndWait = { engine.flushAndWait(it) },
+        )
     }
 
     /**
@@ -324,4 +328,13 @@ class SurfaceMirrorer {
             height
         )
     }
+}
+
+internal fun <S> releaseSwapChains(
+    swapChains: List<S>,
+    destroySwapChain: (S) -> Unit,
+    flushAndWait: (timeoutNanos: Long) -> Boolean,
+): Boolean {
+    swapChains.forEach(destroySwapChain)
+    return true
 }
