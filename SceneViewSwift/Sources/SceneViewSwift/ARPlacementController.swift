@@ -388,6 +388,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         switch event {
         case .interrupted:
             _ = lifecycle.frame(now: 0, tracking: false, anchorTracking: false, assetReady: selectedAssetReady)
+            instantState.interrupted()
             cancelGestures()
             visibilityTarget = 0
         case .failed:
