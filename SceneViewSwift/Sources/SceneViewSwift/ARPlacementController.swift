@@ -831,11 +831,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             anchor = replacement
         }
         if !easeRotation { pivot.setOrientation(transform.rotation, relativeTo: nil) }
-        // A recenter's new facing applies only with its move: a move that never resolves keeps
-        // the old one, which still matches the model's heading.
-        if let facing { facingYaw = facing }
-        follow = ARInstantPlacement.Follow(target: transform.translation,
-                                           rotation: easeRotation ? transform.rotation : nil, speed: speed)
+        // A twist that began while this move waited for its anchor owns the rotation: the eased
+        // one must not overwrite it.
+        let easedRotation = easeRotation && !isActive(UIRotationGestureRecognizer.self) ? transform.rotation : nil
+        // A recenter's new facing applies only with its rotation: a move that never resolves, or
+        // whose rotation a twist took over, keeps the old one, which still matches the heading.
+        if let facing, easedRotation != nil || !easeRotation { facingYaw = facing }
+        follow = ARInstantPlacement.Follow(target: transform.translation, rotation: easedRotation, speed: speed)
         surface = plane
         result = .init(surfaceIdentifier: plane.identifier, anchor: replacement, worldTransform: contact)
     }
@@ -1208,8 +1210,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``ARInstantPlacement/settleSpeed`` to where the centre ray meets the floor, between half
     /// its reach and its reach ahead — on the detected plane there, else (``instantPlacement``
     /// on, or already approximate) on the estimated floor. Walls: the wall under the centre.
-    /// The pinch and the twist are kept: a floor model faces the user again, with the user's own
-    /// twist on top (ARMV: yaw toward the camera plus `twist`). Plays ``ARHapticEvent/placed``.
+    /// The pinch and the twist are kept: a floor model keeps the side the user sees, turned by
+    /// the twist from facing them (ARMV: yaw toward the camera plus `twist`); a plane placement's
+    /// own heading counts as twist, so nothing swings. Plays ``ARHapticEvent/placed``.
     ///
     /// - Returns: `false`, with nothing changed, when nothing is placed or no surface is in view.
     @discardableResult
