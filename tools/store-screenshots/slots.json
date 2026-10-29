@@ -21,7 +21,7 @@
     ],
     [
       1,
-      "Scene(",
+      "SceneView(Modifier.fillMaxSize()) {",
       [
         137,
         180,
@@ -30,25 +30,7 @@
     ],
     [
       2,
-      "modifier = Modifier.fillMaxSize(),",
-      [
-        201,
-        209,
-        217
-      ]
-    ],
-    [
-      2,
-      "childNodes = listOf(",
-      [
-        201,
-        209,
-        217
-      ]
-    ],
-    [
-      3,
-      "rememberModelNode(\"helmet.glb\")",
+      "rememberModelInstance(",
       [
         166,
         227,
@@ -56,8 +38,8 @@
       ]
     ],
     [
-      2,
-      ")",
+      3,
+      "modelLoader, \"helmet.glb\"",
       [
         201,
         209,
@@ -65,8 +47,17 @@
       ]
     ],
     [
+      2,
+      ")?.let { ModelNode(it) }",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
       1,
-      ")",
+      "}",
       [
         201,
         209,
