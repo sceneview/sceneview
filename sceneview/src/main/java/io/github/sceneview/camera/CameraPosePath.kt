@@ -107,7 +107,7 @@ enum class CameraPathInterpolation {
  * non-finite position.
  */
 @ExperimentalSceneViewApi
-class CameraPosePath private constructor(
+class CameraPosePath internal constructor(
     keyframes: List<CameraPoseKeyframe>,
     val interpolation: CameraPathInterpolation,
     val easing: (Float) -> Float,
