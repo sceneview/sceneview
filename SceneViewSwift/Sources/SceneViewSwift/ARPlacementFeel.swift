@@ -53,6 +53,27 @@ enum ARPlacementFeel {
         atan2(eye.x - point.x, eye.z - point.z)
     }
 
+    /// The heading of `rotation` about +Y: where its +Z points on the floor, in the same
+    /// convention as ``yawToward(_:eye:)``.
+    static func heading(of rotation: simd_quatf) -> Float {
+        let forward = rotation.act([0, 0, 1])
+        return atan2(forward.x, forward.z)
+    }
+
+    /// `angle` wrapped to −π…π.
+    static func wrap(_ angle: Float) -> Float {
+        guard angle.isFinite else { return 0 }
+        let turns = (angle / (2 * .pi)).rounded()
+        return angle - turns * 2 * .pi
+    }
+
+    /// The user's twist (ARMV `twist`): how far a floor model's actual `heading` is turned from
+    /// `facing`, the yaw that faced the user when it was last placed or recentered. A plane
+    /// placement keeps the plane anchor's heading, so its twist starts at that gap, not at 0.
+    static func twist(heading: Float, facing: Float) -> Float {
+        wrap(heading - facing)
+    }
+
     /// The world rotation a floor model gets when it is recentered to `point` (ARMV `recenter`):
     /// facing the user again, plus the user's own `twist` (radians about +Y) on top.
     static func recenteredRotation(at point: SIMD3<Float>, eye: SIMD3<Float>, twist: Float) -> simd_quatf {

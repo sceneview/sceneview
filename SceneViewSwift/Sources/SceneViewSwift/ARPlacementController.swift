@@ -161,7 +161,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``ARPlacementLifecycle/pendingAnchorDecision(anchored:surfaceUsable:now:since:)``.
     private var pendingAnchorSince: TimeInterval?
     private var pendingMove: (anchor: AnchorEntity, plane: ARPlaneAnchor, contact: simd_float4x4, transform: Transform,
-                              speed: Float, easeRotation: Bool)?
+                              speed: Float, easeRotation: Bool, facing: Float?)?
     private(set) var pivot = Entity()
     private var model: Entity?
     private var selectedAssetReady = false
@@ -169,10 +169,16 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private var activeGestures: Set<ObjectIdentifier> = []
     private var grabOffset = SIMD3<Float>.zero
     private(set) var twistBaseline = simd_quatf(angle: 0, axis: [0, 1, 0])
-    /// The user's own twist since the placement, in radians about the surface normal (ARMV
-    /// `twist`): a recenter faces the user again and keeps this on top. Internal for tests.
-    var userTwist: Float = 0
-    private var userTwistAtTwistBegan: Float = 0
+    /// The yaw that faced the user when the floor model was last placed or recentered (ARMV's
+    /// yaw node). Internal for tests.
+    var facingYaw: Float = 0
+    /// The user's own twist on the floor, in radians (ARMV `twist`): the heading the model has —
+    /// or is easing to — relative to ``facingYaw``. Derived, so a twist, a spin, `rotate(by:)` or
+    /// a twist started mid-ease never drifts from what is shown. A recenter keeps it on top.
+    var userTwist: Float {
+        ARPlacementFeel.twist(heading: ARPlacementFeel.heading(of: follow?.rotation ?? pivot.orientation(relativeTo: nil)),
+                              facing: facingYaw)
+    }
     private var lastTimestamp: TimeInterval?
     private var visibility: Float = 0
     private var visibilityTarget: Float = 0
@@ -305,7 +311,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         cancelGestures()
         removeAnchor()
         pivot.transform = .identity
-        userTwist = 0
+        facingYaw = 0
         scaleDisplay.reset()
         publishScale()
         visibility = 0
@@ -336,7 +342,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         model = nil
         selectedAssetReady = false
         pivot = Entity()
-        userTwist = 0
+        facingYaw = 0
         lifecycle.dismiss()
         lastTimestamp = nil
         result = nil
@@ -361,7 +367,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         pivot.scale = SIMD3<Float>(repeating: scaleDisplay.shown)
     }
     /// A placement was committed: a first one grows in from ``ARPlacementFeel/appearScale``.
-    private func commitPlacement() {
+    private func commitPlacement(camera: simd_float4x4) {
+        // A plane placement keeps the plane anchor's heading, unrelated to the user: what it is
+        // turned from facing them counts as the twist a recenter keeps. An estimated placement
+        // faces them, so its twist is 0.
+        if alignment == .horizontal, let contact = result?.worldTransform ?? instant?.contact {
+            facingYaw = ARPlacementFeel.yawToward(contact.columns.3.xyz, eye: camera.columns.3.xyz)
+        }
         let before = lifecycle.placementsCreated
         lifecycle.commit()
         selection = true
@@ -448,7 +460,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             if let currentPlane = planes.first(where: { $0.identifier == move.plane.identifier }),
                valid(plane: currentPlane, point: move.contact.columns.3.xyz, frame: frame, view: view) {
                 applyMove(anchor: move.anchor, plane: currentPlane, contact: move.contact, transform: move.transform,
-                          speed: move.speed, easeRotation: move.easeRotation)
+                          speed: move.speed, easeRotation: move.easeRotation, facing: move.facing)
                 pendingMove = nil
             } else { discardPendingMove() }
         }
@@ -466,7 +478,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                 result = pendingPlacementResult
                 pendingPlacementResult = nil
                 pendingAnchorSince = nil
-                commitPlacement()
+                commitPlacement(camera: frame.camera.transform)
             case .wait:
                 // RealityKit resolves the plane target asynchronously; the anchor stays as long as
                 // its surface does. Dropping it here would re-create one anchor per frame forever.
@@ -494,7 +506,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                 result = pendingPlacementResult
                 pendingPlacementResult = nil
                 pendingAnchorSince = nil
-                commitPlacement()
+                commitPlacement(camera: frame.camera.transform)
             }
         } else if search, instantPlacement, instantState.autoPlaceDue(now: frame.timestamp) {
             // A detected plane, above, wins at once; the estimated floor only after the delay.
@@ -772,7 +784,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// Moves the model to the contact `transform` on `plane`, easing at `speed` per second.
     /// `rotation` (world) replaces the kept one; `easeRotation` turns it with the position.
     private func commitMove(to transform: simd_float4x4, plane: ARPlaneAnchor, rotation: simd_quatf? = nil,
-                            speed: Float = ARPlacementFeel.dragSpeed, easeRotation: Bool = false) {
+                            speed: Float = ARPlacementFeel.dragSpeed, easeRotation: Bool = false,
+                            facing: Float? = nil) {
         guard let view = arView else { return }
         let current = pivot.transformMatrix(relativeTo: nil)
         // Preserve the rotation relative to the old surface frame and the scale around contact.
@@ -793,22 +806,23 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                 view.scene.addAnchor(replacement)
             }
             guard replacement.isAnchored else {
-                pendingMove = (replacement, plane, transform, next, speed, easeRotation)
+                pendingMove = (replacement, plane, transform, next, speed, easeRotation, facing)
                 return
             }
             pendingMove = nil
             applyMove(anchor: replacement, plane: plane, contact: transform, transform: next,
-                      speed: speed, easeRotation: easeRotation)
+                      speed: speed, easeRotation: easeRotation, facing: facing)
         } else if let anchor {
             discardPendingMove()
             applyMove(anchor: anchor, plane: plane, contact: transform, transform: next,
-                      speed: speed, easeRotation: easeRotation)
+                      speed: speed, easeRotation: easeRotation, facing: facing)
         }
     }
     /// The pivot keeps its world pose across the re-parent and eases to `transform` (world) at
     /// `speed` — ARMV `moveTo(…, DragSpeed)` under the finger. The scale is the display's.
     private func applyMove(anchor replacement: AnchorEntity, plane: ARPlaneAnchor,
-                           contact: simd_float4x4, transform: Transform, speed: Float, easeRotation: Bool) {
+                           contact: simd_float4x4, transform: Transform, speed: Float, easeRotation: Bool,
+                           facing: Float?) {
         if anchor !== replacement {
             let previousParent = pivot.parent?.orientation(relativeTo: nil) ?? simd_quatf(angle: 0, axis: [0, 1, 0])
             replacement.addChild(pivot, preservingWorldTransform: true)
@@ -817,6 +831,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             anchor = replacement
         }
         if !easeRotation { pivot.setOrientation(transform.rotation, relativeTo: nil) }
+        // A recenter's new facing applies only with its move: a move that never resolves keeps
+        // the old one, which still matches the model's heading.
+        if let facing { facingYaw = facing }
         follow = ARInstantPlacement.Follow(target: transform.translation,
                                            rotation: easeRotation ? transform.rotation : nil, speed: speed)
         surface = plane
@@ -849,14 +866,12 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         let active = activeGestures.contains(ObjectIdentifier(recognizer))
         if recognizer.state == .began {
             handFollowRotationToTwist()
-            userTwistAtTwistBegan = userTwist
             twistCoast.reset()
             twistCoast.addSample(time: now, [0])
             begin(recognizer)
         }
         if recognizer.state == .changed {
             pivot.orientation = twistBaseline * simd_quatf(angle: -Float(recognizer.rotation), axis: normalAxis)
-            userTwist = userTwistAtTwistBegan - Float(recognizer.rotation)
             // ARMV samples the cumulative twist in degrees, the coast's unit.
             twistCoast.addSample(time: now, [-Float(recognizer.rotation) * 180 / .pi])
         }
@@ -879,7 +894,6 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     private func turn(by radians: Float) {
         let turn = simd_quatf(angle: radians, axis: normalAxis)
         pivot.orientation *= turn
-        userTwist += radians
         // A rotation still being eased toward turns with it, instead of overwriting the turn.
         if let rotation = follow?.rotation { follow?.rotation = simd_normalize(rotation * turn) }
     }
@@ -958,7 +972,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         result = nil
         follow = nil
         instant = ARInstantPlacement.Runtime(contact: contact)
-        commitPlacement()
+        commitPlacement(camera: frame.camera.transform)
     }
 
     /// Where the centre ray meets the floor as far as ARKit knows it, between half the model's
@@ -1091,7 +1105,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
 
     /// A twist takes the rotation over from where it is on screen — no snap to the rest of an
-    /// easing rotation. The position keeps easing.
+    /// easing rotation. The position keeps easing. ``userTwist`` follows: it is read from the
+    /// heading shown once the eased rotation is dropped, so a twist started mid-recenter
+    /// starts from the in-between heading.
     func handFollowRotationToTwist() {
         follow?.rotation = nil
         twistBaseline = pivot.orientation
@@ -1208,6 +1224,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         let currentRotation = follow?.rotation ?? pivot.orientation(relativeTo: nil)
         let oldContact = instant?.contact ?? result?.worldTransform ?? current
         let twist = userTwist
+        func facing(at contact: simd_float4x4) -> Float? {
+            alignment == .horizontal ? ARPlacementFeel.yawToward(contact.columns.3.xyz, eye: eye) : nil
+        }
         func rotation(at contact: simd_float4x4) -> simd_quatf {
             alignment == .horizontal
                 ? ARPlacementFeel.recenteredRotation(at: contact.columns.3.xyz, eye: eye, twist: twist)
@@ -1237,7 +1256,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         cancelGestures()
         if let onPlane {
             commitMove(to: onPlane.transform, plane: onPlane.plane, rotation: rotation(at: onPlane.transform),
-                       speed: ARInstantPlacement.settleSpeed, easeRotation: true)
+                       speed: ARInstantPlacement.settleSpeed, easeRotation: true, facing: facing(at: onPlane.transform))
         } else if let approximate {
             let contact = ARInstantPlacement.approximateContact(point: approximate.point, camera: camera,
                                                                 wallNormal: approximate.wallNormal)
@@ -1253,6 +1272,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             result = nil
             instant = ARInstantPlacement.Runtime(contact: contact)
             instantState.moved()
+            if let yaw = facing(at: contact) { facingYaw = yaw }
             follow = ARInstantPlacement.Follow(target: approximate.point, rotation: rotation(at: contact),
                                                speed: ARInstantPlacement.settleSpeed)
         }

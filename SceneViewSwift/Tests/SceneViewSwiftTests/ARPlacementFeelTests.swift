@@ -217,7 +217,50 @@ final class ARPlacementFeelTests: XCTestCase {
         XCTAssertNil(ARPlacementFeel.glide(pointer: .zero, step: [.nan, 0], pixelScale: 3, bounds: bounds))
     }
 
-    // MARK: Recenter bearing
+    // MARK: Recenter facing and twist
+
+    func testAPlaneHeadingCountsAsTwistAndRecenterKeepsItRelativeToTheUser() {
+        // Placed on a plane whose anchor heads 90° while the user looks at it from 0°.
+        let eye = SIMD3<Float>(0, 1.5, 0)
+        let point = SIMD3<Float>(0, 0, -2)
+        let facing = ARPlacementFeel.yawToward(point, eye: eye)
+        let planeHeading = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+        XCTAssertEqual(ARPlacementFeel.heading(of: planeHeading), .pi / 2, accuracy: 0.0001)
+        let twist = ARPlacementFeel.twist(heading: ARPlacementFeel.heading(of: planeHeading), facing: facing)
+        XCTAssertEqual(twist, .pi / 2, accuracy: 0.0001)
+        // Recentered without walking: no swing at all.
+        let same = ARPlacementFeel.recenteredRotation(at: point, eye: eye, twist: twist)
+        XCTAssertEqual(abs(simd_dot(same.vector, planeHeading.vector)), 1, accuracy: 0.0001)
+        // The user walks round to (3, 1.5, -2) and recenters to (1, 0, -2): the model shows them
+        // the same side, still 90° from facing them.
+        let walked = SIMD3<Float>(3, 1.5, -2)
+        let target = SIMD3<Float>(1, 0, -2)
+        let recentered = ARPlacementFeel.recenteredRotation(at: target, eye: walked, twist: twist)
+        XCTAssertEqual(ARPlacementFeel.twist(heading: ARPlacementFeel.heading(of: recentered),
+                                             facing: ARPlacementFeel.yawToward(target, eye: walked)),
+                       .pi / 2, accuracy: 0.0001)
+        XCTAssertEqual(ARPlacementFeel.wrap(3 * .pi / 2), -.pi / 2, accuracy: 0.0001)
+        XCTAssertEqual(ARPlacementFeel.wrap(-3 * .pi / 2), .pi / 2, accuracy: 0.0001)
+    }
+
+    func testTheUserTwistIsReadFromTheHeadingShownOrEasedTo() {
+        let controller = ARPlacementController()
+        let anchor = AnchorEntity(world: matrix_identity_float4x4)
+        anchor.addChild(controller.pivot)
+        controller.facingYaw = .pi / 4
+        controller.pivot.orientation = simd_quatf(angle: .pi / 4, axis: [0, 1, 0])
+        XCTAssertEqual(controller.userTwist, 0, accuracy: 0.0001)
+        // A twist (or a spin, or rotate(by:)) turns the pivot: the twist is what it turned.
+        controller.pivot.orientation *= simd_quatf(angle: .pi / 6, axis: [0, 1, 0])
+        controller.pivot.orientation *= simd_quatf(angle: -.pi / 12, axis: [0, 1, 0])
+        XCTAssertEqual(controller.userTwist, .pi / 12, accuracy: 0.0001)
+        // While a recenter's rotation eases, its target counts; once a twist drops the ease,
+        // the in-between heading shown counts, so nothing drifts.
+        controller.follow = ARInstantPlacement.Follow(target: .zero, rotation: simd_quatf(angle: .pi, axis: [0, 1, 0]))
+        XCTAssertEqual(controller.userTwist, 3 * .pi / 4, accuracy: 0.0001)
+        controller.handFollowRotationToTwist()
+        XCTAssertEqual(controller.userTwist, .pi / 12, accuracy: 0.0001)
+    }
 
     func testRecenterFacesTheUserAgainAndKeepsTheTwist() {
         let eye = SIMD3<Float>(0, 1.5, 0)
@@ -413,12 +456,13 @@ final class ARPlacementFeelTests: XCTestCase {
 
     func testResetForgetsTheUserTwist() {
         let controller = ARPlacementController()
-        controller.userTwist = 0.7
+        controller.facingYaw = 0.7
         controller.resetPlacement()
-        XCTAssertEqual(controller.userTwist, 0)
-        controller.userTwist = 0.7
+        XCTAssertEqual(controller.facingYaw, 0)
+        XCTAssertEqual(controller.userTwist, 0, accuracy: 0.0001)
+        controller.facingYaw = 0.7
         controller.dismiss()
-        XCTAssertEqual(controller.userTwist, 0)
+        XCTAssertEqual(controller.facingYaw, 0)
     }
 
     func testVelocitiesAreMeasuredInScreenPixels() {
