@@ -19,6 +19,11 @@ public struct ARPlacementAssetTicket: Equatable, Sendable {
 }
 
 /// A real detected surface and its placement anchor, including the full contact orientation.
+///
+/// With ``ARPlacementController/instantPlacement`` on, ``ARPlacementController/result`` stays
+/// `nil` while ``ARPlacementController/trackingMethod`` is
+/// ``ARPlacementTrackingMethod/approximate``: there is no detected surface to name yet. It is
+/// set when the model lands on one.
 @MainActor
 public struct ARPlacementResult {
     public let surfaceIdentifier: UUID
@@ -155,14 +160,14 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``ARPlacementLifecycle/pendingAnchorDecision(anchored:surfaceUsable:now:since:)``.
     private var pendingAnchorSince: TimeInterval?
     private var pendingMove: (anchor: AnchorEntity, plane: ARPlaneAnchor, contact: simd_float4x4, transform: Transform)?
-    private var pivot = Entity()
+    private(set) var pivot = Entity()
     private var model: Entity?
     private var selectedAssetReady = false
     private var recognizers: [UIGestureRecognizer] = []
     private var activeGestures: Set<ObjectIdentifier> = []
     private var grabOffset = SIMD3<Float>.zero
     private var pinchBaseline: Float = 1
-    private var twistBaseline = simd_quatf(angle: 0, axis: [0, 1, 0])
+    private(set) var twistBaseline = simd_quatf(angle: 0, axis: [0, 1, 0])
     private var lastTimestamp: TimeInterval?
     private var visibility: Float = 0
     private var visibilityTarget: Float = 0
@@ -176,8 +181,57 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     let hapticEvents = PassthroughSubject<ARHapticEvent, Never>()
     var placementsCreated: Int { lifecycle.placementsCreated }
 
-    public init(alignment: ARPlacementAlignment = .horizontal) {
+    /// Places the model before ARKit has detected a plane, then moves it onto the real surface
+    /// when one is found — ARCore Instant Placement parity.
+    ///
+    /// A detected plane under the screen centre still takes the model at once. Without one, after
+    /// tracking has run for 0.6 s, the model stands where the centre ray meets the floor as far
+    /// as ARKit knows it — the lowest detected or estimated horizontal surface well below the
+    /// phone, else 1.3 m below it — between half its reach and its reach ahead, the reach growing
+    /// with the model's size as shown: 1.2 m at the default 0.3 m preview; a 2 m sofa at
+    /// real-world size (`previewSize: nil`) stands 2.9 m away. It never floats
+    /// along the ray. Walls wait for an ARKit estimated wall under the centre.
+    /// ``trackingMethod`` then reads ``ARPlacementTrackingMethod/approximate`` and ``result`` is
+    /// `nil`.
+    ///
+    /// Ten times a second the model's own screen position is cast again: an estimated surface
+    /// there eases it closer (a continuous follow, 6/s, which a drag or a move takes over from),
+    /// and a detected plane there lands it — ``result`` names the plane, ``trackingMethod`` becomes
+    /// ``ARPlacementTrackingMethod/fullTracking`` and ``ARHapticEvent/placed`` plays again.
+    /// Landing waits while a gesture is in progress. Each plane anchor gets 3 s to resolve,
+    /// counted again from the end of such a gesture; one that does not counts as a failure and
+    /// backs off (0.1 s doubling to 0.8 s). After six, landing on that plane pauses for 3 s, or
+    /// until ARKit reports another plane there or that plane grows. Losing the plane under the
+    /// model (a young plane's edge) drops the anchor without counting a failure, unless it
+    /// happens three times in a row on that plane. After landing, the glide to the landing
+    /// point goes on until a drag or a move actually moves the model. Drag, pinch, twist, ``rotate(by:)``,
+    /// ``move(by:)`` and ``scale(to:)`` all work while approximate; drag follows the estimated
+    /// floor.
+    ///
+    /// Off by default, as on Android: `AutoPlacementScene` there runs with
+    /// `InstantPlacementMode.DISABLED`, and an existing app keeps waiting for a plane. Changing it
+    /// affects the next placement only; a standing approximate placement still refines.
+    /// `AutoPlacementScene`'s coaching overlay then coaches tracking only, not a plane search.
+    @Published public var instantPlacement: Bool
+
+    /// How precisely the current placement is tracked; `nil` while nothing is placed. See
+    /// ``instantPlacement``. Kotlin twin: `InstantPlacementPoint.trackingMethod`.
+    @Published public private(set) var trackingMethod: ARPlacementTrackingMethod?
+    /// Non-nil exactly while the placement is approximate. Internal for tests.
+    var instant: ARInstantPlacement.Runtime?
+    /// Auto-place delay, refinement throttle, landing backoff and abandonment recovery.
+    private var instantState = ARInstantPlacement.State()
+    /// The ease toward a refined spot, or toward the landing point; `nil` at rest. Internal
+    /// for tests; only the instant-placement section and the gesture handlers write it.
+    var follow: ARInstantPlacement.Follow?
+
+    /// - Parameters:
+    ///   - alignment: Floors (`.horizontal`, the default) or walls (`.vertical`).
+    ///   - instantPlacement: Place before a plane is detected and refine; see
+    ///     ``instantPlacement``. Default `false`.
+    public init(alignment: ARPlacementAlignment = .horizontal, instantPlacement: Bool = false) {
         self.alignment = alignment
+        _instantPlacement = Published(initialValue: instantPlacement)
         super.init()
     }
 
@@ -286,8 +340,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         surface = nil
         pendingPlacementResult = nil
         pendingAnchorSince = nil
+        stopInstantPlacement()
     }
-    private func publishPhase() { if phase != lifecycle.phase { phase = lifecycle.phase } }
+    private func publishPhase() {
+        if phase != lifecycle.phase { phase = lifecycle.phase }
+        let method = ARInstantPlacement.trackingMethod(hasPlacement: hasPlacement, onSurface: surface != nil)
+        if trackingMethod != method { trackingMethod = method }
+    }
 
     func attach(to view: ARView) {
         guard arView !== view else { return }
@@ -306,6 +365,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                     self.pivot.components.set(OpacityComponent(opacity: next))
                 }
                 self.stepRebound(by: event.deltaTime)
+                self.stepFollow(by: event.deltaTime)
             }
         }
         pivot.components.set(OpacityComponent(opacity: 0))
@@ -344,8 +404,11 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
         let planes = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
         if let id = surface?.identifier, let updated = planes.first(where: { $0.identifier == id }) { surface = updated }
-        let anchored = anchor?.isAnchored == true && planes.contains { $0.identifier == surface?.identifier }
+        // An approximate placement rides a world anchor: it has no plane to lose yet.
+        let anchored = instant != nil ? anchor?.isAnchored == true
+            : anchor?.isAnchored == true && planes.contains { $0.identifier == surface?.identifier }
         let search = lifecycle.frame(now: frame.timestamp, tracking: normal, anchorTracking: anchored, assetReady: selectedAssetReady)
+        instantState.observe(tracking: normal, placed: hasPlacement, now: frame.timestamp)
         if !normal || (hasPlacement && !anchored) { cancelGestures() }
         visibilityTarget = normal && hasPlacement && anchored ? 1 : 0
         if normal, anchored, let move = pendingMove, move.anchor.isAnchored {
@@ -401,7 +464,11 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                 lifecycle.commit()
                 selection = true
             }
+        } else if search, instantPlacement, instantState.autoPlaceDue(now: frame.timestamp) {
+            // A detected plane, above, wins at once; the estimated floor only after the delay.
+            placeApproximately(in: view, frame: frame, planes: planes)
         }
+        if normal, instant != nil { refineApproximatePlacement(in: view, frame: frame) }
         publishPhase()
     }
 
@@ -430,7 +497,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         return nil
     }
 
-    private func valid(plane: ARPlaneAnchor, point: SIMD3<Float>, frame: ARFrame, view: ARView) -> Bool {
+    private func valid(plane: ARPlaneAnchor, point: SIMD3<Float>, frame: ARFrame, view: ARView,
+                       maxDistance: Float = 3) -> Bool {
         guard view.bounds.width > 0, view.bounds.height > 0,
               frame.anchors.contains(where: { $0.identifier == plane.identifier }) else { return false }
         let normal = plane.transform.columns.1.xyz
@@ -441,7 +509,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         if alignment == .horizontal && simd_dot(frame.camera.transform.columns.3.xyz - point, normal) <= 0 { return false }
         let cameraPoint = (frame.camera.transform.inverse * SIMD4<Float>(point, 1)).xyz
         let distance = simd_length(cameraPoint)
-        guard cameraPoint.z < 0, distance >= 0.25, distance <= 3,
+        guard cameraPoint.z < 0, distance >= 0.25, distance <= maxDistance,
               let screen = view.project(point), view.bounds.contains(screen) else { return false }
         let local = (plane.transform.inverse * SIMD4<Float>(point, 1)).xyz
         let polygon = plane.geometry.boundaryVertices.map { SIMD2<Float>($0.x, $0.z) }
@@ -518,6 +586,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         (gestureRecognizer is UIPinchGestureRecognizer && otherGestureRecognizer is UIRotationGestureRecognizer)
             || (gestureRecognizer is UIRotationGestureRecognizer && otherGestureRecognizer is UIPinchGestureRecognizer)
     }
+    private func isActive<Recognizer: UIGestureRecognizer>(_ kind: Recognizer.Type) -> Bool {
+        recognizers.contains { $0 is Recognizer && activeGestures.contains(ObjectIdentifier($0)) }
+    }
     private func begin(_ recognizer: UIGestureRecognizer) {
         activeGestures.insert(ObjectIdentifier(recognizer))
         selection = true
@@ -543,6 +614,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             recognizer.isEnabled = false
             recognizer.isEnabled = true
         }
+        // `.cancelled` reaches `pan` after this, with the set already empty: a drag cut short
+        // still dropped the model somewhere new, as a drag that ends does.
+        if instant != nil, isActive(UIPanGestureRecognizer.self) { instantState.moved() }
         activeGestures.removeAll()
         invalidMovement = false
         if lifecycle.phase == .adjusting { lifecycle.phase = .placed }
@@ -564,8 +638,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             let t = simd_dot(transform.columns.3.xyz - ray.origin, normal) / denominator
             guard t > 0 else { return }
             grabOffset = transform.columns.3.xyz - (ray.origin + t * ray.direction)
+            handFollowToFinger()
             begin(recognizer)
         } else if recognizer.state == .changed, activeGestures.contains(ObjectIdentifier(recognizer)) {
+            if instant != nil { dragApproximately(to: point, in: view, frame: frame); return }
             guard let hit = raycast(point, in: view, frame: frame) else { invalidMovement = true; return }
             var proposed = hit.transform
             let n = alignment == .horizontal ? proposed.columns.1.xyz : proposed.columns.2.xyz
@@ -573,7 +649,11 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             guard valid(plane: hit.plane, point: proposed.columns.3.xyz, frame: frame, view: view) else { invalidMovement = true; return }
             commitMove(to: proposed, plane: hit.plane)
             invalidMovement = false
-        } else if [.ended, .cancelled, .failed].contains(recognizer.state) { end(recognizer) }
+        } else if [.ended, .cancelled, .failed].contains(recognizer.state) {
+            // Dropped somewhere new: landing there gets a fresh set of attempts.
+            if instant != nil, activeGestures.contains(ObjectIdentifier(recognizer)) { instantState.moved() }
+            end(recognizer)
+        }
     }
     private func commitMove(to transform: simd_float4x4, plane: ARPlaneAnchor) {
         guard let view = arView else { return }
@@ -613,6 +693,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             if let anchor { arView?.scene.removeAnchor(anchor) }
             anchor = replacement
         }
+        follow = nil
         pivot.setTransformMatrix(transform.matrix, relativeTo: nil)
         surface = plane
         result = .init(surfaceIdentifier: plane.identifier, anchor: replacement, worldTransform: contact)
@@ -654,14 +735,20 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
     @objc private func twist(_ recognizer: UIRotationGestureRecognizer) {
         guard canManipulate else { return }
-        if recognizer.state == .began { twistBaseline = pivot.orientation; begin(recognizer) }
+        if recognizer.state == .began {
+            handFollowRotationToTwist()
+            begin(recognizer)
+        }
         if recognizer.state == .changed { pivot.orientation = twistBaseline * simd_quatf(angle: -Float(recognizer.rotation), axis: normalAxis) }
         if [.ended, .cancelled, .failed].contains(recognizer.state) { end(recognizer) }
     }
     /// Accessibility alternative: rotate around the grounded contact pivot, in radians.
     public func rotate(by radians: Float) {
         guard canManipulate, radians.isFinite else { return }
-        pivot.orientation *= simd_quatf(angle: radians, axis: normalAxis)
+        let turn = simd_quatf(angle: radians, axis: normalAxis)
+        pivot.orientation *= turn
+        // A rotation still being eased toward turns with it, instead of overwriting the turn.
+        if let rotation = follow?.rotation { follow?.rotation = simd_normalize(rotation * turn) }
     }
     /// Uniform multiplier of the chosen base size (25–400%), preserving surface contact.
     public func scale(to value: Float) {
@@ -673,11 +760,14 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         if (previous < 1 && scale >= 1) || (previous > 1 && scale <= 1) { hapticEvents.send(.scaleSnapped) }
         if ARScaleSnap.isAtLimit(scale) && !ARScaleSnap.isAtLimit(previous) { hapticEvents.send(.limitReached) }
     }
-    /// Accessibility alternative: metres along the detected surface's two tangent axes.
+    /// Accessibility alternative: metres along the detected surface's two tangent axes — or,
+    /// while the placement is approximate, along the estimated floor (or wall). A refused move
+    /// plays ``ARHapticEvent/invalidMove`` and raises ``invalidMovement``.
     @discardableResult
     public func move(by offset: SIMD2<Float>) -> Bool {
-        guard canManipulate, let view = arView, let frame = view.session.currentFrame,
-              let plane = surface, let contact = result?.worldTransform else { return false }
+        guard canManipulate, let view = arView, let frame = view.session.currentFrame else { return false }
+        if let runtime = instant { return moveApproximately(by: offset, contact: runtime.contact, frame: frame) }
+        guard let plane = surface, let contact = result?.worldTransform else { return false }
         var next = contact
         let tangent = alignment == .horizontal ? contact.columns.2.xyz : contact.columns.1.xyz
         next.columns.3 += SIMD4<Float>(contact.columns.0.xyz * offset.x + tangent * offset.y, 0)
@@ -687,9 +777,246 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             invalidMovement = true
             return false
         }
+        handFollowToFinger()
         commitMove(to: next, plane: plane)
         invalidMovement = false
         return true
+    }
+
+    // MARK: Instant placement — rules and constants in ARInstantPlacement.swift
+
+    /// The model's largest side at its current scale, in metres: what its reach is made of.
+    private var largestSide: Float {
+        guard let model else { return 0 }
+        let extents = model.visualBounds(relativeTo: pivot).extents * scale
+        return max(extents.x, max(extents.y, extents.z))
+    }
+
+    /// Stands the model on the estimated floor along the centre ray (walls: on the estimated
+    /// wall under the centre). Runs only when no detected plane is usable this frame and tracking
+    /// has run for ``ARInstantPlacement/autoPlaceDelay``.
+    private func placeApproximately(in view: ARView, frame: ARFrame, planes: [ARPlaneAnchor]) {
+        guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+        let camera = frame.camera.transform
+        let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+        guard let ray = view.ray(through: center) else { return }
+        let estimate = estimatedHit(at: center, in: view, camera: camera)
+        let point: SIMD3<Float>
+        var wallNormal: SIMD3<Float>?
+        switch alignment {
+        case .horizontal:
+            let floors = planes.filter {
+                $0.alignment == .horizontal && $0.transform.columns.1.y > 0.5 && $0.classification != .ceiling
+            }.map { ($0.transform * SIMD4<Float>($0.center, 1)).y }
+            let floorY = ARInstantPlacement.floorHeight(cameraY: camera.columns.3.y,
+                                                        surfaceHeights: floors + (estimate.map { [$0.point.y] } ?? []))
+            guard let onFloor = ARInstantPlacement.floorPoint(origin: ray.origin, direction: ray.direction, floorY: floorY,
+                                                              reach: ARInstantPlacement.reach(forLargestSide: largestSide))
+            else { return }
+            point = onFloor
+        case .vertical:
+            // No imagined wall: a wall object waits for ARKit's estimate of the wall in view.
+            guard let estimate else { return }
+            point = estimate.point
+            wallNormal = estimate.normal
+        }
+        let contact = ARInstantPlacement.approximateContact(point: point, camera: camera, wallNormal: wallNormal)
+        let anchor = AnchorEntity(world: contact)
+        anchor.addChild(pivot)
+        pivot.transform = Transform(scale: SIMD3<Float>(repeating: scale))
+        view.scene.addAnchor(anchor)
+        self.anchor = anchor
+        surface = nil
+        result = nil
+        follow = nil
+        instant = ARInstantPlacement.Runtime(contact: contact)
+        lifecycle.commit()
+        selection = true
+    }
+
+    /// An ARKit estimated-plane hit at `screen` that may carry the model, else `nil`.
+    private func estimatedHit(at screen: CGPoint, in view: ARView,
+                              camera: simd_float4x4) -> (point: SIMD3<Float>, normal: SIMD3<Float>)? {
+        guard let query = view.makeRaycastQuery(from: screen, allowing: .estimatedPlane,
+                                                alignment: alignment == .horizontal ? .horizontal : .vertical),
+              let hit = view.session.raycast(query).first else { return nil }
+        let point = hit.worldTransform.columns.3.xyz
+        let normal = hit.worldTransform.columns.1.xyz
+        guard ARInstantPlacement.acceptsEstimatedHit(point: point, normal: normal, camera: camera,
+                                                     alignment: alignment) else { return nil }
+        return (point, normal)
+    }
+
+    /// Where the model's own pixel meets a usable detected plane (`planeID`, or any), within
+    /// ``ARInstantPlacement/maxSurfaceDistance`` — the spot it lands on, so it keeps its place
+    /// on screen and only its depth corrects (an ARCore instant point does the same).
+    private func landingSpot(on planeID: UUID?, in view: ARView, frame: ARFrame) -> (plane: ARPlaneAnchor, point: SIMD3<Float>)? {
+        guard let screen = view.project(pivot.position(relativeTo: nil)), view.bounds.contains(screen) else { return nil }
+        for hit in view.raycast(from: screen, allowing: .existingPlaneGeometry,
+                                alignment: alignment == .horizontal ? .horizontal : .vertical) {
+            guard let plane = hit.anchor as? ARPlaneAnchor, planeID == nil || plane.identifier == planeID else { continue }
+            let point = hit.worldTransform.columns.3.xyz
+            if valid(plane: plane, point: point, frame: frame, view: view,
+                     maxDistance: ARInstantPlacement.maxSurfaceDistance) { return (plane, point) }
+        }
+        return nil
+    }
+
+    /// Re-casts the model's screen position (at most every
+    /// ``ARInstantPlacement/refineInterval``): a detected plane there lands it (never during a
+    /// gesture, with backoff only for anchors that do not resolve); an estimated surface there
+    /// moves its follow target. Nothing here is asynchronous, so nothing can outlive a reset:
+    /// ``stopInstantPlacement()`` removes a pending anchor with the rest.
+    private func refineApproximatePlacement(in view: ARView, frame: ARFrame) {
+        guard var runtime = instant else { return }
+        let now = frame.timestamp
+        guard instantState.refineTick(now: now) else { return }
+        if let pending = runtime.pending {
+            let spot = landingSpot(on: pending.plane, in: view, frame: frame)
+            switch instantState.step(gesturesActive: !activeGestures.isEmpty, anchored: pending.anchor.isAnchored,
+                                     overSurface: spot != nil, now: now, since: pending.since) {
+            case .commit:
+                land(on: spot!.plane, anchor: pending.anchor, point: spot!.point, frame: frame)
+            case .hold, .wait:
+                break
+            case .lost:
+                view.scene.removeAnchor(pending.anchor)
+                instant?.pending = nil
+                instantState.lost(now: now, plane: pending.plane, area: pending.area)
+            case .retry, .abandon:
+                view.scene.removeAnchor(pending.anchor)
+                instant?.pending = nil
+                instantState.failed(now: now, plane: pending.plane, area: pending.area)
+            }
+            return
+        }
+        // The finger owns the position while dragging; refinement resumes on release.
+        guard !isActive(UIPanGestureRecognizer.self) else { return }
+        if let spot = landingSpot(on: nil, in: view, frame: frame),
+           instantState.mayAttemptLanding(on: spot.plane.identifier, area: Self.area(of: spot.plane), now: now) {
+            let target = AnchorEntity(anchor: spot.plane)
+            view.scene.addAnchor(target)
+            runtime.pending = (target, spot.plane.identifier, Self.area(of: spot.plane), now)
+            instant = runtime
+            if target.isAnchored, activeGestures.isEmpty { land(on: spot.plane, anchor: target, point: spot.point, frame: frame) }
+            return
+        }
+        guard let screen = view.project(pivot.position(relativeTo: nil)), view.bounds.contains(screen),
+              let estimate = estimatedHit(at: screen, in: view, camera: frame.camera.transform) else { return }
+        if follow == nil { follow = ARInstantPlacement.Follow(target: pivot.position(relativeTo: nil)) }
+        follow?.retarget(estimate.point)
+    }
+
+    private static func area(of plane: ARPlaneAnchor) -> Float {
+        plane.planeExtent.width * plane.planeExtent.height
+    }
+
+    /// A drag or a move takes the pivot over. A rotation still easing (a wall landing re-facing
+    /// the wall) is applied first, so the model never keeps a partial yaw. While approximate the
+    /// position stops where it is. After landing, the glide to the landing point goes on until
+    /// a move is accepted (``applyMove`` ends it): a drag or move refused at a young plane's edge
+    /// must not leave the model frozen between the estimated height and the floor.
+    func handFollowToFinger() {
+        if let rotation = follow?.rotation { pivot.setOrientation(rotation, relativeTo: nil) }
+        if instant != nil { follow = nil } else { follow?.rotation = nil }
+    }
+
+    /// A twist takes the rotation over from where it is on screen — no snap to the rest of an
+    /// easing rotation. The position keeps easing.
+    func handFollowRotationToTwist() {
+        follow?.rotation = nil
+        twistBaseline = pivot.orientation
+    }
+
+    /// Moves the pivot onto the resolved plane anchor without a visible jump, then eases it to
+    /// the landing spot. From here on the placement is a normal plane placement.
+    private func land(on plane: ARPlaneAnchor, anchor target: AnchorEntity, point: SIMD3<Float>, frame: ARFrame) {
+        guard let runtime = instant else { return }
+        let surfaceContact = contactTransform(plane: plane, point: point, camera: frame.camera.transform)
+        let rotation = ARInstantPlacement.refinedRotation(alignment: alignment,
+                                                          model: pivot.orientation(relativeTo: nil),
+                                                          approximateContact: simd_quatf(runtime.contact),
+                                                          surfaceContact: simd_quatf(surfaceContact))
+        let previousParent = pivot.parent?.orientation(relativeTo: nil) ?? simd_quatf(angle: 0, axis: [0, 1, 0])
+        target.addChild(pivot, preservingWorldTransform: true)
+        // Landing waits for gestures to end; should one still be running, its baseline moves
+        // into the new parent's space with the pivot, so the next change cannot jump.
+        twistBaseline = simd_normalize(target.orientation(relativeTo: nil).inverse * previousParent * twistBaseline)
+        if let previous = anchor, previous !== target { arView?.scene.removeAnchor(previous) }
+        anchor = target
+        surface = plane
+        result = .init(surfaceIdentifier: plane.identifier, anchor: target, worldTransform: surfaceContact)
+        instant = nil
+        instantState.moved()
+        follow = ARInstantPlacement.Follow(target: point, rotation: alignment == .vertical ? rotation : nil)
+        hapticEvents.send(.placed)
+    }
+
+    /// Drag while approximate (Android `floorUnder`): onto a detected plane under the finger
+    /// when there is one, else along the plane the model stands on, within
+    /// ``ARInstantPlacement/maxSurfaceDistance``.
+    private func dragApproximately(to screen: CGPoint, in view: ARView, frame: ARFrame) {
+        let current = pivot.transformMatrix(relativeTo: nil)
+        let next: SIMD3<Float>?
+        if let hit = raycast(screen, in: view, frame: frame) {
+            let n = alignment == .horizontal ? hit.transform.columns.1.xyz : hit.transform.columns.2.xyz
+            next = hit.transform.columns.3.xyz + Self.tangentOffset(grabOffset, normal: n)
+        } else if let ray = view.ray(through: screen) {
+            let normal = simd_normalize((current * SIMD4<Float>(normalAxis, 0)).xyz)
+            next = ARInstantPlacement.pointOnContactPlane(rayOrigin: ray.origin, rayDirection: ray.direction,
+                                                          point: current.columns.3.xyz, normal: normal)
+                .map { $0 + Self.tangentOffset(grabOffset, normal: normal) }
+        } else { next = nil }
+        guard let next, ARInstantPlacement.withinReach(next, from: frame.camera.transform.columns.3.xyz) else {
+            invalidMovement = true
+            return
+        }
+        pivot.setPosition(next, relativeTo: nil)
+        invalidMovement = false
+    }
+
+    /// ``move(by:)`` while approximate: along the estimated contact's tangent axes.
+    private func moveApproximately(by offset: SIMD2<Float>, contact: simd_float4x4, frame: ARFrame) -> Bool {
+        let tangent = alignment == .horizontal ? contact.columns.2.xyz : contact.columns.1.xyz
+        let from = follow?.target ?? pivot.position(relativeTo: nil)
+        let next = from + contact.columns.0.xyz * offset.x + tangent * offset.y
+        let camera = frame.camera.transform
+        let eye = camera.columns.3.xyz
+        guard offset.x.isFinite, offset.y.isFinite, (camera.inverse * SIMD4<Float>(next, 1)).z < 0,
+              simd_length(next - eye) >= 0.25, ARInstantPlacement.withinReach(next, from: eye) else {
+            hapticEvents.send(.invalidMove)
+            invalidMovement = true
+            return false
+        }
+        handFollowToFinger()
+        pivot.setPosition(next, relativeTo: nil)
+        instantState.moved()
+        invalidMovement = false
+        return true
+    }
+
+    /// One render frame of the follow: exponential, interruptible, never waited on.
+    func stepFollow(by delta: TimeInterval) {
+        guard let follow, pivot.parent != nil else { return }
+        let alpha = ARInstantPlacement.Follow.alpha(delta: delta, reduceMotion: UIAccessibility.isReduceMotionEnabled)
+        guard alpha > 0 else { return }
+        pivot.setPosition(follow.position(from: pivot.position(relativeTo: nil), alpha: alpha), relativeTo: nil)
+        // The twist owns the rotation while it runs; it took the eased rotation when it began.
+        if let rotation = follow.rotation, !isActive(UIRotationGestureRecognizer.self) {
+            pivot.setOrientation(simd_slerp(pivot.orientation(relativeTo: nil), rotation, alpha), relativeTo: nil)
+        }
+        if follow.arrived(at: pivot.position(relativeTo: nil), rotation: pivot.orientation(relativeTo: nil)) {
+            pivot.setPosition(follow.target, relativeTo: nil)
+            if let rotation = follow.rotation { pivot.setOrientation(rotation, relativeTo: nil) }
+            self.follow = nil
+        }
+    }
+
+    private func stopInstantPlacement() {
+        if let pending = instant?.pending { arView?.scene.removeAnchor(pending.anchor) }
+        instant = nil
+        follow = nil
+        instantState.reset()
     }
 }
 

@@ -1,6 +1,7 @@
 package io.github.sceneview.loaders
 
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -28,36 +29,78 @@ internal object GltfBufferUris {
     private const val CHUNK_JSON = 0x4E4F534A // "JSON", little-endian
 
     /** The external buffer URIs of [source], among its [resourceUris]. */
-    fun of(source: Buffer, resourceUris: Collection<String>): Set<String> {
+    fun of(source: Buffer, resourceUris: Collection<String>): Set<String> = kinds(source, resourceUris).buffers
+
+    /**
+     * Which of [resourceUris] (external ones only) [source] declares as buffers, and which as
+     * images. A payload whose JSON cannot be read has its buffers guessed from the `.bin` suffix
+     * and **no** image: a load then feeds nothing in place of a missing resource it cannot place.
+     *
+     * [resourceUris] are gltfio's, which are **raw**: cgltf does not unescape the JSON string of a
+     * `uri`, so `"textures\/a.png"` comes back as `textures\/a.png`, while the declarations read
+     * here are JSON-decoded. Each is compared through [decodedUri]; the sets returned hold the raw
+     * URIs, the ones gltfio feeds by.
+     */
+    fun kinds(source: Buffer, resourceUris: Collection<String>): Kinds {
         val external = resourceUris.filterNot { it.startsWith("data:") }
-        if (external.isEmpty()) return emptySet()
+        if (external.isEmpty()) return Kinds(emptySet(), emptySet())
         val declared = (source as? ByteBuffer)
-            ?.let { runCatching { declaredBufferUris(it) }.getOrNull() }
-            ?: return external.filter { it.endsWith(".bin", ignoreCase = true) }.toSet()
-        return external.filter { it in declared }.toSet()
+            ?.let { runCatching { declaredUris(it) }.getOrNull() }
+            ?: return Kinds(external.filter { it.endsWith(".bin", ignoreCase = true) }.toSet(), emptySet())
+        return Kinds(
+            buffers = external.filter { decodedUri(it) in declared.buffers }.toSet(),
+            images = external.filter { uri ->
+                decodedUri(uri).let { it in declared.images && it !in declared.buffers }
+            }.toSet(),
+        )
     }
 
-    private fun declaredBufferUris(source: ByteBuffer): Set<String>? {
+    /**
+     * [raw] (a URI as gltfio reports it, straight from the JSON text) with its JSON escapes
+     * decoded, as `org.json` reads it. [raw] itself when it has no escape or is not a valid JSON
+     * string body.
+     */
+    fun decodedUri(raw: String): String =
+        if ('\\' !in raw) raw
+        else runCatching { JSONTokener("\"$raw\"").nextValue() as? String }.getOrNull() ?: raw
+
+    /** External resource URIs by kind; see [kinds]. */
+    class Kinds(val buffers: Set<String>, val images: Set<String>)
+
+    private fun declaredUris(source: ByteBuffer): Kinds? {
         val json = jsonText(source.duplicate().order(ByteOrder.LITTLE_ENDIAN)) ?: return null
-        val buffers = JSONObject(json).optJSONArray("buffers") ?: return emptySet()
-        return (0 until buffers.length())
-            .mapNotNull { buffers.optJSONObject(it)?.optString("uri", "") }
-            .filter { it.isNotEmpty() }
-            .toSet()
+        val gltf = JSONObject(json)
+        fun uris(key: String) = gltf.optJSONArray(key)?.let { array ->
+            (0 until array.length())
+                .mapNotNull { array.optJSONObject(it)?.optString("uri", "") }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        } ?: emptySet()
+        return Kinds(buffers = uris("buffers"), images = uris("images"))
     }
 
-    private fun jsonText(source: ByteBuffer): String? {
+    /**
+     * Where the glTF JSON of [source] (little-endian, from its position) lies, as a start and a
+     * length: a GLB's JSON chunk, or the whole buffer for a text glTF. `null` for a GLB whose JSON
+     * chunk is missing or truncated.
+     */
+    internal fun jsonRange(source: ByteBuffer): Pair<Int, Int>? {
         val start = source.position()
         val isGlb = source.remaining() >= GLB_HEADER_SIZE + CHUNK_HEADER_SIZE &&
             source.getInt(start) == GLB_MAGIC
-        if (!isGlb) {
-            return ByteArray(source.remaining()).also { source.get(it) }
-                .toString(Charsets.UTF_8).removePrefix("\uFEFF")
-        }
+        if (!isGlb) return start to source.remaining()
         val length = source.getInt(start + GLB_HEADER_SIZE)
         val type = source.getInt(start + GLB_HEADER_SIZE + 4)
         val from = start + GLB_HEADER_SIZE + CHUNK_HEADER_SIZE
         if (type != CHUNK_JSON || length < 0 || from.toLong() + length > source.limit()) return null
-        return ByteArray(length).also { source.position(from); source.get(it) }.toString(Charsets.UTF_8)
+        return from to length
+    }
+
+    /** The glTF JSON of [source] (little-endian), see [jsonRange]. Leaves its position alone. */
+    internal fun jsonText(source: ByteBuffer): String? {
+        val (from, length) = jsonRange(source) ?: return null
+        val bytes = ByteArray(length)
+        source.duplicate().apply { position(from) }.get(bytes)
+        return bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
     }
 }

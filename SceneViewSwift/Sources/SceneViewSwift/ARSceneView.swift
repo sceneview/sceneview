@@ -931,6 +931,9 @@ public struct ARSceneView: UIViewRepresentable {
     }
 
     private var coachingGoal: ARCoachingOverlayView.Goal {
+        // Instant placement shows the model before any plane exists: coach tracking only, so
+        // the overlay does not hide it while asking for a surface it no longer needs.
+        if placementController?.instantPlacement == true { return .tracking }
         switch planeDetection {
         case .horizontal: return .horizontalPlane
         case .vertical: return .verticalPlane

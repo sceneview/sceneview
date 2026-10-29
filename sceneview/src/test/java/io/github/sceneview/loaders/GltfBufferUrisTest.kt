@@ -41,6 +41,43 @@ class GltfBufferUrisTest {
         assertEquals(setOf("a.BIN"), GltfBufferUris.of(garbage, listOf("a.BIN", "b.png")))
     }
 
+    @Test
+    fun `images are the declared image uris, and none when the JSON cannot be read`() {
+        val uris = listOf("scene.bin", "albedo.png", "normal.bin.png", "unknown.png")
+        val kinds = GltfBufferUris.kinds(ByteBuffer.wrap(json.toByteArray()), uris)
+
+        assertEquals(setOf("scene.bin"), kinds.buffers)
+        assertEquals(setOf("albedo.png", "normal.bin.png"), kinds.images)
+        // No JSON: a `.png` is not assumed to be an image, nor a `.bin.png` to be a buffer image.
+        val garbage = GltfBufferUris.kinds(ByteBuffer.wrap(byteArrayOf(1, 2, 3)), uris)
+        assertEquals(setOf("scene.bin"), garbage.buffers)
+        assertEquals(emptySet<String>(), garbage.images)
+    }
+
+    /**
+     * cgltf does not unescape a `uri`'s JSON string, so gltfio reports `textures\/a.png` raw while
+     * org.json reads `textures/a.png`: the two must still be matched, and the raw one returned.
+     */
+    @Test
+    fun `an escaped uri as gltfio reports it is matched to its declaration`() {
+        val escaped = """{"buffers":[{"uri":"geo\/scene.bin"}],"images":[{"uri":"textures\/a.png"}]}"""
+        val raw = listOf("geo\\/scene.bin", "textures\\/a.png")
+
+        val kinds = GltfBufferUris.kinds(ByteBuffer.wrap(escaped.toByteArray()), raw)
+
+        assertEquals(setOf("geo\\/scene.bin"), kinds.buffers)
+        assertEquals(setOf("textures\\/a.png"), kinds.images)
+    }
+
+    @Test
+    fun `decodedUri decodes JSON escapes and leaves anything else alone`() {
+        assertEquals("textures/a.png", GltfBufferUris.decodedUri("textures\\/a.png"))
+        assertEquals("caf\u00e9.png", GltfBufferUris.decodedUri("caf\\u00e9.png"))
+        assertEquals("plain/a.png", GltfBufferUris.decodedUri("plain/a.png"))
+        // Not a valid JSON string body (a dangling escape): kept as it is.
+        assertEquals("dangling\\", GltfBufferUris.decodedUri("dangling\\"))
+    }
+
     private fun glb(json: String): ByteBuffer {
         val padded = json.toByteArray().let { it + ByteArray((4 - it.size % 4) % 4) { ' '.code.toByte() } }
         return ByteBuffer.allocate(GLB_HEADER + CHUNK_HEADER + padded.size).order(ByteOrder.LITTLE_ENDIAN).apply {
