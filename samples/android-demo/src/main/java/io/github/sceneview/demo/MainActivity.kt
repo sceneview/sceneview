@@ -33,8 +33,11 @@ import io.github.sceneview.demo.common.ArDemoPermissionGate
 import io.github.sceneview.demo.common.ProvideStatusBarIcons
 import io.github.sceneview.demo.fragments.GeneratedDemos
 import io.github.sceneview.demo.labs.Labs
+import io.github.sceneview.demo.support.SupportBilling
+import io.github.sceneview.demo.support.SupportPrompt
+import io.github.sceneview.demo.support.SupportSheet
+import io.github.sceneview.demo.support.SupportSheetMode
 import io.github.sceneview.demo.labs.LabsGateBody
-import io.github.sceneview.demo.labs.openLabsSupportLink
 import io.github.sceneview.demo.theme.SceneViewDemoTheme
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.LocalMotionEnabled
@@ -63,6 +66,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
@@ -140,6 +144,13 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG && savedInstanceState == null) {
             Telemetry.applyDebugConsent(this, intent?.getStringExtra("telemetry_consent"))
         }
+        // Support SceneView: count the cold start for the interstitial's "never before the
+        // third session" rule, and consume any contribution Play confirmed while we were away.
+        if (savedInstanceState == null) SupportPrompt.onSessionStart()
+        SupportBilling.connect(this)
+        // `--es support_qa prompt|thanks|pending` (debug builds only): show the interstitial
+        // now, optionally in its after-purchase state, so captures need no real purchase.
+        if (BuildConfig.DEBUG && savedInstanceState == null) applySupportQa(intent?.getStringExtra("support_qa"))
         // Usage statistics + push (demo app only). A no-op in a build without a Firebase config,
         // and Firebase itself only starts once the consent allows it (telemetry/Telemetry.kt).
         Telemetry.ensureInit(this)
@@ -788,14 +799,17 @@ fun DemoRouter(id: String, onBack: () -> Unit) {
 /** The Labs explainer standing in for a Labs demo: no scene, no dock, the page background. */
 @Composable
 private fun LabsGateScreen(title: String, onBack: () -> Unit) {
-    val context = LocalContext.current
+    var showSupportSheet by rememberSaveable { mutableStateOf(false) }
+    if (showSupportSheet) {
+        SupportSheet(mode = SupportSheetMode.About, onDismiss = { showSupportSheet = false })
+    }
     DemoScaffold(title = title, onBack = onBack, dockHidden = true, themedStage = true, hasScene = false) {
         LabsGateBody(
             access = Labs.access,
             labsDemos = rememberLabsDemos(),
             onJoinClick = { FeedbackOpenRequest.request() },
             onEnabledChange = Labs::setEnabled,
-            onOpenCollectiveClick = { openLabsSupportLink(context) },
+            onSupportClick = { showSupportSheet = true },
         )
     }
 }
@@ -857,6 +871,29 @@ fun PlaceholderDemo(id: String, onBack: () -> Unit) {
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+/** Debug QA ingress for the Support sheet — see the `support_qa` extra in [MainActivity.onCreate]. */
+private fun applySupportQa(value: String?) {
+    when (value) {
+        "prompt" -> SupportPrompt.forceShow()
+        "ready" -> {
+            SupportBilling.qaPrices = mapOf(
+                "support_small" to "$2.99",
+                "support_medium" to "$9.99",
+                "support_large" to "$24.99",
+            )
+            SupportPrompt.forceShow()
+        }
+        "thanks" -> {
+            SupportPrompt.forceShow()
+            SupportBilling.forceOutcome(SupportBilling.Outcome.Thanks)
+        }
+        "pending" -> {
+            SupportPrompt.forceShow()
+            SupportBilling.forceOutcome(SupportBilling.Outcome.Pending)
         }
     }
 }

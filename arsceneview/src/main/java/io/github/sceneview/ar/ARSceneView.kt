@@ -1515,7 +1515,11 @@ fun ARSceneView(
     // interactive `ViewNode`s (the Point & Ask demo pins Compose answer panels in the room).
     val capturedTouchNodeRef = remember { AtomicReference<Node?>(null) }
 
-    SideEffect { gestureDetector.listener = onGestureListener }
+    // A tap is confirmed from a Handler after the double-tap timeout, so the app's callback can run
+    // once the session has paused; `createAnchor()` then throws SessionPausedException from the
+    // main looper. The guard logs and drops that gesture instead of crashing the app.
+    val safeGestureListener = remember(onGestureListener) { onGestureListener?.arSessionSafe() }
+    SideEffect { gestureDetector.listener = safeGestureListener }
 
     val touchDispatcher: (MotionEvent) -> Unit = { event ->
         val hitResult = collisionSystem.hitTest(event).firstOrNull { it.node.isTouchable }
