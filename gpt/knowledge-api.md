@@ -2047,9 +2047,11 @@ floor; use `ContactShadow` when you need grounding that survives any light direc
 a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
 catching a real shadow while a wall gets a procedural one.
 
-Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
-`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
-light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+Platform matrix: **iOS** — mirrored by SceneViewSwift's `ContactShadowNode` (same
+`ContactShadowContext` presets, `intensity` 0–1, horizontal or vertical quad;
+`ContactShadowNode.under(model)` / `ModelNode.withContactShadow()` fit it to a model), and in AR
+by `ARSceneView.placementShadow(.contact(...))`; RealityKit's `GroundingShadowComponent` stays
+the AR default. **Web** — coming soon. Non-AR preview
 demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
@@ -6318,6 +6320,7 @@ View modifiers (chainable):
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
+.placementShadow(_ style: ARPlacementShadow) -> ARSceneView  // shadow given to onTapOnPlane content: .grounding (default — GroundingShadowComponent), .contact(ContactShadowContext = .floor, intensity: Float? = nil) (procedural ContactShadowNode, retuned live), .none. Overrides `groundingShadows`
 ```
 
 `PlaneDetectionMode` values: `.none`, `.horizontal`, `.vertical`, `.both`
@@ -6429,6 +6432,7 @@ public struct ModelNode: @unchecked Sendable {
     // Misc
     public func enableCollision()
     public func withGroundingShadow() -> ModelNode           // iOS 18+ / visionOS 2+
+    public func withContactShadow(_ context: ContactShadowContext = .floor, intensity: Float? = nil, spread: Float = 1.6) -> ModelNode  // procedural pool at the lowest point — call after scaleToUnits / centerOrigin
     public mutating func onTap(_ handler: @escaping () -> Void) -> ModelNode
 }
 ```
@@ -6661,6 +6665,43 @@ public enum GeometryMaterial: @unchecked Sendable {
 }
 ```
 
+#### ContactShadowNode — procedural contact shadow (Android `ContactShadowNode` parity)
+
+```swift
+public enum ContactShadowContext: String, CaseIterable, Sendable { case floor, wall, tableTop }
+// intensity / center / radius / softness — same values as Android's presets
+
+public struct ContactShadowNode: @unchecked Sendable {
+    public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
+    public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
+    public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
+    public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
+                plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
+    public var context: ContactShadowContext  // live
+    public var intensity: Float               // live, clamped 0...1
+    public var size: SIMD2<Float>
+    public static func under(_ model: Entity, context: ContactShadowContext = .floor,
+                             intensity: Float? = nil, spread: Float = 1.6) -> ContactShadowNode
+    public func fit(under model: Entity, spread: Float = 1.6)
+}
+```
+
+- `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  `centerOrigin`; call `fit(under:)` again if the model changes size.
+- Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
+
 #### AnchorNode — AR world anchors (iOS only)
 
 ```swift
@@ -6885,6 +6926,30 @@ extension Entity {
     public func enabled(_ isEnabled: Bool) -> Self
 }
 ```
+
+---
+
+### SceneRecorder on iOS — photo and MP4 of the scene, no SwiftUI chrome
+
+Same API shape as Android's `SceneRecorder` (#4821). Attach it to a `SceneView` or `ARSceneView` (AR: camera feed included) with `.sceneRecorder(_:)`; it captures the rendered scene only, never the SwiftUI views around it. Use `ARRecorder` (ReplayKit) when you want the whole screen.
+
+```swift
+@StateObject private var recorder = SceneRecorder()
+
+SceneView { root in /* ... */ }
+    .sceneRecorder(recorder)
+
+let image = await recorder.takePhoto()                         // full-resolution UIImage
+let file = await recorder.savePhoto(format: .png)              // Documents/captures/scene_<stamp>.png
+recorder.startRecording(settings: VideoSettings(recordAudio: true, maxDuration: 60))
+let clip = await recorder.stopRecording()                      // SceneRecording? (url, width, height, duration)
+```
+
+- `VideoSettings` defaults: H.264 MP4 inside 1920 x 1080 (aspect kept, even edges), 30 fps, 12 Mbit/s, no audio, no limit. A box beyond H.264 level 5.2 (4096 per edge, 4096 x 2304 frame) steps down through 1080p, 720p, 540p, 360p. The size is fixed at start: a view turned mid-recording is letterboxed, not stretched (the even-edge rounding, under 1 % of aspect, is filled). The video is never longer than `maxDuration`: frames past it are refused.
+- `recordAudio` needs microphone permission (`NSMicrophoneUsageDescription`), never requested by the recorder; without it the video is silent. The app's audio session is not reconfigured by the capture session; a category that can already record is activated, never deactivated or switched. Otherwise it is switched to `.playAndRecord` (mixing with other audio) for the recording, then put back unless the app changed the category in the meantime; it is deactivated first with `.notifyOthersOnDeactivation` only when it was inactive before (another app playing over a non-mixing category), so the app's own sound is never cut. If the switch fails, nothing is activated and the video is silent. Two recorders using the microphone at the same time share the app's one audio session: the first recording to end hands it back, so the other recording loses its audio from then on. One recorder serves one scene at a time; a scene it left takes it back only once the other scene lets it go. `hasAudio` is `true` only when a microphone sample was written.
+- `@Published` state: `isAttached`, `isRecording`, `elapsedTime` (4 Hz), `lastRecording`, `lastError`. `onRecordingFinished` fires on every stop, including `maxDuration` (`reachedMaxDuration == true`); `nil` when no frame was written.
+- `overlay = CaptureOverlay { context, size in ... }` draws a watermark on every photo and video frame (top-left origin, capture pixels), never on the live view.
+- A recording finishes when its view leaves the window or the app goes to the background; the recorder attaches again when the view comes back.
 
 ---
 

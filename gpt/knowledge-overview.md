@@ -645,6 +645,14 @@ video.play() / .pause() / .stop() / .seek(to: 30.0) / .volume(0.5)
 CameraNode().position(.init(x: 0, y: 1.5, z: 3)).lookAt(.zero).fieldOfView(60)
 ```
 
+**ContactShadowNode** — procedural grounding pool (floor, table or wall), tunable intensity:
+```swift
+model.withContactShadow()                                   // fitted under a ModelNode
+ContactShadowNode.under(entity, context: .tableTop, intensity: 0.4)
+ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical)
+ARSceneView(onTapOnPlane: place).placementShadow(.contact(intensity: 0.5))
+```
+
 **iOS parity status (#1036):**
 
 Full canonical reference in `docs/docs/cheatsheet-ios.md`. Three buckets:
@@ -667,7 +675,7 @@ These symbols do not exist on iOS (no `@available(*, deprecated)` factory — th
 | Symbol | Why iOS can't | iOS path |
 |---|---|---|
 | `ARSceneView(playbackDataset:)` | ARKit has no deterministic recording playback | Record-only via [#1032 ReplayKit](https://github.com/sceneview/sceneview/issues/1032); replay stays Android-only |
-| `SceneRecorder` / `rememberSceneRecorder()`, `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (+ `SceneView`/`ARSceneView(surfaceMirrorer:)`) | In-app scene→MP4 mirroring renders the scene a second time into the encoder surface through Filament; RealityKit has no per-frame surface-copy equivalent | iOS records the scene via [ReplayKit `RPScreenRecorder`](https://github.com/sceneview/sceneview/issues/1032) (see `cheatsheet-ios.md` "Recording"); the `surfaceMirrorer` parameter stays Android-only |
+| `SurfaceMirrorer` / `rememberSurfaceMirrorer()` (+ `SceneView`/`ARSceneView(surfaceMirrorer:)`) | Mirroring renders the scene a second time into an encoder surface through Filament; RealityKit has no per-frame surface-copy equivalent | `SceneRecorder` exists on iOS (section "SceneRecorder on iOS"): it taps the RealityKit post-process pass instead; `rememberSceneRecorder()` and the `surfaceMirrorer` parameter stay Android-only |
 | `ARSceneView(renderQuality:)` | The one-line `renderQuality` preset is on the AR composable on Android only; the iOS `.renderQuality(_:)` modifier is 3D-`SceneView`-only (#2524) | Tune AR on iOS via `ARSceneView(cameraExposure:)` + IBL; use `.renderQuality(_:)` on the 3D `SceneView` path |
 | `SceneView(frameRatePolicy:)` / `FrameRatePolicy` / `RenderInvalidator` | Render-on-demand is Filament-loop-specific: RealityKit owns its own render loop and exposes nothing to park or to vote a cadence with. **Android's `ARSceneView` does NOT take this parameter either** — a live camera feed is never idle, so its loop never parks; it only skips the GPU submit on a duplicate ARCore `Frame.timestamp` with no scene change | N/A — on the web, `sceneview.js` exposes the same capability as imperative `startRendering()` / `stopRendering()` |
 | `SurfaceType.texture` | RealityKit always renders to `MTKView` | N/A — no port needed |
