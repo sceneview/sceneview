@@ -134,8 +134,21 @@ struct ARPlacementLifecycle {
 
 /// One placement request, one plane-associated anchor. Renderer mutations run on the main actor.
 ///
-/// Supply a loaded entity with ``setModel(_:ticket:previewSize:)``. The default is a 0.3 m
-/// longest-dimension preview, never a claim about authored units. Pass `nil` to retain units.
+/// Supply a loaded entity with ``setModel(_:ticket:size:)``: ``PlacementSize/realWorld`` keeps
+/// the authored metres (a 1.8 m figure stands 1.8 m tall), ``PlacementSize/fitInto(meters:)``
+/// fits the longest side into a preview size. The older ``setModel(_:ticket:previewSize:)``
+/// defaults to a 0.3 m longest-dimension preview, never a claim about authored units.
+///
+/// The model's bottom centre (its back centre on a wall) is the pivot: it rests on the contact
+/// point, and pinch scaling grows the model about it. ``baseSize``, ``placedSize`` and
+/// ``isAtRealWorldSize`` report the dimensions in metres so an app can show them:
+///
+/// ```swift
+/// if let size = controller.placedSize {
+///     Text(String(format: "%.2f m tall", size.y))
+/// }
+/// ```
+///
 /// The controller owns only its own anchors/recognizers; resetting never resets the camera.
 @MainActor
 public final class ARPlacementController: NSObject, ObservableObject, UIGestureRecognizerDelegate {
@@ -151,6 +164,44 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// "Coaching"). Kotlin twin: `ArGuidanceState.isCoaching`.
     @Published public internal(set) var isCoachingActive = false
     public var hasPlacement: Bool { lifecycle.hasPlacement }
+
+    /// The ``PlacementSize`` the current model was set with, `nil` before the first
+    /// ``setModel(_:ticket:size:)`` and after ``dismiss()``.
+    @Published public private(set) var placementSize: PlacementSize?
+
+    /// The current model's dimensions at 100 %, in metres: width (X), height (Y) and depth (Z) of
+    /// its axis-aligned box in the placement frame — for a floor, Y is up; for a wall, Z leaves
+    /// the wall. With ``PlacementSize/realWorld`` these are the authored dimensions; with
+    /// ``PlacementSize/fitInto(meters:)`` the largest of the three is the requested size.
+    ///
+    /// Known as soon as ``setModel(_:ticket:size:)`` accepts a model, before it is placed, and
+    /// `nil` after ``dismiss()``. Once placed, a user-chosen size is a one-liner — "make it 2 m tall":
+    ///
+    /// ```swift
+    /// if let base = controller.baseSize { controller.scale(to: 2 / base.y) }
+    /// ```
+    ///
+    /// ``scale(to:)`` does nothing before ``ARPlacementPhase/placed`` or ``ARPlacementPhase/adjusting``
+    /// and clamps to 25–400 %, so the result stops at the nearest bound.
+    @Published public private(set) var baseSize: SIMD3<Float>?
+
+    /// The model's current dimensions in metres: ``baseSize`` times ``scale``, so it follows the
+    /// pinch, the 100 % snap and ``scale(to:)``. `nil` while ``baseSize`` is.
+    public var placedSize: SIMD3<Float>? { Self.placedSize(base: baseSize, scale: scale) }
+
+    /// The model was set with ``PlacementSize/realWorld`` and is shown at exactly 100 % — what
+    /// the user sees is the object's true size. Kotlin twin: `AutoPlacementState.isAtRealWorldSize`.
+    public var isAtRealWorldSize: Bool {
+        Self.isAtRealWorldSize(size: placementSize, base: baseSize, scale: scale)
+    }
+
+    static func placedSize(base: SIMD3<Float>?, scale: Float) -> SIMD3<Float>? {
+        base.map { $0 * scale }
+    }
+
+    static func isAtRealWorldSize(size: PlacementSize?, base: SIMD3<Float>?, scale: Float) -> Bool {
+        base != nil && size == .realWorld && scale == 1
+    }
 
     private var lifecycle = ARPlacementLifecycle()
     private weak var arView: ARView?
@@ -258,30 +309,56 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
     public func acceptsAsset(_ ticket: ARPlacementAssetTicket) -> Bool { lifecycle.accepts(ticket) }
 
-    /// Returns false without changing the current model for a stale result or invalid bounds.
-    /// Grounding and collision shapes are applied recursively, including asynchronous content.
+    /// Sets the model to place, at the given ``PlacementSize``.
+    ///
+    /// Returns false without changing the current model for a stale result, invalid bounds or an
+    /// invalid size (``PlacementSize/isValid``). On success ``placementSize`` and ``baseSize``
+    /// describe the new model. Grounding and collision shapes are applied recursively, including
+    /// asynchronous content. Kotlin twin: `AutoPlacementModel(…, size = PlacementSize.RealWorld)`.
     @discardableResult
-    public func setModel(_ entity: Entity, ticket: ARPlacementAssetTicket, previewSize: Float? = 0.3) -> Bool {
-        guard lifecycle.accepts(ticket), let prepared = Self.prepare(entity, alignment: alignment, previewSize: previewSize) else { return false }
+    public func setModel(_ entity: Entity, ticket: ARPlacementAssetTicket, size: PlacementSize) -> Bool {
+        guard lifecycle.accepts(ticket), let prepared = Self.prepare(entity, alignment: alignment, size: size) else { return false }
         cancelGestures()
         model?.removeFromParent()
         model = prepared
         selectedAssetReady = true
         pivot.addChild(prepared)
+        placementSize = size
+        baseSize = Self.baseSize(of: prepared)
         if !hasPlacement { lifecycle.requested = true }
         return true
     }
 
-    // A wrapper keeps the authored hierarchy untouched and makes its surface contact the pivot.
+    /// Sets the model with a longest-side preview size in metres; `nil` keeps authored units.
+    /// Same as ``setModel(_:ticket:size:)`` with ``PlacementSize/fitInto(meters:)`` or
+    /// ``PlacementSize/realWorld``.
+    @discardableResult
+    public func setModel(_ entity: Entity, ticket: ARPlacementAssetTicket, previewSize: Float? = 0.3) -> Bool {
+        setModel(entity, ticket: ticket, size: PlacementSize(previewSize: previewSize))
+    }
+
+    /// Width, height and depth of a prepared wrapper, in its own (unscaled placement) frame.
+    static func baseSize(of prepared: Entity) -> SIMD3<Float>? {
+        let extents = prepared.visualBoundsExcludingContactShadows(relativeTo: prepared).extents
+        guard extents.x.isFinite, extents.y.isFinite, extents.z.isFinite,
+              extents.x > 0 || extents.y > 0 || extents.z > 0 else { return nil }
+        return extents
+    }
+
     static func prepare(_ entity: Entity, alignment: ARPlacementAlignment, previewSize: Float?) -> Entity? {
+        prepare(entity, alignment: alignment, size: PlacementSize(previewSize: previewSize))
+    }
+
+    // A wrapper keeps the authored hierarchy untouched and makes its surface contact the pivot:
+    // the bottom centre on a floor, the back centre of the bottom edge on a wall.
+    static func prepare(_ entity: Entity, alignment: ARPlacementAlignment, size: PlacementSize) -> Entity? {
         // A contact shadow already on the model is a decal wider than it: size the model alone.
         let bounds = entity.visualBoundsExcludingContactShadows(relativeTo: nil)
         let longest = max(bounds.extents.x, max(bounds.extents.y, bounds.extents.z))
-        guard longest.isFinite, longest > 0,
-              previewSize == nil || (previewSize!.isFinite && previewSize! > 0) else { return nil }
+        guard let factor = size.scaleFactor(longestSide: longest) else { return nil }
         let wrapper = Entity()
         wrapper.addChild(entity)
-        if let previewSize { entity.scale *= SIMD3<Float>(repeating: previewSize / longest) }
+        if factor != 1 { entity.scale *= SIMD3<Float>(repeating: factor) }
         let fitted = entity.visualBoundsExcludingContactShadows(relativeTo: wrapper)
         let contact = alignment == .horizontal
             ? SIMD3<Float>(fitted.center.x, fitted.min.y, fitted.center.z)
@@ -344,6 +421,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         visibilityTarget = 0
         model?.removeFromParent()
         model = nil
+        placementSize = nil
+        baseSize = nil
         selectedAssetReady = false
         pivot = Entity()
         facingYaw = 0

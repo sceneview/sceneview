@@ -229,6 +229,8 @@ final class ARExperienceModel: ObservableObject {
 extension ARExperienceModel: ARSceneSessionObserver {
     func arSession(didEmit event: ARSessionEvent, in arView: ARView) {
         logFunnel(event)
+        // A forced preview phase is never overridden by the session, `.firstFrame` included.
+        guard forcedPhase == nil else { return }
         switch event {
         case .firstFrame:
             // The camera is on screen. Model loading is the screen's own

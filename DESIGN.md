@@ -367,6 +367,7 @@ reach for a dark literal to "force" the night.
 | `success` | #16a34a | Positive states, checkmarks — as a fill, dot or icon. It is 3.3:1 on white, so it is never light-mode text |
 | `success-text` | #166534 light · #56d364 dark | `success` as text ("Stable", "Fully supported"), including on its own 8–12% tinted chip: >= 5.6:1 on every light surface. The website's `--color-status-stable` |
 | `warning` | #f59e0b | Caution states |
+| `warning-strong` | #b45309 | `warning` as a thin line on a light surface, where `warning` is 1.9:1: the frame round a part "not scanned yet" on the light stage, 4.5:1 on #f1f3f5 and 3.9:1 over its own 22 % `warning` veil (WCAG 1.4.11). The dark stage keeps `warning` |
 | `danger` | #ea4335 | Error states, destructive |
 | `info` | #ea580c | Informational highlights |
 

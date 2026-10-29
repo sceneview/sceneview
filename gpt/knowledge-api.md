@@ -299,7 +299,9 @@ fun MyARScreen() {
         depthMode = Config.DepthMode.AUTOMATIC,
         instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP,
         // ENVIRONMENTAL_HDR is the v4.3.0+ default LightEstimationMode — front-camera sessions
-        // are clamped to DISABLED inside ARSession.configure regardless. The sessionConfiguration
+        // are clamped to DISABLED inside ARSession.configure regardless, and a device without
+        // HDR steps down to AMBIENT_INTENSITY, then DISABLED, instead of failing the session.
+        // Opt out: config.lightEstimationMode = DISABLED in sessionConfiguration. The sessionConfiguration
         // callback remains the escape hatch for any Config property without a typed param.
         // sessionConfiguration = { session, config -> /* raw access here if needed */ },
         onSessionCreated = { session -> /* ARCore session ready */ },
@@ -1578,7 +1580,7 @@ wall shadows, and never substitutes a synthetic pool for renderer shading.
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
 with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
-the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
+the animated onboarding guide; `groundShadows` (on by default) grounds placed models with a real shadow. You
 only declare *what* rides each placed anchor:
 
 > **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
@@ -1628,7 +1630,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default; false to opt out) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -1987,6 +1989,13 @@ Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
 no fill — that is `PlaneNode`, which carries no shadow receiver); declare `PlaneNode` and
 `ShadowReceiverPlane` on the same plane if you want a visible overlay and grounded shadows.
+
+`AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
+them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
+a floor or a table, sized from its bounds (dark core at 80 % of the footprint, faded out about a
+quarter beyond it), turning and scaling with it — it stays under the object when the estimated
+light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
+with `AutoPlacementState.showsContactShadow = false`.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
 get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact
@@ -6428,6 +6437,8 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
+    public var worldSize: SIMD3<Float>          // width, height, depth in world metres — Android `worldSize`
+    public var worldBoundingBox: BoundingBox    // world-space AABB — Android `worldBoundingBox`
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point); `.zero` = center on origin
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized AABB origin (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity; `SIMD3(0,-1,0)` bottom-aligns
 
@@ -6463,6 +6474,10 @@ Key behaviors:
   `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
+- `worldSize` mirrors Android's `ModelNode.worldSize`: own visual bounds × world scale, so
+  parent scales count and rotation does not; a 1 m USDZ loaded as is reports `(1, 1, 1)`.
+  `worldBoundingBox` is the world AABB after rotation and translation (`min.y` is where the
+  model touches the floor, X/Z the footprint). Both are `@MainActor`.
 - `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
 
 #### Model formats and units (`ModelFormat`, `ModelUnit`, `MeshAsset`)

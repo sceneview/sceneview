@@ -598,6 +598,9 @@ fun AutoPlacementScene(
  * - **Selection** draws a thin white ring on the surface around the object's footprint while
  *   [AutoPlacementState.isSelected]; opt out with [AutoPlacementState.showsSelectionRing].
  *   [AutoPlacementNode]'s free-form content draws no ring — it has no bounds to encircle.
+ * - **Contact shadow**: a soft dark pool under an object standing on a floor or a table, sized
+ *   from its bounds, on top of the real shadow `groundShadows` catches; opt out with
+ *   [AutoPlacementState.showsContactShadow].
  */
 @Composable
 fun ARSceneScope.AutoPlacementModel(
@@ -707,6 +710,7 @@ private fun ARSceneScope.PlacedModelContent(
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
             NodeLifecycle(model, null)
+            if (!placement.isWall) PlacementContactShadowNode(state, model)
             SelectionRingNode(state, footprint)
         }
     }

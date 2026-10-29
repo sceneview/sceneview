@@ -23,6 +23,37 @@ struct PlacementFeedback: Equatable {
     }
 }
 
+/// The size read-out. "Preview size · N%" and "Actual size · N%" are the Android demo's
+/// `ar_scale_preview_size` and `ar_scale_actual_size_percent`; the "· 1.80 m tall" suffix comes
+/// with the Android twin of this read-out (#4820). "Actual size" only when the
+/// model is at its authored metres (`PlacementSize.realWorld`), "Preview size" otherwise, so the
+/// number never claims more than the asset knows. Metres are shown for a real-size model only —
+/// a preview's would just be the preview's own size.
+enum PlacementScaleLabel {
+    /// The scale factor as a whole percentage; the pinch snaps to exactly 100 %.
+    static func percent(_ scale: Float) -> Int {
+        scale.isFinite ? Int((scale * 100).rounded()) : 100
+    }
+
+    /// "Actual size · 100% · 1.80 m tall", "Actual size · 100%" or "Preview size · 100%".
+    static func text(actualSize: Bool, scale: Float, heightMeters: Float?) -> String {
+        let percent = percent(scale)
+        guard actualSize else { return "Preview size · \(percent)%" }
+        guard let height = heightMeters, height.isFinite, height > 0 else { return "Actual size · \(percent)%" }
+        return "Actual size · \(percent)% · " + String(format: "%.2f m tall", height)
+    }
+
+    /// Width × depth × height in metres, from an X/Y/Z size: "0.50 × 0.30 × 1.80 m".
+    static func dimensions(_ size: SIMD3<Float>) -> String {
+        String(format: "%.2f × %.2f × %.2f m", size.x, size.z, size.y)
+    }
+
+    /// The spoken form of ``dimensions(_:)``.
+    static func dimensionsAccessibility(_ size: SIMD3<Float>) -> String {
+        String(format: "Width %.2f metres, depth %.2f metres, height %.2f metres", size.x, size.z, size.y)
+    }
+}
+
 /// The single automatic-placement experience used by the tab, catalogue and viewers.
 /// Assets remain app-owned; generation tickets prevent dismissed or superseded loads
 /// from entering the SDK's scene. Bundled models use the same 0.3 m preview as Android.
@@ -132,7 +163,10 @@ struct ARPlacementExperience: View {
             ?? modelName.replacingOccurrences(of: "_", with: " ").capitalized
     }
     private var renderedActualSize: Bool { placedModelName == nil ? actualSize : placedActualSize }
-    private var sizeLabel: String { renderedActualSize ? "Actual size" : "Preview size" }
+    private var scaleLabel: String {
+        PlacementScaleLabel.text(actualSize: renderedActualSize, scale: controller.scale,
+                                 heightMeters: controller.placedSize?.y)
+    }
 
     var body: some View {
         DemoScaffold(title ?? (wallTV ? "Wall Placement" : "AR Placement"), chromeMode: .ar) {
@@ -231,7 +265,7 @@ struct ARPlacementExperience: View {
         loadError = false
         do {
             if wallTV {
-                guard controller.setModel(Self.makeWallTV(), ticket: ticket, previewSize: 0.3) else {
+                guard controller.setModel(Self.makeWallTV(), ticket: ticket, size: .preview) else {
                     loading = false
                     loadError = true
                     SceneViewHaptic.shared.error()
@@ -253,7 +287,9 @@ struct ARPlacementExperience: View {
             // legacy synchronous onTapOnPlane shadow pass.
             _ = node.withGroundingShadow()
             node.playAllAnimations()
-            guard controller.setModel(node.entity, ticket: ticket, previewSize: actualSize ? nil : 0.3) else {
+            // A measured opened file arrives at its authored metres, untouched; a bundled row is
+            // a 0.3 m preview, as on Android.
+            guard controller.setModel(node.entity, ticket: ticket, size: actualSize ? .realWorld : .preview) else {
                 loading = false
                 loadError = true
                 SceneViewHaptic.shared.error()
@@ -298,7 +334,7 @@ struct ARPlacementExperience: View {
             case .scanning: message(wallTV ? "Point at a wall and move slowly." : "Move slowly to find a surface.")
             case .trackingLost: message("Tracking paused. Move slowly.")
             case .recovering: message("Finding your placement…")
-            case .adjusting: message("\(renderedActualSize ? "Actual" : "Preview") scale \(Int(controller.scale * 100))%")
+            case .adjusting: message(scaleLabel)
             case .placed:
                 if showHint { message("Drag to move. Pinch or twist to adjust.") }
             case .noSurface, .recoveryFailed: EmptyView()
@@ -343,8 +379,11 @@ struct ARPlacementExperience: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
             Text(placedModelName ?? displayName).font(SceneViewTokens.TypeScale.card)
-            Text("\(sizeLabel) · \(Int(controller.scale * 100))%")
+            Text(scaleLabel)
                 .font(SceneViewTokens.TypeScale.caption)
+                .monospacedDigit()
+                .accessibilityIdentifier("ar-scale-label")
+            scaleResetButton
             if loading { Text("Loading model… \(displayName)") }
             featureControls()
             if !wallTV && occlusion == nil {
@@ -388,6 +427,17 @@ struct ARPlacementExperience: View {
                 .disabled(controller.phase != .placed)
             }
         }
+    }
+
+    /// Back to 100 % — AR Quick Look's persistent "100 %" affordance. The hint says what 100 % is:
+    /// the object's true size, or the preview's own.
+    private var scaleResetButton: some View {
+        Button("Reset to 100%") { controller.scale(to: 1) }
+            .buttonStyle(.bordered)
+            .frame(minHeight: SceneViewTokens.Layout.touchTarget)
+            .disabled(!controller.hasPlacement || controller.phase != .placed || controller.scale == 1)
+            .accessibilityHint(renderedActualSize ? "Reset to real-world size" : "Reset to preview size")
+            .accessibilityIdentifier("ar-scale-reset")
     }
 
     private func adjustment(_ decrement: String, _ increment: String,
@@ -469,6 +519,9 @@ private struct PlacementModelPreview: View {
     let actualSize: Bool
     @State private var model: ModelNode?
     @State private var failed = false
+    /// The shown model's size in metres, measured before the viewer frames it. Set for a model
+    /// at its authored size only.
+    @State private var dimensions: SIMD3<Float>?
 
     var body: some View {
         ZStack {
@@ -482,6 +535,25 @@ private struct PlacementModelPreview: View {
             if failed { Text("Model couldn’t load.") }
             else if model == nil && television == nil { ProgressView("Loading model…") }
         }
+        // Metres only for a model at its authored size: a preview's would be the preview's own
+        // size, which the AR label never claims either.
+        .overlay(alignment: .bottom) {
+            if let dimensions {
+                VStack(spacing: SceneViewTokens.Space.xs) {
+                    Text("Actual size")
+                        .font(SceneViewTokens.TypeScale.caption)
+                    Text(PlacementScaleLabel.dimensions(dimensions))
+                        .font(SceneViewTokens.TypeScale.bodyMedium)
+                        .monospacedDigit()
+                }
+                .padding(SceneViewTokens.Space.md)
+                .modifier(PlacementStatusSurface())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Actual size, \(PlacementScaleLabel.dimensionsAccessibility(dimensions))")
+                .accessibilityIdentifier("ar-preview-dimensions")
+                .padding(SceneViewTokens.Space.lg)
+            }
+        }
         .task {
             if wallTV {
                 let tv = ARPlacementExperience.makeWallTV()
@@ -494,7 +566,12 @@ private struct PlacementModelPreview: View {
                 if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }
                 else { loaded = try await ModelNode.load(modelName) }
                 guard !Task.isCancelled else { return }
-                if !actualSize { _ = loaded.scaleToUnits(0.3) }
+                if actualSize {
+                    // World-axis box, so a rotated root reads the same height as "m tall" in AR.
+                    dimensions = loaded.worldBoundingBox.extents
+                } else {
+                    _ = loaded.scaleToUnits(0.3)
+                }
                 model = loaded
             } catch {
                 guard !Task.isCancelled else { return }

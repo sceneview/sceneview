@@ -79,28 +79,27 @@ class LargeModelLoadTest {
             harness.runOnMain { assertFalse(modelLoader.isLoading) }
             assertEquals(0, modelLoader.registeredModels())
 
-            // …while the existing loads log it and return the model, as they always did.
-            var since = logcatMark()
-            harness.runOnMain {
-                val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb).apply { rewind() }
-                val instance = modelLoader.createModelInstance(buffer)
-                assertEquals(1, modelLoader.registeredModels())
-                modelLoader.destroyModel(instance.model)
-            }
-            awaitLogcat(logged, 1, since)
-
-            since = logcatMark()
-            runBlocking {
-                listOf(
-                    modelLoader.loadModel(location),
-                    modelLoader.loadModelInstance(location)?.model,
-                    modelLoader.loadInstancedModel(location, count = 2).firstOrNull()?.model,
-                ).forEach { model ->
-                    assertNotNull(model)
-                    harness.runOnMain { modelLoader.destroyModel(model!!) }
+            // …while the existing loads log it and return the model, as they always did: each one,
+            // checked on its own.
+            loggedBy("createModelInstance", logged) {
+                harness.runOnMain {
+                    val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb).apply { rewind() }
+                    val instance = modelLoader.createModelInstance(buffer)
+                    assertEquals(1, modelLoader.registeredModels())
+                    modelLoader.destroyModel(instance.model)
                 }
             }
-            awaitLogcat(logged, 3, since)
+            mapOf<String, () -> io.github.sceneview.model.Model?>(
+                "loadModel" to { runBlocking { modelLoader.loadModel(location) } },
+                "loadModelInstance" to { runBlocking { modelLoader.loadModelInstance(location)?.model } },
+                "loadInstancedModel" to { runBlocking { modelLoader.loadInstancedModel(location, count = 2).firstOrNull()?.model } },
+            ).forEach { (load, model) ->
+                loggedBy(load, logged) {
+                    val loaded = model()
+                    assertNotNull("$load returned no model", loaded)
+                    harness.runOnMain { modelLoader.destroyModel(loaded!!) }
+                }
+            }
             assertEquals(0, modelLoader.registeredModels())
         } finally {
             harness.runOnMain { modelLoader.destroy() }
@@ -168,10 +167,16 @@ class LargeModelLoadTest {
     }
 
     /**
-     * Two calls on one loader both return their own model with its textures final, and leave the
-     * loader idle, the second one started while the first is still decoding. The per-model rule
-     * this relies on is gltfio's: `asyncBeginLoad` drains the previous load's decoders (on the main
-     * thread, until they are done).
+     * Two calls on one loader both return their own model with its textures final, each reporting
+     * its own progress as [ModelLoader.awaitModelInstance] documents it, and leave the loader idle.
+     * The second one is started once the first one decodes. The per-model rule this relies on is
+     * gltfio's: `asyncBeginLoad` drains the previous load's decoders (on the main thread, until
+     * they are done).
+     *
+     * Whether the second load actually begins before the first one's textures are final is not
+     * the loader's to guarantee: it has to read its file and hop to the main thread first, and on
+     * a fast runner the first load's textures are final by then (#4874). Both orders must give the
+     * same outcome, which is what this asserts; which order this run took is logged.
      */
     @Test
     fun concurrent_awaitModelInstance_calls_both_return_with_their_own_textures_final() {
@@ -182,11 +187,13 @@ class LargeModelLoadTest {
         val secondReports = CopyOnWriteArrayList<ModelLoadProgress>()
         val firstDecoding = CompletableDeferred<Unit>()
         var firstWhenSecondCreated: ModelLoadProgress? = null
+        var offMain = 0
         try {
             val (a, b) = runBlocking(Dispatchers.Default) {
                 withTimeout(60_000) {
                     val a = async {
                         modelLoader.awaitModelInstance(first) {
+                            if (Looper.myLooper() != Looper.getMainLooper()) offMain++
                             firstReports += it
                             if (it.stage == Stage.Textures && it.fraction < 1f) firstDecoding.complete(Unit)
                         }
@@ -194,6 +201,7 @@ class LargeModelLoadTest {
                     val b = async {
                         firstDecoding.await()
                         modelLoader.awaitModelInstance(second) {
+                            if (Looper.myLooper() != Looper.getMainLooper()) offMain++
                             if (it.stage == Stage.Creating) firstWhenSecondCreated = firstReports.last()
                             secondReports += it
                         }
@@ -201,14 +209,25 @@ class LargeModelLoadTest {
                     a.await() to b.await()
                 }
             }
-            Log.i("LargeModelLoadTest", "first: $firstReports\nsecond: $secondReports")
             val overlap = firstWhenSecondCreated
-            assertTrue(
-                "the second load did not begin while the first decoded: $overlap",
-                overlap != null && overlap.stage == Stage.Textures && overlap.fraction < 1f,
+            val overlapped = overlap != null && overlap.stage == Stage.Textures && overlap.fraction < 1f
+            Log.i(
+                "LargeModelLoadTest",
+                "the second load began ${if (overlapped) "while the first decoded" else "after the first was final"} " +
+                    "(first at $overlap)\nfirst: $firstReports\nsecond: $secondReports",
             )
-            assertEquals(ModelLoadProgress(Stage.Textures, 1f), firstReports.last())
-            assertEquals(ModelLoadProgress(Stage.Textures, 1f), secondReports.last())
+            assertEquals("progress reported off the main thread", 0, offMain)
+            listOf("first" to firstReports, "second" to secondReports).forEach { (which, reports) ->
+                assertEquals("$which: $reports", ModelLoadProgress(Stage.Textures, 1f), reports.lastOrNull())
+                assertEquals("$which: a step was reported twice: $reports", reports.distinct(), reports)
+                val fractions = reports.map { it.fraction }
+                assertEquals("$which: progress went back: $reports", fractions.sorted(), fractions)
+                val stages = reports.map { it.stage.ordinal }
+                assertEquals("$which: stages out of order: $reports", stages.sorted(), stages)
+            }
+            // The second load started once the first one decoded: it never reached `Creating`
+            // before the first one's textures did.
+            assertTrue("the second load began before the first decoded: $overlap", overlap?.stage == Stage.Textures)
             assertTrue("one model for both calls", a.model !== b.model)
             harness.runOnMain { assertFalse("textures still loading", modelLoader.isLoading) }
             assertEquals(2, modelLoader.registeredModels())
@@ -525,10 +544,27 @@ class LargeModelLoadTest {
             .inputStream.bufferedReader().useLines { lines -> lines.count { marker in it } }
 
     /** Waits for logcat, which lags the `Log` call, to hold [count] lines containing [marker] since [since]. */
-    private fun awaitLogcat(marker: String, count: Int, since: String) {
+    private fun awaitLogcat(marker: String, count: Int, since: String, what: String = "") {
         val deadline = SystemClock.uptimeMillis() + 5_000
         while (logcatCount(marker, since) < count && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
-        assertTrue("logcat never showed \"$marker\" $count times", logcatCount(marker, since) >= count)
+        assertTrue("${what.ifEmpty { "logcat" }} never showed \"$marker\" $count times", logcatCount(marker, since) >= count)
+    }
+
+    /**
+     * Runs [block], the [load] named, and waits for it to log a line containing [marker].
+     *
+     * A distinct line goes to the main log buffer first. API 30's logd (its "chatty" buffer) holds
+     * back a line identical to the one just before it in that buffer, from the same thread, and
+     * collapses a run of them into one `chatty … identical N lines` entry: the suspend loads log
+     * the same warning from a `Dispatchers.Default` worker, often the same one, so three of them in
+     * a row, with nothing logged in between, showed it twice and stopped there (#4874). After
+     * that line, the load's own one is never a repeat, and logd writes it as it comes.
+     */
+    private fun loggedBy(load: String, marker: String, block: () -> Unit) {
+        val since = logcatMark()
+        Log.i("LargeModelLoadTest", "${SystemClock.elapsedRealtimeNanos()}: loading through $load")
+        block()
+        awaitLogcat(marker, 1, since, load)
     }
 
     private fun ModelLoader.registeredModels(): Int =
