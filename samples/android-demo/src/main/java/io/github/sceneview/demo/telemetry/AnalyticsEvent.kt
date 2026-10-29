@@ -105,6 +105,14 @@ sealed class AnalyticsEvent(val name: String) {
         override fun rawParams() = mapOf("result" to result.value)
     }
 
+    data class SupportPromptShown(val source: SupportPromptSource) : AnalyticsEvent("support_prompt_shown") {
+        override fun rawParams() = mapOf("source" to source.value)
+    }
+
+    data class SupportPromptResult(val result: SupportResult) : AnalyticsEvent("support_prompt_result") {
+        override fun rawParams() = mapOf("result" to result.value)
+    }
+
     data class PushOpened(val campaign: String, val sampleId: String) : AnalyticsEvent("push_opened") {
         override fun rawParams() = mapOf("campaign" to campaign, "sample_id" to sampleId)
     }
@@ -188,6 +196,27 @@ enum class PromptResult(val value: String) {
     Granted("granted"),
     Denied("denied"),
     NotNow("not_now"),
+}
+
+/** How the support sheet was opened, for `support_prompt_shown.source`. */
+enum class SupportPromptSource(val value: String) {
+    Auto("auto"),
+    Settings("settings"),
+}
+
+/** The final answer for one display of the support sheet. */
+enum class SupportResult(val value: String) {
+    TierSmall("tier_small"),
+    TierMedium("tier_medium"),
+    TierLarge("tier_large"),
+    PurchaseCancelled("purchase_cancelled"),
+    PurchaseFailed("purchase_failed"),
+    NotNow("not_now"),
+    Never("never"),
+    Dismissed("dismissed");
+
+    internal val isCompletedPurchase: Boolean
+        get() = this == TierSmall || this == TierMedium || this == TierLarge
 }
 
 /** User properties, set once and updated when they change. Values are the strings listed. */

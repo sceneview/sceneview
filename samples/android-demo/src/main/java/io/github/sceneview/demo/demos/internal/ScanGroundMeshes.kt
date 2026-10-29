@@ -13,15 +13,22 @@ package io.github.sceneview.demo.demos.internal
  * - **Missing**, on the live 3D map only (`hatchMissing`): each missing cell's tile, inset, and its
  *   diagonal — cell after cell, the diagonals join into the 45° hatching of "still to scan". The
  *   result leaves both empty.
+ * - **Seen** and **weak**, on the live map only: each covered cell's tile, inset like the missing
+ *   ones — tinted as done, or as to redo where the scan holds too few points. The result leaves
+ *   both empty: its slab stays plain under the room.
  */
 class ScanGroundMeshes(
     val slab: DebugMesh,
     val edge: DebugMesh,
     val missingFill: DebugMesh = DebugMesh(),
     val hatch: DebugMesh = DebugMesh(),
+    val seenFill: DebugMesh = DebugMesh(),
+    val weakFill: DebugMesh = DebugMesh(),
 ) {
     /** Triangles the layers draw, for the frame-cost log. */
-    val triangles: Int get() = slab.triangleCount + edge.triangleCount + missingFill.triangleCount + hatch.triangleCount
+    val triangles: Int
+        get() = slab.triangleCount + edge.triangleCount + missingFill.triangleCount + hatch.triangleCount +
+            seenFill.triangleCount + weakFill.triangleCount
 
     companion object {
         /** The slab's top, under the floor's height: the depth scatter of a floor stays above it. */
@@ -47,6 +54,8 @@ class ScanGroundMeshes(
             val edge = DebugMesh()
             val fill = DebugMesh()
             val hatch = DebugMesh()
+            val seen = DebugMesh()
+            val weak = DebugMesh()
             val s = ground.cellM
             val top = ground.floorY - SLAB_DROP_M
             val bottom = top - SLAB_THICKNESS_M
@@ -75,15 +84,21 @@ class ScanGroundMeshes(
                     if (ground.at(col + 1, r) == ScanGround.OUTSIDE) side(edge, x1, z0, x1, z1, top, bottom)
                     if (ground.at(col, r - 1) == ScanGround.OUTSIDE) side(edge, x0, z0, x1, z0, top, bottom)
                     if (ground.at(col, r + 1) == ScanGround.OUTSIDE) side(edge, x0, z1, x1, z1, top, bottom)
-                    if (!hatchMissing || cell != ScanGround.MISSING) continue
+                    if (!hatchMissing) continue
                     val inset = s * TILE_INSET
                     val y = top + MISSING_LIFT_M
-                    fill.quad(
-                        fill.vertex(x0 + inset, y, z0 + inset),
-                        fill.vertex(x0 + inset, y, z1 - inset),
-                        fill.vertex(x1 - inset, y, z1 - inset),
-                        fill.vertex(x1 - inset, y, z0 + inset),
+                    val tile = when (cell) {
+                        ScanGround.MISSING -> fill
+                        ScanGround.WEAK -> weak
+                        else -> seen
+                    }
+                    tile.quad(
+                        tile.vertex(x0 + inset, y, z0 + inset),
+                        tile.vertex(x0 + inset, y, z1 - inset),
+                        tile.vertex(x1 - inset, y, z1 - inset),
+                        tile.vertex(x1 - inset, y, z0 + inset),
                     )
+                    if (cell != ScanGround.MISSING) continue
                     // The diagonal from (x0, z1) to (x1, z0), a ribbon across the cell.
                     val h = s * HATCH_HALF_WIDTH
                     val hy = top + HATCH_LIFT_M
@@ -95,7 +110,7 @@ class ScanGroundMeshes(
                     )
                 }
             }
-            return ScanGroundMeshes(slab, edge, fill, hatch)
+            return ScanGroundMeshes(slab, edge, fill, hatch, seen, weak)
         }
 
         @Suppress("LongParameterList")

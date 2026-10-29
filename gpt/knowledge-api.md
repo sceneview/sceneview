@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.62.0)
+  Source of truth: /llms.txt  (SceneView 4.63.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — API Reference
 
 > Composables, node types, resource loading, camera, math, and per-platform APIs.
-> Auto-generated from `llms.txt` (SceneView 4.62.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.63.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Docs
 
@@ -83,7 +83,7 @@ fun SceneView(
     collisionSystem: CollisionSystem = rememberCollisionSystem(view),
     cameraManipulator: CameraGestureDetector.CameraManipulator? = rememberCameraManipulator(cameraNode.worldPosition),
     viewNodeWindowManager: ViewNode.WindowManager? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording (no MediaProjection) — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     activity: ComponentActivity? = LocalContext.current as? ComponentActivity,
@@ -93,7 +93,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -228,7 +228,7 @@ fun ARSceneView(
     onConfigDowngraded: ((downgrade: ARConfigDowngrade) -> Unit)? = null,  // A requested capability was silently downgraded — see "ARConfigDowngrade" (#2096).
     onSessionUpdated: ((session: Session, frame: Frame) -> Unit)? = null,
     onTrackingFailureChanged: ((trackingFailureReason: TrackingFailureReason?) -> Unit)? = null,
-    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Record the scene to MP4"
+    surfaceMirrorer: SurfaceMirrorer? = null,   // In-app video recording of the composited AR scene — see "Capture the scene"
     onGestureListener: GestureDetector.OnGestureListener? = rememberOnGestureListener(),
     onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     permissionHandler: ARPermissionHandler? = null,   // omit for auto-detect from ComponentActivity; passing null explicitly SKIPS permission checks
@@ -274,7 +274,8 @@ screen to another, the screen under the finger is frozen until the gesture ends.
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -614,6 +615,31 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**
@@ -1584,7 +1610,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -2021,9 +2047,11 @@ floor; use `ContactShadow` when you need grounding that survives any light direc
 a wall, and as a cheap deterministic fallback elsewhere. They compose: nothing stops a floor from
 catching a real shadow while a wall gets a procedural one.
 
-Platform matrix: **iOS** — has RealityKit's own `GroundingShadowComponent` (via
-`ARSceneView(groundingShadows:)`), a projected grounding shadow — but NOT this procedural,
-light-independent, per-context pool; not mirrored yet. **Web** — coming soon. Non-AR preview
+Platform matrix: **iOS** — mirrored by SceneViewSwift's `ContactShadowNode` (same
+`ContactShadowContext` presets, `intensity` 0–1, horizontal or vertical quad;
+`ContactShadowNode.under(model)` / `ModelNode.withContactShadow()` fit it to a model), and in AR
+by `ARSceneView.placementShadow(.contact(...))`; RealityKit's `GroundingShadowComponent` stays
+the AR default. **Web** — coming soon. Non-AR preview
 demo (runs on any emulator, no ARCore): `ContactShadowPreviewDemo`.
 
 ### Depth hit test — place on any real surface
@@ -3915,6 +3943,33 @@ val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
 A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
+### rememberModelLoadState (composable, progress + error)
+```kotlin
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+sealed interface ModelLoadState {
+    data class Loading(val progress: ModelLoadProgress) : ModelLoadState
+    data class Ready(val instance: ModelInstance) : ModelLoadState   // textures final, unless none progressed for 10 s (logged)
+    data class Failed(val error: Throwable) : ModelLoadState
+}
+```
+For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+```kotlin
+when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
+    is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })
+    is ModelLoadState.Ready -> SceneView(modelLoader = modelLoader) { ModelNode(modelInstance = state.instance) }
+    is ModelLoadState.Failed -> Text(
+        if (state.error is UnsupportedGltfExtensionException) "Unsupported model format" else "Could not load"
+    )
+}
+```
+Same ownership as `rememberModelInstance`: the composable destroys the `Model` when the location changes or on leave-composition. Unlike it, a location change goes back to `Loading`.
+
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
@@ -3936,13 +3991,38 @@ class ModelLoader(engine: Engine, context: Context) {
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
+
+    // Returns once every texture is final (or after 10 s without texture progress, logged); throws on failure (never null)
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {}   // called on the main thread
+    ): ModelInstance
+
+    companion object {
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String>   // what gltfio can honour in extensionsRequired
+        fun getFolderPath(baseFileName: String, resourceFileName: String): String
+    }
 }
+
+data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fraction 0..1, monotonic
+    enum class Stage { Reading, Creating, Textures }
+}
+class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
 
-**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture is logged and the model loads without it. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it.
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** in the `suspend`/`Async` loaders, file reading, WebP/3MF conversion and the `extensionsRequired` scan run off the main thread; the synchronous `createModel*` methods run that conversion and scan on the calling thread (the main one), so prefer the async loaders for such files. Either way, only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
 
-**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
-before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+**Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
+
+**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.72.1 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
+
+**WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
+embedded ones in the model itself, separate `.webp` files beside a `.gltf` once the resolver has read
+them (one that cannot be decoded is logged by name and left untextured). Only the URIs the glTF
+declares as WebP images are converted, never a buffer, and at most 256 images per model, embedded
+and external together: the rest keep WebP, are not decoded, and are reported in one log line.
 The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.
@@ -4166,7 +4246,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCameraManipulator(orbitHomePosition?, targetPosition?)` | `CameraManipulator?` | Same, with an explicit eye position. `orbitHomePosition` is the camera's **absolute** eye position, never an offset from `targetPosition`; under the default `autoCenterContent = true` the subject is framed from `\|orbitHomePosition\|` — see "Camera". Name kept as-is (not `eyePosition`) to stay binary-compatible on major version 4 |
 | `rememberOnGestureListener(...)` | `OnGestureListener` | Gesture callbacks for tap/drag/pinch |
 | `rememberViewNodeManager()` | `ViewNode.WindowManager` | Required for ViewNode composables |
-| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | In-app video recording — mirror frames to a `MediaRecorder` surface, no MediaProjection (see "Record the scene to MP4") |
+| `rememberSceneRecorder()` | `SceneRecorder` | Photo (PixelCopy, JPEG/PNG) and MP4 video (1080p30, optional mic, time limit, watermark) of the rendered scene — pass `recorder.surfaceMirrorer` to the scene (see "Capture the scene") |
+| `rememberSurfaceMirrorer()` | `SurfaceMirrorer` | Lower level: mirror frames to your own encoder surface, no MediaProjection (see "Capture the scene") |
 | `rememberView(engine)` | `View` | Filament view (one per viewport), PBR Neutral tone mapper |
 | `rememberARView(engine)` | `View` | AR-tuned view (Filmic tone mapper — round-trips the camera background, #1434) |
 | `rememberRenderer(engine)` | `Renderer` | Filament renderer (one per window) |
@@ -4174,6 +4255,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -4567,6 +4650,68 @@ Button(onClick = { animator.flyTo(otherRoom) })                     // another s
   on the first touch and carries on at that speed; any other manipulator (the default orbit one
   included) gets a 350 ms glide from the move's last frame onto its own pose.
 
+**Pose keyframes — `CameraPosePath` and `CameraPathPlayer`.** Where `CameraPath` keys orbit
+parameters, `CameraPosePath` keys free camera poses (`CameraPose(position, quaternion)`), so a
+move can be a straight line through space — a travelling, a dolly — not only an arc round a
+subject. Both implement `CameraTimeline` (`durationSeconds`, `loop`, `poseAt(seconds)`), a
+pure function of time: the same time always gives the same pose, which is what a scrubber and
+a fixed-step offline render rely on. The pose API is `@ExperimentalSceneViewApi` (opt in with
+`@OptIn(ExperimentalSceneViewApi::class)`); `CameraPath` stays stable, and so does reading a
+`CameraTimeline`'s `durationSeconds` and `loop`, but calling its `poseAt` requires the opt-in, and
+so does implementing one (`@SubclassOptInRequired`).
+
+```kotlin
+val path = remember(bounds, aspect) {                  // remember it: a new path per composition is wasted work
+    CameraPosePath.orbit(                              // one turn, framed from the subject's box and the FOV
+        bounds = bounds,
+        verticalFovDegrees = verticalFovDegreesForFocalLength(28.0),
+        aspect = aspect,                               // the 3D view's width / height
+        durationSeconds = 12f,
+    )
+}
+val player = rememberCameraPathPlayer(path)            // play(), pause(), toggle(), restart(), seekTo(s), speed, loop
+SceneView(
+    cameraNode = cameraNode,
+    cameraManipulator = null,                          // the path owns the camera
+    frameRatePolicy = FrameRatePolicy.Continuous(),
+    onFrame = { nanos -> cameraNode.applyPose(player.advanceFrame(nanos)) },
+) { … }
+Slider(value = player.progress, onValueChange = { player.seekTo(it * player.durationSeconds) })
+```
+
+- `CameraPosePath(keyframes, interpolation = CatmullRom, easing = CameraEasing.Linear,
+  pathEasing = null, lookAt = null, up = +Y, loop = false)`: positions are `Linear` or `CatmullRom`
+  (passes each `CameraPoseKeyframe(pose, seconds, easing)` on time, velocity continuous across
+  an un-eased key, tangents capped so a pause — a key repeating its neighbour's position — is
+  not overshot; a turn back of more than 120°, a there-and-back included, stops on its key,
+  a turn of 120° or less, a right angle included, flows through it; two keys at one time are
+  a cut); rotations slerp the short way, per segment, so
+  angular speed can jump at a key. A keyframe's `easing` shapes the segment that
+  leaves it, `easing` is the default for every segment, `pathEasing` remaps the whole timeline.
+  `lookAt` keeps the camera aimed at a point instead of slerping; passing straight over it
+  flips the roll. Times count from the first key.
+- Presets: `orbit(bounds, verticalFovDegrees, aspect, durationSeconds, turns, elevationDegrees,
+  startAzimuthDegrees, padding, loop = true, keyframesPerTurn = 32)` (radius from
+  `fitDistanceForBounds`, at most 1000 turns, at least 6 keys per turn; loops seamlessly on any
+  number of turns, each lap of 1.5 turns starting where the last one ended), `travelling(from, distance, durationSeconds)` (along the camera's right axis, rotation
+  held), `dolly(target, from, toDistance, durationSeconds)` (along the line of sight).
+- `CameraPathPlayer` owns the playhead (`seconds`, `progress`, `isPlaying`, `isFinished`,
+  Compose state) and the count of whole laps played; `advance(dt)` / `advanceFrame(nanos)` move it by wall-clock time, so 30 and
+  120 fps reach the same pose at the same time. A new `timeline` keeps the playhead, wrapped or
+  clamped into its duration at once, and sets `loop` only when the timeline's loop mode differs
+  from the old one's. The player keeps a whole lap count and the time within the lap, so a
+  `CameraPath.tour(turns = 1.5f)` or an `orbit(turns = 1.5f)` carries on lap after lap with no
+  jump at the seam and is as exact after a week as on its first lap; other timelines are sampled
+  within the lap. On such a fractional path `pose` equals `timeline.poseAt(seconds)` on the first
+  lap only (lap two of 1.5 turns is half a turn on). `seconds` and `progress` stay within the lap,
+  `seekTo` keeps the lap (`seekTo(durationSeconds)` shows the end of the current lap), turning
+  `loop` off keeps the lap, a new timeline with another turn count applies its turn to the laps
+  played (the camera can jump), and `restart()` — or `play()` on a finished player — goes back to
+  lap 0 at time 0. For a fixed-rate render, call
+  `timeline.poseAt(frame / fps)` directly. `CameraNode.applyPose(pose)` and
+  `CameraNode.applyCameraTimeline(timeline, seconds)` write a pose; `CameraPose.lookingAt(eye,
+  target)` and `CameraShot.toPose()` build one.
+
 `CinematicHero` (below) and `applyCinematicOrbit` stay as they are: a hero is scroll-driven,
 these are time-driven. Pick the animator when the move has a beginning and an end.
 
@@ -4638,6 +4783,74 @@ val rotation = quaternion.toRotation(order = RotationsOrder.ZYX)
 SceneView(surfaceType = SurfaceType.Surface)          // SurfaceView, best perf (default)
 SceneView(surfaceType = SurfaceType.TextureSurface, isOpaque = false)  // TextureView, alpha
 ```
+
+---
+
+## Capture the scene — photo and MP4 (SceneRecorder, no MediaProjection)
+
+`SceneRecorder` (`io.github.sceneview.capture.SceneRecorder`) turns a `SceneView` or `ARSceneView` into a **shareable photo or video of exactly what the scene renders** — in AR, the camera feed and the virtual content composited. Never your Compose UI, no MediaProjection consent dialog, no `mediaProjection` foreground service. Built on `SurfaceMirrorer` (below), which stays available for custom encoders.
+
+```kotlin
+import io.github.sceneview.capture.VideoSettings
+import io.github.sceneview.capture.rememberSceneRecorder
+
+@Composable
+fun CapturableARScreen() {
+    val recorder = rememberSceneRecorder()
+    val scope = rememberCoroutineScope()
+
+    ARSceneView(  // or SceneView(...) — same parameter
+        modifier = Modifier.fillMaxSize(),
+        surfaceMirrorer = recorder.surfaceMirrorer,
+    ) { /* nodes */ }
+
+    // Photo: full-resolution PixelCopy of the scene, JPEG (default) or PNG.
+    Button(onClick = { scope.launch { val file: File? = recorder.savePhoto() } }) { Text("Photo") }
+
+    // Video: H.264 MP4, 1080p at 30 fps by default, optional mic, optional time limit.
+    Button(onClick = {
+        if (recorder.isRecording) {
+            recorder.stopRecording()                       // -> SceneRecording? (file, size, duration)
+        } else {
+            recorder.startRecording(settings = VideoSettings(recordAudio = true, maxDurationMillis = 30_000))
+        }
+    }) { Text(if (recorder.isRecording) "Stop ${recorder.elapsedMillis / 1000}s" else "Record") }
+}
+```
+
+Key facts:
+- **Photo** — `suspend fun takePhoto(): Bitmap?` (view-sized, full resolution) and `suspend fun savePhoto(file: File? = null, format: PhotoFormat = JPEG, quality: Int = 95): File?`. `PixelCopy` of the `SurfaceView` (the GPU buffer: camera feed included, Compose views over it excluded), `TextureView.getBitmap()` for a texture-view scene. `null` before the first frame. Main-safe suspend functions.
+- **Video** — `startRecording(file = newCaptureFile("mp4"), settings = VideoSettings()): Boolean`, `stopRecording(): SceneRecording?`. Main thread. The video keeps the view's aspect ratio inside a `maxLongEdge × maxShortEdge` box (default 1920 × 1080) turned like the view, edges aligned for H.264; when the encoder refuses that size it steps down through 1080p, 720p, 540p, 360p, never above the requested box. It is a second render of the scene, not a screen copy: a small view still records at 1080p.
+- **Microphone** — `VideoSettings(recordAudio = true)` records AAC mono when the app holds `RECORD_AUDIO` at start; without it, or when another app holds the microphone, the video is recorded silent and `SceneRecording.hasAudio` is `false` (the recorder never asks for the permission).
+- **Time limit** — `VideoSettings(maxDurationMillis = …)`: the recording stops by itself and `SceneRecording.reachedMaxDuration` is `true`. `onRecordingFinished: (SceneRecording?) -> Unit` fires on every stop, manual or automatic (`null` = nothing usable was written; see `lastError`).
+- **Automatic stops** — a recording also ends, file finalised and `onRecordingFinished` called, when the scene feeding it leaves composition or stops using `recorder.surfaceMirrorer`, and — with `rememberSceneRecorder()` — when the screen reaches `Lifecycle.Event.ON_STOP` (background, screen off): the scene stops rendering there. `rememberSceneRecorder(lifecycle = …)` picks another lifecycle.
+- **Watermark** — `recorder.overlay = CaptureOverlay { canvas, width, height -> … }` draws on every photo and every video frame, never on the live view. Size it from `width`/`height`. Videos get it on API 29+ (GPU compositing through an `ImageReader`); below, the video is recorded without it and `SceneRecording.hasOverlay` is `false`.
+- **Compose state** — `isRecording`, `elapsedMillis` (ticks every 250 ms), `lastRecording`, `lastError`, `overlay`, `onRecordingFinished` are snapshot state.
+- **Files** — `newCaptureFile(extension)` = `getExternalFilesDir(null)/captures/scene_<timestamp>.<ext>`, or `filesDir/captures/` without external files storage (no storage permission). Share through your `FileProvider`.
+- `rememberSceneRecorder()` releases the recorder (and stops a running recording) when it leaves composition. Outside Compose: `SceneRecorder(context)`, then `release()`.
+
+### Lower level: SurfaceMirrorer
+
+`SurfaceMirrorer` (`io.github.sceneview.utils.SurfaceMirrorer`, #2626) copies every rendered frame GPU-side onto additional `Surface`s — what `SceneRecorder` uses for video. Pass `rememberSurfaceMirrorer()` to `SceneView`/`ARSceneView(surfaceMirrorer = …)`, then attach your own encoder surface (a `MediaCodec`, an RTMP streamer, a second display):
+
+```kotlin
+fun startStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.startMirroring(encoderSurface, width = 1280, height = 720)  // any thread, JNI-free
+}
+
+fun stopStreaming(surfaceMirrorer: SurfaceMirrorer, encoderSurface: android.view.Surface) {
+    surfaceMirrorer.stopMirroring(encoderSurface)  // main thread, before stopping the encoder
+}
+```
+
+Key facts:
+- `startMirroring(surface, left = 0, bottom = 0, width = null, height = null)` — `width`/`height` are the destination rectangle on the surface; `null` defaults to the scene view's size. The frame is letterboxed to preserve aspect ratio. A scene that rendered on demand and went idle is woken for the new mirror.
+- `stopMirroring(surface)` — idempotent; a surface is identified by instance. Main thread (Filament rule).
+- Multiple surfaces can be mirrored at once (e.g. recorder + live preview/RTMP encoder).
+- The mirror copy runs only while frames render — pausing the lifecycle pauses the feed.
+- Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SceneRecorder` / `SurfaceMirrorer` record the *rendered* scene — the shareable video with virtual content composited.
+
+Sample: the Android demo app's `DemoScaffold` "Take photo" and "Record video" actions (`samples/android-demo/.../recording/SceneCapture.kt`: watermark, open and share), shown on `cosmos` and on AR `finger-drawing`; the retired `video-recording` id opens them.
 
 ---
 
@@ -4956,7 +5169,7 @@ cube.updateCollisionShape()              // opt back in: re-derive, and resume t
 ## Compose Multiplatform (sceneview-compose)
 
 One composable from `commonMain`, several renderers underneath. Artifact:
-`io.github.sceneview:sceneview-compose:4.62.0` — on Maven Central since 4.27.0, released
+`io.github.sceneview:sceneview-compose:4.63.0` — on Maven Central since 4.27.0, released
 in lock-step with `sceneview`. 4.26.0 and earlier do NOT contain this module — never
 emit a version below 4.27.0 for it.
 
@@ -5161,7 +5374,7 @@ Full rationale: `docs/docs/compose-multiplatform.md`.
 
 ## SceneView Web (Kotlin/JS + Filament.js)
 
-Package: `sceneview-web` v4.62.0 — npm `sceneview-web`
+Package: `sceneview-web` v4.63.0 — npm `sceneview-web`
 Renderer: **Filament.js (WebGL2/WASM)** — same Filament engine as SceneView Android, compiled to WebAssembly.
 Requires: Chrome 79+, Edge 79+, Firefox 78+ (WebGL2). Safari 15+ (WebGL2).
 
@@ -5796,7 +6009,7 @@ Renderer: **RealityKit**. Requires iOS 18+ / macOS 15+ / visionOS 2+.
 
 SPM dependency (Package.swift or Xcode):
 ```swift
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.62.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")
 ```
 
 Import: `import SceneViewSwift`
@@ -6103,10 +6316,11 @@ View modifiers (chainable):
 .onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
 .onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
 .onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
+.placementShadow(_ style: ARPlacementShadow) -> ARSceneView  // shadow given to onTapOnPlane content: .grounding (default — GroundingShadowComponent), .contact(ContactShadowContext = .floor, intensity: Float? = nil) (procedural ContactShadowNode, retuned live), .none. Overrides `groundingShadows`
 ```
 
 `PlaneDetectionMode` values: `.none`, `.horizontal`, `.vertical`, `.both`
@@ -6114,7 +6328,7 @@ View modifiers (chainable):
 `cameraExposure` notes:
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
-- Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- Implemented via `ARView.renderCallbacks.postProcess`.
 - It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
 
 `onSessionError` notes (v4.39.0+):
@@ -6218,6 +6432,7 @@ public struct ModelNode: @unchecked Sendable {
     // Misc
     public func enableCollision()
     public func withGroundingShadow() -> ModelNode           // iOS 18+ / visionOS 2+
+    public func withContactShadow(_ context: ContactShadowContext = .floor, intensity: Float? = nil, spread: Float = 1.6) -> ModelNode  // procedural pool at the lowest point — call after scaleToUnits / centerOrigin
     public mutating func onTap(_ handler: @escaping () -> Void) -> ModelNode
 }
 ```
@@ -6450,6 +6665,43 @@ public enum GeometryMaterial: @unchecked Sendable {
 }
 ```
 
+#### ContactShadowNode — procedural contact shadow (Android `ContactShadowNode` parity)
+
+```swift
+public enum ContactShadowContext: String, CaseIterable, Sendable { case floor, wall, tableTop }
+// intensity / center / radius / softness — same values as Android's presets
+
+public struct ContactShadowNode: @unchecked Sendable {
+    public let entity: ModelEntity            // unit quad scaled to `size`, never framed, casts no shadow
+    public enum Plane { case horizontal, vertical }   // XZ facing +Y (floor) / XY facing +Z (wall)
+    public static let surfaceOffset: Float    // 0.005 m, as Android
+    public static let defaultSpread: Float    // 1.6, Android's AR `ShadowSpread`
+    public static let minimumFittedSize: Float // 0.1 m, as Android's AR placement shadow
+    public init(width: Float = 1, length: Float = 1, context: ContactShadowContext = .floor,
+                plane: Plane = .horizontal, intensity: Float? = nil)   // nil = context's intensity
+    public var context: ContactShadowContext  // live
+    public var intensity: Float               // live, clamped 0...1
+    public var size: SIMD2<Float>
+    public static func under(_ model: Entity, context: ContactShadowContext = .floor,
+                             intensity: Float? = nil, spread: Float = 1.6) -> ContactShadowNode
+    public func fit(under model: Entity, spread: Float = 1.6)
+}
+```
+
+- `under(model)` adds the shadow **as a child** of the model: centred under its footprint, `spread`×
+  its X/Z extents (at least 0.1 m), at its lowest point + 5 mm. It follows the model (including an
+  animation of the model's root transform, not a skeletal one) and fades with its `OpacityComponent`. It stays level: it keeps the model's turn around Y but not a tilted root. Measured once — call after the mesh loads and after `scaleToUnits` /
+  `centerOrigin`; call `fit(under:)` again if the model changes size.
+- Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
+- Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
+  measure the model without it, and it never gets collision shapes (not a tap target).
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none. With `.grounding` (and in `ARPlacementController`), content that already
+  carries a contact shadow gets no `GroundingShadowComponent`: one shadow, never two.
+
 #### AnchorNode — AR world anchors (iOS only)
 
 ```swift
@@ -6674,6 +6926,30 @@ extension Entity {
     public func enabled(_ isEnabled: Bool) -> Self
 }
 ```
+
+---
+
+### SceneRecorder on iOS — photo and MP4 of the scene, no SwiftUI chrome
+
+Same API shape as Android's `SceneRecorder` (#4821). Attach it to a `SceneView` or `ARSceneView` (AR: camera feed included) with `.sceneRecorder(_:)`; it captures the rendered scene only, never the SwiftUI views around it. Use `ARRecorder` (ReplayKit) when you want the whole screen.
+
+```swift
+@StateObject private var recorder = SceneRecorder()
+
+SceneView { root in /* ... */ }
+    .sceneRecorder(recorder)
+
+let image = await recorder.takePhoto()                         // full-resolution UIImage
+let file = await recorder.savePhoto(format: .png)              // Documents/captures/scene_<stamp>.png
+recorder.startRecording(settings: VideoSettings(recordAudio: true, maxDuration: 60))
+let clip = await recorder.stopRecording()                      // SceneRecording? (url, width, height, duration)
+```
+
+- `VideoSettings` defaults: H.264 MP4 inside 1920 x 1080 (aspect kept, even edges), 30 fps, 12 Mbit/s, no audio, no limit. A box beyond H.264 level 5.2 (4096 per edge, 4096 x 2304 frame) steps down through 1080p, 720p, 540p, 360p. The size is fixed at start: a view turned mid-recording is letterboxed, not stretched (the even-edge rounding, under 1 % of aspect, is filled). The video is never longer than `maxDuration`: frames past it are refused.
+- `recordAudio` needs microphone permission (`NSMicrophoneUsageDescription`), never requested by the recorder; without it the video is silent. The app's audio session is not reconfigured by the capture session; a category that can already record is activated, never deactivated or switched. Otherwise it is switched to `.playAndRecord` (mixing with other audio) for the recording, then put back unless the app changed the category in the meantime; it is deactivated first with `.notifyOthersOnDeactivation` only when it was inactive before (another app playing over a non-mixing category), so the app's own sound is never cut. If the switch fails, nothing is activated and the video is silent. Two recorders using the microphone at the same time share the app's one audio session: the first recording to end hands it back, so the other recording loses its audio from then on. One recorder serves one scene at a time; a scene it left takes it back only once the other scene lets it go. `hasAudio` is `true` only when a microphone sample was written.
+- `@Published` state: `isAttached`, `isRecording`, `elapsedTime` (4 Hz), `lastRecording`, `lastError`. `onRecordingFinished` fires on every stop, including `maxDuration` (`reachedMaxDuration == true`); `nil` when no frame was written.
+- `overlay = CaptureOverlay { context, size in ... }` draws a watermark on every photo and video frame (top-left origin, capture pixels), never on the live view.
+- A recording finishes when its view leaves the window or the app goes to the background; the recorder attaches again when the view comes back.
 
 ---
 

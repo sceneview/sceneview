@@ -23,11 +23,11 @@ object CosmosFragment : DemoFragment {
         icon = Icons.Filled.AutoAwesome,
         order = 1,
         addedIn = "4.49.0",
-        updatedIn = "4.52.0",
+        updatedIn = "4.64.0",
         tags = setOf(
             "bloom", "emissive", "particles", "procedural", "shader", "galaxy", "space", "custom material",
             // The shared Record action (samples step 0, formerly the `video-recording` card).
-            "video", "recording", "mp4", "capture", "encoder",
+            "video", "recording", "mp4", "capture", "encoder", "photo",
         ),
     )
 

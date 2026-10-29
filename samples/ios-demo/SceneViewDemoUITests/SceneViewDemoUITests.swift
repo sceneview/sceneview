@@ -47,7 +47,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// Switzerland its sheet comes up over Home on first launch.
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-push_preprompt", "off", "-telemetry_consent", "denied"]
+        app.launchArguments = ["-push_preprompt", "off", "-support_prompt", "off", "-telemetry_consent", "denied"]
         return app
     }
 
@@ -495,5 +495,56 @@ final class SceneViewDemoUITests: XCTestCase {
         } else {
             try? Data(line.utf8).write(to: log)
         }
+    }
+
+    /// Take photo and Record video in Model Viewer's settings sheet (`SceneRecorder`): each
+    /// writes a file of the scene alone and offers it in a toast (Share / Play).
+    func testSceneCaptureFlow() {
+        let app = Self.makeApp()
+        app.launchArguments += ["-demo", "model-viewer", "-qa_mode", "1"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30), "app never reached the foreground")
+
+        let fab = app.buttons["demo-settings-fab"]
+        XCTAssertTrue(fab.waitForExistence(timeout: 20), "settings FAB never appeared")
+        Thread.sleep(forTimeInterval: 6)
+
+        fab.tap()
+        let photo = app.buttons["demo-photo"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 10), "Take photo row missing")
+        XCTAssertTrue(app.buttons["demo-record"].exists, "Record video row missing")
+        snapshot(app, "capture-01-sheet")
+        photo.tap()
+        let photoSaved = app.staticTexts["Photo saved on this device"]
+        XCTAssertTrue(photoSaved.waitForExistence(timeout: 10),
+                      "no photo toast; failure shown: \(app.staticTexts["Could not take the photo on this device"].exists)")
+        snapshot(app, "capture-02-photo-toast")
+
+        let share = app.buttons["demo-capture-share"]
+        if share.exists {
+            share.tap()
+            Thread.sleep(forTimeInterval: 3)
+            snapshot(app, "capture-03-share-sheet")
+            let close = app.buttons["Close"]
+            if close.exists { close.tap() } else { app.swipeDown(velocity: .fast) }
+            Thread.sleep(forTimeInterval: 1.5)
+        } else {
+            XCTFail("Share action missing")
+        }
+
+        fab.tap()
+        let record = app.buttons["demo-record"]
+        XCTAssertTrue(record.waitForExistence(timeout: 10), "Record video row missing")
+        record.tap()
+        let stop = app.buttons["demo-record-stop"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 10), "Stop pill never appeared")
+        Thread.sleep(forTimeInterval: 3)
+        snapshot(app, "capture-04-recording")
+        stop.tap()
+        let videoSaved = app.staticTexts["Video saved on this device"]
+        XCTAssertTrue(videoSaved.waitForExistence(timeout: 15),
+                      "no video toast; failure shown: \(app.staticTexts["Could not record or open the video on this device"].exists)")
+        XCTAssertTrue(app.buttons["demo-capture-play"].exists, "Play action missing")
+        snapshot(app, "capture-05-video-toast")
     }
 }

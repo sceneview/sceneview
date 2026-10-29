@@ -290,9 +290,26 @@ interface RenderableComponent : Component {
      * Creates a MaterialInstance Java wrapper object for a particular material instance.
      *
      * @see RenderableManager.getMaterialInstanceAt
+     * @throws IllegalStateException if [entity] has no renderable component any more (its model
+     * was destroyed, say).
+     * @throws IndexOutOfBoundsException if [primitiveIndex] is not one of its primitives.
      */
-    fun getMaterialInstanceAt(@IntRange(from = 0) primitiveIndex: Int) =
-        renderableManager.getMaterialInstanceAt(renderableInstance, primitiveIndex)
+    fun getMaterialInstanceAt(@IntRange(from = 0) primitiveIndex: Int): MaterialInstance {
+        // Filament answers both cases with a null material, and wrapping that null in a
+        // MaterialInstance dereferences it in native code: a crash no `try` catches.
+        val instance = renderableInstance
+        check(instance != 0) {
+            "Entity $entity has no renderable component (destroyed, or never created): no material " +
+                "to read"
+        }
+        val primitiveCount = renderableManager.getPrimitiveCount(instance)
+        if (primitiveIndex !in 0 until primitiveCount) {
+            throw IndexOutOfBoundsException(
+                "Primitive $primitiveIndex of entity $entity: it has $primitiveCount primitives"
+            )
+        }
+        return renderableManager.getMaterialInstanceAt(instance, primitiveIndex)
+    }
 
     /**
      * Changes the material instance binding for the given primitive.

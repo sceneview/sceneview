@@ -1,11 +1,14 @@
 package io.github.sceneview.utils
 
+import android.os.Handler
+import android.os.Looper
 import android.view.Surface
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
+import io.github.sceneview.SURFACE_DETACH_WAIT_NANOS
 import io.github.sceneview.destroyRendererWhenBackendIdle
 
 /**
@@ -61,11 +64,16 @@ import io.github.sceneview.destroyRendererWhenBackendIdle
  * the cost of one extra scene pass per mirrored surface per frame.
  *
  * ### Threading
- * [startMirroring] performs no Filament call and is safe from any thread — the swap chain is
- * created lazily on the render (main) thread at the next frame. [stopMirroring] destroys the
- * swap chain immediately and **must be called from the main thread** (the standard Filament JNI
- * rule). Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
+ * [startMirroring] performs no Filament call and may be called from any thread — the swap chain
+ * is created lazily on the render (main) thread at the next frame, and waking a parked scene is
+ * posted to the main thread when needed. [stopMirroring] destroys the
+ * swap chain and waits for the backend to execute that destroy, so it **must be called from the
+ * main thread** (the standard Filament JNI rule), and the surface must be released only after it
+ * returns. Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
  * one is a no-op.
+ *
+ * For photos and videos with sizing, microphone, duration and watermark handled, use
+ * [io.github.sceneview.capture.SceneRecorder], which drives a mirrorer for you.
  *
  * @see io.github.sceneview.rememberSurfaceMirrorer
  * @see io.github.sceneview.SceneRenderer.surfaceMirrorer
@@ -80,6 +88,41 @@ class SurfaceMirrorer {
     )
 
     private val surfaceMirrors = mutableListOf<SurfaceMirror>()
+
+    /**
+     * What the scene that renders through this mirrorer tells it about itself — bound by
+     * [io.github.sceneview.SceneRenderer] while a `SceneView` / `ARSceneView` uses this mirrorer.
+     */
+    internal interface Host {
+        /** The `SurfaceView` / `TextureView` the scene renders into, once attached. */
+        val renderView: android.view.View?
+
+        /** Wakes a scene whose render loop is parked, so the next frame reaches the mirrors. */
+        fun requestRender()
+    }
+
+    /**
+     * The scene currently rendering through this mirrorer, or `null`. Going from a scene to `null`
+     * — the scene detaches from this mirrorer or is disposed — calls [onHostLost].
+     */
+    @Volatile
+    internal var host: Host? = null
+        set(value) {
+            val lost = field != null && value == null
+            field = value
+            if (lost) onHostLost?.invoke()
+        }
+
+    /**
+     * Called when the scene feeding the mirrors goes away: [host] set back to `null`, or
+     * [destroy]. Nothing reaches the mirrored surfaces after that, so a recording driven by this
+     * mirrorer must end there (see [io.github.sceneview.capture.SceneRecorder]). Called on the
+     * thread that cleared [host] or called [destroy] — the main thread for a scene.
+     */
+    @Volatile
+    internal var onHostLost: (() -> Unit)? = null
+
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /** Engine the swap chains were created on — bound at the first mirrored frame. */
     private var engine: Engine? = null
@@ -114,7 +157,7 @@ class SurfaceMirrorer {
      * call [stopMirroring] when done.
      *
      * The frame is letterboxed into the destination rectangle so the scene's aspect ratio is
-     * preserved. No-op if [surface] is already being mirrored (double-start safe). Safe to call
+     * preserved. No-op if [surface] is already being mirrored (double-start safe). May be called
      * from any thread, and before the scene's first frame — mirroring begins with the next
      * rendered frame.
      *
@@ -152,13 +195,28 @@ class SurfaceMirrorer {
                 )
             )
         }
+        // A parked scene reads `isMirroring` only from inside a frame: wake it, or a recording
+        // started on a still scene never receives one. The wake only schedules a frame, and only
+        // from the main thread — post it there when called from elsewhere.
+        val host = host ?: return
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            host.requestRender()
+        } else {
+            mainHandler.post { this.host?.requestRender() }
+        }
     }
 
     /**
      * Stops mirroring to [surface].
      *
      * Call when capture is complete — otherwise the per-frame render cost remains. The caller
-     * stays responsible for releasing the [Surface] itself (e.g. `MediaRecorder.stop()`).
+     * stays responsible for releasing the [Surface] itself (e.g. `MediaRecorder.stop()`), and
+     * must release it only **after this returns**: Filament creates and destroys a mirror's swap
+     * chain on its backend thread, after the call that queued it, and the creation reads the
+     * surface there. This destroys the swap chain, then waits for the backend to execute it,
+     * up to one second; a surface released before that aborts the process inside Filament. The
+     * wait is bounded: a backend still busy after one second (compiling a new scene's shaders on
+     * a slow device, say) is logged and not waited for, and the race remains in that case.
      *
      * Idempotent: no-op if [surface] is not currently mirrored. Must be called from the main
      * thread (destroys the mirror's Filament swap chain).
@@ -168,13 +226,28 @@ class SurfaceMirrorer {
      * each call may return a new Java object wrapping the same native surface.
      */
     fun stopMirroring(surface: Surface) {
-        synchronized(surfaceMirrors) {
-            surfaceMirrors.filter { it.surface == surface }.onEach { mirror ->
-                mirror.swapChain?.let { swapChain ->
-                    engine?.let { runCatching { it.destroySwapChain(swapChain) } }
-                }
-                mirror.swapChain = null
-            }.also { surfaceMirrors.removeAll(it) }
+        // Out of the list under the lock: no later onFrame can create a swap chain for it again.
+        val (engine, swapChains) = synchronized(surfaceMirrors) {
+            engine to surfaceMirrors.filter { it.surface == surface }
+                .also { surfaceMirrors.removeAll(it) }
+                .mapNotNull { mirror -> mirror.swapChain.also { mirror.swapChain = null } }
+        }
+        if (engine != null) release(engine, swapChains)
+    }
+
+    /** [releaseSwapChains] on [engine]'s backend, with a warning when the bound expires. */
+    private fun release(engine: Engine, swapChains: List<SwapChain>) {
+        val caughtUp = releaseSwapChains(
+            swapChains,
+            destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
+            flushAndWait = { runCatching { engine.flushAndWait(it) }.getOrDefault(false) },
+        )
+        if (!caughtUp) {
+            android.util.Log.w(
+                "SurfaceMirrorer",
+                "Mirroring stopped, backend still busy after " +
+                    "${SURFACE_DETACH_WAIT_NANOS / 1_000_000} ms; not waiting longer"
+            )
         }
     }
 
@@ -224,37 +297,40 @@ class SurfaceMirrorer {
     }
 
     /**
-     * Destroys every mirror's swap chain, clears the mirror list and releases the mirror renderer
-     * once the backend has executed everything queued so far, without waiting for that queue on
-     * the calling (main) thread.
+     * Destroys every mirror's swap chain and waits, up to one second, for the backend to execute
+     * that, as [stopMirroring] does; clears the mirror list and releases the mirror renderer once
+     * the backend has executed everything queued so far, without waiting for that queue on the
+     * calling (main) thread.
      *
      * Called by [io.github.sceneview.SceneRenderer.destroy] when the scene is disposed — a
-     * mirrored recording ends with the view that feeds it.
+     * mirrored recording ends with the view that feeds it, and [onHostLost] is called. The
+     * recording releases its surface from there, so the swap chains must be gone first; a scene
+     * disposed with no mirror, or before a mirror's first frame, waits for nothing. Teardown waits
+     * on the backend are bounded (#4828), not banned: this is the same one-second bound as the
+     * scene's own surface detach.
      */
     internal fun destroy() {
-        val engine = engine
-        val renderer = synchronized(surfaceMirrors) {
-            surfaceMirrors.forEach { mirror ->
-                mirror.swapChain?.let { swapChain ->
-                    engine?.let { runCatching { it.destroySwapChain(swapChain) } }
-                }
-                mirror.swapChain = null
+        val (engine, swapChains, renderer) = synchronized(surfaceMirrors) {
+            val swapChains = surfaceMirrors.mapNotNull { mirror ->
+                mirror.swapChain.also { mirror.swapChain = null }
             }
             surfaceMirrors.clear()
-            mirrorRenderer.also { mirrorRenderer = null }
+            Triple(engine, swapChains, mirrorRenderer.also { mirrorRenderer = null })
         }
         this.engine = null
+        if (engine != null) release(engine, swapChains)
         // Not `destroyRenderer` on the spot: Filament's renderer teardown first waits, with no
         // bound, for every command already queued on the backend — the scene's last mirror passes
         // and, right after it appeared, its shader links. A recorded scene disposed then parked the
-        // main thread on that whole queue (#3799). The release now runs on the main thread once
-        // everything queued before the teardown has executed — right away if it already has,
-        // otherwise on a later main-thread message — and the engine outlives it (its own destroy
-        // runs pending releases first). `FRenderer::terminate` still creates and waits on its own
-        // fence then, so it waits for whatever was queued since the teardown (the next scene's
-        // shader links, say): a wait bounded by that work, not the whole backlog — the same limit
-        // as the scene's own renderer (#3854).
+        // main thread on that whole queue (#3799). The release now always runs from a later
+        // main-thread message, at the next poll at the earliest, once the backend is found to have
+        // caught up recently (`Engine.whenBackendIdle`), or after its 5 s fallback; the engine
+        // outlives it (its own destroy runs pending releases first). `FRenderer::terminate` still
+        // creates and waits on its own fence then, so it waits for whatever the main thread queued
+        // in the last 48 ms: usually a frame or two, not the whole backlog — the same limit as the
+        // scene's own renderer (#3854).
         if (renderer != null) engine?.destroyRendererWhenBackendIdle(renderer)
+        onHostLost?.invoke()
     }
 
     private fun getLetterboxViewport(srcViewport: Viewport, destViewport: Viewport): Viewport {
@@ -273,4 +349,23 @@ class SurfaceMirrorer {
             height
         )
     }
+}
+
+/**
+ * Destroys the [swapChains] of stopped mirrors, then, when there was any, waits up to
+ * [SURFACE_DETACH_WAIT_NANOS] for the backend to execute everything queued so far: their creation
+ * and their destruction, the two backend commands that use the mirrored surface. Apart from its
+ * Filament calls so that a JVM test can pin it.
+ *
+ * @return `false` when the backend was still busy at the bound — the commands still run, in
+ * order, nothing is cancelled.
+ */
+internal fun <S> releaseSwapChains(
+    swapChains: List<S>,
+    destroySwapChain: (S) -> Unit,
+    flushAndWait: (timeoutNanos: Long) -> Boolean,
+): Boolean {
+    if (swapChains.isEmpty()) return true
+    swapChains.forEach(destroySwapChain)
+    return flushAndWait(SURFACE_DETACH_WAIT_NANOS)
 }

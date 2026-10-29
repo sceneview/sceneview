@@ -31,14 +31,17 @@ class ScanGround private constructor(
     val originZ: Float,
     val columns: Int,
     val rows: Int,
-    /** One byte per cell, row-major (z then x): [OUTSIDE], [SEEN] or [MISSING]. */
+    /** One byte per cell, row-major (z then x): [OUTSIDE], [SEEN], [MISSING] or [WEAK]. */
     private val cells: ByteArray,
 ) {
     fun at(column: Int, row: Int): Byte =
         if (column !in 0 until columns || row !in 0 until rows) OUTSIDE else cells[row * columns + column]
 
-    /** Footprint cells the scan has the ground in. */
-    val seen: Int = cells.count { it == SEEN }
+    /** Footprint cells the scan has the ground in, the [WEAK] ones among them. */
+    val seen: Int = cells.count { it == SEEN || it == WEAK }
+
+    /** Seen cells too thin to keep, on the live map: worth scanning again. */
+    val weak: Int = cells.count { it == WEAK }
 
     /** Footprint cells it does not: the holes to fill. */
     val missing: Int = cells.count { it == MISSING }
@@ -65,6 +68,9 @@ class ScanGround private constructor(
         const val OUTSIDE: Byte = 0
         const val SEEN: Byte = 1
         const val MISSING: Byte = 2
+
+        /** A seen cell with too few points to keep (live map only, [LiveCoverageGround.weakCells]). */
+        const val WEAK: Byte = 3
 
         /** A cell for a room: 10 cm, about a floor tile — fine enough to show a missed corner. */
         const val ROOM_CELL_M = 0.1f

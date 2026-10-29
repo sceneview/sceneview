@@ -193,7 +193,8 @@ public enum NodeGesture {
     private static func ensureCollision(_ entity: Entity) {
         if entity.components[CollisionComponent.self] == nil {
             if let modelEntity = entity as? ModelEntity {
-                modelEntity.generateCollisionShapes(recursive: true)
+                // A contact shadow under the model is a decal, never a tap target.
+                modelEntity.generateCollisionShapesExcludingContactShadows()
             }
         }
         // A collision shape alone never made the entity reachable: SwiftUI's

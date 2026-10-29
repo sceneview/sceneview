@@ -17,7 +17,9 @@ import Foundation
 /// | ``recovered`` | `UINotificationFeedbackGenerator` `.success` |
 /// | ``helpNeeded`` | `UINotificationFeedbackGenerator` `.warning` |
 public enum ARHapticEvent: String, CaseIterable, Sendable {
-    /// A surface was found and the object stands on it (placement is immediate).
+    /// A surface was found and the object stands on it (placement is immediate). With instant
+    /// placement it plays when the model first stands on the estimated floor, and again when it
+    /// lands on the detected surface.
     case placed
     /// A tap selected the standing object.
     case selected
@@ -78,6 +80,26 @@ enum ARScaleSnap {
         let sign: Float = fromAbove ? -1 : 1
         let decay = exp(-elapsedMs / reboundDecayMs)
         return 1 + sign * reboundAmplitude * decay * sin(2 * Float.pi * elapsedMs / reboundPeriodMs)
+    }
+
+    /// Duration of the animated double-tap resize, milliseconds.
+    static let doubleTapMs: Float = 260
+
+    /// Where a double tap takes the model: back to 100 % from any other size, or from 100 % back
+    /// to the size the user had chosen (clamped to the range). `nil` when there is nowhere to go.
+    static func doubleTapTarget(current: Float, remembered: Float?) -> Float? {
+        if abs(current - 1) > epsilon { return 1 }
+        if let remembered, abs(remembered - 1) > epsilon { return Swift.max(min, Swift.min(max, remembered)) }
+        return nil
+    }
+
+    /// The scale `elapsedMs` into the double-tap resize from `from` to `to`: cubic ease-out,
+    /// landing exactly on `to`.
+    static func doubleTapProgress(from: Float, to: Float, elapsedMs: Float) -> Float {
+        if elapsedMs >= doubleTapMs { return to }
+        let t = Swift.max(0, Swift.min(1, elapsedMs / doubleTapMs))
+        let eased = 1 - (1 - t) * (1 - t) * (1 - t)
+        return from + (to - from) * eased
     }
 }
 

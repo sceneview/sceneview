@@ -283,31 +283,6 @@
   line-height: 1.7;
 }
 
-/* ─── Testimonials ─── */
-
-.sv-testimonials {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  margin: 1.5rem 0;
-}
-
-.sv-testimonial {
-  background: var(--sv-card-bg);
-  border-left: 3px solid var(--md-primary-fg-color);
-  border-radius: 8px;
-  padding: 1.25rem 1.5rem;
-  margin: 0;
-}
-
-.sv-testimonial p {
-  margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.65;
-  color: var(--md-default-fg-color--light);
-  font-style: italic;
-}
-
 /* ─── Community links ─── */
 
 .sv-community {
@@ -376,9 +351,6 @@
   }
   .sv-stat-number {
     font-size: 1.4rem;
-  }
-  .sv-testimonials {
-    grid-template-columns: 1fr;
   }
 }
 

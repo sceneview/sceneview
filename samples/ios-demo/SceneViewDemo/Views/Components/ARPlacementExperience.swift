@@ -71,6 +71,8 @@ struct ARPlacementExperience: View {
     var initialModelUnit: ModelUnit? = nil
 
     @StateObject private var controller: ARPlacementController
+    /// Take photo / Record video: the camera feed and the model, no chrome.
+    @StateObject private var capture = DemoSceneCapture()
     @AppStorage("ar-placement-selected-model") private var rememberedModel = "khronos_toy_car"
     @State private var selectedModel: String?
     @State private var placedModelName: String?
@@ -153,6 +155,7 @@ struct ARPlacementExperience: View {
         } controls: {
             controls
         }
+        .demoSceneCapture(capture)
         .onChange(of: occlusionEnabled) { _, enabled in
             if let view = viewBox.value { occlusion?.apply(enabled: enabled, to: view) }
         }
@@ -219,6 +222,7 @@ struct ARPlacementExperience: View {
             if case .started = event { occlusion.configurePerception(of: view) }
             occlusion.apply(enabled: occlusionEnabled, to: view)
         }
+        .sceneRecorder(capture.recorder)
     }
 
     @MainActor private func loadModel() async {

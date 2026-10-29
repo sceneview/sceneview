@@ -35,7 +35,7 @@ The script targets the full `:samples:android-demo` showcase. Run
 
 <div class="try-download-card">
 <h3>Android Demo</h3>
-<p>Full showcase: 3 tabs, 51 interactive demos, 48+ node types, animations, physics, post-processing.</p>
+<p>Full showcase: 3 tabs, 41 interactive demos, 48+ node types, animations, physics, post-processing.</p>
 <a href="https://github.com/sceneview/sceneview/releases/latest/download/sceneview-android-demo.apk" class="md-button md-button--primary">
 Download APK
 </a>
