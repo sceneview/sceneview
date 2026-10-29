@@ -12,10 +12,19 @@ struct SupportSheet: View {
     let onClose: () -> Void
 
     @ObservedObject private var store = SupportStore.shared
+    @State private var analytics: SupportPromptAnalyticsSession
     @State private var contentHeight: CGFloat = 420
     @AccessibilityFocusState private var focus: Focus?
 
     private enum Focus: Hashable { case thanks, status }
+
+    init(presentation: SupportStore.Presentation, onClose: @escaping () -> Void) {
+        self.presentation = presentation
+        self.onClose = onClose
+        _analytics = State(initialValue: SupportPromptAnalyticsSession(
+            source: presentation == .prompt ? .auto : .settings
+        ))
+    }
 
     var body: some View {
         // Scrolls only when it must: in landscape on a small iPhone the measured
@@ -44,6 +53,8 @@ struct SupportSheet: View {
         .sensoryFeedback(.success, trigger: store.purchaseState == .thanked)
         .onChange(of: store.purchaseState) { _, state in announce(state) }
         .task { await store.loadProducts() }
+        .onAppear { analytics.shown() }
+        .onDisappear { analytics.close() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("support-sheet")
     }
@@ -95,14 +106,14 @@ struct SupportSheet: View {
 
             if presentation == .prompt {
                 HStack(spacing: SceneViewTokens.Space.sm) {
-                    secondaryButton("Not now", id: "support-not-now", action: onClose)
+                    secondaryButton("Not now", id: "support-not-now") { close(.notNow) }
                     secondaryButton("Don't ask again", id: "support-never-ask") {
                         store.neverAskAgain()
-                        onClose()
+                        close(.never)
                     }
                 }
             } else {
-                secondaryButton("Close", id: "support-close", action: onClose)
+                secondaryButton("Close", id: "support-close") { close() }
             }
         }
     }
@@ -174,7 +185,7 @@ struct SupportSheet: View {
         let ink = emphasised ? SceneViewTokens.HomeColor.onPrimary : SceneViewTokens.HomeColor.onSecondaryContainer
         let shape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
         return Button {
-            Task { await store.purchase(product) }
+            Task { await store.purchase(product, analytics: analytics) }
         } label: {
             VStack(spacing: SceneViewTokens.Space.xs) {
                 if busy {
@@ -219,7 +230,7 @@ struct SupportSheet: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Button(action: onClose) {
+            Button(action: { close() }) {
                 Text("Done")
                     .font(SceneViewTokens.TypeScale.bodySemibold)
                     .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
@@ -264,6 +275,11 @@ struct SupportSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id)
+    }
+
+    private func close(_ result: SupportPromptResult? = nil) {
+        analytics.close(result: result)
+        onClose()
     }
 }
 

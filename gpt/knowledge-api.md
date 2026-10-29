@@ -3941,6 +3941,33 @@ val model = rememberModelInstance(modelLoader, "https://example.com/model.glb")
 ```
 A positional string resolves to the `assetFileLocation` overload; any location with a scheme (`https://`, `file://`, `content://`) is forwarded to `fileLocation`, so this call loads the URL either way. A remote URL needs `<uses-permission android:name="android.permission.INTERNET" />`.
 
+### rememberModelLoadState (composable, progress + error)
+```kotlin
+@Composable
+fun rememberModelLoadState(
+    modelLoader: ModelLoader,
+    fileLocation: String,
+    resourceResolver: (resourceFileName: String) -> String = { ModelLoader.getFolderPath(fileLocation, it) }
+): ModelLoadState
+
+sealed interface ModelLoadState {
+    data class Loading(val progress: ModelLoadProgress) : ModelLoadState
+    data class Ready(val instance: ModelInstance) : ModelLoadState   // textures final, unless none progressed for 10 s (logged)
+    data class Failed(val error: Throwable) : ModelLoadState
+}
+```
+For large or generated models where a spinner on `null` is not enough: shows a progress bar and a real error.
+```kotlin
+when (val state = rememberModelLoadState(modelLoader, "https://example.com/generated.glb")) {
+    is ModelLoadState.Loading -> LinearProgressIndicator(progress = { state.progress.fraction })
+    is ModelLoadState.Ready -> SceneView(modelLoader = modelLoader) { ModelNode(modelInstance = state.instance) }
+    is ModelLoadState.Failed -> Text(
+        if (state.error is UnsupportedGltfExtensionException) "Unsupported model format" else "Could not load"
+    )
+}
+```
+Same ownership as `rememberModelInstance`: the composable destroys the `Model` when the location changes or on leave-composition. Unlike it, a location change goes back to `Loading`.
+
 ### ModelLoader (imperative)
 ```kotlin
 class ModelLoader(engine: Engine, context: Context) {
@@ -3962,13 +3989,38 @@ class ModelLoader(engine: Engine, context: Context) {
     fun loadModelAsync(fileLocation: String, onResult: (Model?) -> Unit): Job
     suspend fun loadModelInstance(fileLocation: String): ModelInstance?
     fun loadModelInstanceAsync(fileLocation: String, onResult: (ModelInstance?) -> Unit): Job
+
+    // Returns once every texture is final (or after 10 s without texture progress, logged); throws on failure (never null)
+    suspend fun awaitModelInstance(
+        fileLocation: String,
+        resourceResolver: (String) -> String = { getFolderPath(fileLocation, it) },
+        onProgress: (ModelLoadProgress) -> Unit = {}   // called on the main thread
+    ): ModelInstance
+
+    companion object {
+        val SUPPORTED_GLTF_EXTENSIONS: Set<String>   // what gltfio can honour in extensionsRequired
+        fun getFolderPath(baseFileName: String, resourceFileName: String): String
+    }
 }
+
+data class ModelLoadProgress(val stage: Stage, val fraction: Float) {   // fraction 0..1, monotonic
+    enum class Stage { Reading, Creating, Textures }
+}
+class UnsupportedGltfExtensionException(val extensions: List<String>) : IllegalArgumentException()
 ```
 
-**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture is logged and the model loads without it. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it.
+**Large / AI-generated GLBs (5–60 MB, 4K textures):** in the `suspend`/`Async` loaders, file reading, WebP/3MF conversion and the `extensionsRequired` scan run off the main thread; the synchronous `createModel*` methods run that conversion and scan on the calling thread (the main one), so prefer the async loaders for such files. Either way, only Filament's `createAsset` (tens of ms for 500k triangles) runs on main, then gltfio decodes textures on its JobSystem and `updateLoad()` (called by `SceneView` every frame) finalises them. A local file or asset is read into one array of its size (Java heap peak ≈ file size, not twice); an `http(s)` download, or a `content://` stream that does not report its length, still grows and copies its buffer, up to about twice the file size. `loadModelInstance` returns before the textures are final (`modelLoader.isLoading`, `modelLoader.progress`); `awaitModelInstance` returns after, reporting `Reading` → `Creating` → `Textures` progress on the main thread.
 
-**WebP textures:** every entry point above re-encodes embedded `EXT_texture_webp` textures to PNG
-before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305).
+**Unsupported required extension:** a model whose `extensionsRequired` names an extension gltfio does not implement (e.g. `EXT_texture_avif`, `KHR_meshopt_compression`) is found before any Filament call: `awaitModelInstance` throws `UnsupportedGltfExtensionException` and `rememberModelLoadState` gives `Failed`; every other load (`create*`, `load*`, `load*Async`, `rememberModelInstance`) logs it and loads the model as before, without what the extension carries (untextured for AVIF). gltfpack `-mi` output requires `EXT_mesh_gpu_instancing`, which gltfio does not read: re-export without `-mi`. Re-export with PNG/JPEG/KTX2 textures or `EXT_meshopt_compression`.
+
+**Failures:** a `load*Async` that fails (missing file, a `.gltf` whose `.bin` cannot be read, unreachable URL, unparsable payload) calls `onResult(null)` (an empty list for `loadInstancedModelAsync`) on the main thread and logs a `Log.w` under the `ModelLoader` logcat tag (`rememberModelInstance` for that composable); it never crashes the app. A missing texture (e.g. a `.gltf` image that cannot be resolved) is logged and the model loads without it; `awaitModelInstance` returns anyway, and after 10 s without texture progress returns the model as loaded, logged. The synchronous `createModel*` / `createInstancedModel` throw `IllegalArgumentException` (model destroyed, logged) when a `.bin` cannot be resolved; a texture that fails to resolve is logged and skipped. `clear()` cancels the running loads and leaves the loader reusable; only `destroy()` ends it. Before any native call, a glTF that a release build of Filament would abort on is refused the same way (`IllegalArgumentException` listing every reason, thrown by `awaitModelInstance` too; `null` from `loadModel`): an accessor, buffer view or sparse index past its buffer or at a negative offset (an external `.bin` or `data:` buffer shorter than declared included), a buffer cgltf cannot load (a `.glb` whose BIN chunk is missing or shorter than buffer 0, a `data:` buffer that is not valid base64 or holds a JSON escape, which cgltf decodes raw, an absolute `://` buffer URI), a buffer view reading a buffer cgltf leaves without data (no `uri` other than buffer 0 of a `.glb`, an empty `uri`, a percent-encoded `uri` that decodes to bytes no resource can be fed under or to the same name as another buffer `uri`, the fallback buffer of a `KHR_meshopt_compression` view, which the cgltf of Filament 1.72.1 does not parse), an index past the vertex count (when its bytes are in the `.glb` or an external `.bin`), an animation sampler whose keyframe times are in no buffer view, attributes or morph targets that disagree on their vertex count, indices that are not tightly packed unsigned integers, a drawn skin over 256 joints, animated morph weights over 256 targets, a drawn texture larger than the GPU supports, a JSON too large or too deeply nested to parse. A file the check cannot read is refused as `malformed glTF: <reason>`, never thrown. A percent-encoded buffer `uri` (`my%20model.bin`) is fed to gltfio under its raw name and under the name cgltf decodes it to (unless another resource has that name: cgltf then reads that one, whose length is checked; or two buffer `uri`s decode to it, as `a%20b.bin` and `a%20%62.bin` do: neither is fed under it, and a view reading either is refused; images are fed under their raw `uri` only), so it no longer loads without geometry; the resolver receives the raw `uri`. It loads when the resolver serves the decoded name (`file://` and `http(s)` loads, or a custom resolver); the asset and `File` resolvers open the literal encoded name, and fail when no file has it: `IllegalArgumentException` from `createModel*`, `null` from `loadModel`. A `uri` that decodes to bytes no resource can be fed under (not UTF-8, a NUL, a character outside the BMP) is refused when a buffer view reads it. A sampler whose output count does not match its keyframes is not refused: gltfio's `Animator` checks it in every build and leaves the model's animations off. Unused skins, images and fallback images are not counted. Each embedded `data:` URI is cut to its first 64 KiB before the JSON is parsed, so the check costs a few hundred KiB of heap whatever the size of the embedded data. Not covered: indices, sparse indices and images stored in a `data:` buffer, `EXT_meshopt_compression` buffer views, a `data:` URI whose header escapes its comma, a buffer `uri` containing a JSON escape (`\uXXXX`, `\/`), which is checked on its unescaped form while cgltf sees the raw string, an `EXT_meshopt_compression` fallback buffer whose `uri` is empty or cannot be fed, a raw (not percent-encoded) `uri` holding a character outside the BMP, which JNI feeds under a name cgltf does not look up, iridescence and anisotropy textures (never decoded by gltfio), a texture that fails to decode in `updateLoad()`, an accessor without a buffer view whose `count` is too large to allocate, an unused accessor with an unknown `componentType`, a sampler whose keyframe times have no buffer view when another animation fails gltfio's checks, an external buffer that cannot be read before the load, WebP image sizes. Once the `ModelLoader` or its `Engine` is destroyed, `createModel*` / `createInstancedModel` / `createInstance` throw `IllegalStateException`; `updateLoad()`, `progress`, `isLoading` and `destroyModel` make no native call. Off the main thread, `progress` and `isLoading` return the last value read on it.
+
+**WebP textures:** every entry point above re-encodes `EXT_texture_webp` textures to PNG
+before Filament sees them, because Filament's Android build ships no `image/webp` decoder (#2305):
+embedded ones in the model itself, separate `.webp` files beside a `.gltf` once the resolver has read
+them (one that cannot be decoded is logged by name and left untextured). Only the URIs the glTF
+declares as WebP images are converted, never a buffer, and at most 256 images per model, embedded
+and external together: the rest keep WebP, are not decoded, and are reported in one log line.
 The cost is one decode + PNG encode per WebP texture — on the calling thread for the synchronous
 `createModel*` methods, off the main thread for the `suspend`/`Async` ones. A model with no WebP
 texture is passed through untouched.

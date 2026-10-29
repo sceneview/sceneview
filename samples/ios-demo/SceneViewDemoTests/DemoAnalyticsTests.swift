@@ -198,11 +198,63 @@ final class DemoAnalyticsTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.pushPromptShown.name, "push_prompt_shown")
         XCTAssertEqual(AnalyticsEvent.pushPromptResult(.notNow).params, ["result": "not_now"])
         XCTAssertEqual(AnalyticsEvent.pushPromptResult(.granted).params, ["result": "granted"])
+        XCTAssertEqual(AnalyticsEvent.supportPromptShown(source: .auto).name, "support_prompt_shown")
+        XCTAssertEqual(AnalyticsEvent.supportPromptShown(source: .settings).params, ["source": "settings"])
         XCTAssertEqual(AnalyticsEvent.pushOpened(campaign: "launch", sampleId: "cosmos").params,
                        ["campaign": "launch", "sample_id": "cosmos"])
         XCTAssertEqual(AnalyticsEvent.outboundLink(target: .github).params, ["target": "github"])
         XCTAssertEqual(AnalyticsEvent.outboundLink(target: .docs, sampleId: "cosmos").params,
                        ["target": "docs", "sample_id": "cosmos"])
+    }
+
+    func testSupportPromptResultTaxonomy() {
+        let expected = [
+            "tier_small", "tier_medium", "tier_large", "purchase_cancelled",
+            "purchase_failed", "not_now", "never", "dismissed",
+        ]
+        XCTAssertEqual(SupportPromptResult.allCases.map(\.rawValue), expected)
+        for result in SupportPromptResult.allCases {
+            let event = AnalyticsEvent.supportPromptResult(result)
+            XCTAssertEqual(event.name, "support_prompt_result")
+            XCTAssertEqual(event.params, ["result": .string(result.rawValue)])
+        }
+        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.small"), .tierSmall)
+        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.medium"), .tierMedium)
+        XCTAssertEqual(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.large"), .tierLarge)
+        XCTAssertNil(SupportPromptResult.completedPurchase(productId: "io.github.sceneview.demo.support.unknown"))
+    }
+
+    func testSupportPromptDisplayLogsExactlyOneShownAndResult() {
+        for result in SupportPromptResult.allCases {
+            var events: [AnalyticsEvent] = []
+            let session = SupportPromptAnalyticsSession(source: .auto) { events.append($0) }
+            session.shown()
+            session.shown()
+            if result == .notNow || result == .never {
+                session.close(result: result)
+            } else {
+                if result != .dismissed { session.recordPurchaseResult(result) }
+                session.close()
+            }
+            session.recordPurchaseResult(.purchaseFailed)
+            session.close(result: .never)
+
+            XCTAssertEqual(events, [
+                .supportPromptShown(source: .auto),
+                .supportPromptResult(result),
+            ])
+        }
+    }
+
+    func testCompletedSupportTierWinsOverLaterCallbacks() {
+        var events: [AnalyticsEvent] = []
+        let session = SupportPromptAnalyticsSession(source: .settings) { events.append($0) }
+        session.shown()
+        session.recordPurchaseResult(.purchaseFailed)
+        session.recordPurchaseResult(.tierMedium)
+        session.recordPurchaseResult(.purchaseCancelled)
+        session.close()
+        XCTAssertEqual(events.last, .supportPromptResult(.tierMedium))
     }
 
     func testOutboundTargets() {
