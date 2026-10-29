@@ -1004,6 +1004,7 @@ public struct ARSceneView: UIViewRepresentable {
         private var holdsDisplay = false
 
         /// Keeps the display awake for as long as this AR view is on screen.
+        @MainActor
         func keepDisplayAwake() {
             guard !holdsDisplay else { return }
             holdsDisplay = true
@@ -1011,6 +1012,7 @@ public struct ARSceneView: UIViewRepresentable {
         }
 
         /// Gives this view's hold on the display back.
+        @MainActor
         func releaseDisplay() {
             guard holdsDisplay else { return }
             holdsDisplay = false
@@ -1535,10 +1537,15 @@ public struct ARSceneView: UIViewRepresentable {
             // disabled behind a view that is gone (#4392).
             if holdsDisplay {
                 holdsDisplay = false
+                // `deinit` is nonisolated: on main, assert isolation and hand
+                // the lease back now; elsewhere, hop to main (the lease is
+                // `@MainActor`). Captures nothing from `self`.
                 if Thread.isMainThread {
-                    DisplayAwakeLease.release()
+                    MainActor.assumeIsolated { DisplayAwakeLease.release() }
                 } else {
-                    DispatchQueue.main.async { DisplayAwakeLease.release() }
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { DisplayAwakeLease.release() }
+                    }
                 }
             }
             guard let arView = arView,
@@ -2087,7 +2094,9 @@ public struct AnchorNode: Sendable {
 /// at once during a navigation transition. Each restoring what it found would
 /// let the display dim under the view that stays, then leave the timer disabled
 /// for good. It is handed back once, by the last view to leave, as the first
-/// one found it. Main thread only.
+/// one found it. Main-actor isolated: `UIApplication` is, and the counter must
+/// never be touched from two threads.
+@MainActor
 enum DisplayAwakeLease {
     private static var holders = 0
     private static var wasDisabled = false
