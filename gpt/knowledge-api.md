@@ -93,7 +93,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -274,7 +274,8 @@ screen to another, the screen under the finger is frozen until the gesture ends.
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -1609,7 +1610,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
