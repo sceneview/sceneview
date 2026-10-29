@@ -8,7 +8,7 @@ description: "SwiftUI + RealityKit sample code for SceneViewSwift: model viewer,
 !!! tip "Looking for Android samples?"
     See [Samples](samples.md) for Jetpack Compose sample apps with source code.
 
-These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **34 demos** covering every category.
+These samples demonstrate SceneViewSwift capabilities using **SwiftUI + RealityKit** on iOS, macOS, and visionOS. The [iOS demo app](https://apps.apple.com/app/sceneview/id6761329763) ships **35 demos** covering every category.
 
 ```swift
 .package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")

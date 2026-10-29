@@ -148,9 +148,9 @@ implementation("io.github.sceneview:sceneview:4.51.0")    // 3D only
 implementation("io.github.sceneview:arsceneview:4.51.0")   // 3D + AR
 ```
 
-- [GitHub](https://github.com/sceneview/sceneview) (1.2k+ stars)
+- [GitHub](https://github.com/sceneview/sceneview) (more than 1,300 stars on GitHub)
 - [Full API Reference](https://sceneview.github.io/llms.txt)
-- [MCP Server](https://www.npmjs.com/package/sceneview-mcp) (13k+ monthly installs)
+- [MCP Server](https://www.npmjs.com/package/sceneview-mcp)
 - [Discord](https://discord.gg/sceneview)
 
 ---

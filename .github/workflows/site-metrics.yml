@@ -1,15 +1,12 @@
 name: Site Metrics Refresh
 
-# Weekly refresh of the "Community & Metrics" numbers on the public website
-# (website-static/index.html — data-metric="stars"/"contributors"/"releases"/
-# "web-downloads" anchors). Replaces a retired Claude scheduled routine that
-# used to update these by hand — this job spends zero AI quota.
+# Weekly refresh of the GitHub star counter on the public website
+# (website-static/index.html — the data-metric="stars" anchor on the nav
+# GitHub link). Replaces a retired Claude scheduled routine that used to
+# update it by hand — this job spends zero AI quota.
 #
-# In scope (mirrors what the retired routine covered): GitHub stars,
-# contributors, releases (sceneview/sceneview), and npm downloads for the
-# sceneview-web package. `forks` and `mcp-downloads` (sceneview-mcp package)
-# are separate metric cards on the same page that this job deliberately does
-# NOT touch — out of scope here.
+# In scope: GitHub stars only. The "Public numbers" section is static wording
+# on purpose; contributors, releases and npm downloads are no longer published.
 #
 # WHY A PR INSTEAD OF A LITERAL DIRECT PUSH: `main` requires status checks
 # (branch protection, ci.yml job names) and GitHub only allows a direct push
@@ -43,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Fetch GitHub + npm metrics
+      - name: Fetch GitHub star count
         id: metrics
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,40 +52,13 @@ jobs:
           # Stars: a direct field on the repo object.
           STARS=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$API" | jq -r '.stargazers_count')
 
-          # Contributors / releases: the API has no total-count field, so ask
-          # for 1-per-page and read the last-page number out of the
-          # pagination Link header (the standard cheap-total-count trick).
-          # If there's no Link header at all, everything fit on one page —
-          # fall back to fetching up to 100 and counting the array.
-          count_via_link_header() {
-            endpoint="$1"
-            link=$(curl -sf -D - -o /dev/null -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$endpoint?per_page=1")
-            last=$(printf '%s' "$link" | grep -i '^link:' | grep -oE 'page=[0-9]+>; rel="last"' | grep -oE '[0-9]+' || true)
-            if [ -n "$last" ]; then
-              echo "$last"
-            else
-              curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$endpoint?per_page=100" | jq 'length'
-            fi
-          }
-
-          CONTRIBUTORS=$(count_via_link_header "$API/contributors")
-          RELEASES=$(count_via_link_header "$API/releases")
-
-          WEB_DOWNLOADS=$(curl -sf "https://api.npmjs.org/downloads/point/last-month/sceneview-web" | jq -r '.downloads')
-
           echo "stars=$STARS" >> "$GITHUB_OUTPUT"
-          echo "contributors=$CONTRIBUTORS" >> "$GITHUB_OUTPUT"
-          echo "releases=$RELEASES" >> "$GITHUB_OUTPUT"
-          echo "web_downloads=$WEB_DOWNLOADS" >> "$GITHUB_OUTPUT"
-          echo "Fetched: stars=$STARS contributors=$CONTRIBUTORS releases=$RELEASES web_downloads=$WEB_DOWNLOADS"
+          echo "Fetched: stars=$STARS"
 
       - name: Update website-static/index.html
         run: |
           bash .claude/scripts/update-site-metrics.sh \
-            --stars "${{ steps.metrics.outputs.stars }}" \
-            --contributors "${{ steps.metrics.outputs.contributors }}" \
-            --releases "${{ steps.metrics.outputs.releases }}" \
-            --web-downloads "${{ steps.metrics.outputs.web_downloads }}"
+            --stars "${{ steps.metrics.outputs.stars }}"
 
       - name: Commit and open auto-merge PR if metrics changed
         env:
@@ -115,7 +85,7 @@ jobs:
           # run on a one-line docs diff is the price of the PR being able to
           # merge at all.
           git commit -m "chore(site): refresh community metrics" \
-            -m "Automated weekly refresh (site-metrics.yml) — stars/contributors/releases from the GitHub API, web downloads from api.npmjs.org. Replaces the retired Claude scheduled routine; zero AI quota spent."
+            -m "Automated weekly refresh (site-metrics.yml) — GitHub star count from the GitHub API. Replaces the retired Claude scheduled routine; zero AI quota spent."
           git push origin "$BRANCH"
 
           gh pr create --title "chore(site): refresh community metrics" \
