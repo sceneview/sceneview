@@ -1,5 +1,6 @@
 package io.github.sceneview.camera
 
+import io.github.sceneview.ExperimentalSceneViewApi
 import io.github.sceneview.math.Position
 
 /** A [shot] the camera is on at [seconds] into a [CameraPath]. */
@@ -25,12 +26,13 @@ data class CameraKeyframe(val shot: CameraShot, val seconds: Float)
  * Ready-made paths: [reveal], the entrance shot of a scan or a model, and [tour], a slow lap for
  * a video or a share. Feed either to [CameraAnimator], or sample [shotAt] yourself.
  */
+@OptIn(ExperimentalSceneViewApi::class)
 class CameraPath(
     keyframes: List<CameraKeyframe>,
     val easing: (Float) -> Float = CameraEasing.Expressive,
     val shortestArc: Boolean = true,
-    val loop: Boolean = false,
-) {
+    override val loop: Boolean = false,
+) : CameraTimeline {
     /** The keyframes in time order, azimuths unwrapped when [shortestArc] is set. */
     val keyframes: List<CameraKeyframe> = keyframes.sortedBy { it.seconds }.let { sorted ->
         if (!shortestArc || sorted.size < 2) return@let sorted
@@ -45,7 +47,7 @@ class CameraPath(
     }
 
     /** From the first keyframe's time to the last one's; `0` with fewer than two. */
-    val durationSeconds: Float =
+    override val durationSeconds: Float =
         if (this.keyframes.size < 2) 0f else this.keyframes.last().seconds - this.keyframes.first().seconds
 
     /** The first shot, where the path starts; `null` for an empty path. */
@@ -59,6 +61,9 @@ class CameraPath(
      * [isFinishedAt] and [CameraAnimator]. Past the end a path holds its last shot; a [loop] wraps,
      * and its azimuth keeps counting (lap two of a tour reads `home + 720°`), so the camera's
      * velocity is the same across the seam as anywhere else — nothing for a touch to catch.
+     * `[0, durationSeconds]` is the first lap, both ends included: [durationSeconds] gives the last
+     * keyframe, as on a path that does not loop, and only a later time wraps. A loop whose end is
+     * not its start turned by the lap (a hand-made path) jumps there, after the end, not at it.
      */
     fun shotAt(seconds: Float): CameraShot {
         val frames = keyframes
@@ -67,7 +72,7 @@ class CameraPath(
         val startSeconds = frames.first().seconds
         var local = seconds
         var laps = 0f
-        if (loop) {
+        if (loop && local !in 0f..durationSeconds) {
             laps = kotlin.math.floor(local / durationSeconds)
             local -= laps * durationSeconds
             if (local < 0f) local += durationSeconds
@@ -78,6 +83,29 @@ class CameraPath(
         if (laps == 0f) return shot
         val turnPerLap = frames.last().shot.azimuthDegrees - frames.first().shot.azimuthDegrees
         return shot.copy(azimuthDegrees = shot.azimuthDegrees + laps * turnPerLap)
+    }
+
+    /**
+     * The camera pose [seconds] into the path: [shotAt] as a [CameraPose], so a shot path plays
+     * in [CameraPathPlayer] like a [CameraPosePath].
+     */
+    @ExperimentalSceneViewApi
+    override fun poseAt(seconds: Float): CameraPose = shotAt(seconds).toPose()
+
+    /**
+     * The pose [seconds] into lap [lap] of a looping playhead, for [CameraPathPlayer], whether
+     * the loop is the path's own [loop] or the player's: the turn of the laps already played is
+     * reduced to under one turn in double precision before it reaches a float, so lap 100 000 of
+     * a 1.05-turn tour is as exact as lap 1. [seconds] stays within the lap.
+     */
+    @ExperimentalSceneViewApi
+    internal fun poseAt(lap: Long, seconds: Float): CameraPose {
+        val frames = keyframes
+        if (frames.size < 2 || durationSeconds <= 0f) return poseAt(seconds)
+        val shot = sample(frames.first().seconds + seconds.coerceIn(0f, durationSeconds))
+        val turnPerLap = frames.last().shot.azimuthDegrees.toDouble() - frames.first().shot.azimuthDegrees
+        val offset = (lap.toDouble() * turnPerLap).mod(FULL_TURN.toDouble())
+        return shot.copy(azimuthDegrees = shot.azimuthDegrees + offset.toFloat()).toPose()
     }
 
     /** `true` once [seconds] is past the end of a path that does not loop. */

@@ -1,6 +1,6 @@
 <!--
   GENERATED FILE — DO NOT EDIT.
-  Source of truth: /llms.txt  (SceneView 4.62.0)
+  Source of truth: /llms.txt  (SceneView 4.63.0)
   Regenerate:      node tools/generate-gpt-knowledge.js
   Drift is caught in CI (ci.yml -> repo-hygiene). Edit llms.txt instead.
   See issue #2724.
@@ -9,7 +9,7 @@
 # SceneView — Best Practices & Troubleshooting
 
 > Threading, performance, error handling, debugging, recording, and media.
-> Auto-generated from `llms.txt` (SceneView 4.62.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
+> Auto-generated from `llms.txt` (SceneView 4.63.0). This is a slice of the machine-readable API reference — the same content an AI reads to generate SceneView code.
 
 ## Render Quality
 
@@ -17,11 +17,14 @@
 enum class RenderQuality { Cinematic, Default, Performance }
 ```
 
-| Preset | Shadows | SSAO | Bloom | MSAA | DoF | Use case |
+| Preset | Shadows | SSAO | Bloom | AA | HDR buffer | Use case |
 |---|---|---|---|---|---|---|
-| `Cinematic` | high-res VSM | ON | ON | 4x | ON | hero product viewer, marketing demos |
-| `Default` | medium PCF | ON | ON | 2x | OFF | most apps — shipped as the SceneView default |
-| `Performance` | low PCF | OFF | OFF | 1x | OFF | low-end devices, AR overlays, battery-sensitive flows |
+| `Cinematic` | soft, contact-hardening (PCSS) | HIGH, HIGH upsampling | 0.15 | MSAA 4x + FXAA | HIGH | hero shots on flagship GPUs |
+| `Default` | soft (DPCF), front key light | MEDIUM, bilateral upsampling | 0.10 | FXAA | MEDIUM | the SceneView default: a premium product shot at mid-range cost (Adreno 618 class, 60 fps) |
+| `Performance` | off | OFF | OFF | FXAA | LOW + dynamic resolution | low-end devices, many-model scenes, battery-sensitive flows |
+
+In AR (`createARView` / `rememberARView`), every preset keeps SSAO and bloom off over the camera
+feed (#657) and keeps the Filmic tone mapper (#1434); the rest of the preset applies.
 
 ```kotlin
 SceneView(renderQuality = RenderQuality.Cinematic) { /* … */ }
@@ -40,7 +43,7 @@ ARSceneView(view = arView) { /* … */ }
 view.applyRenderQuality(RenderQuality.Cinematic)
 ```
 
-The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions`, `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself.
+The extension `View.applyRenderQuality(RenderQuality)` configures shadowing and the shadow type (PCF / DPCF / PCSS), `ambientOcclusionOptions`, `bloomOptions`, `dynamicResolutionOptions`, `antiAliasing`, and `multiSampleAntiAliasingOptions` in one call — useful when you manage the `View` yourself. `Default` leaves the shadow type and the SSAO quality/upsampling as they are: DPCF and MEDIUM are set once by `createView` / `createARView`, so your own `view.setShadowType(...)` survives the default preset. Only `Cinematic` and `Performance` write them.
 
 ---
 
@@ -63,7 +66,7 @@ The extension `View.applyRenderQuality(RenderQuality)` configures `shadowOptions
 - **APK size**: +3.2MB (sceneview), +5.1MB (sceneview + arsceneview).
 - **Memory**: ~25MB empty 3D scene, ~45MB empty AR scene.
 - **Triangle budget**: <100K per model, <200K total scene (mid-tier devices).
-- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android since 4.28.0**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes embedded WebP textures to PNG (via Android's own decoder) before handing the asset to Filament — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. **The web build does the same** — `sceneview-web`'s `loadModel` re-encodes embedded WebP to PNG in the browser before `createAsset` (#3085), with the caveat that partial-alpha texels round-trip with rounding error (canvas 2D stores premultiplied colour). Still unsupported on both, and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`. Prefer PNG/JPEG/KTX2 when you control the asset (#2305, #3085).
+- **Textures**: use KTX2 with Basis Universal, max 2048x2048 on mobile. **WebP glTF textures (`EXT_texture_webp`) work on Android**: Filament's Android prebuilt has no `image/webp` decoder, so `ModelLoader` re-encodes WebP textures to PNG (via Android's own decoder) before handing them to Filament, embedded or in separate `.webp` files beside a `.gltf` — one decode + PNG encode per texture at load time, and no cost at all for a model without WebP. **The web build does the same** — `sceneview-web`'s `loadModel` re-encodes embedded WebP to PNG in the browser before `createAsset` (#3085), with the caveat that partial-alpha texels round-trip with rounding error (canvas 2D stores premultiplied colour). Still unsupported on the web, and logged as an actionable `SceneView` error: WebP stored as separate `.webp` files beside a `.gltf`. Prefer PNG/JPEG/KTX2 when you control the asset (#2305, #3085).
 - **Draw calls**: aim for <100 per frame. Merge static geometry in Blender before export.
 - **Lights**: 1 directional + IBL covers most cases. Max 2-3 additional point/spot lights.
 - **Post-processing**: Bloom ~1ms, SSAO ~2-3ms. Disable SSAO on low-end devices.
@@ -432,62 +435,6 @@ The MCP exposes 5 tools: `setup_rerun_project`, `generate_ar_logger`, `generate_
 - **Dev-time only.** Gate with `BuildConfig.DEBUG` / `#if DEBUG`. The bridge is safe to leave wired in release (`setEnabled(false)` short-circuits the hot path), but the socket attempt alone wastes battery.
 - **No Rerun on visionOS yet.** `RerunBridge` is iOS-only because it reads from `ARFrame`, which isn't part of the visionOS API surface.
 - **10 Hz default.** Higher rates are possible but the sidecar becomes a bottleneck beyond ~30 Hz on a typical laptop.
-
----
-
-## Record the scene to MP4 — Surface mirroring (no MediaProjection)
-
-`SurfaceMirrorer` (`io.github.sceneview.utils.SurfaceMirrorer`, #2626) copies every rendered frame GPU-side onto additional `Surface`s. Attach a `MediaRecorder` input surface and you get a **shareable MP4 of exactly what the scene renders** — in AR, the camera feed and the virtual content composited. No MediaProjection: no system consent dialog, no `mediaProjection` foreground service (and no Play Console FGS declaration), and no overlay UI in the frame — only the 3D/AR scene is mirrored, never your Compose UI.
-
-Works identically on `SceneView` (3D) and `ARSceneView` (AR) via the `surfaceMirrorer` parameter.
-
-```kotlin
-import io.github.sceneview.rememberSurfaceMirrorer
-
-@Composable
-fun RecordableARScreen() {
-    val context = LocalContext.current
-    val surfaceMirrorer = rememberSurfaceMirrorer()
-    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
-
-    ARSceneView(  // or SceneView(...) — same parameter
-        modifier = Modifier.fillMaxSize(),
-        surfaceMirrorer = surfaceMirrorer,
-    ) { /* nodes */ }
-
-    Button(onClick = {
-        recorder?.let { active ->                        // ── Stop ──
-            surfaceMirrorer.stopMirroring(active.surface)
-            active.stop(); active.release()
-            recorder = null
-        } ?: run {                                       // ── Start ──
-            val outputFile = File(context.getExternalFilesDir(null), "scene_${System.currentTimeMillis()}.mp4")
-            recorder = MediaRecorder(context).apply {
-                setVideoSource(MediaRecorder.VideoSource.SURFACE)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-                setVideoSize(1280, 720)
-                setVideoEncodingBitRate(8_000_000)
-                setVideoFrameRate(30)
-                setOutputFile(outputFile.absolutePath)
-                prepare()
-                surfaceMirrorer.startMirroring(surface, width = 1280, height = 720)
-                start()
-            }
-        }
-    }) { Text(if (recorder != null) "Stop recording" else "Record") }
-}
-```
-
-Key facts:
-- `startMirroring(surface, left = 0, bottom = 0, width = null, height = null)` — `width`/`height` are the destination rectangle on the recording surface; pass the `MediaRecorder` video size. `null` defaults to the scene view's size (correct when the surface matches it). The frame is letterboxed to preserve aspect ratio.
-- `stopMirroring(surface)` — idempotent; call before `recorder.stop()`. Main thread (Filament rule). `startMirroring` is JNI-free and safe from any thread.
-- Multiple surfaces can be mirrored at once (e.g. recorder + live preview/RTMP encoder).
-- The mirror copy runs only while frames render — pausing the lifecycle pauses the feed.
-- Audio: add `setAudioSource(...)` / `setAudioEncoder(...)` to the `MediaRecorder` for mic audio (needs `RECORD_AUDIO` permission).
-- Don't confuse with **AR Recording & Playback** below: `ARRecorder` records an ARCore *dataset* MP4 (camera + sensor tracks, for session replay/debugging — virtual content is NOT in the video). `SurfaceMirrorer` records the *rendered* scene — the shareable video with virtual content composited.
-
-Sample: `SceneRecorderState` (`samples/android-demo/.../recording/SceneRecorderState.kt`) — the shared Record action of the Android demo app's `DemoScaffold` (shown on `cosmos`; the retired `video-recording` id opens it), saves an MP4 to app files.
 
 ---
 

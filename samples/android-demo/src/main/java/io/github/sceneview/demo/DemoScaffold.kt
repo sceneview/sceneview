@@ -51,6 +51,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Feedback
@@ -90,6 +91,7 @@ import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -136,8 +138,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sceneview.demo.common.DemoSheetDefaults
 import io.github.sceneview.demo.common.RequestLightStatusBarIcons
-import io.github.sceneview.demo.recording.SceneRecorderState
+import io.github.sceneview.capture.PhotoFormat
+import io.github.sceneview.capture.SceneRecorder
+import io.github.sceneview.capture.SceneRecording
+import io.github.sceneview.capture.VideoSettings
+import io.github.sceneview.demo.recording.VIDEO_MIME
 import io.github.sceneview.demo.recording.formatElapsed
+import io.github.sceneview.demo.recording.openCapture
+import io.github.sceneview.demo.recording.shareCapture
 import io.github.sceneview.demo.labs.LabsFeedbackPrompt
 import io.github.sceneview.demo.telemetry.LocalSampleId
 import io.github.sceneview.demo.telemetry.logSampleInteraction
@@ -602,7 +610,7 @@ fun DemoScaffold(
     // figures — the rows behind would read through the sheet's own: such a stage asks for the
     // opaque `surface-container` a browsing sheet has.
     opaqueSheet: Boolean = false,
-    recorder: SceneRecorderState? = null,
+    recorder: SceneRecorder? = null,
     // The consolidated card's mode pill. A demo with screens of its own passes `null` on the ones
     // past its landing: the pill switches the whole demo, which is not on offer mid-replay.
     modeSwitch: DemoModeSwitch? = LocalDemoModeSwitch.current,
@@ -623,41 +631,83 @@ fun DemoScaffold(
     val resetScope = rememberCoroutineScope()
     val resetConfirmation = stringResource(R.string.demo_reset_done)
 
-    // The shared Record action (samples step 0). A demo that hands over a [recorder] gets a
-    // "Record video" row in its settings sheet; while a recording runs, a Stop pill with the
-    // elapsed time sits in the bottom band, and stopping offers Play in a snackbar. Opened
-    // through the retired `video-recording` id, the Record pill shows in the band on arrival.
+    // The shared capture actions (samples step 0). A demo that hands over the SDK's [recorder]
+    // gets "Take photo" and "Record video" rows in its settings sheet; while a recording runs, a
+    // Stop pill with the elapsed time sits in the bottom band, and a finished photo or video is
+    // offered to Share (photo) or Play (video) in a snackbar. Opened through the retired
+    // `video-recording` id, the Record pill shows in the band on arrival.
     val recordSampleId = LocalSampleId.current
     val recordOpenedByLink = remember { recorder != null && DemoSettings.consumeOpenRecordAction() }
     val recordPillShown = recorder != null && (recorder.isRecording || recordOpenedByLink)
     val recordSaved = stringResource(R.string.demo_record_saved)
     val recordPlay = stringResource(R.string.demo_record_play)
     val recordFailed = stringResource(R.string.demo_record_failed)
+    val recordLimit = stringResource(R.string.demo_record_limit, formatElapsed(DEMO_RECORD_LIMIT_MILLIS))
+    val photoSaved = stringResource(R.string.demo_photo_saved)
+    val photoFailed = stringResource(R.string.demo_photo_failed)
+    val captureShare = stringResource(R.string.demo_capture_share)
+    // Every end of a recording lands here — the Stop pill, the sheet row, and the recorder
+    // stopping by itself at the demo's limit.
+    if (recorder != null) {
+        DisposableEffect(recorder) {
+            recorder.onRecordingFinished = { recording: SceneRecording? ->
+                resetScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    if (recording == null) {
+                        snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
+                    } else {
+                        val result = snackbarHostState.showSnackbar(
+                            message = if (recording.reachedMaxDuration) recordLimit else recordSaved,
+                            actionLabel = recordPlay,
+                            duration = SnackbarDuration.Long,
+                        )
+                        if (result == SnackbarResult.ActionPerformed &&
+                            !openCapture(context, recording.file, VIDEO_MIME)
+                        ) {
+                            snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
+                        }
+                    }
+                }
+            }
+            onDispose { recorder.onRecordingFinished = null }
+        }
+    }
     val toggleRecording: () -> Unit = {
         if (recorder != null) {
             haptic.medium()
             if (recorder.isRecording) {
-                recorder.stop()
+                recorder.stopRecording()
                 logSampleInteraction(recordSampleId, "record_stop")
-                resetScope.launch {
-                    snackbarHostState.currentSnackbarData?.dismiss()
-                    if (recorder.failed) {
-                        snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
-                    } else {
-                        val result = snackbarHostState.showSnackbar(
-                            message = recordSaved,
-                            actionLabel = recordPlay,
-                            duration = SnackbarDuration.Long,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) recorder.play()
-                    }
-                }
-            } else if (recorder.start()) {
+            } else if (
+                recorder.startRecording(settings = VideoSettings(maxDurationMillis = DEMO_RECORD_LIMIT_MILLIS))
+            ) {
                 logSampleInteraction(recordSampleId, "record_start")
             } else {
                 resetScope.launch {
                     snackbarHostState.currentSnackbarData?.dismiss()
                     snackbarHostState.showSnackbar(recordFailed, duration = SnackbarDuration.Short)
+                }
+            }
+        }
+    }
+    val takePhoto: () -> Unit = {
+        if (recorder != null) {
+            haptic.medium()
+            logSampleInteraction(recordSampleId, "photo")
+            resetScope.launch {
+                val file = recorder.savePhoto(format = PhotoFormat.JPEG)
+                snackbarHostState.currentSnackbarData?.dismiss()
+                if (file == null) {
+                    snackbarHostState.showSnackbar(photoFailed, duration = SnackbarDuration.Short)
+                } else {
+                    val result = snackbarHostState.showSnackbar(
+                        message = photoSaved,
+                        actionLabel = captureShare,
+                        duration = SnackbarDuration.Long,
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        shareCapture(context, file, PhotoFormat.JPEG.mimeType)
+                    }
                 }
             }
         }
@@ -883,6 +933,15 @@ fun DemoScaffold(
                                 {
                                     toggleRecording()
                                     settingsExpanded = false
+                                }
+                            } else {
+                                null
+                            },
+                            // The sheet closes first so the photo shows the scene, not the sheet.
+                            onPhoto = if (recorder != null && !recorder.isRecording) {
+                                {
+                                    settingsExpanded = false
+                                    takePhoto()
                                 }
                             } else {
                                 null
@@ -1305,6 +1364,7 @@ fun DemoScaffold(
                                     onReset = onResetConfirmed,
                                     onRecord = recorder?.let { { toggleRecording() } },
                                     recording = recorder?.isRecording == true,
+                                    onPhoto = recorder?.takeUnless { it.isRecording }?.let { { takePhoto() } },
                                 )
                             }
                         } else {
@@ -1606,6 +1666,10 @@ private fun BoxScope.DemoChrome(
 /** Maximum number of demo-supplied dock items before the Controls item and the accent. */
 private const val DOCK_MAX_ITEMS = 4
 
+// The demo's recordings stop by themselves after a minute: a shareable clip, not a capture of a
+// whole session left running.
+private const val DEMO_RECORD_LIMIT_MILLIS = 60_000L
+
 @Composable
 private fun BoxScope.DemoIdentityRow(
     title: String,
@@ -1743,7 +1807,7 @@ private fun BoxScope.DemoIdentityRow(
 
 /**
  * The app-level actions as a standard overflow menu (#4807): a ⋮ glass button at the end of the
- * identity row, opening a Material menu — Record video, Reset, Send feedback, QA mode — in the
+ * identity row, opening a Material menu — Take photo, Record video, Reset, Send feedback, QA mode — in the
  * order the settings sheet lists them. For a screen that owns the whole window (3D Scan's live
  * capture), where a Settings item in the dock took a dock's height for two rows.
  */
@@ -1753,6 +1817,7 @@ private fun DemoActionsMenu(
     onReset: (() -> Unit)?,
     onRecord: (() -> Unit)?,
     recording: Boolean,
+    onPhoto: (() -> Unit)? = null,
 ) {
     var open by remember { mutableStateOf(false) }
     Box {
@@ -1766,6 +1831,17 @@ private fun DemoActionsMenu(
             modifier = Modifier.testTag(DemoScaffoldTestTags.ACTIONS_MENU),
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (onPhoto != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.demo_photo_action)) },
+                    leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
+                    onClick = {
+                        open = false
+                        onPhoto()
+                    },
+                    modifier = Modifier.testTag(DemoScaffoldTestTags.PHOTO_ACTION),
+                )
+            }
             if (onRecord != null) {
                 DropdownMenuItem(
                     text = {
@@ -2185,6 +2261,7 @@ object DemoScaffoldTestTags {
     /** The shared Record action: its sheet row and its bottom-band pill (samples step 0). */
     const val RECORD_ACTION = "demo-record-action"
     const val RECORD_PILL = "demo-record-pill"
+    const val PHOTO_ACTION = "demo-photo-action"
     const val QA_PILL = "demo-qa-pill"
     /** The identity pill, tagged only when it carries an asset-source suffix. */
     const val ASSET_SOURCE_CHIP = "demo-asset-source-chip"
@@ -2390,12 +2467,12 @@ private fun DemoBottomOverlayBand(
  * while the scene is being recorded.
  */
 @Composable
-private fun RecordPill(recorder: SceneRecorderState, onClick: () -> Unit) {
+private fun RecordPill(recorder: SceneRecorder, onClick: () -> Unit) {
     val recording = recorder.isRecording
     GlassActionPill(
         icon = if (recording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
         label = if (recording) {
-            stringResource(R.string.demo_record_pill_stop, formatElapsed(recorder.elapsedSeconds))
+            stringResource(R.string.demo_record_pill_stop, formatElapsed(recorder.elapsedMillis))
         } else {
             stringResource(R.string.demo_record_pill)
         },
@@ -2534,6 +2611,7 @@ private fun DemoSettingsSheet(
     modifier: Modifier = Modifier,
     recording: Boolean = false,
     onRecord: (() -> Unit)? = null,
+    onPhoto: (() -> Unit)? = null,
 ) {
     // #4504: the sheet's glass runs down to the window's bottom edge at every detent, but its
     // content only ends above the navigation bar once the sheet is fully up (the
@@ -2567,6 +2645,7 @@ private fun DemoSettingsSheet(
             onClose = onClose,
             recording = recording,
             onRecord = onRecord,
+            onPhoto = onPhoto,
             modifier = Modifier.drawWithContent {
                 clipRect(bottom = clearBottomPx) { this@drawWithContent.drawContent() }
             },
@@ -2598,6 +2677,7 @@ private fun DemoSettingsSheetColumn(
     onClose: () -> Unit,
     recording: Boolean,
     onRecord: (() -> Unit)?,
+    onPhoto: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -2700,7 +2780,17 @@ private fun DemoSettingsSheetColumn(
                 )
             }
 
-            // The shared Record action (samples step 0) leads the app-level actions.
+            // The shared capture actions (samples step 0) lead the app-level actions.
+            if (onPhoto != null) {
+                val photoLabel = stringResource(R.string.demo_photo_action)
+                SheetActionRow(
+                    icon = Icons.Filled.PhotoCamera,
+                    label = photoLabel,
+                    contentDescription = photoLabel,
+                    onClick = onPhoto,
+                    modifier = Modifier.testTag(DemoScaffoldTestTags.PHOTO_ACTION),
+                )
+            }
             if (onRecord != null) {
                 val recordLabel = stringResource(
                     if (recording) R.string.demo_record_stop_action else R.string.demo_record_action,

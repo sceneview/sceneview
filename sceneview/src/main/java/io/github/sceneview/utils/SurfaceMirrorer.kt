@@ -1,5 +1,7 @@
 package io.github.sceneview.utils
 
+import android.os.Handler
+import android.os.Looper
 import android.view.Surface
 import com.google.android.filament.Engine
 import com.google.android.filament.Renderer
@@ -61,11 +63,15 @@ import io.github.sceneview.destroyRendererWhenBackendIdle
  * the cost of one extra scene pass per mirrored surface per frame.
  *
  * ### Threading
- * [startMirroring] performs no Filament call and is safe from any thread — the swap chain is
- * created lazily on the render (main) thread at the next frame. [stopMirroring] destroys the
+ * [startMirroring] performs no Filament call and may be called from any thread — the swap chain
+ * is created lazily on the render (main) thread at the next frame, and waking a parked scene is
+ * posted to the main thread when needed. [stopMirroring] destroys the
  * swap chain immediately and **must be called from the main thread** (the standard Filament JNI
  * rule). Both are idempotent: starting an already-mirrored surface or stopping a non-mirrored
  * one is a no-op.
+ *
+ * For photos and videos with sizing, microphone, duration and watermark handled, use
+ * [io.github.sceneview.capture.SceneRecorder], which drives a mirrorer for you.
  *
  * @see io.github.sceneview.rememberSurfaceMirrorer
  * @see io.github.sceneview.SceneRenderer.surfaceMirrorer
@@ -80,6 +86,41 @@ class SurfaceMirrorer {
     )
 
     private val surfaceMirrors = mutableListOf<SurfaceMirror>()
+
+    /**
+     * What the scene that renders through this mirrorer tells it about itself — bound by
+     * [io.github.sceneview.SceneRenderer] while a `SceneView` / `ARSceneView` uses this mirrorer.
+     */
+    internal interface Host {
+        /** The `SurfaceView` / `TextureView` the scene renders into, once attached. */
+        val renderView: android.view.View?
+
+        /** Wakes a scene whose render loop is parked, so the next frame reaches the mirrors. */
+        fun requestRender()
+    }
+
+    /**
+     * The scene currently rendering through this mirrorer, or `null`. Going from a scene to `null`
+     * — the scene detaches from this mirrorer or is disposed — calls [onHostLost].
+     */
+    @Volatile
+    internal var host: Host? = null
+        set(value) {
+            val lost = field != null && value == null
+            field = value
+            if (lost) onHostLost?.invoke()
+        }
+
+    /**
+     * Called when the scene feeding the mirrors goes away: [host] set back to `null`, or
+     * [destroy]. Nothing reaches the mirrored surfaces after that, so a recording driven by this
+     * mirrorer must end there (see [io.github.sceneview.capture.SceneRecorder]). Called on the
+     * thread that cleared [host] or called [destroy] — the main thread for a scene.
+     */
+    @Volatile
+    internal var onHostLost: (() -> Unit)? = null
+
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /** Engine the swap chains were created on — bound at the first mirrored frame. */
     private var engine: Engine? = null
@@ -114,7 +155,7 @@ class SurfaceMirrorer {
      * call [stopMirroring] when done.
      *
      * The frame is letterboxed into the destination rectangle so the scene's aspect ratio is
-     * preserved. No-op if [surface] is already being mirrored (double-start safe). Safe to call
+     * preserved. No-op if [surface] is already being mirrored (double-start safe). May be called
      * from any thread, and before the scene's first frame — mirroring begins with the next
      * rendered frame.
      *
@@ -151,6 +192,15 @@ class SurfaceMirrorer {
                     }
                 )
             )
+        }
+        // A parked scene reads `isMirroring` only from inside a frame: wake it, or a recording
+        // started on a still scene never receives one. The wake only schedules a frame, and only
+        // from the main thread — post it there when called from elsewhere.
+        val host = host ?: return
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            host.requestRender()
+        } else {
+            mainHandler.post { this.host?.requestRender() }
         }
     }
 
@@ -229,7 +279,7 @@ class SurfaceMirrorer {
      * the calling (main) thread.
      *
      * Called by [io.github.sceneview.SceneRenderer.destroy] when the scene is disposed — a
-     * mirrored recording ends with the view that feeds it.
+     * mirrored recording ends with the view that feeds it, and [onHostLost] is called.
      */
     internal fun destroy() {
         val engine = engine
@@ -247,14 +297,15 @@ class SurfaceMirrorer {
         // Not `destroyRenderer` on the spot: Filament's renderer teardown first waits, with no
         // bound, for every command already queued on the backend — the scene's last mirror passes
         // and, right after it appeared, its shader links. A recorded scene disposed then parked the
-        // main thread on that whole queue (#3799). The release now runs on the main thread once
-        // everything queued before the teardown has executed — right away if it already has,
-        // otherwise on a later main-thread message — and the engine outlives it (its own destroy
-        // runs pending releases first). `FRenderer::terminate` still creates and waits on its own
-        // fence then, so it waits for whatever was queued since the teardown (the next scene's
-        // shader links, say): a wait bounded by that work, not the whole backlog — the same limit
-        // as the scene's own renderer (#3854).
+        // main thread on that whole queue (#3799). The release now always runs from a later
+        // main-thread message, at the next poll at the earliest, once the backend is found to have
+        // caught up recently (`Engine.whenBackendIdle`), or after its 5 s fallback; the engine
+        // outlives it (its own destroy runs pending releases first). `FRenderer::terminate` still
+        // creates and waits on its own fence then, so it waits for whatever the main thread queued
+        // in the last 48 ms: usually a frame or two, not the whole backlog — the same limit as the
+        // scene's own renderer (#3854).
         if (renderer != null) engine?.destroyRendererWhenBackendIdle(renderer)
+        onHostLost?.invoke()
     }
 
     private fun getLetterboxViewport(srcViewport: Viewport, destViewport: Viewport): Viewport {

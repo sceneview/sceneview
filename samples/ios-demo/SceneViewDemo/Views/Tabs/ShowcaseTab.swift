@@ -665,6 +665,10 @@ struct DemoCover: View {
         }
         .onDisappear {
             if let sampleId { DemoAnalytics.shared.sampleClosed(sampleId) }
+            // Back on Home from a sample: the moment of value the support prompt waits for.
+            if source == .home || source == .search {
+                SupportStore.shared.homeReturnedAfterSample()
+            }
             #if os(iOS)
             // Only a sample opened from Home (a card or its search) brings Home back;
             // Explore, a deep link or a push lands elsewhere and does not count.

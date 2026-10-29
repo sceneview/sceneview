@@ -37,6 +37,7 @@ import java.io.File
 import java.nio.Buffer
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * What a load does with the external resources of a `.gltf` (its `.bin` buffers, its textures),
@@ -352,6 +353,33 @@ class ModelLoaderResourceFailureTest {
     }
 
     @Test
+    fun `createModelInstance throws when its resolver clears the loader, and asks gltfio nothing more`() {
+        resourceUris = arrayOf(BUFFER, TEXTURE)
+        val asked = mutableListOf<String>()
+
+        val failure = runCatching {
+            loader.createModelInstance(File(java.net.URI(modelFileUri()))) { asked += it; loader.clear(); null }
+        }.exceptionOrNull()
+
+        assertTrue("Expected IllegalStateException, got $failure", failure is IllegalStateException)
+        assertTrue(failure!!.message!!, "resource resolver destroyed" in failure.message!!)
+        assertEquals("the resolver is not asked again once the model is gone", listOf(BUFFER), asked)
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("no asyncBeginLoad on the freed asset", emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
+    fun `createModel throws when its resolver destroys the loader`() {
+        val failure = runCatching {
+            loader.createModel(File(java.net.URI(modelFileUri()))) { loader.destroy(); null }
+        }.exceptionOrNull()
+
+        assertTrue("Expected IllegalStateException, got $failure", failure is IllegalStateException)
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("no asyncBeginLoad on a freed loader", emptyList<Long>(), begunAssets.toList())
+    }
+
+    @Test
     fun `createInstancedModel throws on a missing buffer and destroys the model`() {
         resourceUris = arrayOf(BUFFER, TEXTURE)
 
@@ -445,6 +473,27 @@ class ModelLoaderResourceFailureTest {
         assertTrue("Expected GltfLimitException, got $failure", failure is GltfLimitException)
         assertTrue(failure!!.message!!.contains("accessor 1 has a negative byteOffset"))
         assertEquals("gltfio never sees it", emptyList<Long>(), destroyedAssets.toList())
+    }
+
+    @Test
+    fun `awaitModelInstance relays the refusal of an accessor at a negative offset to its caller`() {
+        val failure = awaitFailure { loader.awaitModelInstance(negativeOffsetGlbUri()) }
+
+        assertTrue("Expected GltfLimitException, got $failure", failure is GltfLimitException)
+        assertTrue(failure!!.message!!.contains("accessor 1 has a negative byteOffset"))
+        assertEquals("gltfio never sees it", emptyList<Long>(), destroyedAssets.toList())
+    }
+
+    @Test
+    fun `awaitModelInstance relays the refusal of a short external buffer, and destroys the model`() {
+        resourceUris = arrayOf(BUFFER)
+
+        val failure = awaitFailure { loader.awaitModelInstance(modelFileUri(withBuffer = true, bufferBytes = 2)) }
+
+        assertTrue("Expected GltfLimitException, got $failure", failure is GltfLimitException)
+        assertTrue(failure!!.message!!.contains("shorter than the 4 it declares"))
+        assertEquals(listOf(ASSET), destroyedAssets.toList())
+        assertEquals("gltfio must never begin reading past the buffer", emptyList<Long>(), begunAssets.toList())
     }
 
     @Test
@@ -693,6 +742,22 @@ class ModelLoaderResourceFailureTest {
             Thread.sleep(10)
         }
         return result
+    }
+
+    /** Runs [block] off the main thread, pumping the main looper for up to 5 s; what it threw. */
+    private fun awaitFailure(block: suspend () -> Unit): Throwable? {
+        val failure = AtomicReference<Throwable?>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val job = scope.launch { failure.set(runCatching { block() }.exceptionOrNull()) }
+        val deadline = System.currentTimeMillis() + 5_000
+        while (!job.isCompleted && System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
+        shadowOf(Looper.getMainLooper()).idle()
+        scope.cancel()
+        assertTrue("the load never finished", job.isCompleted)
+        return failure.get()
     }
 
     /**

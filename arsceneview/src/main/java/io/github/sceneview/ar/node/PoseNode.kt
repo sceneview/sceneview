@@ -14,6 +14,7 @@ import io.github.sceneview.ar.arcore.createAnchor
 import io.github.sceneview.ar.arcore.isTracking
 import io.github.sceneview.ar.arcore.position
 import io.github.sceneview.ar.arcore.quaternion
+import io.github.sceneview.ar.arSessionGuarded
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.node.Node
 
@@ -188,7 +189,9 @@ open class PoseNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (isPositionEditable) {
             frame?.let { frame ->
-                moveHitTest(frame, e)?.let {
+                // The frame is the last one ARCore delivered: a drag that outlives a session pause
+                // hit-tests a paused session, which throws. Drop that move instead of crashing.
+                arSessionGuarded("PoseNode.onMove", null) { moveHitTest(frame, e) }?.let {
                     onMove(detector, e, it.hitPose)
                 }
             } ?: false

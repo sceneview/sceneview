@@ -20,9 +20,10 @@ class BackendIdleTeardownTest {
     private class RecordingScheduler {
         val delays = mutableListOf<Long>()
         private val pending = ArrayDeque<() -> Unit>()
-        val schedule: (Long, () -> Unit) -> Unit = { delay, block ->
+        val schedule: (Long, () -> Unit) -> Boolean = { delay, block ->
             delays += delay
             pending.addLast(block)
+            true
         }
         fun runNext() = pending.removeFirst().invoke()
         fun runAll() {
@@ -229,6 +230,37 @@ class BackendIdleTeardownTest {
         )
         assertEquals(listOf(false), outcome.runs)
         assertFalse(scheduler.hasPending)
+    }
+
+    /** `Handler.postDelayed` returns `false` once its looper is quitting: nothing would ever poll. */
+    @Test
+    fun aTeardownThatCannotBeScheduledRunsAtOnceInsteadOfNever() {
+        val teardowns = BackendIdleTeardowns()
+        val refused = Outcome()
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { true },
+            schedule = { _, _ -> false },
+            teardown = refused.teardown,
+        )
+        // Refused at the first scheduling: run before defer returns, so not deferred.
+        assertEquals(listOf(false), refused.runs)
+        assertEquals(0, teardowns.size)
+
+        // Refused at a later re-check, once the looper started quitting.
+        var accepted = 1
+        val pending = ArrayDeque<() -> Unit>()
+        val later = Outcome()
+        teardowns.defer(
+            isEngineAlive = { true },
+            isBackendBusy = { true },
+            schedule = { _, block -> (accepted-- > 0).also { if (it) pending.addLast(block) } },
+            teardown = later.teardown,
+        )
+        assertTrue(later.runs.isEmpty())
+        pending.removeFirst().invoke()
+        assertEquals(listOf(true), later.runs)
+        assertEquals(0, teardowns.size)
     }
 
     @Test

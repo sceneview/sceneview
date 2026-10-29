@@ -279,6 +279,8 @@ so the eye lands on the one thing the screen is for.
 | `about-row-divider-inset` | 48dp | Hairline start inset, so it begins under the label |
 | `about-group-radius` | 16px (`radius-md`) | The `surface-container` card wrapping one group of rows |
 | `about-support-radius` | 24px (`radius-lg`) | The support card — `secondary-container`, the only tinted surface of the screen |
+| `support-amount-height` | 64pt | One tip amount in the "Support SceneView" sheet (iOS, macOS) |
+| `sheet-width-mac` | 440pt | A compact sheet on macOS (support, prompts) |
 | `about-app-icon` | 40dp / 40pt, `radius-xs`, 1dp `outline-subtle` hairline | Launcher icon (App Store icon on iOS) of a row in the "More apps built with SceneView" group — the app's real icon, never a glyph. The hairline draws the edge of a dark icon on the dark `surface-container` |
 | `about-app-divider-inset` | 72dp | Hairline start inset in that group (row padding + icon + gap) |
 
@@ -288,14 +290,19 @@ so the eye lands on the one thing the screen is for.
 - **The mark is the launcher icon**, cut from `ic_launcher_foreground` and kept
   theme-independent — it is the product's identity, the same picture in light and dark,
   and its contrast is self-contained (light cube on `#0D2137`).
-- **Support is stated once and never pushed.** One card, on the About tab, above the
-  fold. No dialog, no launch prompt, no badge, no amounts, no tiers, no urgency copy.
+- **Support is asked, never pushed.** One card, on the About tab, above the fold. No
+  launch prompt, no badge, no urgency copy. Apple only for now (iOS and macOS): the card
+  and one occasional prompt open the "Support SceneView" sheet — three one-time tips
+  through In-App Purchase (App Review refuses a donation link, guideline 3.1.1), one tap
+  per amount, a thank-you once it goes through, nothing unlocked. The prompt comes never
+  in the first two sessions, only when Home comes back after a sample, at most once
+  every 14 days, never over a demo or an AR session, with "Not now" and "Don't ask
+  again". The Android card keeps its own flow until the Play Billing version lands.
 - **Other apps are listed, not advertised.** "More apps built with SceneView" is a plain
   group of rows directly under the support card: icon, name, one line on what the app
   does for the person holding the phone, open-in-new. No tinted surface, no price, no
   badge, no install button — the icons are the only colour, and a tap opens the Play
-  listing. On iOS the group sits under the identity block (there is no support card
-  there), drawn as the "Privacy & notifications" group is; it lists only apps that are
+  listing. On iOS the group sits under the support card too, drawn as the "Privacy & notifications" group is; it lists only apps that are
   live on the App Store, with their App Store icon and name, and a tap opens the App
   Store listing — never another store's.
 

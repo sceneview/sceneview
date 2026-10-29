@@ -1,22 +1,21 @@
 #!/usr/bin/env bash
-# Updates the community-metrics values embedded in website-static/index.html
-# (the `data-metric="…"` anchors under the "Community & Metrics" section).
+# Updates the GitHub star counter embedded in website-static/index.html
+# (the `data-metric="stars"` anchor on the nav GitHub link).
 #
 # Used by .github/workflows/site-metrics.yml (weekly cron) — this replaces
 # the retired Claude scheduled routine that used to refresh these numbers by
 # hand, at zero AI quota cost.
 #
-# In scope: stars, contributors, releases, web-downloads (sceneview-web npm
-# package). `forks` and `mcp-downloads` (sceneview-mcp npm package) are
-# deliberately NOT touched here — out of scope for this automation.
+# In scope: stars only. The "Public numbers" section of the page is static
+# wording on purpose; contributors, releases and npm download counts are no
+# longer published, so they are not refreshed here.
 #
 # Formatting rule mirrors the existing hand-authored values: a value >= 1000
 # renders as "X.YK" (one decimal), anything below renders as a plain integer
-# (e.g. current file has stars=1.2K, web-downloads=4.7K, contributors=43,
-# releases=123).
+# (e.g. stars=1.3K).
 #
 # Usage:
-#   update-site-metrics.sh --stars N --contributors N --releases N --web-downloads N [--file PATH]
+#   update-site-metrics.sh --stars N [--file PATH]
 #
 # Exits 0 whether or not the file actually changed — the caller (the
 # workflow) checks `git diff` to decide whether a commit is needed. Exits
@@ -26,22 +25,16 @@ set -euo pipefail
 
 FILE="website-static/index.html"
 STARS=""
-CONTRIBUTORS=""
-RELEASES=""
-WEB_DOWNLOADS=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --stars) STARS="$2"; shift 2 ;;
-    --contributors) CONTRIBUTORS="$2"; shift 2 ;;
-    --releases) RELEASES="$2"; shift 2 ;;
-    --web-downloads) WEB_DOWNLOADS="$2"; shift 2 ;;
     --file) FILE="$2"; shift 2 ;;
     *) echo "::error::unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for name_val in "stars:$STARS" "contributors:$CONTRIBUTORS" "releases:$RELEASES" "web-downloads:$WEB_DOWNLOADS"; do
+for name_val in "stars:$STARS"; do
   name="${name_val%%:*}"
   val="${name_val#*:}"
   if [ -z "$val" ]; then
@@ -66,9 +59,6 @@ format_metric() {
 }
 
 STARS_FMT="$(format_metric "$STARS")"
-CONTRIBUTORS_FMT="$(format_metric "$CONTRIBUTORS")"
-RELEASES_FMT="$(format_metric "$RELEASES")"
-WEB_DOWNLOADS_FMT="$(format_metric "$WEB_DOWNLOADS")"
 
 set_metric() {
   key="$1"
@@ -85,8 +75,5 @@ set_metric() {
 }
 
 set_metric "stars" "$STARS_FMT"
-set_metric "contributors" "$CONTRIBUTORS_FMT"
-set_metric "releases" "$RELEASES_FMT"
-set_metric "web-downloads" "$WEB_DOWNLOADS_FMT"
 
-echo "Updated $FILE: stars=$STARS_FMT contributors=$CONTRIBUTORS_FMT releases=$RELEASES_FMT web-downloads=$WEB_DOWNLOADS_FMT"
+echo "Updated $FILE: stars=$STARS_FMT"
