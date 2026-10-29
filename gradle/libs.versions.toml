@@ -12,7 +12,7 @@ fragmentKtx = "1.9.1"
 
 # Compose
 composeBom = "2026.09.00"
-composeMaterial3Expressive = "1.5.0-beta01"
+composeMaterial3Expressive = "1.5.0-beta02"
 activityCompose = "1.13.0"
 navigationCompose = "2.10.2"
 lifecycleRuntimeCompose = "2.10.0"
@@ -93,7 +93,7 @@ arCore = "1.57.0"
 # Networking
 fuel = "2.3.1"
 okhttp = "5.5.0"
-kotlinxSerialization = "1.11.0"
+kotlinxSerialization = "1.12.0"
 
 # UI
 googleMaterial = "1.14.0"
@@ -144,7 +144,7 @@ litert = "2.3.0"
 # ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
 # demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
 # scans. Not in any app: the Android artifact started a telemetry provider at every launch.
-onnxruntime = "1.30.0"
+onnxruntime = "1.31.0"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"

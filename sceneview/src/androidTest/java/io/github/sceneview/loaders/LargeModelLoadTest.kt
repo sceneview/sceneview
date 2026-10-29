@@ -80,16 +80,16 @@ class LargeModelLoadTest {
             assertEquals(0, modelLoader.registeredModels())
 
             // …while the existing loads log it and return the model, as they always did.
-            var before = logcatCount(logged)
+            var since = logcatMark()
             harness.runOnMain {
                 val buffer = ByteBuffer.allocateDirect(glb.size).order(ByteOrder.nativeOrder()).put(glb).apply { rewind() }
                 val instance = modelLoader.createModelInstance(buffer)
                 assertEquals(1, modelLoader.registeredModels())
                 modelLoader.destroyModel(instance.model)
             }
-            awaitLogcat(logged, before + 1)
+            awaitLogcat(logged, 1, since)
 
-            before = logcatCount(logged)
+            since = logcatMark()
             runBlocking {
                 listOf(
                     modelLoader.loadModel(location),
@@ -100,7 +100,7 @@ class LargeModelLoadTest {
                     harness.runOnMain { modelLoader.destroyModel(model!!) }
                 }
             }
-            awaitLogcat(logged, before + 3)
+            awaitLogcat(logged, 3, since)
             assertEquals(0, modelLoader.registeredModels())
         } finally {
             harness.runOnMain { modelLoader.destroy() }
@@ -334,8 +334,7 @@ class LargeModelLoadTest {
         val goodRejected = "Unable to create texture albedo.webp"
         val corruptRejected = "Unable to create texture corrupt.webp"
         try {
-            val missingBefore = logcatCount(noProvider)
-            val rejectedBefore = logcatCount(goodRejected)
+            var since = logcatMark()
             val recorder = recordFeeds(modelLoader)
             val reports = CopyOnWriteArrayList<ModelLoadProgress>()
             val instance = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(good) { reports += it } } }
@@ -344,18 +343,17 @@ class LargeModelLoadTest {
             // gltfio was handed a PNG, and its PNG decoder accepted it.
             assertTrue("not converted to PNG", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
             SystemClock.sleep(500)
-            assertEquals("gltfio could not decode the converted texture", rejectedBefore, logcatCount(goodRejected))
+            assertEquals("gltfio could not decode the converted texture", 0, logcatCount(goodRejected, since))
             // Before the conversion, gltfio skipped this texture with that line and nothing else.
-            assertEquals("gltfio found no provider for the WebP", missingBefore, logcatCount(noProvider))
+            assertEquals("gltfio found no provider for the WebP", 0, logcatCount(noProvider, since))
 
             // One that cannot be converted is named in logcat, gltfio is handed it as it was (and
             // rejects it), and the load still completes.
-            val failedBefore = logcatCount(namedFailure)
-            val corruptRejectedBefore = logcatCount(corruptRejected)
+            since = logcatMark()
             val degraded = runBlocking { withTimeout(30_000) { modelLoader.awaitModelInstance(corrupt) } }
             harness.runOnMain { modelLoader.destroyModel(degraded.model) }
-            awaitLogcat(namedFailure, failedBefore + 1)
-            awaitLogcat(corruptRejected, corruptRejectedBefore + 1)
+            awaitLogcat(namedFailure, 1, since)
+            awaitLogcat(corruptRejected, 1, since)
         } finally {
             harness.runOnMain { modelLoader.destroy() }
         }
@@ -368,7 +366,7 @@ class LargeModelLoadTest {
         val modelLoader = ModelLoader(harness.engine, context)
         val rejected = "Unable to create texture albedo.webp"
         try {
-            val rejectedBefore = logcatCount(rejected)
+            val since = logcatMark()
             val recorder = recordFeeds(modelLoader)
             lateinit var model: io.github.sceneview.model.Model
             harness.runOnMain {
@@ -378,7 +376,7 @@ class LargeModelLoadTest {
             harness.runOnMain { modelLoader.destroyModel(model) }
             assertTrue("not converted to PNG", recorder.fed.getValue("albedo.webp").startsWith(PNG_SIGNATURE))
             SystemClock.sleep(500)
-            assertEquals("gltfio could not decode the converted texture", rejectedBefore, logcatCount(rejected))
+            assertEquals("gltfio could not decode the converted texture", 0, logcatCount(rejected, since))
         } finally {
             harness.runOnMain { modelLoader.destroy() }
         }
@@ -511,16 +509,26 @@ class LargeModelLoadTest {
         return !loading
     }
 
-    /** Lines of this process's logcat containing [marker]. */
-    private fun logcatCount(marker: String): Int =
-        ProcessBuilder("logcat", "-d", "--pid=${android.os.Process.myPid()}").redirectErrorStream(true).start()
+    /** A wall-clock time to count logcat lines from, in [logcatCount]'s `-T` format. */
+    private fun logcatMark(): String = System.currentTimeMillis().let { "%d.%03d".format(it / 1000, it % 1000) }
+
+    /**
+     * Lines of this process's logcat containing [marker], logged at or after [since].
+     *
+     * Counted from a time, not as a difference between two dumps of the whole buffer: the suite
+     * logs enough to rotate logcat's ring buffer mid-test, and a line evicted between the two
+     * dumps made `before + n` unreachable (#4823, #4860).
+     */
+    private fun logcatCount(marker: String, since: String): Int =
+        ProcessBuilder("logcat", "-d", "--pid=${android.os.Process.myPid()}", "-T", since)
+            .redirectErrorStream(true).start()
             .inputStream.bufferedReader().useLines { lines -> lines.count { marker in it } }
 
-    /** Waits for logcat, which lags the `Log` call, to hold [count] lines containing [marker]. */
-    private fun awaitLogcat(marker: String, count: Int) {
+    /** Waits for logcat, which lags the `Log` call, to hold [count] lines containing [marker] since [since]. */
+    private fun awaitLogcat(marker: String, count: Int, since: String) {
         val deadline = SystemClock.uptimeMillis() + 5_000
-        while (logcatCount(marker) < count && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
-        assertTrue("logcat never showed \"$marker\" $count times", logcatCount(marker) >= count)
+        while (logcatCount(marker, since) < count && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
+        assertTrue("logcat never showed \"$marker\" $count times", logcatCount(marker, since) >= count)
     }
 
     private fun ModelLoader.registeredModels(): Int =
