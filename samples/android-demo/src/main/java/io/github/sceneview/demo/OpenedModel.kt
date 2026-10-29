@@ -28,6 +28,17 @@ import java.io.File
 data class OpenedModel(val location: String, val displayName: String) {
     /** The staged copy on disk, for cache housekeeping. */
     fun file(): File? = Uri.parse(location).path?.let(::File)
+
+    /**
+     * The real-world size "View in AR" may claim for this file: the longest side the viewer
+     * measured, [longestSideMeters], but only when the instance it measured was loaded from this
+     * [location] ([presentedLocation]). AR places a measured file at its authored size, so a
+     * measurement taken on a different file — the staged original read in millimetres while the
+     * screen shows its re-conversion in metres — would put the wrong file in the room at the
+     * wrong size. `null` then, and AR falls back to a labelled preview size.
+     */
+    fun arMeasuredSizeMeters(presentedLocation: String?, longestSideMeters: Float?): Float? =
+        longestSideMeters?.takeIf { presentedLocation == location && it.isFinite() && it > 0f }
 }
 
 /**

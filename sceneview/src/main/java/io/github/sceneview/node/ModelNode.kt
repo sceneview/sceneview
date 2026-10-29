@@ -17,6 +17,7 @@ import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 import io.github.sceneview.model.Model
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.camerasEntities
@@ -233,9 +234,9 @@ open class ModelNode(
      * the animator's handles, so the node guards each of its members that reaches them:
      * - **do nothing:** the node's frame, [stopAnimation];
      * - **throw [IllegalStateException]:** [boundingBox], [halfExtent], [extents], [center],
-     *   [size], [scaleToUnitCube], [centerOrigin], [animationCount], [playAnimation],
-     *   [setAnimationSpeed], [skinCount], [skinNames], [materialVariantNames], [attachSkin],
-     *   [detachSkin], [getJointCount]; on the sub-nodes, [ChildNode.name] (read once, when the
+     *   [size], [worldSize], [worldBoundingBox], [scaleToUnitCube], [centerOrigin],
+     *   [animationCount], [playAnimation], [setAnimationSpeed], [skinCount], [skinNames],
+     *   [materialVariantNames], [attachSkin], [detachSkin], [getJointCount]; on the sub-nodes, [ChildNode.name] (read once, when the
      *   sub-node is built), [ChildNode.extras], [ChildNode.morphTargetNames] and
      *   `RenderableNode.getMaterialInstanceAt`.
      *
@@ -277,6 +278,40 @@ open class ModelNode(
     val extents get() = halfExtent * 2.0f
     val center get() = boundingBox.center.let { v -> Float3(v[0], v[1], v[2]) }
     val size get() = extents * scale
+
+    /**
+     * The model's dimensions in world metres — width (X), height (Y) and depth (Z) of the
+     * authored bounds multiplied by [worldScale], so parent scales count too. glTF is authored
+     * in metres: a 1 m asset loaded without `scaleToUnits` under unscaled parents reports
+     * `(1, 1, 1)`. Rotation does not change it; see [worldBoundingBox] for the space the model
+     * occupies once rotated.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]), as
+     * [boundingBox] does.
+     */
+    val worldSize: Size
+        get() {
+            checkModelAlive("worldSize")
+            return modelWorldSize(halfExtent, worldScale)
+        }
+
+    /**
+     * Axis-aligned box enclosing the model's authored bounds after the full [worldTransform]
+     * (parents, rotation, scale, translation). Its lowest Y is where the model touches the
+     * floor; its X/Z extent is the footprint — what a contact shadow or a fit check needs.
+     *
+     * Like [boundingBox], it comes from the glTF accessors' min / max, not from the posed
+     * skinned geometry.
+     *
+     * @throws IllegalStateException once the model was destroyed ([isModelDestroyed]), as
+     * [boundingBox] does.
+     */
+    val worldBoundingBox: Box
+        get() {
+            checkModelAlive("worldBoundingBox")
+            val (min, max) = worldAxisAlignedBounds(center, halfExtent, worldTransform)
+            return Box(((min + max) * 0.5f).toFloatArray(), ((max - min) * 0.5f).toFloatArray())
+        }
 
     /**
      * Retrieves the [Animator] for this instance.
