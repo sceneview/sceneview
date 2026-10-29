@@ -44,7 +44,7 @@ internal class BackendIdleTeardowns {
     val size: Int get() = pending.size
 
     /**
-     * Runs [teardown] now when the backend is already idle (`deferred = false`, the usual case).
+     * Runs [teardown] now when [isBackendBusy] is already `false` (`deferred = false`).
      * Otherwise registers it and re-checks every [intervalMs] through [schedule]; it runs with
      * `deferred = true` once [isBackendBusy] turns `false` or [runPending] claims it. Never waits.
      *
@@ -55,12 +55,19 @@ internal class BackendIdleTeardowns {
      * With [runsLast], the teardown also waits for every teardown registered without it to have
      * run: the engine's own destroy passes it, so a release still waiting for its own condition (a
      * `ModelLoader` waiting for its texture decoders, #3981) is not forced early by [runPending],
-     * which would block the calling thread exactly where the deferral meant not to.
+     * which would block the calling thread exactly where the deferral meant not to. Its
+     * [isBackendBusy] is still polled meanwhile, every time: a probe that keeps time (its give-up
+     * delay, its freshness) then counts from the deferral, not from the end of the others, and
+     * the teardown runs in the same poll as the last of them when the backend is idle.
+     *
+     * [schedule] returns whether the re-check was queued. When it was not — a `Handler` whose
+     * looper is quitting — the teardown runs at once rather than never: a release that may block
+     * is better than a leaked one. It runs with `deferred = false` when that happens in this call.
      */
     fun defer(
         isEngineAlive: () -> Boolean,
         isBackendBusy: () -> Boolean,
-        schedule: (delayMs: Long, block: () -> Unit) -> Unit,
+        schedule: (delayMs: Long, block: () -> Unit) -> Boolean,
         teardown: (deferred: Boolean) -> Unit,
         onEngineGone: () -> Unit = {},
         intervalMs: Long = BACKEND_IDLE_POLL_MS,
@@ -71,7 +78,8 @@ internal class BackendIdleTeardowns {
             return
         }
         fun othersPending() = runsLast && pending.any { !it.runsLast && !it.isDone }
-        if (!othersPending() && !isBackendBusy()) {
+        // Polled first, every time, so it is never skipped while the others are pending.
+        if (!isBackendBusy() && !othersPending()) {
             teardown(false)
             return
         }
@@ -85,11 +93,14 @@ internal class BackendIdleTeardowns {
                     entry.drop()
                     onEngineGone()
                 }
-                othersPending() || isBackendBusy() -> schedule(intervalMs, ::poll)
+                (isBackendBusy() || othersPending()) && schedule(intervalMs, ::poll) -> Unit
                 else -> entry.run()
             }
         }
-        schedule(intervalMs, ::poll)
+        if (!schedule(intervalMs, ::poll)) {
+            entry.drop()
+            teardown(false)
+        }
     }
 
     /**

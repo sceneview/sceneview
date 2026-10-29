@@ -140,6 +140,8 @@ class ArFunnelLog(
         if (placedOnce) return
         placedOnce = true
         analytics().log(AnalyticsEvent.ArFirstPlacement(sampleId))
+        // Never shown here: the interstitial waits until the AR session is over.
+        io.github.sceneview.demo.support.SupportPrompt.onArPlacement()
     }
 
     fun sessionFailed(failure: ARSessionFailure) {

@@ -1169,7 +1169,8 @@ private class AutomaticAnchorNode(
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         if (!state.isAdjusting) return false
         val frame = frame ?: return false
-        val hits = frame.hitTest(e)
+        // Same stale-frame case as PoseNode.onMove: a paused session throws from hitTest.
+        val hits = arSessionGuarded("AutoPlacement onMove", null) { frame.hitTest(e) } ?: return false
         val candidate = if (placement.isWall) {
             // Nearest wall under the finger — plane, extended plane or depth hit — and, on a plain
             // wall with none of those, the wall the object already stands on (#4070).
