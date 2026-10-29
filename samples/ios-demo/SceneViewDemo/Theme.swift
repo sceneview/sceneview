@@ -566,6 +566,15 @@ enum SceneViewTokens {
         static let heroPillHeight: CGFloat = 44
         static let heroPillPaddingHorizontal: CGFloat = 18
         static let heroTopGap: CGFloat = 8
+        /// Android's `heroPillIconSize` / `heroPillIconGap`: the arrow after a
+        /// hero pill's label, and the space before it.
+        static let heroPillIconSize: CGFloat = 18
+        static let heroPillIconGap: CGFloat = 8
+        /// Android's `FeaturedPager` dots, the What's new badge dot and the
+        /// since sheet's category bullets — 6 pt.
+        static let indicatorDot: CGFloat = 6
+        /// Android's `whatsNewGlyphSize`: the sparkle on the pager's What's new page.
+        static let featuredGlyph: CGFloat = 28
         static let chipRowTopGap: CGFloat = 28
         static let chipRowHeight: CGFloat = 40
         static let chipGap: CGFloat = 8
@@ -683,7 +692,7 @@ enum SceneViewTokens {
         /// edge of a dark icon on the dark card.
         static let appIconHairline: CGFloat = 1
         /// Horizontal inset of an About row card, and the gap between its
-        /// leading tile and its text — the values `AboutCard` lays out with,
+        /// leading tile and its text — the values `AboutRow` lays out with,
         /// so a row of the "More apps" group lines up with the cards under it.
         static let rowInset: CGFloat = 14
     }

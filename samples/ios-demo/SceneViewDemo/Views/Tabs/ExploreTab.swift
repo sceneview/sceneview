@@ -184,15 +184,6 @@ struct ExploreTab: View {
     private var content: some View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
-                    // `.searchable` renders into the navigation bar. Embedded, this
-                    // view is pushed by ShowcaseTab onto a screen that calls
-                    // `.hideNavigationBar()`, so there is no bar to render into and
-                    // the search field silently did not exist — the whole of #3586.
-                    // Standalone (the Model Viewer's "Browse online models" sheet)
-                    // keeps the native bar field; embedded gets this inline twin.
-                    if embedded {
-                        inlineSearchField
-                    }
                     // "Sketchfab unavailable" banner — only when the selected
                     // source is Sketchfab and its key was rejected at runtime
                     // (401/403). A missing key drops Sketchfab from the picker, so
@@ -256,6 +247,21 @@ struct ExploreTab: View {
                 .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                 .padding(.top, SceneViewTokens.Home.heroTopGap)
                 .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
+            }
+            // `.searchable` renders into the navigation bar. Embedded, this
+            // view is pushed by ShowcaseTab onto a screen that calls
+            // `.hideNavigationBar()`, so there is no bar to render into and the
+            // search field silently did not exist — the whole of #3586.
+            // Standalone (the Model Viewer's "Browse online models" sheet) keeps
+            // the native bar field; embedded gets this twin, floating over the
+            // page as Android's `FloatingSearchPill`: the feeds scroll under it,
+            // and it stays in reach however far down the page is.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if embedded {
+                    inlineSearchField
+                        .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+                        .padding(.vertical, SceneViewTokens.Space.sm)
+                }
             }
             // Explore never set a page ground, so dark mode fell back to the
             // system black (#000) while every other screen sits on the DESIGN.md
@@ -611,9 +617,9 @@ struct ExploreTab: View {
         }
         .padding(.horizontal, SceneViewTokens.Space.md)
         .frame(height: SceneViewTokens.Home.searchFieldHeight)
-        // One step above the page ground so the field reads as a field —
-        // `surface` would be invisible against the ground it now sits on.
-        .background(SceneViewTokens.HomeColor.surfaceContainer, in: Capsule())
+        // Floating chrome over the scrolled feeds: the glass, so what passes
+        // under it reads through, as Android's floating pill.
+        .glassBackground(in: Capsule(), interactive: true)
         // `outline`, not `outline-subtle`: at rest the fill is one step off the
         // ground and, with no shadow to lean on in dark, the contour is the only
         // thing that says "input" rather than "smudge". Focus goes to `primary`.

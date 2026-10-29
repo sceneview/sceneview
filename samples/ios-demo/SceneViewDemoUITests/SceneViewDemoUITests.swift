@@ -469,6 +469,56 @@ final class SceneViewDemoUITests: XCTestCase {
     }
 
     /// Swipes the page up until `element` can take a tap.
+    /// Android's "since you last tested" flow and featured pager. Launched as
+    /// an install that last acknowledged 4.40.0 (the argument domain stands in
+    /// for the stored marker): the header's sparkle carries the badge and opens
+    /// the since sheet; "Got it" clears the badge. Then the pager swipes from
+    /// the live-stage window to the What's new page, which opens the sheet of
+    /// new demos.
+    func testHomePagerAndWhatsNewSinceSheet() {
+        let app = Self.makeApp()
+        app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
+        app.launch()
+
+        let sparkle = app.buttons["home-whats-new"]
+        XCTAssertTrue(sparkle.waitForExistence(timeout: 30), "the header's What's new button never appeared")
+        let badge = app.descendants(matching: .any)["home-whats-new-badge"]
+        XCTAssertTrue(badge.waitForExistence(timeout: 10), "nothing is badged although 4.40.0 is long past")
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "since-01-home-badged")
+
+        sparkle.tap()
+        let title = app.descendants(matching: .any)["whats-new-since-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the since sheet never opened")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, "since-02-sheet")
+
+        let gotIt = app.buttons["whats-new-since-got-it"]
+        for _ in 0..<15 where !(gotIt.exists && gotIt.isHittable) {
+            app.descendants(matching: .any)["whats-new-since-sheet"].firstMatch.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(gotIt.isHittable, "\"Got it\" is out of reach")
+        gotIt.tap()
+        XCTAssertTrue(waitForDisappearance(of: title, timeout: 6), "\"Got it\" did not close the sheet")
+        XCTAssertTrue(waitForDisappearance(of: badge, timeout: 4), "\"Got it\" left the badge on")
+
+        // The pager: the window first, the What's new page one swipe away.
+        let pager = app.descendants(matching: .any)["home-pager"].firstMatch
+        XCTAssertTrue(pager.waitForExistence(timeout: 10), "the featured pager is missing")
+        let page = app.descendants(matching: .any)["home-pager-whats-new"].firstMatch
+        XCTAssertFalse(page.exists && page.isHittable, "the What's new page is on screen before a swipe")
+        pager.swipeLeft()
+        XCTAssertTrue(page.waitForExistence(timeout: 5), "the pager has no What's new page")
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertTrue(page.isHittable, "a swipe did not bring the What's new page")
+        capture(app, "since-03-pager-whats-new")
+        page.tap()
+        let sheet = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier IN %@", ["whats-new-sheet", "whats-new-title"]))
+            .firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the What's new page did not open the sheet")
+    }
+
     private func scroll(_ app: XCUIApplication, to element: XCUIElement) {
         for _ in 0..<10 where !(element.exists && element.isHittable) {
             app.swipeUp(velocity: .slow)

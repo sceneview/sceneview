@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // The "What's new" sheet's content — a port of Android's `WhatsNewChangelog.kt`
 // (samples/android-demo/.../whatsnew). Same source: the repo-root `CHANGELOG.md`,
@@ -26,6 +27,11 @@ struct WhatsNewHighlight: Hashable, Sendable {
     let category: WhatsNewCategory
     let headline: String
     let issueNumber: Int?
+
+    /// Android's `WhatsNewEntry.id`: a hash of the *normalised text*, not of
+    /// its place, so an entry acknowledged while unreleased stays acknowledged
+    /// once the release collates it under `## vX.Y.Z`.
+    var id: String { WhatsNewChangelog.entryId(headline) }
 }
 
 struct WhatsNewRelease: Hashable, Sendable, Identifiable {
@@ -64,6 +70,38 @@ enum WhatsNewChangelog {
         guard let url = bundle.url(forResource: resourceName, withExtension: "md"),
               let markdown = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         return releases(fromChangelog: markdown, maxReleases: maxReleases)
+    }
+
+    /// The scoped sections the "since you last tested" sheet reads — the
+    /// `## Unreleased` block included, `maxSinceReleases` deep, empty sections
+    /// dropped. Empty when the bundled file is missing.
+    static func loadSections(bundle: Bundle = .main) -> [WhatsNewSection] {
+        guard let url = bundle.url(forResource: resourceName, withExtension: "md"),
+              let markdown = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return sinceSections(fromChangelog: markdown)
+    }
+
+    /// `loadSections` without the bundle, for tests.
+    static func sinceSections(fromChangelog markdown: String) -> [WhatsNewSection] {
+        forDemoApp(parseSections(markdown, maxReleases: maxSinceReleases)).filter { !$0.entries.isEmpty }
+    }
+
+    /// Android's `whatsNewEntryId`: FNV-1a 64 over the lower-cased headline,
+    /// code spans, bold markers and runs of whitespace flattened. FNV-1a rather than
+    /// `hashValue` because the value is persisted, and Swift seeds `Hasher`
+    /// per process.
+    static func entryId(_ text: String) -> String {
+        let normalised = text.replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "**", with: "")
+            .lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in normalised.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 16)
     }
 
     /// `load` without the bundle, for tests.
@@ -271,6 +309,124 @@ enum WhatsNewChangelog {
             }
             return scoped
         }
+    }
+}
+
+// MARK: - Since you last tested
+
+/// What this install has acknowledged — Android's `WhatsNewSeen`: the build it
+/// last said "Got it" on, and the unreleased entries it saw there.
+struct WhatsNewSeen: Equatable, Sendable {
+    let versionName: String
+    let entryIds: Set<String>
+
+    var baseVersion: String { WhatsNewSince.baseVersion(of: versionName) }
+}
+
+/// Android's `WhatsNewSince.kt`, pure so it is testable without a view.
+enum WhatsNewSince {
+    /// `4.63.0-beta+12` → `4.63.0`.
+    static func baseVersion(of versionName: String) -> String {
+        String(versionName.prefix { $0 != "-" && $0 != "+" }).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Dotted numeric comparison; a missing or non-numeric part counts as 0.
+    static func compare(_ a: String, _ b: String) -> ComparisonResult {
+        let left = a.split(separator: ".", omittingEmptySubsequences: false)
+        let right = b.split(separator: ".", omittingEmptySubsequences: false)
+        for i in 0..<max(left.count, right.count) {
+            let l = i < left.count ? Int(left[i].prefix { $0.isNumber }) ?? 0 : 0
+            let r = i < right.count ? Int(right[i].prefix { $0.isNumber }) ?? 0 : 0
+            if l != r { return l < r ? .orderedAscending : .orderedDescending }
+        }
+        return .orderedSame
+    }
+
+    /// Android's `unseenSections`: the unreleased block and every release newer
+    /// than the acknowledged build, minus the entries already acknowledged and
+    /// any repeated across sections. Nothing before a marker exists.
+    static func unseen(_ sections: [WhatsNewSection], seen: WhatsNewSeen?) -> [WhatsNewSection] {
+        guard let seen else { return [] }
+        var emitted = Set<String>()
+        return sections.compactMap { section in
+            let inScope = section.isUnreleased
+                || compare(section.version ?? "", seen.baseVersion) == .orderedDescending
+            guard inScope else { return nil }
+            var fresh = section
+            fresh.entries = section.entries.filter { !seen.entryIds.contains($0.id) && emitted.insert($0.id).inserted }
+            return fresh.entries.isEmpty ? nil : fresh
+        }
+    }
+
+    /// Android's `unreleasedEntryIds`.
+    static func unreleasedEntryIds(_ sections: [WhatsNewSection]) -> Set<String> {
+        Set(sections.filter(\.isUnreleased).flatMap { $0.entries.map(\.id) })
+    }
+}
+
+/// The marker in `UserDefaults` — Android's `WhatsNewSeenStore`. A
+/// `-whats_new_seen_version 4.60.0` launch argument stands in for it (the
+/// argument domain), which is how UI tests and captures arm the sheet.
+enum WhatsNewSeenStore {
+    static let versionKey = "whats_new_seen_version"
+    static let entryIdsKey = "whats_new_seen_entry_ids"
+
+    static func seen(_ defaults: UserDefaults = .standard) -> WhatsNewSeen? {
+        guard let version = defaults.string(forKey: versionKey) else { return nil }
+        return WhatsNewSeen(versionName: version,
+                            entryIds: Set(defaults.stringArray(forKey: entryIdsKey) ?? []))
+    }
+
+    static func markSeen(_ seen: WhatsNewSeen, _ defaults: UserDefaults = .standard) {
+        defaults.set(seen.versionName, forKey: versionKey)
+        defaults.set(Array(seen.entryIds).sorted(), forKey: entryIdsKey)
+    }
+
+    /// First launch after an install adopts the running build, pending entries
+    /// included, so the surface arms from the *next* build instead of listing
+    /// the project's history on day one.
+    static func initialise(versionName: String, entryIds: Set<String>,
+                           _ defaults: UserDefaults = .standard) -> WhatsNewSeen {
+        if let seen = seen(defaults) { return seen }
+        let fresh = WhatsNewSeen(versionName: versionName, entryIds: entryIds)
+        markSeen(fresh, defaults)
+        return fresh
+    }
+}
+
+/// The "since you last tested" state, shared by the tab bar's badge and the
+/// Home's header — Android's `WhatsNewSinceState`. Loaded once per process.
+@MainActor
+@Observable
+final class WhatsNewSinceModel {
+    static let shared = WhatsNewSinceModel()
+
+    private(set) var sections: [WhatsNewSection] = []
+    private(set) var seen: WhatsNewSeen?
+    /// The changelog and the marker have both been read.
+    private(set) var isLoaded = false
+
+    /// Cumulative unseen sections, newest first.
+    var unseen: [WhatsNewSection] { WhatsNewSince.unseen(sections, seen: seen) }
+    /// Drives the tab badge and the header dot.
+    var hasUnseen: Bool { !unseen.isEmpty }
+    var unseenCount: Int { unseen.reduce(0) { $0 + $1.entries.count } }
+
+    func load() async {
+        guard !isLoaded else { return }
+        let loaded = await Task.detached(priority: .utility) { WhatsNewChangelog.loadSections() }.value
+        sections = loaded
+        seen = WhatsNewSeenStore.initialise(versionName: DemoFreshness.appVersion,
+                                            entryIds: WhatsNewSince.unreleasedEntryIds(loaded))
+        isLoaded = true
+    }
+
+    /// Writes the marker — only "Got it" does; a swipe-down keeps the badge.
+    func markSeen() {
+        let acknowledged = WhatsNewSeen(versionName: DemoFreshness.appVersion,
+                                        entryIds: WhatsNewSince.unreleasedEntryIds(sections))
+        WhatsNewSeenStore.markSeen(acknowledged)
+        seen = acknowledged
     }
 }
 

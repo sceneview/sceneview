@@ -19,7 +19,8 @@ struct HomeHero: View {
     /// Guarded by `ViewerAssetTests.testHomeHeroModelShipsItsUSDZ`.
     static let heroAssetName = "khronos_damaged_helmet"
 
-    private static let title = "Models"
+    /// Android's window page title — the demo it opens.
+    private static let title = "Model Viewer"
     private static let subtitle = "Explore a model in 3D or in your room"
 
     var body: some View {
@@ -33,12 +34,7 @@ struct HomeHero: View {
                     .font(SceneViewTokens.TypeScale.body)
                     .foregroundStyle(SceneViewTokens.HomeColor.heroSubtitle)
                     .lineLimit(2)
-                Text("Open")
-                    .font(SceneViewTokens.TypeScale.bodySemibold)
-                    .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
-                    .padding(.horizontal, SceneViewTokens.Home.heroPillPaddingHorizontal)
-                    .frame(height: SceneViewTokens.Home.heroPillHeight)
-                    .background(SceneViewTokens.HomeColor.heroPillBackground, in: Capsule())
+                HeroPill(label: "Open")
                     .padding(.top, SceneViewTokens.Space.sm)
             }
             .padding(SceneViewTokens.Home.heroPadding)
@@ -51,6 +47,177 @@ struct HomeHero: View {
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("\(Self.title). \(Self.subtitle). Open")
         .accessibilityIdentifier("home-hero")
+    }
+}
+
+/// The hero's call to action — Android's `HeroPill`: a white 44 pt capsule,
+/// the label then an arrow.
+struct HeroPill: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: SceneViewTokens.Home.heroPillIconGap) {
+            Text(label)
+                .font(SceneViewTokens.TypeScale.bodySemibold)
+            Image(systemName: "arrow.right")
+                .font(.system(size: SceneViewTokens.Home.heroPillIconSize, weight: .semibold))
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
+        .padding(.horizontal, SceneViewTokens.Home.heroPillPaddingHorizontal)
+        .frame(height: SceneViewTokens.Home.heroPillHeight)
+        .background(SceneViewTokens.HomeColor.heroPillBackground, in: Capsule())
+    }
+}
+
+// MARK: - Featured pager
+
+/// Android's `FeaturedPager` (HomeFeatured.kt), at two pages: the window onto
+/// the live stage (``HomeHero``, passed in so the Home keeps its zoom source),
+/// then the illustrated What's new page. The second page only exists while a
+/// home demo carries a "New" or "Updated" chip; with one page there is no
+/// pager and no dots. Android's two banner pages (Explore online, Labs) are
+/// rows further down the iOS Home and are not repeated here.
+struct HomeFeaturedPager<Hero: View>: View {
+    let height: CGFloat
+    /// Home demos carrying a "New" / "Updated" chip.
+    let freshCount: Int
+    let onWhatsNew: () -> Void
+    @ViewBuilder let hero: () -> Hero
+
+    @State private var page: Int? = 0
+
+    var body: some View {
+        if freshCount > 0 {
+            ScrollView(.horizontal) {
+                // One `contentPadding` between pages, so the next page waits
+                // just past the screen edge instead of peeking into the gutter.
+                HStack(spacing: SceneViewTokens.Home.contentPadding) {
+                    hero()
+                        .containerRelativeFrame(.horizontal)
+                        .id(0)
+                    HomeWhatsNewPage(count: freshCount, onTap: onWhatsNew)
+                        .frame(height: height)
+                        .containerRelativeFrame(.horizontal)
+                        .id(1)
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $page)
+            .scrollIndicators(.hidden)
+            // The live stage and the card's shadow run past the page bounds.
+            .scrollClipDisabled()
+            .frame(height: height)
+            .overlay(alignment: .bottomTrailing) {
+                PagerDots(count: 2, selected: page ?? 0)
+                    .padding(SceneViewTokens.Home.heroPadding)
+                    .allowsHitTesting(false)
+            }
+            .accessibilityIdentifier("home-pager")
+        } else {
+            hero()
+        }
+    }
+}
+
+/// Android's pager indicator: 6 pt dots, `space-xs` apart, the current one
+/// in `hero-title`, the others `hero-subtitle` at 40 %.
+private struct PagerDots: View {
+    let count: Int
+    let selected: Int
+
+    var body: some View {
+        HStack(spacing: SceneViewTokens.Space.xs) {
+            ForEach(0..<count, id: \.self) { index in
+                Circle()
+                    .fill(index == selected
+                          ? SceneViewTokens.HomeColor.heroTitle
+                          : SceneViewTokens.HomeColor.heroSubtitle.opacity(0.4))
+                    .frame(width: SceneViewTokens.Home.indicatorDot, height: SceneViewTokens.Home.indicatorDot)
+            }
+        }
+        .animation(SceneViewTokens.Spring.animation, value: selected)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The pager's What's new page — Android's `WhatsNewFeaturedPage`: a
+/// `hero-field` card with the stage's scrim, the sparkle at its top end,
+/// "New in 4.63", the count of new or updated demos and a "See what changed"
+/// pill. Shadow in light, a hairline in dark, like every Home card.
+struct HomeWhatsNewPage: View {
+    let count: Int
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// `4.63.0-beta` → `4.63`.
+    static func majorMinor(_ version: String) -> String {
+        WhatsNewSince.baseVersion(of: version).split(separator: ".").prefix(2).joined(separator: ".")
+    }
+
+    private var title: String { "New in \(Self.majorMinor(DemoFreshness.appVersion))" }
+    private var subtitle: String {
+        count == 1
+            ? "1 sample is new or updated — tap to see which"
+            : "\(count) samples are new or updated — tap to see which"
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous)
+        Button(action: onTap) {
+            ZStack(alignment: .bottomLeading) {
+                shape.fill(SceneViewTokens.HomeColor.heroField)
+                shape.fill(LinearGradient(
+                    stops: [
+                        .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimStart,
+                              location: SceneViewTokens.Home.heroScrimStart),
+                        .init(color: SceneViewTokens.SpatialGalleryColor.stageScrimEnd, location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom))
+                Image(systemName: "sparkles")
+                    .font(.system(size: SceneViewTokens.Home.featuredGlyph, weight: .medium))
+                    .foregroundStyle(SceneViewTokens.HomeColor.heroSubtitle)
+                    .padding(SceneViewTokens.Home.heroPadding)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                    Text(title)
+                        .font(SceneViewTokens.TypeScale.display)
+                        .tracking(SceneViewTokens.TypeScale.displayTracking)
+                        .foregroundStyle(SceneViewTokens.HomeColor.heroTitle)
+                    Text(subtitle)
+                        .font(SceneViewTokens.TypeScale.body)
+                        .foregroundStyle(SceneViewTokens.HomeColor.heroSubtitle)
+                        .lineLimit(2)
+                        .frame(maxWidth: SceneViewTokens.Home.heroSubtitleMaxWidth, alignment: .leading)
+                    HeroPill(label: "See what changed")
+                        .padding(.top, SceneViewTokens.Space.sm)
+                }
+                .padding(SceneViewTokens.Home.heroPadding)
+            }
+            .overlay {
+                if colorScheme == .dark {
+                    shape.strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                                       lineWidth: SceneViewTokens.Home.cardOutlineWidth)
+                }
+            }
+            .background {
+                if colorScheme != .dark {
+                    let layers = SceneViewTokens.Shadow.md
+                    ForEach(layers.indices, id: \.self) { index in
+                        shape.fill(SceneViewTokens.HomeColor.heroField)
+                            .shadow(color: .black.opacity(layers[index].opacity),
+                                    radius: layers[index].radius, x: 0, y: layers[index].y)
+                    }
+                }
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(PressScaleButtonStyle())
+        .accessibilityLabel("\(title). \(subtitle). See what changed")
+        .accessibilityIdentifier("home-pager-whats-new")
     }
 }
 
