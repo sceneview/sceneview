@@ -908,4 +908,28 @@ struct FramingStabilityTracker {
     }
 }
 
+// MARK: - Camera paths
+
+extension CameraControls {
+
+    /// The current camera as a free ``CameraPose`` — the eye of ``cameraPosition()`` facing
+    /// along ``lookForward()``. A natural `from:` for
+    /// ``CameraPosePath/travelling(from:distance:durationSeconds:easing:)``, or the first key
+    /// of a path that must start where the camera already is.
+    public func cameraPose() -> CameraPose {
+        CameraPose(position: cameraPosition(), quaternion: lookOrientation())
+    }
+
+    /// Puts the orbit camera at a keyframed pose — one sample of a ``CameraTimeline``.
+    ///
+    /// The eye lands on `pose.position` looking along `pose.forward`; ``target`` becomes the
+    /// point `focusDistance` ahead (`nil` keeps the current ``orbitRadius``). Elevation and
+    /// radius go through the same clamps as a gesture, and an orbit camera has no roll, so
+    /// a pose outside ``minElevation``…``maxElevation`` or the radius limits is
+    /// approximated. See ``SceneCameraPose/init(_:focusDistance:)``.
+    public mutating func follow(_ pose: CameraPose, focusDistance: Float? = nil) {
+        apply(pose: SceneCameraPose(pose, focusDistance: focusDistance ?? orbitRadius))
+    }
+}
+
 #endif // os(iOS) || os(macOS) || os(visionOS)

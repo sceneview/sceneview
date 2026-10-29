@@ -54,6 +54,7 @@ SceneView { root in
 .cameraPose(pose)                  // v4.27.0+ — drives the camera CONTINUOUSLY (SceneCameraPose, radians). Applied only when the value changes, so it coexists with a live drag
 .onCameraChanged { new in Task { @MainActor in pose = new } }  // v4.27.0+ — fires after EVERY camera change (drag, pinch, auto-rotate, re-frame). The hop is required: it fires inside RealityKit's update pass
 .cameraGesturesEnabled(false)      // v4.27.0+ — freezes drag/pinch. NOT .cameraControls(.none), which also disables .cameraPose
+.cameraPose(SceneCameraPose(player.pose, focusDistance: 2))  // v4.64.0+ — play a keyframed CameraPosePath (.orbit(bounds:aspect:) / .travelling / .dolly) through a CameraPathPlayer ticked by TimelineView(.animation); pair with .cameraGesturesEnabled(false)
 .onEntityTapHit { hit in }         // v4.27.0+ — tap + world position (SceneTapHit). Bounds centre, not the surface point
 .mainLight(.systemDefault)         // v4.2.0+ — see LightSlot
 .fillLight(.systemDefault)         // v4.2.0+
