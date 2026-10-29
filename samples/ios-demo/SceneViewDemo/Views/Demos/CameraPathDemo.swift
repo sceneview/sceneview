@@ -303,9 +303,9 @@ final class CameraPathStage {
     private(set) var bounds: [CameraPathSubject: BoundingBox] = [:]
     private(set) var failed: Set<CameraPathSubject> = []
     /// Where the camera's orbit pivot sits: the shown subject's centre.
-    @ObservationIgnored var focus: SIMD3<Float> = fallbackBounds.center
+    @ObservationIgnored var focus: SIMD3<Float> = CameraPathStage.fallbackBounds.center
 
-    @ObservationIgnored private let floor: ModelEntity
+    private let floor: ModelEntity
     @ObservationIgnored private var pivots: [CameraPathSubject: Entity] = [:]
     @ObservationIgnored private var loading: Set<CameraPathSubject> = []
     @ObservationIgnored private var shown: CameraPathSubject = .helmet
