@@ -153,7 +153,7 @@ enum GeometryShape: Int, CaseIterable, Identifiable {
     }
 
     /// The studio finish Android gives each shape.
-    var studioMaterial: StudioMaterial {
+    @MainActor var studioMaterial: StudioMaterial {
         let library = Dictionary(uniqueKeysWithValues: MaterialWall.library.map { ($0.id, $0) })
         switch self {
         case .cube: return Self.lacquer(GeometryFinish.tintLight)
@@ -169,7 +169,7 @@ enum GeometryShape: Int, CaseIterable, Identifiable {
         }
     }
 
-    func swatch(_ finish: GeometryFinish) -> UIColor {
+    @MainActor func swatch(_ finish: GeometryFinish) -> UIColor {
         let rgb = finish == .studio ? studioMaterial.color : GeometryFinish.uniformColor(self)
         return UIColor(red: CGFloat(rgb.x), green: CGFloat(rgb.y), blue: CGFloat(rgb.z), alpha: 1)
     }
@@ -288,7 +288,7 @@ final class GeometryStage {
     private static let frozenSpin: Float = 30 * .pi / 180
     private static let wireThickness: Float = 0.0025
 
-    private struct Slot {
+    @MainActor private struct Slot {
         let holder = Entity()
         let solid: ModelEntity
         var wire: ModelEntity?

@@ -306,7 +306,7 @@ enum TorusKnot {
     }
 
     /// Android's warm key and cool rim, by direction of travel.
-    static func lights() -> [Entity] {
+    @MainActor static func lights() -> [Entity] {
         let key = LightNode.directional(color: .custom(r: 1, g: 0.95, b: 0.88), intensity: 2_500, castsShadow: false)
             .position(-simd_normalize(SIMD3<Float>(0.35, -0.8, -0.5)))
             .lookAt(.zero)
