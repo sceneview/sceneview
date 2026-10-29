@@ -103,12 +103,11 @@ final class VideoSizingTests: XCTestCase {
         XCTAssertEqual(PhotoFormat.png.fileExtension, "png")
     }
 
-    func testFrameCopyKeepsGammaEncodedBytes() {
-        // Linear sources (sRGB views, float) get an sRGB destination that re-encodes them;
-        // already-encoded sources are copied as they are.
-        XCTAssertEqual(FrameTap.destinationFormat(for: .bgra8Unorm_srgb), .bgra8Unorm_srgb)
-        XCTAssertEqual(FrameTap.destinationFormat(for: .rgba16Float), .bgra8Unorm_srgb)
-        XCTAssertEqual(FrameTap.destinationFormat(for: .bgra8Unorm), .bgra8Unorm)
+    func testFrameCopyTagsSourceColorSpace() {
+        // sRGB views and float textures read as linear light; 8-bit unorm holds encoded sRGB.
+        XCTAssertTrue(FrameTap.readsLinear(.bgra8Unorm_srgb))
+        XCTAssertTrue(FrameTap.readsLinear(.rgba16Float))
+        XCTAssertFalse(FrameTap.readsLinear(.bgra8Unorm))
     }
 }
 #endif

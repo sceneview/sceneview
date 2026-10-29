@@ -96,50 +96,58 @@ final class FrameTap: @unchecked Sendable {
     }
 
     func capture(_ context: ARView.PostProcessContext) {
-        guard let sink else { return }
-        let time = CACurrentMediaTime()
-        guard let buffer = sink.reserveFrame(at: time) else { return }
-        guard let texture = encodeCopy(context, into: buffer) else {
-            sink.discardFrame()
-            return
-        }
-        context.commandBuffer.addCompletedHandler { _ in
-            // Holding the CVMetalTexture until the GPU is done keeps the buffer's backing alive.
-            withExtendedLifetime(texture) { sink.append(buffer, at: time) }
-        }
-    }
-
-    /// Encodes the copy of the finished frame into `buffer`; returns the Metal wrapper of the
-    /// buffer to keep alive until the command buffer completes.
-    private func encodeCopy(_ context: ARView.PostProcessContext, into buffer: CVPixelBuffer) -> CVMetalTexture? {
         // The target holds the frame with every effect applied; read it when Metal allows,
         // otherwise read the source (the frame before the post-process).
         let target = context.targetColorTexture
         let source = !target.isFramebufferOnly && target.usage.contains(.shaderRead)
             ? target : context.sourceColorTexture
+        capture(source, device: context.device, commandBuffer: context.commandBuffer)
+    }
 
-        if device !== context.device {
-            device = context.device
+    /// Scales `source` into the next encoder buffer on `commandBuffer` and appends that buffer
+    /// once the command buffer completes. Split from the `ARView` entry point for tests.
+    func capture(_ source: MTLTexture, device: MTLDevice, commandBuffer: MTLCommandBuffer) {
+        guard let sink else { return }
+        let time = CACurrentMediaTime()
+        guard let buffer = sink.reserveFrame(at: time) else { return }
+        guard let texture = encodeCopy(source, device: device, commandBuffer: commandBuffer, into: buffer) else {
+            sink.discardFrame()
+            return
+        }
+        commandBuffer.addCompletedHandler { _ in
+            // Holding the CVMetalTexture until the GPU is done keeps the buffer's backing alive.
+            withExtendedLifetime(texture) { sink.append(buffer, at: time) }
+        }
+    }
+
+    /// Encodes the copy of `source` into `buffer`; returns the Metal wrapper of the buffer to
+    /// keep alive until the command buffer completes.
+    private func encodeCopy(
+        _ source: MTLTexture, device: MTLDevice, commandBuffer: MTLCommandBuffer, into buffer: CVPixelBuffer
+    ) -> CVMetalTexture? {
+        if self.device !== device {
+            self.device = device
             textureCache = nil
-            CVMetalTextureCacheCreate(nil, nil, context.device, nil, &textureCache)
-            // No colour management: values are copied as they are, and an sRGB view on the
-            // destination re-encodes what an sRGB or linear source decodes to.
-            ciContext = CIContext(mtlDevice: context.device, options: [
-                .workingColorSpace: NSNull(),
-                .outputColorSpace: NSNull(),
-                .cacheIntermediates: false,
-            ])
+            CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
+            ciContext = CIContext(mtlDevice: device, options: [.cacheIntermediates: false])
         }
         guard let textureCache, let ciContext else { return nil }
 
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
         var cvTexture: CVMetalTexture?
         guard CVMetalTextureCacheCreateTextureFromImage(
-            nil, textureCache, buffer, nil, Self.destinationFormat(for: source.pixelFormat),
+            nil, textureCache, buffer, nil, .bgra8Unorm,
             width, height, 0, &cvTexture
         ) == kCVReturnSuccess, let cvTexture, let destination = CVMetalTextureGetTexture(cvTexture) else { return nil }
 
-        guard let image = CIImage(mtlTexture: source, options: [.colorSpace: NSNull()]) else { return nil }
+        // Core Image cannot render into an sRGB-format texture, so the destination is plain
+        // BGRA and Core Image does the gamma encoding: an sRGB or float source reads as linear
+        // values, an 8-bit unorm one holds already-encoded sRGB.
+        let sourceSpace = Self.readsLinear(source.pixelFormat)
+            ? CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
+            : CGColorSpace(name: CGColorSpace.sRGB)
+        guard let sourceSpace,
+              let image = CIImage(mtlTexture: source, options: [.colorSpace: sourceSpace]) else { return nil }
         let scaled = image.transformed(by: CGAffineTransform(
             scaleX: CGFloat(width) / image.extent.width,
             y: CGFloat(height) / image.extent.height
@@ -147,21 +155,21 @@ final class FrameTap: @unchecked Sendable {
         ciContext.render(
             scaled,
             to: destination,
-            commandBuffer: context.commandBuffer,
+            commandBuffer: commandBuffer,
             bounds: CGRect(x: 0, y: 0, width: width, height: height),
             colorSpace: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         )
         return cvTexture
     }
 
-    /// An sRGB destination when the source stores linear values (an sRGB or a float format),
-    /// so the bytes reaching the encoder are gamma-encoded either way.
-    static func destinationFormat(for source: MTLPixelFormat) -> MTLPixelFormat {
-        switch source {
+    /// Whether sampling a texture of this format gives linear values (sRGB formats are decoded
+    /// by the sampler, float formats hold linear light) rather than gamma-encoded sRGB.
+    static func readsLinear(_ format: MTLPixelFormat) -> Bool {
+        switch format {
         case .bgra8Unorm_srgb, .rgba8Unorm_srgb, .rgba16Float, .rgba32Float, .bgr10_xr_srgb, .bgra10_xr_srgb:
-            .bgra8Unorm_srgb
+            true
         default:
-            .bgra8Unorm
+            false
         }
     }
 }
