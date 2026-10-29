@@ -154,6 +154,7 @@ fun DemoBottomOverlayScope.CloudServiceStatusBanner(
     modifier: Modifier = Modifier,
 ) {
     if (status == CloudServiceStatus.Available) return
+    ArcoreApiKeyRejectedLogEffect(status)
     DemoStatusBanner(text = status.message(), tone = status.tone, modifier = modifier)
     if (status == CloudServiceStatus.ApiKeyMissing || status is CloudServiceStatus.ApiKeyRejected) {
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
