@@ -240,7 +240,7 @@ class SurfaceMirrorer {
         val caughtUp = releaseSwapChains(
             swapChains,
             destroySwapChain = { runCatching { engine.destroySwapChain(it) } },
-            flushAndWait = { runCatching { engine.flushAndWait(it) }.getOrDefault(true) },
+            flushAndWait = { runCatching { engine.flushAndWait(it) }.getOrDefault(false) },
         )
         if (!caughtUp) {
             android.util.Log.w(
