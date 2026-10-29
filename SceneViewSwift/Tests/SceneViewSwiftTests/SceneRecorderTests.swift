@@ -372,7 +372,7 @@ final class SceneRecorderTests: XCTestCase {
         XCTAssertNotNil(arView.renderCallbacks.postProcess, "another owner's callback is put back")
     }
 
-    func testARecorderSharedByTwoARSceneViewsGoesBackToTheFirst() throws {
+    func testARecorderSharedByTwoARSceneViewsGoesBackToTheFirstOnceFree() throws {
         let recorder = SceneRecorder()
         let arViewA = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
         let arViewB = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200))
@@ -381,15 +381,51 @@ final class SceneRecorderTests: XCTestCase {
 
         sceneA.syncRecorder(recorder, on: arViewA)
         sceneB.syncRecorder(recorder, on: arViewB)
-        XCTAssertTrue(recorder.isUsing(try XCTUnwrap(sceneB.captureSource)), "B took it")
+        let sourceB = try XCTUnwrap(sceneB.captureSource)
+        XCTAssertTrue(recorder.isUsing(sourceB), "B took it")
 
+        sceneA.syncRecorder(recorder, on: arViewA)
+        XCTAssertTrue(recorder.isUsing(sourceB), "A's update leaves it with B while B holds it")
+
+        sceneB.syncRecorder(nil, on: arViewB)
         sceneA.syncRecorder(recorder, on: arViewA)
         let sourceA = try XCTUnwrap(sceneA.captureSource)
         XCTAssertTrue(sourceA.arView === arViewA)
-        XCTAssertTrue(recorder.isUsing(sourceA), "A's next update takes it back")
+        XCTAssertTrue(recorder.isUsing(sourceA), "A's next update takes it back once B let it go")
     }
 
-    func testARecorderSharedByTwoSceneViewsGoesBackToTheFirst() async throws {
+    func testAnUpdateOfTheSceneARecorderLeftKeepsTheOtherScenesRecording() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let arViewA = ARView(frame: CGRect(x: 0, y: 0, width: 100, height: 200),
+                             cameraMode: .nonAR, automaticallyConfigureSession: false)
+        let arViewB = ARView(frame: CGRect(x: 100, y: 0, width: 100, height: 200),
+                             cameraMode: .nonAR, automaticallyConfigureSession: false)
+        window.addSubview(arViewA)
+        window.addSubview(arViewB)
+        let recorder = SceneRecorder()
+        let sceneA = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        let sceneB = ARSceneView.Coordinator(configuration: ARSessionConfiguration())
+        sceneA.syncRecorder(recorder, on: arViewA)
+        sceneB.syncRecorder(recorder, on: arViewB)
+        let sourceB = try XCTUnwrap(sceneB.captureSource)
+        XCTAssertTrue(recorder.startRecording(to: file("shared.mp4")))
+
+        // What a parent re-rendered by the recording's elapsed time does to A, over and over.
+        for _ in 0..<5 {
+            sceneA.syncRecorder(recorder, on: arViewA)
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertTrue(recorder.isRecording, "B's recording keeps going")
+        XCTAssertTrue(recorder.isUsing(sourceB))
+        XCTAssertTrue(sceneB.captureSource === sourceB, "no new source on B either")
+        XCTAssertNotNil(arViewB.renderCallbacks.postProcess, "B's tap is still installed")
+        XCTAssertNil(arViewA.renderCallbacks.postProcess)
+        await recorder.stopRecording()
+    }
+
+    func testARecorderSharedByTwoSceneViewsGoesBackToTheFirstOnceFree() async throws {
         let recorder = SceneRecorder()
         let (_, markerA, _, _) = markedScene(recorder)
         await waitUntil { uses(recorder, markerA) }
@@ -398,8 +434,13 @@ final class SceneRecorderTests: XCTestCase {
         XCTAssertTrue(uses(recorder, markerB), "B took it")
 
         markerA.scheduleCheck()  // what SwiftUI's next update of A does
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(uses(recorder, markerB), "A's update leaves it with B while B holds it")
+
+        markerB.recorder = nil
+        markerA.scheduleCheck()
         await waitUntil { uses(recorder, markerA) }
-        XCTAssertTrue(uses(recorder, markerA), "A's next update takes it back")
+        XCTAssertTrue(uses(recorder, markerA), "A's next update takes it back once B let it go")
     }
 
     func testASceneViewDetachesItsRecorderWhenItLeavesTheWindow() async throws {

@@ -25,11 +25,14 @@ public struct VideoSettings: Sendable, Equatable {
     /// (`AVCaptureDevice.authorizationStatus(for: .audio) == .authorized`). The recorder
     /// never asks for it: without access, or when the microphone cannot be opened, the video
     /// is recorded silent and ``SceneRecording/hasAudio`` is `false`. Needs
-    /// `NSMicrophoneUsageDescription` in the app's Info.plist. The app's audio session is
-    /// left as it is when it can already record; otherwise it is switched to `.playAndRecord`,
-    /// mixing with other audio, for the length of the recording, then deactivated (other
-    /// audio resumes) and put back, unless the app changed it in the meantime. If the switch
-    /// fails, the video is silent.
+    /// `NSMicrophoneUsageDescription` in the app's Info.plist. When the app's audio session
+    /// can already record, it is activated and never deactivated or switched. Otherwise it is
+    /// switched to `.playAndRecord`, mixing with other audio, for the length of the recording,
+    /// then put back unless the app changed it in the meantime. It is deactivated first (so
+    /// another app's audio resumes) only when it was inactive before: another app was playing
+    /// over a category that does not mix. The app's own sound keeps playing. If the switch
+    /// fails, the video is silent. The app has one audio session, so two recorders using the
+    /// microphone at the same time share it.
     /// Default `false`.
     public var recordAudio: Bool
     /// Stops the recording by itself after this many seconds, with
