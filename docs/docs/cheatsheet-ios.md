@@ -180,11 +180,22 @@ struct AutomaticPlacement: View {
 - `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
   rejects stale tickets and invalid bounds, keeps the old entity until a successful
   replacement, and automatically requests placement when empty.
-- Nested meshes are selectable. Drag preserves the grab offset on valid geometry;
-  twist and pinch share the grounded pivot. `selection`, `invalidMovement` and `scale`
-  are observable. `move(by:)`, `rotate(by:)`, and `scale(to:)` provide accessible
-  alternatives; scale is limited to 25–400%. Tracking loss cancels gestures and hides
-  content until the existing anchor recovers. Empty-space taps deselect only.
+- Nested meshes are selectable. Drag preserves the grab offset on valid geometry and the
+  model eases toward the finger (18/s), so touch jitter is smoothed. A thrown drag glides on
+  (released faster than 150 px/s, decaying with τ = 0.35 s) and a flicked twist keeps spinning
+  (faster than 45°/s); any new touch stops both. Twist and pinch share the grounded pivot;
+  the pinch snaps to exactly 100% within ±4%, with one tick and an elastic rebound. A double
+  tap anywhere toggles between 100% and the user's own size over 260 ms. A first placement
+  grows in from 1%. `selection`, `invalidMovement` and `scale` are observable. `move(by:)`,
+  `rotate(by:)`, `scale(to:)` and `toggleScale()` provide accessible alternatives; scale is
+  limited to 25–400%. Tracking loss cancels gestures and hides content until the existing
+  anchor recovers. Empty-space taps deselect only.
+- `recenter()` brings the placed model back in front of the user: it glides (6/s) to where
+  the centre ray meets the floor, between half its reach and its reach ahead, turned with the
+  camera's bearing so the side the user saw still faces them; pinch and twist are kept. A wall
+  model goes to the wall under the centre. It returns `false`, changing nothing, when nothing
+  is placed or no surface is in view. The behaviour and constants follow ARMV, the SceneView
+  Android AR model viewer app.
 - The host owns permission UI, asset errors, labels, recovery actions and haptics.
   No renderer mutation belongs in a detached/background task.
 
@@ -238,8 +249,10 @@ var body: some View {
   re-anchored to the `ARPlaneAnchor` and plays the `.placed` haptic. A floor model keeps its
   rotation; a wall model re-faces the detected wall. Landing waits for pinch, twist or drag to
   end. Each plane anchor gets 3 s to resolve, counted again from the end of such a gesture;
-  one that does not is a failure and backs off 0.1–0.8 s. After 6 failures, landing on that
-  plane pauses for 3 s, or until ARKit reports another plane there or the plane grows. The
+  one that does not is a failure and backs off 0.1–0.8 s. After 6 failures the recovery is
+  abandoned: the model stays where it stands and no timer retries it. Only another plane
+  there, that plane growing by 25%, or the user moving the model (drag, glide, `move(by:)`,
+  `recenter()`) re-arms landing. The
   model leaving the plane before its anchor resolves (a young plane's edge) drops the anchor
   without counting a failure, unless it happens 3 times in a row on that plane. After
   landing, the glide to the landing point goes on until a drag or a move is accepted.
