@@ -225,7 +225,7 @@ enum ARInstantPlacement {
         /// The anchor has not resolved yet and is still inside ``anchorResolveWindow``.
         case wait
         /// The model is no longer over that plane (a young plane's edge, a camera move): drop
-        /// the anchor without counting a failure — the plane did nothing wrong.
+        /// the anchor without counting a failure — unless it keeps happening (``lostLimit``).
         case lost
         /// The anchor did not resolve in time: drop it and back off before the next attempt.
         case retry
@@ -247,6 +247,9 @@ enum ARInstantPlacement {
     /// Android settles instead; here the model would otherwise stay approximate for good.
     static let abandonCooldown: TimeInterval = 3
     static let abandonRegrowth: Float = 1.25
+    /// Losses of the same plane in a row that count as one failure: an anchor that resolves
+    /// slowly on a flickering edge would otherwise be created and dropped for good.
+    static let lostLimit = 3
     /// The two raycasts that refine an approximate placement run at most this often; the
     /// follow itself still eases every frame.
     static let refineInterval: TimeInterval = 0.1
@@ -263,6 +266,10 @@ enum ARInstantPlacement {
         /// The plane (and its area, m²) landing gave up on, and until when.
         private(set) var abandoned: (plane: UUID, area: Float, until: TimeInterval)?
         private(set) var lastRefineAt: TimeInterval?
+        /// Losses in a row of the same plane, see ``lostLimit``.
+        private(set) var lostStreak: (plane: UUID, count: Int)?
+        /// The last tick a gesture held the landing: the resolve window starts again from it.
+        private(set) var heldAt: TimeInterval?
 
         mutating func observe(tracking: Bool, placed: Bool, now: TimeInterval) {
             if placed { return }
@@ -297,25 +304,35 @@ enum ARInstantPlacement {
         /// The attempt the current landing anchor is, 1-based.
         var attempt: Int { failures + 1 }
 
-        func step(gesturesActive: Bool, anchored: Bool, overSurface: Bool,
-                  now: TimeInterval, since: TimeInterval) -> LandingStep {
-            if gesturesActive { return .hold }
+        /// The anchor's resolve window runs from `since`, or from the end of a gesture that
+        /// held the landing, whichever is later: a long pinch does not use the window up.
+        mutating func step(gesturesActive: Bool, anchored: Bool, overSurface: Bool,
+                           now: TimeInterval, since: TimeInterval) -> LandingStep {
+            if gesturesActive { heldAt = now; return .hold }
             if !overSurface { return .lost }
             if anchored { return .commit }
-            if now - since < anchorResolveWindow { return .wait }
+            if now - max(since, heldAt ?? since) < anchorResolveWindow { return .wait }
             return attempt >= anchorRetryLimit ? .abandon : .retry
         }
 
-        /// The model left the plane before its anchor resolved: no failure, only a short pause
-        /// so an edge flickering in and out does not create an anchor per tick.
-        mutating func lost(now: TimeInterval) {
+        /// The model left `plane` before its anchor resolved: no failure, only a short pause so
+        /// an edge flickering in and out does not create an anchor per tick — until it happens
+        /// ``lostLimit`` times in a row on that plane, which counts as one failure. `true` when
+        /// that failure was the last one allowed (see ``failed(now:plane:area:)``).
+        @discardableResult
+        mutating func lost(now: TimeInterval, plane: UUID, area: Float) -> Bool {
+            let count = lostStreak?.plane == plane ? (lostStreak?.count ?? 0) + 1 : 1
+            if count >= lostLimit { return failed(now: now, plane: plane, area: area) }
+            lostStreak = (plane, count)
             nextAttemptAt = now + anchorRetryBase
+            return false
         }
 
         /// Records an anchor that did not resolve; `true` when it was the last one allowed,
         /// which pauses landing on `plane` (see ``abandonCooldown``).
         @discardableResult
         mutating func failed(now: TimeInterval, plane: UUID, area: Float) -> Bool {
+            lostStreak = nil
             failures += 1
             if failures >= anchorRetryLimit {
                 abandoned = (plane, area, now + abandonCooldown)
@@ -330,6 +347,8 @@ enum ARInstantPlacement {
             failures = 0
             nextAttemptAt = 0
             abandoned = nil
+            lostStreak = nil
+            heldAt = nil
         }
 
         mutating func reset() {

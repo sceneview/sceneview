@@ -194,15 +194,17 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``trackingMethod`` then reads ``ARPlacementTrackingMethod/approximate`` and ``result`` is
     /// `nil`.
     ///
-    /// Every frame the model's own screen position is cast again: an estimated surface there
-    /// eases it closer (a continuous follow, 6/s, interrupted by nothing), and a detected plane
-    /// there lands it — ``result`` names the plane, ``trackingMethod`` becomes
+    /// Ten times a second the model's own screen position is cast again: an estimated surface
+    /// there eases it closer (a continuous follow, 6/s, which a drag or a move takes over from),
+    /// and a detected plane there lands it — ``result`` names the plane, ``trackingMethod`` becomes
     /// ``ARPlacementTrackingMethod/fullTracking`` and ``ARHapticEvent/placed`` plays again.
-    /// Landing waits while a gesture is in progress. Each plane anchor gets 3 s to resolve; one
-    /// that does not counts as a failure and backs off (0.1 s doubling to 0.8 s). After six,
-    /// landing on that plane pauses for 3 s, or until ARKit reports another plane there or that
-    /// plane grows. Losing the plane under the model (a young plane's edge) drops the anchor
-    /// without counting a failure. Drag, pinch, twist, ``rotate(by:)``,
+    /// Landing waits while a gesture is in progress. Each plane anchor gets 3 s to resolve,
+    /// counted again from the end of such a gesture; one that does not counts as a failure and
+    /// backs off (0.1 s doubling to 0.8 s). After six, landing on that plane pauses for 3 s, or
+    /// until ARKit reports another plane there or that plane grows. Losing the plane under the
+    /// model (a young plane's edge) drops the anchor without counting a failure, unless it
+    /// happens three times in a row on that plane. After landing, the glide to the landing
+    /// point goes on until a drag or a move actually moves the model. Drag, pinch, twist, ``rotate(by:)``,
     /// ``move(by:)`` and ``scale(to:)`` all work while approximate; drag follows the estimated
     /// floor.
     ///
@@ -215,8 +217,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// How precisely the current placement is tracked; `nil` while nothing is placed. See
     /// ``instantPlacement``. Kotlin twin: `InstantPlacementPoint.trackingMethod`.
     @Published public private(set) var trackingMethod: ARPlacementTrackingMethod?
-    /// Non-nil exactly while the placement is approximate.
-    private var instant: ARInstantPlacement.Runtime?
+    /// Non-nil exactly while the placement is approximate. Internal for tests.
+    var instant: ARInstantPlacement.Runtime?
     /// Auto-place delay, refinement throttle, landing backoff and abandonment recovery.
     private var instantState = ARInstantPlacement.State()
     /// The ease toward a refined spot, or toward the landing point; `nil` at rest. Internal
@@ -611,6 +613,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             recognizer.isEnabled = false
             recognizer.isEnabled = true
         }
+        // `.cancelled` reaches `pan` after this, with the set already empty: a drag cut short
+        // still dropped the model somewhere new, as a drag that ends does.
+        if instant != nil, isActive(UIPanGestureRecognizer.self) { instantState.moved() }
         activeGestures.removeAll()
         invalidMovement = false
         if lifecycle.phase == .adjusting { lifecycle.phase = .placed }
@@ -762,7 +767,6 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         guard canManipulate, let view = arView, let frame = view.session.currentFrame else { return false }
         if let runtime = instant { return moveApproximately(by: offset, contact: runtime.contact, frame: frame) }
         guard let plane = surface, let contact = result?.worldTransform else { return false }
-        handFollowToFinger()
         var next = contact
         let tangent = alignment == .horizontal ? contact.columns.2.xyz : contact.columns.1.xyz
         next.columns.3 += SIMD4<Float>(contact.columns.0.xyz * offset.x + tangent * offset.y, 0)
@@ -772,6 +776,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             invalidMovement = true
             return false
         }
+        handFollowToFinger()
         commitMove(to: next, plane: plane)
         invalidMovement = false
         return true
@@ -876,7 +881,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
             case .lost:
                 view.scene.removeAnchor(pending.anchor)
                 instant?.pending = nil
-                instantState.lost(now: now)
+                instantState.lost(now: now, plane: pending.plane, area: pending.area)
             case .retry, .abandon:
                 view.scene.removeAnchor(pending.anchor)
                 instant?.pending = nil
@@ -906,11 +911,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
 
     /// A drag or a move takes the pivot over. A rotation still easing (a wall landing re-facing
-    /// the wall) is applied first, so the model never keeps a partial yaw; the position stays
-    /// where it is.
+    /// the wall) is applied first, so the model never keeps a partial yaw. While approximate the
+    /// position stops where it is. After landing, the glide to the landing point goes on until
+    /// a move is accepted (``applyMove`` ends it): a drag or move refused at a young plane's edge
+    /// must not leave the model frozen between the estimated height and the floor.
     func handFollowToFinger() {
         if let rotation = follow?.rotation { pivot.setOrientation(rotation, relativeTo: nil) }
-        follow = nil
+        if instant != nil { follow = nil } else { follow?.rotation = nil }
     }
 
     /// A twist takes the rotation over from where it is on screen — no snap to the rest of an
@@ -988,7 +995,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     }
 
     /// One render frame of the follow: exponential, interruptible, never waited on.
-    private func stepFollow(by delta: TimeInterval) {
+    func stepFollow(by delta: TimeInterval) {
         guard let follow, pivot.parent != nil else { return }
         let alpha = ARInstantPlacement.Follow.alpha(delta: delta, reduceMotion: UIAccessibility.isReduceMotionEnabled)
         guard alpha > 0 else { return }

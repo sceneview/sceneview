@@ -261,7 +261,7 @@ final class ARInstantPlacementTests: XCTestCase {
 
     func testEachAnchorGetsThePlacementResolveWindowNotTheBackoff() {
         XCTAssertEqual(ARInstantPlacement.anchorResolveWindow, ARPlacementLifecycle.pendingAnchorTimeout)
-        let state = ARInstantPlacement.State()
+        var state = ARInstantPlacement.State()
         XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 3.9, since: 1), .wait)
         XCTAssertEqual(state.step(gesturesActive: false, anchored: true, overSurface: true, now: 1.05, since: 1), .commit)
         XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 4, since: 1), .retry)
@@ -269,7 +269,7 @@ final class ARInstantPlacementTests: XCTestCase {
 
     func testLandingWaitsWhileAPinchOrTwistIsInProgress() {
         // Landing mid-gesture would re-parent the pivot under a stale twist baseline.
-        let state = ARInstantPlacement.State()
+        var state = ARInstantPlacement.State()
         for anchored in [false, true] {
             for over in [false, true] {
                 XCTAssertEqual(state.step(gesturesActive: true, anchored: anchored, overSurface: over,
@@ -283,17 +283,50 @@ final class ARInstantPlacementTests: XCTestCase {
         // used to count as failures and freeze the placement as approximate after ~2 s.
         var state = ARInstantPlacement.State()
         var now: TimeInterval = 0
-        for _ in 0..<50 {
-            XCTAssertTrue(state.mayAttemptLanding(on: plane, area: 0.2, now: now))
+        for round in 0..<20 {
+            // Another plane in between: the streak on the first one starts over.
+            let surface = round.isMultiple(of: 2) ? plane : UUID()
+            XCTAssertTrue(state.mayAttemptLanding(on: surface, area: 0.2, now: now))
             XCTAssertEqual(state.step(gesturesActive: false, anchored: true, overSurface: false, now: now + 0.1,
                                       since: now), .lost)
-            state.lost(now: now + 0.1)
-            XCTAssertFalse(state.mayAttemptLanding(on: plane, area: 0.2, now: now + 0.15), "no anchor per tick")
+            XCTAssertFalse(state.lost(now: now + 0.1, plane: surface, area: 0.2))
+            XCTAssertFalse(state.mayAttemptLanding(on: surface, area: 0.2, now: now + 0.15), "no anchor per tick")
             now += 0.25
         }
         XCTAssertEqual(state.failures, 0)
         XCTAssertNil(state.abandoned)
         XCTAssertEqual(state.step(gesturesActive: false, anchored: true, overSurface: true, now: now, since: now), .commit)
+    }
+
+    func testAnEdgeThatKeepsFlickeringCountsAsFailuresThenPauses() {
+        // An anchor that resolves slowly on a flickering edge must not loop create/remove forever.
+        var state = ARInstantPlacement.State()
+        var now: TimeInterval = 0
+        var anchors = 0
+        while state.abandoned == nil, anchors < 100 {
+            if state.mayAttemptLanding(on: plane, area: 0.2, now: now) {
+                anchors += 1
+                state.lost(now: now, plane: plane, area: 0.2)
+                if anchors % ARInstantPlacement.lostLimit != 0 { XCTAssertEqual(state.failures, anchors / ARInstantPlacement.lostLimit) }
+            }
+            now += 0.05
+        }
+        XCTAssertEqual(anchors, ARInstantPlacement.lostLimit * ARInstantPlacement.anchorRetryLimit)
+        XCTAssertNotNil(state.abandoned)
+        state.moved()
+        XCTAssertNil(state.lostStreak)
+    }
+
+    func testTheResolveWindowStartsAgainWhenAGestureEnds() {
+        var state = ARInstantPlacement.State()
+        for tick in 0...50 {
+            XCTAssertEqual(state.step(gesturesActive: true, anchored: false, overSurface: true,
+                                      now: Double(tick) * 0.1, since: 0), .hold)
+        }
+        XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 5.25, since: 0), .wait,
+                       "a 5 s pinch did not use the window up")
+        XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 7.75, since: 0), .wait)
+        XCTAssertEqual(state.step(gesturesActive: false, anchored: false, overSurface: true, now: 8.25, since: 0), .retry)
     }
 
     func testUnresolvedAnchorsBackOffThenPauseThatPlane() {
@@ -361,24 +394,44 @@ final class ARInstantPlacementTests: XCTestCase {
 
     // MARK: Controller — follow handover to gestures
 
-    func testDragOrMoveRightAfterAWallLandingKeepsTheWallFacing() {
+    func testDragOrMoveRightAfterAWallLandingKeepsTheWallFacing() throws {
         let controller = ARPlacementController(alignment: .vertical)
         let facing = simd_quatf(angle: 0.8, axis: [0, 1, 0])
         controller.pivot.setOrientation(simd_slerp(simd_quatf(angle: 0, axis: [0, 1, 0]), facing, 0.3), relativeTo: nil)
         controller.follow = ARInstantPlacement.Follow(target: [0, 1.5, -2], rotation: facing)
         controller.handFollowToFinger()
-        XCTAssertNil(controller.follow)
+        XCTAssertNil(controller.follow?.rotation)
         XCTAssertGreaterThan(abs(simd_dot(controller.pivot.orientation(relativeTo: nil).vector, facing.vector)), 0.99999,
                              "no partial yaw left behind")
+        assertClose(try XCTUnwrap(controller.follow, "the glide to the landing point goes on").target, [0, 1.5, -2])
     }
 
-    func testDragWithoutAnEasingRotationKeepsTheCurrentRotation() {
+    func testARefusedDragOrMoveAfterLandingStillReachesTheFloor() throws {
+        // The review case: a young, small plane; the user drags past its edge (or a move is
+        // refused) during the glide. The model must not freeze between the estimated height
+        // and the floor, since nothing refines it any more once it landed.
+        let controller = ARPlacementController(alignment: .vertical)
+        let anchor = AnchorEntity(world: matrix_identity_float4x4)
+        anchor.addChild(controller.pivot)
+        controller.pivot.setPosition([0, 1.2, -2], relativeTo: nil)
+        let facing = simd_quatf(angle: 0.8, axis: [0, 1, 0])
+        controller.follow = ARInstantPlacement.Follow(target: [0, 1.5, -2], rotation: facing)
+        XCTAssertNil(controller.instant, "landed")
+        controller.handFollowToFinger()
+        for _ in 0..<600 where controller.follow != nil { controller.stepFollow(by: 1.0 / 60) }
+        XCTAssertNil(controller.follow)
+        assertClose(controller.pivot.position(relativeTo: nil), [0, 1.5, -2], accuracy: 0.001)
+        XCTAssertGreaterThan(abs(simd_dot(controller.pivot.orientation(relativeTo: nil).vector, facing.vector)), 0.99999)
+    }
+
+    func testDragWhileApproximateStopsTheFollowAndKeepsTheRotation() {
         let controller = ARPlacementController()
+        controller.instant = ARInstantPlacement.Runtime()
         let turned = simd_quatf(angle: 1.1, axis: [0, 1, 0])
         controller.pivot.setOrientation(turned, relativeTo: nil)
         controller.follow = ARInstantPlacement.Follow(target: [0, 0, -1])
         controller.handFollowToFinger()
-        XCTAssertNil(controller.follow)
+        XCTAssertNil(controller.follow, "the finger owns the position while approximate")
         XCTAssertGreaterThan(abs(simd_dot(controller.pivot.orientation(relativeTo: nil).vector, turned.vector)), 0.99999)
     }
 

@@ -7527,13 +7527,15 @@ var body: some View {
   in mid-air. A wall model waits for ARKit's estimate of the wall in view.
 - Ten times a second, the model's own screen position is cast again. An estimated surface there becomes the
   target of a continuous ease (6/s, changes under 1 cm ignored, a snap under Reduce Motion)
-  that never blocks a gesture. A detected plane there (within 5 m) lands the model: it is
+  that never blocks a gesture: a drag or a move takes over from it. A detected plane there (within 5 m) lands the model: it is
   re-anchored to the `ARPlaneAnchor` and plays the `.placed` haptic. A floor model keeps its
   rotation; a wall model re-faces the detected wall. Landing waits for pinch, twist or drag to
-  end. Each plane anchor gets 3 s to resolve; one that does not is a failure and backs off
-  0.1–0.8 s. After 6 failures, landing on that plane pauses for 3 s, or until ARKit reports
-  another plane there or the plane grows. The model leaving the plane before its anchor
-  resolves (a young plane's edge) drops the anchor without counting a failure.
+  end. Each plane anchor gets 3 s to resolve, counted again from the end of such a gesture;
+  one that does not is a failure and backs off 0.1–0.8 s. After 6 failures, landing on that
+  plane pauses for 3 s, or until ARKit reports another plane there or the plane grows. The
+  model leaving the plane before its anchor resolves (a young plane's edge) drops the anchor
+  without counting a failure, unless it happens 3 times in a row on that plane. After
+  landing, the glide to the landing point goes on until a drag or a move is accepted.
 - `placement.trackingMethod` is `nil` before placement, `.approximate` while estimated, then
   `.fullTracking`, and never goes back. `placement.result` stays `nil` while approximate.
   Kotlin: `InstantPlacementPoint.TrackingMethod`
