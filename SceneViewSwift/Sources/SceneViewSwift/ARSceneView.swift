@@ -129,6 +129,8 @@ public struct ARSceneView: UIViewRepresentable {
     private var depthSource: DepthSource?
     private var onDepthFrame: ((ARDepthFrame?) -> Void)?
     private var onDepthSourceState: ((DepthSourceState) -> Void)?
+    /// Set via ``sceneRecorder(_:)``.
+    var sceneRecorder: SceneRecorder?
 
     private var planeDetection: PlaneDetectionMode { configuration.planeDetection }
     private var faceTracking: Bool { configuration.mode == .faceTracking }
@@ -695,6 +697,7 @@ public struct ARSceneView: UIViewRepresentable {
 
     public func updateUIView(_ arView: ARView, context: Context) {
         let coordinator = context.coordinator
+        coordinator.syncRecorder(sceneRecorder, on: arView)
         syncCallbacks(on: coordinator, environment: context.environment)
         // Reactive too: a host that supplies `onTapOnPlane` only on a later
         // render gets the recognizer then, and one that drops it gets the
@@ -740,7 +743,10 @@ public struct ARSceneView: UIViewRepresentable {
         // Apply camera exposure override via post-processing (iOS 15.0+).
         // Converts the EV value to a CIColorControls brightness offset and installs
         // (or removes) a post-process render callback on the ARView.
-        coordinator.applyExposure(cameraExposure, on: arView)
+        if coordinator.applyExposure(cameraExposure, on: arView) {
+            // A recording tap wraps the post-process slot: it takes the new filter inside.
+            coordinator.captureSource?.postProcessReplaced()
+        }
 
         // Diff light slots and swap entities when the caller's modifier value
         // changed since last frame. Mirrors the reactive light path in
@@ -766,6 +772,8 @@ public struct ARSceneView: UIViewRepresentable {
     /// safety net (#2407); this is the primary, deterministic path. The teardown
     /// is idempotent, so the two paths never double-free.
     public static func dismantleUIView(_ uiView: ARView, coordinator: Coordinator) {
+        // First, so a recording's tap gives the post-process slot back before teardown.
+        coordinator.syncRecorder(nil, on: uiView)
         coordinator.tearDownScene(in: uiView)
     }
 
@@ -915,7 +923,7 @@ public struct ARSceneView: UIViewRepresentable {
     /// Copies the unprocessed frame into the destination texture so a failed
     /// filter degrades to "no exposure adjustment" instead of "no frame".
     @available(iOS 15.0, *)
-    private static func passThrough(_ context: ARView.PostProcessContext) {
+    static func passThrough(_ context: ARView.PostProcessContext) {
         guard let blit = context.commandBuffer.makeBlitCommandEncoder() else { return }
         blit.copy(from: context.sourceColorTexture, to: context.targetColorTexture)
         blit.endEncoding()
@@ -967,6 +975,12 @@ public struct ARSceneView: UIViewRepresentable {
         var onFrame: ((ARFrame, ARView) -> Void)?
         /// Depth maps for ``ARSceneView/depthSource(_:)``; created on first use.
         var depthPipeline: ARDepthPipeline?
+        /// The recorder from ``ARSceneView/sceneRecorder(_:)`` and the source it captures
+        /// this view through.
+        var sceneRecorder: SceneRecorder?
+        var captureSource: ARViewCaptureSource?
+        /// Detaches the recorder while the view is out of a window, see `syncRecorder`.
+        var recorderWindowWatcher: WindowWatcher?
         var faceTrackingSession = false
         /// Host handler for session failures — see ``ARSceneView/onSessionError(_:)``.
         var onSessionError: ((Error, ARView) -> Void)?
@@ -1154,20 +1168,25 @@ public struct ARSceneView: UIViewRepresentable {
         ///   reinstalled on every SwiftUI render.
         /// - new value: installs the closure once, remembers it owns the slot.
         /// - value → `nil`: removes the callback, but only if it is still ours.
+        ///
+        /// Returns `true` when it wrote the post-process slot.
         @MainActor
-        func applyExposure(_ ev: Float?, on arView: ARView) {
-            guard appliedExposure != ev else { return }
+        @discardableResult
+        func applyExposure(_ ev: Float?, on arView: ARView) -> Bool {
+            guard appliedExposure != ev else { return false }
             appliedExposure = ev
-            guard #available(iOS 15.0, *) else { return }   // stored, silently ignored
+            guard #available(iOS 15.0, *) else { return false }   // stored, silently ignored
             guard let ev else {
                 if ownsPostProcess {
                     arView.renderCallbacks.postProcess = nil
                     ownsPostProcess = false
+                    return true
                 }
-                return
+                return false
             }
             ARSceneView.applyExposurePostProcess(ev, to: arView, cache: exposureContextCache)
             ownsPostProcess = true
+            return true
         }
 
         // MARK: - Session lifecycle
