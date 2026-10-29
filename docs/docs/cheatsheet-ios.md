@@ -191,8 +191,67 @@ struct AutomaticPlacement: View {
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
-examples; there is no automatic fallback to estimated-plane taps.
+examples. To show the model before a plane is detected, opt in to instant placement below.
 
+
+### Instant placement
+
+Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
+yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
+ARKit detects a plane. Opt in when the first seconds matter more than
+the first pose:
+
+```swift
+@StateObject private var placement = ARPlacementController(instantPlacement: true)
+
+var body: some View {
+    AutoPlacementScene(controller: placement)
+        .overlay(alignment: .bottom) {
+            if placement.trackingMethod == .approximate {
+                Text("Refining…")
+            }
+        }
+        .task {
+            let ticket = placement.selectModel()
+            do {
+                let model = try await ModelNode.load("khronos_toy_car")
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                _ = model.withGroundingShadow()
+                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+            } catch {
+                guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
+                // Present a model-load error and retry, as in the automatic placement example.
+            }
+        }
+}
+```
+
+- A detected plane places the model at once, as without instant placement. When none shows
+  up, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
+  surface ARKit knows at least 0.4 m below the phone, even out of view, else 1.3 m below it. It
+  sits in the centre ray's heading, 1.2–4 m ahead depending on its size as shown (1.2 m at the default 0.3 m
+  preview; a 2 m sofa at real-world size, `previewSize: nil`, sits 2.9 m away), and is never
+  in mid-air. A wall model waits for ARKit's estimate of the wall in view.
+- Ten times a second, the model's own screen position is cast again. An estimated surface there becomes the
+  target of a continuous ease (6/s, changes under 1 cm ignored, a snap under Reduce Motion)
+  that never blocks a gesture: a drag or a move takes over from it. A detected plane there (within 5 m) lands the model: it is
+  re-anchored to the `ARPlaneAnchor` and plays the `.placed` haptic. A floor model keeps its
+  rotation; a wall model re-faces the detected wall. Landing waits for pinch, twist or drag to
+  end. Each plane anchor gets 3 s to resolve, counted again from the end of such a gesture;
+  one that does not is a failure and backs off 0.1–0.8 s. After 6 failures, landing on that
+  plane pauses for 3 s, or until ARKit reports another plane there or the plane grows. The
+  model leaving the plane before its anchor resolves (a young plane's edge) drops the anchor
+  without counting a failure, unless it happens 3 times in a row on that plane. After
+  landing, the glide to the landing point goes on until a drag or a move is accepted.
+- `placement.trackingMethod` is `nil` before placement, `.approximate` while estimated, then
+  `.fullTracking`, and never goes back. `placement.result` stays `nil` while approximate.
+  Kotlin: `InstantPlacementPoint.TrackingMethod`
+  `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` / `FULL_TRACKING`.
+- While approximate, tap-select, drag (along the estimated floor, or onto a detected plane
+  under the finger), pinch, twist, `move(by:)` and `rotate(by:)` all work.
+- The coaching overlay coaches tracking only (`.tracking` goal) so it never covers the model.
+- Without `instantPlacement`, every placement starts as `.fullTracking`; behaviour is unchanged.
+- Needs a real device: the Simulator has no AR camera.
 
 ### Direct wall placement
 
