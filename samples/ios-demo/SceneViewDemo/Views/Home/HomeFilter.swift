@@ -281,8 +281,12 @@ enum DemoFreshness: Equatable {
     /// with the `-demo_freshness_build <version>` launch argument (argument
     /// domain only, never stored) so fresh cards exist whatever the build.
     static let appVersion: String =
-        UserDefaults.standard.string(forKey: "demo_freshness_build")
-            ?? Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
+        UserDefaults.standard.string(forKey: "demo_freshness_build") ?? bundleVersion
+
+    /// `MARKETING_VERSION` as built, never pinned: what the What's new since
+    /// marker records.
+    static let bundleVersion: String =
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0"
 }
 
 extension DemoCategory {

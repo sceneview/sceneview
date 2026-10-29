@@ -416,14 +416,24 @@ final class WhatsNewSinceModel {
         guard !isLoaded else { return }
         let loaded = await Task.detached(priority: .utility) { WhatsNewChangelog.loadSections() }.value
         sections = loaded
-        seen = WhatsNewSeenStore.initialise(versionName: DemoFreshness.appVersion,
+        seen = WhatsNewSeenStore.initialise(versionName: DemoFreshness.bundleVersion,
                                             entryIds: WhatsNewSince.unreleasedEntryIds(loaded))
         isLoaded = true
     }
 
     /// Writes the marker — only "Got it" does; a swipe-down keeps the badge.
+    /// It acknowledges the running build, or the newest release the sheet
+    /// listed if the bundled changelog is ahead of it, so "Got it" always
+    /// clears what was shown.
     func markSeen() {
-        let acknowledged = WhatsNewSeen(versionName: DemoFreshness.appVersion,
+        let newestListed = sections.compactMap(\.version)
+            .max { WhatsNewSince.compare($0, $1) == .orderedAscending }
+        var version = DemoFreshness.bundleVersion
+        if let newestListed,
+           WhatsNewSince.compare(newestListed, WhatsNewSince.baseVersion(of: version)) == .orderedDescending {
+            version = newestListed
+        }
+        let acknowledged = WhatsNewSeen(versionName: version,
                                         entryIds: WhatsNewSince.unreleasedEntryIds(sections))
         WhatsNewSeenStore.markSeen(acknowledged)
         seen = acknowledged
