@@ -64,8 +64,9 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-26, after `camera-path`): 42 rows, 28 working / 0 stub / 14 android-only.
+# Current ledger (2026-10-29, + `model-thumbnails` and `camera-path`): 43 rows, 28 working / 0 stub / 15 android-only.
 # (2026-10-26, +1 android-only: `camera-path`, a keyframed camera orbit with a timeline — no iOS screen yet.)
+# (2026-10-26, +1 android-only: `model-thumbnails`, #4822 — off-screen model thumbnails, no iOS screen yet.)
 # (2026-10-18, after AR catalogue clean-up wave 1, `finger-drawing` and `ar-pool`: 41 rows, 28 working / 0 stub / 13 android-only.)
 # (2026-10-14, +1 android-only: `ar-pool`, Pool in the garden — no iOS screen yet.)
 # (Wave 1, 44 -> 41 rows: three AR cards retired and DROPPED per the ledger rule.
@@ -1279,6 +1280,27 @@ demos:
       No iOS scene; FingerDrawingDemo.kt, FingerDrawingArDemo.kt,
       internal/FingerDrawing.kt. MeshResource from a MeshDescriptor and an
       AnchorEntity cover it (#3907)
+  - id: model-thumbnails
+    androidStatus: InReview
+    iosStatus: android-only
+    reason: >-
+      No iOS screen. Added to Android in #4822 with the experimental
+      `ModelSnapshot` / `rememberModelThumbnail` API it demonstrates; not
+      ported (#2798).
+    category: DEV_TOOLS
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/ModelThumbnailsDemo.kt
+    ios: []
+    iosFiles: []
+    contract: >-
+      A model library whose cards show thumbnails of 9 of the 10 bundled
+      GLBs (the night circuit, a quantized set, is left out on purpose), from
+      two angles, rendered off screen on the screen's engine one at a time,
+      framed whole on a transparent background; a model that cannot be
+      rendered shows an explicit failed cell.
+    parity: missing
+    evidence: >-
+      No iOS scene; ModelThumbnailsDemo.kt. RealityKit's offscreen
+      `RealityRenderer` (or an `ARView` snapshot) is the iOS equivalent
 
   - id: camera-path
     androidStatus: InReview

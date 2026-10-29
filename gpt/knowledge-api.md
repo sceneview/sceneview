@@ -4175,6 +4175,8 @@ Most are default parameter values in `SceneView`/`ARSceneView` — call them exp
 | `rememberCollisionSystem(view)` | `CollisionSystem` | Hit-testing system |
 | `rememberNode(engine) { ... }` | `Node` | Generic node with apply block |
 | `rememberMediaPlayer(fileLocation, isLooping = true, autoPlay = true)` | `MediaPlayerState` | `@ExperimentalSceneViewApi`. Auto-lifecycle video player, prepared off the main thread: `Preparing`, then `Ready(player)` or `Failed(cause)` |
+| `rememberModelSnapshot(engine, maxCacheBytes?, modelLoader?)` | `ModelSnapshot` | `@ExperimentalSceneViewApi`. Off-screen thumbnail renderer: one queue, one cache, destroyed on disposal. Share one per screen; pass the scene's `modelLoader` when there is one (see "Render a model thumbnail to a Bitmap") |
+| `rememberModelThumbnail(snapshot, fileLocation, size, options?)` | `ModelThumbnailState` | `@ExperimentalSceneViewApi`. A GLB's thumbnail on a transparent background: `Loading`, then `Ready(bitmap)` or `Failed(reason)`; `bitmapOrNull()` for the image alone |
 
 **AR-specific helpers** (from `arsceneview` module):
 
@@ -6234,7 +6236,7 @@ View modifiers (chainable):
 .onSessionEvent(_ handler: @escaping (ARSessionEvent, ARView) -> Void) -> ARSceneView          // v4.39.0+ — .started / .firstFrame / .trackingStateChanged / .interrupted / .interruptionEnded / .failed
 .onSessionStateChange(_ handler: @escaping (ARSessionState, ARView) -> Void) -> ARSceneView    // v4.39.0+ — .starting → .running on the first camera frame → .interrupted / .failed
 .onTrackingStateChange(_ handler: @escaping (ARTrackingStatus, ARView) -> Void) -> ARSceneView // v4.39.0+ — once per ARKit tracking-state change
-.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; iOS 15+ CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
+.cameraExposure(_ ev: Float?) -> ARSceneView   // EV stops; CIColorControls post-process — RENDERED-frame brightness (camera feed + virtual content), not capture exposure
 .onFrame(_ handler: @escaping (ARFrame, ARView) -> Void) -> ARSceneView
 .mainLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity directional key light (#1138)
 .fillLight(_ slot: LightSlot) -> ARSceneView   // v4.3.0+ — Android-parity dual-light AR baseline (#1138)
@@ -6245,7 +6247,7 @@ View modifiers (chainable):
 `cameraExposure` notes:
 - Mirrors Android's `ARSceneView(cameraExposure: Float?)`.
 - Positive values brighten; negative values darken. One stop = ±0.5 brightness unit.
-- Implemented via `ARView.renderCallbacks.postProcess` (iOS 15+); no-op on earlier versions.
+- Implemented via `ARView.renderCallbacks.postProcess`.
 - It is **rendered-frame brightness**, applied to the composited camera feed AND virtual content after ARKit metered the capture — it cannot recover blown highlights. True capture exposure needs `ARConfiguration.configurableCaptureDeviceForPrimaryCamera`.
 
 `onSessionError` notes (v4.39.0+):

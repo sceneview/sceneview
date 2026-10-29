@@ -128,7 +128,7 @@ with `tools:replace="android:value"`. Both snippets are in the
 
 ### iOS / macOS / visionOS (SwiftUI)
 
-Swift Package Manager: `https://github.com/sceneview/sceneview.git`, from `4.60.0`.
+Swift Package Manager: `https://github.com/sceneview/sceneview.git`, from `4.63.0`.
 
 ```swift
 import SwiftUI
@@ -256,7 +256,7 @@ The other platforms in the table below join this section once a capture backs th
 | Android AR | `io.github.sceneview:arsceneview:4.63.0` |
 | Compose Multiplatform | `io.github.sceneview:sceneview-compose:4.63.0` |
 | KMP core only (math, collision, physics) | `io.github.sceneview:sceneview-core:4.63.0` |
-| Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.60.0` |
+| Apple (SPM) | `https://github.com/sceneview/sceneview.git`, from `4.63.0` |
 | Web, script tag | the two `<script>` tags in [Web](#web) |
 | Web, bundler (Kotlin/JS) | `npm install sceneview-web` — see [SceneView Web](#sceneview-web) |
 | Flutter | [`flutter_sceneview`](https://pub.dev/packages/flutter_sceneview) on pub.dev |

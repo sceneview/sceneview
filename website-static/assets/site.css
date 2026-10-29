@@ -572,7 +572,7 @@ code, pre, kbd { font-family: var(--font-mono); font-size: .875em; }
 .numbers dd a:hover { text-decoration-color: var(--accent); }
 .numbers__source { margin-top: var(--s-6); }
 .numbers__lead { grid-column: 1 / -1; }
-@media (min-width: 720px) { .numbers { grid-template-columns: repeat(6, minmax(0, 1fr)); } .numbers__lead { grid-column: span 2; } }
+@media (min-width: 720px) { .numbers__lead { grid-column: auto; } }
 
 /* ── Compare + FAQ ────────────────────────────────────────── */
 .compare { overflow-x: auto; border: 1px solid var(--hairline); border-radius: var(--r-lg); background: var(--surface-1); }

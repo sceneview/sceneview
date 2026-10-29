@@ -19,7 +19,7 @@
       "@type": "Person",
       "name": "Thomas Gorisse",
       "url": "https://github.com/sceneview",
-      "jobTitle": "Lead Developer"
+      "description": "Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR"
     },
     "sameAs": [
       "https://github.com/sceneview",
@@ -162,13 +162,6 @@
       "price": "0",
       "priceCurrency": "USD",
       "availability": "https://schema.org/InStock"
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "ratingCount": "398",
-      "bestRating": "5",
-      "worstRating": "1"
     },
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
     "author": {
