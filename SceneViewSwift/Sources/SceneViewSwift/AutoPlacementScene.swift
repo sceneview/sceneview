@@ -16,6 +16,7 @@ public struct AutoPlacementScene: View {
     @ObservedObject private var controller: ARPlacementController
     private var coaching: Bool
     private var onSessionEvent: ((ARSessionEvent, ARView) -> Void)?
+    private var recorder: SceneRecorder?
 
     public init(controller: ARPlacementController,
                 coaching: Bool = true,
@@ -34,6 +35,15 @@ public struct AutoPlacementScene: View {
         )
         .automaticPlacement(controller)
         .onSessionEvent { event, view in onSessionEvent?(event, view) }
+        .sceneRecorder(recorder)
+    }
+
+    /// Captures photos and videos of this scene, camera feed included, with `recorder`.
+    /// See ``ARSceneView/sceneRecorder(_:)``.
+    public func sceneRecorder(_ recorder: SceneRecorder?) -> AutoPlacementScene {
+        var copy = self
+        copy.recorder = recorder
+        return copy
     }
 }
 #endif

@@ -180,6 +180,12 @@ public struct SceneView: View {
     // pass and restores the authored orbit angles, without rebuilding content.
     var recenterToken: AnyHashable?
 
+    #if os(iOS)
+    // Photo / video capture, set via `.sceneRecorder(_:)`. `nil` (the default) adds nothing
+    // to the view.
+    var sceneRecorder: SceneRecorder?
+    #endif
+
     /// Creates a 3D scene with imperative content setup.
     ///
     /// - Parameter content: A closure that populates the scene. Receives a root
@@ -210,7 +216,7 @@ public struct SceneView: View {
     }
 
     public var body: some View {
-        SceneViewRepresentation(
+        let representation = SceneViewRepresentation(
             content: content,
             sceneEnvironment: sceneEnvironment,
             cameraControlMode: cameraControlMode ?? .orbit,
@@ -236,6 +242,16 @@ public struct SceneView: View {
             onEntityTappedHit: onEntityTappedHit,
             bloomOptions: bloomOptions
         )
+        #if os(iOS)
+        // Shares the RealityView's rectangle, which is how it finds the `ARView` to capture.
+        if let sceneRecorder {
+            representation.background(SceneRecorderAnchor(recorder: sceneRecorder))
+        } else {
+            representation
+        }
+        #else
+        representation
+        #endif
     }
 
     // MARK: - View Modifiers
