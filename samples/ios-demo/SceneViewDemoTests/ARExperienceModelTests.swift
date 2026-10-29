@@ -309,6 +309,8 @@ final class PlacementScaleLabelTests: XCTestCase {
                        "Actual size · 100%")
         XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: .nan),
                        "Actual size · 100%")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: 0),
+                       "Actual size · 100%")
     }
 
     func testPercentRoundsInsteadOfTruncating() {
@@ -319,5 +321,10 @@ final class PlacementScaleLabelTests: XCTestCase {
 
     func testDimensionsReadWidthDepthHeight() {
         XCTAssertEqual(PlacementScaleLabel.dimensions([0.5, 1.8, 0.3]), "0.50 × 0.30 × 1.80 m")
+    }
+
+    func testDimensionsAreSpokenInTheSameOrder() {
+        XCTAssertEqual(PlacementScaleLabel.dimensionsAccessibility([0.5, 1.8, 0.3]),
+                       "Width 0.50 metres, depth 0.30 metres, height 1.80 metres")
     }
 }

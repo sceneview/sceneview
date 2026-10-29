@@ -174,7 +174,9 @@ struct AutomaticPlacement: View {
   collision shapes for selection and gestures.
 - `baseSize` (W, H, D in metres at 100 %), `placedSize` (`baseSize * scale`) and
   `isAtRealWorldSize` (`.realWorld` at exactly 100 %) are observable — e.g.
-  `String(format: "%.2f m tall", placement.placedSize!.y)`. `ModelNode.worldSize` and
+  `if let s = placement.placedSize { Text(String(format: "%.2f m tall", s.y)) }`. Once
+  placed, `if let b = placement.baseSize { placement.scale(to: 2 / b.y) }` makes it 2 m
+  tall (`scale(to:)` does nothing before `.placed`/`.adjusting`). `ModelNode.worldSize` and
   `worldBoundingBox` give any model's dimensions in world metres.
 - `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
   `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond

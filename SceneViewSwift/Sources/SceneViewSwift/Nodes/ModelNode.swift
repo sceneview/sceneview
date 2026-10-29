@@ -401,11 +401,15 @@ public struct ModelNode: @unchecked Sendable {
     /// reports `0.3`. Rotation does not change it; see ``worldBoundingBox`` for the space the
     /// model occupies once rotated.
     ///
+    /// A model with no visual bounds (no mesh yet, or an empty hierarchy) reports `.zero`.
+    ///
     /// Mirrors Android's `ModelNode.worldSize`.
     @MainActor
     public var worldSize: SIMD3<Float> {
-        let local = entity.visualBounds(relativeTo: entity).extents
-        return local * entity.scale(relativeTo: nil)
+        let bounds = entity.visualBounds(relativeTo: entity)
+        guard !bounds.isEmpty else { return .zero }
+        let size = bounds.extents * entity.scale(relativeTo: nil)
+        return size.x.isFinite && size.y.isFinite && size.z.isFinite ? size : .zero
     }
 
     /// The axis-aligned box enclosing the model in world space, after every parent transform

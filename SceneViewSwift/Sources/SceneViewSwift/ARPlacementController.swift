@@ -169,13 +169,14 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// ``PlacementSize/fitInto(meters:)`` the largest of the three is the requested size.
     ///
     /// Known as soon as ``setModel(_:ticket:size:)`` accepts a model, before it is placed, and
-    /// `nil` after ``dismiss()``. A user-chosen size is a one-liner — "make it 2 m tall":
+    /// `nil` after ``dismiss()``. Once placed, a user-chosen size is a one-liner — "make it 2 m tall":
     ///
     /// ```swift
     /// if let base = controller.baseSize { controller.scale(to: 2 / base.y) }
     /// ```
     ///
-    /// ``scale(to:)`` clamps to 25–400 %, so the result stops at the nearest bound.
+    /// ``scale(to:)`` does nothing before ``ARPlacementPhase/placed`` or ``ARPlacementPhase/adjusting``
+    /// and clamps to 25–400 %, so the result stops at the nearest bound.
     @Published public private(set) var baseSize: SIMD3<Float>?
 
     /// The model's current dimensions in metres: ``baseSize`` times ``scale``, so it follows the

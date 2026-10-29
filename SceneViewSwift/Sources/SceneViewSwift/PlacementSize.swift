@@ -22,12 +22,15 @@ public enum PlacementSize: Equatable, Sendable {
 
     /// Scales the model uniformly so its longest side measures `meters` — a preview for assets
     /// whose units are unknown or not metres. The fit is measured on the asset as loaded, before
-    /// placement. `meters` must be finite and greater than zero, or
+    /// placement. On iOS the longest side is measured on the entity's world bounds as loaded, after
+    /// its own rotation; Android measures before its `assetRotation`. `meters` must be finite and
+    /// greater than zero, or
     /// ``ARPlacementController/setModel(_:ticket:size:)`` refuses the model.
     case fitInto(meters: Float)
 
     /// The 30 cm longest-side preview ``ARPlacementController/setModel(_:ticket:previewSize:)``
-    /// uses by default — the same default as Android's `scaleToUnits = 0.3f`.
+    /// uses by default — the same default as Android's `scaleToUnits = 0.3f`. A Swift
+    /// convenience: Android has no `PlacementSize.preview` and spells it `FitInto(0.3f)`.
     public static let preview = PlacementSize.fitInto(meters: 0.3)
 
     /// Whether this size can be applied: always for ``realWorld``; for ``fitInto(meters:)``,
@@ -42,7 +45,7 @@ public enum PlacementSize: Equatable, Sendable {
     /// The uniform factor that brings an asset whose longest side measures `longestSide` metres to
     /// this size: `1` for ``realWorld``, `meters / longestSide` for ``fitInto(meters:)``.
     /// `nil` for an invalid size or an asset with no usable extent.
-    public func scaleFactor(longestSide: Float) -> Float? {
+    func scaleFactor(longestSide: Float) -> Float? {
         guard isValid, longestSide.isFinite, longestSide > 0 else { return nil }
         switch self {
         case .realWorld: return 1

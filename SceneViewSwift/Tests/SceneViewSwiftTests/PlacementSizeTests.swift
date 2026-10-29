@@ -81,6 +81,10 @@ final class PlacementSizeTests: XCTestCase {
         XCTAssertEqual(bounds.min.y, 1, accuracy: 0.0001)
     }
 
+    func testEmptyModelHasZeroWorldSize() {
+        assertEqual(ModelNode(ModelEntity()).worldSize, [0, 0, 0])
+    }
+
     #if os(iOS)
     // MARK: Placement pivot and base size
 
@@ -131,6 +135,65 @@ final class PlacementSizeTests: XCTestCase {
         }
         assertEqual(controller.baseSize, [1, 1, 1])
         XCTAssertEqual(controller.placementSize, .realWorld)
+    }
+
+    func testASecondModelReplacesBaseSizeAndPlacementSize() {
+        let controller = ARPlacementController()
+        XCTAssertTrue(controller.setModel(box([0.5, 1.8, 0.3]), ticket: controller.selectModel(), size: .realWorld))
+        XCTAssertTrue(controller.isAtRealWorldSize)
+        XCTAssertTrue(controller.setModel(box([2, 1, 0.5]), ticket: controller.selectModel(), size: .fitInto(meters: 0.3)))
+        assertEqual(controller.baseSize, [0.3, 0.15, 0.075])
+        XCTAssertEqual(controller.placementSize, .fitInto(meters: 0.3))
+        XCTAssertFalse(controller.isAtRealWorldSize)
+    }
+
+    func testStaleTicketLeavesBaseSizeAndPlacementSizeUnchanged() {
+        let controller = ARPlacementController()
+        let first = controller.selectModel()
+        XCTAssertTrue(controller.setModel(box([1, 1, 1]), ticket: first, size: .realWorld))
+        _ = controller.selectModel()
+        XCTAssertFalse(controller.setModel(box([2, 2, 2]), ticket: first, size: .fitInto(meters: 0.3)))
+        assertEqual(controller.baseSize, [1, 1, 1])
+        XCTAssertEqual(controller.placementSize, .realWorld)
+
+        let beforeDismiss = controller.selectModel()
+        controller.dismiss()
+        XCTAssertFalse(controller.setModel(box([2, 2, 2]), ticket: beforeDismiss, size: .realWorld))
+        XCTAssertNil(controller.baseSize)
+        XCTAssertNil(controller.placementSize)
+    }
+
+    func testRealWorldOnAWallRestsOnTheBackBottomCentre() throws {
+        // A 1.2 × 0.7 × 0.05 m panel: X along the wall, Y up, Z out of the wall.
+        let wrapper = try XCTUnwrap(ARPlacementController.prepare(box([1.2, 0.7, 0.05]),
+                                                                  alignment: .vertical, size: .realWorld))
+        let bounds = wrapper.visualBounds(relativeTo: wrapper)
+        XCTAssertEqual(bounds.min.z, 0, accuracy: 0.0001)
+        XCTAssertEqual(bounds.min.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(bounds.center.x, 0, accuracy: 0.0001)
+
+        let controller = ARPlacementController(alignment: .vertical)
+        XCTAssertTrue(controller.setModel(box([1.2, 0.7, 0.05]), ticket: controller.selectModel(), size: .realWorld))
+        assertEqual(controller.baseSize, [1.2, 0.7, 0.05])
+        XCTAssertTrue(controller.isAtRealWorldSize)
+    }
+
+    func testRealWorldMeasuresANestedScaledAndRotatedChild() throws {
+        // Root → child scaled ×0.5 and turned 90° about Y → a 2 × 1 × 0.4 m mesh.
+        let root = Entity()
+        let child = Entity()
+        child.scale = [0.5, 0.5, 0.5]
+        child.orientation = simd_quatf(angle: .pi / 2, axis: [0, 1, 0])
+        child.position = [3, 1, -2]
+        child.addChild(box([2, 1, 0.4]))
+        root.addChild(child)
+        let wrapper = try XCTUnwrap(ARPlacementController.prepare(root, alignment: .horizontal, size: .realWorld))
+        let bounds = wrapper.visualBounds(relativeTo: wrapper)
+        assertEqual(bounds.extents, [0.2, 0.5, 1])
+        XCTAssertEqual(bounds.min.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(bounds.center.x, 0, accuracy: 0.0001)
+        XCTAssertEqual(bounds.center.z, 0, accuracy: 0.0001)
+        assertEqual(ARPlacementController.baseSize(of: wrapper), [0.2, 0.5, 1])
     }
 
     func testPlacedSizeFollowsTheScale() {

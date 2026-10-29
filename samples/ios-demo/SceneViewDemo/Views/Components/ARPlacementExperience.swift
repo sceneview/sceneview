@@ -423,14 +423,14 @@ struct ARPlacementExperience: View {
         }
     }
 
-    /// Back to 100 % — AR Quick Look's persistent "100 %" affordance. "Actual size" only when
-    /// 100 % is the object's true size; a preview resets to its own 100 %.
+    /// Back to 100 % — AR Quick Look's persistent "100 %" affordance. The hint says what 100 % is:
+    /// the object's true size, or the preview's own.
     private var scaleResetButton: some View {
-        Button(renderedActualSize ? "Actual size" : "Reset to 100%") { controller.scale(to: 1) }
+        Button("Reset to 100%") { controller.scale(to: 1) }
             .buttonStyle(.bordered)
             .frame(minHeight: SceneViewTokens.Layout.touchTarget)
             .disabled(!controller.hasPlacement || controller.phase != .placed || controller.scale == 1)
-            .accessibilityLabel(renderedActualSize ? "Reset to real-world size" : "Reset to preview size")
+            .accessibilityHint(renderedActualSize ? "Reset to real-world size" : "Reset to preview size")
             .accessibilityIdentifier("ar-scale-reset")
     }
 
@@ -513,7 +513,8 @@ private struct PlacementModelPreview: View {
     let actualSize: Bool
     @State private var model: ModelNode?
     @State private var failed = false
-    /// The shown model's size in metres, measured before the viewer frames it.
+    /// The shown model's size in metres, measured before the viewer frames it. Set for a model
+    /// at its authored size only.
     @State private var dimensions: SIMD3<Float>?
 
     var body: some View {
@@ -528,10 +529,12 @@ private struct PlacementModelPreview: View {
             if failed { Text("Model couldn’t load.") }
             else if model == nil && television == nil { ProgressView("Loading model…") }
         }
+        // Metres only for a model at its authored size: a preview's would be the preview's own
+        // size, which the AR label never claims either.
         .overlay(alignment: .bottom) {
             if let dimensions {
                 VStack(spacing: SceneViewTokens.Space.xs) {
-                    Text(actualSize && !wallTV ? "Actual size" : "Preview size")
+                    Text("Actual size")
                         .font(SceneViewTokens.TypeScale.caption)
                     Text(PlacementScaleLabel.dimensions(dimensions))
                         .font(SceneViewTokens.TypeScale.bodyMedium)
@@ -540,7 +543,7 @@ private struct PlacementModelPreview: View {
                 .padding(SceneViewTokens.Space.md)
                 .modifier(PlacementStatusSurface())
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(actualSize && !wallTV ? "Actual size" : "Preview size"), \(PlacementScaleLabel.dimensionsAccessibility(dimensions))")
+                .accessibilityLabel("Actual size, \(PlacementScaleLabel.dimensionsAccessibility(dimensions))")
                 .accessibilityIdentifier("ar-preview-dimensions")
                 .padding(SceneViewTokens.Space.lg)
             }
@@ -549,7 +552,6 @@ private struct PlacementModelPreview: View {
             if wallTV {
                 let tv = ARPlacementExperience.makeWallTV()
                 tv.scale = SIMD3<Float>(repeating: 0.3 / 1.26)
-                dimensions = tv.visualBounds(relativeTo: nil).extents
                 television = tv
                 return
             }
@@ -558,8 +560,12 @@ private struct PlacementModelPreview: View {
                 if let url { loaded = try await ModelNode.load(contentsOf: url, unit: unit) }
                 else { loaded = try await ModelNode.load(modelName) }
                 guard !Task.isCancelled else { return }
-                if !actualSize { _ = loaded.scaleToUnits(0.3) }
-                dimensions = loaded.worldSize
+                if actualSize {
+                    // World-axis box, so a rotated root reads the same height as "m tall" in AR.
+                    dimensions = loaded.worldBoundingBox.extents
+                } else {
+                    _ = loaded.scaleToUnits(0.3)
+                }
                 model = loaded
             } catch {
                 guard !Task.isCancelled else { return }
