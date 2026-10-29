@@ -114,6 +114,10 @@ struct HomeFeaturedPager<Hero: View>: View {
                     .padding(SceneViewTokens.Home.heroPadding)
                     .allowsHitTesting(false)
             }
+            // A container element of its own: an identifier on a plain
+            // container is pushed down onto the children, where the hero's
+            // own identifiers win and `home-pager` is found nowhere.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("home-pager")
         } else {
             hero()

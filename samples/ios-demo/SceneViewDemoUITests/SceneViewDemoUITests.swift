@@ -377,7 +377,7 @@ final class SceneViewDemoUITests: XCTestCase {
             }
         }
         assertTabsOnScreen("on launch")
-        for (step, id) in ["cosmos", "model-viewer"].enumerated() {
+        for (step, id) in ["cosmos", "materials"].enumerated() {
             let card = app.descendants(matching: .any)["home-featured-\(id)"]
             for _ in 0..<6 where !(card.exists && card.isHittable) {
                 app.swipeUp(velocity: .slow)
