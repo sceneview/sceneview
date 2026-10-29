@@ -34,6 +34,7 @@ object FingerDrawingFragment : DemoFragment {
         icon = Icons.Filled.Gesture,
         order = 7,
         addedIn = "4.56.0",
+        updatedIn = "4.64.0",
         tags = setOf(
             "drawing", "draw", "paint", "brush", "stroke", "finger", "touch", "sketch",
             "tube", "mesh", "geometry", "procedural", "ar", "anchor",

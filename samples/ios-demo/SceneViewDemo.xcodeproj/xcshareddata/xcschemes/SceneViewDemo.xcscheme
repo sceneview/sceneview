@@ -75,6 +75,9 @@
             ReferencedContainer = "container:SceneViewDemo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../../../SceneViewDemo/SceneViewDemo.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ArchiveAction
       buildConfiguration = "Release"

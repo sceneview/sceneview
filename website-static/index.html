@@ -15,6 +15,7 @@
   </script>
   <!-- Site analytics: GA4 loader shared by every static page. Synchronous on purpose. -->
   <script src="/assets/analytics.js"></script>
+  <script src="/assets/support.js" defer></script>
   <title>SceneView — 3D and AR for Compose, SwiftUI and the web</title>
   <meta name="description" content="SceneView is an open-source SDK that makes 3D and AR declarative: Jetpack Compose and Filament on Android, SwiftUI and RealityKit on Apple, Filament on the web.">
   <meta name="keywords" content="SceneView, 3D SDK, AR SDK, augmented reality, Jetpack Compose, SwiftUI, ARCore, ARKit, Filament, RealityKit, Android 3D, iOS AR, model viewer, glTF, GLB, USDZ, Sceneform, visionOS, Compose Multiplatform, Flutter, React Native, MCP server, llms.txt">
@@ -74,7 +75,7 @@
     "url": "https://sceneview.github.io/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Android, iOS, macOS, visionOS, Web, Windows, Linux",
-    "softwareVersion": "4.62.0",
+    "softwareVersion": "4.63.0",
     "license": "https://github.com/sceneview/sceneview/blob/main/LICENSE",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Organization", "name": "SceneView", "url": "https://github.com/sceneview" },
@@ -142,7 +143,7 @@
       <a href="/playground.html">Playground</a>
     </nav>
     <div class="nav__end">
-      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars></span></a>
+      <a class="nav__gh" href="https://github.com/sceneview/sceneview" aria-label="SceneView on GitHub"><svg><use href="#i-gh"/></svg><span data-stars data-metric="stars">1.3K</span></a>
       <button class="icon-btn theme-toggle" type="button" aria-label="Switch theme"><svg class="i-moon"><use href="#i-moon"/></svg><svg class="i-sun"><use href="#i-sun"/></svg></button>
       <a class="btn btn--primary btn--sm" href="/docs/quickstart/" data-start>Get started</a>
       <button class="icon-btn nav__menu" type="button" aria-controls="menu" aria-expanded="false" aria-label="Open menu"><svg><use href="#i-menu"/></svg></button>
@@ -222,12 +223,12 @@
               <button type="button" role="tab" id="it-desktop" aria-controls="ins-desktop" aria-selected="false" tabindex="-1" data-key="desktop" data-label="Desktop" data-href="/docs/compose-multiplatform/">Desktop</button>
             </div>
             <div class="install__panels">
-            <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.62.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.62.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode › Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.62.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.62.0/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.62.0/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.62.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.62.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-android" aria-labelledby="it-android"><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview:4.63.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview:4.63.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-apple" aria-labelledby="it-apple" hidden><code><span class="pfx">// Xcode › Add Package Dependencies</span><br><span class="str">https://github.com/<wbr>sceneview/<wbr>sceneview.git</span><br><span class="pfx">// Version: 4.63.0</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='https://github.com/sceneview/sceneview.git'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-web" aria-labelledby="it-web" hidden><code class="cmd__tags"><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.63.0/<wbr>website-static/<wbr>js/<wbr>filament</span><span class="tagline__tail"><span class="str">/<wbr>filament.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span><br><span class="tagline"><span class="dim">&lt;script src=</span><span class="tagline__head str">"https://<wbr>cdn.jsdelivr.net/<wbr>gh/<wbr>sceneview/sceneview@v4.63.0/<wbr>website-static/<wbr>js</span><span class="tagline__tail"><span class="str">/<wbr>sceneview.js"</span><span class="dim">&gt;&lt;/script&gt;</span></span></span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/filament/filament.js"&gt;&lt;/script&gt;&#10;&lt;script src="https://cdn.jsdelivr.net/gh/sceneview/sceneview@v4.63.0/website-static/js/sceneview.js"&gt;&lt;/script&gt;'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-flutter" aria-labelledby="it-flutter" hidden><code><span class="pfx">$ </span>flutter pub add <span class="str">flutter_sceneview</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='flutter pub add flutter_sceneview'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             <div class="cmd" role="tabpanel" id="ins-rn" aria-labelledby="it-rn" hidden><code><span class="pfx">$ </span>npm install <span class="str">@sceneview-sdk/react-native</span><br><span class="pfx">$ </span>npx pod-install</code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='npm install @sceneview-sdk/react-native&#10;npx pod-install'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
-            <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.62.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.62.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
+            <div class="cmd" role="tabpanel" id="ins-desktop" aria-labelledby="it-desktop" hidden><code class="cmd__call">implementation(<wbr><span class="arg"><span class="str">"io.github.sceneview:sceneview-compose:4.63.0"</span>)</span></code><button class="copy" type="button" aria-label="Copy to clipboard" data-copy-text='implementation("io.github.sceneview:sceneview-compose:4.63.0")'><svg class="i-copy"><use href="#i-copy"/></svg><svg class="i-check"><use href="#i-check"/></svg></button></div>
             </div>
             <a class="install__next" href="/docs/quickstart/" data-start><span data-start-label>Quickstart · Android</span> <svg><use href="#i-arrow"/></svg></a>
           </div>
@@ -238,6 +239,40 @@
           <li><b>Reflections on a wet track</b><code>setScreenSpaceReflections()</code></li>
           <li><b>Floodlights, bloom and fog</b><code>addLight() · setBloom() · setFog()</code></li>
         </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1b · FOR COMPANIES — the funding call. Generic on purpose: no company is named here.
+       Open Collective first, GitHub Sponsors second, nothing else. Same message as
+       companies.html#sponsor and the README's Sponsors section: edit the three together. -->
+  <section class="section" id="fund" aria-labelledby="fund-title">
+    <div class="container">
+      <div class="card fund reveal">
+        <p class="eyebrow">For companies shipping SceneView</p>
+        <h2 class="h2" id="fund-title">SceneView runs in commercial products. Sponsor it or buy support.</h2>
+        <p class="lead">Commercial products ship SceneView. Almost nobody contributes back, in code or in funding, while the maintainers carry every fix and every release. If SceneView is part of your product, sponsor it or buy support, now.</p>
+        <div class="fund__offers">
+          <div class="fund__offer">
+            <h3 class="h3">Sponsor</h3>
+            <p>Funds the fixes, Filament upgrades and releases your product depends on. Open Source Collective issues the invoice and the receipt; your company is listed nowhere unless you ask.</p>
+            <div class="sponsor__ctas">
+              <a class="btn btn--primary" href="https://opencollective.com/sceneview"><svg><use href="#i-heart"/></svg>Sponsor on Open Collective</a>
+              <a class="link" href="https://github.com/sponsors/sceneview">or through GitHub Sponsors</a>
+            </div>
+          </div>
+          <div class="fund__offer">
+            <h3 class="h3">Commercial support</h3>
+            <ul class="fund__facts">
+              <li><b>Incident &middot; $600</b><span>One reproducible problem. Within 3 business days: a minimal reproduction, the cause, and a workaround or a costed fix.</span></li>
+              <li><b>2.3 LTS &middot; $1,800 for 90 days</b><span>One identified integration. Answers within 2 business days and up to 1 day of work a month; more work is quoted. The $600 of an Incident already bought is deducted.</span></li>
+            </ul>
+            <p class="fund__note">Contracted and invoiced through Open Source Collective, the fiscal host; the money goes to the collective&rsquo;s budget. Payment comes before any work. Every version stays under Apache&nbsp;2.0.</p>
+            <div class="sponsor__ctas">
+              <a class="btn btn--ghost" href="mailto:hello@sceneview.dev">Buy support: hello@sceneview.dev</a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -493,18 +528,15 @@
         <p class="eyebrow reveal">In the open</p>
         <h2 class="h2 reveal" id="proof-title">Public numbers anyone can re-check.</h2>
       </div>
-      <!-- The data-metric="stars|contributors|releases|web-downloads" anchors are rewritten weekly by
-           .claude/scripts/update-site-metrics.sh: keep each one exactly once, on a text-only element.
-           No company names here: an Apache 2.0 user has not endorsed SceneView, and Play SDK Console
-           usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
+      <!-- Static on purpose: these are the only public adoption figures. The GitHub star counter in
+           the nav (its data-metric anchor) is the one value rewritten weekly by
+           .claude/scripts/update-site-metrics.sh. No company names here: an Apache 2.0 user has not
+           endorsed SceneView, and Play SDK Console usage figures are Google confidential (SDK Console Terms of Service, section 5.3). -->
       <dl class="numbers reveal">
-        <div class="numbers__lead"><dt>public repositories declare SceneView or its Sceneform predecessor</dt><dd><a href="/companies.html">700+</a></dd></div>
-        <div><dt>stars on GitHub</dt><dd><a href="https://github.com/sceneview/sceneview" data-metric="stars">1.3K</a></dd></div>
-        <div><dt>contributors</dt><dd><a href="https://github.com/sceneview/sceneview/graphs/contributors" data-metric="contributors">48</a></dd></div>
-        <div><dt>releases</dt><dd><a href="https://github.com/sceneview/sceneview/releases" data-metric="releases">159</a></dd></div>
-        <div><dt>npm downloads, web, 30&nbsp;days</dt><dd><a href="https://www.npmjs.com/package/sceneview-web" data-metric="web-downloads">3.1K</a></dd></div>
+        <div class="numbers__lead"><dt>public repositories declare it as a dependency</dt><dd><a href="/companies.html">Over 500</a></dd></div>
+        <div class="numbers__lead"><dt>stars on GitHub</dt><dd><a href="https://github.com/sceneview/sceneview">More than 1,300</a></dd></div>
       </dl>
-      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on September 26, 2026. Stars, contributors, releases and web downloads are refreshed weekly by an automated job.</p>
+      <p class="footnote numbers__source reveal">Repository count from GitHub code search, owners sceneview and ThomasGorisse excluded, checked on October 28, 2026. Star count from the GitHub repository page.</p>
     </div>
   </section>
 

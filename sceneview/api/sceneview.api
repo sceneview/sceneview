@@ -1076,6 +1076,101 @@ public final class io/github/sceneview/camera/CinematicCameraManipulatorKt {
 	public static final fun rememberCinematicCameraManipulator (Lio/github/sceneview/camera/CameraAnimator;Lio/github/sceneview/gesture/CameraGestureDetector$CameraManipulator;Landroidx/compose/runtime/Composer;I)Lio/github/sceneview/camera/CinematicCameraManipulator;
 }
 
+public abstract interface class io/github/sceneview/capture/CaptureOverlay {
+	public abstract fun draw (Landroid/graphics/Canvas;II)V
+}
+
+public final class io/github/sceneview/capture/PhotoFormat : java/lang/Enum {
+	public static final field JPEG Lio/github/sceneview/capture/PhotoFormat;
+	public static final field PNG Lio/github/sceneview/capture/PhotoFormat;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getExtension ()Ljava/lang/String;
+	public final fun getMimeType ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/sceneview/capture/PhotoFormat;
+	public static fun values ()[Lio/github/sceneview/capture/PhotoFormat;
+}
+
+public final class io/github/sceneview/capture/SceneRecorder {
+	public static final field $stable I
+	public fun <init> (Landroid/content/Context;)V
+	public fun <init> (Landroid/content/Context;Lio/github/sceneview/utils/SurfaceMirrorer;)V
+	public synthetic fun <init> (Landroid/content/Context;Lio/github/sceneview/utils/SurfaceMirrorer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getElapsedMillis ()J
+	public final fun getLastError ()Ljava/lang/Exception;
+	public final fun getLastRecording ()Lio/github/sceneview/capture/SceneRecording;
+	public final fun getOnRecordingFinished ()Lkotlin/jvm/functions/Function1;
+	public final fun getOverlay ()Lio/github/sceneview/capture/CaptureOverlay;
+	public final fun getSurfaceMirrorer ()Lio/github/sceneview/utils/SurfaceMirrorer;
+	public final fun isRecording ()Z
+	public final fun newCaptureFile (Ljava/lang/String;)Ljava/io/File;
+	public final fun release ()V
+	public final fun savePhoto (Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Ljava/io/File;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun savePhoto (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun savePhoto$default (Lio/github/sceneview/capture/SceneRecorder;Ljava/io/File;Lio/github/sceneview/capture/PhotoFormat;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun setOnRecordingFinished (Lkotlin/jvm/functions/Function1;)V
+	public final fun setOverlay (Lio/github/sceneview/capture/CaptureOverlay;)V
+	public final fun startRecording ()Z
+	public final fun startRecording (Ljava/io/File;)Z
+	public final fun startRecording (Ljava/io/File;Lio/github/sceneview/capture/VideoSettings;)Z
+	public static synthetic fun startRecording$default (Lio/github/sceneview/capture/SceneRecorder;Ljava/io/File;Lio/github/sceneview/capture/VideoSettings;ILjava/lang/Object;)Z
+	public final fun stopRecording ()Lio/github/sceneview/capture/SceneRecording;
+	public final fun takePhoto (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/capture/SceneRecorderKt {
+	public static final fun rememberSceneRecorder (Landroidx/lifecycle/Lifecycle;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/capture/SceneRecorder;
+}
+
+public final class io/github/sceneview/capture/SceneRecording {
+	public static final field $stable I
+	public fun <init> (Ljava/io/File;IIJZZZ)V
+	public final fun component1 ()Ljava/io/File;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()J
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (Ljava/io/File;IIJZZZ)Lio/github/sceneview/capture/SceneRecording;
+	public static synthetic fun copy$default (Lio/github/sceneview/capture/SceneRecording;Ljava/io/File;IIJZZZILjava/lang/Object;)Lio/github/sceneview/capture/SceneRecording;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMillis ()J
+	public final fun getFile ()Ljava/io/File;
+	public final fun getHasAudio ()Z
+	public final fun getHasOverlay ()Z
+	public final fun getHeight ()I
+	public final fun getReachedMaxDuration ()Z
+	public final fun getWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/capture/VideoSettings {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (IIIIZJ)V
+	public synthetic fun <init> (IIIIZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun component6 ()J
+	public final fun copy (IIIIZJ)Lio/github/sceneview/capture/VideoSettings;
+	public static synthetic fun copy$default (Lio/github/sceneview/capture/VideoSettings;IIIIZJILjava/lang/Object;)Lio/github/sceneview/capture/VideoSettings;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitRate ()I
+	public final fun getFrameRate ()I
+	public final fun getMaxDurationMillis ()J
+	public final fun getMaxLongEdge ()I
+	public final fun getMaxShortEdge ()I
+	public final fun getRecordAudio ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class io/github/sceneview/collision/Collider {
 	public static final field $stable I
 	public field node Lio/github/sceneview/node/Node;
@@ -3752,6 +3847,101 @@ public final class io/github/sceneview/node/ViewNode$WindowManager {
 	public final fun pause ()V
 	public final fun removeView (Landroid/view/View;)V
 	public final fun resume (Landroid/view/View;)V
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshot {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshot$Companion;
+	public static final field DEFAULT_MAX_CACHE_BYTES I
+	public fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;ILio/github/sceneview/loaders/ModelLoader;)V
+	public synthetic fun <init> (Lcom/google/android/filament/Engine;Landroid/content/Context;ILio/github/sceneview/loaders/ModelLoader;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun cached (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;)Landroid/graphics/Bitmap;
+	public static synthetic fun cached$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;ILjava/lang/Object;)Landroid/graphics/Bitmap;
+	public final fun clearCache ()V
+	public final fun destroy ()V
+	public final fun getEngine ()Lcom/google/android/filament/Engine;
+	public final fun getMaxCacheBytes ()I
+	public final fun snapshot (Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun snapshot$default (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;IILio/github/sceneview/snapshot/ModelSnapshotOptions;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshot$Companion {
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotKt {
+	public static final fun rememberModelSnapshot (Lcom/google/android/filament/Engine;ILio/github/sceneview/loaders/ModelLoader;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/snapshot/ModelSnapshot;
+	public static final fun rememberModelThumbnail-942rkJo (Lio/github/sceneview/snapshot/ModelSnapshot;Ljava/lang/String;FLio/github/sceneview/snapshot/ModelSnapshotOptions;Landroidx/compose/runtime/Composer;II)Lio/github/sceneview/snapshot/ModelThumbnailState;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions {
+	public static final field $stable I
+	public static final field Companion Lio/github/sceneview/snapshot/ModelSnapshotOptions$Companion;
+	public static final field DEFAULT_FOCAL_LENGTH F
+	public static final field DEFAULT_PADDING F
+	public static final field DEFAULT_PITCH_DEGREES F
+	public static final field DEFAULT_YAW_DEGREES F
+	public fun <init> ()V
+	public fun <init> (FFFF)V
+	public synthetic fun <init> (FFFFILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()F
+	public final fun component2 ()F
+	public final fun component3 ()F
+	public final fun component4 ()F
+	public final fun copy (FFFF)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelSnapshotOptions;FFFFILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelSnapshotOptions;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFocalLength ()F
+	public final fun getPadding ()F
+	public final fun getPitchDegrees ()F
+	public final fun getYawDegrees ()F
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelSnapshotOptions$Companion {
+}
+
+public abstract interface class io/github/sceneview/snapshot/ModelThumbnailState {
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$DefaultImpls {
+	public static fun bitmapOrNull (Lio/github/sceneview/snapshot/ModelThumbnailState;)Landroidx/compose/ui/graphics/ImageBitmap;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Failed : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;Ljava/lang/String;ILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelThumbnailState$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Loading : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/sceneview/snapshot/ModelThumbnailState$Loading;
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/sceneview/snapshot/ModelThumbnailState$Ready : io/github/sceneview/snapshot/ModelThumbnailState {
+	public static final field $stable I
+	public fun <init> (Landroidx/compose/ui/graphics/ImageBitmap;)V
+	public fun bitmapOrNull ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun component1 ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public final fun copy (Landroidx/compose/ui/graphics/ImageBitmap;)Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;
+	public static synthetic fun copy$default (Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;Landroidx/compose/ui/graphics/ImageBitmap;ILjava/lang/Object;)Lio/github/sceneview/snapshot/ModelThumbnailState$Ready;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBitmap ()Landroidx/compose/ui/graphics/ImageBitmap;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class io/github/sceneview/splat/SplatBuffers {

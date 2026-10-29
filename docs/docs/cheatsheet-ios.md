@@ -16,7 +16,7 @@ A quick reference for SceneViewSwift's most-used APIs. Print it, pin it, keep it
 
 ```swift
 // Package.swift or Xcode SPM
-.package(url: "https://github.com/sceneview/sceneview.git", from: "4.62.0")
+.package(url: "https://github.com/sceneview/sceneview.git", from: "4.63.0")
 ```
 
 ```swift
@@ -742,7 +742,7 @@ exposes have no iOS equivalent at all. Ported from the source of truth,
 |---|---|---|
 | Shadows on/off | via `View.setShadowingEnabled` | per-light via `DirectionalLightComponent.Shadow` |
 | SSAO on/off | via `View.ambientOcclusionOptions` | no public toggle — RealityKit auto-applies AO approximations |
-| Bloom on/off | via `View.bloomOptions` | no public toggle |
+| Bloom on/off | via `View.bloomOptions` | `.bloom(BloomOptions)` — iOS / macOS 26+ (no-op on iOS 18–25, macOS 15–25 and visionOS) |
 | MSAA | via `View.multiSampleAntiAliasingOptions` | not user-controllable |
 | HDR color buffer | `QualityLevel.HIGH/MEDIUM/LOW` | not exposed |
 | Dynamic resolution | via `View.dynamicResolutionOptions` | not exposed |
