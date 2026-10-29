@@ -12,10 +12,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Log tag of [ModelSnapshot] and its queue. */
 internal const val SNAPSHOT_TAG = "ModelSnapshot"
@@ -92,6 +94,40 @@ internal fun renderInterruption(isAlive: Boolean, holdsModel: Boolean): String? 
     !isAlive -> SNAPSHOT_DESTROYED
     !holdsModel -> SNAPSHOT_MODEL_GONE
     else -> null
+}
+
+/** The reason of a request whose GPU work did not finish within the backend timeout. */
+internal const val SNAPSHOT_BACKEND_BEHIND = "the GPU did not catch up with the render in time"
+
+/**
+ * Suspends — never blocks — until the backend has executed everything queued before this call:
+ * `true` once it has, `false` after [timeoutMs]. A fence is created now and checked every [pollMs]
+ * with a zero-timeout test ([isReached]); it is destroyed however the wait ends — reached, timed
+ * out or cancelled. The first check comes one poll after the fence, which leaves the main thread
+ * at least one turn between two steps of a render. `true` at once when no fence can be created.
+ *
+ * Why a render paces itself on it: Filament's command stream is a few MiB, and on the OpenGL
+ * backend the first draw of a material compiles and links its shader programs on the backend
+ * thread — seconds on an emulator. A main-thread call that queues work while that stream is full
+ * (`Renderer.endFrame`, a texture upload in `ResourceLoader.asyncUpdateLoad`, an engine flush)
+ * waits for room, on the main thread: the snapshot's own steps never queue more until the
+ * backend has caught up with the previous one.
+ */
+internal suspend fun <F : Any> awaitFence(
+    createFence: () -> F?,
+    isReached: (F) -> Boolean,
+    destroyFence: (F) -> Unit,
+    pollMs: Long,
+    timeoutMs: Long,
+): Boolean {
+    val fence = createFence() ?: return true
+    try {
+        return withTimeoutOrNull(timeoutMs) {
+            do delay(pollMs) while (!isReached(fence))
+        } != null
+    } finally {
+        destroyFence(fence)
+    }
 }
 
 /**

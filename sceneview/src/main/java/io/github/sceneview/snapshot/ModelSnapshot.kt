@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Dp
 import com.google.android.filament.Camera
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
+import com.google.android.filament.Fence
 import com.google.android.filament.LightManager
 import com.google.android.filament.Renderer
 import com.google.android.filament.SwapChain
@@ -141,7 +142,9 @@ internal data class SnapshotKey(
  * nothing cached — when the model cannot be loaded, when its box is empty or not finite, when its
  * positions are quantized as normalized integers (`KHR_mesh_quantization`, `gltfpack -cc`: gltfio
  * reports their box about 32767 times too large), when the image comes out fully transparent, or
- * when the render times out. A whole set (ground, sky dome) is framed whole, so its subject comes
+ * when the render times out — the GPU backend executing nothing for 30 s, or a frame it executed
+ * never reaching the image. A backend that is merely slow (shader compilation on a cold or loaded
+ * emulator) only delays the image. A whole set (ground, sky dome) is framed whole, so its subject comes
  * out tiny: thumbnail single objects.
  *
  * Its rendering has run in tests on arm64 emulators only. On an x86_64 API 30 emulator with
@@ -160,12 +163,16 @@ internal data class SnapshotKey(
  *
  * The file is read and parsed off the main thread, and the image is copied out on a background
  * thread. The rest runs on the main thread, as Filament requires, between the frames of your
- * scene — and costs what loading the same model into a scene costs. Measured on an arm64 emulator
+ * scene — and costs what loading the same model into a scene costs. Each step waits, suspended and
+ * never blocking, until the GPU backend has executed what the previous one queued: a backend that
+ * falls behind (compiling shaders on a cold emulator, for seconds) slows the thumbnails down, but
+ * never fills Filament's command stream — whose next call would then wait on the main thread. Measured on an arm64 emulator
  * with 2–5 MB textured GLBs: creating the model ≈ 130–150 ms, finalising its textures up to
  * ≈ 0.5 s in a single frame (gltfio uploads a decoded texture in one call), two small renders
  * 5–16 ms. A grid of textured models therefore drops frames while it fills, one model at a time.
- * Creating a snapshotter decodes its image-based light (≈ 70 ms) and, unless you pass the scene's
- * [ModelLoader], builds a loader of its own (≈ 0.6 s the first time, for its material provider).
+ * Creating a snapshotter decodes its image-based light (≈ 70 ms). Unless you pass the scene's
+ * [ModelLoader], the first request builds a loader of its own (≈ 0.6 s, for its material
+ * provider), in a main-thread turn of its own rather than in the frame that asked.
  *
  * ### Cache
  *
@@ -194,7 +201,7 @@ internal data class SnapshotKey(
  * `rememberModelLoader`, which saves building a second material provider. Its texture loading is
  * then shared with your scene's models: a thumbnail asked while the scene loads waits for those
  * textures too (or is not cached, past the timeout). [destroy] does not destroy it. `null` (the
- * default) builds a loader of the snapshotter's own, destroyed with it.
+ * default): the first request builds a loader of the snapshotter's own, destroyed with it.
  * A loader passed in must outlive this snapshotter: [destroy] the snapshotter first. Its
  * `clear()` (or a `destroy()`) while a thumbnail renders destroys that thumbnail's model too: the
  * render notices before its next call on the model and the request fails (`null`,
@@ -211,11 +218,18 @@ class ModelSnapshot @MainThread constructor(
 ) {
     private val appContext = context.applicationContext
 
-    private val ownsModelLoader = modelLoader == null
-    private val modelLoader = modelLoader ?: ModelLoader(engine, appContext)
+    /** The scene's loader, when one was passed in. */
+    private val sharedModelLoader = modelLoader
+
+    /**
+     * The snapshotter's own loader, built by the first request rather than here: building it
+     * (≈ 0.6 s, its material provider) in the constructor put it in the composition frame of the
+     * screen that remembers the snapshotter, on top of that screen's engine and first layout.
+     */
+    private var ownModelLoader: ModelLoader? = null
 
     init {
-        require(this.modelLoader.engine === engine) { "modelLoader must load on this engine" }
+        require(modelLoader == null || modelLoader.engine === engine) { "modelLoader must load on this engine" }
     }
 
     private val renderer: Renderer = engine.createRenderer().apply {
@@ -387,6 +401,17 @@ class ModelSnapshot @MainThread constructor(
 
     @MainThread
     private suspend fun render(key: SnapshotKey): SnapshotResult {
+        // Its own main-thread turn, never the caller's (a grid's first frame), and nothing queued
+        // behind the previous request's GPU work.
+        if (!awaitBackend()) return SnapshotResult.Failed(BACKEND_BEHIND)
+        if (!isAlive) return SnapshotResult.Failed(SNAPSHOT_DESTROYED)
+        val modelLoader = sharedModelLoader ?: ownModelLoader ?: run {
+            val built = ModelLoader(engine, appContext).also { ownModelLoader = it }
+            // Built in a turn of its own: the model's load starts on the next one.
+            delay(FRAME_MS)
+            if (!isAlive) return SnapshotResult.Failed(SNAPSHOT_DESTROYED)
+            built
+        }
         // A shared loader destroyed before this request: loading on it calls into freed objects.
         if (!modelLoader.isLoadable) return SnapshotResult.Failed(LOADER_DESTROYED)
         val model = modelLoader.loadModel(key.fileLocation)
@@ -416,11 +441,13 @@ class ModelSnapshot @MainThread constructor(
             }
             // Textures are decoded in the background and uploaded as they come: wait for all of
             // them, so the thumbnail is never captured half-textured. A cleared or destroyed
-            // loader stops the wait before its next updateLoad().
+            // loader stops the wait before its next updateLoad(). Each pass waits for the backend
+            // to take in what the previous one uploaded, so a texture upload never waits for room
+            // in a full command stream on the main thread.
             val texturesReady = withTimeoutOrNull(TEXTURE_TIMEOUT_MS) {
                 while (interruption() == null && modelLoader.isLoading) {
                     modelLoader.updateLoad()
-                    delay(FRAME_MS)
+                    awaitBackend()
                 }
             } != null
             interruption()?.let { return SnapshotResult.Failed(it) }
@@ -435,8 +462,9 @@ class ModelSnapshot @MainThread constructor(
             val entities = model.entities
             scene.addEntities(entities)
             try {
-                // The very first capture of a cold engine can outlast its timeout while the backend
-                // compiles: the target is rebuilt after a miss, and a second try finds it warm.
+                // A frame the backend executed but the reader never delivered: the target is
+                // rebuilt after such a miss and tried once more. A backend still behind is not a
+                // miss — capture() waits for it — so a retry never adds frames to a backlog.
                 val captured = capture(key.width, key.height)
                     ?: if (interruption() == null) capture(key.width, key.height) else null
                 interruption()?.let { return SnapshotResult.Failed(it) }
@@ -510,11 +538,17 @@ class ModelSnapshot @MainThread constructor(
      * Renders [WARMUP_FRAMES] + 1 frames into the [ImageReader] of this size and returns the last
      * one, or `null` when it never arrived or this snapshotter went away meanwhile. The warm-up
      * frame lets the backend link the model's shaders; frames are counted on both sides, so the
-     * image returned is always this request's last frame.
+     * image returned is always this request's last frame. Each frame is submitted only once the
+     * backend has executed the previous one ([awaitBackend]), so the main thread never queues
+     * work faster than a slow backend (a cold emulator compiling shaders) takes it in.
      */
     @MainThread
     private suspend fun capture(width: Int, height: Int): CapturedFrame? {
         val target = captureTarget(width, height)
+        // The swap chain just made, this model's uploads, an earlier request's frames: executed
+        // first, so the timeouts below measure this capture and not a backlog.
+        if (!awaitBackend()) return CapturedFrame(null, BACKEND_BEHIND)
+        if (!isAlive) return null
         // Frames of an abandoned request may still be on their way: let them land first.
         val drained = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) {
             while (target.received.get() < target.submitted) delay(FRAME_MS)
@@ -528,7 +562,7 @@ class ModelSnapshot @MainThread constructor(
         val result = CompletableDeferred<CapturedFrame?>()
         try {
             var rendered = 0
-            val deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
+            var deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
             while (rendered <= WARMUP_FRAMES) {
                 if (rendered == WARMUP_FRAMES) {
                     target.captureFrame = target.submitted + 1
@@ -539,16 +573,21 @@ class ModelSnapshot @MainThread constructor(
                     renderer.endFrame()
                     target.submitted++
                     rendered++
+                    // The warm-up frame is where the backend compiles the model's shaders —
+                    // seconds on an emulator. That wait is the backend's, never the main thread's,
+                    // and it is not counted against the capture timeout below: the frame is
+                    // awaited once the backend has executed it.
+                    if (!awaitBackend()) return CapturedFrame(null, BACKEND_BEHIND)
+                    if (!isAlive) return null
+                    deadline = SystemClock.uptimeMillis() + FRAME_BUDGET_MS
                 } else if (SystemClock.uptimeMillis() > deadline) {
                     Log.w(TAG, "The renderer kept skipping frames for $FRAME_BUDGET_MS ms")
                     return null
-                }
-                if (rendered <= WARMUP_FRAMES) {
+                } else {
                     delay(FRAME_MS)
                     if (!isAlive) return null
                 }
             }
-            engine.flush()
             val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { result.await() }
             if (!isAlive) return null
             // A frame that never arrived would shift every later count: start the next one afresh.
@@ -561,6 +600,28 @@ class ModelSnapshot @MainThread constructor(
             // Never left behind for a later frame to complete.
             if (target.pending === result) target.pending = null
         }
+    }
+
+    /**
+     * Suspends until the backend has executed everything queued so far ([awaitFence]): `false`
+     * when it has not after [BACKEND_TIMEOUT_MS]. Never blocks the main thread: the fence is
+     * polled with a zero timeout, after one flush that sends it to the backend.
+     */
+    @MainThread
+    private suspend fun awaitBackend(): Boolean = awaitFence(
+        createFence = {
+            if (!engine.isValid) null
+            else runCatching { engine.createFence().also { engine.flush() } }.getOrNull()
+        },
+        isReached = { fence ->
+            !engine.isValid ||
+                runCatching { fence.wait(Fence.Mode.DONT_FLUSH, 0L) }.getOrNull() != Fence.FenceStatus.TIMEOUT_EXPIRED
+        },
+        destroyFence = { fence -> if (engine.isValid) runCatching { engine.destroyFence(fence) } },
+        pollMs = FRAME_MS,
+        timeoutMs = BACKEND_TIMEOUT_MS,
+    ).also { caughtUp ->
+        if (!caughtUp) Log.w(TAG, "The GPU backend did not catch up within $BACKEND_TIMEOUT_MS ms")
     }
 
     @MainThread
@@ -596,7 +657,8 @@ class ModelSnapshot @MainThread constructor(
         cache?.evictAll()
         queue.cancel()
         releaseTarget()
-        if (ownsModelLoader) modelLoader.destroy()
+        ownModelLoader?.destroy()
+        ownModelLoader = null
         scene.indirectLight = null
         ibl.indirectLight?.let { engine.safeDestroyIndirectLight(it) }
         ibl.cubemap?.let { engine.safeDestroyTexture(it) }
@@ -638,7 +700,6 @@ class ModelSnapshot @MainThread constructor(
         EntityManager.get().destroy(cameraEntity)
         engine.safeDestroyScene(scene)
         engine.destroyRendererWhenBackendIdle(renderer)
-        if (ownsModelLoader) modelLoader.destroy()
     }
 
     /** The engine went first, taking every Filament object with it: only Android's are left. */
@@ -726,6 +787,7 @@ class ModelSnapshot @MainThread constructor(
         private const val WARMUP_FRAMES = 1
         private const val TAG = SNAPSHOT_TAG
         private const val LOADER_DESTROYED = SNAPSHOT_LOADER_DESTROYED
+        private const val BACKEND_BEHIND = SNAPSHOT_BACKEND_BEHIND
 
         /**
          * How long the renderer may keep refusing frames. It skips while the GPU is behind, which
@@ -737,6 +799,13 @@ class ModelSnapshot @MainThread constructor(
         private const val FRAME_MS = 16L
         private const val TEXTURE_TIMEOUT_MS = 10_000L
         private const val CAPTURE_TIMEOUT_MS = 5_000L
+
+        /**
+         * How long one step may wait for the backend to execute what it queued. A first use of
+         * the ubershaders compiles their programs there: seconds on an emulator, more on one
+         * that shares its host with a build. Only a backend stuck for this long fails a request.
+         */
+        private const val BACKEND_TIMEOUT_MS = 30_000L
     }
 }
 
