@@ -237,6 +237,29 @@ final class ARExperienceModelTests: XCTestCase {
         model.sceneBecameActive()
         XCTAssertEqual(model.phase, .denied)
     }
+
+    /// `-ar-state-preview live` on the Simulator: the AR view reports `unsupported` at once,
+    /// and the forced phase must survive it so the screen's own controls stay reachable.
+    func testAForcedPhaseSurvivesSessionEvents() {
+        let model = ARExperienceModel(
+            requirement: .worldTracking, isSupported: false,
+            authorizationStatus: { .authorized }, requestAccess: { $0(true) },
+            forcedPhase: .live
+        )
+        model.resolve()
+        let arView = ARView(frame: .zero)
+        model.arSession(didEmit: .failed(ARSceneViewError.unsupported(.lidar)), in: arView)
+        XCTAssertEqual(model.phase, .live)
+
+        let starting = ARExperienceModel(
+            requirement: .worldTracking, isSupported: true,
+            authorizationStatus: { .authorized }, requestAccess: { $0(true) },
+            forcedPhase: .starting
+        )
+        starting.resolve()
+        starting.arSession(didEmit: .firstFrame, in: arView)
+        XCTAssertEqual(starting.phase, .starting, "a forced Starting card stays up after a first frame")
+    }
 }
 
 /// Automatic placement raises `hasPlacement` and `selection` in the same update. One AR event
@@ -285,5 +308,46 @@ final class PlacementFeedbackTests: XCTestCase {
             XCTAssertGreaterThan(normalised, 1, "a sphere sits over the face at \(position)")
         }
         XCTAssertGreaterThanOrEqual(ARAugmentedFacesDemo.sphereRadius, 0.015)
+    }
+}
+
+/// The placement size read-out: Android's `ar_scale_actual_size_height` /
+/// `ar_scale_actual_size_percent` / `ar_scale_preview_size` strings, verbatim.
+final class PlacementScaleLabelTests: XCTestCase {
+
+    func testRealSizeModelShowsPercentAndHeight() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: 1.8),
+                       "Actual size · 100% · 1.80 m tall")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1.5, heightMeters: 2.7),
+                       "Actual size · 150% · 2.70 m tall")
+    }
+
+    func testPreviewNeverClaimsMetres() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: false, scale: 0.25, heightMeters: 0.3),
+                       "Preview size · 25%")
+    }
+
+    func testUnknownHeightFallsBackToThePercentage() {
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: nil),
+                       "Actual size · 100%")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: .nan),
+                       "Actual size · 100%")
+        XCTAssertEqual(PlacementScaleLabel.text(actualSize: true, scale: 1, heightMeters: 0),
+                       "Actual size · 100%")
+    }
+
+    func testPercentRoundsInsteadOfTruncating() {
+        XCTAssertEqual(PlacementScaleLabel.percent(0.99999), 100)
+        XCTAssertEqual(PlacementScaleLabel.percent(4), 400)
+        XCTAssertEqual(PlacementScaleLabel.percent(.infinity), 100)
+    }
+
+    func testDimensionsReadWidthDepthHeight() {
+        XCTAssertEqual(PlacementScaleLabel.dimensions([0.5, 1.8, 0.3]), "0.50 × 0.30 × 1.80 m")
+    }
+
+    func testDimensionsAreSpokenInTheSameOrder() {
+        XCTAssertEqual(PlacementScaleLabel.dimensionsAccessibility([0.5, 1.8, 0.3]),
+                       "Width 0.50 metres, depth 0.30 metres, height 1.80 metres")
     }
 }
