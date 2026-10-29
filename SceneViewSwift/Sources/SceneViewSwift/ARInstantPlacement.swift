@@ -68,8 +68,10 @@ enum ARInstantPlacement {
     static let followDeadband: Float = 0.01
 
     /// How far ahead the estimated placement stands, horizontally, from the model's largest
-    /// side in metres: far enough that a large model never surrounds the camera (a 2 m sofa
-    /// stands 2.9 m away), never closer than 1.2 m, never farther than 4 m.
+    /// side in metres as shown (its preview size times ``ARPlacementController/scale``): far
+    /// enough that a large model never surrounds the camera, never closer than 1.2 m, never
+    /// farther than 4 m. A model at the default 0.3 m preview stands 1.2 m away; a 2 m sofa
+    /// stands 2.9 m away only at real-world size (`previewSize: nil`) or a 2 m preview.
     static func reach(forLargestSide side: Float) -> Float {
         guard side.isFinite, side > 0 else { return 1.2 }
         return min(4, max(1.2, side + 0.9))
@@ -214,40 +216,53 @@ enum ARInstantPlacement {
         }
     }
 
-    /// What the landing on a detected plane does this frame.
+    /// What the landing on a detected plane does this refinement tick.
     enum LandingStep: Equatable {
         /// A gesture holds the pivot: landing waits for it to end, whatever the anchor does.
         case hold
         /// The plane anchor resolved and the model is over the plane: land now.
         case commit
-        /// The anchor has not resolved yet; its retry delay has not run out.
+        /// The anchor has not resolved yet and is still inside ``anchorResolveWindow``.
         case wait
-        /// This attempt failed: drop its anchor and back off before the next one.
+        /// The model is no longer over that plane (a young plane's edge, a camera move): drop
+        /// the anchor without counting a failure — the plane did nothing wrong.
+        case lost
+        /// The anchor did not resolve in time: drop it and back off before the next attempt.
         case retry
-        /// ``anchorRetryLimit`` attempts failed: leave the model where it is.
+        /// ``anchorRetryLimit`` anchors failed to resolve: pause landing on that plane.
         case abandon
-        /// The landing belongs to a placement that was reset: drop it, no attempt counted.
-        case discard
     }
 
-    /// Android's anchor backoff: 0.1, 0.2, 0.4, 0.8, 0.8… s for attempt 1, 2, 3, 4, 5…
+    /// Android's anchor backoff: 0.1, 0.2, 0.4, 0.8, 0.8… s after failure 1, 2, 3, 4, 5…
     static func anchorRetryDelay(attempt: Int) -> TimeInterval {
         let shift = max(0, min(attempt - 1, 16))
         return min(anchorRetryCap, anchorRetryBase * Double(1 << shift))
     }
 
+    /// How long one landing anchor may take to resolve before it counts as a failure — the
+    /// same budget as a plane placement's anchor (RealityKit resolves anchors asynchronously).
+    static let anchorResolveWindow: TimeInterval = ARPlacementLifecycle.pendingAnchorTimeout
+    /// After ``anchorRetryLimit`` failures, landing on that plane pauses this long — or until
+    /// ARKit reports a different plane there, or that plane grows by ``abandonRegrowth``.
+    /// Android settles instead; here the model would otherwise stay approximate for good.
+    static let abandonCooldown: TimeInterval = 3
+    static let abandonRegrowth: Float = 1.25
+    /// The two raycasts that refine an approximate placement run at most this often; the
+    /// follow itself still eases every frame.
+    static let refineInterval: TimeInterval = 0.1
+
     /// The landing state machine across placements. Holds no ARKit object, so it is tested
-    /// whole: auto-place delay, landing backoff, gesture hold, and stale landings after a reset.
+    /// whole: auto-place delay, refinement throttle, landing backoff, gesture hold, loss and
+    /// abandonment recovery.
     struct State {
-        /// Bumped by every reset: a landing created for an earlier placement never lands.
-        private(set) var generation = 0
         /// When tracking became normal with nothing placed. Feeds ``autoPlaceDue(now:)``.
         private(set) var trackingSince: TimeInterval?
-        /// Failed landing attempts since the last success, move or reset.
+        /// Anchors that failed to resolve since the last success, move or reset.
         private(set) var failures = 0
         private(set) var nextAttemptAt: TimeInterval = 0
-        /// Set after ``anchorRetryLimit`` failures; a move or a reset clears it.
-        private(set) var abandoned = false
+        /// The plane (and its area, m²) landing gave up on, and until when.
+        private(set) var abandoned: (plane: UUID, area: Float, until: TimeInterval)?
+        private(set) var lastRefineAt: TimeInterval?
 
         mutating func observe(tracking: Bool, placed: Bool, now: TimeInterval) {
             if placed { return }
@@ -260,26 +275,50 @@ enum ARInstantPlacement {
             return now - trackingSince >= autoPlaceDelay
         }
 
-        func mayAttemptLanding(now: TimeInterval) -> Bool { !abandoned && now >= nextAttemptAt }
+        /// `true` at most once per ``refineInterval`` (and again after a clock jump back).
+        mutating func refineTick(now: TimeInterval) -> Bool {
+            if let lastRefineAt, now >= lastRefineAt, now - lastRefineAt < refineInterval { return false }
+            lastRefineAt = now
+            return true
+        }
 
-        /// The attempt a new landing anchor would be, 1-based.
+        /// Whether a landing anchor may be created on `plane` (of `area` m²) now. An abandoned
+        /// plane is tried again once the cooldown ran out, or at once when it is another plane
+        /// or has grown — so a user who never drags is not left approximate for good.
+        mutating func mayAttemptLanding(on plane: UUID, area: Float, now: TimeInterval) -> Bool {
+            if let abandoned {
+                let grew = area.isFinite && area >= abandoned.area * abandonRegrowth
+                guard plane != abandoned.plane || grew || now >= abandoned.until else { return false }
+                moved()
+            }
+            return now >= nextAttemptAt
+        }
+
+        /// The attempt the current landing anchor is, 1-based.
         var attempt: Int { failures + 1 }
 
-        func step(generation landing: Int, gesturesActive: Bool, anchored: Bool, overSurface: Bool,
+        func step(gesturesActive: Bool, anchored: Bool, overSurface: Bool,
                   now: TimeInterval, since: TimeInterval) -> LandingStep {
-            guard landing == generation else { return .discard }
             if gesturesActive { return .hold }
-            if anchored && overSurface { return .commit }
-            if overSurface && now - since < anchorRetryDelay(attempt: attempt) { return .wait }
+            if !overSurface { return .lost }
+            if anchored { return .commit }
+            if now - since < anchorResolveWindow { return .wait }
             return attempt >= anchorRetryLimit ? .abandon : .retry
         }
 
-        /// Records a failed attempt; returns `true` when it was the last one allowed.
+        /// The model left the plane before its anchor resolved: no failure, only a short pause
+        /// so an edge flickering in and out does not create an anchor per tick.
+        mutating func lost(now: TimeInterval) {
+            nextAttemptAt = now + anchorRetryBase
+        }
+
+        /// Records an anchor that did not resolve; `true` when it was the last one allowed,
+        /// which pauses landing on `plane` (see ``abandonCooldown``).
         @discardableResult
-        mutating func failed(now: TimeInterval) -> Bool {
+        mutating func failed(now: TimeInterval, plane: UUID, area: Float) -> Bool {
             failures += 1
             if failures >= anchorRetryLimit {
-                abandoned = true
+                abandoned = (plane, area, now + abandonCooldown)
                 return true
             }
             nextAttemptAt = now + anchorRetryDelay(attempt: failures)
@@ -290,12 +329,12 @@ enum ARInstantPlacement {
         mutating func moved() {
             failures = 0
             nextAttemptAt = 0
-            abandoned = false
+            abandoned = nil
         }
 
         mutating func reset() {
-            generation &+= 1
             trackingSince = nil
+            lastRefineAt = nil
             moved()
         }
     }
@@ -305,7 +344,7 @@ enum ARInstantPlacement {
         /// The estimated contact frame, in world space (the world anchor's pose).
         var contact = matrix_identity_float4x4
         /// A plane anchor created for the landing, waiting for RealityKit to resolve it.
-        var pending: (anchor: AnchorEntity, plane: UUID, generation: Int, since: TimeInterval)?
+        var pending: (anchor: AnchorEntity, plane: UUID, area: Float, since: TimeInterval)?
     }
 }
 #endif
