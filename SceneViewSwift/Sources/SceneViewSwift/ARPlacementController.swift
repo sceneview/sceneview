@@ -203,7 +203,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// A detected plane under the screen centre still takes the model at once. Without one, after
     /// tracking has run for 0.6 s, the model stands where the centre ray meets the floor as far
     /// as ARKit knows it — the lowest detected or estimated horizontal surface well below the
-    /// phone, else 1.3 m below it — between half its reach and its reach ahead, the reach growing
+    /// phone, else 1.3 m below it — between 0.6 of its reach and its reach ahead, the reach growing
     /// with the model's size as shown: 1.2 m at the default 0.3 m preview; a 2 m sofa at
     /// real-world size (`previewSize: nil`) stands 2.9 m away. It never floats
     /// along the ray. Walls wait for an ARKit estimated wall under the centre.
@@ -981,7 +981,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         commitPlacement(camera: frame.camera.transform)
     }
 
-    /// Where the centre ray meets the floor as far as ARKit knows it, between half the model's
+    /// Where the centre ray meets the floor as far as ARKit knows it, between 0.6 of the model's
     /// reach and its reach ahead (ARMV `floorPointAlong`); `nil` when the ray never gets there.
     private func floorPointAhead(in view: ARView, frame: ARFrame, planes: [ARPlaneAnchor],
                                  estimate: SIMD3<Float>?) -> SIMD3<Float>? {
@@ -1211,7 +1211,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     // MARK: Recenter
 
     /// Brings the model back in front of the user (ARMV `recenter`): it glides at
-    /// ``ARInstantPlacement/settleSpeed`` to where the centre ray meets the floor, between half
+    /// ``ARInstantPlacement/settleSpeed`` to where the centre ray meets the floor, between 0.6 of
     /// its reach and its reach ahead — on the detected plane there, else (``instantPlacement``
     /// on, or already approximate) on the estimated floor. Walls: the wall under the centre.
     /// The pinch and the twist are kept: a floor model keeps the side the user sees, turned by

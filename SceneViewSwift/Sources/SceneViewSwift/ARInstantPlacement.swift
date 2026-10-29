@@ -55,7 +55,7 @@ enum ARInstantPlacement {
     static let anchorRetryBase: TimeInterval = 0.1
     static let anchorRetryCap: TimeInterval = 0.8
     /// The closest the estimated placement comes, as a share of ``reach(forLargestSide:)``
-    /// (`NEAR_SHARE` on Android).
+    /// (ARMV `NearShare`).
     static let nearShare: Float = 0.6
 
     // MARK: SceneView iOS values
