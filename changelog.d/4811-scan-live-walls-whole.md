@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **Demo app: 3D Scan's live walls keep their far end ([#4811](https://github.com/sceneview/sceneview/pull/4811)).** A wall you have walked away from is now drawn as far as the scan saw it, and it no longer shortens or moves as you walk. The live walls are cut back to an even sample of the whole depth map instead of the cloud drawn, whose far points are merged into coarse cells, and the cut reads no more points than before.

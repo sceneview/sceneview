@@ -1532,7 +1532,15 @@ private suspend fun ModelLoader.loadModelInstanceOrNull(
  * if you want to share Filament resources across multiple `SceneView` composables.
  *
  * @param eglContextCreator Factory for the EGL context. Override for custom EGL configurations.
- * @param engineCreator     Factory for the [Engine]. Override to customise engine flags.
+ * @param engineCreator     Factory for the [Engine]. Override to customise engine flags. A custom
+ * creator should keep the feature flag the default sets, without which destroying a renderer joins
+ * a thread parked in a GPU fence wait and can block the main thread on disposal:
+ * ```
+ * Engine.Builder()
+ *     .sharedContext(eglContext)
+ *     .feature("engine.frame_info.disable_gpu_complete_metric", true)
+ *     .build()
+ * ```
  * @return A [Engine] that is destroyed with its EGL context on disposal.
  */
 @Composable
@@ -1547,8 +1555,8 @@ fun rememberEngine(
             // Not `safeDestroy()` inline: Engine.destroy() joins the backend thread after it has
             // run every queued command, and a scene disposed right after it appeared still has
             // its shader compiles queued — seconds on the main thread, an ANR (#3799). Destroy
-            // once the backend is idle instead, polled from the main looper; the usual idle case
-            // still destroys before onDispose returns.
+            // once the backend is idle instead, polled from the main looper; on an idle backend
+            // that is one poll after onDispose returns.
             engine.destroyWhenBackendIdle { eglContext.destroy() }
         }
     }

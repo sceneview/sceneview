@@ -9,8 +9,8 @@ import SceneViewSwift
 /// The identity block (launcher icon, name, version, tagline) flat on the page,
 /// the "More apps built with SceneView" group, then a series of
 /// `.regularMaterial` row cards (Open Source, Docs, GitHub, 3D Playground,
-/// Credits), and a footer with attribution. No support card on iOS (see
-/// "Support" below).
+/// Credits), and a footer with attribution. The support card sits right under
+/// the identity block, as on Android (see "Support" below).
 struct AboutTab: View {
     private static let version: String = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -20,12 +20,15 @@ struct AboutTab: View {
     // Sketchfab model in `SampleAssets`); #3214 — bundled assets too, from
     // the generated `BundledCredits.json`.
     @State private var showCreditsSheet = false
+    /// "Support SceneView" — the tips sheet, opened from the support card.
+    @State private var showSupportSheet = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 20) {
                     identity
+                    supportCard
                     if !HDPackStore.shared.manifest.assets.isEmpty {
                         HDPackSettingsRow()
                     }
@@ -52,6 +55,9 @@ struct AboutTab: View {
             .navigationTitle("About")
             .sheet(isPresented: $showCreditsSheet) {
                 CreditsSheet()
+            }
+            .sheet(isPresented: $showSupportSheet, onDismiss: { SupportStore.shared.sheetDismissed() }) {
+                SupportSheet(presentation: .about) { showSupportSheet = false }
             }
         }
     }
@@ -147,9 +153,44 @@ struct AboutTab: View {
 
     // MARK: - Support
 
-    // No donation links on iOS: App Review rejected 4.48.0 under guideline
-    // 3.1.1 (donations must use In-App Purchase outside the US storefront).
-    // Android keeps `AboutSupportCard`; the GitHub row below stays.
+    // App Review rejected 4.48.0 for a donation *link* (guideline 3.1.1:
+    // outside the US storefront a tip must be an In-App Purchase). So on Apple
+    // platforms the card opens `SupportSheet`, three consumable tips through
+    // StoreKit, and never leaves the app. Same title and place as Android's
+    // `AboutSupportCard`: the only tinted surface of the screen.
+
+    private var supportCard: some View {
+        Button { showSupportSheet = true } label: {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+                HStack(spacing: SceneViewTokens.Space.sm) {
+                    Image(systemName: "heart")
+                        .font(.system(size: 18, weight: .semibold))
+                        .accessibilityHidden(true)
+                    Text("Support SceneView")
+                        .font(SceneViewTokens.TypeScale.card)
+                    Spacer(minLength: SceneViewTokens.Space.xs)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .opacity(0.7)
+                        .accessibilityHidden(true)
+                }
+                Text("Open source, maintained by volunteers, funded by the people who use it.")
+                    .font(SceneViewTokens.TypeScale.body)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(SceneViewTokens.HomeColor.onSecondaryContainer)
+            .padding(SceneViewTokens.Space.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SceneViewTokens.HomeColor.secondaryContainer,
+                        in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.lg, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("about-support")
+    }
 
     // MARK: - Footer
 

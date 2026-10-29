@@ -99,7 +99,7 @@
         "guid": "bronze-sponsor",
         "status": "active",
         "name": "Bronze sponsor",
-        "description": "Your logo and link on the sponsors page of the website and in the README. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
+        "description": "Funds the fixes, Filament upgrades and releases your product depends on; your company is listed nowhere unless you ask. Also 1,000 USD a year by invoice. Not a support contract: no private features, no early access, no priority on issues.",
         "amount": 100,
         "currency": "USD",
         "frequency": "monthly",
