@@ -558,13 +558,22 @@ final class SceneViewDemoUITests: XCTestCase {
         app.launch()
         let settings = app.descendants(matching: .any)["demo-settings-fab"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30), "Demo settings never appeared")
-        Thread.sleep(forTimeInterval: 2)
+        XCTAssertTrue(waitUntilHittable(settings, timeout: 10), "Demo settings never became tappable")
         settings.tap()
 
         let label = app.descendants(matching: .any)["ar-scale-label"]
         XCTAssertTrue(label.waitForExistence(timeout: 10), "the scale label never appeared")
-        XCTAssertTrue(app.descendants(matching: .any)["ar-scale-reset"].exists, "no Reset to 100% button")
-        Thread.sleep(forTimeInterval: 1.5)
+        let reset = app.descendants(matching: .any)["ar-scale-reset"]
+        XCTAssertTrue(reset.waitForExistence(timeout: 5), "no Reset to 100% button")
+        // The sheet has settled once its controls take taps.
+        XCTAssertTrue(waitUntilHittable(reset, timeout: 10), "the controls sheet never settled")
+        XCTAssertEqual(label.label, "Preview size · 100%")
+        XCTAssertFalse(reset.isEnabled, "Reset to 100% is enabled at 100%")
         capture(app, "placement-controls")
+    }
+
+    private func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: element)
+        return XCTWaiter().wait(for: [hittable], timeout: timeout) == .completed
     }
 }

@@ -23,7 +23,9 @@ struct PlacementFeedback: Equatable {
     }
 }
 
-/// The size read-out, Android's `ar_scale_*` strings verbatim: "Actual size" only when the
+/// The size read-out. "Preview size · N%" and "Actual size · N%" are the Android demo's
+/// `ar_scale_preview_size` and `ar_scale_actual_size_percent`; the "· 1.80 m tall" suffix comes
+/// with the Android twin of this read-out (#4820). "Actual size" only when the
 /// model is at its authored metres (`PlacementSize.realWorld`), "Preview size" otherwise, so the
 /// number never claims more than the asset knows. Metres are shown for a real-size model only —
 /// a preview's would just be the preview's own size.

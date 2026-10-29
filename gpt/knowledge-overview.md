@@ -167,7 +167,7 @@ struct AutomaticPlacement: View {
                 let model = try await ModelNode.load("khronos_toy_car")
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 _ = model.withGroundingShadow() // explicit for asynchronously loaded content
-                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+                placement.setModel(model.entity, ticket: ticket, size: .fitInto(meters: 0.3))
             } catch {
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 // Present a model-load error and retry; never substitute another asset.
@@ -179,9 +179,23 @@ struct AutomaticPlacement: View {
 
 - Use `.vertical` for direct wall placement; no floor prerequisite. `result` exposes
   `surfaceIdentifier`, `anchorIdentifier`, and the oriented `worldTransform`.
-- `previewSize: 0.3` means **Preview size**, a 0.3 m longest dimension. Pass `nil` for
-  **Actual size** when the asset's authored units are trustworthy. Complete nested bounds
-  are grounded; asynchronous models receive collision shapes for selection and gestures.
+- `size: PlacementSize` names the 100 % size (Kotlin twin: `PlacementSize`).
+  `.fitInto(meters: 0.3)` (also `PlacementSize.preview`) means **Preview size**: the longest
+  side measures 0.3 m. `.realWorld` means **Actual size**: authored metres, never rescaled,
+  so a 1 m cube is 1 m — use it when the asset's units are trustworthy. A non-finite or
+  non-positive `fitInto` is refused (`setModel` returns `false`). The older
+  `setModel(_:ticket:previewSize:)` (`0.3` default, `nil` = actual size) is unchanged.
+  Complete nested bounds are grounded with the **bottom centre on the contact point**
+  (back-bottom centre on a wall), and pinch scaling grows the model about it;
+  asynchronous models receive collision shapes for selection and gestures.
+- Dimensions in metres, observable, set as soon as `setModel` accepts a model and `nil`
+  after `dismiss()`: `baseSize: SIMD3<Float>?` (width X, height Y, depth Z at 100 %),
+  `placedSize` (`baseSize * scale`, follows the pinch), `isAtRealWorldSize` (`.realWorld`
+  and exactly 100 %), `placementSize`. A user-chosen size, once placed, is
+  `if let b = placement.baseSize { placement.scale(to: 2 / b.y) }` (2 m tall; `scale(to:)`
+  does nothing before `.placed`/`.adjusting` and clamps to 25–400 %). Show
+  "Actual size · 100% · 1.80 m tall" with
+  `if let s = placement.placedSize { Text(String(format: "%.2f m tall", s.y)) }`.
 - `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
   `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond
   directly to Kotlin's `PlacementPhase`. Search and recovery deadlines are ten seconds.
@@ -189,7 +203,7 @@ struct AutomaticPlacement: View {
   the owned anchor while retaining the asset and camera; `keepScanning()` starts a new
   search interval. `dismiss()` invalidates outstanding tickets and releases resources.
   Teardown invokes dismissal automatically. A controller owns one placement.
-- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
+- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:size:)`
   rejects stale tickets and invalid bounds, keeps the old entity until a successful
   replacement, and automatically requests placement when empty.
 - Nested meshes are selectable. Drag preserves the grab offset on valid geometry and the
@@ -537,6 +551,8 @@ public struct ModelNode: @unchecked Sendable {
     public func scale(_ uniform: Float) -> ModelNode
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode
+    public var worldSize: SIMD3<Float>          // width, height, depth in world metres (own bounds × world scale; rotation ignored)
+    public var worldBoundingBox: BoundingBox    // world AABB after every transform; min.y = floor contact
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // absolute: moves the bounds centre to `target`
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity
 

@@ -85,6 +85,18 @@ final class PlacementSizeTests: XCTestCase {
         assertEqual(ModelNode(ModelEntity()).worldSize, [0, 0, 0])
     }
 
+    #if os(iOS) || os(macOS) || os(visionOS)
+    func testContactShadowIsNotCountedInWorldSizeOrWorldBoundingBox() {
+        let plain = ModelNode(box([2, 1, 0.5]))
+        plain.entity.position = [1, 2, 3]
+        let shadowed = ModelNode(box([2, 1, 0.5])).withContactShadow()
+        shadowed.entity.position = [1, 2, 3]
+        assertEqual(shadowed.worldSize, [2, 1, 0.5])
+        assertEqual(shadowed.worldBoundingBox.extents, plain.worldBoundingBox.extents)
+        assertEqual(shadowed.worldBoundingBox.center, plain.worldBoundingBox.center)
+    }
+    #endif
+
     #if os(iOS)
     // MARK: Placement pivot and base size
 
@@ -145,6 +157,15 @@ final class PlacementSizeTests: XCTestCase {
         assertEqual(controller.baseSize, [0.3, 0.15, 0.075])
         XCTAssertEqual(controller.placementSize, .fitInto(meters: 0.3))
         XCTAssertFalse(controller.isAtRealWorldSize)
+    }
+
+    func testAnEmptyRealWorldModelIsRejectedAndKeepsBaseSize() {
+        let controller = ARPlacementController()
+        let ticket = controller.selectModel()
+        XCTAssertTrue(controller.setModel(box([1, 1, 1]), ticket: ticket, size: .realWorld))
+        XCTAssertFalse(controller.setModel(ModelEntity(), ticket: ticket, size: .realWorld))
+        assertEqual(controller.baseSize, [1, 1, 1])
+        XCTAssertEqual(controller.placementSize, .realWorld)
     }
 
     func testStaleTicketLeavesBaseSizeAndPlacementSizeUnchanged() {

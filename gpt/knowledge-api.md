@@ -6410,6 +6410,8 @@ public struct ModelNode: @unchecked Sendable {
     public func rotation(_ rotation: simd_quatf) -> ModelNode
     public func rotation(angle: Float, axis: SIMD3<Float>) -> ModelNode
     public func scaleToUnits(_ units: Float = 1.0) -> ModelNode   // fits in cube of 'units' meters
+    public var worldSize: SIMD3<Float>          // width, height, depth in world metres — Android `worldSize`
+    public var worldBoundingBox: BoundingBox    // world-space AABB — Android `worldBoundingBox`
     public func centerOrigin(_ target: SIMD3<Float> = .zero) -> ModelNode  // moves the bounds centre to `target` (absolute point); `.zero` = center on origin
     public func centerOrigin(normalized origin: SIMD3<Float>) -> ModelNode  // normalized AABB origin (-1..1, 0 = centre) — Android `centerOrigin(Position)` parity; `SIMD3(0,-1,0)` bottom-aligns
 
@@ -6445,6 +6447,10 @@ Key behaviors:
   `.3mf` is resolved to a URL and parsed instead.
 - `load(from:)` downloads to a temp file, loads, then cleans up.
 - `scaleToUnits(_:)` mirrors Android's `ModelNode(scaleToUnits = 1f)`.
+- `worldSize` mirrors Android's `ModelNode.worldSize`: own visual bounds × world scale, so
+  parent scales count and rotation does not; a 1 m USDZ loaded as is reports `(1, 1, 1)`.
+  `worldBoundingBox` is the world AABB after rotation and translation (`min.y` is where the
+  model touches the floor, X/Z the footprint). Both are `@MainActor`.
 - `centerOrigin(normalized:)` — **apply before positioning.** Unlike Android's `centerOrigin` (which composes additively — `position += translation`, independent of the current position), this reads the entity's **world** visual-bounds, so it does not compose with a previously-set position: call it on an unpositioned, unparented entity (load → scaleToUnits → centerOrigin, before `.position(_:)` or anchoring), and a later `.position(_:)` replaces the grounding offset.
 
 #### Model formats and units (`ModelFormat`, `ModelUnit`, `MeshAsset`)
