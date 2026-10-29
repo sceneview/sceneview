@@ -9689,10 +9689,12 @@ public struct ContactShadowNode: @unchecked Sendable {
   `centerOrigin`; call `fit(under:)` again if the model changes size.
 - Free-standing on a wall: `ContactShadowNode(width: 2.4, length: 1.6, context: .wall, plane: .vertical).position([0, 1.3, -1.99])`.
 - Excluded from `SceneView`'s automatic framing and from `GroundingShadowComponent`; `scaleToUnits`,
-  `centerOrigin`, `enableCollision` / `collisionBounds` and `ARPlacementController.setModel(previewSize:)`
+  `centerOrigin`, `enableCollision` / `collisionBounds`, `withCollision()`, `NodeGesture` handlers and `ARPlacementController.setModel(previewSize:)`
   measure the model without it, and it never gets collision shapes (not a tap target).
-- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (follows the model)
-  or on the anchor when it holds several; content already carrying a contact shadow gets none.
+- AR `.placementShadow(.contact(...))`: the shadow goes on the anchor's single child (it follows the
+  model when the app moves or hides it; replacing the child drops the shadow, so give the new model
+  `withContactShadow()`) or on the anchor when it holds several; content already carrying a
+  contact shadow gets none.
 
 #### AnchorNode — AR world anchors (iOS only)
 

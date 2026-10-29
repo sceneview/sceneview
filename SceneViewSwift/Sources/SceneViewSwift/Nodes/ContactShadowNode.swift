@@ -292,7 +292,8 @@ public struct ContactShadowNode: @unchecked Sendable {
 
     /// Re-measures `model` and moves, turns and resizes this shadow under it, in the shadow's
     /// parent space. The model is measured in a level frame (the parent's world transform
-    /// without its tilt), so the quad lies flat even under a tilted root. Does nothing while
+    /// without its tilt), so the quad lies flat even under a tilted root. A root that is both
+    /// tilted and non-uniformly scaled is measured as if its scale were uniform. Does nothing while
     /// `model` has no visible geometry yet (an async load in flight).
     @MainActor
     public func fit(under model: Entity, spread: Float = defaultSpread) {

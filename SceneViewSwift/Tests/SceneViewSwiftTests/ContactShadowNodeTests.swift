@@ -213,6 +213,21 @@ final class ContactShadowNodeTests: XCTestCase {
         XCTAssertEqual(node.collisionBounds?.extents.x ?? 0, 0.3, accuracy: 1e-5)
     }
 
+    func testGestureAndWithCollisionSkipTheShadow() {
+        let gestured = ModelNode(ModelEntity(mesh: .generateBox(size: 0.3))).withContactShadow()
+        NodeGesture.onTap(gestured.entity) { }
+        let chained = ModelEntity(mesh: .generateBox(size: 0.3))
+        ContactShadowNode.under(chained)
+        chained.withCollision()
+        for model in [gestured.entity, chained] {
+            let shadow = model.children.compactMap { ContactShadowNode($0) }.first
+            XCTAssertTrue(model.components.has(CollisionComponent.self))
+            XCTAssertNotNil(shadow)
+            XCTAssertFalse(shadow?.entity.components.has(CollisionComponent.self) ?? true,
+                           "the decal is not a tap target")
+        }
+    }
+
     func testFramingBoundsLeaveShadowsOut() {
         let root = Entity()
         let a = ModelEntity(mesh: .generateBox(size: 0.2))

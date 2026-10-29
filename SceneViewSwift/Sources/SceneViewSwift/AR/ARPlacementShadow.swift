@@ -84,7 +84,9 @@ extension ARSceneView.Coordinator {
     /// Adds a fitted contact shadow to `anchor`'s content, unless it has no visible geometry
     /// yet or already carries one anywhere in its subtree (a cloned model built with
     /// `withContactShadow()` holds it one level down). A single child gets the shadow, so it
-    /// follows that model when the app moves, hides or swaps it; several go under the anchor.
+    /// follows that model when the app moves or hides it; several go under the anchor.
+    /// Replacing that child drops its shadow: give the new model one with
+    /// `withContactShadow()`, or place it on a new anchor.
     @MainActor
     static func applyContactShadow(
         to anchor: Entity,
