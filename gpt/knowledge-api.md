@@ -93,7 +93,7 @@ fun SceneView(
 )
 ```
 
-**Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
+**Default look (premium product shot):** soft DPCF shadows from a high key light (`DEFAULT_MAIN_LIGHT_DIRECTION`, above and slightly right-front, so the shadow pools under the model) + a fill from upper-left-back, SSAO at MEDIUM quality with bilateral upsampling, bloom 0.10, FXAA — `RenderQuality.Default`; override with `renderQuality = RenderQuality.Performance` / `Cinematic`, your own `mainLightNode`, or `view.*` options. **Defaults changed in v4.0.10+:** shadows ON (mainLight + fillLight), SSAO + bloom enabled, neutral exposure (~1.0), dual-light setup out-of-the-box. Tone mapper: Khronos PBR Neutral (#4595 — identity up to 0.76, so base colours display as authored; `rememberARView` keeps Filmic). Old look: `view.colorGrading = ColorGrading.Builder().toneMapper(ToneMapper.Filmic()).build(engine)`. No more "flat-lit chrome look" — drop a model in and it renders cinematic by default.
 
 **`frameRatePolicy` (default `FrameRatePolicy.OnDemand()`, v4.38.0+ / #3108) — breaking change:** it replaces the `isRendering: Boolean` parameter, which is **removed, with no deprecated overload**. Before v4.38.0 a `SceneView` drew every vsync for as long as it was composed, whether or not anything had changed; a static 3D screen therefore kept the GPU redrawing an identical frame 60 or 120 times a second, which reads to the user as battery drain and thermal throttling on devices whose Choreographer keeps ticking a visually static UI.
 
@@ -274,7 +274,8 @@ screen to another, the screen under the finger is frozen until the gesture ends.
 **Note — `renderQuality` on `ARSceneView` is NULLABLE (#2524, v4.19.0+).** Unlike the 3D
 `SceneView` (where it defaults to `RenderQuality.Default`), the AR composable defaults
 `renderQuality` to **`null`** so existing AR scenes keep the camera-feed-tuned defaults from
-`createARView` (minimal post-processing — no SSAO/bloom — over the live feed). Pass a preset
+`createARView` (minimal post-processing — no SSAO/bloom — over the live feed, soft DPCF shadows).
+A preset never turns SSAO or bloom on over the camera feed either. Pass a preset
 explicitly to opt in, e.g. `ARSceneView(renderQuality = RenderQuality.Performance) { }` for
 battery-sensitive overlays. The Filmic AR tone mapper that round-trips the camera background
 (#1434) survives every preset. You can still tune imperatively via
@@ -614,6 +615,31 @@ ModelNode class properties (available via `apply` block):
   `ModelNode.centerOrigin(normalized:)`, Web `NodeHandle.centerOrigin(x, y, z)` (#2763),
   identical `-(center + origin * halfExtent) * scale` formula on all three.
 - `onFrameError: ((Exception) -> Unit)?` — callback for frame errors (default: logs via Log.e)
+- `isModelDestroyed: Boolean` — `true` once the model was destroyed (`ModelLoader.destroyModel`,
+  `clear`, or a `rememberModelInstance` that left the composition first). Also on the model and the
+  instance: `Model.isDestroyed`, `ModelInstance.isDestroyed`.
+
+**After the model is destroyed:** gltfio frees the asset, its instance and its animator without
+clearing their handles, so the node guards each of its members that reaches them.
+- Do nothing: the node's frame, `stopAnimation`, the `ModelNode` composable (the node leaves the
+  scene), `rememberModelAnimationState` (reads idle), the scene inspector and the editing overlay.
+- Throw `IllegalStateException` instead of a native crash: `boundingBox`, `halfExtent`, `extents`,
+  `center`, `size`, `scaleToUnitCube`, `centerOrigin`, `animationCount`, `playAnimation`,
+  `setAnimationSpeed`, `skinCount`, `skinNames`, `materialVariantNames`, `attachSkin`, `detachSkin`,
+  `getJointCount`; on the sub-nodes, `ChildNode.name` (read once, when the sub-node is built),
+  `ChildNode.extras`, `ChildNode.morphTargetNames` and `RenderableNode.getMaterialInstanceAt`; the
+  `ModelNode` constructor and the `ModelInstance.materialInstances` extension.
+- Not guarded: `node.model`, `node.animator` and gltfio's own members
+  (`FilamentInstance.getMaterialInstances()`) — never call them after the destroy. The renderable
+  state (`materialInstances`, `setMaterialInstance`, `isShadowCaster`, `isShadowReceiver`,
+  `setMorphWeights`, `setLayerVisible`, `setLayerMask`, `setPriority`, `setCulling`,
+  `setScreenSpaceContactShadows`, `setBlendOrder`, `setGlobalBlendOrderEnabled`, and the same on the
+  sub-nodes) goes through the engine's managers by entity: Filament ignores a write to a destroyed
+  entity and answers a read with its default, but an entity id the engine has since reused is not
+  detected — except by the reads that go through `RenderableNode.getMaterialInstanceAt` (the
+  `materialInstances` getter), which throw.
+
+Check `isModelDestroyed` first when the model's lifetime is not yours.
 
 ### LightNode — light source
 **CRITICAL: `apply` is a named parameter (`apply = { ... }`), NOT a trailing lambda.**
@@ -1584,7 +1610,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = false,          // opt-in contact shadow under placed models — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,

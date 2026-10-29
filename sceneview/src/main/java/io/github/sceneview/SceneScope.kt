@@ -44,6 +44,7 @@ import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
 import io.github.sceneview.math.Size
 import io.github.sceneview.model.ModelInstance
+import io.github.sceneview.model.isDestroyed
 import io.github.sceneview.math.Color
 import io.github.sceneview.math.Position2
 import io.github.sceneview.node.BillboardNode as BillboardNodeImpl
@@ -289,6 +290,10 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         apply: ModelNodeImpl.() -> Unit = {},
         content: (@Composable NodeScope.() -> Unit)? = null
     ) {
+        // A model destroyed under the composition (`ModelLoader.destroyModel`, `clear`, or a
+        // `rememberModelInstance` that left first) has nothing left to show, and building or
+        // re-keying a node over it would throw: the node leaves the scene instead.
+        if (modelInstance.isDestroyed) return
         // `centerOriginOffset` is the translation ModelNodeImpl's constructor bakes into the node
         // for `centerOrigin` (`-(center + origin * halfExtent) * scale`). Capture it BEFORE applying the
         // declarative props (and before the user `apply` lambda) so the `position` param can be
@@ -348,7 +353,9 @@ open class SceneScope @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) constru
         // Switch animation reactively when animationName changes.
         if (animationName != null) {
             DisposableEffect(node, animationName) {
-                node.playAnimation(animationName, speed = animationSpeed, loop = animationLoop)
+                if (!node.isModelDestroyed) {
+                    node.playAnimation(animationName, speed = animationSpeed, loop = animationLoop)
+                }
                 onDispose { node.stopAnimation(animationName) }
             }
         }
