@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the look the 3D Scan result's views share (#4735): the dimensioned grid they
+     stand on and the parts still to scan (`RerunPlanUi.kt`, `RescanZonesUi.kt`). Android's
+     resource merger fans every `res/values/*.xml` file in, so these resolve globally (#1870). -->
+<resources>
+    <!-- The plan's legend: a dashed amber box marks a part of the room still to scan. -->
+    <string name="scan_result_not_scanned">Not scanned yet</string>
+</resources>
