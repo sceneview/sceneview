@@ -224,9 +224,9 @@ examples. To show the model before a plane is detected, opt in to instant placem
 
 ### iOS: Instant placement
 
-Off by default, and iOS only for now: Android's `AutoPlacementScene` has no instant placement
-yet (it hard-codes ARCore's `InstantPlacementMode.DISABLED`). Without it, nothing appears until
-ARKit detects a plane. Opt in when the first seconds matter more than
+Off by default on iOS. Android's `AutoPlacementScene` uses ARCore instant placement by default
+on a floor flow: after `AutoPlacementState.estimatedFallbackMillis` (600 ms) without a surface it
+places on the estimated floor. Without it, nothing appears until ARKit detects a plane. Opt in when the first seconds matter more than
 the first pose:
 
 ```swift

@@ -517,7 +517,7 @@ class AutoPlacementStateTest {
     }
 
     @Test fun `the selection ring is on by default`() {
-        assertTrue(AutoPlacementState().showsSelectionRing)
+        assertTrue(AutoPlacementState().showsPlacementRing)
     }
 
     @Test fun `resizing is allowed by default`() {
