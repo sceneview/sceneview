@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.google.android.filament.Engine
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.haptic.ARHapticEvent
 import io.github.sceneview.gesture.RotateGestureDetector
@@ -26,8 +27,13 @@ import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.math.Position
 import io.github.sceneview.math.Rotation
 import io.github.sceneview.math.Scale
+import io.github.sceneview.math.Size
 import io.github.sceneview.math.toQuaternion
 import io.github.sceneview.material.setColor
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.roundToInt
 import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.model.isDestroyed
@@ -49,7 +55,9 @@ private const val NO_PLANE_MESSAGE = "This wall was found through the depth API 
  * A placement and the ARCore identity of what it stands on. For a floor, a table or a wall
  * ARCore has grown a plane on, that is the [plane]. A plain painted wall often has no plane at
  * all (#4070): the placement then rides a depth hit or the tracked floor it was inferred from,
- * and [planeOrNull] is `null`.
+ * and [planeOrNull] is `null`. So does an estimated placement
+ * ([AutoPlacementState.placementSource] is [PlacementSource.ESTIMATED]): it stands on an ARCore
+ * instant-placement point until it is dragged onto a plane.
  */
 class AutoPlacementResult internal constructor(
     anchor: Anchor,
@@ -83,7 +91,7 @@ class AutoPlacementResult internal constructor(
 
     /**
      * The ARCore plane the object stands on, or `null` for a wall found through the depth API
-     * or inferred from the floor↔wall seam (#4070).
+     * or inferred from the floor↔wall seam (#4070), and for an estimated placement.
      */
     val planeOrNull: Plane? get() = planeOf(trackable, kind)
 }
@@ -125,7 +133,11 @@ class AutoPlacementCandidate internal constructor(
         if (trackable.trackingState != TrackingState.TRACKING) return false
         val plane = trackable as? Plane
         return when (kind) {
-            null -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            // An instant-placement point has no polygon: anywhere ARCore can hold it.
+            null -> when (trackable) {
+                is InstantPlacementPoint -> true
+                else -> plane != null && plane.subsumedBy == null && plane.isPoseInPolygon(target)
+            }
             WallHitKind.PLANE, WallHitKind.EXTENDED_PLANE -> plane != null && plane.subsumedBy == null &&
                 (plane.isPoseInPolygon(target) ||
                     plane.outsidePolygonDistance(target) <= UsableSurfacePolicy.WALL_POLYGON_TOLERANCE_M)
@@ -330,6 +342,96 @@ internal fun autoPlacementDepthMode(surface: PlacementSurface): Config.DepthMode
         PlacementSurface.WALL -> Config.DepthMode.AUTOMATIC
     }
 
+/**
+ * The instant-placement mode [AutoPlacementScene] asks ARCore for. A surface flow turns it on:
+ * the estimated floor placement and a drag off any tracked plane stand on instant-placement
+ * points. A wall flow has no estimate and keeps it off.
+ */
+internal fun autoPlacementInstantPlacementMode(surface: PlacementSurface): Config.InstantPlacementMode =
+    when (surface) {
+        PlacementSurface.SURFACE -> Config.InstantPlacementMode.LOCAL_Y_UP
+        PlacementSurface.WALL -> Config.InstantPlacementMode.DISABLED
+    }
+
+/** Whether ARCore holds [trackable] for real: a plane does, an instant point once fully tracked. */
+private fun isSettledOn(trackable: Trackable): Boolean =
+    (trackable as? InstantPlacementPoint)?.trackingMethod
+        ?.let { it == InstantPlacementPoint.TrackingMethod.FULL_TRACKING } ?: true
+
+private fun placementSourceOf(trackable: Trackable): PlacementSource =
+    if (trackable is InstantPlacementPoint) PlacementSource.ESTIMATED else PlacementSource.SURFACE
+
+/** [point] with the object's front (+Z) turned to face [camera]. */
+private fun facingPose(point: Float3, camera: Pose): Pose {
+    val yaw = PlacementMath.yawToward(point, Float3(camera.tx(), camera.ty(), camera.tz()))
+    val q = Rotation(y = yaw).toQuaternion()
+    return Pose(floatArrayOf(point.x, point.y, point.z), floatArrayOf(q.x, q.y, q.z, q.w))
+}
+
+/**
+ * The floor spot the screen centre looks at, [distance] ahead at most and
+ * [PlacementFeel.NEAR_SHARE] of it at least, on the lowest tracked plane well below the camera,
+ * else [PlacementFeel.PHONE_HEIGHT_GUESS_M] under it. With [preferPlane], a tracked floor plane
+ * under that spot carries the candidate; otherwise an ARCore instant-placement point does. The
+ * pose faces the camera. Null while the camera does not track or ARCore returns no point.
+ */
+private fun floorCandidate(
+    frame: Frame,
+    planes: List<Plane>,
+    widthPx: Int,
+    heightPx: Int,
+    distance: Float,
+    preferPlane: Boolean,
+): AutoPlacementCandidate? {
+    val camera = frame.camera
+    if (camera.trackingState != TrackingState.TRACKING) return null
+    val view = FloatArray(16).also { camera.getViewMatrix(it, 0) }
+    val projection = FloatArray(16).also { camera.getProjectionMatrix(it, 0, 0.1f, 100f) }
+    val ray = PlacementMath.screenRay(widthPx / 2f, heightPx / 2f, widthPx, heightPx, view, projection)
+        ?: return null
+    val eye = camera.pose
+    val floors = planes.filter { it.type == Plane.Type.HORIZONTAL_UPWARD_FACING }
+    val floorY = PlacementMath.estimateFloorHeight(eye.ty(), floors.map { it.centerPose.ty() })
+    val point = PlacementMath.floorPointAlong(ray, floorY, distance, distance * PlacementFeel.NEAR_SHARE)
+        ?: return null
+    val pose = facingPose(point, eye)
+    if (preferPlane) {
+        floors.firstOrNull {
+            it.subsumedBy == null && kotlin.math.abs(it.centerPose.ty() - point.y) < 0.02f &&
+                it.isPoseInPolygon(pose)
+        }?.let { return AutoPlacementCandidate(it, pose) }
+    }
+    val (x, y) = PlacementMath.projectToScreen(point, widthPx, heightPx, view, projection) ?: return null
+    val reach = ViewportProjection.distance(point.x, point.y, point.z, eye.tx(), eye.ty(), eye.tz())
+        .coerceIn(PlacementFeel.MIN_INSTANT_DISTANCE_M, PlacementFeel.MAX_SURFACE_DISTANCE_M)
+    val hit = arSessionGuarded("AutoPlacement estimate", null) { frame.hitTestInstantPlacement(x, y, reach) }
+        ?.firstOrNull { it.trackable is InstantPlacementPoint } ?: return null
+    val at = hit.hitPose
+    return AutoPlacementCandidate(hit.trackable, facingPose(Float3(at.tx(), at.ty(), at.tz()), eye), null)
+}
+
+/** A [AutoPlacementState.recenter] call, served on the next session frame. */
+private class RecenterRequest {
+    var requested = false
+    var cameraTracking = false
+}
+
+/**
+ * Gestures that began off the placed object, which [AutoPlacementScene] hands to it: a drag
+ * anywhere moves it, a twist anywhere turns it, a pinch anywhere sizes it.
+ */
+internal interface ScreenGestures {
+    fun moveBegin(detector: MoveGestureDetector, e: MotionEvent)
+    fun move(detector: MoveGestureDetector, e: MotionEvent)
+    fun moveEnd(detector: MoveGestureDetector, e: MotionEvent)
+    fun rotateBegin(detector: RotateGestureDetector, e: MotionEvent)
+    fun rotate(detector: RotateGestureDetector, e: MotionEvent)
+    fun rotateEnd(detector: RotateGestureDetector, e: MotionEvent)
+    fun scaleBegin(detector: ScaleGestureDetector, e: MotionEvent)
+    fun scale(detector: ScaleGestureDetector, e: MotionEvent)
+    fun scaleEnd(detector: ScaleGestureDetector, e: MotionEvent)
+}
+
 /** A vertical plane's normal (centre-pose +Y), `null` for a floor or table. */
 private fun planeWallNormal(plane: Plane): FloatArray? =
     if (plane.type == Plane.Type.VERTICAL) plane.centerPose.getTransformedAxis(1, 1f) else null
@@ -354,7 +456,14 @@ fun rememberAutoPlacementState(): AutoPlacementState = remember { AutoPlacementS
 
 /**
  * Places once on the first usable detected plane after [assetReady]. No tap, reticle or
- * plane visualization. Load the asset before setting [assetReady]; keep the old asset
+ * plane visualization. With no usable plane after [AutoPlacementState.estimatedFallbackMillis]
+ * of tracking (600 ms by default), the object stands on the estimated floor
+ * [AutoPlacementState.placementDistance] ahead instead, and settles when ARCore tracks it
+ * ([AutoPlacementState.isSettled]); a wall flow always waits for a wall. Gestures work anywhere
+ * on screen, not only on the object: one finger drags it (and throws it, gliding on), two
+ * fingers twist it (and spin it on) and pinch it, a double tap toggles 100 %, and a new touch
+ * catches a gliding or spinning object. [AutoPlacementState.recenter] brings it back in front.
+ * Load the asset before setting [assetReady]; keep the old asset
  * until a replacement succeeds, and gate asynchronous results using [AutoPlacementState.ticket].
  *
  * [state] exposes recovery, reset and explicit request actions. Camera/capability events
@@ -412,6 +521,16 @@ fun AutoPlacementScene(
     var cameraDenied by remember { mutableStateOf(false) }
     // The coaching card names the reason ("Too dark", "Too fast") while tracking struggles.
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
+    // A recenter needs the camera and the planes: it is served on the next session frame.
+    val recenter = remember(state) { RecenterRequest() }
+    DisposableEffect(state, surface) {
+        state.recenterAction = {
+            val accepted = surface == PlacementSurface.SURFACE && recenter.cameraTracking
+            if (accepted) recenter.requested = true
+            accepted
+        }
+        onDispose { state.recenterAction = null }
+    }
     DisposableEffect(state) {
         onDispose {
             currentPlacement?.anchor?.detach()
@@ -428,15 +547,28 @@ fun AutoPlacementScene(
             planeRenderer = false,
             planeFindingMode = autoPlacementPlaneFindingMode(surface),
             depthMode = autoPlacementDepthMode(surface),
-            instantPlacementMode = Config.InstantPlacementMode.DISABLED,
+            instantPlacementMode = autoPlacementInstantPlacementMode(surface),
             onGestureListener = rememberOnGestureListener(
-                // Tap the object to select it (the selection ring appears), tap empty space
-                // to deselect — Scene Viewer's selection model.
+                // A new touch catches a gliding or spinning object where it is.
+                onDown = { _, _ -> state.touchDown() },
+                // Tap the object to select it, tap empty space to deselect — Scene Viewer's
+                // selection model.
                 onSingleTapConfirmed = { _, node ->
                     if (node == null) state.deselectPlacement() else state.selectPlacement()
                 },
-                // Double-tap the object: back to 100 %, or back to the user's size from 100 %.
-                onDoubleTap = { _, node -> if (node != null) state.toggleBaseScale() },
+                // Double-tap anywhere: back to 100 %, or back to the user's size from 100 %.
+                onDoubleTap = { _, _ -> if (state.hasPlacement) state.toggleBaseScale() },
+                // A gesture that begins off the object still drives it (AR Quick Look): the
+                // object is small on screen, the fingers need not find it first.
+                onMoveBegin = { d, e, node -> if (node == null) state.screenGestures?.moveBegin(d, e) },
+                onMove = { d, e, node -> if (node == null) state.screenGestures?.move(d, e) },
+                onMoveEnd = { d, e, node -> if (node == null) state.screenGestures?.moveEnd(d, e) },
+                onRotateBegin = { d, e, node -> if (node == null) state.screenGestures?.rotateBegin(d, e) },
+                onRotate = { d, e, node -> if (node == null) state.screenGestures?.rotate(d, e) },
+                onRotateEnd = { d, e, node -> if (node == null) state.screenGestures?.rotateEnd(d, e) },
+                onScaleBegin = { d, e, node -> if (node == null) state.screenGestures?.scaleBegin(d, e) },
+                onScale = { d, e, node -> if (node == null) state.screenGestures?.scale(d, e) },
+                onScaleEnd = { d, e, node -> if (node == null) state.screenGestures?.scaleEnd(d, e) },
             ),
             onARCoreAvailability = {
                 availability = it
@@ -457,18 +589,43 @@ fun AutoPlacementScene(
                     .filter { it.trackingState == TrackingState.TRACKING && it.subsumedBy == null }
                 if (tracked != planes) planes = tracked
                 state.onFloor(trackedFloorY(tracked))
-                if (frame.camera.trackingState == TrackingState.TRACKING) state.onCamera(frame.camera.pose.ty())
-                val candidate = if (ready && state.wantsSurface) {
+                val tracking = frame.camera.trackingState == TrackingState.TRACKING
+                recenter.cameraTracking = tracking
+                if (tracking) state.onCamera(frame.camera.pose.ty())
+                val searching = ready && state.wantsSurface
+                val candidate = if (searching) {
                     findAutoPlacementSurface(frame, tracked, viewport.width, viewport.height, surface)
                 } else null
                 val effect = state.onFrame(
-                    FrameInput(SystemClock.uptimeMillis(), frame.camera.trackingState == TrackingState.TRACKING,
-                        candidate != null, placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING }),
-                    commit = {
-                        candidate?.createAnchor()?.let { placement = it; true } ?: false
+                    FrameInput(
+                        nowMillis = SystemClock.uptimeMillis(),
+                        tracking = tracking,
+                        surfaceAvailable = candidate != null,
+                        anchorTracking = placement?.anchor?.trackingState?.let { it == TrackingState.TRACKING },
+                        estimatedAvailable = searching && tracking && surface == PlacementSurface.SURFACE,
+                        anchorSettled = placement?.let { isSettledOn(it.trackable) },
+                    ),
+                    commit = { source ->
+                        val next = when (source) {
+                            PlacementSource.SURFACE -> candidate?.createAnchor()
+                            PlacementSource.ESTIMATED -> floorCandidate(
+                                frame, tracked, viewport.width, viewport.height, state.placementDistance,
+                                preferPlane = false,
+                            )?.createAnchor()
+                        }
+                        next?.let { placement = it; true } ?: false
                     },
                 )
                 if (effect == FrameEffect.PLACE) placement?.let { placedCallback?.invoke(it) }
+                if (recenter.requested) {
+                    recenter.requested = false
+                    if (tracking && placement?.isWall == false) {
+                        floorCandidate(
+                            frame, tracked, viewport.width, viewport.height, state.placementDistance,
+                            preferPlane = true,
+                        )?.let { state.relocateAction?.invoke(it) }
+                    }
+                }
             },
         ) {
             placement?.let { result -> key(result) { content(result) } }
@@ -579,30 +736,37 @@ fun AutoPlacementScene(
 )
 
 /**
- * Grounded model content for [AutoPlacementScene], with a 0.3 m longest-axis preview by
- * default. Pass null [scaleToUnits] to retain authored units. The model's complete bounding
- * volume is selectable, including nested meshes. [assetRotation] corrects authored axes
- * before the grounded bounds are calculated.
+ * Grounded model content for [AutoPlacementScene], at its real size by default: an AR viewer
+ * shows a chair as big as a chair. Pass [scaleToUnits] for a longest-axis preview size instead.
+ * The model's complete bounding volume is selectable, including nested meshes. [assetRotation]
+ * corrects authored axes before the grounded bounds are calculated. The object grows into place
+ * from [PlacementFeel.APPEAR_SCALE].
  *
- * Gestures, as Scene Viewer and AR Quick Look:
+ * Gestures, as Scene Viewer and AR Quick Look, anywhere on screen:
+ * - **Drag** with one finger moves the object over the surface; released fast, it glides on and
+ *   slows down. Off any tracked plane it slides on the floor height it stands at.
  * - **Pinch** follows the fingers 1:1 relative to where they landed (spreading them twice as
  *   far doubles the object), limited to [AutoPlacementState.scaleRange] (25–400 % of the base by
- *   default), snapping to 100 % within ±4 %
- *   with a short elastic rebound.
- * - **Twist** turns the object about its base.
+ *   default), snapping to 100 % within ±4 % with a tick and a short elastic rebound.
+ * - **Twist** turns the object about its base; released fast, it spins on and slows down.
  * - **Double-tap** ([AutoPlacementState.toggleBaseScale]) animates back to 100 %; at 100 % it
  *   returns to the size last pinched to.
- * - **Selection** draws a thin white ring on the surface around the object's footprint while
- *   [AutoPlacementState.isSelected]; opt out with [AutoPlacementState.showsSelectionRing].
- *   [AutoPlacementNode]'s free-form content draws no ring — it has no bounds to encircle.
+ * - A new touch catches a gliding or spinning object.
+ *
+ * A soft [contactShadow] grounds a floor or table object. A flat ring lies around its footprint
+ * while it is under the fingers and for a moment after it lands
+ * ([PlacementRingVisibility]); it is dashed while the placement is only estimated. Opt out with
+ * [AutoPlacementState.showsPlacementRing]. [AutoPlacementNode]'s free-form content draws neither
+ * — it has no bounds to measure.
  */
 @Composable
 fun ARSceneScope.AutoPlacementModel(
     placement: AutoPlacementResult,
     state: AutoPlacementState,
     modelInstance: ModelInstance,
-    scaleToUnits: Float? = 0.3f,
+    scaleToUnits: Float? = null,
     assetRotation: Rotation = Rotation(0f),
+    contactShadow: Boolean = true,
     onInvalidMove: (Boolean) -> Unit = {},
     onScaleChanged: (percent: Int, atBaseSize: Boolean, enteredBaseSize: Boolean) -> Unit = { _, _, _ -> },
 ) {
@@ -632,108 +796,59 @@ fun ARSceneScope.AutoPlacementModel(
                 isScaleEditable = false
             }
         }
-        val footprint = remember(model) {
-            // The model's own bounds, already rotated and grounded — the ring hugs the object.
-            val grounded = buildList<Position> {
+        val grounded = remember(model) {
+            // The model's own bounds, already rotated and grounded — shadow and ring hug it.
+            buildList<Position> {
                 for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (z in listOf(-1f, 1f)) {
                     val corner = model.center +
                         Position(x * model.halfExtent.x, y * model.halfExtent.y, z * model.halfExtent.z)
                     add(model.quaternion * (corner * model.scale) + model.position)
                 }
             }
-            SelectionRing.footprint(grounded)
         }
+        val footprint = remember(grounded) { SelectionRing.footprint(grounded) }
+        val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
+        val touching = state.phase == PlacementPhase.ADJUSTING
+        val ringVisible = rememberPlacementRingVisible(
+            placed = placed,
+            settled = state.isSettled,
+            touching = touching,
+            revision = state.placementRevision,
+        )
         // Opaque glTF materials cannot fade, so the model grows into place and shrinks away
         // on tracking loss instead. Scaling about the pivot keeps the contact point fixed.
         Node(scale = Scale(PlacementEntrance.scaleFraction(entrance.value))) {
             NodeLifecycle(model, null)
-            SelectionRingNode(state, footprint)
+            if (!placement.isWall) {
+                val center = Position(footprint.centerX, 0f, footprint.centerZ)
+                if (contactShadow) {
+                    val width = grounded.maxOf { it.x } - grounded.minOf { it.x }
+                    val depth = grounded.maxOf { it.z } - grounded.minOf { it.z }
+                    ContactShadow(
+                        size = Size(
+                            x = max(width * PlacementFeel.SHADOW_SPREAD, PlacementFeel.MIN_SHADOW_SIZE_M),
+                            y = 0f,
+                            z = max(depth * PlacementFeel.SHADOW_SPREAD, PlacementFeel.MIN_SHADOW_SIZE_M),
+                        ),
+                        position = center,
+                    )
+                }
+                Node(position = center) {
+                    PlacementRingNode(
+                        radius = footprint.radius,
+                        look = placementRingLookFor(touching = touching, settled = state.isSettled),
+                        visible = state.showsPlacementRing && placed && ringVisible,
+                    )
+                }
+            }
         }
     }
 }
 
-/**
- * Scene Viewer's selection affordance: a thin white ring lying on the surface around the
- * placed object's footprint, fading in while [AutoPlacementState.isSelected] and out on
- * deselection. A real node in the anchor's frame — so it sits on the floor in true perspective,
- * is hidden behind the object where the object stands in front of it, and scales with the pinch
- * — rather than a screen-space overlay chasing the object one frame late. Never touchable, never
- * a shadow caster.
- */
-@Composable
-private fun io.github.sceneview.NodeScope.SelectionRingNode(
-    state: AutoPlacementState,
-    footprint: SelectionRing.Footprint,
-) {
-    if (footprint.radius <= 0f) return
-    val material = remember(materialLoader) {
-        materialLoader.createUnlitColorInstance(
-            io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA),
-        )
-    }
-    // Declared before the ring's own lifecycle below: Compose disposes in reverse order, so
-    // the renderable is gone before its material instance is.
-    DisposableEffect(material) {
-        onDispose { materialLoader.destroyMaterialInstance(material) }
-    }
-    val ring = remember(engine, footprint) {
-        val tube = SelectionRing.tubeRadius(footprint.radius)
-        io.github.sceneview.node.TorusNode(
-            engine = engine,
-            majorRadius = footprint.radius,
-            minorRadius = tube,
-            // Lifted by its own thickness so it lies ON the surface instead of z-fighting the
-            // shadow catcher that shares y = 0.
-            center = Position(footprint.centerX, tube + SelectionRing.LIFT, footprint.centerZ),
-            majorSegments = SelectionRing.MAJOR_SEGMENTS,
-            minorSegments = SelectionRing.MINOR_SEGMENTS,
-            materialInstance = material,
-        ).apply {
-            // Hidden until the fade below has run once: no one-frame flash when unselected.
-            isVisible = false
-            isTouchable = false
-            isShadowCaster = false
-            isShadowReceiver = false
-        }
-    }
-    val placed = state.phase == PlacementPhase.PLACED || state.phase == PlacementPhase.ADJUSTING
-    val opacity = animateFloatAsState(
-        targetValue = if (state.showsSelectionRing && state.isSelected && placed) 1f else 0f,
-        animationSpec = tween(SelectionRing.FADE_MS),
-        label = "selectionRing",
-    )
-    // Every animation frame goes straight to the material, without recomposing: a read of
-    // `opacity` inside a `SideEffect` is not tracked, so the fade would stop at its first frame
-    // and a deselected ring would stay drawn.
-    LaunchedEffect(ring, material) {
-        snapshotFlow { opacity.value }.collect { value ->
-            ring.isVisible = value > 0f
-            material.setColor(io.github.sceneview.math.colorOf(1f, 1f, 1f, SelectionRing.ALPHA * value))
-            // A material parameter is invisible to the frame gate: ask for the frame that shows
-            // the fade, or a scene with no new camera frame (a finished playback, a paused
-            // session) keeps drawing the old ring.
-            ring.requestRender()
-        }
-    }
-    NodeLifecycle(ring, null)
-}
-
-/** Geometry of the selection ring — pure, pinned in `ScaleSnapTest`. */
+/** The footprint the placement ring encloses — pure, pinned in `ScaleSnapTest`. */
 internal object SelectionRing {
-    /** Peak opacity: present on any floor, never a solid white hoop. */
-    const val ALPHA = 0.9f
-
-    /** Fade in/out on (de)selection, milliseconds (`motion-fade` family). */
-    const val FADE_MS = 180
-
     /** Clearance between the object's footprint and the ring, as a fraction of the radius. */
     const val MARGIN = 0.12f
-
-    /** Lift above the surface, metres — clears the shadow catcher at y = 0. */
-    const val LIFT = 0.001f
-
-    const val MAJOR_SEGMENTS = 96
-    const val MINOR_SEGMENTS = 8
 
     /** Ring centre on the surface plane (anchor X/Z) and radius, metres. */
     data class Footprint(val centerX: Float, val centerZ: Float, val radius: Float)
@@ -750,9 +865,6 @@ internal object SelectionRing {
         val r = corners.maxOf { kotlin.math.hypot(it.x - cx, it.z - cz) }
         return Footprint(cx, cz, if (r.isFinite()) r * (1f + MARGIN) else 0f)
     }
-
-    /** Tube radius: a hairline that stays visible on a mug and slim under a sofa. */
-    fun tubeRadius(radius: Float): Float = (radius * 0.012f).coerceIn(0.0018f, 0.006f)
 }
 
 /**
@@ -763,8 +875,8 @@ internal object SelectionRing {
  * [AutoPlacementState.moveBy], [AutoPlacementState.rotateBy] and [AutoPlacementState.scaleTo]
  * expose the same validated transforms to accessibility controls. Apply the content callback's
  * opacity to transparent materials: it fades from zero on placement and out on tracking loss
- * over 300 ms. The content also grows into place from 55 % (the same entrance as
- * [AutoPlacementModel]), scaled about the contact pivot so it never leaves the surface.
+ * over 300 ms. The content also grows into place from [PlacementFeel.APPEAR_SCALE] (the same
+ * entrance as [AutoPlacementModel]), scaled about the contact pivot so it never leaves the surface.
  */
 @Composable
 fun ARSceneScope.AutoPlacementNode(
@@ -841,6 +953,61 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             private var tweenFrom: Float? = null
             private var tweenStartNanos = 0L
 
+            /** The spin after a flicked twist that began off the object, in degrees. */
+            private val twist = PlacementFeel.twistCoast()
+            private val twistStep = FloatArray(1)
+            private var twistAngle = 0f
+
+            /** The detector of a twist still spinning on after the fingers left, else null. */
+            private var twistDetector: RotateGestureDetector? = null
+            private var twistLastNanos = 0L
+
+            /** A twist that began off the object; the scene hands it here. */
+            fun screenRotateBegin(detector: RotateGestureDetector, e: MotionEvent): Boolean {
+                stopTwist()
+                val began = onRotateBegin(detector, e)
+                if (began) {
+                    twist.reset()
+                    twistAngle = 0f
+                    twist.addSample(e.eventTime / 1000.0, twistAngle)
+                }
+                return began
+            }
+
+            fun screenRotate(detector: RotateGestureDetector, e: MotionEvent) {
+                // The same angle the node applies (NodeGestureDelegate), wrapped across ±π.
+                val delta = detector.currentAngle - detector.lastAngle
+                twistAngle += Math.toDegrees(-atan2(sin(delta), cos(delta)).toDouble()).toFloat()
+                twist.addSample(e.eventTime / 1000.0, twistAngle)
+                onRotate(detector, e)
+            }
+
+            /** A flicked twist spins on ([PlacementFeel.twistCoast]); any other one ends here. */
+            fun screenRotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
+                if (rotating && e.actionMasked != MotionEvent.ACTION_CANCEL &&
+                    twist.release(e.eventTime / 1000.0)
+                ) {
+                    twistDetector = detector
+                    twistLastNanos = 0L
+                    return
+                }
+                onRotateEnd(detector, e)
+            }
+
+            /** Ends a spinning twist where it is: a new touch caught it, or it slowed down. */
+            fun stopTwist() {
+                val detector = twistDetector ?: return
+                twistDetector = null
+                twist.stop()
+                val now = SystemClock.uptimeMillis()
+                val up = MotionEvent.obtain(now, now, MotionEvent.ACTION_UP, 0f, 0f, 0)
+                try {
+                    onRotateEnd(detector, up)
+                } finally {
+                    up.recycle()
+                }
+            }
+
             fun startRebound(fromAbove: Boolean) {
                 tweenFrom = null
                 rebound = fromAbove
@@ -866,10 +1033,20 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             }
 
             override val isFrameActive: Boolean
-                get() = rebound != null || tweenFrom != null || super.isFrameActive
+                get() = rebound != null || tweenFrom != null || twistDetector != null || super.isFrameActive
 
             override fun onFrame(frameTimeNanos: Long) {
                 super.onFrame(frameTimeNanos)
+                if (twistDetector != null) {
+                    val dt = if (twistLastNanos == 0L) 0f
+                        else ((frameTimeNanos - twistLastNanos) / 1e9f).coerceIn(0f, 0.1f)
+                    twistLastNanos = frameTimeNanos
+                    val spinning = twist.advance(dt, twistStep)
+                    if (rotating && state.isAdjusting) {
+                        quaternion *= Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), twistStep[0])
+                    }
+                    if (!spinning || !rotating || !state.isAdjusting) stopTwist()
+                }
                 tweenFrom?.let { from ->
                     if (tweenStartNanos == 0L) tweenStartNanos = frameTimeNanos
                     val elapsedMs = (frameTimeNanos - tweenStartNanos) / 1_000_000f
@@ -957,6 +1134,47 @@ private fun ARSceneScope.AutomaticPlacementPivot(
             }
         } }
         DisposableEffect(pivot, state) {
+            state.screenGestures = object : ScreenGestures {
+                // Only a gesture that began closes one, as on the object itself.
+                var moving = false
+                var twisting = false
+                var scaling = false
+                override fun moveBegin(detector: MoveGestureDetector, e: MotionEvent) {
+                    moving = root.screenMoveBegin(detector, e)
+                }
+                override fun move(detector: MoveGestureDetector, e: MotionEvent) {
+                    if (moving) root.screenMove(detector, e)
+                }
+                override fun moveEnd(detector: MoveGestureDetector, e: MotionEvent) {
+                    if (moving) root.screenMoveEnd(detector, e)
+                    moving = false
+                }
+                override fun rotateBegin(detector: RotateGestureDetector, e: MotionEvent) {
+                    twisting = pivot.screenRotateBegin(detector, e)
+                }
+                override fun rotate(detector: RotateGestureDetector, e: MotionEvent) {
+                    if (twisting) pivot.screenRotate(detector, e)
+                }
+                override fun rotateEnd(detector: RotateGestureDetector, e: MotionEvent) {
+                    if (twisting) pivot.screenRotateEnd(detector, e)
+                    twisting = false
+                }
+                override fun scaleBegin(detector: ScaleGestureDetector, e: MotionEvent) {
+                    scaling = pivot.onScaleBegin(detector, e)
+                }
+                override fun scale(detector: ScaleGestureDetector, e: MotionEvent) {
+                    if (scaling) pivot.onScale(detector, e)
+                }
+                override fun scaleEnd(detector: ScaleGestureDetector, e: MotionEvent) {
+                    if (scaling) pivot.onScaleEnd(detector, e)
+                    scaling = false
+                }
+            }
+            state.relocateAction = { root.relocate(it) }
+            state.touchDownAction = {
+                root.stopGlide()
+                pivot.stopTwist()
+            }
             state.moveAction = { x, y ->
                 // Every refused button press is felt, not only the first one (throttled per event).
                 root.moveBy(x, y).also { if (!it) state.gestureHapticSink?.invoke(ARHapticEvent.InvalidMove) }
@@ -995,6 +1213,9 @@ private fun ARSceneScope.AutomaticPlacementPivot(
                 }
             }
             onDispose {
+                state.screenGestures = null
+                state.relocateAction = null
+                state.touchDownAction = null
                 state.moveAction = null
                 state.rotateAction = null
                 state.scaleAction = null
@@ -1052,8 +1273,11 @@ internal object PlacementEntrance {
     /** Duration of the shrink/fade-out on tracking loss (`motion-fade`). */
     const val EXIT_MS = 300
 
-    /** Scale fraction the object starts at — deliberately not 0, which reads as a flicker. */
-    const val START_FRACTION = 0.55f
+    /**
+     * Scale fraction the object starts at: [PlacementFeel.APPEAR_SCALE], a speck where it lands
+     * (AR Quick Look, ARMV). Not 0, which would leave a zero-scale transform on the first frame.
+     */
+    const val START_FRACTION = PlacementFeel.APPEAR_SCALE
 
     /**
      * Eased scale fraction at animation [progress] (`0..1`). Cubic ease-out: fast out of the
@@ -1138,7 +1362,32 @@ private class AutomaticAnchorNode(
 
     /** When this drag began, `MotionEvent.eventTime`. */
     private var dragStartMs = 0L
-    init { isEditable = true }
+
+    /** The glide after a thrown drag that began off the object, in screen pixels. */
+    private val glide = PlacementFeel.moveCoast()
+    private val glideStep = FloatArray(2)
+
+    /** The detector of a drag still gliding on after the finger left, else null. */
+    private var glideDetector: MoveGestureDetector? = null
+    private var glideX = 0f
+    private var glideY = 0f
+    private var glideDownTime = 0L
+    private var lastFrameNanos = 0L
+
+    /** Re-anchoring a move the camera interrupted, backing off between attempts. */
+    private val retry = AnchorRetryPolicy()
+
+    /** The instant-placement point a drag off every tracked plane stands on, once per drag. */
+    private var dragPoint: Trackable? = null
+    private var dragPointTried = false
+
+    init {
+        isEditable = true
+        // The object follows the finger closely, and eases onto its anchor when the anchor moves
+        // on its own (an estimated placement settling, a recenter).
+        isSmoothTransformEnabled = true
+        smoothTransformSpeed = PlacementFeel.SETTLE_SPEED
+    }
 
     /** Accessibility moves obey the same polygon/range/anchor checks as a drag. */
     fun moveBy(x: Float, y: Float): Boolean {
@@ -1167,6 +1416,95 @@ private class AutomaticAnchorNode(
         pending = null
         interruptedMove = false
         updateAnchorPose = false
+        dragPoint = null
+        dragPointTried = false
+        smoothTransformSpeed = PlacementFeel.DRAG_SPEED
+        return true
+    }
+
+    /** A drag that began off the object; the scene hands it here. */
+    fun screenMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
+        stopGlide()
+        glide.reset()
+        val began = onMoveBegin(detector, e)
+        if (began) glide.addSample(e.eventTime / 1000.0, e.x, e.y)
+        return began
+    }
+
+    fun screenMove(detector: MoveGestureDetector, e: MotionEvent) {
+        glide.addSample(e.eventTime / 1000.0, e.x, e.y)
+        onMove(detector, e)
+    }
+
+    /** A thrown one-finger drag glides on ([PlacementFeel.moveCoast]); any other one ends here. */
+    fun screenMoveEnd(detector: MoveGestureDetector, e: MotionEvent) {
+        if (dragging && e.pointerCount == 1 && e.actionMasked != MotionEvent.ACTION_CANCEL &&
+            state.isAdjusting && pending != null && glide.release(e.eventTime / 1000.0)
+        ) {
+            glideDetector = detector
+            glideX = e.x
+            glideY = e.y
+            glideDownTime = e.downTime
+            return
+        }
+        onMoveEnd(detector, e)
+    }
+
+    /** One glide step per camera frame, through the same checks as a drag. */
+    private fun advanceGlide(frame: Frame) {
+        val detector = glideDetector ?: return
+        val dt = if (lastFrameNanos == 0L) 0f
+            else ((frame.timestamp - lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
+        val gliding = glide.advance(dt, glideStep)
+        glideX += glideStep[0]
+        glideY += glideStep[1]
+        val viewport = collisionSystem?.view?.viewport
+        if (viewport == null || glideX !in 0f..viewport.width.toFloat() ||
+            glideY !in 0f..viewport.height.toFloat()
+        ) {
+            stopGlide()
+            return
+        }
+        val move = MotionEvent.obtain(glideDownTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE,
+            glideX, glideY, 0)
+        val moved = try {
+            onMove(detector, move)
+        } finally {
+            move.recycle()
+        }
+        // A glide that runs into an invalid spot stops at the last valid one.
+        if (!gliding || !moved) stopGlide()
+    }
+
+    /** Ends a gliding drag where it is: a new touch caught it, or it slowed down. */
+    fun stopGlide() {
+        val detector = glideDetector ?: return
+        glideDetector = null
+        glide.stop()
+        val up = MotionEvent.obtain(glideDownTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP,
+            glideX, glideY, 0)
+        try {
+            onMoveEnd(detector, up)
+        } finally {
+            up.recycle()
+        }
+    }
+
+    /**
+     * Moves the object onto [candidate] at once ([AutoPlacementState.recenter]), easing over
+     * from where it stood. Refused mid-drag, or when ARCore cannot anchor there.
+     */
+    fun relocate(candidate: AutoPlacementCandidate): Boolean {
+        stopGlide()
+        if (dragging) return false
+        val next = candidate.createAnchor() ?: return false
+        adopt(next)
+        pending = null
+        interruptedMove = false
+        retry.reset()
+        updateAnchorPose = true
+        offset = null
+        state.relocated(placementSourceOf(next.trackable), isSettledOn(next.trackable))
         return true
     }
 
@@ -1188,6 +1526,7 @@ private class AutomaticAnchorNode(
                     plane.trackingState == TrackingState.TRACKING && plane.isPoseInPolygon(it.hitPose) &&
                     it.distance in UsableSurfacePolicy.MIN_DISTANCE_M..UsableSurfacePolicy.MAX_DISTANCE_M
             }?.let { hitCandidate(frame, it, null, (it.trackable as Plane).centerPose.getTransformedAxis(1, 1f)) }
+                ?: offPlaneCandidate(frame, e)
         }
         if (candidate == null || !candidate.accepts(candidate.pose) || !visiblePlacementPoint(frame, candidate.pose)) {
             invalidMove(true)
@@ -1209,7 +1548,12 @@ private class AutomaticAnchorNode(
             // first one travelled: that drag opened no adjustment, so it closes none (closing
             // one would end the pinch the two fingers are starting).
             DragEnd.NONE -> return
-            DragEnd.COMMIT -> if (state.isAdjusting) commitMove()
+            DragEnd.COMMIT -> if (state.isAdjusting && !commitMove() && pending != null) {
+                // ARCore could not anchor there this frame: hold the spot and retry.
+                interruptedMove = true
+                retry.reset()
+                retry.failed(SystemClock.uptimeMillis())
+            }
             // A second finger landing right after the first started sliding is a pinch or a
             // twist starting (#4731): the few pixels the first finger slid are not a move.
             // Committed, each pinch walked the object a few centimetres away from where it was
@@ -1226,8 +1570,41 @@ private class AutomaticAnchorNode(
             pending = null
         }
         offset = null
+        smoothTransformSpeed = PlacementFeel.SETTLE_SPEED
         invalidMove(false)
         state.endAdjustment()
+    }
+
+    /**
+     * Off every tracked plane, the object slides on the floor height it stands at, under the
+     * finger: AR Quick Look keeps moving where ARCore has not mapped the floor yet. It then
+     * stands on an instant-placement point until dragged back onto a plane.
+     */
+    private fun offPlaneCandidate(frame: Frame, e: MotionEvent): AutoPlacementCandidate? {
+        val screenRay = collisionSystem?.view?.screenToRay(e.x, e.y) ?: return null
+        val ray = PlacementRay(screenRay.origin, screenRay.direction)
+        val t = PlacementMath.intersectHorizontal(ray, pose.ty()) ?: return null
+        val under = ray.at(t)
+        val delta = offset ?: floatArrayOf(pose.tx() - under.x, 0f, pose.tz() - under.z).also { offset = it }
+        val camera = frame.camera.pose
+        val target = Float3(under.x + delta[0], pose.ty(), under.z + delta[2])
+        if (kotlin.math.hypot(target.x - camera.tx(), target.z - camera.tz()) > PlacementFeel.MAX_SURFACE_DISTANCE_M) {
+            return null
+        }
+        val point = dragPoint ?: (placement.trackable as? InstantPlacementPoint) ?: run {
+            if (dragPointTried) return null
+            dragPointTried = true
+            val reach = ViewportProjection.distance(target.x, target.y, target.z, camera.tx(), camera.ty(), camera.tz())
+                .coerceIn(PlacementFeel.MIN_INSTANT_DISTANCE_M, PlacementFeel.MAX_SURFACE_DISTANCE_M)
+            arSessionGuarded("AutoPlacement drag point", null) { frame.hitTestInstantPlacement(e.x, e.y, reach) }
+                ?.firstOrNull { it.trackable is InstantPlacementPoint }?.trackable
+        } ?: return null
+        dragPoint = point
+        return AutoPlacementCandidate(
+            point,
+            Pose(floatArrayOf(target.x, target.y, target.z), pose.rotationQuaternion),
+            null,
+        )
     }
 
     /**
@@ -1308,19 +1685,35 @@ private class AutomaticAnchorNode(
             !visiblePlacementPoint(frame, candidate.pose)
         ) return false
         val next = candidate.createAnchor() ?: return false
+        val source = placementSourceOf(placement.trackable)
+        adopt(next)
+        pending = null
+        val now = placementSourceOf(next.trackable)
+        if (now != source) state.relocated(now, isSettledOn(next.trackable))
+        return true
+    }
+
+    private fun adopt(next: AutoPlacementResult) {
         anchor = next.anchor
         placement.anchor = next.anchor
         placement.trackable = next.trackable
         placement.kind = next.kind
         placement.pose = next.pose
-        pending = null
-        return true
     }
 
     override fun update(session: Session, frame: Frame) {
         val tracking = frame.camera.trackingState == TrackingState.TRACKING &&
             anchor.trackingState == TrackingState.TRACKING
         if (!tracking) {
+            // Tracking lost mid-glide: the drag ends below like any interrupted one.
+            if (glideDetector != null) {
+                // The finger already left: no move end will come to close the drag.
+                glideDetector = null
+                glide.stop()
+                dragging = false
+                smoothTransformSpeed = PlacementFeel.SETTLE_SPEED
+            }
+            lastFrameNanos = 0L
             if (!updateAnchorPose) {
                 // Freeze the last valid drag pose without replacing the logical anchor.
                 interruptedMove = pending != null
@@ -1336,10 +1729,27 @@ private class AutomaticAnchorNode(
             updateAnchorPose = followAnchor
             return
         }
-        if (interruptedMove && commitMove()) {
-            interruptedMove = false
-            updateAnchorPose = true
+        if (interruptedMove && !dragging) {
+            val now = SystemClock.uptimeMillis()
+            if (retry.isDue(now)) {
+                if (commitMove()) {
+                    interruptedMove = false
+                    updateAnchorPose = true
+                    retry.reset()
+                } else {
+                    retry.failed(now)
+                    if (retry.isExhausted) {
+                        // ARCore will not anchor there: back onto the anchor it has.
+                        interruptedMove = false
+                        pending = null
+                        updateAnchorPose = true
+                        retry.reset()
+                    }
+                }
+            }
         }
         super.update(session, frame)
+        advanceGlide(frame)
+        lastFrameNanos = frame.timestamp
     }
 }

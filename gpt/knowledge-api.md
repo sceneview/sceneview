@@ -1471,9 +1471,17 @@ tracked): content placed on a table that must stand on the floor drops by
 `floorHeight - pose.ty()`.
 
 `AutoPlacementModel` grounds the complete model bounds, preserves the contact pivot
-while rotating/scaling, and constrains dragging to supported plane geometry. Its
-0.3 m longest-dimension default is **Preview size**; `scaleToUnits = null` retains
-trustworthy authored units (**Actual size**). Scale limits are 25–400% of that base by default;
+while rotating/scaling, and constrains dragging to supported plane geometry. It keeps
+trustworthy authored units by default (**Actual size**, `scaleToUnits = null`); pass
+`scaleToUnits = 0.3f` for a 0.3 m longest-dimension **Preview size**. It stands on a contact
+shadow (`contactShadow = false` to drop it) and shows a flat ring around its footprint while it
+lands or moves (`AutoPlacementState.showsPlacementRing`; `PlacementRingNode` draws the same ring
+in custom content). On a floor flow the object places itself on the first tracked surface or,
+after `AutoPlacementState.estimatedFallbackMillis` (600 ms; `null` waits for a surface), on the
+estimated floor at `placementDistance` ahead (`PlacementMath.placementDistanceFor(size)`),
+then settles onto the tracked spot (`placementSource`, `isSettled`). One finger drags it, off a
+plane too, two fingers turn it, and both glide on when flicked; a double tap anywhere toggles
+real size; `AutoPlacementState.recenter()` brings it back in front of the camera. Scale limits are 25–400% of that base by default;
 set `AutoPlacementState.scaleRange` (default `0.25f..4f`) to widen them, e.g. `0.25f..16f` for a
 1:16 miniature that may be pinched up to real size. `AutoPlacementState.cameraHeight` is the
 tracked camera's world height in metres (`null` until it tracks).

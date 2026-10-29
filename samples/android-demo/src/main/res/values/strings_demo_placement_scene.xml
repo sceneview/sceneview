@@ -6,4 +6,6 @@
      this file or `strings.xml` — see #1870. -->
 <resources>
     <string name="demo_placement_scene_title">One-Call AR</string>
+    <string name="placement_scene_recenter">Recenter</string>
+    <string name="placement_scene_estimated_floor">Placed on the estimated floor. Move the phone slowly to lock it in place.</string>
 </resources>

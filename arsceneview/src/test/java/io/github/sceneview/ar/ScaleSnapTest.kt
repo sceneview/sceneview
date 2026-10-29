@@ -133,8 +133,6 @@ class ScaleSnapTest {
         assertEquals(0.2f, ring.centerZ, 1e-6f)
         assertEquals(0.5f * (1f + SelectionRing.MARGIN), ring.radius, 1e-5f)
         assertEquals(0f, SelectionRing.footprint(emptyList()).radius)
-        assertEquals(0.0018f, SelectionRing.tubeRadius(0.05f), 1e-7f)
-        assertEquals(0.006f, SelectionRing.tubeRadius(3f), 1e-7f)
     }
 
     @Test

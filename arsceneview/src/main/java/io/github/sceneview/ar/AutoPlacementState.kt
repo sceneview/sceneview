@@ -68,13 +68,31 @@ enum class FrameEffect {
  *   session when [AutoPlacementState.wantsSurface] is true, so the hit test is not run
  *   at 60 Hz for nothing).
  * @param anchorTracking the placement's anchor tracking state, `null` when nothing is placed.
+ * @param estimatedAvailable the session can place on the estimated floor this frame (instant
+ *   placement or a floor guess), used once [AutoPlacementState.estimatedFallbackMillis] ran out.
+ * @param anchorSettled the placement's anchor is fully tracked (a plane, or an instant-placement
+ *   point ARCore has resolved), `null` when nothing is placed or it is unknown.
  */
 data class FrameInput(
     val nowMillis: Long,
     val tracking: Boolean,
     val surfaceAvailable: Boolean,
     val anchorTracking: Boolean? = null,
+    val estimatedAvailable: Boolean = false,
+    val anchorSettled: Boolean? = null,
 )
+
+/** What an automatic placement stands on. */
+enum class PlacementSource {
+    /** A tracked plane (or a wall) under the viewport: the anchor is settled from the start. */
+    SURFACE,
+
+    /**
+     * The estimated floor, after [AutoPlacementState.estimatedFallbackMillis] without a surface:
+     * an instant-placement point at the expected depth, settled once ARCore tracks it fully.
+     */
+    ESTIMATED,
+}
 
 class AutoPlacementState {
 
@@ -86,13 +104,82 @@ class AutoPlacementState {
     internal var rotateAction: ((Float) -> Unit)? = null
     internal var scaleAction: ((Float) -> Unit)? = null
     internal var scaleToggleAction: (() -> Unit)? = null
+    internal var recenterAction: (() -> Boolean)? = null
+    internal var touchDownAction: (() -> Unit)? = null
+
+    /** Gestures that began off the object: [AutoPlacementScene] hands them to the placed pivot. */
+    internal var screenGestures: ScreenGestures? = null
+
+    /** Moves the placed object onto a new candidate ([recenter]); set by the placed pivot. */
+    internal var relocateAction: ((AutoPlacementCandidate) -> Boolean)? = null
 
     /**
-     * Draw the selection ring — a thin white footprint ring on the surface around the placed
-     * [AutoPlacementModel] — while [isSelected] (Scene Viewer's selection affordance). On by
-     * default; set `false` to draw your own selection chrome from [isSelected].
+     * Draw the placement ring, a flat line on the floor around the placed [AutoPlacementModel]:
+     * dashed while the spot is estimated, closed once tracked, wider under the fingers. It shows
+     * as the object lands and while it is handled, then fades out ([PlacementRingVisibility]).
+     * On by default; set `false` to draw your own chrome from [phase] and [isSettled].
      */
-    var showsSelectionRing: Boolean by mutableStateOf(true)
+    var showsPlacementRing: Boolean by mutableStateOf(true)
+
+    @Deprecated("The torus selection ring is now the flat placement ring.", ReplaceWith("showsPlacementRing"))
+    var showsSelectionRing: Boolean
+        get() = showsPlacementRing
+        set(value) { showsPlacementRing = value }
+
+    /**
+     * How long the camera tracks without a usable surface before the object places itself on the
+     * estimated floor, [PlacementFeel.ESTIMATED_FALLBACK_MS] by default. `null` waits for a surface
+     * however long it takes, as before.
+     */
+    var estimatedFallbackMillis: Long? by mutableStateOf(PlacementFeel.ESTIMATED_FALLBACK_MS)
+
+    /**
+     * How far ahead, metres, the object places itself on the estimated floor and comes back to on
+     * [recenter]. Size it to the model with [PlacementMath.placementDistanceFor], so a sofa stands
+     * whole in view at its real size:
+     *
+     * ```kotlin
+     * state.placementDistance = PlacementMath.placementDistanceFor(largestSideMeters)
+     * ```
+     */
+    var placementDistance: Float by mutableStateOf(PlacementMath.placementDistanceFor(0.5f))
+
+    /** What the placed object stands on, `null` while nothing is placed. */
+    var placementSource: PlacementSource? by mutableStateOf(null)
+        private set
+
+    /**
+     * The placement's anchor is fully tracked: always on a surface, and on the estimated floor
+     * once ARCore resolves the instant-placement point. The ring's line closes when it turns true.
+     */
+    var isSettled: Boolean by mutableStateOf(false)
+        private set
+
+    /** Bumped each time the object lands on a new spot: placed, recentred or re-anchored. */
+    var placementRevision: Int by mutableStateOf(0)
+        private set
+
+    /** The object was re-anchored by a drag or [recenter]. */
+    internal fun relocated(source: PlacementSource, settled: Boolean) {
+        if (!hasPlacement) return
+        placementSource = source
+        isSettled = settled
+        placementRevision++
+    }
+
+    /** A finger touched the screen: whatever coasts stops. */
+    internal fun touchDown() {
+        touchDownAction?.invoke()
+    }
+
+    /**
+     * Brings the placed object back in front of the user, [placementDistance] ahead on the floor
+     * the camera looks at, facing them; the user's own turn on top is kept. Returns `false` when
+     * nothing stands or it cannot move now (tracking lost, recovering).
+     */
+    fun recenter(): Boolean = hasPlacement &&
+        (phase == PlacementPhase.PLACED || phase == PlacementPhase.ADJUSTING) &&
+        recenterAction?.invoke() == true
 
     /**
      * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
@@ -334,6 +421,11 @@ class AutoPlacementState {
         rotateAction = null
         scaleAction = null
         scaleToggleAction = null
+        touchDownAction = null
+        screenGestures = null
+        relocateAction = null
+        placementSource = null
+        isSettled = false
         dismissed = true
         sessionGeneration++
         placementRequested = false
@@ -357,6 +449,8 @@ class AutoPlacementState {
         isSelected = false
         scaleFactor = 1f
         hasPlacement = false
+        placementSource = null
+        isSettled = false
         placementRequested = true
         recoveringSince = null
         searchStartedAt = nowMillis
@@ -388,8 +482,14 @@ class AutoPlacementState {
      */
     fun onBackgroundTap(): FrameEffect = FrameEffect.NONE
 
-    /** The anchor factory must succeed before the request is consumed. Called on the render thread. */
-    fun onFrame(input: FrameInput, commit: () -> Boolean = { true }): FrameEffect = when {
+    /**
+     * The anchor factory must succeed before the request is consumed. Called on the render thread.
+     *
+     * [commit] is asked for a [PlacementSource.SURFACE] anchor when [FrameInput.surfaceAvailable],
+     * else for a [PlacementSource.ESTIMATED] one once [estimatedFallbackMillis] of tracked search
+     * ran out and [FrameInput.estimatedAvailable]; a surface always wins when both are there.
+     */
+    fun onFrame(input: FrameInput, commit: (PlacementSource) -> Boolean = { true }): FrameEffect = when {
         dismissed || phase == PlacementPhase.CAMERA_ERROR -> FrameEffect.NONE
         !input.tracking -> {
             if (!hasCameraFrame) hasCameraFrame = true
@@ -401,7 +501,10 @@ class AutoPlacementState {
             when {
                 hasPlacement -> followAnchor(input)
                 !placementRequested -> idle()
-                input.surfaceAvailable && commit() -> place(input.nowMillis)
+                input.surfaceAvailable && commit(PlacementSource.SURFACE) ->
+                    place(input.nowMillis, PlacementSource.SURFACE, settled = true)
+                input.estimatedAvailable && estimatedDue(input.nowMillis) && commit(PlacementSource.ESTIMATED) ->
+                    place(input.nowMillis, PlacementSource.ESTIMATED, settled = input.anchorSettled == true)
                 else -> search(input.nowMillis)
             }
         }
@@ -425,6 +528,7 @@ class AutoPlacementState {
 
     /** An object stands: mirror its anchor's tracking, never create a second one. */
     private fun followAnchor(input: FrameInput): FrameEffect {
+        if (input.anchorSettled == true && !isSettled) isSettled = true
         when {
             input.anchorTracking != false -> {
                 recoveringSince = null
@@ -450,9 +554,19 @@ class AutoPlacementState {
         return FrameEffect.NONE
     }
 
-    private fun place(now: Long): FrameEffect {
+    /** The search ran long enough without a surface to fall back on the estimated floor. */
+    private fun estimatedDue(now: Long): Boolean {
+        val after = estimatedFallbackMillis ?: return false
+        val started = searchStartedAt ?: now.also { searchStartedAt = it }
+        return now - started >= after.coerceAtLeast(0L)
+    }
+
+    private fun place(now: Long, source: PlacementSource, settled: Boolean): FrameEffect {
         placementRequested = false
         hasPlacement = true
+        placementSource = source
+        isSettled = settled
+        placementRevision++
         isSelected = true
         placementsCreated++
         placedAtMillis = now

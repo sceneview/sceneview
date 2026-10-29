@@ -287,6 +287,8 @@ private fun FeatureComparisonSession(feature: PlacementFeature, onBack: () -> Un
             ) { placement ->
                 placement?.let { result -> model?.let { instance ->
                     AutoPlacementModel(result, state, instance,
+                        // The helmet's authored size is arbitrary: keep the 0.3 m preview.
+                        scaleToUnits = 0.3f,
                         assetRotation = DemoMath.placementRotationFor(DemoMath.HELMET_ASSET),
                         onInvalidMove = { invalidMove = it })
                 } }
