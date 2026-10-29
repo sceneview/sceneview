@@ -7,7 +7,7 @@
 // @icon        video.fill
 // @order       31
 // @tags        camera,keyframes,path,orbit,cinematic,timeline,travelling,dolly
-// @addedIn     4.64.0
+// @addedIn     4.63.0
 import SwiftUI
 
 enum CameraPathScene: DemoScene {
