@@ -36,6 +36,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -876,6 +877,9 @@ class ModelLoader(
                 if (data != null) resourceLoader.addResourceData(uri, data) else unresolved[uri] = error
             }
             if (destroyedByResolver) {
+                // A bare destroyModel leaves the data already added in the loader, where the next
+                // load of the same URI would find it; destroy() cancelled loadScope and freed it.
+                if (loadScope.isActive) resourceLoader.evictResourceData()
                 emptyMap()
             } else {
                 val bufferUris = if (unresolved.isEmpty()) emptySet() else GltfBufferUris.of(source, unresolved.keys)
