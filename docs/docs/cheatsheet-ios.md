@@ -191,8 +191,43 @@ struct AutomaticPlacement: View {
 Legacy `ARSceneView.onTapOnPlane` and `showPlacementReticle` remain **manual-placement**
 APIs with unchanged behavior. Android's `PlacementScene`, `WallPlacement` /
 `WallPlacementScene` and reticle are likewise manual. Prefer automatic placement in new
-examples; there is no automatic fallback to estimated-plane taps.
+examples. To show the model before a plane is detected, opt in to instant placement below.
 
+
+### Instant placement
+
+Off by default, as on Android's `AutoPlacementScene` (`InstantPlacementMode.DISABLED`): without
+it, nothing appears until ARKit detects a plane. Opt in when the first seconds matter more than
+the first pose:
+
+```swift
+@StateObject private var placement = ARPlacementController(instantPlacement: true)
+
+var body: some View {
+    AutoPlacementScene(controller: placement)
+        .overlay(alignment: .bottom) {
+            if placement.trackingMethod == .approximate {
+                Text("Refining…")
+            }
+        }
+}
+```
+
+- The model appears on the first frame: on an ARKit estimated plane under the screen centre
+  (`.estimatedPlane` raycast, same 0.25–3 m window and orientation rules as planes), or 1 m
+  along the centre ray when even that misses — ARCore's own approximate distance.
+- An `ARTrackedRaycast` keeps refining that estimate; once a real plane is detected on the
+  same ray, the model glides onto it (300 ms ease-out, a snap under Reduce Motion) and is
+  re-anchored to the `ARPlaneAnchor`. A floor model keeps its rotation; a wall model re-faces
+  the detected wall.
+- `placement.trackingMethod` is `nil` before placement, `.approximate` while estimated, then
+  `.fullTracking`, and never goes back. Kotlin: `InstantPlacementPoint.TrackingMethod`
+  `SCREENSPACE_WITH_APPROXIMATE_DISTANCE` / `FULL_TRACKING`.
+- While approximate, tap-select, pinch and twist work; dragging waits for `.fullTracking`
+  (there is no surface to slide on yet).
+- The coaching overlay coaches tracking only (`.tracking` goal) so it never covers the model.
+- Without `instantPlacement`, every placement starts as `.fullTracking`; behaviour is unchanged.
+- Needs a real device: the Simulator has no AR camera.
 
 ### Direct wall placement
 

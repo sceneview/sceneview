@@ -176,8 +176,38 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     let hapticEvents = PassthroughSubject<ARHapticEvent, Never>()
     var placementsCreated: Int { lifecycle.placementsCreated }
 
-    public init(alignment: ARPlacementAlignment = .horizontal) {
+    /// Places the model at once, before ARKit has detected a plane, then moves it onto the real
+    /// surface when one is found — ARCore Instant Placement parity.
+    ///
+    /// The first placement lands on an ARKit estimated plane under the screen centre, or 1 m
+    /// along the centre ray when even that misses, and ``trackingMethod`` reads
+    /// ``ARPlacementTrackingMethod/approximate``. ARKit keeps refining the estimate along that
+    /// ray (`ARTrackedRaycast`); once a detected plane crosses it the model glides onto it in
+    /// 0.3 s (a snap under Reduce Motion), ``result`` names that plane and ``trackingMethod``
+    /// becomes ``ARPlacementTrackingMethod/fullTracking``. Pinch and twist work at once; drag
+    /// waits for the real surface.
+    ///
+    /// Off by default, as on Android: `AutoPlacementScene` there runs with
+    /// `InstantPlacementMode.DISABLED`, and an existing app keeps waiting for a plane. Changing it
+    /// affects the next placement only; a standing approximate placement still refines.
+    /// `AutoPlacementScene`'s coaching overlay then coaches tracking only, not a plane search.
+    @Published public var instantPlacement: Bool
+
+    /// How precisely the current placement is tracked; `nil` while nothing is placed. See
+    /// ``instantPlacement``. Kotlin twin: `InstantPlacementPoint.trackingMethod`.
+    @Published public private(set) var trackingMethod: ARPlacementTrackingMethod?
+    /// Non-nil exactly while the placement is approximate.
+    private var instant: ARInstantPlacement.Runtime?
+    /// The glide playing on the pivot: an estimate update, or the landing on the real surface.
+    private var instantGlide: ARInstantPlacement.Glide?
+
+    /// - Parameters:
+    ///   - alignment: Floors (`.horizontal`, the default) or walls (`.vertical`).
+    ///   - instantPlacement: Place before a plane is detected and refine; see
+    ///     ``instantPlacement``. Default `false`.
+    public init(alignment: ARPlacementAlignment = .horizontal, instantPlacement: Bool = false) {
         self.alignment = alignment
+        _instantPlacement = Published(initialValue: instantPlacement)
         super.init()
     }
 
@@ -285,8 +315,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         surface = nil
         pendingPlacementResult = nil
         pendingAnchorSince = nil
+        stopInstantPlacement()
     }
-    private func publishPhase() { if phase != lifecycle.phase { phase = lifecycle.phase } }
+    private func publishPhase() {
+        if phase != lifecycle.phase { phase = lifecycle.phase }
+        let method = ARInstantPlacement.trackingMethod(hasPlacement: hasPlacement, onSurface: surface != nil)
+        if trackingMethod != method { trackingMethod = method }
+    }
 
     func attach(to view: ARView) {
         guard arView !== view else { return }
@@ -305,6 +340,7 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                     self.pivot.components.set(OpacityComponent(opacity: next))
                 }
                 self.stepRebound(by: event.deltaTime)
+                self.stepInstantGlide(by: event.deltaTime)
             }
         }
         pivot.components.set(OpacityComponent(opacity: 0))
@@ -343,7 +379,9 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         if case .normal = frame.camera.trackingState { normal = true } else { normal = false }
         let planes = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
         if let id = surface?.identifier, let updated = planes.first(where: { $0.identifier == id }) { surface = updated }
-        let anchored = anchor?.isAnchored == true && planes.contains { $0.identifier == surface?.identifier }
+        // An approximate placement rides a world anchor: it has no plane to lose yet.
+        let anchored = instant != nil ? anchor?.isAnchored == true
+            : anchor?.isAnchored == true && planes.contains { $0.identifier == surface?.identifier }
         let search = lifecycle.frame(now: frame.timestamp, tracking: normal, anchorTracking: anchored, assetReady: selectedAssetReady)
         if !normal || (hasPlacement && !anchored) { cancelGestures() }
         visibilityTarget = normal && hasPlacement && anchored ? 1 : 0
@@ -400,7 +438,10 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
                 lifecycle.commit()
                 selection = true
             }
+        } else if search, instantPlacement {
+            placeApproximately(in: view, frame: frame)
         }
+        if normal, instant != nil { refineApproximatePlacement(in: view, frame: frame, planes: planes) }
         publishPhase()
     }
 
@@ -509,6 +550,8 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard canManipulate, let view = arView else { return false }
         if gestureRecognizer is UITapGestureRecognizer { return true }
+        // Nothing to drag along before the real surface exists, and no gesture fights the glide.
+        if instantGlide != nil || (instant != nil && gestureRecognizer is UIPanGestureRecognizer) { return false }
         // A second gesture may join the already selected object without re-hit-testing its midpoint.
         return !activeGestures.isEmpty || owns(view.entity(at: gestureRecognizer.location(in: view)))
     }
@@ -689,6 +732,145 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         commitMove(to: next, plane: plane)
         invalidMovement = false
         return true
+    }
+
+    // MARK: Instant placement — rules in ARInstantPlacement.swift
+
+    /// Commits a placement on an estimated pose: the screen-centre estimated plane, else the
+    /// fixed-distance point. Runs only when no detected plane is usable this frame.
+    private func placeApproximately(in view: ARView, frame: ARFrame) {
+        guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+        let camera = frame.camera.transform
+        let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+        guard let query = view.makeRaycastQuery(from: center, allowing: .estimatedPlane,
+                                                alignment: alignment == .horizontal ? .horizontal : .vertical)
+        else { return }
+        let hit = view.session.raycast(query).first.map { ($0.worldTransform.columns.3.xyz, $0.worldTransform.columns.1.xyz) }
+            .flatMap { ARInstantPlacement.acceptsEstimatedHit(point: $0.0, normal: $0.1, camera: camera, alignment: alignment) ? $0 : nil }
+        let source = ARInstantPlacement.source(hasPlane: false, instantPlacement: true, hasEstimatedSurface: hit != nil)
+        let contact: simd_float4x4
+        switch source {
+        case .estimatedSurface:
+            contact = ARInstantPlacement.approximateContact(point: hit!.0, camera: camera,
+                                                            wallNormal: alignment == .vertical ? hit!.1 : nil)
+        case .fixedDistance:
+            contact = ARInstantPlacement.approximateContact(point: ARInstantPlacement.fixedDistancePoint(camera: camera),
+                                                            camera: camera)
+        case .plane, .none:
+            return
+        }
+        let anchor = AnchorEntity(world: contact)
+        anchor.addChild(pivot)
+        pivot.transform = Transform(scale: SIMD3<Float>(repeating: scale))
+        view.scene.addAnchor(anchor)
+        self.anchor = anchor
+        surface = nil
+        result = nil
+        var runtime = ARInstantPlacement.Runtime(origin: query.origin, direction: query.direction, contact: contact)
+        // ARKit refines the estimated surface along the same ray; results arrive off the frame loop.
+        runtime.trackedRaycast = view.session.trackedRaycast(query) { [weak self] results in
+            guard let transform = results.first?.worldTransform else { return }
+            Task { @MainActor in self?.instant?.estimate = transform }
+        }
+        instant = runtime
+        lifecycle.commit()
+        selection = true
+    }
+
+    /// Follows ARKit's estimate while no plane crosses the placement ray, then lands on the
+    /// first usable detected plane that does.
+    private func refineApproximatePlacement(in view: ARView, frame: ARFrame, planes: [ARPlaneAnchor]) {
+        guard var runtime = instant, let worldAnchor = anchor else { return }
+        if let pending = runtime.pending {
+            let plane = planes.first { $0.identifier == pending.plane.identifier }
+            let usable = plane.map { valid(plane: $0, point: pending.point, frame: frame, view: view) } ?? false
+            switch ARPlacementLifecycle.pendingAnchorDecision(anchored: pending.anchor.isAnchored, surfaceUsable: usable,
+                                                              now: frame.timestamp, since: pending.since) {
+            case .commit: land(on: plane!, anchor: pending.anchor, point: pending.point, frame: frame)
+            case .wait: break
+            case .reject:
+                view.scene.removeAnchor(pending.anchor)
+                instant?.pending = nil
+            }
+            return
+        }
+        // A gesture in progress owns the pivot; refinement waits for it to end.
+        guard activeGestures.isEmpty else { return }
+        let query = ARRaycastQuery(origin: runtime.origin, direction: runtime.direction,
+                                   allowing: .existingPlaneGeometry,
+                                   alignment: alignment == .horizontal ? .horizontal : .vertical)
+        for hit in view.session.raycast(query) {
+            let point = hit.worldTransform.columns.3.xyz
+            guard let plane = hit.anchor as? ARPlaneAnchor,
+                  valid(plane: plane, point: point, frame: frame, view: view) else { continue }
+            let target = AnchorEntity(anchor: plane)
+            view.scene.addAnchor(target)
+            instant?.pending = (target, plane, point, frame.timestamp)
+            if target.isAnchored { land(on: plane, anchor: target, point: point, frame: frame) }
+            return
+        }
+        guard let estimate = runtime.estimate else { return }
+        runtime.estimate = nil
+        let point = estimate.columns.3.xyz
+        let camera = frame.camera.transform
+        guard ARInstantPlacement.acceptsEstimatedHit(point: point, normal: estimate.columns.1.xyz,
+                                                     camera: camera, alignment: alignment) else {
+            instant = runtime
+            return
+        }
+        let contact = ARInstantPlacement.approximateContact(point: point, camera: camera,
+                                                            wallNormal: alignment == .vertical ? estimate.columns.1.xyz : nil)
+        // Keep the model's own rotation; only the estimated contact moves.
+        let rotation = ARInstantPlacement.refinedRotation(alignment: alignment,
+                                                          model: Transform(matrix: pivot.transformMatrix(relativeTo: nil)).rotation,
+                                                          approximateContact: simd_quatf(runtime.contact),
+                                                          surfaceContact: simd_quatf(contact))
+        runtime.contact = contact
+        instant = runtime
+        glide(to: rotation, at: point, in: worldAnchor)
+    }
+
+    /// Moves the pivot onto the resolved plane anchor without a visible jump, then glides it to
+    /// the refined pose. From here on the placement is a normal plane placement.
+    private func land(on plane: ARPlaneAnchor, anchor target: AnchorEntity, point: SIMD3<Float>, frame: ARFrame) {
+        guard let runtime = instant else { return }
+        let surfaceContact = contactTransform(plane: plane, point: point, camera: frame.camera.transform)
+        let rotation = ARInstantPlacement.refinedRotation(alignment: alignment,
+                                                          model: Transform(matrix: pivot.transformMatrix(relativeTo: nil)).rotation,
+                                                          approximateContact: simd_quatf(runtime.contact),
+                                                          surfaceContact: simd_quatf(surfaceContact))
+        let previous = anchor
+        target.addChild(pivot, preservingWorldTransform: true)
+        if let previous, previous !== target { arView?.scene.removeAnchor(previous) }
+        anchor = target
+        surface = plane
+        result = .init(surfaceIdentifier: plane.identifier, anchor: target, worldTransform: surfaceContact)
+        runtime.trackedRaycast?.stopTracking()
+        instant = nil
+        glide(to: rotation, at: point, in: target)
+    }
+
+    /// Starts a glide of the pivot to a world pose, expressed in `parent`'s space.
+    private func glide(to worldRotation: simd_quatf, at worldPoint: SIMD3<Float>, in parent: Entity) {
+        let world = Transform(scale: .one, rotation: worldRotation, translation: worldPoint).matrix
+        let local = Transform(matrix: parent.transformMatrix(relativeTo: nil).inverse * world)
+        let duration = UIAccessibility.isReduceMotionEnabled ? 0 : ARInstantPlacement.refineDuration
+        instantGlide = ARInstantPlacement.Glide(from: pivot.transform, to: local, duration: duration)
+        stepInstantGlide(by: 0)
+    }
+
+    private func stepInstantGlide(by delta: TimeInterval) {
+        guard var glide = instantGlide else { return }
+        glide.advance(by: delta)
+        pivot.transform = Transform(scale: pivot.scale, rotation: glide.rotation, translation: glide.translation)
+        instantGlide = glide.isFinished ? nil : glide
+    }
+
+    private func stopInstantPlacement() {
+        instant?.trackedRaycast?.stopTracking()
+        if let pending = instant?.pending { arView?.scene.removeAnchor(pending.anchor) }
+        instant = nil
+        instantGlide = nil
     }
 }
 
