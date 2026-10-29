@@ -299,7 +299,9 @@ fun MyARScreen() {
         depthMode = Config.DepthMode.AUTOMATIC,
         instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP,
         // ENVIRONMENTAL_HDR is the v4.3.0+ default LightEstimationMode — front-camera sessions
-        // are clamped to DISABLED inside ARSession.configure regardless. The sessionConfiguration
+        // are clamped to DISABLED inside ARSession.configure regardless, and a device without
+        // HDR steps down to AMBIENT_INTENSITY, then DISABLED, instead of failing the session.
+        // Opt out: config.lightEstimationMode = DISABLED in sessionConfiguration. The sessionConfiguration
         // callback remains the escape hatch for any Config property without a typed param.
         // sessionConfiguration = { session, config -> /* raw access here if needed */ },
         onSessionCreated = { session -> /* ARCore session ready */ },
@@ -1560,7 +1562,7 @@ wall shadows, and never substitutes a synthetic pool for renderer shading.
 whole tap-to-place pipeline — Sceneform `ArFragment` parity in one call. It wires an `ARSceneView`
 with plane rendering, a built-in centre-screen **ring reticle** that brightens when a surface is
 ready, tap-to-place anchor creation, and an instant-placement fallback. Opt in to `coaching` for
-the animated onboarding guide and `groundShadows` for contact shadows under placed models. You
+the animated onboarding guide; `groundShadows` (on by default) grounds placed models with a real shadow. You
 only declare *what* rides each placed anchor:
 
 > **Demo-app note (#3405).** The Android demo has exactly **one** AR placement flow, the
@@ -1610,7 +1612,7 @@ Signature:
     reticleStyle: PlacementReticleStyle = PlacementReticleStyle.RING,  // RING (default) or DISC
     fadePlaneOnFirstPlacement: Boolean = true,  // hide the plane grid after the first model lands
     coaching: Boolean = false,               // opt-in ARCoachingOverlay onboarding card
-    groundShadows: Boolean = true,           // contact shadow under placed models (on by default) — auto-gated
+    groundShadows: Boolean = true,           // contact shadow under placed models (on by default; false to opt out) — auto-gated
                                              // against the plane grid's own receiver: exactly one
                                              // shadow receiver is ever live on a plane (#2657)
     playbackDataset: File? = null,
@@ -1969,6 +1971,13 @@ Shadows require a shadow-casting directional light — `ARSceneView`'s default
 `isShadowCaster` before suspecting the catcher. This is NOT a plane visualisation (no grid,
 no fill — that is `PlaneNode`, which carries no shadow receiver); declare `PlaneNode` and
 `ShadowReceiverPlane` on the same plane if you want a visible overlay and grounded shadows.
+
+`AutoPlacementScene` (and, by default, `PlacementScene`) already catch these shadows. On top of
+them, `AutoPlacementModel` draws a procedural `ContactShadowNode` pool under an object standing on
+a floor or a table, sized from its bounds (dark core at 80 % of the footprint, faded out about a
+quarter beyond it), turning and scaling with it — it stays under the object when the estimated
+light puts the real shadow off to one side or nowhere. Never drawn for a wall placement. Opt out
+with `AutoPlacementState.showsContactShadow = false`.
 
 Platform matrix: **iOS** — ships (v4.20+, #894): entities placed synchronously in `onTapOnPlane`
 get `GroundingShadowComponent(castsShadow: true)` automatically (RealityKit renders the contact
