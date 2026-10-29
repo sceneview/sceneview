@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **iOS instant placement (opt-in).** `ARPlacementController(instantPlacement: true)` shows the model on the first frame — on an ARKit estimated plane, or 1 m in front of the camera — then glides it onto the detected plane. `placement.trackingMethod` (`.approximate` / `.fullTracking`) mirrors ARCore's `InstantPlacementPoint.TrackingMethod`. Off by default, as on Android `AutoPlacementScene`.
