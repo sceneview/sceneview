@@ -124,7 +124,8 @@ import java.io.File
  * @param groundShadows         Attach an invisible [ShadowReceiverPlane][ARSceneScope.ShadowReceiverPlane]
  *                              to every detected plane so placed models cast a **contact shadow**
  *                              on the real floor instead of floating. Default `true`, like
- *                              [AutoPlacementScene] (it used to be `false`). Needs a
+ *                              [AutoPlacementScene] (it used to be `false`); pass
+ *                              `false` to opt out. Needs a
  *                              shadow-casting light — `ARSceneView`'s default HDR light
  *                              estimation provides one. The catchers attach **only while the
  *                              plane grid is not rendered** — the plane renderer carries its
@@ -309,7 +310,7 @@ fun PlacementScene(
 
             // Contact shadows — an invisible shadow-catcher per detected plane so placed models
             // read as grounded on the real floor (ARCore Depth Lab `ShadowReceiverMeshShader`
-            // pattern). Off by default; needs a shadow-casting light (ARSceneView's default HDR
+            // pattern). On by default; needs a shadow-casting light (ARSceneView's default HDR
             // light estimation provides one). Never spawned while the plane grid renders: the
             // grid's own receiver already catches contact shadows, and a second coplanar
             // receiver would z-fight and double-darken them (#2657).
