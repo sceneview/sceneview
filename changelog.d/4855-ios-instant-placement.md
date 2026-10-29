@@ -1,0 +1,2 @@
+<!-- category: Added -->
+- **iOS instant placement (opt-in).** `ARPlacementController(instantPlacement: true)` stands the model on the estimated floor after 0.6 s when no plane shows up (at a distance that suits its size, never in mid-air), then eases it onto the detected plane with a landing haptic. Drag, pinch and twist work throughout. `placement.trackingMethod` (`.approximate` / `.fullTracking`) mirrors ARCore's `InstantPlacementPoint.TrackingMethod`. Off by default and iOS only for now: Android `AutoPlacementScene` has no instant placement yet.
