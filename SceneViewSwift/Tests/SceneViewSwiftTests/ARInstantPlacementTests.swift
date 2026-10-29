@@ -96,7 +96,7 @@ final class ARInstantPlacementTests: XCTestCase {
         // Looking 45° down from 1.5 m: the ray meets the floor 1.5 m ahead, beyond reach.
         let far = ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, -1], floorY: 0, reach: reach)
         assertClose(far!, [0, 0, -1.2])
-        // Steeply down: the ray meets the floor at 0.15 m; kept at 0.6 of the reach, as on Android.
+        // Steeply down: the ray meets the floor at 0.15 m; kept at 0.6 of the reach, as in ARMV (`NearShare`).
         XCTAssertEqual(ARInstantPlacement.nearShare, 0.6)
         let near = ARInstantPlacement.floorPoint(origin: eye, direction: [0, -1, -0.1], floorY: 0, reach: reach)
         assertClose(near!, [0, 0, -0.72])
