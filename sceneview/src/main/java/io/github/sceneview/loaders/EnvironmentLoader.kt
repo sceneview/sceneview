@@ -626,8 +626,9 @@ class EnvironmentLoader(
      * The prefilter context's destructor destroys its own `Renderer`, and `FRenderer::terminate`
      * waits for every queued backend command. A scene left right after it appeared still has its
      * shader links and HDR prefilter passes queued: seconds on the main thread, an ANR. When the
-     * backend is idle — the usual case — or the prefilter was never used, nothing is deferred. The
-     * engine's own teardown ([io.github.sceneview.safeDestroy]) runs a release still pending first.
+     * prefilter was never used, nothing is deferred; otherwise its release runs once the backend
+     * has caught up, one poll later on an idle backend. The engine's own teardown
+     * ([io.github.sceneview.safeDestroy]) runs a release still pending first.
      */
     internal fun destroyWhenBackendIdle() {
         runCatching { coroutineScope.cancel() }

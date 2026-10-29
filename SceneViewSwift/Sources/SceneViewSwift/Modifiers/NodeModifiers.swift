@@ -129,13 +129,18 @@ extension Entity {
 
 extension ModelEntity {
 
-    /// Generates collision shapes and returns self for chaining.
+    /// Generates collision shapes and returns self for chaining. A recursive pass skips
+    /// ``ContactShadowNode`` quads, which are never tap targets.
     ///
     /// - Parameter recursive: Whether to generate shapes for children too.
     /// - Returns: Self for chaining.
     @discardableResult
     public func withCollision(recursive: Bool = true) -> Self {
-        self.generateCollisionShapes(recursive: recursive)
+        if recursive {
+            self.generateCollisionShapesExcludingContactShadows()
+        } else {
+            self.generateCollisionShapes(recursive: false)
+        }
         return self
     }
 

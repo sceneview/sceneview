@@ -12,7 +12,7 @@ fragmentKtx = "1.9.1"
 
 # Compose
 composeBom = "2026.09.00"
-composeMaterial3Expressive = "1.5.0-beta01"
+composeMaterial3Expressive = "1.5.0-beta02"
 activityCompose = "1.13.0"
 navigationCompose = "2.10.2"
 lifecycleRuntimeCompose = "2.10.0"
@@ -93,7 +93,7 @@ arCore = "1.57.0"
 # Networking
 fuel = "2.3.1"
 okhttp = "5.5.0"
-kotlinxSerialization = "1.11.0"
+kotlinxSerialization = "1.12.0"
 
 # UI
 googleMaterial = "1.14.0"
@@ -105,6 +105,7 @@ tvMaterial = "1.1.0"
 
 # Play Services
 playAppUpdate = "2.1.0"
+playBilling = "8.3.0"
 playServicesLocation = "21.4.0"
 # Firebase — samples/android-demo ONLY (analytics, crash reports, push). The SDK modules
 # ship no telemetry (docs/docs/recipes/measure-ar-funnel.md); never add these to a library.
@@ -143,7 +144,7 @@ litert = "2.3.0"
 # ONNX Runtime (MIT) — JVM tests only: the desktop artifact runs YOLOX-Tiny's ONNX export, which the
 # demo's LiteRT model was converted from, in the tests that judge the detector on photos and on real
 # scans. Not in any app: the Android artifact started a telemetry provider at every launch.
-onnxruntime = "1.30.0"
+onnxruntime = "1.31.0"
 
 # Publishing & Docs
 mavenPublish = "0.37.0"
@@ -258,6 +259,7 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 # Play Services
 play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
+play-billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "playBilling" }
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }

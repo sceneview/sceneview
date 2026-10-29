@@ -124,6 +124,36 @@ enum PushPromptResult: String, Sendable {
     case notNow = "not_now"
 }
 
+/// `support_prompt_shown.source`.
+enum SupportPromptSource: String, Sendable, CaseIterable {
+    case auto, settings
+}
+
+/// The final answer for one display of the support sheet.
+enum SupportPromptResult: String, Sendable, CaseIterable {
+    case tierSmall = "tier_small"
+    case tierMedium = "tier_medium"
+    case tierLarge = "tier_large"
+    case purchaseCancelled = "purchase_cancelled"
+    case purchaseFailed = "purchase_failed"
+    case notNow = "not_now"
+    case never, dismissed
+
+    fileprivate var isCompletedPurchase: Bool {
+        self == .tierSmall || self == .tierMedium || self == .tierLarge
+    }
+
+    static func completedPurchase(productId: String) -> SupportPromptResult? {
+        guard let tier = productId.split(separator: ".").last else { return nil }
+        switch tier {
+        case "small": return .tierSmall
+        case "medium": return .tierMedium
+        case "large": return .tierLarge
+        default: return nil
+        }
+    }
+}
+
 extension AnalyticsEvent {
     static func screenView(name: String, screenClass: String) -> AnalyticsEvent {
         AnalyticsEvent(name: "screen_view", params: ["screen_name": .string(name), "screen_class": .string(screenClass)])
@@ -186,6 +216,14 @@ extension AnalyticsEvent {
         AnalyticsEvent(name: "push_prompt_result", params: ["result": .string(result.rawValue)])
     }
 
+    static func supportPromptShown(source: SupportPromptSource) -> AnalyticsEvent {
+        AnalyticsEvent(name: "support_prompt_shown", params: ["source": .string(source.rawValue)])
+    }
+
+    static func supportPromptResult(_ result: SupportPromptResult) -> AnalyticsEvent {
+        AnalyticsEvent(name: "support_prompt_result", params: ["result": .string(result.rawValue)])
+    }
+
     static func pushOpened(campaign: String?, sampleId: String?) -> AnalyticsEvent {
         var params: [String: AnalyticsParam] = [:]
         params["campaign"] = .string(clip(campaign ?? "none"))
@@ -214,6 +252,40 @@ extension AnalyticsEvent {
 
     private static func clip(_ value: String) -> String {
         String(value.prefix(maxParamValueLength))
+    }
+}
+
+/// One displayed support sheet: one shown event and exactly one result when it closes.
+final class SupportPromptAnalyticsSession {
+    private let source: SupportPromptSource
+    private let log: (AnalyticsEvent) -> Void
+    private var didShow = false
+    private var didClose = false
+    private var purchaseResult: SupportPromptResult?
+
+    init(source: SupportPromptSource,
+         log: @escaping (AnalyticsEvent) -> Void = { DemoAnalytics.shared.log($0) }) {
+        self.source = source
+        self.log = log
+    }
+
+    func shown() {
+        guard !didShow else { return }
+        didShow = true
+        log(.supportPromptShown(source: source))
+    }
+
+    /// Remembers a StoreKit answer; the event waits until the sheet actually closes.
+    func recordPurchaseResult(_ result: SupportPromptResult) {
+        guard didShow, !didClose, purchaseResult?.isCompletedPurchase != true else { return }
+        purchaseResult = result
+    }
+
+    /// Explicit prompt answers win over a preceding cancelled or failed purchase attempt.
+    func close(result: SupportPromptResult? = nil) {
+        guard didShow, !didClose else { return }
+        didClose = true
+        log(.supportPromptResult(result ?? purchaseResult ?? .dismissed))
     }
 }
 

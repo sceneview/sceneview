@@ -63,7 +63,9 @@ fun inspectScene(rootNodes: Collection<Node>): List<NodeSnapshot> =
 @ExperimentalSceneViewApi
 fun snapshotNode(node: Node): NodeSnapshot {
     val extras = buildMap {
-        if (node is ModelNode) {
+        if (node is ModelNode && node.isModelDestroyed) {
+            put("model", "destroyed")
+        } else if (node is ModelNode) {
             put("animationCount", node.animationCount.toString())
             put("playingAnimations", node.playingAnimations.size.toString())
             put("renderableNodes", node.renderableNodes.size.toString())

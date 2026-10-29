@@ -178,6 +178,7 @@
 		C10000000000000000000030 /* FavoritesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000030 /* FavoritesManager.swift */; };
 		C10000000000000000000F18 /* DemoScaffold.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F18 /* DemoScaffold.swift */; };
 		C10000000000000000000F1A /* DemoScreenRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F1A /* DemoScreenRecording.swift */; };
+		C1000000000000000000CA9E /* DemoSceneCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2000000000000000000CA9E /* DemoSceneCapture.swift */; };
 		C10000000000000000000F19 /* DemoModeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F19 /* DemoModeHost.swift */; };
 		C10000000000000000000F2A /* ARExperienceContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2A /* ARExperienceContainer.swift */; };
 		C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000F2B /* ARPlacementExperience.swift */; };
@@ -252,6 +253,10 @@
 		FB1000000000000000000008 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000008 /* PrivacyInfo.xcprivacy */; };
 		FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000A /* DemoAnalyticsTests.swift */; };
 		FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000B /* PushPrePromptPolicyTests.swift */; };
+		5E5E000000000000000000B1 /* SupportPromptPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5E000000000000000000F1 /* SupportPromptPolicy.swift */; };
+		5E5E000000000000000000B2 /* SupportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5E000000000000000000F2 /* SupportStore.swift */; };
+		5E5E000000000000000000B3 /* SupportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5E000000000000000000F3 /* SupportSheet.swift */; };
+		5E5E000000000000000000B4 /* SupportPromptPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5E000000000000000000F4 /* SupportPromptPolicyTests.swift */; };
 		FB100000000000000000000C /* PushCenterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000C /* PushCenterTests.swift */; };
 		FB100000000000000000000D /* ConsentRegion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000D /* ConsentRegion.swift */; };
 		FB100000000000000000000E /* ConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB000000000000000000000E /* ConsentStore.swift */; };
@@ -433,6 +438,7 @@
 		C20000000000000000000030 /* FavoritesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesManager.swift; sourceTree = "<group>"; };
 		C20000000000000000000F18 /* DemoScaffold.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScaffold.swift; path = SceneViewDemo/Views/Components/DemoScaffold.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000F1A /* DemoScreenRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoScreenRecording.swift; path = SceneViewDemo/Views/Components/DemoScreenRecording.swift; sourceTree = SOURCE_ROOT; };
+		C2000000000000000000CA9E /* DemoSceneCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoSceneCapture.swift; path = SceneViewDemo/Views/Components/DemoSceneCapture.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000F19 /* DemoModeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoModeHost.swift; path = SceneViewDemo/Views/Components/DemoModeHost.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000F2A /* ARExperienceContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARExperienceContainer.swift; path = SceneViewDemo/Views/Components/ARExperienceContainer.swift; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000F2B /* ARPlacementExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ARPlacementExperience.swift; path = SceneViewDemo/Views/Components/ARPlacementExperience.swift; sourceTree = SOURCE_ROOT; };
@@ -534,6 +540,10 @@
 		FB0000000000000000000009 /* SceneViewDemo-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = SceneViewDemo-iOS.entitlements; path = SceneViewDemo/SceneViewDemo-iOS.entitlements; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000A /* DemoAnalyticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DemoAnalyticsTests.swift; path = SceneViewDemoTests/DemoAnalyticsTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000B /* PushPrePromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushPrePromptPolicyTests.swift; path = SceneViewDemoTests/PushPrePromptPolicyTests.swift; sourceTree = SOURCE_ROOT; };
+		5E5E000000000000000000F1 /* SupportPromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SupportPromptPolicy.swift; path = SceneViewDemo/Services/Support/SupportPromptPolicy.swift; sourceTree = SOURCE_ROOT; };
+		5E5E000000000000000000F2 /* SupportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SupportStore.swift; path = SceneViewDemo/Services/Support/SupportStore.swift; sourceTree = SOURCE_ROOT; };
+		5E5E000000000000000000F3 /* SupportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SupportSheet.swift; path = SceneViewDemo/Views/Components/SupportSheet.swift; sourceTree = SOURCE_ROOT; };
+		5E5E000000000000000000F4 /* SupportPromptPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SupportPromptPolicyTests.swift; path = SceneViewDemoTests/SupportPromptPolicyTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000C /* PushCenterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PushCenterTests.swift; path = SceneViewDemoTests/PushCenterTests.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000D /* ConsentRegion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentRegion.swift; path = SceneViewDemo/Services/Telemetry/ConsentRegion.swift; sourceTree = SOURCE_ROOT; };
 		FB000000000000000000000E /* ConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConsentStore.swift; path = SceneViewDemo/Services/Telemetry/ConsentStore.swift; sourceTree = SOURCE_ROOT; };
@@ -655,6 +665,7 @@
 				DB0000000000000000000A03 /* GallerySourceRegistry.swift */,
 				C20000000000000000000060 /* AppStoreUpdater.swift */,
 				FB4000000000000000000001 /* Telemetry */,
+				5E5E000000000000000000A1 /* Support */,
 			);
 			sourceTree = "<group>";
 		};
@@ -672,6 +683,7 @@
 				F00000000000000000000002 /* AppStoreUpdaterTests.swift */,
 				FB000000000000000000000A /* DemoAnalyticsTests.swift */,
 				FB000000000000000000000B /* PushPrePromptPolicyTests.swift */,
+				5E5E000000000000000000F4 /* SupportPromptPolicyTests.swift */,
 				FB000000000000000000000C /* PushCenterTests.swift */,
 				FB0000000000000000000010 /* ConsentTests.swift */,
 				F00000000000000000000076 /* LabeledSliderTests.swift */,
@@ -761,6 +773,7 @@
 				C20000000000000000000F2B /* ARPlacementExperience.swift */,
 				C20000000000000000000F18 /* DemoScaffold.swift */,
 				C20000000000000000000F1A /* DemoScreenRecording.swift */,
+				C2000000000000000000CA9E /* DemoSceneCapture.swift */,
 				C20000000000000000000F19 /* DemoModeHost.swift */,
 				C20000000000000000000050 /* DemoSheet.swift */,
 				C20000000000000000000061 /* UpdateToast.swift */,
@@ -768,6 +781,7 @@
 				A20000000000000000002967 /* AssetCreditLine.swift */,
 				A20000000000000000002963 /* LabeledSlider.swift */,
 				FB0000000000000000000006 /* PushPrePromptSheet.swift */,
+				5E5E000000000000000000F3 /* SupportSheet.swift */,
 				FB000000000000000000000F /* ConsentSheet.swift */,
 				FB0000000000000000000007 /* PrivacySettingsSection.swift */,
 			);
@@ -940,6 +954,15 @@
 				FB0000000000000000000011 /* FirebaseLeftovers.swift */,
 			);
 			name = Telemetry;
+			sourceTree = "<group>";
+		};
+		5E5E000000000000000000A1 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				5E5E000000000000000000F1 /* SupportPromptPolicy.swift */,
+				5E5E000000000000000000F2 /* SupportStore.swift */,
+			);
+			name = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1362,6 +1385,7 @@
 				C10000000000000000000F2B /* ARPlacementExperience.swift in Sources */,
 				C10000000000000000000F18 /* DemoScaffold.swift in Sources */,
 				C10000000000000000000F1A /* DemoScreenRecording.swift in Sources */,
+				C1000000000000000000CA9E /* DemoSceneCapture.swift in Sources */,
 				C10000000000000000000F19 /* DemoModeHost.swift in Sources */,
 				C10000000000000000000050 /* DemoSheet.swift in Sources */,
 				C10000000000000000000051 /* CreditsSheet.swift in Sources */,
@@ -1369,6 +1393,9 @@
 				FB1000000000000000000001 /* DemoAnalytics.swift in Sources */,
 				FB1000000000000000000002 /* FirebaseTelemetry.swift in Sources */,
 				FB1000000000000000000003 /* PushPrePromptPolicy.swift in Sources */,
+				5E5E000000000000000000B1 /* SupportPromptPolicy.swift in Sources */,
+				5E5E000000000000000000B2 /* SupportStore.swift in Sources */,
+				5E5E000000000000000000B3 /* SupportSheet.swift in Sources */,
 				FB1000000000000000000004 /* TelemetryEnvironment.swift in Sources */,
 				FB1000000000000000000005 /* PushCenter.swift in Sources */,
 				FB1000000000000000000006 /* PushPrePromptSheet.swift in Sources */,
@@ -1445,6 +1472,7 @@
 				F00000000000000000000003 /* AppStoreUpdaterTests.swift in Sources */,
 				FB100000000000000000000A /* DemoAnalyticsTests.swift in Sources */,
 				FB100000000000000000000B /* PushPrePromptPolicyTests.swift in Sources */,
+				5E5E000000000000000000B4 /* SupportPromptPolicyTests.swift in Sources */,
 				FB100000000000000000000C /* PushCenterTests.swift in Sources */,
 				FB1000000000000000000010 /* ConsentTests.swift in Sources */,
 				F00000000000000000000077 /* LabeledSliderTests.swift in Sources */,
@@ -1619,7 +1647,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.62.0;
+				MARKETING_VERSION = 4.63.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;
@@ -1657,7 +1685,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 4.62.0;
+				MARKETING_VERSION = 4.63.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.sceneview.demo;
 				PRODUCT_NAME = SceneView;
 				PRODUCT_MODULE_NAME = SceneViewDemo;

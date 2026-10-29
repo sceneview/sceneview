@@ -22,6 +22,8 @@ class DemoApplication : Application() {
         super.onCreate()
         // SceneView Labs: two booleans from SharedPreferences, read before any screen lists demos.
         Labs.init(this)
+        // Support SceneView: the interstitial's counters (cold starts, last ask, opt-out).
+        io.github.sceneview.demo.support.SupportPrompt.init(this)
         if (!BuildConfig.DEBUG) Telemetry.ensureInit(this)
     }
 

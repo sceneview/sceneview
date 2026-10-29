@@ -799,6 +799,10 @@ enum SceneViewTokens {
         static let viewerEnvironmentTile: CGFloat = 72
         static let viewerAnimationButton: CGFloat = 48
         static let selectedOutlineWidth: CGFloat = 2
+        /// `support-amount-height` — one tip amount in the "Support SceneView" sheet.
+        static let supportAmountHeight: CGFloat = 64
+        /// `sheet-width-mac` — a compact sheet on macOS (support, prompts).
+        static let sheetWidthMac: CGFloat = 440
         /// `media-aspect` — 5:4 home card media.
         static let mediaAspect: CGFloat = 1.25
         /// `hero-stage-height` — the Explore hero stage.
