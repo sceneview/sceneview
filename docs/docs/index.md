@@ -322,25 +322,9 @@ Android uses Filament (high-performance C++ via JNI). Apple platforms use Realit
 
 ---
 
-## Trusted by developers worldwide
-
-<div class="sv-testimonials">
-<div class="sv-testimonial">
-<p>"SceneView made adding 3D to our Compose app trivial. What would have taken weeks with raw Filament took us an afternoon."</p>
-</div>
-<div class="sv-testimonial">
-<p>"The declarative API just makes sense. Coming from Compose, SceneView {} felt immediately natural."</p>
-</div>
-<div class="sv-testimonial">
-<p>"Finally an AR SDK that doesn't fight the framework. It's just Compose."</p>
-</div>
-</div>
-
----
-
 ## Samples & Showcase
 
-The demo apps ship with 48 interactive demos on Android and 45 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
+The demo apps ship with 41 interactive demos on Android and 35 on Apple platforms, covering model viewing, AR placement, geometry, animations, lighting, physics, fog, camera controls, post-processing, and more.
 
 [:octicons-arrow-right-24: Android Samples](samples.md){ .md-button }
 [:octicons-arrow-right-24: Apple Samples](samples-ios.md){ .md-button }
@@ -370,7 +354,7 @@ lifecycle. See the [Migration Guide](migration.md) for the concept-by-concept ma
 
 ## Join the Community
 
-Join thousands of developers building 3D and AR experiences with SceneView.
+Start building 3D and AR experiences with SceneView.
 
 [Join Discord](https://discord.gg/UbNDDBTNqb){ .md-button }
 [Star on GitHub](https://github.com/sceneview/sceneview){ .md-button .md-button--primary }

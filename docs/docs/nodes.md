@@ -1322,6 +1322,6 @@ LightNode(
 ## See also
 
 - [`llms.txt`](../../llms.txt) — the machine-readable API surface consumed by `sceneview-mcp`
-- [`DESIGN.md`](../../DESIGN.md) — the design system for any UI around a `Scene`
-- [Samples](../../samples/) — runnable apps for every platform
+- [`DESIGN.md`](https://github.com/sceneview/sceneview/blob/main/DESIGN.md) — the design system for any UI around a `Scene`
+- [Samples](samples.md) — runnable apps for every platform
 - [sceneview-mcp](https://www.npmjs.com/package/sceneview-mcp) — MCP server that exposes this reference to any MCP client
