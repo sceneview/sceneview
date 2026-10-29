@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import io.github.sceneview.capture.CaptureOverlay
@@ -30,7 +32,9 @@ const val VIDEO_MIME = "video/mp4"
 fun rememberDemoSceneRecorder(): SceneRecorder {
     val recorder = rememberSceneRecorder()
     val label = stringResource(R.string.demo_capture_watermark)
-    if (recorder.overlay == null) recorder.overlay = watermark(label)
+    val overlay = remember(label) { watermark(label) }
+    // Set after composition, not during it, and again when the locale changes the label.
+    SideEffect { recorder.overlay = overlay }
     return recorder
 }
 
@@ -43,12 +47,15 @@ fun watermark(label: String): CaptureOverlay {
         color = Color.WHITE
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
+    // A photo taken while recording draws on the main thread while the encoder draws a frame.
     return CaptureOverlay { canvas, width, height ->
-        val shortEdge = minOf(width, height)
-        paint.textSize = shortEdge * WATERMARK_TEXT_SHARE
-        paint.setShadowLayer(paint.textSize / SHADOW_RADIUS_DIVISOR, 0f, 0f, SHADOW_COLOR)
-        val margin = shortEdge * WATERMARK_MARGIN_SHARE
-        canvas.drawText(label, margin, height - margin, paint)
+        synchronized(paint) {
+            val shortEdge = minOf(width, height)
+            paint.textSize = shortEdge * WATERMARK_TEXT_SHARE
+            paint.setShadowLayer(paint.textSize / SHADOW_RADIUS_DIVISOR, 0f, 0f, SHADOW_COLOR)
+            val margin = shortEdge * WATERMARK_MARGIN_SHARE
+            canvas.drawText(label, margin, height - margin, paint)
+        }
     }
 }
 

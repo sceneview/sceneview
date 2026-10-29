@@ -19,7 +19,9 @@ import java.io.File
  *
  * [draw] receives a canvas the size of the captured image — the full-resolution photo, or the
  * encoded video frame — so size anything relative to [width] and [height]. On a video it runs on
- * a background thread once per frame: keep it allocation-free and do not touch views from it.
+ * a background thread once per frame: keep it allocation-free and do not touch views from it. A
+ * photo taken while recording calls the same instance on the main thread at the same time, so
+ * guard any state it mutates, such as a shared [android.graphics.Paint].
  *
  * Photos get the overlay on every API level. Videos get it on Android 10 (API 29) and newer;
  * older devices record the scene alone and report it in [SceneRecording.hasOverlay].
