@@ -20,7 +20,7 @@ object ModelThumbnailsFragment : DemoFragment {
         category = DemoCategory.DEV_TOOLS,
         icon = Icons.Filled.Collections,
         order = 13,
-        addedIn = "4.63.0",
+        addedIn = "4.64.0",
         tags = setOf("thumbnail", "snapshot", "offscreen", "bitmap", "library", "grid", "preview"),
     )
 
