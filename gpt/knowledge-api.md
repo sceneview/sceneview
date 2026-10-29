@@ -1592,14 +1592,48 @@ Signature:
     coachingBottomClearance: Dp = 16.dp,     // gap kept under the coaching card — raise it by the
                                              // height of your own bottom bar so the card is not
                                              // hidden behind it (#3735)
+    reticleVisibility: ReticleVisibility = ReticleVisibility.AUTO,  // AUTO: only while placing,
+                                             // fades out once a model is placed; ALWAYS; HIDDEN
+    controller: PlacementController = rememberPlacementController(),  // hoist to drive it from your UI
+    onSurfaceFound: (() -> Unit)? = null,       // first tracked placement plane
     onPlaced: @Composable ARSceneScope.(anchor: Anchor) -> Unit,   // required — what to place
     content: (@Composable ARSceneScope.(controller: PlacementController) -> Unit)? = null,
 )
 ```
 
-The optional `content` block receives a `PlacementController` — call `controller.clear()` to
+**The reticle hides once a model is placed (default `ReticleVisibility.AUTO`).** It is a placing
+cue: it shows while the user looks for a surface, fades out over `RETICLE_FADE_MS` (200 ms) the
+moment a model is placed — the model is then seen over the bare camera feed, and with
+`fadePlaneOnFirstPlacement` the plane grid leaves with it — and comes back on
+`controller.requestPlacement()`. Taps still place in every mode; only the visuals change.
+`ReticleVisibility.ALWAYS` restores the always-on cursor of 4.63 and earlier;
+`showReticle = false` is the same as `ReticleVisibility.HIDDEN`.
+
+```kotlin
+val controller = rememberPlacementController()
+Box {
+    PlacementScene(controller = controller, onPlaced = { anchor -> AnchorNode(anchor) { /* model */ } })
+    if (!controller.isPlacing) {
+        Button(onClick = controller::requestPlacement) { Text("Place another") }
+    }
+}
+```
+
+`PlacementController`: `isPlacing` (Compose-observable; `true` at start, `false` after a
+placement, `true` again after `requestPlacement()` or `clear()`), `requestPlacement()`, `clear()`,
+`anchors`, `count`.
+
+Drawing **your own** ring with `reticleAlphaFor(phase)`? Use
+`val alpha by animateReticleAlpha(phase, visible = controller.isPlacing)` and skip drawing it once
+`alpha == 0f`. `PlacementReticleVisual(..., visible = false)` fades and drops its geometry. For
+`ARSceneScope.PlacementReticle(..., visible = false)`, only the built-in visual fades; custom
+`content` disappears immediately (fade it with `animateReticleAlpha` if needed). The standalone
+`PlacementReticle` keeps hit-testing, so `onHitResultChanged` still reports.
+
+The optional `content` block receives the `PlacementController` — call `controller.clear()` to
 detach every placed anchor (e.g. a "Clear All" button), or read `controller.count` /
-`controller.anchors` to drive a placement counter. Both are Compose-observable.
+`controller.anchors` to drive a placement counter. All are Compose-observable. To use it from UI
+outside the scene, hoist it with `rememberPlacementController()` (above).
 
 `PlacementScene` accepts plane hits (inside the polygon) and — when `instantPlacement = true` —
 instant-placement hits. Plane hits always win; the instant fallback is only consulted when no

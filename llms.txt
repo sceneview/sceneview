@@ -1685,7 +1685,7 @@ cue: it shows while the user looks for a surface, fades out over `RETICLE_FADE_M
 moment a model is placed — the model is then seen over the bare camera feed, and with
 `fadePlaneOnFirstPlacement` the plane grid leaves with it — and comes back on
 `controller.requestPlacement()`. Taps still place in every mode; only the visuals change.
-`ReticleVisibility.ALWAYS` restores the always-on cursor of 4.62 and earlier;
+`ReticleVisibility.ALWAYS` restores the always-on cursor of 4.63 and earlier;
 `showReticle = false` is the same as `ReticleVisibility.HIDDEN`.
 
 ```kotlin

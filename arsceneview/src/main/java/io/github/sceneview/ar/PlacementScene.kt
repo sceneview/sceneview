@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -78,7 +79,7 @@ import java.io.File
  *    It is a *placing* cue, so by default ([ReticleVisibility.AUTO]) it fades out the moment a
  *    model is placed — the model is then seen over the bare camera feed — and comes back when
  *    the app asks for another placement with [PlacementController.requestPlacement]. Pass
- *    `reticleVisibility = ReticleVisibility.ALWAYS` for the pre-4.63 always-on cursor.
+ *    `reticleVisibility = ReticleVisibility.ALWAYS` for the pre-4.64 always-on cursor.
  *  - Optional **onboarding coaching** ([coaching], off by default): the
  *    [ARCoachingOverlay] card — a phone sweeping over a surface with "Move your phone slowly",
  *    the reason and its fix when tracking struggles ("Too dark"), then a "Surface found" pill
@@ -166,12 +167,15 @@ import java.io.File
  *                              [PlacementController.isPlacing] only, fading out over
  *                              [RETICLE_FADE_MS] once a model is placed and then leaving the
  *                              scene, so the model is seen over the bare camera feed.
- *                              [ReticleVisibility.ALWAYS] keeps the pre-4.63 always-on cursor;
+ *                              [ReticleVisibility.ALWAYS] keeps the pre-4.64 always-on cursor;
  *                              [ReticleVisibility.HIDDEN] never draws it. Taps place in all three.
  * @param controller            The placement state — anchors and [PlacementController.isPlacing].
  *                              Hoist it with [rememberPlacementController] to drive the scene from
  *                              your own UI, e.g. a "Place another" button calling
  *                              [PlacementController.requestPlacement]. Defaults to a fresh one.
+ *                              Its anchors live in this scene's ARCore session, so the controller
+ *                              is [cleared][PlacementController.clear] when the scene leaves the
+ *                              composition (or is handed another controller).
  * @param onSurfaceFound        Invoked once, when ARCore first tracks a placement plane.
  * @param onPlaced              Invoked inside the [ARSceneScope] once per created [Anchor]. Declare
  *                              the content (typically an `AnchorNode { ModelNode(...) }`) to ride
@@ -258,14 +262,19 @@ fun PlacementScene(
         visibility = if (showReticle) reticleVisibility else ReticleVisibility.HIDDEN,
         isPlacing = isPlacing,
     )
-    LaunchedEffect(reticleWanted) {
-        reticlePhase = reticlePhaseForVisibility(reticlePhase, reticleWanted)
-    }
     val reticleFade by animateFloatAsState(
         targetValue = if (reticleWanted) 1f else 0f,
         animationSpec = tween(durationMillis = RETICLE_FADE_MS),
         label = "placementReticleFade",
     )
+    // Forget the hit phase only once the reticle has really left the scene (fade at 0), not when
+    // it stops being wanted: during the 200 ms fade-out the node still reports a hit every frame,
+    // so a reset there would flash one SEARCHING frame and then snap back to LOCKED — and that
+    // stale LOCKED would greet the next requestPlacement().
+    val reticleInScene = shouldComposeReticle(reticleWanted, reticleFade)
+    LaunchedEffect(reticleInScene) {
+        reticlePhase = reticlePhaseForVisibility(reticlePhase, reticleInScene)
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         ARSceneView(
@@ -325,7 +334,7 @@ fun PlacementScene(
             // Once fully faded out the whole reticle node leaves the scene: no hit test, no
             // invisible geometry riding the screen centre.
             if (shouldShowReticle(
-                    showReticle = shouldComposeReticle(reticleWanted, reticleFade),
+                    showReticle = reticleInScene,
                     viewportMeasured = viewportSize != IntSize.Zero,
                     cameraTracking = isTracking,
                 )
@@ -405,6 +414,14 @@ fun PlacementScene(
                 ),
             )
         }
+    }
+
+    // The anchors belong to this composable's ARCore session, which dies with it. A hoisted
+    // controller outlives it, so detach and drop them here — otherwise the next PlacementScene
+    // fed the same controller would compose models on anchors of a destroyed session. Declared
+    // last so it is disposed first, while that session is still open.
+    DisposableEffect(controller) {
+        onDispose { controller.clear() }
     }
 }
 
@@ -533,6 +550,9 @@ internal fun shouldCatchGroundShadows(
  * PlacementScene(controller = controller, onPlaced = { anchor -> AnchorNode(anchor) { ... } })
  * if (!controller.isPlacing) Button(onClick = controller::requestPlacement) { Text("Place another") }
  * ```
+ *
+ * The anchors it holds belong to one ARCore session: the [PlacementScene] using it clears it when
+ * it leaves the composition, so a controller remembered above a scene that comes back starts empty.
  */
 @Composable
 fun rememberPlacementController(): PlacementController = remember { PlacementController() }

@@ -273,7 +273,7 @@ enum class ReticleVisibility {
      */
     AUTO,
 
-    /** Always shown while the camera tracks, placed or not — the pre-4.63 behaviour. */
+    /** Always shown while the camera tracks, placed or not — the pre-4.64 behaviour. */
     ALWAYS,
 
     /** Never shown. Taps still place; only the cursor is gone. Same as `showReticle = false`. */
@@ -301,7 +301,7 @@ internal fun reticleVisibleFor(visibility: ReticleVisibility, isPlacing: Boolean
         ReticleVisibility.HIDDEN -> false
     }
 
-/** Discards a stale hit phase while the reticle is hidden. */
+/** Discards a stale hit phase once the reticle has left the scene ([visible] is `false`). */
 internal fun reticlePhaseForVisibility(phase: ReticlePhase, visible: Boolean): ReticlePhase =
     if (visible) phase else ReticlePhase.SEARCHING
 
