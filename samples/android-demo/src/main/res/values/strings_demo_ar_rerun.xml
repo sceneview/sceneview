@@ -5,10 +5,8 @@
      remains globally resolvable. Adding a new demo never needs to touch
      this file or `strings.xml` — see #1870. -->
 <resources>
-    <!-- A tapped object of a scan's replay (#4485): its box, length × depth × height. -->
-    <string name="demo_ar_rerun_object_size">%1$s × %2$s × %3$s m</string>
+    <!-- Under a tapped object's sizes in a scan's replay (#4485): what the three of them are. -->
     <string name="demo_ar_rerun_object_size_caption">Length × depth × height</string>
-    <string name="demo_ar_rerun_object_size_description">Selected object: %1$s metres long, %2$s deep, %3$s high</string>
     <!-- The tap found something no single box holds: a region running into its neighbours. -->
     <string name="demo_ar_rerun_object_too_large">Too big for one box</string>
     <string name="demo_ar_rerun_object_too_large_caption">Tap a single piece of furniture</string>

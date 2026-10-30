@@ -1,1 +1,1 @@
-Nearly 50 live 3D and AR screens for SwiftUI, each linked to the code that draws it. Start with Cosmos, a galaxy in real time, and Rerun, an AR session replayed.
+Nearly 40 live 3D and AR screens for SwiftUI, each linked to the code that draws it. Start with Cosmos, a galaxy in real time, and Rerun, an AR session replayed.

@@ -526,6 +526,9 @@ public struct ARSceneView: UIViewRepresentable {
     public func makeUIView(context: Context) -> ARView {
         let arView = Self.makeARView()
         let coordinator = context.coordinator
+        // An AR session is used without touching the screen: the display must
+        // not dim in the middle of a scan (#4392). Handed back at teardown.
+        coordinator.keepDisplayAwake()
         // Every callback is wired BEFORE the session runs, so the first
         // delegate message (a failure, the first frame) is never lost between
         // `session.run` and the assignment that used to follow it.
@@ -996,6 +999,25 @@ public struct ARSceneView: UIViewRepresentable {
         /// requested configuration is unsupported: the view then installs no
         /// overlays and never calls `onSessionStarted`.
         var sessionDidStart = false
+
+        /// Whether this view currently holds a `DisplayAwakeLease`.
+        private var holdsDisplay = false
+
+        /// Keeps the display awake for as long as this AR view is on screen.
+        @MainActor
+        func keepDisplayAwake() {
+            guard !holdsDisplay else { return }
+            holdsDisplay = true
+            DisplayAwakeLease.acquire()
+        }
+
+        /// Gives this view's hold on the display back.
+        @MainActor
+        func releaseDisplay() {
+            guard holdsDisplay else { return }
+            holdsDisplay = false
+            DisplayAwakeLease.release()
+        }
 
         /// The configuration this view last asked ARKit to run. Retained so
         /// an interruption resumes with exactly it (image database, mesh,
@@ -1485,6 +1507,7 @@ public struct ARSceneView: UIViewRepresentable {
             arView.session.pause()
             arView.session.delegate = nil
             sessionDidStart = false
+            releaseDisplay()
             awaitingFirstFrame = false
             disarmStartWatchdog()
         }
@@ -1510,6 +1533,21 @@ public struct ARSceneView: UIViewRepresentable {
             mainLightAnchor = nil
             fillLightAnchor = nil
             reticleAnchor = nil
+            // Same safety net for the display: never leave the app's idle timer
+            // disabled behind a view that is gone (#4392).
+            if holdsDisplay {
+                holdsDisplay = false
+                // `deinit` is nonisolated: on main, assert isolation and hand
+                // the lease back now; elsewhere, hop to main (the lease is
+                // `@MainActor`). Captures nothing from `self`.
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated { DisplayAwakeLease.release() }
+                } else {
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated { DisplayAwakeLease.release() }
+                    }
+                }
+            }
             guard let arView = arView,
                   !overlayAnchors.isEmpty || main != nil || fill != nil
                     || reticle != nil else { return }
@@ -2048,4 +2086,32 @@ public struct AnchorNode: Sendable {
         case vertical
     }
 }
+// MARK: - Display awake (#4392)
+
+/// Counts the AR views that hold the display awake.
+///
+/// The idle timer is one setting for the whole app, and two AR views are alive
+/// at once during a navigation transition. Each restoring what it found would
+/// let the display dim under the view that stays, then leave the timer disabled
+/// for good. It is handed back once, by the last view to leave, as the first
+/// one found it. Main-actor isolated: `UIApplication` is, and the counter must
+/// never be touched from two threads.
+@MainActor
+enum DisplayAwakeLease {
+    private static var holders = 0
+    private static var wasDisabled = false
+
+    static func acquire() {
+        if holders == 0 { wasDisabled = UIApplication.shared.isIdleTimerDisabled }
+        holders += 1
+        UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    static func release() {
+        guard holders > 0 else { return }
+        holders -= 1
+        if holders == 0 { UIApplication.shared.isIdleTimerDisabled = wasDisabled }
+    }
+}
+
 #endif // os(iOS)

@@ -3,6 +3,7 @@ package io.github.sceneview.ar
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sceneview.math.Size
 
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -82,6 +83,64 @@ class AutoPlacementState {
     var scaleFactor: Float by mutableStateOf(1f)
         internal set
 
+    /**
+     * The placed [AutoPlacementModel]'s dimensions at 100 %, in metres — width (X), height (Y)
+     * and depth (Z) of its axis-aligned box after its `assetRotation`, as it stands on a floor.
+     *
+     * With [PlacementSize.RealWorld] the box is built from the asset's authored dimensions.
+     * [PlacementSize.FitInto] fits the longest authored axis *before* `assetRotation`, so the
+     * largest value here is the requested size only when the rotation is a multiple of 90°: a
+     * 1 m cube at `FitInto(1f)` turned 45° about Y reports about 1.41 × 1 × 1.41 m.
+     *
+     * `null` while no model is composed, for an asset with an empty bounding box, and during
+     * the model's first composition: it is published from an effect, so it arrives one frame
+     * after the model.
+     *
+     * To let the user pick a size — "make it 2 m tall" — scale relative to it:
+     *
+     * ```kotlin
+     * state.baseSize?.let { state.scaleTo(2f / it.y) }
+     * ```
+     *
+     * [scaleTo] clamps to [scaleRange] (25–400 % by default) and does nothing while
+     * [allowsScaling] is `false`: a 0.3 m preview asked to stand 2 m tall needs ×6.7 and stops
+     * at 1.2 m. Widen [scaleRange] first (`0.25f..16f`, say) when the target may lie outside it.
+     */
+    var baseSize: Size? by mutableStateOf(null)
+        private set
+
+    /**
+     * The placed model's current dimensions in metres: [baseSize] times [scaleFactor], so it
+     * follows the pinch, [scaleTo] and the double-tap. `null` while no model is composed.
+     */
+    val placedSize: Size?
+        get() = baseSize?.let { it * scaleFactor }
+
+    /**
+     * The model was placed with [PlacementSize.RealWorld] and is shown at exactly 100 % — what
+     * the user sees is the object's true size.
+     */
+    val isAtRealWorldSize: Boolean
+        get() = baseSize != null && baseIsRealWorld && scaleFactor == 1f
+
+    private var baseIsRealWorld: Boolean by mutableStateOf(false)
+    private var baseSizeOwner: Any? = null
+
+    /** Called by [AutoPlacementModel] once its model exists; [owner] identifies the writer. */
+    internal fun publishBaseSize(owner: Any, size: Size?, realWorld: Boolean) {
+        baseSizeOwner = owner
+        baseIsRealWorld = realWorld
+        baseSize = size
+    }
+
+    /** Clears [baseSize] unless another model has published since [owner] did. */
+    internal fun clearBaseSize(owner: Any) {
+        if (baseSizeOwner !== owner) return
+        baseSizeOwner = null
+        baseIsRealWorld = false
+        baseSize = null
+    }
+
     internal var moveAction: ((Float, Float) -> Boolean)? = null
     internal var rotateAction: ((Float) -> Unit)? = null
     internal var scaleAction: ((Float) -> Unit)? = null
@@ -93,6 +152,15 @@ class AutoPlacementState {
      * default; set `false` to draw your own selection chrome from [isSelected].
      */
     var showsSelectionRing: Boolean by mutableStateOf(true)
+
+    /**
+     * Draw a soft contact shadow under the placed [AutoPlacementModel] when it stands on a floor
+     * or a table, so it reads as resting on the surface rather than hovering above it — whatever
+     * the estimated light, which may put the real shadow off to one side or nowhere. On by
+     * default; set `false` to keep only the real shadow (`groundShadows`) or draw your own.
+     * Never drawn for a wall placement.
+     */
+    var showsContactShadow: Boolean by mutableStateOf(true)
 
     /**
      * Let the user resize the placed object with a pinch, [scaleTo] or the double-tap.
@@ -147,7 +215,8 @@ class AutoPlacementState {
 
     /**
      * Accessibility alternative: uniform base-size multiplier, clamped to [scaleRange]
-     * (25–400 % by default). Ignored while [allowsScaling] is `false`.
+     * (25–400 % by default) without notice — a factor outside it lands on the nearest bound.
+     * Ignored while [allowsScaling] is `false`.
      */
     fun scaleTo(factor: Float) {
         if (allowsScaling && canManipulate && factor.isFinite()) {

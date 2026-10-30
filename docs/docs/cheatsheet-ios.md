@@ -155,7 +155,7 @@ struct AutomaticPlacement: View {
                 let model = try await ModelNode.load("khronos_toy_car")
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 _ = model.withGroundingShadow() // explicit for asynchronously loaded content
-                placement.setModel(model.entity, ticket: ticket, previewSize: 0.3)
+                placement.setModel(model.entity, ticket: ticket, size: .fitInto(meters: 0.3))
             } catch {
                 guard !Task.isCancelled, placement.acceptsAsset(ticket) else { return }
                 // Present a model-load error and retry; never substitute another asset.
@@ -167,9 +167,17 @@ struct AutomaticPlacement: View {
 
 - Use `.vertical` for direct wall placement; no floor prerequisite. `result` exposes
   `surfaceIdentifier`, `anchorIdentifier`, and the oriented `worldTransform`.
-- `previewSize: 0.3` means **Preview size**, a 0.3 m longest dimension. Pass `nil` for
-  **Actual size** when the asset's authored units are trustworthy. Complete nested bounds
-  are grounded; asynchronous models receive collision shapes for selection and gestures.
+- `size: .fitInto(meters: 0.3)` (also `PlacementSize.preview`) means **Preview size**, a
+  0.3 m longest side. `size: .realWorld` means **Actual size**: authored metres, never
+  rescaled — use it when the asset's units are trustworthy. Complete nested bounds are
+  grounded with the bottom centre on the contact point; asynchronous models receive
+  collision shapes for selection and gestures.
+- `baseSize` (W, H, D in metres at 100 %), `placedSize` (`baseSize * scale`) and
+  `isAtRealWorldSize` (`.realWorld` at exactly 100 %) are observable — e.g.
+  `if let s = placement.placedSize { Text(String(format: "%.2f m tall", s.y)) }`. Once
+  placed, `if let b = placement.baseSize { placement.scale(to: 2 / b.y) }` makes it 2 m
+  tall (`scale(to:)` does nothing before `.placed`/`.adjusting`). `ModelNode.worldSize` and
+  `worldBoundingBox` give any model's dimensions in world metres.
 - `phase`: `.initializing`, `.scanning`, `.noSurface`, `.placed`, `.adjusting`,
   `.trackingLost`, `.recovering`, `.recoveryFailed`, `.cameraError`. These correspond
   directly to Kotlin's `PlacementPhase`. Search and recovery deadlines are ten seconds.
@@ -177,7 +185,7 @@ struct AutomaticPlacement: View {
   the owned anchor while retaining the asset and camera; `keepScanning()` starts a new
   search interval. `dismiss()` invalidates outstanding tickets and releases resources.
   Teardown invokes dismissal automatically. A controller owns one placement.
-- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:previewSize:)`
+- `selectModel()` issues a session/selection ticket. `setModel(_:ticket:size:)`
   rejects stale tickets and invalid bounds, keeps the old entity until a successful
   replacement, and automatically requests placement when empty.
 - Nested meshes are selectable. Drag preserves the grab offset on valid geometry and the
@@ -191,7 +199,7 @@ struct AutomaticPlacement: View {
   limited to 25–400%. Tracking loss cancels gestures and hides content until the existing
   anchor recovers. Empty-space taps deselect only.
 - `recenter()` brings the placed model back in front of the user: it glides (6/s) to where
-  the centre ray meets the floor, between half its reach and its reach ahead, keeping the side
+  the centre ray meets the floor, between 0.6 of its reach and its reach ahead, keeping the side
   the user sees: the twist from facing them is kept, a plane placement's own heading counting
   as twist; the pinch is kept. A wall
   model goes to the wall under the centre. It returns `false`, changing nothing, when nothing

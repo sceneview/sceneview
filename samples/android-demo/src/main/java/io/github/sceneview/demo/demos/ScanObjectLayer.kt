@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -57,6 +58,8 @@ import io.github.sceneview.demo.demos.internal.DebugMesh
 import io.github.sceneview.demo.demos.internal.DenseSurfels
 import io.github.sceneview.demo.demos.internal.LabelRect
 import io.github.sceneview.demo.demos.internal.OrbitPose
+import io.github.sceneview.demo.demos.internal.ReplayTap
+import io.github.sceneview.demo.demos.internal.ReplayTapAnswer
 import io.github.sceneview.demo.demos.internal.ScanBox
 import io.github.sceneview.demo.demos.internal.ScanCard
 import io.github.sceneview.demo.demos.internal.ScanChrome
@@ -221,6 +224,14 @@ internal class ScanObjectPick(
         private set
 
     /**
+     * What the label writes on [box] ([ReplayTap]): its sizes, the name recognition gave it, and
+     * whether the scan saw it from one side only; `null` with nothing picked.
+     */
+    var answer: ReplayTapAnswer? by mutableStateOf(null)
+        private set
+    private var namingJob: Job? = null
+
+    /**
      * The highest point the box is drawn at in the view, in pixels, over the middle of its top;
      * unspecified while it is not drawn.
      */
@@ -265,9 +276,13 @@ internal class ScanObjectPick(
             show(it, Offset.Unspecified)
             reveal.settled()
         }
-        val known = selection.recognized
-            ?: if (QaRecognizedLabels.active()) QaRecognizedLabels.items(dense.cloud).also { selection.recognized = it } else null
+        val known = selection.recognized ?: when {
+            QaRecognizedLabels.active() -> QaRecognizedLabels.items(dense.cloud).also { selection.recognized = it }
+            QaReplayTapNames.active() -> QaReplayTapNames.items(dense.cloud).also { selection.recognized = it }
+            else -> null
+        }
         if (known != null) recognized = known else recognize()
+        rename()
     }
 
     /**
@@ -318,6 +333,7 @@ internal class ScanObjectPick(
                     Log.d(TAG, recognitionLogLine(recognition))
                     last = recognition
                     recognized = recognition.items
+                    rename()
                 },
             )
             last?.let { selection.recognized = it.items }
@@ -359,25 +375,59 @@ internal class ScanObjectPick(
         val camera = orbit.scanCamera()
         val ray = camera.ray(x, y)
         val started = SystemClock.elapsedRealtimeNanos()
+        // Named from what was recognised when the finger came down; a pass ending since names it again.
+        val known = recognized
         taps.tap(
             work = {
                 withContext(Dispatchers.Default) {
-                    picking.withLock { objects.await()?.pick(camera.eye, ray, shown) }
-                } ?: ScanPick.Empty
+                    val pick = picking.withLock { objects.await()?.pick(camera.eye, ray, shown) } ?: ScanPick.Empty
+                    val picked = SystemClock.elapsedRealtimeNanos()
+                    Tapped(pick, ReplayTap.answer(dense.cloud, pick, known), SystemClock.elapsedRealtimeNanos() - picked)
+                }
             },
-            show = { pick ->
+            show = { tapped ->
                 val millis = (SystemClock.elapsedRealtimeNanos() - started) / NANOS_PER_MILLI
-                Log.d(TAG, "tap answered in $millis ms: ${describe(pick)}")
-                show(pick, Offset(x, y))
+                val named = tapped.answer?.let { a ->
+                    ", ${a.label?.wireName ?: "unnamed"}${if (a.oneSided) ", seen from one side" else ""}," +
+                        " named and measured in ${tapped.answerNanos / NANOS_PER_MICRO} µs"
+                }.orEmpty()
+                Log.d(TAG, "tap answered in $millis ms: ${describe(tapped.pick)}$named")
+                show(tapped.pick, Offset(x, y), tapped.answer)
+                // A pass that ended while the tap was worked on renamed the box picked before it:
+                // this one is named again from what that pass knows.
+                if (recognized !== known) rename()
             },
         )
     }
 
-    private fun show(pick: ScanPick, at: Offset) {
+    /** What a tap's work hands back to the main thread: the pick, what its label says, and how long that took. */
+    private class Tapped(val pick: ScanPick, val answer: ReplayTapAnswer?, val answerNanos: Long)
+
+    /**
+     * Names and measures the picked object again off the main thread — back from the Camera view,
+     * or once a recognition pass knows more of the room —; dropped if another tap has picked since.
+     */
+    private fun rename() {
+        val found = found ?: return
+        val known = recognized
+        namingJob?.cancel()
+        namingJob = scope.launch {
+            val named = withContext(Dispatchers.Default) { ReplayTap.answer(dense.cloud, found, known) }
+            if (this@ScanObjectPick.found === found) answer = named
+        }
+    }
+
+    private fun show(
+        pick: ScanPick,
+        at: Offset,
+        named: ReplayTapAnswer? = (pick as? ScanPick.Found)?.let { ReplayTapAnswer(it.box, null, oneSided = false) },
+    ) {
         found = pick as? ScanPick.Found
         selection.found = found
         if (found == null) reveal.settled() else reveal.picked()
         box = found?.box
+        namingJob?.cancel()
+        answer = named?.takeIf { found != null }
         // The room does not turn away under a box being read, not even after a recenter.
         orbit.steady = found != null
         cornerPositions = found?.box?.corners().orEmpty().map { Position(it.x, it.y, it.z) }
@@ -515,6 +565,7 @@ internal class ScanObjectPick(
         /** Long enough to read why recognition is off, two lines of it. */
         const val NOTICE_MILLIS = 4500L
         const val NANOS_PER_MILLI = 1_000_000L
+        const val NANOS_PER_MICRO = 1_000L
     }
 }
 
@@ -593,10 +644,10 @@ internal fun ScanObjectOverlay(pick: ScanObjectPick?, modifier: Modifier = Modif
         }
     }
     SideEffect { pick.chrome = chrome }
-    val box = pick.box
-    // The last box and the last place stay through the fade out.
-    var lastBox by remember(pick) { mutableStateOf(box) }
-    if (box != null) lastBox = box
+    val answer = pick.answer
+    // The last label and the last place stay through the fade out.
+    var lastAnswer by remember(pick) { mutableStateOf(answer) }
+    if (answer != null) lastAnswer = answer
     val lastAnchor = remember(pick) { LastOffset() }
     val lastFoot = remember(pick) { LastOffset() }
     // Measured as soon as the object is drawn, placed only once the pick says where: the camera
@@ -609,11 +660,11 @@ internal fun ScanObjectOverlay(pick: ScanObjectPick?, modifier: Modifier = Modif
         onHeight = { pick.labelHeight = it },
     ) {
         AnimatedVisibility(
-            visible = box != null && pick.drawn,
+            visible = answer != null && pick.drawn,
             enter = fadeIn(SceneViewTokens.Motion.fade()),
             exit = fadeOut(SceneViewTokens.Motion.fade()),
         ) {
-            lastBox?.let { ObjectSizeLabel(it) }
+            lastAnswer?.let { ReplayTapLabel(it) }
         }
     }
     val lastHint = remember(pick) { LastOffset() }
@@ -780,7 +831,7 @@ private fun RecognizedLabels(pick: ScanObjectPick, chrome: ScanChrome, modifier:
 /** A recognised part of the room: what it is and how sure the scan is, over its box's three dimensions. */
 @Composable
 private fun RecognizedLabel(item: RecognizedItem) {
-    val (length, depth, height) = item.box.sizes()
+    val (length, depth, height) = ReplayTap.sizes(item.box, LocalLocale.current.platformLocale)
     val name = stringResource(item.label.nameRes())
     val sure = (item.confidence * PERCENT).roundToInt()
     val chrome = LocalStageChrome.current
@@ -804,7 +855,7 @@ private fun RecognizedLabel(item: RecognizedItem) {
             )
         }
         Text(
-            stringResource(R.string.demo_ar_rerun_object_size, length, depth, height),
+            stringResource(R.string.demo_replay_tap_sizes, length, depth, height),
             style = SceneViewTokens.Type.caption.copy(color = chrome.onCardMuted, fontFeatureSettings = "tnum"),
         )
     }
@@ -823,17 +874,6 @@ private class LastOffset {
         if (live || offset.isSpecified) last = offset
         return last
     }
-}
-
-@Composable
-private fun ObjectSizeLabel(box: ScanBox) {
-    val (length, depth, height) = box.sizes()
-    ObjectLabel(
-        title = stringResource(R.string.demo_ar_rerun_object_size, length, depth, height),
-        caption = stringResource(R.string.demo_ar_rerun_object_size_caption),
-        description = stringResource(R.string.demo_ar_rerun_object_size_description, length, depth, height),
-        modifier = Modifier.testTag("scan-object-size"),
-    )
 }
 
 /**
