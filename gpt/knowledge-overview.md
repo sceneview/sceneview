@@ -643,8 +643,8 @@ PathNode.circle(radius: 1.0, segments: 32, color: .cyan)
 PathNode.grid(size: 4.0, divisions: 20, color: .gray)
 ```
 
-**TubeNode** — polyline with a real width (v4.63.0+). `LineNode` / `PathNode` are
-fixed-width strips; a tube is a lit mesh that sweeps a circular cross-section along the
+**TubeNode** — polyline with a real width (v4.64.0+). `LineNode` / `PathNode` draw
+each segment as a thin cylinder with no joints; a tube is a lit mesh that sweeps a circular cross-section along the
 points, like Android's `TubeNode`. `update(points:radius:)` rebuilds the mesh in place
 (entity, transform and material kept), so a stroke can move every frame:
 ```swift
@@ -755,7 +755,7 @@ may be given before or after that call.
 let triangle = try MeshNode.fromVertices(positions: [...], normals: [...], indices: [0, 1, 2], material: .simple(color: .red))
 ```
 
-**Wireframes** (v4.63.0+) — RealityKit has no wireframe fill mode and no line
+**Wireframes** (v4.64.0+) — RealityKit has no wireframe fill mode and no line
 primitive, so `MeshNode.wireframe` builds one: every edge becomes a thin 4-sided prism.
 Wire width is in metres, not pixels; each edge costs 8 vertices and 8 triangles, so
 keep it to meshes of a few thousand triangles. Coincident vertices are welded and,

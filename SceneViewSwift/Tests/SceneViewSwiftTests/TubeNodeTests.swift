@@ -59,6 +59,16 @@ final class TubeNodeTests: XCTestCase {
         XCTAssertEqual(geometry.positions.count, 13 * 5)
     }
 
+    func testClosedTwoPointPathIsDrawnOpen() throws {
+        // [A, B, A] closes onto itself: two distinct points, so a capped open tube.
+        let geometry = try XCTUnwrap(TubeGeometry(points: [[0, 0, 0], [0, 1, 0], [0, 0, 0]], radius: 0.1,
+                                                  radialSegments: 8, closed: true, caps: true))
+        XCTAssertEqual(geometry.positions.count,
+                       TubeGeometry.vertexCount(pointCount: 2, radialSegments: 8, closed: false, caps: true))
+        XCTAssertEqual(geometry.indices.count / 3,
+                       TubeGeometry.triangleCount(pointCount: 2, radialSegments: 8, closed: false, caps: true))
+    }
+
     func testRadialSegmentsClampToThree() throws {
         let geometry = try XCTUnwrap(TubeGeometry(points: Self.straight, radius: 0.1,
                                                   radialSegments: 1, closed: false, caps: false))

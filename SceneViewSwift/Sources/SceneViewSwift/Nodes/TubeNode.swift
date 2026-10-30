@@ -120,11 +120,11 @@ struct TubeGeometry: Equatable {
     init?(points: [SIMD3<Float>], radius: Float, radialSegments: Int, closed: Bool, caps: Bool) {
         let segments = max(3, radialSegments)
         var path = Self.deduplicated(points)
-        let isClosed = closed && path.count >= 3
-        if isClosed, let first = path.first, let last = path.last,
-           simd_distance(first, last) < Self.epsilon {
+        if closed, path.count >= 2, simd_distance(path[0], path[path.count - 1]) < Self.epsilon {
             path.removeLast()
         }
+        // Decided after the repeated end point is gone: [A, B, A] is a line, not a loop.
+        let isClosed = closed && path.count >= 3
         guard path.count >= 2, radius > 0, radius.isFinite else { return nil }
 
         let tangents = Self.tangents(path, closed: isClosed)

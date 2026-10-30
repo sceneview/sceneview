@@ -33,9 +33,11 @@ extension MeshNode {
     ///   - mesh: Any triangle mesh — a primitive's, a loaded model's, a generated one.
     ///   - thickness: Width of each wire, in meters. Default 2 mm.
     ///   - hideQuadDiagonals: Skips the diagonal that splits a quad into two triangles,
-    ///     so a cube shows its 12 edges and a sphere its latitude and longitude lines.
-    ///     An edge counts as a diagonal when it is the strictly longest edge of both
-    ///     triangles that share it and they are close to coplanar. Default `true`.
+    ///     so a cube shows its 12 edges and a finely tessellated sphere or torus its
+    ///     rings. An edge counts as a diagonal when it is the strictly longest edge of
+    ///     both triangles that share it and they are close to coplanar. On a coarse
+    ///     curved mesh some quads are trapezoids whose diagonal is shorter than their
+    ///     long side; those diagonals stay visible. Default `true`.
     ///   - material: Material of the wires. Default unlit white.
     /// - Throws: If RealityKit cannot generate the wire mesh, or the mesh has no edges.
     public static func wireframe(
@@ -78,7 +80,8 @@ extension MeshNode {
     ///
     /// - Parameters:
     ///   - positions: Vertex positions.
-    ///   - triangleIndices: Triangle indices, three per triangle.
+    ///   - triangleIndices: Triangle indices, three per triangle. A triangle with an
+    ///     index outside `positions`, or a non-finite corner, is skipped.
     ///   - thickness: Width of each wire, in meters. Default 2 mm.
     ///   - hideQuadDiagonals: See ``wireframe(of:thickness:hideQuadDiagonals:material:)``.
     ///   - material: Material of the wires. Default unlit white.
@@ -90,7 +93,8 @@ extension MeshNode {
         material: GeometryMaterial = .unlit(color: .white)
     ) throws -> MeshNode {
         let welded = WireframeGeometry.weld(positions)
-        let edges = WireframeGeometry.edges(triangleIndices: triangleIndices.map { welded.remap[Int($0)] },
+        let edges = WireframeGeometry.edges(triangleIndices: WireframeGeometry.remap(triangleIndices,
+                                                                                     with: welded.remap),
                                             positions: welded.positions,
                                             hideQuadDiagonals: hideQuadDiagonals)
         return try wireframe(positions: welded.positions, edges: edges,
@@ -195,13 +199,23 @@ struct WireframeGeometry {
         return simd_normalize(axis - t * simd_dot(axis, t))
     }
 
+    /// Index that points at no vertex: what ``weld(_:)`` gives a non-finite position.
+    static let invalidIndex = UInt32.max
+
     /// Merges vertices closer than 10 µm, so seams and per-face corners share one index.
+    /// A non-finite position maps to ``invalidIndex`` and is dropped.
     static func weld(_ positions: [SIMD3<Float>]) -> (positions: [SIMD3<Float>], remap: [UInt32]) {
         var unique: [SIMD3<Float>] = []
         var lookup: [SIMD3<Int64>: UInt32] = [:]
         var remap: [UInt32] = []
         remap.reserveCapacity(positions.count)
         for p in positions {
+            // 1e5 × a float up to ~9e13 fits an Int64; anything larger is not a usable vertex.
+            guard p.x.isFinite, p.y.isFinite, p.z.isFinite,
+                  Swift.max(abs(p.x), abs(p.y), abs(p.z)) < 1e13 else {
+                remap.append(invalidIndex)
+                continue
+            }
             let key = SIMD3<Int64>((p * 1e5).rounded(.toNearestOrEven))
             if let existing = lookup[key] {
                 remap.append(existing)
@@ -213,6 +227,20 @@ struct WireframeGeometry {
             }
         }
         return (unique, remap)
+    }
+
+    /// Triangle indices rewritten through `remap`; a whole triangle is dropped when one
+    /// of its indices is outside `remap` or maps to ``invalidIndex``.
+    static func remap(_ triangleIndices: [UInt32], with remap: [UInt32]) -> [UInt32] {
+        var result: [UInt32] = []
+        result.reserveCapacity(triangleIndices.count)
+        var i = 0
+        while i + 2 < triangleIndices.count {
+            let corners = triangleIndices[i...(i + 2)].map { Int($0) < remap.count ? remap[Int($0)] : invalidIndex }
+            i += 3
+            if !corners.contains(invalidIndex) { result += corners }
+        }
+        return result
     }
 
     /// Every edge of a triangle list once, in first-seen order, minus quad diagonals

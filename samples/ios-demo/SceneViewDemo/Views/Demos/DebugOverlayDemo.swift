@@ -10,13 +10,12 @@ import UIKit
 /// Spawns RealityKit `ModelEntity` spheres progressively and shows live FPS,
 /// frame time, node count, and estimated triangle count via a custom SwiftUI
 /// overlay (including a rolling FPS sparkline). A stress-test button ramps from
-/// 1 → 2 000 spheres over 10 s so you can watch the FPS drop in real time, and
+/// 1 → 1 000 spheres over 10 s so you can watch the FPS drop in real time, and
 /// reports the first sustained dip below 55 fps as this run's node budget.
 ///
-/// Android caps the ramp at 1 000 for its heap; every sphere here shares one
-/// `MeshResource` and one material, so 2 000 stays cheap in memory and the
-/// ramp measures draw cost alone. The triangle count is read from that shared
-/// mesh, not estimated.
+/// The cap and presets match Android's (`STRESS_TARGET`). Every sphere shares one
+/// `MeshResource` and one material, so the ramp measures draw cost alone, and the
+/// triangle count is read from that shared mesh, not estimated.
 ///
 /// Coverage: `sceneview://demo/debug-overlay`
 struct DebugOverlayDemo: View {
@@ -35,13 +34,13 @@ struct DebugOverlayDemo: View {
     @State private var stressTested = false
     @Environment(\.colorScheme) private var colorScheme
 
-    private static let maxCount = 2_000
+    private static let maxCount = 1_000
     /// Android's verdict: three consecutive 250 ms samples under this, after a 1 s warm-up.
     private static let slowFPS = 55.0
 
     // MARK: — Body
 
-    private static let presets = [1, 10, 100, 500, 1_000, 2_000]
+    private static let presets = [1, 10, 100, 500, 1_000]
 
     private var busy: Bool { currentCount < targetCount || isStressRunning }
 
@@ -61,7 +60,7 @@ struct DebugOverlayDemo: View {
             dock: [
                 DockItem(icon: isStressRunning ? "stop.fill" : "gauge.with.needle",
                          label: isStressRunning ? "Stop" : "Stress test",
-                         caption: isStressRunning ? nil : "1 → 2 000",
+                         caption: isStressRunning ? nil : "1 → 1 000",
                          control: "stress",
                          selected: isStressRunning) { toggleStress() }
             ],

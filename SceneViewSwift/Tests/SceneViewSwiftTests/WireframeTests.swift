@@ -103,13 +103,15 @@ final class WireframeTests: XCTestCase {
     }
 
     func testTorusWireframeKeepsItsRingsAndDropsDiagonals() throws {
+        // Fine enough that every quad's diagonal is its longest side. On a 12 × 6 grid the
+        // quads near the top and bottom are trapezoids and some diagonals stay visible.
         let torus = GeometryNode.torus(majorRadius: 0.2, minorRadius: 0.05,
-                                       majorSegments: 12, minorSegments: 6)
+                                       majorSegments: 24, minorSegments: 12)
         let mesh = try XCTUnwrap(torus.entity.model?.mesh)
         let wire = try MeshNode.wireframe(of: mesh, thickness: 0.002, material: .unlit(color: .white))
         let triangles = try Self.triangleCount(of: wire)
-        // A 12 × 6 grid on a torus has 12 × 6 edges each way once its seams are welded.
-        XCTAssertEqual(triangles / (2 * WireframeGeometry.sides), 2 * 12 * 6)
+        // A 24 × 12 grid on a torus has 24 × 12 edges each way once its seams are welded.
+        XCTAssertEqual(triangles / (2 * WireframeGeometry.sides), 2 * 24 * 12)
         XCTAssertTrue(wire.entity.model?.materials.first is UnlitMaterial)
     }
 
@@ -118,6 +120,25 @@ final class WireframeTests: XCTestCase {
                                           thickness: 0.004)
         let triangles = try Self.triangleCount(of: wire)
         XCTAssertEqual(triangles, 3 * 2 * WireframeGeometry.sides)
+    }
+
+    func testOutOfRangeTriangleIndicesAreSkipped() throws {
+        // The second triangle points past the vertex list: it is dropped, not a trap.
+        let wire = try MeshNode.wireframe(positions: Self.quad, triangleIndices: [0, 1, 2, 0, 2, 9],
+                                          thickness: 0.004, hideQuadDiagonals: false)
+        XCTAssertEqual(try Self.triangleCount(of: wire), 3 * 2 * WireframeGeometry.sides)
+        XCTAssertEqual(WireframeGeometry.remap([0, 1, 2, 0, 2, 9], with: [0, 1, 2, 3]), [0, 1, 2])
+    }
+
+    func testNonFinitePositionsAreDropped() throws {
+        let positions: [SIMD3<Float>] = Self.quad + [[.nan, 0, 0], [.infinity, 1, 0], [1e30, 0, 0]]
+        let welded = WireframeGeometry.weld(positions)
+        XCTAssertEqual(welded.positions.count, 4)
+        XCTAssertEqual(Array(welded.remap.suffix(3)), Array(repeating: WireframeGeometry.invalidIndex, count: 3))
+        let wire = try MeshNode.wireframe(positions: positions,
+                                          triangleIndices: [0, 1, 2, 0, 4, 5, 2, 3, 6],
+                                          thickness: 0.004, hideQuadDiagonals: false)
+        XCTAssertEqual(try Self.triangleCount(of: wire), 3 * 2 * WireframeGeometry.sides)
     }
 
     func testAMeshWithoutEdgesThrows() {

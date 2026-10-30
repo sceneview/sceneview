@@ -255,11 +255,12 @@ enum TorusKnot {
                 mesh.triangleIndices += [a, b, d, a, d, c]
             }
         }
-        for i in 0...UInt32(segments) {
-            for j in 0...UInt32(ring) {
+        // The last ring and the last column repeat the first ones (the UV seams): wire each
+        // edge once, or the duplicate prisms z-fight.
+        for i in 0..<UInt32(segments) {
+            for j in 0..<UInt32(ring) {
                 let a = i * stride + j
-                if i < UInt32(segments) { mesh.lineIndices += [a, a + stride] }
-                if j < UInt32(ring) { mesh.lineIndices += [a, a + 1] }
+                mesh.lineIndices += [a, a + stride, a, a + 1]
             }
         }
         return mesh
