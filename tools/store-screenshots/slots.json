@@ -118,7 +118,7 @@
       ]
     },
     {
-      "caption": "Nearly 50 demos, with source",
+      "caption": "40+ demos, with source",
       "src": "tools/store-screenshots/raw/home-light.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-3.png",
       "size": "1080x2304",

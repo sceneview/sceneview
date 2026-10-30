@@ -1,6 +1,6 @@
 See what the SceneView SDK can do, on your own iPhone or iPad, before you write a line of code.
 
-SceneView is an open-source 3D and augmented reality SDK for SwiftUI, built on RealityKit. This app is its demo: nearly 50 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
+SceneView is an open-source 3D and augmented reality SDK for SwiftUI, built on RealityKit. This app is its demo: nearly 40 screens, each one a working sample of a feature you can put in your own app. Every screen links to the source code that draws it, and most of them are only a few lines long.
 
 START HERE
 
