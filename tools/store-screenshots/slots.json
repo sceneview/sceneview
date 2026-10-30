@@ -1,5 +1,5 @@
 {
-  "_comment": "Captions are the listing's six promises, in order. `src` paths are the raw captures described in README.md; `out` paths are what .claude/scripts/store-sync/play_listing.py globs and uploads.",
+  "_comment": "Captions are the listing's promises, in order; light and dark captures of the 4.63.0 demo (emulator, 1080x2400, status bar cropped). `src` paths are the raw captures described in README.md; `out` paths are what .claude/scripts/store-sync/play_listing.py globs and uploads. Slot 2 (AR) and the banner art need raw files that are not in git.",
   "snippet": [
     [
       0,
@@ -21,7 +21,7 @@
     ],
     [
       1,
-      "Scene(",
+      "SceneView(Modifier.fillMaxSize()) {",
       [
         137,
         180,
@@ -30,25 +30,7 @@
     ],
     [
       2,
-      "modifier = Modifier.fillMaxSize(),",
-      [
-        201,
-        209,
-        217
-      ]
-    ],
-    [
-      2,
-      "childNodes = listOf(",
-      [
-        201,
-        209,
-        217
-      ]
-    ],
-    [
-      3,
-      "rememberModelNode(\"helmet.glb\")",
+      "rememberModelInstance(",
       [
         166,
         227,
@@ -56,8 +38,8 @@
       ]
     ],
     [
-      2,
-      ")",
+      3,
+      "modelLoader, \"helmet.glb\"",
       [
         201,
         209,
@@ -65,8 +47,17 @@
       ]
     ],
     [
+      2,
+      ")?.let { ModelNode(it) }",
+      [
+        137,
+        180,
+        250
+      ]
+    ],
+    [
       1,
-      ")",
+      "}",
       [
         201,
         209,
@@ -89,11 +80,11 @@
       "src": "tools/store-screenshots/raw/cosmos.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-0.png",
       "size": "1080x2304",
-      "crop_top": 250
+      "crop_top": 96
     },
     {
-      "caption": "Open any 3D file",
-      "src": "tools/store-screenshots/raw/open-3mf.png",
+      "caption": "Scan a room in 3D",
+      "src": "tools/store-screenshots/raw/scan-replay-light.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-1.png",
       "size": "1080x2304",
       "crop_top": 96
@@ -128,28 +119,28 @@
     },
     {
       "caption": "Nearly 50 demos, with source",
-      "src": "tools/store-screenshots/raw/home-demos.png",
+      "src": "tools/store-screenshots/raw/home-light.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-3.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
-      "caption": "HDR lighting, one tap",
-      "src": "tools/store-screenshots/raw/model-hdr.png",
+      "caption": "Open any 3D file",
+      "src": "tools/store-screenshots/raw/model-viewer-dark.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-4.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
-      "caption": "Real-time sky and light",
-      "src": "tools/store-screenshots/raw/sky-sun.png",
+      "caption": "Room size, measured",
+      "src": "tools/store-screenshots/raw/scan-replay-dark.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-5.png",
       "size": "1080x2304",
       "crop_top": 96
     },
     {
       "caption": "A few lines of Compose",
-      "src": "tools/store-screenshots/raw/model-hdr.png",
+      "src": "tools/store-screenshots/raw/model-viewer-dark.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/phone-screenshot-6.png",
       "size": "1080x2304",
       "crop_top": 96,
@@ -157,9 +148,9 @@
     },
     {
       "kind": "banner",
-      "headline": "Open any 3D file",
-      "subline": "GLB, glTF, 3MF, STL, OBJ, PLY - in AR, at real size",
-      "src": "tools/store-screenshots/raw/ar-room-phone.png",
+      "headline": "Scan, view and place in 3D",
+      "subline": "Open-source 3D & AR for Compose, SwiftUI and the web",
+      "src": "tools/store-screenshots/raw/banner-art.png",
       "out": "samples/android-demo/distribution/play-store/en-US/graphics/feature-graphic.png",
       "size": "1024x500",
       "caption": "-"

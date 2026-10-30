@@ -16,7 +16,7 @@ one open gap. Read the next section before assuming parity.
 
 | Class | Files | Set |
 |---|---|---|
-| `phone-screenshot-*` | 7 | **v4, captioned** — every slot now carries an English caption drawn by `tools/store-screenshots/compose.py` (`Fly through a galaxy · Open any 3D file · Real size, your room · Nearly 50 demos, with source · HDR lighting, one tap · Real-time sky and light · A few lines of Compose`). Slot 0 (`phone-screenshot-0.png`, Cosmos) and slot 3 (the dark Home) were captured on 2026-09-30 by `preview.yml` (run 36779477754, `swangle_indirect`, 1080x2400 at 420 dpi) — that run launches with `qa_mode`, so the Cosmos slot crops 250 px from the top to leave the QA chip out. Slot 2 is the **AR composite** — a generated room with the app's real AR chrome over it (see below); slots 1, 4 and 5 are manual `emulator-5554` captures (the capture script is gone, #3244); slot 6 pairs a Compose snippet with the frame it renders |
+| `phone-screenshot-*` | 7 | **v5, captioned, light and dark** (2026-10-30, the 4.63.0 release APK on `emulator-5554`, 1080x2400, 96 px status bar cropped, launched without `qa_mode`) — `Fly through a galaxy` (Cosmos, dark) · `Scan a room in 3D` (3D Scan sample replay, light) · `Real size, your room` (the AR composite, unchanged, see below) · `Nearly 50 demos, with source` (the cinematic home, light) · `Open any 3D file` (Model Viewer, dark) · `Room size, measured` (3D Scan replay, dark) · `A few lines of Compose` (snippet beside the Model Viewer frame). Slot 2 is the only one not re-captured: its room layer and chrome live in `raw/`, which is not committed |
 | `tablet7-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet7_QA` in #3350 |
 | `tablet10-screenshot-*` | 5 | slot 1 is the **generated AR visual** (#2844); slots 2–5 are **v3** — the same four frames as the phone set, re-captured on `Tablet10_QA` in #3350 |
 | iOS (`appstore-screenshots/`) | 6 + 6 | **v3, captioned** — the same six promises, `iphone-6.9` and `ipad-13`, captured on the simulator and composited by the same script. Slot 2 is the generated AR visual; see that directory's README |
@@ -69,14 +69,14 @@ bar says `Sheen Chair` over a photo of anything else would be the #3454 defect
 (a card showing a model the app never loads) one surface further out. Change the
 subject and you must re-capture the chrome with that model armed.
 
-`feature-graphic.png` and the two tablet slot-1 files remain **pure** generated
-visuals with no app chrome at all.
+The two tablet slot-1 files remain **pure** generated visuals with no app chrome
+at all. `feature-graphic.png` has been a real capture since 2026-10-30.
 
 | File | Source reference | Prompt | Generated |
 |---|---|---|---|
-| `feature-graphic.png` (1024×500) | `raw/ar-room-phone.png` (the `ar-phone-room` output above) | composited by `tools/store-screenshots/compose.py` (`kind: banner`) — `gradient-hero` left with the promise, art right | 2026-09-09 |
+| `feature-graphic.png` (1024×500) | `raw/banner-art.png` — a crop (x 40–1080, y 820–1900) of the dark 3D Scan replay capture, not a generated image | composited by `tools/store-screenshots/compose.py` (`kind: banner`): `Scan, view and place in 3D` / `Open-source 3D & AR for Compose, SwiftUI and the web` | 2026-10-30 |
 | `phone-screenshot-2.png` (1080×2304), room layer only | `tools/demo-previews/refs/sheen_chair.webp` — a crop of the app's own picker thumbnail for the `Sheen Chair` model | `store.json` → `ar-phone-chair-room` (9:16 raw, the chair on a real oak floor at its real ~75 cm height) — then composited with the captured chrome, see above | 2026-09-09 |
-| `raw/ar-room-phone.png` (the icosahedron on a desk) | `refs/printed_icosahedron.webp` | `store.json` → `ar-phone-room`; still the source of the feature graphic and of the iOS `01-ar.png` | 2026-09-09 |
+| `raw/ar-room-phone.png` (the icosahedron on a desk) | `refs/printed_icosahedron.webp` | `store.json` → `ar-phone-room`; still the source of the iOS `01-ar.png` | 2026-09-09 |
 | `tablet7-screenshot-1.png` (1200×1872) · `tablet10-screenshot-1.png` (1600×2512) | same | `store.json` → `ar-tablet` (3:4 raw, shared with the iOS `ipad-13/00-ar.png`) | 2026-09-05, #3461 |
 
 Until #3461 these were drawn from `refs/hero.webp`, a stylised rusty helmet the
@@ -152,7 +152,7 @@ and neutralises the status bar.
 | `tablet7-screenshot-{N}.png`  | `sevenInchScreenshots` | 7" tablet             | **No** — manual since #3244        |
 | `tablet10-screenshot-{N}.png` | `tenInchScreenshots`   | 10" tablet            | **No** — manual since #3244        |
 | `icon-512.png`                | `icon`                 | Store icon, 512x512   | Sourced from `branding/`           |
-| `feature-graphic.png`         | `featureGraphic`       | Feature graphic, 1024x500 | Composited banner (`compose.py`, `kind: banner`) over the generated room art — replaced the `branding/` export |
+| `feature-graphic.png`         | `featureGraphic`       | Feature graphic, 1024x500 | Composited banner (`compose.py`, `kind: banner`) over a crop of the 3D Scan replay capture |
 
 The `imageType` column is the Play `AppImageType` enum value that
 `store-sync/play_listing.py` uploads each pattern to. Those names are not
