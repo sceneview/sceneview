@@ -52,11 +52,14 @@ DEFAULT_LISTING_DIR = "samples/android-demo/distribution/play-store"
 # Per-locale field caps enforced by Google Play. Truncate with `…` if a file
 # exceeds the cap (a `printf` in a localized terminal may have inserted hard
 # line breaks that pad the byte count).
-CAPS = {"title": 30, "shortDescription": 80, "fullDescription": 4000}
+CAPS = {"title": 30, "shortDescription": 80, "fullDescription": 4000, "video": 512}
 FILE_MAP = {
     "title": "title.txt",
     "shortDescription": "short_description.txt",
     "fullDescription": "full_description.txt",
+    # The listing PUT replaces the whole listing: without this file a sync
+    # would clear the promo video set in the Console.
+    "video": "video.txt",
 }
 
 # Google Play's `AppImageType` enum — the ONLY values `edits.images` accepts on
