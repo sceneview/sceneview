@@ -126,6 +126,13 @@ open class PoseNode(
     internal var frameUpdatedTrackables: Set<com.google.ar.core.Trackable>? = null
     internal var frameUpdatedAnchors: Set<com.google.ar.core.Anchor>? = null
 
+    /**
+     * The trackable the last accepted [moveHitTest] hit landed on during the current drag, or
+     * `null` when no hit moved the node yet. [AnchorNode] reads it on release to anchor on the
+     * plane under the finger rather than on a free world pose.
+     */
+    internal var lastMoveTrackable: com.google.ar.core.Trackable? = null
+
     // Rotation edition is disabled by default because retrieved from the pose.
     // The custom getter keeps [Node]'s `isEditable &&` gate, which a plain field
     // override would silently drop.
@@ -191,8 +198,12 @@ open class PoseNode(
             frame?.let { frame ->
                 // The frame is the last one ARCore delivered: a drag that outlives a session pause
                 // hit-tests a paused session, which throws. Drop that move instead of crashing.
-                arSessionGuarded("PoseNode.onMove", null) { moveHitTest(frame, e) }?.let {
-                    onMove(detector, e, it.hitPose)
+                arSessionGuarded("PoseNode.onMove", null) {
+                    moveHitTest(frame, e)?.let { hit -> hit.hitPose to hit.trackable }
+                }?.let { (hitPose, trackable) ->
+                    onMove(detector, e, hitPose).also { moved ->
+                        if (moved) lastMoveTrackable = trackable
+                    }
                 }
             } ?: false
         } else {
