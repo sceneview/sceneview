@@ -1098,12 +1098,14 @@ extension View {
     }
 
     /// The destination half of the zoom: the screen grows out of the card
-    /// marked with the same id, and shrinks back into it on close. macOS has
-    /// no zoom transition, so the view keeps its default presentation there.
+    /// marked with the same id, and shrinks back into it on close. Under
+    /// `accessibilityReduceMotion` the zoom is dropped and the screen keeps
+    /// the default presentation, as it does on macOS, which has no zoom
+    /// transition.
     @ViewBuilder
     func zoomTransition(from sourceID: String, in namespace: Namespace.ID) -> some View {
         #if os(iOS)
-        self.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        self.modifier(ZoomTransition(sourceID: sourceID, namespace: namespace))
         #else
         self
         #endif
@@ -1311,3 +1313,22 @@ extension View {
         }
     }
 }
+
+#if os(iOS)
+/// Backs `zoomTransition(from:in:)`: reads Reduce Motion where the
+/// destination is built, so the setting is honoured on every open.
+private struct ZoomTransition: ViewModifier {
+    let sourceID: String
+    let namespace: Namespace.ID
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceMotion {
+            content
+        } else {
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        }
+    }
+}
+#endif
