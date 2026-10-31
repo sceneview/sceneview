@@ -103,7 +103,7 @@ fun Modifier.demoContainerTransform(demoId: String, role: ContainerRole): Modifi
             // bounds, so its 3D viewport is never resized per frame; the card re-measures
             // to them instead, so its tint fills the growing container.
             resizeMode = if (screen) {
-                SharedTransitionScope.ResizeMode.ScaleToBounds(
+                SharedTransitionScope.ResizeMode.scaleToBounds(
                     contentScale = ContentScale.FillWidth,
                     alignment = Alignment.TopCenter,
                 )
