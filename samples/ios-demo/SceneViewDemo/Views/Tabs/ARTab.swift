@@ -10,6 +10,9 @@ struct ARTab: View {
     @State private var presentedDemo: FeaturedARDemo?
     /// A demo from the "All AR demos" grid, in the Home's full-screen host.
     @State private var coverScene: DemoItem?
+    /// Zoom transition namespace: each launcher card expands into the demo
+    /// it opens, as the Home rows do (#3599).
+    @Namespace private var cardNamespace
 
     private var arSupported: Bool {
         #if targetEnvironment(simulator)
@@ -30,9 +33,11 @@ struct ARTab: View {
                 arSupported: arSupported,
                 onStartArSession: { sessionStarted = true },
                 onDemoTap: { presentedDemo = $0 },
-                onSceneTap: { coverScene = $0 }
+                onSceneTap: { coverScene = $0 },
+                transitionNamespace: cardNamespace
             )
             .navigationTitle("AR Experiences")
+            .navigationBarTitleLarge()
         }
         .fullScreenCover(isPresented: $sessionStarted) {
             NavigationStack {
@@ -43,6 +48,9 @@ struct ARTab: View {
         }
         .fullScreenCover(item: $coverScene) { scene in
             DemoCover(scene: scene, source: .other) { coverScene = nil }
+                .zoomTransition(from: ARLauncherScreen.sceneSourceId(scene), in: cardNamespace)
+                // No system pinch / drag-down dismissal over a 3D stage (#4008).
+                .interactiveDismissDisabled()
         }
         .fullScreenCover(item: $presentedDemo) { demo in
             NavigationStack {
@@ -65,6 +73,8 @@ struct ARTab: View {
                 DemoAnalytics.shared.sampleOpened(demo.id, category: DemoAnalytics.category(for: section), source: .other)
             }
             .onDisappear { DemoAnalytics.shared.sampleClosed(demo.id) }
+            .zoomTransition(from: ARLauncherScreen.featuredSourceId(demo), in: cardNamespace)
+            .interactiveDismissDisabled()
         }
     }
 }
@@ -163,6 +173,11 @@ private struct ARLauncherScreen: View {
     let onDemoTap: (FeaturedARDemo) -> Void
     /// Invoked when a card of the "All AR demos" grid is tapped.
     var onSceneTap: (DemoItem) -> Void = { _ in }
+    /// Where the cards register as zoom sources; none in previews.
+    var transitionNamespace: Namespace.ID? = nil
+
+    static func featuredSourceId(_ demo: FeaturedARDemo) -> String { "ar-featured-\(demo.id)" }
+    static func sceneSourceId(_ item: DemoItem) -> String { "ar-demo-\(item.sceneId)" }
 
     /// The catalogue, read once — `GeneratedScenes.all()` builds every item.
     @State private var scenes: [DemoItem] = []
@@ -300,6 +315,7 @@ private struct ARLauncherScreen: View {
                     ForEach(featured.indices, id: \.self) { index in
                         let (demo, item) = featured[index]
                         DemoMediaCard(demo: item) { onDemoTap(demo) }
+                            .zoomTransitionSource(id: Self.featuredSourceId(demo), in: transitionNamespace)
                             .accessibilityIdentifier("ar-featured-\(demo.id)")
                     }
                 }
@@ -309,6 +325,7 @@ private struct ARLauncherScreen: View {
                     LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
                         ForEach(others, id: \.sceneId) { item in
                             DemoMediaCard(demo: item) { onSceneTap(item) }
+                                .zoomTransitionSource(id: Self.sceneSourceId(item), in: transitionNamespace)
                                 .accessibilityIdentifier("ar-demo-\(item.sceneId)")
                         }
                     }

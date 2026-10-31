@@ -256,26 +256,25 @@ struct ExploreTab: View {
             // the native bar field; embedded gets this twin, floating over the
             // page as Android's `FloatingSearchPill`: the feeds scroll under it,
             // and it stays in reach however far down the page is.
-            .safeAreaInset(edge: .top, spacing: 0) {
+            // On iOS 26 the pill is a `safeAreaBar`, so the bar's scroll edge
+            // effect runs on under it instead of stopping at the title.
+            .modifier(TopPinnedBar {
                 if embedded {
                     inlineSearchField
                         .padding(.horizontal, SceneViewTokens.Home.contentPadding)
                         .padding(.vertical, SceneViewTokens.Space.sm)
                 }
-            }
+            })
             // Explore never set a page ground, so dark mode fell back to the
             // system black (#000) while every other screen sits on the DESIGN.md
             // `surface` (#0D1117) — the flat, inky feel of #3582. Light is
             // unchanged: `surface` is #FFFFFF there, which is what the system
             // background already was.
             .background(SceneViewTokens.HomeColor.surface)
-            // Embedded on iPad, the floating tab bar takes a row of its own
-            // above the navigation bar, and the bar was left transparent:
-            // scrolled content showed through beside the tab bar and over the
-            // status bar (#4015). Give the bar an opaque page-surface ground,
-            // which reaches the screen's top edge. It matches the page, so it
-            // is invisible until content scrolls under it.
-            .modifier(OpaqueNavigationBar(visible: embedded))
+            // A large title that folds into the inline bar as the feeds scroll,
+            // over the system's scroll-edge backdrop (see `ExploreNavigationBar`
+            // for the iPad exception of #4015).
+            .modifier(ExploreNavigationBar(embedded: embedded))
             .navigationTitle("Browse online models")
             // Placeholder names the catalog being searched so the field reflects
             // the picked source (Sketchfab / Poly Haven), #2645.
@@ -325,10 +324,19 @@ struct ExploreTab: View {
             .refreshable { await loadFeeds(force: true) }
             .navigationDestination(item: $selectedModel) { model in
                 ModelViewerScreen(model: model)
+                    // Grows out of its bundled `FeaturedCard`, like the live
+                    // gallery cards below.
+                    .zoomTransition(from: Self.bundledSourceId(model), in: heroNamespace)
             }
             #if os(iOS)
             .fullScreenCover(item: $trialDemo) { demo in
                 DemoCover(scene: demo, source: .other) { trialDemo = nil }
+                    // The "Try a demo" card expands into the demo, as a Home
+                    // row does (#3599), and the system's pinch / drag-down
+                    // dismissal stays off so it never steals the 3D stage's
+                    // pinch (#4008).
+                    .zoomTransition(from: Self.trySourceId(demo), in: heroNamespace)
+                    .interactiveDismissDisabled()
             }
             #else
             .sheet(item: $trialDemo) { demo in
@@ -663,6 +671,7 @@ struct ExploreTab: View {
                             trialDemo = demo
                         }
                         .frame(width: SceneViewTokens.Home.sampleCardWidth)
+                        .zoomTransitionSource(id: Self.trySourceId(demo), in: heroNamespace)
                         .accessibilityIdentifier("explore-try-\(demo.sceneId)")
                     }
                 }
@@ -674,6 +683,12 @@ struct ExploreTab: View {
             .scrollClipDisabled()
         }
     }
+
+    /// Zoom source id of a "Try a demo" card.
+    private static func trySourceId(_ demo: DemoItem) -> String { "try-\(demo.sceneId)" }
+
+    /// Zoom source id of a bundled `FeaturedCard`.
+    private static func bundledSourceId(_ model: ModelItem) -> String { "bundled-\(model.id)" }
 
     /// The demos of the "Try a demo" row, in Android's order — built once, on
     /// first use.
@@ -929,6 +944,7 @@ struct ExploreTab: View {
                             SceneViewHaptic.shared.light()
                             #endif
                         }
+                        .zoomTransitionSource(id: Self.bundledSourceId(model), in: heroNamespace)
                     }
                 }
                 .padding(.bottom, 4)
@@ -1200,23 +1216,54 @@ private struct SpatialHeroCard: View {
 
 // MARK: - Native search field (standalone only)
 
-/// The opaque page-surface navigation bar of #4015. `.navigationBar` exists
-/// only on iOS, so the Mac build keeps its own window chrome.
-private struct OpaqueNavigationBar: ViewModifier {
-    let visible: Bool
+/// Explore's navigation bar: a large title over the system's scroll-edge
+/// behaviour — clear while the page is at its top, the bar's material (the
+/// soft scroll edge effect on iOS 26) once the feeds scroll under it.
+///
+/// One exception: embedded on iPad, the floating tab bar takes a row of its
+/// own above the navigation bar, and scrolled content showed through beside
+/// the tab bar and over the status bar (#4015). There the bar keeps an
+/// opaque page-surface ground, which reaches the screen's top edge and
+/// matches the page, so it is invisible until content scrolls under it.
+/// `.navigationBar` exists only on iOS, so the Mac build keeps its own
+/// window chrome.
+private struct ExploreNavigationBar: ViewModifier {
+    let embedded: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         #if os(iOS)
         // The bar keeps the app's appearance: left alone, it takes the style of the
         // dark picture scrolled under it and paints a black bar in light mode.
-        content
-            .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
-            .toolbarBackground(visible ? .visible : .automatic, for: .navigationBar)
-            .toolbarColorScheme(colorScheme, for: .navigationBar)
+        Group {
+            if embedded && UIDevice.current.userInterfaceIdiom == .pad {
+                content
+                    .toolbarBackground(SceneViewTokens.HomeColor.surface, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+            } else {
+                content
+            }
+        }
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .navigationBarTitleLarge()
         #else
         content
         #endif
+    }
+}
+
+/// Pins `bar` to the top of a scroll view: `safeAreaBar` on iOS / macOS 26,
+/// where the bar's scroll edge effect extends under it, `safeAreaInset`
+/// before. Either way the content scrolls under the bar and stays reachable.
+private struct TopPinnedBar<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content.safeAreaBar(edge: .top, spacing: 0, content: bar)
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0, content: bar)
+        }
     }
 }
 
