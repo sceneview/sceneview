@@ -268,8 +268,10 @@ var body: some View {
 }
 ```
 
-- A detected plane places the model at once, as without instant placement. When none shows
-  up, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
+- A detected plane under the screen centre places the model at once, as without instant
+  placement, if it is a wall or, for a floor, between 0.6 and 1.5 times the model's distance
+  ahead (below). Only the first plane under the centre counts: a desk too near does not pass
+  the model to the floor beneath it. When no plane fits, the model stands on the estimated floor after 0.6 s of tracking: the lowest horizontal
   surface ARKit knows at least 0.4 m below the phone, even out of view, else 1.3 m below it. It
   sits in the centre ray's heading, 1–3 m ahead depending on its size as shown (1.14 m at the default 0.3 m
   preview; a 2 m sofa at real-world size, `previewSize: nil`, sits 2.5 m away), and is never

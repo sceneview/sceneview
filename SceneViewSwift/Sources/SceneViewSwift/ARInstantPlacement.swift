@@ -90,6 +90,14 @@ enum ARInstantPlacement {
         return distance.isFinite && distance >= reach * nearShare && distance <= reach * farShare
     }
 
+    /// Whether ``ARPlacementController`` may place on a detected surface at `point`. Only instant
+    /// placement on a floor has the ``withinAutoPlaceWindow(point:eye:reach:)`` window: without it,
+    /// a detected surface is the only way to place, so any distance goes; walls take any distance.
+    static func acceptsDetectedSurface(point: SIMD3<Float>, eye: SIMD3<Float>, reach: Float,
+                                       horizontal: Bool, instantPlacement: Bool) -> Bool {
+        !horizontal || !instantPlacement || withinAutoPlaceWindow(point: point, eye: eye, reach: reach)
+    }
+
     /// The floor height as ARKit knows it: the lowest horizontal surface well below the phone
     /// (detected planes, plus the estimated surface under the screen centre), else the
     /// phone-height guess.

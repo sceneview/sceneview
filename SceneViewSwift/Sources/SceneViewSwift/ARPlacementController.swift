@@ -602,18 +602,24 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
 
     struct Candidate { let plane: ARPlaneAnchor; let transform: simd_float4x4 }
 
-    /// A detected plane to place on by itself. A floor counts only within
-    /// ``ARInstantPlacement/withinAutoPlaceWindow(point:eye:reach:)`` of the model's reach (ARMV
-    /// `autoPlace`); otherwise the estimated floor takes over after the delay. Walls: any distance.
+    /// A detected plane to place on by itself. With ``instantPlacement``, a floor counts only
+    /// within ``ARInstantPlacement/withinAutoPlaceWindow(point:eye:reach:)`` of the model's reach
+    /// (ARMV `autoPlace`); otherwise the estimated floor takes over after the delay. Without it,
+    /// and for walls, any distance goes.
     private func candidate(in view: ARView, frame: ARFrame, planes: [ARPlaneAnchor]) -> Candidate? {
         let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         let eye = frame.camera.transform.columns.3.xyz
         let reach = ARInstantPlacement.reach(forLargestSide: largestSide)
-        let horizontal = alignment == .horizontal
+        let horizontal = alignment == .horizontal, instant = instantPlacement
         let fits: (SIMD3<Float>) -> Bool = {
-            !horizontal || ARInstantPlacement.withinAutoPlaceWindow(point: $0, eye: eye, reach: reach)
+            ARInstantPlacement.acceptsDetectedSurface(point: $0, eye: eye, reach: reach,
+                                                      horizontal: horizontal, instantPlacement: instant)
         }
-        if let hit = raycast(center, in: view, frame: frame, accepting: fits) { return hit }
+        // Only the first surface under the centre counts: a table too near does not hand the
+        // model to the floor beneath it.
+        if let hit = raycast(center, in: view, frame: frame) {
+            return fits(hit.transform.columns.3.xyz) ? hit : nil
+        }
         return planes.compactMap { plane -> (Candidate, Float)? in
             let point = (plane.transform * SIMD4<Float>(plane.center, 1)).xyz
             guard fits(point), valid(plane: plane, point: point, frame: frame, view: view),
@@ -624,13 +630,11 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
         }.min(by: { $0.1 < $1.1 })?.0
     }
 
-    private func raycast(_ point: CGPoint, in view: ARView, frame: ARFrame,
-                         accepting accepts: (SIMD3<Float>) -> Bool = { _ in true }) -> Candidate? {
+    private func raycast(_ point: CGPoint, in view: ARView, frame: ARFrame) -> Candidate? {
         let matches = view.raycast(from: point, allowing: .existingPlaneGeometry,
                                    alignment: alignment == .horizontal ? .horizontal : .vertical)
         for hit in matches {
-            guard let plane = hit.anchor as? ARPlaneAnchor, accepts(hit.worldTransform.columns.3.xyz),
-                  valid(plane: plane, point: hit.worldTransform.columns.3.xyz, frame: frame, view: view) else { continue }
+            guard let plane = hit.anchor as? ARPlaneAnchor, valid(plane: plane, point: hit.worldTransform.columns.3.xyz, frame: frame, view: view) else { continue }
             return Candidate(plane: plane, transform: contactTransform(plane: plane, point: hit.worldTransform.columns.3.xyz, camera: frame.camera.transform))
         }
         return nil

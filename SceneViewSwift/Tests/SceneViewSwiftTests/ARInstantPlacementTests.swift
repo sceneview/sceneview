@@ -99,6 +99,21 @@ final class ARInstantPlacementTests: XCTestCase {
         XCTAssertFalse(ARInstantPlacement.withinAutoPlaceWindow(point: [.nan, 0, -2], eye: eye, reach: reach))
     }
 
+    func testOnlyInstantPlacementOnAFloorHasTheReachWindow() {
+        let reach: Float = 1.14, desk: SIMD3<Float> = [0, 0, -0.5], farFloor: SIMD3<Float> = [0, 0, -2]
+        // Without instant placement a detected surface is the only way to place: any distance goes.
+        for point in [desk, farFloor] {
+            XCTAssertTrue(ARInstantPlacement.acceptsDetectedSurface(point: point, eye: eye, reach: reach,
+                                                                    horizontal: true, instantPlacement: false))
+            XCTAssertTrue(ARInstantPlacement.acceptsDetectedSurface(point: point, eye: eye, reach: reach,
+                                                                    horizontal: false, instantPlacement: true))
+            XCTAssertFalse(ARInstantPlacement.acceptsDetectedSurface(point: point, eye: eye, reach: reach,
+                                                                     horizontal: true, instantPlacement: true))
+        }
+        XCTAssertTrue(ARInstantPlacement.acceptsDetectedSurface(point: [0, 0, -1], eye: eye, reach: reach,
+                                                                horizontal: true, instantPlacement: true))
+    }
+
     func testFloorIsTheLowestSurfaceWellBelowThePhoneElseThePhoneHeightGuess() {
         XCTAssertEqual(ARInstantPlacement.floorHeight(cameraY: 1.5, surfaceHeights: []), 0.2, accuracy: 0.0001)
         // A table at chest height is not the floor.
