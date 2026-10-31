@@ -57,6 +57,12 @@ AI-assisted workflow.
 
 ---
 
+## Maintainer
+
+[Thomas Gorisse](https://github.com/ThomasGorisse) — Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR
+
+---
+
 ## Sponsor
 
 SceneView is free and open source (Apache 2.0), funded by its users.

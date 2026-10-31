@@ -590,6 +590,10 @@ sceneview-core (Kotlin Multiplatform)
 
 ---
 
+## Maintainer
+
+[Thomas Gorisse](https://github.com/ThomasGorisse) — Mobile SDKs and the AI agent pipeline behind them · Creator of SceneView, open-source 3D & AR
+
 ## Links
 
 - [Website](https://sceneview.github.io/) · [Playground](https://sceneview.github.io/playground.html) · [Documentation](https://sceneview.github.io/docs/)
