@@ -6,6 +6,18 @@ import android.os.Bundle
 import android.view.Choreographer
 import androidx.activity.ComponentActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.navigation.NavBackStackEntry
+import io.github.sceneview.demo.ui.ContainerRole
+import io.github.sceneview.demo.ui.DemoContainerTransform
+import io.github.sceneview.demo.ui.LocalNavAnimatedScope
+import io.github.sceneview.demo.ui.LocalSharedTransitionScope
+import io.github.sceneview.demo.ui.demoContainerTransform
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
@@ -511,6 +523,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun SceneViewDemoApp(activity: MainActivity? = null) {
     val navController = rememberNavController()
@@ -582,6 +595,13 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
     // navigation — so it never lands on a demo's dock or AR controls.
     CompositionLocalProvider(LocalMotionEnabled provides motionEnabled) {
     Box(modifier = Modifier.fillMaxSize()) {
+        // The layout every shared element of a navigation is measured in: a Home card
+        // growing into its demo's screen (container transform, `motion-container`), and
+        // shrinking back into it on Back. Its scope reaches the destinations through
+        // `LocalSharedTransitionScope`, each destination adding its own
+        // `LocalNavAnimatedScope`.
+        SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedTransitionScope provides this) {
         NavHost(
             navController = navController,
             startDestination = "list",
@@ -591,25 +611,47 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             // an iOS-style push — the incoming screen travelled a whole viewport on
             // Compose's default spring, which on a demo that then has to load a model
             // read as two separate waits stacked on each other.
+            //
+            // A demo opened from its Home card is a container transform instead: Home
+            // holds still under the card, the card's shared bounds do the moving, and the
+            // pop transitions are the same pair reversed — those are what the predictive
+            // back gesture seeks (`enableOnBackInvokedCallback`), so the preview under the
+            // finger is the screen shrinking back into its card, not a slide.
             enterTransition = {
-                slideInHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
-                    fadeIn(navMotion(motionEnabled)) +
-                    scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+                if (isContainerTransform()) {
+                    EnterTransition.None
+                } else {
+                    slideInHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
+                        fadeIn(navMotion(motionEnabled)) +
+                        scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+                }
             },
             exitTransition = {
-                slideOutHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
-                    fadeOut(navMotion(motionEnabled)) +
-                    scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+                if (isContainerTransform()) {
+                    ExitTransition.KeepUntilTransitionsFinished
+                } else {
+                    slideOutHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
+                        fadeOut(navMotion(motionEnabled)) +
+                        scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+                }
             },
             popEnterTransition = {
-                slideInHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
-                    fadeIn(navMotion(motionEnabled)) +
-                    scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+                if (isContainerTransform()) {
+                    EnterTransition.None
+                } else {
+                    slideInHorizontally(navMotion(motionEnabled)) { -it / NAV_SLIDE_FRACTION } +
+                        fadeIn(navMotion(motionEnabled)) +
+                        scaleIn(navMotion(motionEnabled), initialScale = NAV_SCALE)
+                }
             },
             popExitTransition = {
-                slideOutHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
-                    fadeOut(navMotion(motionEnabled)) +
-                    scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+                if (isContainerTransform()) {
+                    ExitTransition.KeepUntilTransitionsFinished
+                } else {
+                    slideOutHorizontally(navMotion(motionEnabled)) { it / NAV_SLIDE_FRACTION } +
+                        fadeOut(navMotion(motionEnabled)) +
+                        scaleOut(navMotion(motionEnabled), targetScale = NAV_SCALE)
+                }
             }
         ) {
             composable("list") {
@@ -618,13 +660,23 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 // navigate straight to "demo/<id>" (see the pending-demo
                 // handling above). The Play update snackbar lives in RootScreen's
                 // Scaffold, above the bottom navigation, on every tab.
-                RootScreen(
-                    onDemoClick = { id ->
-                        Telemetry.nextEntryId = id to id
-                        navController.navigate("demo/$id")
-                    },
-                    updatePrompt = activity?.updatePrompt,
-                )
+                // Home settled again: the card that grew into a demo has shrunk back
+                // into place, so the next demo — from wherever it is opened — starts
+                // from the plain shared axis unless its own card arms the morph.
+                val settled = transition.currentState == EnterExitState.Visible &&
+                    transition.targetState == EnterExitState.Visible
+                LaunchedEffect(settled) {
+                    if (settled) DemoContainerTransform.armedId = null
+                }
+                CompositionLocalProvider(LocalNavAnimatedScope provides this) {
+                    RootScreen(
+                        onDemoClick = { id ->
+                            Telemetry.nextEntryId = id to id
+                            navController.navigate("demo/$id")
+                        },
+                        updatePrompt = activity?.updatePrompt,
+                    )
+                }
             }
             composable(
                 route = "demo/{id}?model={model}",
@@ -636,8 +688,16 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
                 val id = backStackEntry.arguments?.getString("id") ?: return@composable
                 DemoSettings.requestedModel = backStackEntry.arguments?.getString("model")
                 val onBack: () -> Unit = { navController.popBackStack() }
-                SampleTelemetry(sampleId = id) {
-                    DemoRouter(id = id, onBack = onBack)
+                CompositionLocalProvider(LocalNavAnimatedScope provides this) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .demoContainerTransform(demoId = id, role = ContainerRole.Screen),
+                    ) {
+                        SampleTelemetry(sampleId = id) {
+                            DemoRouter(id = id, onBack = onBack)
+                        }
+                    }
                 }
             }
             // Note: the legacy `composable("about") { AboutScreen(...) }` route was
@@ -646,6 +706,8 @@ fun SceneViewDemoApp(activity: MainActivity? = null) {
             // caller ever navigated to "about". Deletion verified via grep:
             // 0 `navigate("about")` calls anywhere. The @Ignore'd ScreenshotTest
             // for AboutScreen stays disabled per its own comment.
+        }
+        }
         }
 
         // Bug-report entry points (#1930, rebuilt permission-free in #2188's
@@ -838,6 +900,22 @@ private fun RoutedDemo(id: String, onBack: () -> Unit) {
  * either screen is ever legibly the wrong size.
  */
 private const val NAV_SCALE = 0.98f
+
+/**
+ * Whether this navigation is the Home card <-> demo container transform: Home and the demo
+ * its armed card opens, in either direction ([DemoContainerTransform]).
+ */
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.isContainerTransform(): Boolean {
+    val armed = DemoContainerTransform.armedId ?: return false
+    val from = initialState.destination.route
+    val to = targetState.destination.route
+    val demo = when {
+        from == "list" && to?.startsWith("demo/") == true -> targetState
+        to == "list" && from?.startsWith("demo/") == true -> initialState
+        else -> return false
+    }
+    return demo.arguments?.getString("id") == armed
+}
 
 private const val NAV_SLIDE_FRACTION = 6
 

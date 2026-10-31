@@ -91,7 +91,7 @@ fun <T> motionFade(): FiniteAnimationSpec<T> =
 /** [SceneViewTokens.Motion.spring], or an instant snap when motion is off. */
 @Composable
 @ReadOnlyComposable
-fun <T> motionSpring(): AnimationSpec<T> =
+fun <T> motionSpring(): FiniteAnimationSpec<T> =
     if (LocalMotionEnabled.current) SceneViewTokens.Motion.spring() else snap()
 
 /** A `DESIGN.md` tween, or an instant snap when motion is off. */

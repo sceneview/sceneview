@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.sceneview.demo.ui.ExpandableColumn
 import io.github.sceneview.demo.DemoEntry
 import io.github.sceneview.demo.IN_REVIEW_BADGE_VISIBLE
 import io.github.sceneview.demo.R
@@ -280,14 +281,22 @@ private fun ReleaseSection(release: WhatsNewRelease) {
         WhatsNewCategory.entries.forEach { category ->
             val group = release.highlights.filter { it.category == category }
             if (group.isNotEmpty()) {
-                CategoryGroup(category = category, highlights = group)
+                CategoryGroup(
+                    category = category,
+                    highlights = group,
+                    stateKey = "${release.version}-$category",
+                )
             }
         }
     }
 }
 
 @Composable
-private fun CategoryGroup(category: WhatsNewCategory, highlights: List<WhatsNewHighlight>) {
+private fun CategoryGroup(
+    category: WhatsNewCategory,
+    highlights: List<WhatsNewHighlight>,
+    stateKey: String,
+) {
     val accent = categoryAccent(category)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
@@ -297,7 +306,15 @@ private fun CategoryGroup(category: WhatsNewCategory, highlights: List<WhatsNewH
             color = accent,
             modifier = Modifier.padding(top = 4.dp),
         )
-        highlights.forEach { highlight ->
+        // A release can list a dozen fixes: the first few say what kind of release it
+        // was, the rest unfold on demand, so the sheet reads as several releases rather
+        // than one long changelog.
+        ExpandableColumn(
+            items = highlights,
+            collapsedCount = WHATS_NEW_COLLAPSED_HIGHLIGHTS,
+            stateKey = stateKey,
+            spacing = 6.dp,
+        ) { highlight ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
                     modifier = Modifier
@@ -316,6 +333,9 @@ private fun CategoryGroup(category: WhatsNewCategory, highlights: List<WhatsNewH
         }
     }
 }
+
+/** Highlights a category shows before its "Show more". */
+private const val WHATS_NEW_COLLAPSED_HIGHLIGHTS = 3
 
 @Composable
 private fun categoryAccent(category: WhatsNewCategory) = when (category) {

@@ -144,6 +144,12 @@
     <!-- What's new (Samples tab card + sheet). Only chrome strings live here —
          the release content itself is parsed at runtime from the bundled
          CHANGELOG.md, so it can never go stale by someone forgetting an edit. -->
+    <!-- Show more / Show less under a folded list (ui/ShowMore.kt). -->
+    <plurals name="show_more_count">
+        <item quantity="one">Show %d more</item>
+        <item quantity="other">Show %d more</item>
+    </plurals>
+    <string name="show_less">Show less</string>
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_card_subtitle_fallback">Recently shipped and fixed in SceneView</string>
     <string name="whats_new_sheet_subtitle">Recently shipped and fixed, straight from the release notes</string>

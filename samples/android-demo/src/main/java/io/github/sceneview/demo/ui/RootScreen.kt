@@ -4,7 +4,7 @@ package io.github.sceneview.demo.ui
 
 import android.content.Intent
 import android.net.Uri
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -79,6 +81,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.animation.core.rememberTransition
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.snap
@@ -207,7 +218,26 @@ fun RootScreen(
     // Only while the gallery is actually on screen. `galleryOpen` is rememberSaveable and
     // survives a tab switch, so an unconditional handler let Back close the *hidden* gallery
     // from AR View or About — the visible screen's own back behaviour never ran.
-    BackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { galleryOpen = false }
+    //
+    // Predictive: the Home <-> gallery cross-fade runs on a seekable transition, and the back
+    // gesture seeks it under the finger, so the gallery thins out over the Home it returns
+    // to while the finger travels. Released, the rest plays and the gallery closes;
+    // cancelled, it settles back. Tab switches drive the same state with `animateTo`.
+    val rootState = remember { SeekableTransitionState(selectedTab to galleryOpen) }
+    LaunchedEffect(selectedTab, galleryOpen) { rootState.animateTo(selectedTab to galleryOpen) }
+    val settleScope = rememberCoroutineScope()
+    PredictiveBackHandler(enabled = selectedTab == RootTab.Showcase && galleryOpen) { events ->
+        try {
+            events.collect { event ->
+                rootState.seekTo(fraction = event.progress, targetState = RootTab.Showcase to false)
+            }
+            galleryOpen = false
+        } catch (cancelled: CancellationException) {
+            settleScope.launch { rootState.animateTo(RootTab.Showcase to true) }
+            throw cancelled
+        }
+    }
+    val rootTransition = rememberTransition(rootState, label = "root-tab")
 
     // Support SceneView, the moderated interstitial (support/SupportPrompt.kt): it may follow a
     // moment of value once the user is back here — never on the AR View tab, never over a
@@ -326,10 +356,21 @@ fun RootScreen(
             }
         },
     ) { padding ->
+        // Edge to edge at the top: the status-bar band is the tab's own. About draws its
+        // top bar under it (transparent at rest, `surface-container` once content scrolls
+        // beneath); Home and AR View keep it as padding, as they always had. The bottom
+        // stays the Scaffold's — the navigation bar's height, which already includes the
+        // system navigation bar, so nothing below pads for it a second time.
+        val layoutDirection = LocalLayoutDirection.current
+        val statusBand = padding.calculateTopPadding()
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(
+                    start = padding.calculateStartPadding(layoutDirection),
+                    end = padding.calculateEndPadding(layoutDirection),
+                    bottom = padding.calculateBottomPadding(),
+                ),
         ) {
             // AnimatedContent disposes the screen it leaves, and every `rememberSaveable`
             // in it — the home list's scroll position among them: back from "Browse
@@ -337,8 +378,7 @@ fun RootScreen(
             // Each tab (and the gallery) keeps its saved state here instead, for as long
             // as the tab host lives, process death included.
             val screenStates = rememberSaveableStateHolder()
-            AnimatedContent(
-                targetState = selectedTab to galleryOpen,
+            rootTransition.AnimatedContent(
                 transitionSpec = {
                     if (initialState.first == targetState.first) {
                         // Home ↔ gallery, inside the Showcase tab: cross-fade.
@@ -360,9 +400,9 @@ fun RootScreen(
                             ) using SizeTransform(clip = false)
                     }
                 },
-                label = "root-tab",
             ) { (tab, gallery) ->
             screenStates.SaveableStateProvider("${tab.name}-$gallery") {
+            Box(Modifier.padding(top = if (tab == RootTab.About) 0.dp else statusBand)) {
             when (tab) {
                 RootTab.Showcase -> if (gallery) {
                     ExploreTabScreen(
@@ -414,7 +454,8 @@ fun RootScreen(
                     },
                     onSessionActiveChange = { arSessionActive = it },
                 )
-                RootTab.About -> AboutTabContent()
+                RootTab.About -> AboutTabContent(statusBand = statusBand)
+            }
             }
             }
             }
@@ -487,8 +528,9 @@ private fun curatedSamplesForExplore(): List<DemoEntry> {
  * without scrolling — and nowhere else in the app, because "non-intrusive" means
  * one card seen once, never a dialog, a launch nag or a badge.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AboutTabContent() {
+private fun AboutTabContent(statusBand: Dp = 0.dp) {
     val context = LocalContext.current
     var showSupportSheet by rememberSaveable { mutableStateOf(false) }
     if (showSupportSheet) {
@@ -529,6 +571,17 @@ private fun AboutTabContent() {
         CreditsSheet(onDismiss = { showCreditsSheet = false })
     }
 
+    val topBarScroll = TopAppBarDefaults.pinnedScrollBehavior()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(topBarScroll.nestedScrollConnection),
+    ) {
+    ScrollAwareTopBar(
+        title = stringResource(R.string.tab_about),
+        scrollBehavior = topBarScroll,
+        windowInsets = WindowInsets(top = statusBand),
+    )
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -536,7 +589,7 @@ private fun AboutTabContent() {
             .padding(
                 start = SceneViewTokens.Space.md,
                 end = SceneViewTokens.Space.md,
-                top = SceneViewTokens.Space.lg,
+                top = SceneViewTokens.Space.sm,
                 bottom = LIST_BOTTOM_GUTTER,
             ),
         // `space-xl` between blocks, `space-sm` between a group label and its card:
@@ -646,6 +699,7 @@ private fun AboutTabContent() {
                 textAlign = TextAlign.Center,
             )
         }
+    }
     }
 }
 

@@ -537,7 +537,8 @@ M3 Expressive shape scale — corner radius communicates component weight and pr
 
 ### App Motion (Android demo)
 
-One spring and one fade for the chrome; one shared-axis spec for screen changes, one
+One spring and one fade for the chrome; one shared-axis spec for screen changes and one
+container transform for a Home card opening its demo, one fold for "Show more", one
 fly-in for a 3D subject's arrival, one short handover from the loading cover to the first
 rendered frame, and one breathing ellipsis for a step in flight. In AR,
 the coaching card and a placed object's entrance (the `motion-coach-*` and
@@ -551,11 +552,28 @@ Nothing else animates.
 | `motion-handover` | `tween(150ms, FastOutSlowIn)` | The loading cover giving way to the first rendered frame — the scene is already there, so the veil leaves fast |
 | `motion-screen` | `tween(350ms, ease-expressive)` | Screen transitions — Material shared-axis X, both screens travelling ⅙ of the viewport while they cross-fade |
 | `motion-focus` | `tween(600ms, ease-expressive)` | The camera re-framing as a demo's full screen opens or closes (#4558): the subject glides into the whole screen while the chrome fades, and back to the band the chrome leaves on the way out. Never a cut |
+| `motion-container` | bounds `tween(450ms, ease-expressive)`; corner `home-row-radius` → 0 on the same tween | A Home card growing into its demo's screen (container transform, `sharedBounds`), and shrinking back into it on Back. The card is the container — it re-measures to the travelling bounds, its tint filling them — and the screen, measured once at full size and scaled width-first to the bounds, fades in above it after `motion-fade-through` (200ms, `duration-short`). Home holds still underneath. Only the tapped card morphs; a demo opened from a sheet, a tab or a link arrives on `motion-screen`. The predictive-back gesture seeks this tween under the finger |
+| `motion-fade-through` | outgoing `tween(90ms, ease-expressive)`, incoming over the rest of its spec | Two peers replacing each other — a tab change, a card's face inside `motion-container`. The old content is gone before the new one arrives, so no frame shows both at full opacity |
+| `motion-expand` | height `motion-spring`, opacity `motion-fade`; chevron half a turn on `motion-spring` | "Show N more" / "Show less" under a folded list (first 3 rows shown): the rest unfolds downwards and pushes what is under it, never a jump. Lazy lists unfold through their item animation on the same specs |
 | `motion-entrance` | `tween(700ms, ease-expressive)` | The camera fly-in when a 3D scene's subject arrives — once per screen, cancelled by the first touch |
 | `motion-coach-sweep` | 2800ms per sweep, eased both ways, across 22–78 % of the illustration | The phone of the AR coaching card sweeping over the surface it is looking for, lighting feature points behind it. Half speed and 60 % opacity while tracking is limited |
 | `motion-coach-resolve` | `spring(dampingRatio = 0.6, stiffness = 400)`, scale 0.6 → 1 | The "surface found" beat — the card leaves and a pill with a `primary` check springs in below centre, held 1s |
 | `motion-placement-entrance` | `tween(260ms)`, scale 0.55 → 1, cubic ease-out | A placed AR object growing into place about its contact point. Reversed over 300ms (`motion-fade`) when tracking is lost — opaque glTF materials cannot fade, so they shrink |
 | `motion-narration` | `1200ms` linear loop, opacity only (0.25 → 1) | The trailing ellipsis of a loading line (`NarrationText`): the light runs across the three dots. The line names the step the code is really in — "Searching Sketchfab…", "Downloading *name* (3.2 MB)…", "Decoding the model…" — never a timed script. One loader per screen — the M3 Expressive `LoadingIndicator`, or a `CircularWavyProgressIndicator` ring once the byte count is known. Static `…` under reduced motion |
+
+**Top bar on a scrolling page** (`top-bar-scroll`). Transparent at rest — the page runs
+up under the status bar with nothing drawn over it — and raised to `surface-container`
+with an `outline-variant` hairline (fading on `motion-fade`) once content scrolls beneath
+it. In light theme `surface-container` is the page's own white, so the hairline alone marks
+the raised bar; in dark the bar also lifts in tone. Driven by Material's pinned scroll behaviour (`overlappedFraction`), never by a scroll
+offset read by hand; pinned, so the page's title never scrolls away. The Home header keeps
+its own glass-on-scroll (`HeaderGlass`); the AR placement chooser keeps its always-on
+`outline` edge (WCAG 1.4.11).
+
+**Predictive back.** `enableOnBackInvokedCallback` is on: every pop transition is a tween
+the system back gesture can seek, so the gesture previews the destination — the demo
+shrinking into its card, the shared axis sliding Home back in, the online gallery thinning
+out over Home.
 
 **Reduced motion.** When the system animator scale is 0 (Android) or Reduce Motion is on
 (iOS), the coaching card's illustration is drawn as its settled frame — no sweep, no spin — and only the
