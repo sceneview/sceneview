@@ -136,8 +136,8 @@ struct ExploreTab: View {
     /// Focus for the inline field used in `embedded` mode (see `inlineSearchField`).
     @FocusState private var inlineSearchFocused: Bool
 
-    /// Shared namespace for the iOS 18 zoom transition: the carousel card's
-    /// thumbnail morphs into the GalleryModelViewerScreen hero on push.
+    /// Shared namespace for the iOS 18 zoom transition: the "Try a demo"
+    /// card grows into its demo cover. The model viewers push plainly.
     @Namespace private var heroNamespace
     private let favoritesManager = FavoritesManager.shared
 
@@ -323,10 +323,8 @@ struct ExploreTab: View {
             // (Poly Haven needs no key), so it's always wired.
             .refreshable { await loadFeeds(force: true) }
             .navigationDestination(item: $selectedModel) { model in
+                // A plain push, not a zoom, like the gallery viewer below.
                 ModelViewerScreen(model: model)
-                    // Grows out of its bundled `FeaturedCard`, like the live
-                    // gallery cards below.
-                    .zoomTransition(from: Self.bundledSourceId(model), in: heroNamespace)
             }
             #if os(iOS)
             .fullScreenCover(item: $trialDemo) { demo in
@@ -344,18 +342,10 @@ struct ExploreTab: View {
             }
             #endif
             .navigationDestination(item: $viewingModel) { model in
+                // A plain push, not a zoom: a pushed zoom destination takes
+                // the system's pinch and swipe-down dismissal, which closed
+                // the viewer when the stage was pinched to zoom out.
                 GalleryModelViewerScreen(model: model, source: source(for: model))
-                    // iOS 18 zoom navigation transition — the source thumbnail
-                    // matchedTransitionSource lives on the FeaturedGalleryCard
-                    // identified by `model.cardKey` (unique across sources + feeds).
-                    // `.zoom(sourceID:in:)` is unavailable on macOS, where the
-                    // destination simply pushes with the default transition.
-                    #if os(iOS)
-                    .navigationTransition(.zoom(
-                        sourceID: "gallery-hero-\(model.cardKey)",
-                        in: heroNamespace
-                    ))
-                    #endif
             }
             // `.alert(...)` is the SwiftUI counterpart of the Android `AlertDialog`
             // in ExploreTabScreen.kt — surfaced when the Sketchfab key is rejected.
@@ -416,8 +406,7 @@ struct ExploreTab: View {
     private var exploreStage: some View {
         if let hero = heroModel {
             SpatialHeroCard(model: hero,
-                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey,
-                            transitionNamespace: heroNamespace) {
+                            isTrending: feedsByKind[.trending]?.first?.cardKey == hero.cardKey) {
                 viewingModel = hero
                 #if os(iOS)
                 SceneViewHaptic.shared.light()
@@ -687,9 +676,6 @@ struct ExploreTab: View {
     /// Zoom source id of a "Try a demo" card.
     private static func trySourceId(_ demo: DemoItem) -> String { "try-\(demo.sceneId)" }
 
-    /// Zoom source id of a bundled `FeaturedCard`.
-    private static func bundledSourceId(_ model: ModelItem) -> String { "bundled-\(model.id)" }
-
     /// The demos of the "Try a demo" row, in Android's order — built once, on
     /// first use.
     private static let tryDemos: [DemoItem] = {
@@ -787,7 +773,7 @@ struct ExploreTab: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(models, id: \.cardKey) { model in
-                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                            FeaturedGalleryCard(model: model) {
                                 viewingModel = model
                                 #if os(iOS)
                                 SceneViewHaptic.shared.light()
@@ -850,7 +836,7 @@ struct ExploreTab: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
                         ForEach(models, id: \.cardKey) { model in
-                            FeaturedGalleryCard(model: model, transitionNamespace: heroNamespace) {
+                            FeaturedGalleryCard(model: model) {
                                 logModelSearch()
                                 viewingModel = model
                                 #if os(iOS)
@@ -944,7 +930,6 @@ struct ExploreTab: View {
                             SceneViewHaptic.shared.light()
                             #endif
                         }
-                        .zoomTransitionSource(id: Self.bundledSourceId(model), in: heroNamespace)
                     }
                 }
                 .padding(.bottom, 4)
@@ -1003,10 +988,6 @@ private struct FeaturedCard: View {
 /// touches the UI (#2645 / #2700).
 private struct FeaturedGalleryCard: View {
     let model: GalleryModel
-    /// Namespace used by iOS 18's `.navigationTransition(.zoom(sourceID:in:))`
-    /// to animate the card thumbnail into the GalleryModelViewerScreen's hero.
-    /// Optional so the card stays usable in contexts without the zoom transition.
-    var transitionNamespace: Namespace.ID? = nil
     let onTap: () -> Void
 
     var body: some View {
@@ -1039,10 +1020,6 @@ private struct FeaturedGalleryCard: View {
                     .frame(width: 200, height: 160)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .modifier(MatchedSourceModifier(
-                        id: "gallery-hero-\(model.cardKey)",
-                        namespace: transitionNamespace
-                    ))
 
                     // Top-left "Animated" pill (when applicable)
                     if model.isAnimated {
@@ -1079,23 +1056,6 @@ private struct FeaturedGalleryCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(model.name), \(model.sourceId.displayName) model")
-    }
-}
-
-/// Conditionally applies `.matchedTransitionSource(id:in:)` when a namespace is
-/// provided. iOS 18+ wires this into `.navigationTransition(.zoom(...))` so
-/// the card thumbnail morphs into the GalleryModelViewerScreen's hero on push.
-/// Returns the unmodified view when no namespace is passed.
-private struct MatchedSourceModifier: ViewModifier {
-    let id: String
-    let namespace: Namespace.ID?
-
-    func body(content: Content) -> some View {
-        if let namespace {
-            content.matchedTransitionSource(id: id, in: namespace)
-        } else {
-            content
-        }
     }
 }
 
@@ -1148,7 +1108,6 @@ private struct SpatialHeroCard: View {
     /// False when the hero comes from a fallback feed, so VoiceOver does not
     /// call it trending.
     let isTrending: Bool
-    var transitionNamespace: Namespace.ID? = nil
     let onViewIn3D: () -> Void
 
     var body: some View {
@@ -1205,7 +1164,6 @@ private struct SpatialHeroCard: View {
         .frame(maxWidth: .infinity)
         .frame(height: SceneViewTokens.Layout.heroStageHeight)
         .clipShape(RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous))
-        .modifier(MatchedSourceModifier(id: "gallery-hero-\(model.cardKey)", namespace: transitionNamespace))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(isTrending
             ? "\(model.name), trending on \(model.sourceId.displayName)"

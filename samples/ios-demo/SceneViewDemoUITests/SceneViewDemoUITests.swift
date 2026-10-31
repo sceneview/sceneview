@@ -325,6 +325,71 @@ final class SceneViewDemoUITests: XCTestCase {
         XCTAssertTrue(close.exists && close.isHittable, "a pinch on the stage dismissed the demo")
     }
 
+    /// A screen pushed with a zoom transition takes the system's swipe-down
+    /// and pinch dismissal, and SwiftUI has no `interactiveDismissDisabled()`
+    /// for a push: a pull-to-refresh at the top of Explore and a zoom-out
+    /// pinch on the model viewer's stage both closed the screen. Explore and
+    /// the viewers now push plainly; this keeps it that way. The viewer half
+    /// needs a live gallery card, and is skipped when no feed loads.
+    func testPullAndPinchDoNotCloseExploreOrTheModelViewer() throws {
+        let app = Self.makeApp()
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30),
+                      "app never reached the foreground")
+        let browse = app.buttons["Browse online models"]
+        for _ in 0..<12 where !(browse.exists && browse.isHittable) {
+            app.swipeUp()
+        }
+        XCTAssertTrue(browse.waitForExistence(timeout: 10), "Browse online models card not found")
+        // Same settle-and-retry as the #4015 test below.
+        Thread.sleep(forTimeInterval: 1.5)
+        let search = app.textFields["explore-search-field"]
+        for _ in 0..<2 where !search.exists {
+            browse.tap()
+            _ = search.waitForExistence(timeout: 8)
+        }
+        XCTAssertTrue(search.waitForExistence(timeout: 7), "Explore never opened")
+        Thread.sleep(forTimeInterval: 2)
+
+        let window = app.windows.firstMatch
+        func pullDown() {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+                .press(forDuration: 0.05,
+                       thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)))
+            Thread.sleep(forTimeInterval: 2)
+        }
+        pullDown()
+        window.pinch(withScale: 0.4, velocity: -1.5)
+        Thread.sleep(forTimeInterval: 2)
+        snapshot(app, "zoom-dismiss-01-explore-after-pull-and-pinch")
+        XCTAssertTrue(search.exists, "a pull-down or a pinch closed Explore")
+
+        // The first card of a horizontal rail: a live gallery card.
+        Thread.sleep(forTimeInterval: 6)
+        var card: XCUIElement?
+        for i in 0..<app.scrollViews.count where card == nil {
+            let rail = app.scrollViews.element(boundBy: i)
+            guard rail.frame.width > rail.frame.height * 1.5 else { continue }
+            let first = rail.buttons.firstMatch
+            if first.exists && first.isHittable { card = first }
+        }
+        guard let card else {
+            throw XCTSkip("no live gallery card loaded, so the viewer half cannot run")
+        }
+        card.tap()
+        Thread.sleep(forTimeInterval: 6)
+        XCTAssertFalse(search.isHittable, "the model viewer never opened")
+        let title = app.navigationBars.firstMatch.identifier
+        for _ in 0..<3 {
+            window.pinch(withScale: 0.4, velocity: -1.5)
+            Thread.sleep(forTimeInterval: 1.5)
+        }
+        pullDown()
+        snapshot(app, "zoom-dismiss-02-viewer-after-pinch-and-pull")
+        XCTAssertTrue(app.navigationBars[title].exists && !search.isHittable,
+                      "a pinch or a swipe down on the stage closed the model viewer")
+    }
+
     /// #4015: on iPad, Explore's scrolled content was drawn over the top bar,
     /// between the floating tab bar and the navigation bar. Opens Explore from
     /// the Showcase card, scrolls, and keeps a frame of the top edge.

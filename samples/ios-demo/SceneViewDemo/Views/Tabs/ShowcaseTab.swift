@@ -237,7 +237,6 @@ struct ShowcaseTab: View {
                     // the hero while a query is live.
                     if !searching {
                         BrowseOnlineRow { showExplore = true }
-                            .zoomTransitionSource(id: Self.browseOnlineSourceId, in: cardNamespace)
                             .padding(.top, SceneViewTokens.Home.groupGap)
                             .accessibilityIdentifier("home-browse-online")
                             .staggeredReveal(position: chipRevealPosition - 1, revealed: catalogueRevealed)
@@ -339,10 +338,10 @@ struct ShowcaseTab: View {
             #endif
             .hideNavigationBar()
             .navigationDestination(isPresented: $showExplore) {
+                // A plain push, not a zoom: a pushed zoom destination takes
+                // the system's swipe-down dismissal, and a pull-to-refresh at
+                // the top of the gallery would close it instead.
                 ExploreTab(embedded: true)
-                    // The row grows into the gallery and the gallery shrinks
-                    // back into it on the way out, as a demo does from its row.
-                    .zoomTransition(from: Self.browseOnlineSourceId, in: cardNamespace)
             }
             .onChange(of: presenting, initial: true) { _, covered in onPresentingChange(covered) }
             .onAppear { loadScenes() }
@@ -461,9 +460,6 @@ struct ShowcaseTab: View {
 
     /// The demo the hero opens.
     static let heroDemoId = "model-viewer"
-
-    /// Zoom source of the "Browse online models" row.
-    private static let browseOnlineSourceId = "browse-online"
 
     /// Zoom source of a demo opened from the What's new sheet: none on the
     /// Home, so the demo comes up on its own rather than out of a row behind
