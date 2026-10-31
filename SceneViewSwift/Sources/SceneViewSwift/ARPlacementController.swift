@@ -251,12 +251,13 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
     /// Places the model before ARKit has detected a plane, then moves it onto the real surface
     /// when one is found — ARCore Instant Placement parity.
     ///
-    /// A detected plane under the screen centre still takes the model at once. Without one, after
+    /// A detected plane under the screen centre still takes the model at once when it lies
+    /// between 0.6 and 1.5 times the model's reach away. Without one, after
     /// tracking has run for 0.6 s, the model stands where the centre ray meets the floor as far
     /// as ARKit knows it — the lowest detected or estimated horizontal surface well below the
     /// phone, else 1.3 m below it — between 0.6 of its reach and its reach ahead, the reach growing
-    /// with the model's size as shown: 1.2 m at the default 0.3 m preview; a 2 m sofa at
-    /// real-world size (`previewSize: nil`) stands 2.9 m away. It never floats
+    /// with the model's size as shown, from 1 m to 3 m: 1.14 m at the default 0.3 m preview; a
+    /// 2 m sofa at real-world size (`previewSize: nil`) stands 2.5 m away. It never floats
     /// along the ray. Walls wait for an ARKit estimated wall under the centre.
     /// ``trackingMethod`` then reads ``ARPlacementTrackingMethod/approximate`` and ``result`` is
     /// `nil`.
@@ -601,12 +602,27 @@ public final class ARPlacementController: NSObject, ObservableObject, UIGestureR
 
     struct Candidate { let plane: ARPlaneAnchor; let transform: simd_float4x4 }
 
+    /// A detected plane to place on by itself. With ``instantPlacement``, a floor counts only
+    /// within ``ARInstantPlacement/withinAutoPlaceWindow(point:eye:reach:)`` of the model's reach
+    /// (ARMV `autoPlace`); otherwise the estimated floor takes over after the delay. Without it,
+    /// and for walls, any distance goes.
     private func candidate(in view: ARView, frame: ARFrame, planes: [ARPlaneAnchor]) -> Candidate? {
         let center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
-        if let hit = raycast(center, in: view, frame: frame) { return hit }
+        let eye = frame.camera.transform.columns.3.xyz
+        let reach = ARInstantPlacement.reach(forLargestSide: largestSide)
+        let horizontal = alignment == .horizontal, instant = instantPlacement
+        let fits: (SIMD3<Float>) -> Bool = {
+            ARInstantPlacement.acceptsDetectedSurface(point: $0, eye: eye, reach: reach,
+                                                      horizontal: horizontal, instantPlacement: instant)
+        }
+        // Only the first surface under the centre counts: a table too near does not hand the
+        // model to the floor beneath it.
+        if let hit = raycast(center, in: view, frame: frame) {
+            return fits(hit.transform.columns.3.xyz) ? hit : nil
+        }
         return planes.compactMap { plane -> (Candidate, Float)? in
             let point = (plane.transform * SIMD4<Float>(plane.center, 1)).xyz
-            guard valid(plane: plane, point: point, frame: frame, view: view),
+            guard fits(point), valid(plane: plane, point: point, frame: frame, view: view),
                   let projected = view.project(point) else { return nil }
             let dx = Float((projected.x - center.x) / (view.bounds.width / 2))
             let dy = Float((projected.y - center.y) / (view.bounds.height / 2))
