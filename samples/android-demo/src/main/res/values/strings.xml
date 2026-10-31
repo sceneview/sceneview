@@ -150,6 +150,9 @@
         <item quantity="other">Show %d more</item>
     </plurals>
     <string name="show_less">Show less</string>
+    <!-- TalkBack state of the Show more / Show less button. -->
+    <string name="show_more_state_expanded">Expanded</string>
+    <string name="show_more_state_collapsed">Collapsed</string>
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_card_subtitle_fallback">Recently shipped and fixed in SceneView</string>
     <string name="whats_new_sheet_subtitle">Recently shipped and fixed, straight from the release notes</string>

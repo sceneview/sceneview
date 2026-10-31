@@ -903,7 +903,10 @@ private const val NAV_SCALE = 0.98f
 
 /**
  * Whether this navigation is the Home card <-> demo container transform: Home and the demo
- * its armed card opens, in either direction ([DemoContainerTransform]).
+ * its armed card opens, in either direction ([DemoContainerTransform]). If the armed card
+ * is no longer composed when Back lands on Home (the list was filtered in the meantime),
+ * the shared bounds have no target: the demo fades out over a still Home, without the
+ * slide.
  */
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isContainerTransform(): Boolean {
     val armed = DemoContainerTransform.armedId ?: return false
