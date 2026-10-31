@@ -157,6 +157,9 @@ private struct ReleaseSection: View {
 private struct CategoryGroup: View {
     let category: WhatsNewCategory
     let highlights: [WhatsNewHighlight]
+    /// The demos an entry names, as "Open …" chips — the since sheet only.
+    var demosFor: (WhatsNewHighlight) -> [DemoItem] = { _ in [] }
+    var onDemo: (DemoItem) -> Void = { _ in }
 
     var body: some View {
         let accent = category.accent
@@ -169,19 +172,159 @@ private struct CategoryGroup: View {
                 HStack(alignment: .firstTextBaseline, spacing: SceneViewTokens.Space.sm) {
                     Circle()
                         .fill(accent)
-                        .frame(width: 6, height: 6)
+                        .frame(width: SceneViewTokens.Home.indicatorDot, height: SceneViewTokens.Home.indicatorDot)
                         // On the first line's x-height, not its baseline.
                         .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
                         .accessibilityHidden(true)
-                    Text(highlight.headline)
+                    Text(highlight.headline.replacingOccurrences(of: "`", with: ""))
                         .font(SceneViewTokens.TypeScale.captionRegular)
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                         .lineSpacing(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityElement(children: .combine)
+                let demos = demosFor(highlight)
+                if !demos.isEmpty {
+                    HStack(spacing: SceneViewTokens.Space.sm) {
+                        ForEach(demos, id: \.sceneId) { demo in
+                            OpenDemoChip(demo: demo) { onDemo(demo) }
+                        }
+                    }
+                    .padding(.leading, SceneViewTokens.Home.indicatorDot + SceneViewTokens.Space.sm)
+                }
             }
         }
+    }
+}
+
+/// "Open Fox animation" — Android's `DemoChip` under a since entry.
+private struct OpenDemoChip: View {
+    let demo: DemoItem
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text("Open \(demo.title)")
+                .font(SceneViewTokens.TypeScale.caption)
+                .foregroundStyle(SceneViewTokens.HomeColor.chipText)
+                .lineLimit(1)
+                .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
+                .frame(minHeight: SceneViewTokens.Glass.pillHeight)
+                .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the demo")
+        .accessibilityIdentifier("whats-new-since-open-\(demo.sceneId)")
+    }
+}
+
+/// "What's new since you last tested" — Android's `WhatsNewSinceSheet`: every
+/// entry shipped after the build this install last acknowledged, newest first,
+/// grouped by release then category, each with chips for the demos it names.
+/// Only "Got it" writes the marker; swiping the sheet away keeps the badge so
+/// the user can come back to the list.
+struct WhatsNewSinceSheet: View {
+    let sections: [WhatsNewSection]
+    /// The acknowledged build, `nil` when unknown.
+    let seenVersion: String?
+    let demos: [DemoItem]
+    let onDemo: (DemoItem) -> Void
+    let onGotIt: () -> Void
+
+    private var count: Int { sections.reduce(0) { $0 + $1.entries.count } }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.md) {
+                Text("What's new")
+                    .font(SceneViewTokens.TypeScale.title)
+                    .tracking(SceneViewTokens.TypeScale.titleTracking)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("whats-new-since-title")
+                    .padding(.bottom, -SceneViewTokens.Space.sm)
+                Text(subtitle)
+                    .font(SceneViewTokens.TypeScale.captionRegular)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+
+                ForEach(sections, id: \.self) { section in
+                    sinceSection(section)
+                }
+
+                Divider()
+                    .overlay(SceneViewTokens.HomeColor.outlineSubtle)
+                Button(action: onGotIt) {
+                    Text("Got it")
+                        .font(SceneViewTokens.TypeScale.bodySemibold)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                        .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
+                        .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PressScaleButtonStyle())
+                .accessibilityIdentifier("whats-new-since-got-it")
+                Text("You can revisit these updates from the home screen.")
+                    .font(SceneViewTokens.TypeScale.captionRegular)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, SceneViewTokens.Space.lg - SceneViewTokens.Space.xs)
+            .padding(.top, SceneViewTokens.Space.lg)
+            .padding(.bottom, SceneViewTokens.Space.xl)
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityIdentifier("whats-new-since-sheet")
+    }
+
+    private var subtitle: String {
+        guard let seenVersion, !seenVersion.isEmpty else { return "Discover the latest improvements" }
+        return "\(count) \(count == 1 ? "improvement" : "improvements") since version \(seenVersion)"
+    }
+
+    @ViewBuilder
+    private func sinceSection(_ section: WhatsNewSection) -> some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(section.version.map { "v\($0)" } ?? "New in this update")
+                    .font(.system(size: SceneViewTokens.TypeScale.cardSize, weight: .bold))
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                if let date = section.date {
+                    Text(date)
+                        .font(SceneViewTokens.TypeScale.caption)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                }
+            }
+            ForEach(WhatsNewCategory.allCases, id: \.self) { category in
+                let group = section.entries.filter { $0.category == category }
+                if !group.isEmpty {
+                    CategoryGroup(category: category, highlights: group,
+                                  demosFor: { WhatsNewSinceSheet.demos(namedIn: $0.headline, from: demos) },
+                                  onDemo: onDemo)
+                }
+            }
+        }
+    }
+
+    /// Android's `demosMentionedIn`: demo titles of six letters or more found
+    /// in the entry as whole words, case-insensitive, two at most — short
+    /// titles ("Text", "Fog") would match half the changelog.
+    static func demos(namedIn headline: String, from demos: [DemoItem]) -> [DemoItem] {
+        let text = headline.lowercased()
+        var found: [DemoItem] = []
+        for demo in demos where demo.title.count >= 6 {
+            let title = NSRegularExpression.escapedPattern(for: demo.title.lowercased())
+            if text.range(of: "\\b\(title)\\b", options: .regularExpression) != nil,
+               !found.contains(where: { $0.sceneId == demo.sceneId }) {
+                found.append(demo)
+                if found.count == 2 { break }
+            }
+        }
+        return found
     }
 }
 

@@ -19,7 +19,8 @@ struct HomeHero: View {
     /// Guarded by `ViewerAssetTests.testHomeHeroModelShipsItsUSDZ`.
     static let heroAssetName = "khronos_damaged_helmet"
 
-    private static let title = "Models"
+    /// Android's window page title — the demo it opens.
+    private static let title = "Model Viewer"
     private static let subtitle = "Explore a model in 3D or in your room"
 
     var body: some View {
@@ -33,12 +34,7 @@ struct HomeHero: View {
                     .font(SceneViewTokens.TypeScale.body)
                     .foregroundStyle(SceneViewTokens.HomeColor.heroSubtitle)
                     .lineLimit(2)
-                Text("Open")
-                    .font(SceneViewTokens.TypeScale.bodySemibold)
-                    .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
-                    .padding(.horizontal, SceneViewTokens.Home.heroPillPaddingHorizontal)
-                    .frame(height: SceneViewTokens.Home.heroPillHeight)
-                    .background(SceneViewTokens.HomeColor.heroPillBackground, in: Capsule())
+                HeroPill(label: "Open")
                     .padding(.top, SceneViewTokens.Space.sm)
             }
             .padding(SceneViewTokens.Home.heroPadding)
@@ -51,6 +47,26 @@ struct HomeHero: View {
         .buttonStyle(PressScaleButtonStyle())
         .accessibilityLabel("\(Self.title). \(Self.subtitle). Open")
         .accessibilityIdentifier("home-hero")
+    }
+}
+
+/// The hero's call to action — Android's `HeroPill`: a white 44 pt capsule,
+/// the label then an arrow.
+struct HeroPill: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: SceneViewTokens.Home.heroPillIconGap) {
+            Text(label)
+                .font(SceneViewTokens.TypeScale.bodySemibold)
+            Image(systemName: "arrow.right")
+                .font(.system(size: SceneViewTokens.Home.heroPillIconSize, weight: .semibold))
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(SceneViewTokens.HomeColor.heroPillText)
+        .padding(.horizontal, SceneViewTokens.Home.heroPillPaddingHorizontal)
+        .frame(height: SceneViewTokens.Home.heroPillHeight)
+        .background(SceneViewTokens.HomeColor.heroPillBackground, in: Capsule())
     }
 }
 

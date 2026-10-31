@@ -8,6 +8,8 @@ import SceneViewSwift
 struct ARTab: View {
     @State private var sessionStarted = false
     @State private var presentedDemo: FeaturedARDemo?
+    /// A demo from the "All AR demos" grid, in the Home's full-screen host.
+    @State private var coverScene: DemoItem?
 
     private var arSupported: Bool {
         #if targetEnvironment(simulator)
@@ -27,7 +29,8 @@ struct ARTab: View {
             ARLauncherScreen(
                 arSupported: arSupported,
                 onStartArSession: { sessionStarted = true },
-                onDemoTap: { presentedDemo = $0 }
+                onDemoTap: { presentedDemo = $0 },
+                onSceneTap: { coverScene = $0 }
             )
             .navigationTitle("AR Experiences")
         }
@@ -37,6 +40,9 @@ struct ARTab: View {
                     ARPlacementExperience()
                 }
             }
+        }
+        .fullScreenCover(item: $coverScene) { scene in
+            DemoCover(scene: scene, source: .other) { coverScene = nil }
         }
         .fullScreenCover(item: $presentedDemo) { demo in
             NavigationStack {
@@ -146,15 +152,20 @@ struct FeaturedARDemo: Identifiable {
 
 /// Static launcher shown when the AR tab is opened, before the user explicitly
 /// starts the camera session. Mirrors Android's `ArLauncherScreen` on
-/// `ArViewTab.kt` (#1211 item 3): hero icon + tagline + "Start AR Camera" CTA,
-/// followed by a 2×2 grid of headline AR demo cards so the launcher doubles
-/// as a discovery surface (issue #1253 item 1) — every card routes to a real
-/// demo screen presented full-screen above the AR tab.
+/// `ArViewTab.kt` (#1211 item 3): hero icon + tagline, a "Featured" grid of
+/// the headline AR demos, an "All AR demos" grid of the rest, and a floating
+/// glass dock carrying the "Start AR Camera" call to action. Every card opens
+/// a real demo full-screen above the AR tab.
 private struct ARLauncherScreen: View {
     let arSupported: Bool
     let onStartArSession: () -> Void
-    /// Invoked when one of the discovery-grid cards is tapped.
+    /// Invoked when one of the "Featured" cards is tapped.
     let onDemoTap: (FeaturedARDemo) -> Void
+    /// Invoked when a card of the "All AR demos" grid is tapped.
+    var onSceneTap: (DemoItem) -> Void = { _ in }
+
+    /// The catalogue, read once — `GeneratedScenes.all()` builds every item.
+    @State private var scenes: [DemoItem] = []
 
     /// Re-read on scene-foreground so a user who tapped "Open Settings",
     /// flipped the camera switch and returned sees the CTA recover to
@@ -237,89 +248,79 @@ private struct ARLauncherScreen: View {
         }
     }
 
+    /// Android's featured AR cards, as catalogue items so they draw as the
+    /// Home's picture cards.
+    private var featured: [(FeaturedARDemo, DemoItem)] {
+        FeaturedARDemo.all.compactMap { demo in
+            scenes.first { $0.sceneId == demo.id }.map { (demo, $0) }
+        }
+    }
+
+    /// Every other AR demo the Home lists — Android's "All AR demos" grid.
+    private var others: [DemoItem] {
+        let featuredIds = Set(FeaturedARDemo.all.map(\.id))
+        return scenes.filter {
+            $0.category == .ar && $0.status.isAvailable
+                && HomeCatalogue.isOnHome($0.sceneId) && !featuredIds.contains($0.sceneId)
+        }
+    }
+
+    private var columns: [GridItem] {
+        [GridItem(.flexible(), spacing: SceneViewTokens.Home.gridGutter, alignment: .top),
+         GridItem(.flexible(), spacing: SceneViewTokens.Home.gridGutter, alignment: .top)]
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 0) {
                 // Compact hero — the icon beside the tagline, as on Android's
                 // `ArLauncherScreen`. The title is the navigation title.
                 HStack(spacing: SceneViewTokens.Space.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        SceneViewTheme.primary.opacity(0.85),
-                                        SceneViewTheme.tertiary.opacity(0.70),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 56, height: 56)
-                        Image(systemName: "arkit")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityHidden(true)
-
-                    Text("Place 3D models in your space, scan faces, anchor to terrain.")
-                        .font(.subheadline)
+                    RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous)
+                        .fill(LinearGradient(colors: [SceneViewTokens.HomeColor.primary,
+                                                      SceneViewTokens.HomeColor.tertiary],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: SceneViewTokens.Home.iconTileGlyph, height: SceneViewTokens.Home.iconTileGlyph)
+                        .overlay {
+                            Image(systemName: "arkit")
+                                .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .semibold))
+                                .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                        }
+                        .accessibilityHidden(true)
+                    Text("Place models, scan faces, anchor to terrain.")
+                        .font(SceneViewTokens.TypeScale.body)
                         .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, 24)
                 .padding(.top, SceneViewTokens.Space.sm)
 
-                if state == .unsupported {
-                    // Nothing to tap, so no button: a status line, as on
-                    // Android's `ArLauncherScreen`. It used to be the primary
-                    // capsule disabled at 50 % opacity — white on a washed-out
-                    // blue, the one message explaining why AR is off, nearly
-                    // invisible in light mode (#3790). `on-surface` on
-                    // `surface-container-high` is 15.3:1 light / 13.5:1 dark.
-                    Label(ctaTitle, systemImage: ctaIcon)
-                        .font(.headline)
-                        .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
-                        .labelStyle(StatusLabelStyle())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, SceneViewTokens.Space.md)
-                        .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
-                        .padding(.horizontal, 24)
-                        .accessibilityElement(children: .combine)
-                        .accessibilitySortPriority(1)
-                } else {
-                    Button(action: onCtaTap) {
-                        Label(ctaTitle, systemImage: ctaIcon)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(SceneViewTokens.HomeColor.primary, in: Capsule())
-                            .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                sectionHeader("Featured")
+                LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
+                    let featured = featured
+                    ForEach(featured.indices, id: \.self) { index in
+                        let (demo, item) = featured[index]
+                        DemoMediaCard(demo: item) { onDemoTap(demo) }
+                            .accessibilityIdentifier("ar-featured-\(demo.id)")
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 24)
-                    .accessibilityLabel(ctaTitle)
-                    .accessibilitySortPriority(1)
                 }
 
-                Text(caption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-
-                // Discovery grid — mirrors Android's `FEATURED_AR_DEMOS`
-                // card grid on `ArLauncherScreen`. Gives the user something
-                // to explore even before (or instead of) starting the live
-                // camera session. Each card opens a real AR demo full-screen.
-                demoGrid
-                    .padding(.top, 8)
+                if !others.isEmpty {
+                    sectionHeader("All AR demos (\(others.count + featured.count))")
+                    LazyVGrid(columns: columns, spacing: SceneViewTokens.Home.gridGutter) {
+                        ForEach(others, id: \.sceneId) { item in
+                            DemoMediaCard(demo: item) { onSceneTap(item) }
+                                .accessibilityIdentifier("ar-demo-\(item.sceneId)")
+                        }
+                    }
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 24)
+            .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+            .padding(.bottom, SceneViewTokens.Home.gridBottomInset)
         }
         .background(SceneViewTokens.HomeColor.surface)
+        // The camera's way in floats over the grids — Android's launcher dock.
+        .safeAreaInset(edge: .bottom, spacing: 0) { dock }
+        .onAppear { if scenes.isEmpty { scenes = GeneratedScenes.all() } }
         .onChange(of: scenePhase) { _, phase in
             // Re-sync the CTA when the app returns to the foreground — the
             // user may have flipped the camera switch in Settings.
@@ -329,34 +330,63 @@ private struct ARLauncherScreen: View {
         }
     }
 
-    // MARK: - Discovery grid
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(SceneViewTokens.TypeScale.card)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.top, SceneViewTokens.Home.sectionHeaderTopGap)
+            .padding(.bottom, SceneViewTokens.Home.sectionHeaderBottomGap)
+    }
 
-    private var demoGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Try an AR demo")
-                .font(.headline)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 24)
+    // MARK: - Dock
 
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 12),
-                    GridItem(.flexible(), spacing: 12),
-                ],
-                spacing: 12
-            ) {
-                ForEach(FeaturedARDemo.all) { demo in
-                    Button {
-                        onDemoTap(demo)
-                    } label: {
-                        ARDemoCard(demo: demo)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(demo.title): \(demo.subtitle)")
+    /// The floating glass dock: the "Start AR Camera" call to action — or,
+    /// where there is nothing to tap, the reason — and the caption under it.
+    private var dock: some View {
+        VStack(spacing: SceneViewTokens.Space.sm) {
+            if state == .unsupported {
+                // Nothing to tap, so no button: a status line, as on
+                // Android's `ArLauncherScreen` (#3790). `on-surface` on
+                // `chip-bg` is 15.3:1 light / 13.5:1 dark.
+                Label(ctaTitle, systemImage: ctaIcon)
+                    .font(SceneViewTokens.TypeScale.bodySemibold)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
+                    .labelStyle(StatusLabelStyle())
+                    .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
+                    .padding(.horizontal, SceneViewTokens.Space.md)
+                    .background(SceneViewTokens.HomeColor.chipBackground, in: Capsule())
+                    .accessibilityElement(children: .combine)
+                    .accessibilitySortPriority(1)
+                    .accessibilityIdentifier("ar-dock-status")
+            } else {
+                Button(action: onCtaTap) {
+                    Label(ctaTitle, systemImage: ctaIcon)
+                        .font(SceneViewTokens.TypeScale.bodySemibold)
+                        .frame(maxWidth: .infinity, minHeight: SceneViewTokens.Layout.touchTarget)
+                        .background(SceneViewTokens.HomeColor.primary, in: Capsule())
+                        .foregroundStyle(SceneViewTokens.HomeColor.onPrimary)
+                        .contentShape(Capsule())
                 }
+                .buttonStyle(PressScaleButtonStyle())
+                .accessibilityLabel(ctaTitle)
+                .accessibilitySortPriority(1)
+                .accessibilityIdentifier("ar-dock-start")
             }
-            .padding(.horizontal, 24)
+            Text(caption)
+                .font(SceneViewTokens.TypeScale.captionRegular)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
+        .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous),
+                         interactive: true)
+        .padding(.horizontal, SceneViewTokens.Home.contentPadding)
+        .padding(.bottom, SceneViewTokens.Space.sm)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ar-dock")
     }
 }
 
@@ -370,58 +400,6 @@ private struct StatusLabelStyle: LabelStyle {
                 .foregroundStyle(SceneViewTokens.HomeColor.danger)
             configuration.title
         }
-    }
-}
-
-/// A single discovery-grid card on the AR launcher. Visually mirrors the
-/// Samples-tab card idiom (gradient icon header + title + subtitle) so the
-/// two surfaces feel like one app, matching Android's `ArDemoCard`.
-private struct ARDemoCard: View {
-    let demo: FeaturedARDemo
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.green.opacity(0.32),
-                                Color.green.opacity(0.14),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Image(systemName: demo.icon)
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.green)
-                    .accessibilityHidden(true)
-            }
-            .frame(height: 56)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(demo.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(demo.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 150, alignment: .top)
-        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

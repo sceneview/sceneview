@@ -250,6 +250,10 @@ struct ContentView: View {
                     .accessibilityLabel("Showcase")
                     .updateToast()
             }
+            // Android's What's new badge on the Home destination: a count of
+            // what shipped since this install last said "Got it" — a tab badge
+            // on iOS is a number, not a dot. Hidden at zero.
+            .badge(WhatsNewSinceModel.shared.unseenCount)
 
             #if os(iOS)
             Tab("AR View", systemImage: "arkit", value: 1) {

@@ -54,6 +54,11 @@ struct ShowcaseTab: View {
     /// `contentReady`: the sheet waits for it, so it never opens half filled.
     @State private var releasesLoaded = false
     @State private var whatsNewSheet = WhatsNewSheetPhase.closed
+    /// The "since you last tested" sheet, and what it lists — a snapshot taken
+    /// on open, so "Got it" does not empty the sheet while it slides away.
+    @State private var sinceSheetShown = false
+    @State private var sinceSections: [WhatsNewSection] = []
+    @State private var demoFromSince: DemoItem?
     /// The demo tapped in the What's new sheet, opened once the sheet is gone —
     /// a cover cannot be presented while the sheet is still on screen.
     @State private var demoFromSheet: DemoItem?
@@ -105,7 +110,7 @@ struct ShowcaseTab: View {
     /// A demo, a "coming soon" sheet, the What's new sheet or the online gallery
     /// is over Home.
     private var presenting: Bool {
-        fullScreenScene != nil || comingSoonScene != nil || whatsNewSheet == .open || showExplore
+        fullScreenScene != nil || comingSoonScene != nil || whatsNewSheet == .open || sinceSheetShown || showExplore
     }
     private var searching: Bool { selection.searching }
 
@@ -320,8 +325,12 @@ struct ShowcaseTab: View {
                 topInset = inset
             }
             .overlay(alignment: .top) {
+                // The sparkle shows while there is anything to read, carries a
+                // dot while something is unseen, and opens what is unseen
+                // first — Android's `WhatsNewHeaderButton`.
                 HomeHeader(scrolled: scrolled, overStage: overStage, query: $selection.query, searchOpen: $searchOpen,
-                           showWhatsNew: !releases.isEmpty) { whatsNewSheet.open() }
+                           showWhatsNew: !releases.isEmpty || since.hasUnseen,
+                           whatsNewBadged: since.hasUnseen) { openWhatsNewFromHeader() }
             }
             #if os(iOS)
             // Light status-bar icons while they sit on the sky.
@@ -342,6 +351,29 @@ struct ShowcaseTab: View {
                 }
                 do { try await Task.sleep(for: SearchTerm.settleDelay) } catch { return }
                 DemoAnalytics.shared.searchSettled(selection.query, surface: .samples, resultCount: visible.count)
+            }
+            .task { await since.load() }
+            // Android's `WhatsNewSinceSheet`: everything shipped since the
+            // build this install last acknowledged. Only "Got it" clears it.
+            .sheet(isPresented: $sinceSheetShown, onDismiss: {
+                guard let demo = demoFromSince else { return }
+                demoFromSince = nil
+                open(demo, from: Self.whatsNewSourceId)
+            }) {
+                WhatsNewSinceSheet(sections: sinceSections, seenVersion: since.seen?.versionName,
+                                   demos: homeScenes) { demo in
+                    demoFromSince = demo
+                    sinceSheetShown = false
+                } onGotIt: {
+                    since.markSeen()
+                    sinceSheetShown = false
+                }
+                #if os(iOS)
+                .presentationDetents([.medium, .large])
+                .partialSheetBackground(.regularMaterial)
+                .presentationCornerRadius(SceneViewTokens.Radius.xl)
+                .presentationDragIndicator(.visible)
+                #endif
             }
             .task {
                 guard !releasesLoaded else { return }
@@ -543,6 +575,22 @@ struct ShowcaseTab: View {
         whatsNewSheet.open()
     }
 
+    private var since: WhatsNewSinceModel { .shared }
+
+    /// The header's sparkle: what is unseen when there is any, else the
+    /// release notes.
+    private func openWhatsNewFromHeader() {
+        guard since.hasUnseen else {
+            whatsNewSheet.open()
+            return
+        }
+        #if os(iOS)
+        SceneViewHaptic.shared.light()
+        #endif
+        sinceSections = since.unseen
+        sinceSheetShown = true
+    }
+
     /// "Show all N samples": the chip goes back to "All" — Android's
     /// `onCategoryChange(null)` — and the page returns to its top, where the
     /// hero and the banners are: they are part of the whole catalogue too.
@@ -714,6 +762,8 @@ private struct HomeHeader: View {
     /// The sparkle that opens the What's new sheet — shown once the release
     /// notes are loaded, as on Android.
     var showWhatsNew = false
+    /// Something shipped since this install last said "Got it".
+    var whatsNewBadged = false
     var onWhatsNew: () -> Void = {}
 
     var body: some View {
@@ -726,7 +776,8 @@ private struct HomeHeader: View {
                     }
                     .transition(.opacity)
                 } else {
-                    TitleRow(overStage: overStage, showWhatsNew: showWhatsNew, onWhatsNew: onWhatsNew) {
+                    TitleRow(overStage: overStage, showWhatsNew: showWhatsNew, whatsNewBadged: whatsNewBadged,
+                             onWhatsNew: onWhatsNew) {
                         searchOpen = true
                     }
                         .transition(.opacity)
@@ -793,6 +844,7 @@ private struct HeaderGround: View {
 private struct TitleRow: View {
     var overStage = false
     var showWhatsNew = false
+    var whatsNewBadged = false
     var onWhatsNew: () -> Void = {}
     let onSearch: () -> Void
 
@@ -815,11 +867,23 @@ private struct TitleRow: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(overStage ? SceneViewTokens.HomeColor.heroSubtitle : SceneViewTokens.HomeColor.onSurfaceDim)
                         .animation(SceneViewTokens.Spring.fade, value: overStage)
+                        // Android's `BadgedBox`: a dot on the glyph's top end.
+                        .overlay(alignment: .topTrailing) {
+                            if whatsNewBadged {
+                                Circle()
+                                    .fill(SceneViewTokens.HomeColor.error)
+                                    .frame(width: SceneViewTokens.Home.indicatorDot,
+                                           height: SceneViewTokens.Home.indicatorDot)
+                                    .offset(x: SceneViewTokens.Space.xs / 2, y: -SceneViewTokens.Space.xs / 2)
+                                    .accessibilityIdentifier("home-whats-new-badge")
+                            }
+                        }
                         .frame(width: SceneViewTokens.Layout.touchTarget, height: SceneViewTokens.Layout.touchTarget)
                 }
                 .buttonStyle(.plain)
                 .offset(x: 12)
                 .accessibilityLabel("What's new")
+                .accessibilityValue(whatsNewBadged ? "New updates" : "")
                 .accessibilityIdentifier("home-whats-new")
             }
             Button(action: onSearch) {

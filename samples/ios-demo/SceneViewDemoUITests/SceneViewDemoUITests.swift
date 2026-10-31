@@ -45,6 +45,11 @@ final class SceneViewDemoUITests: XCTestCase {
     /// second sample closed must not cover the screen a test is about to tap. The
     /// usage-statistics consent is pre-answered for the same reason: in the EEA, UK and
     /// Switzerland its sheet comes up over Home on first launch.
+    /// The build version the home's freshness window counts from: the newest
+    /// card's `updatedIn`, so the hero pager and the What's new row exist
+    /// whatever `MARKETING_VERSION` the app was built with.
+    private static let freshnessBuild = ["-demo_freshness_build", "4.52.0"]
+
     private static func makeApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-push_preprompt", "off", "-support_prompt", "off", "-telemetry_consent", "denied"]
@@ -91,8 +96,17 @@ final class SceneViewDemoUITests: XCTestCase {
             let name = String(format: "%02d-tab-%@", i + 2, slug(button.label))
             button.tap()
             _ = app.wait(for: .runningForeground, timeout: 3)
-            snapshot(app, name)
+            Thread.sleep(forTimeInterval: 1.5)
+            capture(app, name)
         }
+
+        // The support card sits right under About's identity block, as on
+        // Android: its tips are In-App Purchases, kept reachable for good.
+        let about = tabBar.buttons["About"]
+        XCTAssertTrue(about.exists, "the About tab is missing")
+        about.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["about-support"].waitForExistence(timeout: 10),
+                      "the About tab has no Support SceneView card")
     }
 
     /// A representative subset of WORKING 3D demos, each launched headlessly
@@ -358,6 +372,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// (`TEST_RUNNER_SV_CAPTURE_DIR=… xcodebuild test …`).
     func testFeaturedRoundTripKeepsTheHome() {
         let app = Self.makeApp()
+        app.launchArguments += Self.freshnessBuild
         app.launch()
         let header = app.descendants(matching: .any)["home-section-featured"]
         XCTAssertTrue(header.waitForExistence(timeout: 30), "the Featured group never appeared")
@@ -371,7 +386,7 @@ final class SceneViewDemoUITests: XCTestCase {
             }
         }
         assertTabsOnScreen("on launch")
-        for (step, id) in ["cosmos", "splat-preview"].enumerated() {
+        for (step, id) in ["cosmos", "materials"].enumerated() {
             let card = app.descendants(matching: .any)["home-featured-\(id)"]
             for _ in 0..<6 where !(card.exists && card.isHittable) {
                 app.swipeUp(velocity: .slow)
@@ -407,6 +422,7 @@ final class SceneViewDemoUITests: XCTestCase {
     /// whole catalogue back.
     func testWhatsNewRowOpensTheSheetAndTheChipFiltersWithAWayOut() {
         let app = Self.makeApp()
+        app.launchArguments += Self.freshnessBuild
         app.launch()
         let row = app.descendants(matching: .any)["home-whats-new-row"]
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
@@ -466,6 +482,39 @@ final class SceneViewDemoUITests: XCTestCase {
         capture(app, "whats-new-05-all-again")
         XCTAssertFalse(showAll.exists, "\"Show all\" is still there over the whole catalogue")
         XCTAssertTrue(chip.exists && !chip.isSelected, "\"Show all\" did not clear the What's new chip")
+    }
+
+    /// Android's "since you last tested" flow. Launched as an install that last
+    /// acknowledged 4.40.0 (the argument domain stands in for the stored
+    /// marker): the header's sparkle carries the badge and opens the since
+    /// sheet; "Got it" clears the badge.
+    func testWhatsNewSinceSheet() {
+        let app = Self.makeApp()
+        app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
+        app.launchArguments += Self.freshnessBuild
+        app.launch()
+
+        let sparkle = app.buttons["home-whats-new"]
+        XCTAssertTrue(sparkle.waitForExistence(timeout: 30), "the header's What's new button never appeared")
+        let badge = app.descendants(matching: .any)["home-whats-new-badge"]
+        XCTAssertTrue(badge.waitForExistence(timeout: 10), "nothing is badged although 4.40.0 is long past")
+        Thread.sleep(forTimeInterval: 2)
+        capture(app, "since-01-home-badged")
+
+        sparkle.tap()
+        let title = app.descendants(matching: .any)["whats-new-since-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "the since sheet never opened")
+        Thread.sleep(forTimeInterval: 1.5)
+        capture(app, "since-02-sheet")
+
+        let gotIt = app.buttons["whats-new-since-got-it"]
+        for _ in 0..<15 where !(gotIt.exists && gotIt.isHittable) {
+            app.descendants(matching: .any)["whats-new-since-sheet"].firstMatch.swipeUp(velocity: .fast)
+        }
+        XCTAssertTrue(gotIt.isHittable, "\"Got it\" is out of reach")
+        gotIt.tap()
+        XCTAssertTrue(waitForDisappearance(of: title, timeout: 6), "\"Got it\" did not close the sheet")
+        XCTAssertTrue(waitForDisappearance(of: badge, timeout: 4), "\"Got it\" left the badge on")
     }
 
     /// Swipes the page up until `element` can take a tap.

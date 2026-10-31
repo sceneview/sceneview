@@ -7,10 +7,11 @@ import SceneViewSwift
 /// About tab — per the SceneView design system (`DESIGN.md` "Demo App About").
 ///
 /// The identity block (launcher icon, name, version, tagline) flat on the page,
-/// the "More apps built with SceneView" group, then a series of
-/// `.regularMaterial` row cards (Open Source, Docs, GitHub, 3D Playground,
-/// Credits), and a footer with attribution. The support card sits right under
-/// the identity block, as on Android (see "Support" below).
+/// then Android's grouped rows: **Learn** (Documentation, 3D Playground,
+/// source), **App** (HD pack, release notes), the "More apps built with
+/// SceneView" group, privacy, **Legal** (licence, credits), and a footer with
+/// attribution. The support card sits right under the identity block, as on
+/// Android (see "Support" below).
 struct AboutTab: View {
     private static let version: String = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -26,21 +27,20 @@ struct AboutTab: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 20) {
+                LazyVStack(spacing: SceneViewTokens.Space.xl) {
                     identity
                     supportCard
-                    if !HDPackStore.shared.manifest.assets.isEmpty {
-                        HDPackSettingsRow()
-                    }
+                    learnGroup
+                    appGroup
                     #if os(iOS)
                     AboutMoreAppsSection()
                     #endif
-                    aboutCards
                     // Shown before Firebase is configured too: in the consent zone the
                     // switch is how a refusal is reversed.
                     if FirebaseTelemetry.hasBundledConfig {
                         PrivacySettingsSection()
                     }
+                    legalGroup
                     footer
                 }
                 // One gutter and one bottom inset for the three tabs: the same
@@ -67,9 +67,8 @@ struct AboutTab: View {
     /// The mark, the name, the installed version, one sentence — the iOS twin
     /// of Android's `AboutIdentity` (#3564, #3808).
     ///
-    /// Deliberately **not** a card (`DESIGN.md` "Demo App About"): a slab here
-    /// is a second emphasised surface competing with the support card right
-    /// under it. On the page's `surface` the block reads as a masthead instead.
+    /// Deliberately **not** a card (`DESIGN.md` "Demo App About"): on the
+    /// page's `surface` the block reads as a masthead, above the groups.
     private var identity: some View {
         VStack(spacing: SceneViewTokens.Space.sm) {
             // The stage: the launcher icon's cube as a real object, turning
@@ -87,11 +86,11 @@ struct AboutTab: View {
             // Version as text, not a material pill: a pill is one more surface
             // in a block that must sit flat on the page.
             Text("Version \(Self.version)")
-                .font(.footnote)
+                .font(SceneViewTokens.TypeScale.captionRegular)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
-            Text("3D & AR for Jetpack Compose, SwiftUI, and the Web.\nDeclarative, AI-friendly, open source.")
-                .font(.callout)
+            Text("Open-source 3D and AR for Compose, SwiftUI and the Web.")
+                .font(SceneViewTokens.TypeScale.body)
                 .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -100,55 +99,56 @@ struct AboutTab: View {
         .padding(.top, SceneViewTokens.Space.sm)
     }
 
-    // MARK: - About cards
+    // MARK: - Groups
 
-    private var aboutCards: some View {
-        VStack(spacing: 12) {
-            AboutCard(
-                icon: "heart.circle.fill",
-                iconColor: .pink,
-                title: "Open Source",
-                subtitle: "Apache 2.0 — free for any project, forever",
-                trailing: nil,
-                action: nil
-            )
+    private static let repository = "https://github.com/sceneview/sceneview"
 
-            AboutCard(
-                icon: "book.fill",
-                iconColor: .blue,
-                title: "Documentation",
-                subtitle: "Guides, API reference, recipes",
-                trailing: .link,
-                url: URL(string: "https://sceneview.github.io")
-            )
-
-            AboutCard(
-                icon: "chevron.left.forwardslash.chevron.right",
-                iconColor: .indigo,
-                title: "GitHub",
-                subtitle: "Source, issues, releases",
-                trailing: .link,
-                url: URL(string: "https://github.com/sceneview/sceneview")
-            )
-
-            AboutCard(
-                icon: "sparkles",
-                iconColor: .orange,
-                title: "3D Playground",
-                subtitle: "Try every feature in the browser",
-                trailing: .link,
-                url: URL(string: "https://sceneview.github.io/playground.html")
-            )
-
-            AboutCard(
-                icon: "person.2.fill",
-                iconColor: .teal,
-                title: "Credits",
-                subtitle: "Authors & licenses for every bundled and streamed 3D asset",
-                trailing: .chevron,
-                action: { showCreditsSheet = true }
-            )
+    /// Android's "Learn" group.
+    private var learnGroup: some View {
+        AboutGroup(title: "Learn") {
+            AboutRow(icon: "book.fill", tint: SceneViewTokens.HomeColor.primary,
+                     title: "Documentation", subtitle: "Guides, API reference, recipes",
+                     destination: .link(URL(string: "https://sceneview.github.io")))
+            AboutRow(icon: "cube.transparent", tint: SceneViewTokens.HomeColor.secondary,
+                     title: "3D Playground", subtitle: "Try every feature in the browser",
+                     destination: .link(URL(string: "https://sceneview.github.io/playground.html")))
+            AboutRow(icon: "chevron.left.forwardslash.chevron.right", tint: SceneViewTokens.HomeColor.tertiary,
+                     title: "Source on GitHub", subtitle: "Code, issues and discussions",
+                     destination: .link(URL(string: Self.repository)))
         }
+        .accessibilityIdentifier("about-group-learn")
+    }
+
+    /// Android's "App" group: the HD pack (its own row card), then the
+    /// release notes. Android's feedback and Labs rows have no iOS feature
+    /// behind them yet.
+    private var appGroup: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            AboutGroupHeader(title: "App")
+            if !HDPackStore.shared.manifest.assets.isEmpty {
+                HDPackSettingsRow()
+            }
+            AboutGroupCard {
+                AboutRow(icon: "sparkles", tint: SceneViewTokens.HomeColor.primary,
+                         title: "Release notes", subtitle: "What changed in every version",
+                         destination: .link(URL(string: "\(Self.repository)/releases")))
+            }
+        }
+        .accessibilityIdentifier("about-group-app")
+    }
+
+    /// Android's "Legal" group.
+    private var legalGroup: some View {
+        AboutGroup(title: "Legal") {
+            AboutRow(icon: "doc.text", tint: SceneViewTokens.HomeColor.secondary,
+                     title: "License: Apache-2.0", subtitle: "Free for any project, forever",
+                     destination: .link(URL(string: "\(Self.repository)/blob/main/LICENSE")))
+            AboutRow(icon: "person.2.fill", tint: SceneViewTokens.HomeColor.tertiary,
+                     title: "Credits & model attribution",
+                     subtitle: "Authors and licences of every bundled and streamed 3D asset",
+                     destination: .action { showCreditsSheet = true })
+        }
+        .accessibilityIdentifier("about-group-legal")
     }
 
     // MARK: - Support
@@ -195,95 +195,136 @@ struct AboutTab: View {
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Text("Made with")
-                Image(systemName: "heart.fill")
-                    .foregroundStyle(.red)
-                Text("by Thomas Gorisse")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Text("and the SceneView contributors")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(spacing: SceneViewTokens.Space.xs) {
+            (Text("Made with ")
+                + Text(Image(systemName: "heart.fill")).foregroundStyle(SceneViewTokens.HomeColor.error)
+                + Text(" by Thomas Gorisse and the SceneView contributors"))
+                .accessibilityLabel("Made with love by Thomas Gorisse and the SceneView contributors")
+            Text("Built with RealityKit and ARKit")
         }
-        .padding(.top, 8)
+        .font(SceneViewTokens.TypeScale.captionRegular)
+        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Liquid Glass row card
+// MARK: - Grouped rows
 
-private struct AboutCard: View {
-    enum Trailing {
-        case link
-        case chevron
+/// The uppercase caption over a group — the "More apps" group's header.
+private struct AboutGroupHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(SceneViewTokens.TypeScale.captionSemibold)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+            .textCase(.uppercase)
+            .padding(.leading, SceneViewTokens.Space.xs)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// One material card of rows, a hairline between them.
+private struct AboutGroupCard<Rows: View>: View {
+    @ViewBuilder let rows: () -> Rows
+
+    var body: some View {
+        let about = SceneViewTokens.About.self
+        let shape = RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
+        VStack(spacing: 0) {
+            Group(subviews: rows()) { subviews in
+                ForEach(subviews.indices, id: \.self) { index in
+                    if index > 0 {
+                        Divider()
+                            .overlay(SceneViewTokens.HomeColor.outlineSubtle)
+                            // Starts under the title, past the tile's slot.
+                            .padding(.leading, about.rowInset * 2 + SceneViewTokens.Glass.iconButtonSize)
+                    }
+                    subviews[index]
+                }
+            }
+        }
+        .materialGlassBackground(in: shape)
+        .overlay(shape.strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                                    lineWidth: SceneViewTokens.Home.cardOutlineWidth))
+    }
+}
+
+/// A titled group — Android's `AboutGroup`.
+private struct AboutGroup<Rows: View>: View {
+    let title: String
+    @ViewBuilder let rows: () -> Rows
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
+            AboutGroupHeader(title: title)
+            AboutGroupCard(rows: rows)
+        }
+    }
+}
+
+/// One row: a tinted glyph tile, title and subtitle, and the arrow of a row
+/// that leaves the app or the chevron of one that opens a sheet.
+private struct AboutRow: View {
+    enum Destination {
+        case link(URL?)
+        case action(() -> Void)
     }
 
     let icon: String
-    let iconColor: Color
+    let tint: Color
     let title: String
     let subtitle: String
-    let trailing: Trailing?
-    var url: URL? = nil
-    var action: (() -> Void)? = nil
+    let destination: Destination
 
     var body: some View {
-        if let url = url {
-            Link(destination: url) {
-                cardContent
+        switch destination {
+        case .link(let url):
+            if let url {
+                Link(destination: url) { content(trailing: "arrow.up.right") }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(title): \(subtitle). Opens \(url.host ?? "link")")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(title): \(subtitle). Opens \(url.host ?? "link")")
-        } else if let action = action {
-            Button(action: action) { cardContent }
+        case .action(let action):
+            Button(action: action) { content(trailing: "chevron.right") }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(title): \(subtitle)")
-        } else {
-            cardContent
-                .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(title): \(subtitle)")
         }
     }
 
-    private var cardContent: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(iconColor.opacity(0.18))
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(iconColor)
-            }
-            .frame(width: 44, height: 44)
-            .accessibilityHidden(true)
+    private func content(trailing: String) -> some View {
+        let about = SceneViewTokens.About.self
+        return HStack(spacing: about.rowInset) {
+            RoundedRectangle(cornerRadius: SceneViewTokens.Radius.sm, style: .continuous)
+                .fill(tint.opacity(0.18))
+                .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
+                .overlay {
+                    Image(systemName: icon)
+                        .font(.system(size: SceneViewTokens.Layout.dockIconSize, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+                .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs / 2) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(SceneViewTokens.TypeScale.bodySemibold)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                 Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(SceneViewTokens.TypeScale.captionRegular)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .lineLimit(2)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 4)
-
-            if let trailing = trailing {
-                Image(systemName: trailing == .link ? "arrow.up.right" : "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
+            Image(systemName: trailing)
+                .font(SceneViewTokens.TypeScale.captionSemibold)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceFaint)
+                .accessibilityHidden(true)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .materialGlassBackground(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-        )
+        .padding(.horizontal, about.rowInset)
+        .padding(.vertical, SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
+        .contentShape(Rectangle())
     }
 }
 
@@ -356,7 +397,8 @@ private struct AboutMoreAppsSection: View {
             .materialGlassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: SceneViewTokens.Radius.md, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    .strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
+                                  lineWidth: SceneViewTokens.Home.cardOutlineWidth)
             )
         }
     }
@@ -365,7 +407,7 @@ private struct AboutMoreAppsSection: View {
 /// One app of the "More apps" group: its App Store icon, its name, one line on
 /// what it does, and the arrow every row that leaves the app carries.
 ///
-/// A `Link`, like `AboutCard`: it opens through the environment's `openURL`,
+/// A `Link`, like `AboutRow`: it opens through the environment's `openURL`,
 /// so `trackOutboundLinks()` logs it as a `store` outbound link.
 private struct AboutAppRow: View {
     let app: MoreApp
@@ -395,7 +437,7 @@ private struct AboutAppRow: View {
                 .overlay(iconShape.strokeBorder(SceneViewTokens.HomeColor.outlineSubtle,
                                                 lineWidth: about.appIconHairline))
                 .frame(width: about.appIcon, height: about.appIcon)
-                // Centred in the slot of an `AboutCard`'s tile, so the name
+                // Centred in the slot of an `AboutRow`'s tile, so the name
                 // starts on the same line as the titles of the cards below.
                 .frame(width: SceneViewTokens.Glass.iconButtonSize, height: SceneViewTokens.Glass.iconButtonSize)
                 // Decorative: the name beside it is the row's accessible name.
@@ -403,11 +445,11 @@ private struct AboutAppRow: View {
 
             VStack(alignment: .leading, spacing: SceneViewTokens.Space.xs / 2) {
                 Text(app.name)
-                    .font(.subheadline.weight(.semibold))
+                    .font(SceneViewTokens.TypeScale.bodySemibold)
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(app.summary)
-                    .font(.caption)
+                    .font(SceneViewTokens.TypeScale.captionRegular)
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -415,8 +457,8 @@ private struct AboutAppRow: View {
             Spacer(minLength: SceneViewTokens.Space.xs)
 
             Image(systemName: "arrow.up.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .font(SceneViewTokens.TypeScale.captionSemibold)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceFaint)
         }
         .padding(.horizontal, about.rowInset)
         .padding(.vertical, SceneViewTokens.Space.sm + SceneViewTokens.Space.xs)
