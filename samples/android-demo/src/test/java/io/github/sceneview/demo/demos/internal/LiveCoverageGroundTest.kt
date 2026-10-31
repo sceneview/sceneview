@@ -79,4 +79,76 @@ class LiveCoverageGroundTest {
         assertEquals(2 * 32, live.hatch.triangleCount)
         assertEquals(result.slab.triangleCount, live.slab.triangleCount)
     }
+
+    /** [perCell] dense points at the centre of each (column, row) cell of [cell] metres. */
+    private fun points(cells: List<Pair<Int, Int>>, perCell: (Int, Int) -> Int): FloatArray {
+        val out = ArrayList<Float>()
+        for ((c, r) in cells) repeat(perCell(c, r)) {
+            out += (c + 0.5f) * cell
+            out += 0f
+            out += (r + 0.5f) * cell
+        }
+        return out.toFloatArray()
+    }
+
+    private val threeByThree = (0 until 9).map { it % 3 to it / 3 }
+
+    @Test
+    fun aCoveredCellWithFewPointsIsToRedo() {
+        val covered = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
+        val cloud = points(threeByThree) { c, r -> if (c == 1 && r == 1) 2 else 20 }
+        val weak = LiveCoverageGround.weakCells(cloud, covered, cell)
+        assertEquals(listOf(CoverageGrid.key(1, 1)), weak.toList())
+    }
+
+    @Test
+    fun anEvenScanHasNothingToRedo() {
+        val covered = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
+        val cloud = points(threeByThree) { _, _ -> 12 }
+        assertEquals(0, LiveCoverageGround.weakCells(cloud, covered, cell).size)
+    }
+
+    @Test
+    fun tooLittleScannedToJudge() {
+        // Two cells, or a sparse cloud: nothing is called weak on so little.
+        val two = listOf(0 to 0, 1 to 0)
+        val covered = two.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
+        assertEquals(0, LiveCoverageGround.weakCells(points(two) { c, _ -> if (c == 0) 1 else 30 }, covered, cell).size)
+        val all = threeByThree.map { (c, r) -> CoverageGrid.key(c, r) }.toLongArray()
+        val sparse = points(threeByThree) { c, _ -> if (c == 0) 0 else 2 }
+        assertEquals(0, LiveCoverageGround.weakCells(sparse, all, cell).size)
+    }
+
+    @Test
+    fun aWeakCellIsCoveredButToRedo() {
+        val covered = LongArray(8) { CoverageGrid.key(it, 0) }
+        val ground = requireNotNull(
+            LiveCoverageGround.of(covered, cell, square, 0f, weak = longArrayOf(CoverageGrid.key(2, 0))),
+        )
+        assertEquals(ScanGround.WEAK, ground.at(2, 0))
+        assertEquals(ScanGround.SEEN, ground.at(3, 0))
+        // Still covered: it counts toward the share scanned.
+        assertEquals(8, ground.seen)
+        assertEquals(1, ground.weak)
+        // A weak cell outside the covered ones is not drawn as one.
+        val stray = requireNotNull(LiveCoverageGround.of(covered, cell, square, 0f, weak = longArrayOf(CoverageGrid.key(4, 4))))
+        assertEquals(ScanGround.MISSING, stray.at(4, 4))
+    }
+
+    @Test
+    fun theLiveMapTintsWhatIsDoneAndWhatIsToRedo() {
+        val covered = LongArray(8) { CoverageGrid.key(it, 0) }
+        val ground = requireNotNull(
+            LiveCoverageGround.of(covered, cell, square, 0f, weak = longArrayOf(CoverageGrid.key(2, 0))),
+        )
+        val live = ScanGroundMeshes.of(ground, hatchMissing = true)
+        assertEquals(2 * 7, live.seenFill.triangleCount)
+        assertEquals(2 * 1, live.weakFill.triangleCount)
+        // No hatch on a cell to redo: the hatch is for the floor not scanned at all.
+        assertEquals(2 * 56, live.hatch.triangleCount)
+        // The result keeps its slab plain.
+        val result = ScanGroundMeshes.of(ground)
+        assertEquals(0, result.seenFill.triangleCount)
+        assertEquals(0, result.weakFill.triangleCount)
+    }
 }

@@ -22,7 +22,13 @@ internal object LiveCoverageGround {
      * floor [extent] ((x, z), any winding), at [floorY]. `null` with nothing covered and no extent.
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod")
-    fun of(covered: LongArray, cellM: Float, extent: List<Pair<Float, Float>>, floorY: Float): ScanGround? {
+    fun of(
+        covered: LongArray,
+        cellM: Float,
+        extent: List<Pair<Float, Float>>,
+        floorY: Float,
+        weak: LongArray = LongArray(0),
+    ): ScanGround? {
         val polygon = extent.takeIf { it.size >= MIN_POLYGON }
         if (covered.isEmpty() && polygon == null) return null
         var minC = Int.MAX_VALUE
@@ -64,8 +70,52 @@ internal object LiveCoverageGround {
             val r = CoverageGrid.czOf(key) - minR
             if (c in 0 until columns && r in 0 until rows) cells[r * columns + c] = ScanGround.SEEN
         }
+        for (key in weak) {
+            val c = CoverageGrid.cxOf(key) - minC
+            val r = CoverageGrid.czOf(key) - minR
+            if (c !in 0 until columns || r !in 0 until rows) continue
+            if (cells[r * columns + c] == ScanGround.SEEN) cells[r * columns + c] = ScanGround.WEAK
+        }
         return ScanGround.ofCells(floorY, cellM, minC * cellM, minR * cellM, columns, rows, cells)
     }
+
+    /**
+     * The [covered] cells (keys of [CoverageGrid.key], [cellM] on a side) the dense cloud
+     * [positions] (x, y, z triples) holds too few points in: fewer than [WEAK_SHARE] of the median
+     * covered cell's. The camera passed there, but the room's surface did not stick — a cell to
+     * scan again. Nothing is weak until [MIN_JUDGED_CELLS] cells are covered and the median cell
+     * holds [MIN_MEDIAN_POINTS]: too little scanned to judge.
+     */
+    fun weakCells(positions: FloatArray, covered: LongArray, cellM: Float): LongArray {
+        if (covered.size < MIN_JUDGED_CELLS || cellM <= 0f) return LongArray(0)
+        val counts = HashMap<Long, Int>(covered.size * 2)
+        for (key in covered) counts[key] = 0
+        for (i in 0 until positions.size / 3) {
+            val key = CoverageGrid.key(floor(positions[i * 3] / cellM).toInt(), floor(positions[i * 3 + 2] / cellM).toInt())
+            val n = counts[key] ?: continue
+            counts[key] = n + 1
+        }
+        val sorted = counts.values.sorted()
+        val median = sorted[sorted.size / 2]
+        if (median < MIN_MEDIAN_POINTS) return LongArray(0)
+        val below = median * WEAK_SHARE
+        return covered.filter { (counts[it] ?: 0) < below }.toLongArray()
+    }
+
+    /**
+     * Whether the live map paints [weakCells] in red, "to redo". Off: the heuristic is not tuned
+     * yet (it counts every point above a cell, the walls' too), so it flagged cells that were fine.
+     */
+    const val SHOW_WEAK_CELLS = false
+
+    /** A covered cell under this share of the median cell's points is weak. */
+    const val WEAK_SHARE = 0.25f
+
+    /** Covered cells before any is judged weak. */
+    const val MIN_JUDGED_CELLS = 4
+
+    /** Points the median covered cell holds before any is judged weak. */
+    const val MIN_MEDIAN_POINTS = 6
 
     /** Whether (x, z) lies inside [polygon], by the even-odd rule. */
     fun contains(polygon: List<Pair<Float, Float>>, x: Float, z: Float): Boolean {
