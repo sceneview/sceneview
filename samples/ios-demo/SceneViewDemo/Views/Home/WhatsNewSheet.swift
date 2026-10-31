@@ -206,6 +206,8 @@ private struct ShowMoreToggle: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(expanded ? lessLabel : moreLabel)
+        // Android's TalkBack state (#4886).
+        .accessibilityValue(expanded ? "Expanded" : "Collapsed")
     }
 }
 
