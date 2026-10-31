@@ -471,10 +471,10 @@ fun RootScreen(
  *   in the tracker.
  */
 /**
- * How much of the fade-through the outgoing tab owns. Material's split: the old
- * surface is gone before the new one starts, so no frame shows two tabs at once.
+ * How much of the fade-through the outgoing tab owns: `motion-fade-through`'s out half,
+ * shared with the container transform so the two never drift apart.
  */
-private const val TAB_FADE_OUT_MILLIS = 90
+private const val TAB_FADE_OUT_MILLIS = SceneViewTokens.Motion.fadeThroughOutMillis
 
 /** Scale a fading tab starts from / ends at — a hint of depth, never a zoom. */
 private const val TAB_FADE_THROUGH_SCALE = 0.96f
