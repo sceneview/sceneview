@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.UTurnLeft
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sceneview.demo.demos.internal.CaptureChrome
+import io.github.sceneview.demo.demos.internal.CaptureCue
 import io.github.sceneview.demo.demos.internal.ScanActivity
 import io.github.sceneview.demo.demos.internal.RescanRefusal
 import io.github.sceneview.demo.demos.internal.ScanSaveFailure
@@ -82,6 +84,7 @@ import io.github.sceneview.demo.demos.internal.ArDebugSession
 import io.github.sceneview.demo.demos.internal.ScanCopy
 import io.github.sceneview.demo.demos.internal.ScanPhase
 import io.github.sceneview.demo.demos.internal.ScanScopeCopy
+import io.github.sceneview.demo.demos.internal.ScanStep
 import io.github.sceneview.demo.theme.LocalStageChrome
 import io.github.sceneview.demo.theme.SceneViewTokens
 import io.github.sceneview.demo.theme.SceneViewTokens.ArOverlay
@@ -102,7 +105,8 @@ import io.github.sceneview.loaders.ModelLoader
  * points captured, counted off the scan from zero and never shown against a cap.
  *
  * [activity] says what the capture is doing ([ScanActivity]); a room's scan adds its [room] gauge:
- * the walls found and how far along the room is ([ScanRoomGauge]).
+ * the walls found and how far along the room is ([ScanRoomGauge]), [complete] once
+ * [RoomCompletion] says so. [trackingLost] reads at the top as `Tracking lost`, not as a pause.
  */
 @Composable
 internal fun ScanHud(
@@ -112,8 +116,13 @@ internal fun ScanHud(
     label: String? = null,
     activity: ScanActivity? = null,
     room: ScanWallsState? = null,
+    floorShare: Float = 0f,
+    covered: Float? = null,
+    complete: Boolean = room != null && CaptureChrome.complete(room.done, floorShare),
+    trackingLost: Boolean = false,
 ) {
     val clock = ArDebugFormat.clock(seconds)
+    val share = room?.let { CaptureChrome.share(it.completion, it.done, floorShare, complete) }
     OverlayCard(testTag = SCAN_HUD_TAG) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -128,39 +137,36 @@ internal fun ScanHud(
                     ),
             )
             Spacer(Modifier.width(Space.sm))
-            // What is being scanned leads (#4647): `Room 2 · Scanning · 0:42`.
-            // Working, paused or stuck (#4540): stuck says so, and the coaching line says why.
-            val status = activity?.let { ScanCopy.status(it, clock) } ?: ScanCopy.status(phase, clock)
+            // What is being scanned leads (#4647), then the useful state, not "Scanning": how far
+            // the room is, the floor covered, stuck or paused; past the capture, what it is doing.
+            val now = activity ?: if (phase.integrates) ScanActivity.Working else ScanActivity.Paused
             Text(
-                text = label?.let { "$it · $status" } ?: status,
-                style = OnScrimTitle,
+                text = CaptureChrome.headline(label, phase, now, share, covered.takeIf { room == null }, trackingLost),
+                style = ScanLineStyle.copy(color = ArOverlay.onScrim),
                 modifier = Modifier.weight(1f),
             )
         }
-        // One line for both counts on a room's scan (#4807): `274,778 points captured · 3 walls`.
-        // A line less of card over the top of the camera, where the next wall's dashes are drawn.
+        // One line under it (#4807): `3 of 4 walls · 0:42` on a room, `0:42 · 1,234 points captured`.
         Text(
-            text = room?.let { "${ScanCopy.pointsCaptured(points)} · ${ScanCopy.wallsFound(it.wallCount)}" }
-                ?: ScanCopy.pointsCaptured(points),
-            style = OnScrimBody,
+            text = CaptureChrome.detail(clock, room?.wallCount, points),
+            style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.testTag(SCAN_POINTS_TAG),
         )
-        if (room != null) ScanRoomGauge(room)
+        if (share != null) ScanRoomGauge(share, complete)
     }
 }
 
 /**
  * A room's scan so far (#4540 live walls): a ten-segment meter under the HUD's `· 3 walls` (DESIGN.md "Meters",
- * one segment per 10 %), lit in `accent-progress`, then `accent-success` once the walls close the
- * room — the moment to tap stop. The share is the meter alone, said aloud to TalkBack: the one
+ * one segment per 10 %), lit in `accent-progress`, then `accent-success` once the room is complete
+ * ([CaptureChrome.complete]: walls closed and floor covered) — the moment to tap stop. The share is the meter alone, said aloud to TalkBack: the one
  * figure on screen is the map's area, once two walls are seen.
  */
 @Composable
-internal fun ScanRoomGauge(room: ScanWallsState) {
-    val done = room.done
-    val share = room.completion
+internal fun ScanRoomGauge(share: Float, complete: Boolean) {
+    val done = complete
     val lit = if (done) ArOverlay.accentSuccess else ArOverlay.accentProgress
     Column(
         verticalArrangement = Arrangement.spacedBy(Space.xs),
@@ -242,7 +248,8 @@ internal fun BoxScope.ScanTurnArrow(turn: ScanTurn?) {
 private const val GAUGE_SEGMENTS = 10
 
 /**
- * Under a capture still open: the one coaching line, then the camera app's record control (#4807).
+ * Under a capture still open: the one cue — what blocks, or else the next step — then the camera
+ * app's record control (#4807), its stop named "Stop and review", then the Scan › Review › Model row.
  * The red stop shutter — the one REC knows from every camera — sits in the middle from the first
  * frame to the last and ends the capture (Finish: the review opens); Pause, the secondary, is a
  * smaller disc beside it and turns into Resume (a play glyph) while paused. Nothing swaps places:
@@ -251,17 +258,19 @@ private const val GAUGE_SEGMENTS = 10
 @Composable
 internal fun ScanControls(
     phase: ScanPhase,
-    coaching: String?,
+    cue: CaptureCue?,
     onTogglePause: () -> Unit,
     onFinish: () -> Unit,
     resumeLabel: String = ScanCopy.RESUME,
+    complete: Boolean = false,
 ) {
+    CaptureChromeHaptics(cue, complete)
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Space.md).testTag(SCAN_CONTROLS_TAG),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        if (coaching != null) ScanHint(coaching)
+        if (cue != null) ScanCueLine(cue)
         Row(
             modifier = Modifier.widthIn(max = ArOverlay.maxWidth).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -274,17 +283,29 @@ internal fun ScanControls(
                     onClick = onTogglePause,
                 )
             }
+            // On a solid disc: the white ring and the red square vanish on a sunlit wall otherwise.
             RecordShutter(
                 isRecording = true,
                 startEnabled = true,
                 onStart = {},
                 onStop = onFinish,
-                modifier = Modifier.testTag(SCAN_FINISH_TAG),
-                stopLabel = ScanCopy.FINISH_SCAN,
+                modifier = Modifier.testTag(SCAN_FINISH_TAG).background(ScanControlFill, CircleShape),
+                stopLabel = CaptureChrome.STOP_AND_REVIEW,
             )
-            // The shutter's mirror: it stays centred on the screen, as a camera's does.
-            Spacer(Modifier.weight(1f))
+            // The shutter's mirror keeps it centred, as a camera's is, and says what it does.
+            Box(Modifier.weight(1f).padding(start = Space.sm), contentAlignment = Alignment.CenterStart) {
+                Text(
+                    text = CaptureChrome.STOP_AND_REVIEW,
+                    style = ScanLineStyle,
+                    color = ArOverlay.onScrim,
+                    maxLines = 2,
+                    modifier = Modifier
+                        .background(ScanControlFill, RoundedCornerShape(SceneViewTokens.Radius.sm))
+                        .padding(horizontal = Space.sm, vertical = Space.xs),
+                )
+            }
         }
+        ScanStepRow(ScanStep.of(phase))
     }
 }
 
@@ -325,9 +346,10 @@ internal fun ScanReviewCard(
     onSave: () -> Unit,
 ) {
     OverlayCard(testTag = SCAN_REVIEW_TAG) {
+        ScanStepRow(ScanStep.Review)
         Text(text = if (empty) ScanCopy.EMPTY_TITLE else ScanCopy.REVIEW_TITLE, style = OnScrimTitle)
-        Text(text = if (empty) ScanCopy.EMPTY_DETAIL else figures, style = OnScrimBody)
-        if (!empty) Text(text = ScanCopy.REVIEW_DETAIL, style = OnScrimBody)
+        Text(text = if (empty) ScanCopy.EMPTY_DETAIL else figures, style = ScanDetailStyle.copy(color = ArOverlay.onScrimMuted))
+        if (!empty) Text(text = CaptureChrome.REVIEW_DETAIL, style = ScanDetailStyle.copy(color = ArOverlay.onScrim))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
             if (empty) {
                 Button(onClick = onKeepScanning, modifier = Modifier.weight(1f)) { Text(ScanCopy.KEEP_SCANNING) }
@@ -335,7 +357,7 @@ internal fun ScanReviewCard(
                 FilledTonalButton(onClick = onKeepScanning, modifier = Modifier.weight(1f)) {
                     Text(ScanCopy.KEEP_SCANNING)
                 }
-                Button(onClick = onSave, modifier = Modifier.weight(1f)) { Text(ScanCopy.SAVE_SCAN) }
+                Button(onClick = onSave, modifier = Modifier.weight(1f)) { Text(CaptureChrome.BUILD_MODEL) }
             }
         }
     }
@@ -408,6 +430,7 @@ internal fun HomeReviewCard(
 @Composable
 internal fun ScanSavingCard(points: Int = 0) {
     OverlayCard(testTag = SCAN_SAVING_TAG) {
+        ScanStepRow(ScanStep.Model)
         Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(
                 modifier = Modifier.size(Space.md + Space.xs / 2),
@@ -537,19 +560,6 @@ internal fun ScanDiscardDialog(onCancel: () -> Unit, onDiscard: () -> Unit) {
             TextButton(onClick = onCancel) { Text(ScanCopy.CANCEL) }
         },
         modifier = Modifier.testTag(SCAN_DISCARD_TAG),
-    )
-}
-
-@Composable
-private fun ScanHint(text: String) {
-    Text(
-        text = text,
-        style = SceneViewTokens.Type.body.copy(color = ArOverlay.onScrim),
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .background(ArOverlay.scrimDark, CircleShape)
-            .padding(horizontal = Space.md, vertical = Space.sm)
-            .testTag(SCAN_HINT_TAG),
     )
 }
 
