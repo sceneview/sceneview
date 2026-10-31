@@ -414,33 +414,43 @@ final class SceneViewDemoUITests: XCTestCase {
         }
     }
 
-    /// A long "New in this build — try them" list opens folded, so the release
-    /// notes under it stay a short scroll away: "Show N more" unfolds the rest
-    /// in place and "Show less" folds it back.
-    func testWhatsNewLongTryListFoldsAndUnfolds() throws {
+    /// Android's `motion-expand` (#4883): a category with more than three
+    /// entries opens on its first three, "Show N more" unfolds the rest in
+    /// place and "Show less" folds it back. The since sheet from 4.40.0 spans
+    /// enough releases for one to fold.
+    func testWhatsNewSinceSheetFoldsLongCategories() throws {
         let app = Self.makeApp()
+        app.launchArguments += ["-whats_new_seen_version", "4.40.0"]
         app.launchArguments += Self.freshnessBuild
-        app.launchArguments += ["-qa_mode", "1"]
         app.launch()
-        let row = app.descendants(matching: .any)["home-whats-new-row"]
-        XCTAssertTrue(row.waitForExistence(timeout: 30), "the What's new row never appeared")
-        row.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["whats-new-sheet"].waitForExistence(timeout: 10),
-                      "the What's new sheet never opened")
-        let toggle = app.buttons["whats-new-try-more"]
+        let sparkle = app.buttons["home-whats-new"]
+        XCTAssertTrue(sparkle.waitForExistence(timeout: 30), "the header's What's new button never appeared")
+        sparkle.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["whats-new-since-sheet"].waitForExistence(timeout: 10),
+                      "the since sheet never opened")
+        let toggle = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'whats-new-more-'"))
+            .firstMatch
         guard toggle.waitForExistence(timeout: 3) else {
-            throw XCTSkip("the try list is short in this build: nothing to fold")
+            throw XCTSkip("no category has more than three entries since 4.40.0: nothing to fold")
         }
-        let demoRows = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'whats-new-demo-'"))
-        let folded = demoRows.count
-        XCTAssertTrue(toggle.label.hasPrefix("Show "), "unexpected label: \(toggle.label)")
+        let folded = toggle.label
+        XCTAssertTrue(folded.hasPrefix("Show ") && folded.hasSuffix(" entries") && !folded.hasPrefix("Show fewer"),
+                      "unexpected label: \(folded)")
+        // Bring the toggle on screen first: a tap scrolls to it, which would
+        // move it on its own.
+        let sheet = app.descendants(matching: .any)["whats-new-since-sheet"]
+        for _ in 0..<8 where !(toggle.isHittable && toggle.frame.maxY < app.frame.maxY * 0.8) {
+            sheet.swipeUp(velocity: .slow)
+        }
+        let below = toggle.frame.minY
         toggle.tap()
         Thread.sleep(forTimeInterval: 1)
-        XCTAssertGreaterThan(demoRows.count, folded, "Show more did not unfold the list")
-        XCTAssertEqual(toggle.label, "Show fewer new demos")
+        XCTAssertTrue(toggle.label.hasPrefix("Show fewer "), "Show more did not unfold: \(toggle.label)")
+        XCTAssertGreaterThan(toggle.frame.minY, below + 10, "the hidden entries did not appear above the toggle")
         toggle.tap()
         Thread.sleep(forTimeInterval: 1)
-        XCTAssertEqual(demoRows.count, folded, "Show less did not fold the list back")
+        XCTAssertEqual(toggle.label, folded, "Show less did not fold the category back")
     }
 
     /// "I still struggle to see where the new things are" (02/10), then "the

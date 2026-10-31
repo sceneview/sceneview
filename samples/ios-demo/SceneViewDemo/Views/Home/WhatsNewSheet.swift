@@ -12,21 +12,6 @@ struct WhatsNewSheet: View {
     let releases: [WhatsNewRelease]
     let tryDemos: [DemoItem]
     let onDemo: (DemoItem) -> Void
-    @State private var tryDemosExpanded = false
-
-    /// A long "try them" list opens on its first rows, so the release notes
-    /// under it are a short scroll away; "Show N more" unfolds the rest.
-    static let tryDemosCollapsedCount = 4
-    /// The list is folded only from this many demos on: unfolding one row
-    /// saves nothing.
-    static let tryDemosCollapseThreshold = 6
-
-    private var tryDemosFoldable: Bool { tryDemos.count >= Self.tryDemosCollapseThreshold }
-
-    private var shownTryDemos: [DemoItem] {
-        guard tryDemosFoldable, !tryDemosExpanded else { return tryDemos }
-        return Array(tryDemos.prefix(Self.tryDemosCollapsedCount))
-    }
 
     var body: some View {
         SheetNavigation(title: "What's new") {
@@ -41,19 +26,9 @@ struct WhatsNewSheet: View {
                             .font(SceneViewTokens.TypeScale.bodySemibold)
                             .foregroundStyle(SceneViewTokens.HomeColor.onSurface)
                             .accessibilityAddTraits(.isHeader)
-                        ForEach(shownTryDemos, id: \.sceneId) { demo in
+                        ForEach(tryDemos, id: \.sceneId) { demo in
                             TryDemoRow(demo: demo) { onDemo(demo) }
                                 .accessibilityIdentifier("whats-new-demo-\(demo.sceneId)")
-                                .transition(.opacity)
-                        }
-                        if tryDemosFoldable {
-                            ShowMoreToggle(
-                                expanded: $tryDemosExpanded,
-                                hiddenCount: tryDemos.count - Self.tryDemosCollapsedCount,
-                                moreLabel: "Show \(tryDemos.count - Self.tryDemosCollapsedCount) more new demos",
-                                lessLabel: "Show fewer new demos"
-                            )
-                            .accessibilityIdentifier("whats-new-try-more")
                         }
                     }
 
@@ -161,33 +136,8 @@ private struct TryDemoRow: View {
 
 /// One release — Android's `ReleaseSection`: "v4.51.0" and its date, the
 /// title when there is one, then a group per category in Added → Removed order.
-///
-/// A long release opens on its first `collapsedCount` entries, in that same
-/// category order, with "Show N more" under them; the rest unfold in place
-/// (height and opacity, `Spring`, or the plain `Spring.fade` under Reduce
-/// Motion) and "Show less" folds them back. Short ones show everything: a tap
-/// to reveal a single line saves nothing.
 private struct ReleaseSection: View {
     let release: WhatsNewRelease
-    @State private var expanded = false
-
-    static let collapsedCount = 3
-    /// A release is folded only from this many entries on.
-    static let collapseThreshold = 5
-
-    /// Every entry, in the order the groups list them.
-    private var ordered: [WhatsNewHighlight] {
-        WhatsNewCategory.allCases.flatMap { category in
-            release.highlights.filter { $0.category == category }
-        }
-    }
-
-    private var collapsible: Bool { release.highlights.count >= Self.collapseThreshold }
-
-    private var shown: [WhatsNewHighlight] {
-        guard collapsible, !expanded else { return ordered }
-        return Array(ordered.prefix(Self.collapsedCount))
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SceneViewTokens.Space.sm) {
@@ -209,36 +159,21 @@ private struct ReleaseSection: View {
                     .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
             }
             ForEach(WhatsNewCategory.allCases, id: \.self) { category in
-                let group = shown.filter { $0.category == category }
+                let group = release.highlights.filter { $0.category == category }
                 if !group.isEmpty {
                     CategoryGroup(category: category, highlights: group)
-                        .transition(.opacity)
                 }
-            }
-            if collapsible {
-                showMoreButton
             }
         }
         .accessibilityIdentifier("whats-new-release-\(release.version)")
     }
-
-    private var showMoreButton: some View {
-        let hidden = release.highlights.count - Self.collapsedCount
-        return ShowMoreToggle(
-            expanded: $expanded,
-            hiddenCount: hidden,
-            moreLabel: "Show \(hidden) more changes in version \(release.version)",
-            lessLabel: "Show fewer changes in version \(release.version)",
-            leadingInset: SceneViewTokens.Home.indicatorDot + SceneViewTokens.Space.sm
-        )
-        .accessibilityIdentifier("whats-new-release-more-\(release.version)")
-    }
 }
 
-/// "Show N more" / "Show less" under a folded list: the rows below unfold in
-/// place (height and opacity on `Spring`, or the plain `Spring.fade` under
-/// Reduce Motion), with a selection haptic and a spoken label that says what
-/// unfolds.
+/// "Show N more" / "Show less" under a folded list — Android's `ShowMoreToggle`
+/// (`motion-expand`): the rows below unfold in place (height and opacity on
+/// `Spring`, or the plain `Spring.fade` under Reduce Motion) and the chevron
+/// turns half a turn with them, with a selection haptic and a spoken label that
+/// says what unfolds.
 private struct ShowMoreToggle: View {
     @Binding var expanded: Bool
     let hiddenCount: Int
@@ -258,8 +193,9 @@ private struct ShowMoreToggle: View {
         } label: {
             HStack(spacing: SceneViewTokens.Space.xs) {
                 Text(expanded ? "Show less" : "Show \(hiddenCount) more")
-                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                Image(systemName: "chevron.down")
                     .font(SceneViewTokens.TypeScale.caption)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
                     .accessibilityHidden(true)
             }
             .font(SceneViewTokens.TypeScale.captionSemibold)
@@ -273,12 +209,25 @@ private struct ShowMoreToggle: View {
     }
 }
 
+/// One category of a release or a since section. Past `collapsedCount` entries
+/// it folds behind "Show N more" — Android's `WHATS_NEW_COLLAPSED_HIGHLIGHTS` /
+/// `SINCE_COLLAPSED_ENTRIES`: a release can list a dozen fixes, and the first
+/// few say what kind of release it was.
 private struct CategoryGroup: View {
     let category: WhatsNewCategory
     let highlights: [WhatsNewHighlight]
     /// The demos an entry names, as "Open …" chips — the since sheet only.
     var demosFor: (WhatsNewHighlight) -> [DemoItem] = { _ in [] }
     var onDemo: (DemoItem) -> Void = { _ in }
+    @State private var expanded = false
+
+    static let collapsedCount = 3
+
+    private var hiddenCount: Int { max(0, highlights.count - Self.collapsedCount) }
+
+    private var shown: ArraySlice<WhatsNewHighlight> {
+        expanded ? highlights[...] : highlights.prefix(Self.collapsedCount)
+    }
 
     var body: some View {
         let accent = category.accent
@@ -287,7 +236,7 @@ private struct CategoryGroup: View {
                 .font(SceneViewTokens.TypeScale.captionSemibold)
                 .foregroundStyle(accent)
                 .padding(.top, SceneViewTokens.Space.xs)
-            ForEach(Array(highlights.enumerated()), id: \.offset) { _, highlight in
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, highlight in
                 HStack(alignment: .firstTextBaseline, spacing: SceneViewTokens.Space.sm) {
                     Circle()
                         .fill(accent)
@@ -311,6 +260,18 @@ private struct CategoryGroup: View {
                     }
                     .padding(.leading, SceneViewTokens.Home.indicatorDot + SceneViewTokens.Space.sm)
                 }
+            }
+            .transition(.opacity)
+            if hiddenCount > 0 {
+                let label = category.label.lowercased()
+                ShowMoreToggle(
+                    expanded: $expanded,
+                    hiddenCount: hiddenCount,
+                    moreLabel: "Show \(hiddenCount) more \(label) entries",
+                    lessLabel: "Show fewer \(label) entries",
+                    leadingInset: SceneViewTokens.Home.indicatorDot + SceneViewTokens.Space.sm
+                )
+                .accessibilityIdentifier("whats-new-more-\(category.label)")
             }
         }
     }
