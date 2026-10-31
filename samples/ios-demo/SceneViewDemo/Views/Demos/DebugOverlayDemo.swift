@@ -10,11 +10,12 @@ import UIKit
 /// Spawns RealityKit `ModelEntity` spheres progressively and shows live FPS,
 /// frame time, node count, and estimated triangle count via a custom SwiftUI
 /// overlay (including a rolling FPS sparkline). A stress-test button ramps from
-/// 1 → 1 000 spheres over 10 s so you can watch the FPS drop in real time.
+/// 1 → 1 000 spheres over 10 s so you can watch the FPS drop in real time, and
+/// reports the first sustained dip below 55 fps as this run's node budget.
 ///
-/// Triangle estimate: each `MeshResource.generateSphere` at the default detail
-/// level produces ~768 triangles (12 subdivisions × 2 tris/face × 32 faces).
-/// The exact value is device-dependent; the estimate is intentionally honest.
+/// The cap and presets match Android's (`STRESS_TARGET`). Every sphere shares one
+/// `MeshResource` and one material, so the ramp measures draw cost alone, and the
+/// triangle count is read from that shared mesh, not estimated.
 ///
 /// Coverage: `sceneview://demo/debug-overlay`
 struct DebugOverlayDemo: View {
@@ -28,9 +29,14 @@ struct DebugOverlayDemo: View {
     @State private var stage = DebugOverlayStage()
     @State private var cameraPose: SceneCameraPose?
     @State private var viewSize: CGSize = .zero
+    @State private var firstSlowCount = 0
+    @State private var measuredCount = 0
+    @State private var stressTested = false
     @Environment(\.colorScheme) private var colorScheme
 
     private static let maxCount = 1_000
+    /// Android's verdict: three consecutive 250 ms samples under this, after a 1 s warm-up.
+    private static let slowFPS = 55.0
 
     // MARK: — Body
 
@@ -50,14 +56,13 @@ struct DebugOverlayDemo: View {
         // the sheet's. The old `.regularMaterial` card was near-white in
         // dark mode and the screen had no back button (#3766 P2 §3, §6).
         .demoChrome(
+            title: "Performance Test",
             dock: [
                 DockItem(icon: isStressRunning ? "stop.fill" : "gauge.with.needle",
                          label: isStressRunning ? "Stop" : "Stress test",
                          caption: isStressRunning ? nil : "1 → 1 000",
-                         selected: isStressRunning) {
-                    isStressRunning.toggle()
-                    if isStressRunning { targetCount = 1 }
-                }
+                         control: "stress",
+                         selected: isStressRunning) { toggleStress() }
             ],
             onReset: { isStressRunning = false; targetCount = 1 },
             accessory: {
@@ -68,7 +73,20 @@ struct DebugOverlayDemo: View {
                         .opacity(busy ? 0.6 : 1)
                 }
             }
-        )
+        ) {
+            Text("This test measures frame delivery as spheres are added. The first sustained dip below 55 fps marks this run’s practical limit against a 60 fps target.")
+                .font(.footnote)
+                .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Nodes: \(currentCount) / \(targetCount)")
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+            if currentCount < targetCount {
+                ProgressView(value: Double(currentCount), total: Double(max(targetCount, 1)))
+                Text("Spawning \(currentCount) / \(targetCount)…")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(SceneViewTokens.HomeColor.primary)
+            }
+        }
         .onAppear {
             fps.start()
             stage.setDark(colorScheme == .dark)
@@ -83,6 +101,36 @@ struct DebugOverlayDemo: View {
         .onChange(of: targetCount) { _, _ in reframe() }
         .task(id: targetCount)     { await spawnProgressively() }
         .task(id: isStressRunning) { await runStressRamp() }
+        .task(id: isStressRunning) { await watchForSlowdown() }
+    }
+
+    private func toggleStress() {
+        isStressRunning.toggle()
+        if isStressRunning {
+            // Start fresh from one sphere so the ramp is visible.
+            targetCount = 1
+            firstSlowCount = 0
+            measuredCount = 0
+            stressTested = true
+        }
+    }
+
+    /// Android's status banner, in its order of precedence.
+    private var verdict: (text: String, color: Color) {
+        if firstSlowCount > 0 {
+            return ("First sustained dip below 55 fps: about \(firstSlowCount) nodes in this run.",
+                    SceneViewTokens.ARChrome.warning)
+        }
+        if isStressRunning {
+            return ("Testing \(currentCount) nodes — looking for a sustained dip below 55 fps…",
+                    SceneViewTokens.Glass.onGlass)
+        }
+        if stressTested && measuredCount > 0 {
+            return ("No sustained dip below 55 fps observed through \(measuredCount) nodes.",
+                    SceneViewTokens.ARChrome.success)
+        }
+        return ("Start the stress test to find this device’s 60 fps node budget.",
+                SceneViewTokens.Glass.onGlassMuted)
     }
 
     // MARK: — 3D scene
@@ -127,14 +175,23 @@ struct DebugOverlayDemo: View {
             let fpsColor: Color = fpsValue >= 55 ? SceneViewTokens.ARChrome.success
                 : fpsValue >= 30 ? SceneViewTokens.ARChrome.warning
                 : SceneViewTokens.ARChrome.danger
-            Text(String(format: "FPS: %.1f", fpsValue)).foregroundStyle(fpsColor)
-            Text(String(format: "Frame: %.1f ms", fps.frameTimeMs))
-            Text("Nodes: \(currentCount) / \(targetCount)")
-            Text("Tris: ≈\(formatThousands(Int64(currentCount) * 768))")
+            Text(String(format: "Frame rate: %.1f fps · target 60", fpsValue)).foregroundStyle(fpsColor)
+            Text(String(format: "Frame time: %.1f ms · aim ≤ 16.7", fps.frameTimeMs))
+            Text("Rendered spheres: \(currentCount) · lower costs less")
+            Text("Triangles: \(formatThousands(Int64(currentCount) * Int64(stage.trianglesPerSphere))) · lower costs less")
             sparklineView
                 .frame(height: 28)
+            Text("FPS history → now · reference line: 60 fps")
+                .foregroundStyle(SceneViewTokens.Glass.onGlassMuted)
+            Text(verdict.text)
+                .font(SceneViewTokens.TypeScale.chromeCaption)
+                .foregroundStyle(verdict.color)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, SceneViewTokens.Space.xs)
         }
-        .font(.system(.caption, design: .monospaced))
+        .font(.caption.monospacedDigit())
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
         .foregroundStyle(SceneViewTokens.Glass.onGlass)
         .padding(.horizontal, SceneViewTokens.Glass.pillPaddingHorizontal)
         .padding(.vertical, SceneViewTokens.Space.sm)
@@ -200,6 +257,29 @@ struct DebugOverlayDemo: View {
             }
         } catch { /* task cancelled by stop button */ }
     }
+
+    /// Ignores a 1 s warm-up, then samples every 250 ms: three samples in a row under
+    /// 55 fps record the count where the first of them was taken.
+    private func watchForSlowdown() async {
+        guard isStressRunning else { return }
+        do {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            var slowSamples = 0
+            var candidate = 0
+            while isStressRunning {
+                measuredCount = currentCount
+                let value = fps.currentFPS
+                if value > 0, value < Self.slowFPS {
+                    if slowSamples == 0 { candidate = currentCount }
+                    slowSamples += 1
+                    if slowSamples >= 3, firstSlowCount == 0 { firstSlowCount = candidate }
+                } else {
+                    slowSamples = 0
+                }
+                try await Task.sleep(nanoseconds: 250_000_000)
+            }
+        } catch { /* stopped */ }
+    }
 }
 
 // MARK: — Stage
@@ -221,7 +301,7 @@ final class DebugOverlayStage {
     private static let azimuth: Float = 35 * .pi / 180
     /// Points under the stats card, node-count strip and dock: the spheres are
     /// framed in the band above them, not behind the card.
-    private static let hudReserve: CGFloat = 320
+    private static let hudReserve: CGFloat = 380
 
     private let root = Entity()
     private let spheres = Entity()
@@ -230,6 +310,10 @@ final class DebugOverlayStage {
     private var count = 0
     private var built = false
     private lazy var sphereMesh = MeshResource.generateSphere(radius: Self.radius)
+    /// Triangles in the shared sphere mesh, counted once from its contents.
+    private(set) lazy var trianglesPerSphere: Int = sphereMesh.contents.models.reduce(0) { total, model in
+        model.parts.reduce(total) { $0 + ($1.triangleIndices?.count ?? 0) / 3 }
+    }
     private lazy var sphereMaterial: SimpleMaterial = {
         var material = SimpleMaterial(color: SceneViewTokens.Stage.shapeRamp[0], isMetallic: false)
         material.roughness = MaterialScalarParameter(floatLiteral: 0.4)

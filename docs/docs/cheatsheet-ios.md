@@ -447,6 +447,8 @@ On user denial throws `ARRecorderError.photoLibraryDenied`; on
 | `VideoNode` | `VideoNode.load("clip.mp4")` | `width:`, `height:`, `loop:`, `.play()`, `.pause()`; extensionless names try mp4/mov/m4v, `VideoNode.load(resource:)` throws instead of failing silently |
 | `LineNode` | `LineNode(from:to:color:)` | `SIMD3<Float>` endpoints |
 | `PathNode` | `PathNode(points:closed:color:)` | `[SIMD3<Float>]` path |
+| `TubeNode` | `TubeNode(points:radius:radialSegments:closed:caps:material:)` | lit tube with a real width; `.updateGeometry(points:radius:)` in place |
+| `MeshNode` | `MeshNode.fromVertices(positions:normals:uvs:indices:material:)` | `throws`; `MeshNode.wireframe(of:thickness:material:)` draws any mesh's edges as thin prisms (no wireframe mode in RealityKit) |
 | `PhysicsNode` | `.dynamic(entity, mass:restitution:)` | `.static(entity)`, `.kinematic(entity)` |
 | `DynamicSkyNode` | `DynamicSkyNode(timeOfDay:turbidity:)` | `0...24` time cycle |
 | `FogNode` | `FogNode.linear(start:end:color:)` · `FogNode.exponential(density:color:)` | **deprecated (v4.39.0+)** — not fog: one translucent sphere, no distance attenuation, and it is included in automatic content framing |
