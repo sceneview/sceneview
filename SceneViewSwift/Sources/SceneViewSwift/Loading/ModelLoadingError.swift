@@ -31,6 +31,13 @@ public enum ModelLoadingError: Error, Equatable, Sendable {
     /// A geometry buffer could not be read in the layout it announced — a ModelIO
     /// attribute missing after conversion, an index buffer shorter than its own count.
     case unreadableGeometry(reason: String)
+
+    /// The file requires an extension SceneViewSwift does not implement — most often
+    /// `KHR_draco_mesh_compression` in a glTF. The associated value is the extension's
+    /// name, so a viewer can tell the user to re-export without it.
+    ///
+    /// @addedIn 4.65.0
+    case unsupportedRequiredExtension(String)
 }
 
 extension ModelLoadingError: LocalizedError {
@@ -49,6 +56,9 @@ extension ModelLoadingError: LocalizedError {
             return "The file contains no triangles to display."
         case .unreadableGeometry(let reason):
             return "The geometry could not be read: \(reason)"
+        case .unsupportedRequiredExtension(let name):
+            return "This file requires \(name), which SceneView does not support yet. "
+                + "Re-export it without that extension."
         }
     }
 }
