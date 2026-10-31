@@ -16,7 +16,7 @@ English caption.
 > | 0 | `00-cosmos.png` (iPhone only) | A galaxy in real time | `-demo cosmos`, captured 2026-09-30 by `preview.yml` run 36779477754 (dark) |
 > | 1 | `00-open-file.png` | Open any 3D file | `-open_file` on a bundled `printed-icosahedron.3mf` — the frame also shows the app's own real-size read-out (127.6 mm) |
 > | 2 | `01-ar.png` | Real size, your room | the **generated** AR visual (see below) — no simulator has a camera |
-> | 3 | `02-demos.png` | Nearly fifty demos | the Showcase home (47 `@sceneId` scenes ship today); the iPhone frame is the current dark Home with Cosmos featured, re-captured 2026-09-30 by `preview.yml` run 36779477754 — the iPad frame is still the older Home |
+> | 3 | `02-demos.png` | Nearly forty demos | the Showcase home (36 `@sceneId` scenes ship today); the iPhone frame is the current dark Home with Cosmos featured, re-captured 2026-09-30 by `preview.yml` run 36779477754 — the iPad frame is still the older Home |
 > | 4 | `03-dynamic-sky.png` | HDR lighting, real sky | `-demo dynamic-sky -qa_mode 1` |
 > | 5 | `04-materials.png` | Materials that catch the light | `-demo materials -qa_mode 1` — the keyless offline stand-in, i.e. what a store visitor actually gets |
 > | 6 | `05-swiftui.png` | A few lines of SwiftUI | a SwiftUI snippet over the `reflection-probes` frame |
@@ -104,7 +104,7 @@ not empty or loading AR scenes:
    the QA chip is not suppressed for it.
 2. `01-ar` — generated, not captured. See the AR section above.
 3. `02-demos` — the Showcase home, no launch argument, scrolled to the top.
-   It carries the caption "Nearly fifty demos"; there are 47 `@sceneId`
+   It carries the caption "Nearly forty demos"; there are 36 `@sceneId`
    scenes today, so the caption stays true as the catalog grows and does not
    need re-editing on every added demo.
 4. `03-dynamic-sky` — the `khronos_damaged_helmet` hero under a live HDRI
