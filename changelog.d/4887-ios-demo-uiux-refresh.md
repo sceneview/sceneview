@@ -1,0 +1,2 @@
+<!-- category: Changed -->
+- **iOS demo: zoom transitions, collapsing titles and Show more ([#4887](https://github.com/sceneview/sceneview/pull/4887)).** Cards zoom into the screen or demo they open, and zoom back. Explore, AR, About, Credits and What's new get large titles that collapse into the bar. 3D stages run edge to edge, with their controls clear of the tab bar and the home indicator. Long What's new categories open on their first three entries, with an animated "Show N more" like Android (#4883).
