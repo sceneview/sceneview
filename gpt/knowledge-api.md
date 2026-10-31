@@ -6946,6 +6946,62 @@ never puts the camera inside the model, and the ceiling is 20 ×. Once the user 
 or orbits, the framing pass stops re-fitting the camera unless the content grows by
 more than 25 % (another streamed model); `.recenterCamera(_:)` hands it back (#4009).
 
+#### Camera paths — `CameraPosePath` and `CameraPathPlayer` (v4.64.0+)
+
+The Swift port of Android's keyframed pose paths (#4836): same sampling rules, same presets,
+same player, so a path authored on one platform plays the same on the other. A
+`CameraTimeline` (`durationSeconds`, `loop`, `poseAt(_ seconds:)`) is a pure function of time —
+a scrubbed frame and a played frame at the same time are the same pose.
+
+```swift
+@StateObject private var player = CameraPathPlayer(timeline: placeholderPath)  // play(), pause(), toggle(), restart(), seek(to:), speed, loop
+
+// Once the model is loaded and the view laid out:
+player.timeline = CameraPosePath.orbit(
+    bounds: model.entity.visualBounds(relativeTo: nil),   // one turn, framed from the subject's box
+    aspect: Float(size.width / size.height),              // the 3D view's own aspect
+    durationSeconds: 12)
+player.restart()
+
+SceneView { root in root.addChild(model.entity) }
+    .cameraGesturesEnabled(false)                         // the path owns the camera
+    .autoCenterContent(false)
+    .cameraPose(SceneCameraPose(player.pose, focusDistance: 2))
+    .background {
+        TimelineView(.animation(paused: !player.isPlaying)) { context in
+            Color.clear.onChange(of: context.date) { _, date in
+                player.advanceFrame(at: date.timeIntervalSinceReferenceDate)
+            }
+        }
+    }
+Slider(value: Binding(get: { Double(player.progress) },
+                      set: { player.seek(to: Float($0) * player.durationSeconds) }))
+```
+
+- `CameraPose(position:quaternion:)` looks down its local -Z; `CameraPose.lookingAt(eye:target:)`
+  builds one. `CameraPosePath(keyframes:interpolation: .catmullRom, easing: .linear,
+  pathEasing: nil, lookAt: nil, up: CameraPose.worldUp, loop: false)` — keys are
+  `CameraPoseKeyframe(pose:seconds:easing:)`; positions `.linear` or `.catmullRom` (tangents
+  capped so a pause is not overshot, a turn back of more than 120° stops on its key, two keys at
+  one time are a cut, a closed loop is smooth across its seam); rotations slerp the short way;
+  `lookAt` re-aims the camera at a point every instant. `CameraEasing` is `.linear`, `.inOut`,
+  `.expressive` or `.cubicBezier(x1, y1, x2, y2)`.
+- Presets: `orbit(bounds:verticalFovDegrees: 60, aspect:durationSeconds: 12, turns: 1,
+  elevationDegrees: 20, startAzimuthDegrees: 0, margin: 1.15, loop: true)` (radius from
+  `CameraControls.fitRadius`, the fit SceneView's own auto-framing uses; 32 keys a turn; a
+  fractional turn count keeps turning lap after lap), `travelling(from:distance:durationSeconds:)`
+  (along the camera's right axis, heading held), `dolly(target:from:toDistance:durationSeconds:)`
+  (along the line of sight).
+- `CameraPathPlayer` is a `@MainActor ObservableObject` (`seconds`, `progress`, `isPlaying`,
+  `isFinished`, `durationSeconds`, `loop`, `speed`); `advance(_:)` / `advanceFrame(at:)` move it by
+  wall-clock time, so 60 and 120 Hz reach the same pose at the same time. A new `timeline` keeps
+  the playhead, wrapped or clamped into its duration. For a fixed-rate render call
+  `timeline.poseAt(Float(frame) / fps)` directly.
+- A SceneView camera is an orbit camera: `SceneCameraPose(_:focusDistance:)` (or
+  `CameraControls.follow(_:focusDistance:)`, and `cameraPose()` to read one back) keeps the eye and
+  look direction exact for any focus distance, but has no roll and clamps the pitch to ±85°.
+  Keep `focusDistance` inside `minRadius…maxRadius` (1…50 with `autoCenterContent(false)`).
+
 ---
 
 ### Entity modifiers (extension on RealityKit.Entity)

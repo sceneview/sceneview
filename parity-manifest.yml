@@ -64,7 +64,8 @@
 # Do not enforce the correlation, and never "fix" a row to restore it.
 #
 # ─── CURRENT STATE — measured, not narrated ────────────────────────────────
-# Current ledger (2026-10-29, + `model-thumbnails` and `camera-path`): 43 rows, 28 working / 0 stub / 15 android-only.
+# Current ledger (2026-10-29, `camera-path` goes working on iOS): 43 rows, 29 working / 0 stub / 14 android-only.
+# (2026-10-29, + `model-thumbnails` and `camera-path`: 43 rows, 28 working / 0 stub / 15 android-only.)
 # (2026-10-26, +1 android-only: `camera-path`, a keyframed camera orbit with a timeline — no iOS screen yet.)
 # (2026-10-26, +1 android-only: `model-thumbnails`, #4822 — off-screen model thumbnails, no iOS screen yet.)
 # (2026-10-18, after AR catalogue clean-up wave 1, `finger-drawing` and `ar-pool`: 41 rows, 28 working / 0 stub / 13 android-only.)
@@ -303,7 +304,7 @@
 # merges silently: update the row in the same PR that changes either screen.
 
 demos:
-  # ─── working (28) — iOS has a real, non-placeholder destination ─────────
+  # ─── working (29) — iOS has a real, non-placeholder destination ─────────
   - id: animation-physics
     androidStatus: Working
     iosStatus: working
@@ -989,6 +990,29 @@ demos:
       aims lower (target y 0.4, Android 0.75) so the grounded box's pool
       clears the bottom option strip in portrait; the key light is 3 000 lux
       so the floor is not blown out under RealityKit's tone mapping.
+  - id: camera-path
+    androidStatus: InReview
+    iosStatus: working
+    category: VIEW_3D
+    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraPathDemo.kt
+    ios: [camera-path]
+    iosFiles:
+      - samples/ios-demo/SceneViewDemo/Views/Demos/CameraPathDemo.swift
+    contract: >-
+      The fox plays its Survey clip on a floor while the camera turns once
+      around it on a 16 s keyframed orbit framed from its bounds; a glass
+      timeline bar plays, pauses and scrubs the move with an m:ss clock. No
+      camera gestures: the path owns the camera.
+    parity: diverges
+    evidence: >-
+      Same 16 s orbit (18 deg elevation, 30 deg start, framed from the
+      subject's bounds), same glass play/pause + scrubber + m:ss clock bar,
+      same scrub-pauses-then-resumes rule and QA-mode first-key pause, all on
+      SceneViewSwift Camera/CameraPath.swift (CameraPosePath, CameraPathPlayer).
+      iOS swaps the animated fox for three still subjects (Helmet, Toy Car,
+      Lantern; Next subject in the dock) and adds Orbit / Travelling / Dolly
+      shot chips, the two extra shots being the travelling() and dolly()
+      presets Android's demo does not show.
 
   # ─── stub (0) — an id in iOS's registry that falls to the placeholder ────
   # Deliberately empty, and meant to stay that way. A `stub` row means the
@@ -1302,26 +1326,6 @@ demos:
     evidence: >-
       No iOS scene; ModelThumbnailsDemo.kt. RealityKit's offscreen
       `RealityRenderer` (or an `ARView` snapshot) is the iOS equivalent
-
-  - id: camera-path
-    androidStatus: InReview
-    iosStatus: android-only
-    reason: >-
-      No iOS screen yet. Added to Android first; the keyframed camera path API
-      (CameraPosePath, CameraPathPlayer) has no iOS counterpart yet.
-    category: VIEW_3D
-    android: samples/android-demo/src/main/java/io/github/sceneview/demo/demos/CameraPathDemo.kt
-    ios: []
-    iosFiles: []
-    contract: >-
-      The fox plays its Survey clip on a floor while the camera turns once
-      around it on a 16 s keyframed orbit framed from its bounds; a glass
-      timeline bar plays, pauses and scrubs the move with an m:ss clock. No
-      camera gestures: the path owns the camera.
-    parity: missing
-    evidence: >-
-      No iOS scene; CameraPathDemo.kt, sceneview camera/CameraPosePath.kt and
-      camera/CameraPathPlayer.kt.
 
 # ─── iOS-only scenes, no Android row: 0 ─────────────────────────────
 # Keyed `iosId`, not `id`, so check-demo-id-parity.sh never reads them as
