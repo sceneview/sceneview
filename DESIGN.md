@@ -564,7 +564,8 @@ Nothing else animates.
 **Top bar on a scrolling page** (`top-bar-scroll`). Transparent at rest — the page runs
 up under the status bar with nothing drawn over it — and raised to `surface-container`
 with an `outline-variant` hairline (fading on `motion-fade`) once content scrolls beneath
-it. Driven by Material's pinned scroll behaviour (`overlappedFraction`), never by a scroll
+it. In light theme `surface-container` is the page's own white, so the hairline alone marks
+the raised bar; in dark the bar also lifts in tone. Driven by Material's pinned scroll behaviour (`overlappedFraction`), never by a scroll
 offset read by hand; pinned, so the page's title never scrolls away. The Home header keeps
 its own glass-on-scroll (`HeaderGlass`); the AR placement chooser keeps its always-on
 `outline` edge (WCAG 1.4.11).
