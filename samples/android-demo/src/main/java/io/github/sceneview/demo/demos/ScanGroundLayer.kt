@@ -120,9 +120,12 @@ internal data class ScanGroundColors(
         fun currentLive(): ScanGroundColors {
             val chrome = LocalStageChrome.current
             val scheme = MaterialTheme.colorScheme
-            // As #4812's `ZoneInk.frame`: `warning-strong` on a light stage, `warning` on a dark one.
+            // As #4812's `ZoneInk.frame`: `warning-strong` on a light slab, `warning` on a dark one.
+            // Judged on the slab the hatching is drawn on, not on the ground: the ground stays
+            // dark in both themes while the slab turns white in light.
+            val slab = of(chrome.card, chrome.ground, scheme.surfaceContainerHigh, scheme.outlineVariant).slab
             val toScan =
-                if (chrome.ground.luminance() > HALF) TO_SCAN_STRONG else SceneViewTokens.ArOverlay.accentGuidance
+                if (slab.luminance() > HALF) TO_SCAN_STRONG else SceneViewTokens.ArOverlay.accentGuidance
             return live(chrome.card, chrome.ground, scheme.surfaceContainerHigh, scheme.outlineVariant, toScan, scheme.primary)
         }
     }
