@@ -510,12 +510,10 @@ final class SceneViewDemoUITests: XCTestCase {
         }
         let below = toggle.frame.minY
         toggle.tap()
-        Thread.sleep(forTimeInterval: 1)
-        XCTAssertTrue(toggle.label.hasPrefix("Show fewer "), "Show more did not unfold: \(toggle.label)")
+        XCTAssertTrue(wait(for: toggle, "label BEGINSWITH 'Show fewer '"), "Show more did not unfold: \(toggle.label)")
         XCTAssertGreaterThan(toggle.frame.minY, below + 10, "the hidden entries did not appear above the toggle")
         toggle.tap()
-        Thread.sleep(forTimeInterval: 1)
-        XCTAssertEqual(toggle.label, folded, "Show less did not fold the category back")
+        XCTAssertTrue(wait(for: toggle, "label == %@", folded), "Show less did not fold the category back: \(toggle.label)")
     }
 
     /// "I still struggle to see where the new things are" (02/10), then "the
@@ -628,6 +626,12 @@ final class SceneViewDemoUITests: XCTestCase {
         }
         Thread.sleep(forTimeInterval: 1)
         XCTAssertTrue(element.isHittable, "\(element) never came on screen")
+    }
+
+    /// Waits until `element` matches `format`, instead of a fixed sleep.
+    private func wait(for element: XCUIElement, _ format: String, _ args: CVarArg..., timeout: TimeInterval = 5) -> Bool {
+        let met = XCTNSPredicateExpectation(predicate: NSPredicate(format: format, argumentArray: args), object: element)
+        return XCTWaiter().wait(for: [met], timeout: timeout) == .completed
     }
 
     private func waitForDisappearance(of element: XCUIElement, timeout: TimeInterval) -> Bool {

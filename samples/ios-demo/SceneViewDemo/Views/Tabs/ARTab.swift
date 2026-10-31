@@ -401,7 +401,9 @@ private struct ARLauncherScreen: View {
         .glassBackground(in: RoundedRectangle(cornerRadius: SceneViewTokens.Radius.xl, style: .continuous),
                          interactive: true)
         .padding(.horizontal, SceneViewTokens.Home.contentPadding)
-        .padding(.bottom, SceneViewTokens.Space.sm)
+        // `chrome-cluster-gap`: an accessory sits 12pt above the dock — here
+        // the tab bar.
+        .padding(.bottom, SceneViewTokens.Chrome.clusterGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("ar-dock")
     }

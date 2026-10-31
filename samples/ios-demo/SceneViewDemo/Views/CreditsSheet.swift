@@ -27,7 +27,7 @@ struct CreditsSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("SceneView is Apache 2.0. The 3D models, environments and media below keep the license granted by their authors — tap a row to open the original page.")
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
                     bundledSection
                     hdPackSection
@@ -65,7 +65,7 @@ struct CreditsSheet: View {
             ForEach(credits.sections, id: \.title) { section in
                 Text(section.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .padding(.top, 4)
                 VStack(spacing: 8) {
                     ForEach(section.assets, id: \.file) { asset in
@@ -85,7 +85,7 @@ struct CreditsSheet: View {
                     .foregroundStyle(.yellow)
                 Text("Bundled asset credits are unavailable in this build (\(error.localizedDescription)). The full list lives in the project's assets/CREDITS.md.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,7 +130,7 @@ struct CreditsSheet: View {
             .padding(.top, 8)
         Text("Downloaded on demand, all CC-BY 4.0.")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
 
         let groups = Dictionary(grouping: SampleAssets.all) { $0.category }
         let knownOrder = orderedCategories.filter { groups[$0] != nil }
@@ -140,7 +140,7 @@ struct CreditsSheet: View {
             if let slugs = groups[category], !slugs.isEmpty {
                 Text(label(for: category))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     .padding(.top, 4)
 
                 VStack(spacing: 8) {
@@ -198,7 +198,7 @@ struct CreditsSheet: View {
                     .lineLimit(2)
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SceneViewTokens.HomeColor.onSurfaceDim)
                     // Three lines: "by NASA/JPL-Caltech — NASA Media Usage
                     // Guidelines (no endorsement implied; …)" is the licence
                     // itself, and must not be cut to an ellipsis.

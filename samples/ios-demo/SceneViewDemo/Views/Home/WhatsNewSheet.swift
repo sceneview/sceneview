@@ -171,9 +171,12 @@ private struct ReleaseSection: View {
 
 /// "Show N more" / "Show less" under a folded list — Android's `ShowMoreToggle`
 /// (`motion-expand`): the rows below unfold in place (height and opacity on
-/// `Spring`, or the plain `Spring.fade` under Reduce Motion) and the chevron
-/// turns half a turn with them, with a selection haptic and a spoken label that
-/// says what unfolds.
+/// `Spring`) and the chevron turns half a turn with them, with a selection
+/// haptic and a spoken label that says what unfolds. Under Reduce Motion
+/// nothing moves: the rows and the chevron change at once.
+///
+/// The 48pt touch target overhangs the line instead of padding it, so the gap
+/// under the toggle is the gap between two categories.
 private struct ShowMoreToggle: View {
     @Binding var expanded: Bool
     let hiddenCount: Int
@@ -182,17 +185,26 @@ private struct ShowMoreToggle: View {
     var leadingInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Grows the caption line to the 48pt touch target without taking space.
+    private static let touchOverhang: CGFloat = SceneViewTokens.Space.md
+
+    private var visibleText: String { expanded ? "Show less" : "Show \(hiddenCount) more" }
+
     var body: some View {
         Button {
             #if os(iOS)
             SceneViewHaptic.shared.selection()
             #endif
-            withAnimation(reduceMotion ? SceneViewTokens.Spring.fade : SceneViewTokens.Spring.animation) {
+            if reduceMotion {
                 expanded.toggle()
+            } else {
+                withAnimation(SceneViewTokens.Spring.animation) {
+                    expanded.toggle()
+                }
             }
         } label: {
             HStack(spacing: SceneViewTokens.Space.xs) {
-                Text(expanded ? "Show less" : "Show \(hiddenCount) more")
+                Text(visibleText)
                 Image(systemName: "chevron.down")
                     .font(SceneViewTokens.TypeScale.caption)
                     .rotationEffect(.degrees(expanded ? 180 : 0))
@@ -200,12 +212,15 @@ private struct ShowMoreToggle: View {
             }
             .font(SceneViewTokens.TypeScale.captionSemibold)
             .foregroundStyle(SceneViewTokens.HomeColor.primary)
-            .frame(minHeight: SceneViewTokens.Layout.touchTarget)
             .padding(.leading, leadingInset)
+            .padding(.vertical, Self.touchOverhang)
             .contentShape(Rectangle())
+            .padding(.vertical, -Self.touchOverhang)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(expanded ? lessLabel : moreLabel)
+        // Voice Control: "Tap Show 4 more" works as well as the spoken label.
+        .accessibilityInputLabels([visibleText, expanded ? lessLabel : moreLabel])
         // Android's TalkBack state (#4886).
         .accessibilityValue(expanded ? "Expanded" : "Collapsed")
     }

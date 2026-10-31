@@ -91,6 +91,9 @@ struct ShowcaseTab: View {
     /// The status bar's height: the hero stage starts above the content, at
     /// the top edge of the display.
     @State private var topInset: CGFloat = 0
+    /// The scroll view's side safe-area insets — the Dynamic Island and home
+    /// indicator sides in landscape — that the stage's sky runs under too.
+    @State private var sideInsets = EdgeInsets()
     /// Width of the list between the page's side insets, for its column count.
     @State private var listWidth: CGFloat = 0
     @State private var scrollPosition = ScrollPosition(edge: .top)
@@ -202,7 +205,12 @@ struct ShowcaseTab: View {
                             HomeHeroStage(height: heroStageHeight, topInset: topInset,
                                           restTop: heroRestTop, live: heroLive, scroll: heroScroll,
                                           flight: heroFlight)
-                                .padding(.horizontal, -SceneViewTokens.Home.contentPadding)
+                                // Full width, side insets included: in landscape
+                                // the sky runs under the Dynamic Island and the
+                                // home indicator side too. `ignoresSafeArea`
+                                // does not reach past a scroll view's content.
+                                .padding(.leading, -(SceneViewTokens.Home.contentPadding + sideInsets.leading))
+                                .padding(.trailing, -(SceneViewTokens.Home.contentPadding + sideInsets.trailing))
                         }
                     }
 
@@ -323,6 +331,14 @@ struct ShowcaseTab: View {
                 geometry.contentInsets.top
             } action: { _, inset in
                 topInset = inset
+            }
+            // The side insets are not scroll insets: the content is laid out
+            // inside them, so they are read off the scroll view's frame.
+            .onGeometryChange(for: EdgeInsets.self) { proxy in
+                EdgeInsets(top: 0, leading: proxy.safeAreaInsets.leading,
+                           bottom: 0, trailing: proxy.safeAreaInsets.trailing)
+            } action: { insets in
+                sideInsets = insets
             }
             .overlay(alignment: .top) {
                 // The sparkle shows while there is anything to read, carries a
