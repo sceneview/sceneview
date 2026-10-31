@@ -486,7 +486,7 @@ object ScanCopy {
     const val REVIEW_TITLE = "Review your scan"
     const val REVIEW_DETAIL = "Keep scanning to add more, or save it on this phone."
     const val EMPTY_TITLE = "Nothing captured yet"
-    const val EMPTY_DETAIL = "Move the phone slowly around the space, then tap stop again."
+    const val EMPTY_DETAIL = "Move the phone slowly around the space, then tap Stop and review again."
     const val KEEP_SCANNING = "Keep scanning"
     const val SAVE_SCAN = "Save scan"
     const val SAVING = "Saving scan…"
@@ -523,10 +523,16 @@ object ScanCopy {
     const val WALLS_NONE = "No walls yet"
 
     /**
-     * A room whose walls close it, or whose gauge is full: the scan can end (#4540). "stop" is the
-     * red shutter that ends a capture (#4807); there is no Finish button to name any more.
+     * A room whose walls close it and whose floor is covered: the scan can end (#4540). It names
+     * the red shutter by its visible label ([CaptureChrome.STOP_AND_REVIEW]).
      */
-    const val ROOM_DONE = "Room complete — tap stop to finish"
+    const val ROOM_DONE = "Room complete — tap Stop and review"
+
+    /**
+     * Walls closed, floor still hatched on the map ([CaptureChrome.complete]): never "Room
+     * complete" over a floor the map says is still to scan.
+     */
+    const val FLOOR_LEFT = "Walls done — now walk over the hatched floor"
 
     /** A depth scan getting no usable depth: the true cause of a count stuck at zero. */
     const val COACH_NO_DEPTH = "No depth yet — keep the lens clear and move slowly"
@@ -576,7 +582,7 @@ object ScanCopy {
     const val WALLS_FIRST = "Point at a wall and sweep along it"
     const val WALLS_NEXT = "Turn to the next wall"
     const val WALLS_FOLLOW = "Follow the walls round the room"
-    const val WALLS_CLOSE = "Keep going round, then tap stop"
+    const val WALLS_CLOSE = "Keep going round, then tap Stop and review"
 
     /** The guidance line of a room's scan once it can see walls: what to do next, in a few words. */
     fun wallGuide(walls: Int): String = when {

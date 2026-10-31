@@ -765,7 +765,7 @@ internal fun RerunModelScreen(
             }
         },
         themedStage = true,
-        topOverlay = { ScanNameCard(title = title, saved = id != null, onRename = rename) },
+        topOverlay = { ScanNameCard(title = title, saved = id != null && settled, onRename = rename) },
         bottomOverlay = {
             ModelStatus.slot(model, settled, rawShownFirst, finishedSaid)?.let { slot -> ModelStatusLine(slot) }
             // Laid out from the start and only faded: the model is framed above this slot, and a

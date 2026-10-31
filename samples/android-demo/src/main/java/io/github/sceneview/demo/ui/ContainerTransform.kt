@@ -10,8 +10,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -24,7 +26,9 @@ import io.github.sceneview.demo.theme.SceneViewTokens
 /**
  * The `SharedTransitionLayout` wrapped around the app's `NavHost`, so a destination can
  * share an element with the one it replaces. `null` outside the NavHost — a preview, a
- * test, a sheet's own window — where every shared-element modifier below is a no-op.
+ * test — where every shared-element modifier below is a no-op. A `ModalBottomSheet`
+ * inherits it, so a row inside a sheet sees the scope too; it stays inert there because
+ * only the card that was tapped is ever armed.
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -42,8 +46,9 @@ enum class ContainerRole { Card, Screen }
  * axis, and disarmed once Home has settled again. Only the card that was tapped carries
  * the shared bounds: a demo opened from anywhere else — the What's new sheet, the AR View
  * tab, a deep link — arrives on the plain shared axis, even when its card happens to be
- * composed under the sheet. Deliberately not saved: after a rotation on the demo, Back
- * slides home instead of shrinking into a card the new composition never measured.
+ * composed under the sheet. Held in memory only: the activity handles rotation itself
+ * (`configChanges`), so Back still shrinks into the card after one; after process death
+ * nothing is armed and Back slides home.
  */
 object DemoContainerTransform {
     var armedId: String? by mutableStateOf(null)
@@ -52,7 +57,7 @@ object DemoContainerTransform {
 }
 
 /**
- * One end of the Home card → demo screen container transform (#4880).
+ * One end of the Home card → demo screen container transform (#4883).
  *
  * Both ends render through `sharedBounds` in the overlay while the bounds travel on
  * `motion-container`. The card is the container: it re-measures to the growing bounds,
@@ -70,7 +75,10 @@ object DemoContainerTransform {
 fun Modifier.demoContainerTransform(demoId: String, role: ContainerRole): Modifier {
     val shared = LocalSharedTransitionScope.current ?: return this
     val scope = LocalNavAnimatedScope.current ?: return this
-    if (!LocalMotionEnabled.current || DemoContainerTransform.armedId != demoId) return this
+    // Read per card through derivedStateOf, so arming one card recomposes only that card
+    // instead of every card on screen.
+    val armed by remember(demoId) { derivedStateOf { DemoContainerTransform.armedId == demoId } }
+    if (!LocalMotionEnabled.current || !armed) return this
     val restRadius = SceneViewTokens.Home.rowRadius
     val radius by scope.transition.animateDp(
         transitionSpec = { SceneViewTokens.Motion.container() },

@@ -1,2 +1,0 @@
-<!-- category: Fixed -->
-- **iOS AR: the model places itself at a comfortable distance, as in the Android AR viewer.** Instant placement now stands the model 0.9 m plus 0.8 of its largest side ahead, between 1 m and 3 m (was 1.2–4 m). A detected floor under the screen centre takes the model only between 0.6 and 1.5 times that distance; aimed at your feet or across a large room — or at a table too near, even with the floor beyond it — the model stands on the estimated floor ahead instead. Without instant placement, a detected surface still takes the model at any distance.

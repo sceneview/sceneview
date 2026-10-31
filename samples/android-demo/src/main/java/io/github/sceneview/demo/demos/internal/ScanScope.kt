@@ -231,12 +231,14 @@ object ScanScopeCopy {
         done: Boolean = false,
         facingWall: Boolean = true,
         wallToFinish: Boolean = false,
+        floorLeft: Boolean = false,
     ): String? {
         val found = walls ?: -1
         val rooms = found >= 0 && scope.hasFloorPlan
         return when {
             nextRoom != null && nextRoom > 1 && line == ScanCopy.COACH_PAUSED -> between(nextRoom - 1, nextRoom)
-            rooms && done && line in DONE_OVER -> ScanCopy.ROOM_DONE
+            // Walls closed over a floor the map still hatches: the floor is what is left (QA-11).
+            rooms && done && line in DONE_OVER -> if (floorLeft) ScanCopy.FLOOR_LEFT else ScanCopy.ROOM_DONE
             line == ScanCopy.COACH_SCANNING && rooms && wallToFinish -> ScanCopy.WALL_TO_FINISH
             line == ScanCopy.COACH_SCANNING && rooms && turn != null && found >= 1 -> ScanCopy.turnHint(turn)
             line == ScanCopy.COACH_SCANNING && rooms -> ScanCopy.wallGuide(found)

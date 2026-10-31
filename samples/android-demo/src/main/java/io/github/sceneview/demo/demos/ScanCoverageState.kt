@@ -120,6 +120,14 @@ internal class ScanCoverageState {
     var coveredSquareMetres by mutableFloatStateOf(0f)
         private set
 
+    /**
+     * The share of the map's floor extent covered, `0..1` ([CoverageGrid.coveredShareOf]): what
+     * the map does not hatch as still to scan. A room is complete only once it is mostly covered
+     * ([io.github.sceneview.demo.demos.internal.CaptureChrome.complete]).
+     */
+    var floorShare by mutableFloatStateOf(0f)
+        private set
+
     var coachLine by mutableStateOf<ScanCoach.Line?>(null)
         private set
 
@@ -211,6 +219,7 @@ internal class ScanCoverageState {
             extent = grid.floorExtent(floors.map { it.polygon })
             val area = grid.squareMetres
             if (area > coveredSquareMetres || grid.resets != resets) coveredSquareMetres = area
+            floorShare = grid.coveredShareOf(extent)
             resets = grid.resets
         }
         if (reshaped || moved) tick++

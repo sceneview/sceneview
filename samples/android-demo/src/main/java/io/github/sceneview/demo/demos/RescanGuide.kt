@@ -209,7 +209,8 @@ private fun RescanGuideLine(text: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(SceneViewTokens.Radius.full)
     Text(
         text = text,
-        style = SceneViewTokens.Type.caption,
+        // 17 sp, as the capture's other lines: 13 sp did not read over a sunlit camera.
+        style = ScanDetailStyle,
         color = chrome.onCard,
         textAlign = TextAlign.Center,
         modifier = modifier
